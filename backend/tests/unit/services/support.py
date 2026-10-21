@@ -26,6 +26,7 @@ from lekto.core.ports.ocr import VisionModel
 from lekto.core.services.auth import AuthService
 from lekto.core.services.documents import DocumentService
 from lekto.core.services.inbox import InboxService
+from lekto.core.services.lenses import LensService
 from lekto.core.services.logos import LogoService
 from lekto.core.services.master_data import NORMALISE_BATCH, MasterDataService
 from lekto.core.services.oidc import OidcService
@@ -137,6 +138,10 @@ class World:
     @property
     def webhooks(self) -> WebhookService:
         return WebhookService(self.uow, self.clock, self.cipher, builders.WEBHOOKS)
+
+    @property
+    def lenses(self) -> LensService:
+        return LensService(self.uow, self.clock)
 
     def webhook_delivery(self, policy: WebhookPolicy | None = None) -> WebhookDeliveryService:
         return WebhookDeliveryService(

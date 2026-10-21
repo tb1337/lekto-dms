@@ -1,27 +1,44 @@
 """How the in-memory repository and search index sort documents, as the real ones do."""
 
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
 from uuid import UUID
 
 from lekto.core.ports.repository import DocumentOrder, SortKey
 
-type Rank = tuple[int | tuple[int, ...], ...]
+type Rank = tuple[int | Decimal | tuple[int, ...], ...]
 """Numbers, and the code points of a title, compared in turn."""
 
 
-def rank(order: DocumentOrder, id: UUID, value: date | str | None, *, ties_by_id: bool) -> Rank:
+def rank(
+    order: DocumentOrder,
+    id: UUID,
+    value: datetime | date | str | Decimal | None,
+    *,
+    ties_by_id: bool,
+) -> Rank:
     """A key that sorts ascending as `order` sorts a document with `id` and its `value` of the
-    sort key (`DocumentPosition.value`): documents without a date last. Ties go by id the same
-    way (`ties_by_id`, the repository) or stay as they come (the search index: by relevance)."""
+    sort key (`DocumentPosition.value`): documents without a date (or a field's value) last.
+    Ties go by id the same way (`ties_by_id`, the repository) or stay as they come (the search
+    index: by relevance)."""
     sign = 1 if order.ascending else -1
     tie = (sign * id.int,) if ties_by_id else ()
     match order.key:
-        case SortKey.CREATED:
+        case SortKey.ARRIVAL:
             return (sign * id.int,)
+        case SortKey.CREATED:
+            stamp = round(value.timestamp() * 1_000_000) if isinstance(value, datetime) else 0
+            return (sign * stamp, *tie)
         case SortKey.DOCUMENT_DATE:
             if not isinstance(value, date):
                 return (1, 0, *tie)
             return (0, sign * value.toordinal(), *tie)
+        case SortKey.FIELD:
+            if isinstance(value, date):
+                return (0, sign * value.toordinal(), *tie)
+            if isinstance(value, Decimal):
+                return (0, sign * value, *tie)
+            return (1, 0, *tie)
         case SortKey.TITLE:
             # Text cannot be negated: descending compares the code points negated.
             letters = tuple(ord(char) for char in str(value))

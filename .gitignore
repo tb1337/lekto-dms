@@ -33,7 +33,8 @@ data/
 .DS_Store
 
 # The settings of the development instance in the devcontainer (.devcontainer/README.md)
-.devcontainer/live.env
+.devcontainer/dev.env
+.devcontainer/prod.env
 
 # Secrets of the example stacks (deploy/create-secrets.sh)
 deploy/secrets/

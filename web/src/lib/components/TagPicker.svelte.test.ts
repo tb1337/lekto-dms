@@ -35,20 +35,13 @@ const fetchMock = vi.fn<(request: Request) => Promise<Response>>();
 
 beforeEach(() => {
 	fetchMock.mockReset();
-	fetchMock.mockImplementation(async (request) => {
-		const body = await request.clone().json();
-		return new Response(JSON.stringify({ ...tag('new', [body.name], null, body.scope), ...body }), {
-			status: 201,
-			headers: { 'content-type': 'application/json' }
-		});
-	});
 	vi.stubGlobal('fetch', fetchMock);
 });
 
 afterEach(() => {
 	phone.override(null);
 	session.clear();
-	masterDataDialogs.finishTag(null);
+	masterDataDialogs.finishAll();
 	vi.unstubAllGlobals();
 	document.body.style.pointerEvents = '';
 });
@@ -81,7 +74,10 @@ function picker(selected: string[] = ['g1']) {
 	return props;
 }
 
-describe('TagPicker', () => {
+// On a phone the choice is a sheet from the bottom (a dialog); wider, a popover at the button.
+describe('TagPicker on a phone', () => {
+	beforeEach(() => phone.override(true));
+
 	it('shows the chosen tags as chips to remove', async () => {
 		const props = picker(['g1', 'gone']);
 		const chips = screen.getByRole('group', { name: m.master_groups() });
@@ -148,7 +144,7 @@ describe('TagPicker', () => {
 		expect(within(dialog).getAllByRole('checkbox')).toHaveLength(3);
 	});
 
-	it('lets an admin create a group named as searched, chosen at once', async () => {
+	it('lets an admin create a group named as searched in the tag dialog, chosen after', async () => {
 		signIn('admin');
 		const user = userEvent.setup();
 		const props = picker();
@@ -157,32 +153,32 @@ describe('TagPicker', () => {
 		const search = within(dialog).getByRole('searchbox');
 		// A name that exists (in another case) is chosen, not created.
 		await user.type(search, 'bank');
-		expect(within(dialog).queryByText(m.tag_create_quick({ name: 'bank' }))).toBeNull();
+		expect(within(dialog).queryByText(m.create_named({ name: 'bank' }))).toBeNull();
 		await user.clear(search);
 		await user.type(search, 'Versicherungsmakler ');
-		await user.click(within(dialog).getByText(m.tag_create_quick({ name: 'Versicherungsmakler' })));
-		await waitFor(() => expect(props.selected).toEqual(['g1', 'new']));
-		const sent = fetchMock.mock.calls[0][0];
-		expect([sent.method, new URL(sent.url).pathname]).toEqual(['POST', '/api/v1/tags']);
-		expect(await sent.clone().json()).toEqual({ name: 'Versicherungsmakler', scope: 'contact' });
-		expect(props.made.map((made) => made.id)).toEqual(['new']);
-		expect((search as HTMLInputElement).value).toBe('');
+		await user.click(within(dialog).getByText(m.create_named({ name: 'Versicherungsmakler' })));
+		// The picker gives way to the tag dialog, the name filled in.
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		expect(masterDataDialogs.nested).toMatchObject([
+			{ kind: 'contact-groups', name: 'Versicherungsmakler' }
+		]);
+		masterDataDialogs.finish(tag('g9', ['Versicherungsmakler'], null));
+		await waitFor(() => expect(props.selected).toEqual(['g1', 'g9']));
+		expect(props.made.map((made) => made.id)).toEqual(['g9']);
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
-	it('opens the tag dialog for one with details, and chooses the tag it makes', async () => {
+	it('chooses nothing when the tag dialog closes without', async () => {
 		signIn('admin');
 		const user = userEvent.setup();
 		const props = picker([]);
-		const create = vi.spyOn(masterDataDialogs, 'createTag');
 		await user.click(screen.getByRole('button', { name: m.picker_add_group_label() }));
 		await user.type(within(await screen.findByRole('dialog')).getByRole('searchbox'), 'Makler');
-		await user.click(screen.getByText(m.tag_create_details()));
-		expect(create).toHaveBeenCalledWith('contact', 'Makler');
-		// The picker gives way to the tag dialog.
-		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-		masterDataDialogs.finishTag(tag('g9', ['Makler'], null));
-		await waitFor(() => expect(props.selected).toEqual(['g9']));
-		expect(fetchMock).not.toHaveBeenCalled();
+		await user.click(screen.getByText(m.create_named({ name: 'Makler' })));
+		masterDataDialogs.finish(null);
+		await waitFor(() => expect(masterDataDialogs.nested).toEqual([]));
+		expect(props.selected).toEqual([]);
+		expect(props.made).toEqual([]);
 	});
 
 	it('offers no creating to others than admins', async () => {
@@ -192,7 +188,82 @@ describe('TagPicker', () => {
 		await user.click(screen.getByRole('button', { name: m.picker_add_group_label() }));
 		await user.type(within(await screen.findByRole('dialog')).getByRole('searchbox'), 'Makler');
 		expect(screen.getByText(m.picker_no_match())).toBeTruthy();
-		expect(screen.queryByText(m.tag_create_quick({ name: 'Makler' }))).toBeNull();
-		expect(screen.queryByText(m.tag_create_details())).toBeNull();
+		expect(screen.queryByText(m.create_named({ name: 'Makler' }))).toBeNull();
+	});
+});
+
+describe('TagPicker wider than a phone', () => {
+	// The popover is placed by measuring, which jsdom does not: it counts as hidden, and
+	// hidden things have no computed name; its title names it.
+	const hidden = { hidden: true };
+	async function popoverNamed(name: string): Promise<HTMLElement> {
+		const popover = await screen.findByRole('dialog', hidden);
+		const title = document.getElementById(popover.getAttribute('aria-labelledby') ?? '');
+		expect(title?.textContent?.trim()).toBe(name);
+		return popover;
+	}
+
+	it('picks in a popover at the button, named by the kind', async () => {
+		const user = userEvent.setup();
+		const props = picker();
+		await user.click(screen.getByRole('button', { name: m.picker_add_group_label() }));
+		const popover = await popoverNamed(m.master_contact_groups());
+		const boxes = within(popover).getAllByRole('checkbox', hidden) as HTMLInputElement[];
+		expect(boxes.map((box) => box.getAttribute('aria-label'))).toEqual([
+			'Insurer',
+			`Insurer${SEPARATOR}Health insurer`,
+			'Bank'
+		]);
+		await user.click(boxes[2]);
+		expect(props.selected).toEqual(['g1', 'g3']);
+		await user.click(within(popover).getByText(m.picker_done()));
+		await waitFor(() => expect(screen.queryByRole('dialog', hidden)).toBeNull());
+	});
+
+	it('offers a document only what may be chosen, as the form says', async () => {
+		const user = userEvent.setup();
+		const documentTags = [
+			tag('t1', ['Insurance'], null, 'document'),
+			tag('t2', ['Insurance', 'Health'], 't1', 'document'),
+			tag('t3', ['Paid'], null, 'document'),
+			...TAGS
+		];
+		render(TagPicker, {
+			id: 'tags',
+			label: m.field_tags(),
+			title: m.field_tags(),
+			scope: 'document',
+			tags: documentTags,
+			selected: ['t2'],
+			onchange: () => {},
+			// As the document form does: no tag above one set.
+			offered: (candidate: Tag) => candidate.id !== 't1'
+		});
+		await user.click(screen.getByRole('button', { name: m.field_tag_add() }));
+		const popover = await popoverNamed(m.field_tags());
+		const boxes = within(popover).getAllByRole('checkbox', hidden);
+		// No groups, not the tag above the one set; the one set stays to take off.
+		expect(boxes.map((box) => box.getAttribute('aria-label'))).toEqual([
+			`Insurance${SEPARATOR}Health`,
+			'Paid'
+		]);
+	});
+
+	it('shows only the chips where nothing may change', () => {
+		render(TagPicker, {
+			id: 'tags',
+			label: m.field_tags(),
+			title: m.field_tags(),
+			scope: 'document',
+			tags: [tag('t3', ['Paid'], null, 'document')],
+			selected: ['t3'],
+			onchange: () => {},
+			disabled: true
+		});
+		expect(screen.getByText('Paid')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: m.field_tag_add() })).toBeNull();
+		expect(
+			screen.queryByRole('button', { name: m.rule_remove_value({ name: 'Paid' }) })
+		).toBeNull();
 	});
 });

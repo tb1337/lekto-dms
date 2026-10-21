@@ -9,7 +9,7 @@
 #   GARAGE_ADMIN_TOKEN         admin API token
 #   LEKTO_S3_ACCESS_KEY_ID     access key to import (GK + 24 hex digits)
 #   LEKTO_S3_SECRET_ACCESS_KEY its secret (64 hex digits)
-#   LEKTO_S3_BUCKET            bucket to create (development and tests)
+#   LEKTO_S3_BUCKET            bucket to create (the tests, below their own prefixes)
 #   LEKTO_S3_EXTRA_BUCKETS     further buckets, space-separated (the development instance,
 #                              see .devcontainer/README.md); the same key gets access
 set -eu

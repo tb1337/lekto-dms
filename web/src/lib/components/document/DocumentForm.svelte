@@ -6,7 +6,7 @@
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Shapes from '@lucide/svelte/icons/shapes';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
-	import { onDestroy, untrack } from 'svelte';
+	import { onDestroy, untrack, type Snippet } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { api } from '#lib/api/client.ts';
@@ -17,12 +17,14 @@
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
 	import FieldGroup from '#lib/components/document/FieldGroup.svelte';
 	import FieldShell from '#lib/components/document/FieldShell.svelte';
-	import TagsInput from '#lib/components/document/TagsInput.svelte';
+	import PaneHead from '#lib/components/document/PaneHead.svelte';
 	import TopicInput from '#lib/components/document/TopicInput.svelte';
+	import SearchSelect, { type SearchOption } from '#lib/components/SearchSelect.svelte';
 	import GroupChips from '#lib/components/GroupChips.svelte';
 	import FieldValueInput from '#lib/components/FieldValueInput.svelte';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import RuleEffects from '#lib/components/rules/RuleEffects.svelte';
+	import TagPicker from '#lib/components/TagPicker.svelte';
 	import TypeIcon from '#lib/components/TypeIcon.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
@@ -37,6 +39,7 @@
 		type Review
 	} from '#lib/document-view.ts';
 	import { describeError, fieldErrors as fieldMessages } from '#lib/errors.ts';
+	import { factsSummary } from '#lib/facts.ts';
 	import { sameValue, toApi, toInput, type ApiValue, type InputValue } from '#lib/fields.ts';
 	import {
 		spaceLabel,
@@ -46,10 +49,12 @@
 	} from '#lib/masterdata.svelte.ts';
 	import { writableSpaces } from '#lib/permissions.ts';
 	import { NODE_LABELS } from '#lib/node-labels.ts';
+	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { phone } from '#lib/phone.svelte.ts';
 	import { fieldId, initialValue, isRuleField, type ReviewValue } from '#lib/review.ts';
 	import { session } from '#lib/session.svelte.ts';
-	import { ofScope } from '#lib/tags.ts';
+	import { above, normalise, ofScope } from '#lib/tags.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
 	type Patch = components['schemas']['DocumentPatch'];
@@ -59,8 +64,8 @@
 	// The metadata of a document in three groups: basics, global fields, the fields of its
 	// type. While it waits in the inbox, the open fields are cards and "Confirm" decides them
 	// all at once (with any other change); otherwise a change is shown as a dry run before it
-	// is saved. Hovering a field marks its quote in the viewer (`onmarks`), a click on the
-	// page of a quote jumps there (`onreveal`).
+	// is saved. Hovering a field marks its quote on the pages (`onmarks`) and in the text
+	// (`onquotes`), a click on the page of a quote jumps there (`onreveal`).
 	let {
 		document,
 		lookup,
@@ -70,10 +75,12 @@
 		onsaved,
 		onconfirmed,
 		onmarks,
+		onquotes,
 		onreveal,
 		onenabled,
 		factCounts = null,
-		factsHref = ''
+		factsHref = '',
+		end
 	}: {
 		document: Document;
 		lookup: Lookup;
@@ -87,27 +94,21 @@
 		/** After confirming: the document to open next, or null for the inbox. */
 		onconfirmed: (next: string | null) => void;
 		onmarks: (marks: Mark[]) => void;
+		/** The quotes of the fields marked, to mark in the text. */
+		onquotes?: (quotes: string[]) => void;
 		onreveal: (place: Place) => void;
 		/** An admin's choice enabled the topic at the contact: the master data changed. */
 		onenabled?: () => void;
 		/** What the document shows of its contact, counted; a chip at the contact leads there. */
 		factCounts?: { evidence: number; unknown: number; codes: number } | null;
-		/** Where the facts are: the content. */
+		/** Where the facts are: the other pane of the document tab. */
 		factsHref?: string;
+		/** At the end of the head: the pane's switch. */
+		end?: Snippet;
 	} = $props();
 
 	// The chip's text: what there is, counted; nothing for none.
-	const factsChip = $derived.by(() => {
-		if (!factCounts) return '';
-		const { evidence, unknown, codes } = factCounts;
-		const count = (n: number, one: () => string, many: (args: { count: number }) => string) =>
-			n === 0 ? [] : [n === 1 ? one() : many({ count: n })];
-		return [
-			...count(evidence, m.facts_chip_evidence_one, m.facts_chip_evidence),
-			...count(unknown, m.facts_chip_unknown_one, m.facts_chip_unknown),
-			...count(codes, m.facts_chip_codes_one, m.facts_chip_codes)
-		].join(' · ');
-	});
+	const factsChip = $derived(factCounts ? factsSummary(factCounts) : '');
 
 	let title = $state('');
 	let date = $state('');
@@ -135,6 +136,8 @@
 			!document.processing.nodes.some((state) => state.status === 'running')
 	);
 	const reviewing = $derived(review !== null && review.open.length > 0 && confirmable);
+	// The fields still to decide, counted in the head.
+	const undecided = $derived([...evidence.values()].filter((entry) => entry.open).length);
 	const decisions = $derived(openChecks.filter((check) => !isRuleField(check.field)));
 	const ruleNotes = $derived(
 		openChecks.filter((check) => check.field === 'review' || check.field === 'title')
@@ -202,6 +205,8 @@
 	const enabledTopics = $derived(
 		lookup.contacts.find((entry) => entry.id === contact)?.topic_ids ?? []
 	);
+	// The tags above those set: not offered, the tag set says more.
+	const tagsAbove = $derived(above(lookup.tags, tags));
 	const topicChoices = $derived(
 		ofScope(lookup.tags, 'topic').filter(
 			(option) =>
@@ -210,6 +215,9 @@
 		)
 	);
 	const enablesTopic = $derived(topic !== '' && contact !== '' && !enabledTopics.includes(topic));
+	// Only a contact with topics has the field (Tobi, 20.10.2026): it appears when such a
+	// contact is chosen. A topic the document has stays in view, to be seen and removed.
+	const showsTopic = $derived(enabledTopics.length > 0 || topic !== '');
 	const topicCheck = $derived(evidence.get('topic')?.check);
 	// Lekto suggests a topic it did not set (a topic never waits): a card with the candidates.
 	const topicAdvice = $derived(
@@ -261,10 +269,15 @@
 	const typeName = $derived(
 		lookup.documentTypes.find((entry) => entry.id === documentType)?.name ?? null
 	);
-	const options = (list: readonly { id: string; name: string }[]) => [
-		{ value: '', label: m.value_unset() },
-		...list.map((entry) => ({ value: entry.id, label: entry.name }))
-	];
+	/** A contact or type an admin makes from the search, in its dialog with `name` filled in
+	 * (the lists load again); null when the dialog closed without. */
+	async function createMasterData(
+		kind: 'contacts' | 'document-types',
+		name: string
+	): Promise<SearchOption | null> {
+		const made = await masterDataDialogs.create(kind, name);
+		return made ? { value: made.id, label: made.name } : null;
+	}
 
 	/** What differs from the stored document, in the form of the API (null removes a value). */
 	function buildPatch(): Patch {
@@ -472,15 +485,24 @@
 		return found ? placesApply(found.check, current(key)) : true;
 	}
 
-	const marks = $derived.by(() => {
-		const keys = [...new Set([focused, pinned])].filter((key): key is string => key !== null);
-		return keys.flatMap((key) => {
-			const found = evidence.get(key);
-			if (!found || !applies(key)) return [];
-			return marksOf(key, fieldLabel(key, lookup), found.check, { pinned: key === pinned });
-		});
-	});
+	// The fields marked: hovered or focused, and the one jumped to; their quotes while they
+	// still belong to the value.
+	const marked = $derived(
+		[...new Set([focused, pinned])].flatMap((key) => {
+			const found = key === null ? undefined : evidence.get(key);
+			return key !== null && found && applies(key) ? [{ key, check: found.check }] : [];
+		})
+	);
+	const marks = $derived(
+		marked.flatMap(({ key, check }) =>
+			marksOf(key, fieldLabel(key, lookup), check, { pinned: key === pinned })
+		)
+	);
+	const quotes = $derived(
+		marked.map(({ check }) => check.evidence?.trim() ?? '').filter((quote) => quote !== '')
+	);
 	$effect(() => onmarks(marks));
+	$effect(() => onquotes?.(quotes));
 
 	function focus(key: string | null) {
 		focused = key;
@@ -498,10 +520,11 @@
 			: documentType !== '' && field.required_document_type_ids.includes(documentType);
 	}
 
+	// On a phone the pages take the place of the form: the mark stays until the next jump.
 	function jump(key: string, place: Place) {
 		pinned = key;
 		clearTimeout(unpin);
-		unpin = setTimeout(() => (pinned = null), 2500);
+		if (!phone.current) unpin = setTimeout(() => (pinned = null), 2500);
 		onreveal(place);
 	}
 
@@ -514,6 +537,19 @@
 	novalidate
 	aria-label={m.edit_title()}
 >
+	<!-- The head only where it holds something: on a phone the pane has no switch. -->
+	{#if end || (reviewing && undecided > 0)}
+		<PaneHead {end}>
+			{#if reviewing && undecided > 0}
+				<span
+					class="inline-flex h-6 items-center gap-1.5 rounded-full bg-lane-yellow px-2.5 text-xs font-medium text-lane-yellow-foreground"
+				>
+					<span class="size-[7px] rounded-full bg-lane-yellow-foreground" aria-hidden="true"></span>
+					{undecided === 1 ? m.review_undecided_one() : m.review_undecided({ count: undecided })}
+				</span>
+			{/if}
+		</PaneHead>
+	{/if}
 	<div class="relative flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto bg-surface p-3.5">
 		{#if reviewing}
 			<div
@@ -522,11 +558,15 @@
 				<TriangleAlert class="mt-0.5 size-[18px] shrink-0" aria-hidden="true" strokeWidth={2.2} />
 				<div class="flex flex-col gap-0.5">
 					<p class="font-semibold">{m.review_banner_title()}</p>
-					{#if located}<p class="text-sm">{m.review_banner_hint()}</p>{/if}
+					{#if located}<p class="text-sm">
+							{phone.current ? m.review_banner_hint_phone() : m.review_banner_hint()}
+						</p>{/if}
 				</div>
 			</div>
 		{:else if located}
-			<p class="px-1 text-sm text-muted-foreground">{m.review_banner_hint()}</p>
+			<p class="px-1 text-sm text-muted-foreground">
+				{phone.current ? m.review_banner_hint_phone() : m.review_banner_hint()}
+			</p>
 		{/if}
 
 		{#if reviewing && failedNode}
@@ -611,12 +651,20 @@
 			>
 				<div class="flex min-w-0 items-center gap-2">
 					{#if chosenContact}<ContactAvatar contact={chosenContact} size="md" />{/if}
-					<NativeSelect
+					<SearchSelect
 						id="doc-contact"
 						value={contact}
 						disabled={!editable}
-						options={options(lookup.contacts)}
+						options={lookup.contacts.map((entry) => ({
+							value: entry.id,
+							label: entry.name,
+							keywords: entry.aliases?.join(' ')
+						}))}
+						placeholder={m.value_unset()}
+						noneLabel={m.value_unset()}
+						searchLabel={session.isAdmin ? m.picker_search_create() : m.assignment_search()}
 						onchange={chooseContact}
+						create={session.isAdmin ? (name) => createMasterData('contacts', name) : undefined}
 					/>
 				</div>
 				<GroupChips
@@ -634,35 +682,39 @@
 					</a>
 				{/if}
 			</FieldShell>
-			<FieldShell
-				key="topic"
-				label={m.field_topic()}
-				inputId="doc-topic"
-				evidence={evidence.get('topic')}
-				{lookup}
-				review={reviewing}
-				advice={topicAdvice}
-				quoted={false}
-				applies={applies('topic')}
-				active={focused === 'topic' || pinned === 'topic'}
-				onfocus={focus}
-				onjump={jump}
-				onpick={take}
-			>
-				<!-- An admin creates a topic here, too; saving enables it at the contact. -->
-				<TopicInput
-					id="doc-topic"
-					bind:value={topic}
-					topics={topicChoices}
-					all={lookup.tags}
-					disabled={!editable || contact === '' || (topicChoices.length === 0 && !session.isAdmin)}
-					placeholder={contact === '' ? m.topic_no_contact() : m.value_unset()}
-					creating={session.isAdmin && contact !== ''}
-				/>
-				{#if enablesTopic && session.isAdmin}
-					<p class="mt-1 text-xs text-muted-foreground">{m.topic_enables_hint()}</p>
-				{/if}
-			</FieldShell>
+			{#if showsTopic}
+				<FieldShell
+					key="topic"
+					label={m.field_topic()}
+					inputId="doc-topic"
+					evidence={evidence.get('topic')}
+					{lookup}
+					review={reviewing}
+					advice={topicAdvice}
+					quoted={false}
+					applies={applies('topic')}
+					active={focused === 'topic' || pinned === 'topic'}
+					onfocus={focus}
+					onjump={jump}
+					onpick={take}
+				>
+					<!-- An admin creates a topic here, too; saving enables it at the contact. -->
+					<TopicInput
+						id="doc-topic"
+						bind:value={topic}
+						topics={topicChoices}
+						all={lookup.tags}
+						disabled={!editable ||
+							contact === '' ||
+							(topicChoices.length === 0 && !session.isAdmin)}
+						placeholder={contact === '' ? m.topic_no_contact() : m.value_unset()}
+						creating={session.isAdmin && contact !== ''}
+					/>
+					{#if enablesTopic && session.isAdmin}
+						<p class="mt-1 text-xs text-muted-foreground">{m.topic_enables_hint()}</p>
+					{/if}
+				</FieldShell>
+			{/if}
 			<FieldShell
 				key="document_type"
 				label={m.field_document_type()}
@@ -682,11 +734,17 @@
 							<TypeIcon icon={chosenType.icon} class="size-5" />
 						</span>
 					{/if}
-					<NativeSelect
+					<SearchSelect
 						id="doc-type"
 						bind:value={documentType}
 						disabled={!editable}
-						options={options(lookup.documentTypes)}
+						options={lookup.documentTypes.map((entry) => ({ value: entry.id, label: entry.name }))}
+						placeholder={m.value_unset()}
+						noneLabel={m.value_unset()}
+						searchLabel={session.isAdmin ? m.picker_search_create() : m.assignment_search()}
+						create={session.isAdmin
+							? (name) => createMasterData('document-types', name)
+							: undefined}
 					/>
 				</div>
 				<GroupChips
@@ -707,7 +765,20 @@
 				onfocus={focus}
 				onjump={jump}
 			>
-				<TagsInput bind:tags all={lookup.tags} id="doc-tags" disabled={!editable} />
+				<!-- A tag set below another replaces it, as the API keeps them; tags above one set
+				are not offered. -->
+				<TagPicker
+					id="doc-tags"
+					label={m.field_tags()}
+					labelledby="doc-tags-label"
+					title={m.field_tags()}
+					scope="document"
+					tags={lookup.tags}
+					selected={tags}
+					onchange={(next) => (tags = normalise(lookup.tags, next))}
+					offered={(tag) => !tagsAbove.has(tag.id)}
+					disabled={!editable}
+				/>
 			</FieldShell>
 			{#if hasSpace}
 				<FieldShell
@@ -719,7 +790,7 @@
 					onfocus={focus}
 					onjump={jump}
 				>
-					<NativeSelect
+					<Select
 						id="doc-space"
 						bind:value={spaceId}
 						disabled={!editable}

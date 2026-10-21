@@ -3,6 +3,7 @@ source system, spaces and users created by an admin's token, the original's hash
 
 import hashlib
 import json
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -106,6 +107,32 @@ async def test_an_admin_uploads_for_another_owner_with_the_metadata(api: Api) ->
     # The admin does not own it.
     other = await api.client.get(f"{DOCUMENTS}?limit=50", headers=auth(admin))
     assert other.json()["items"] == []
+
+
+async def test_the_metadata_say_when_the_document_came_in_at_the_source(api: Api) -> None:
+    admin, owner = await api.admin(), await api.user()
+    data = await master_data(api, admin)
+
+    async def migrated(created_at: str) -> Any:
+        return await upload(
+            api,
+            auth(admin),
+            channel="migration",
+            owner=str(owner.id),
+            metadata=metadata(data, created_at=created_at),
+        )
+
+    # Never ahead, always with a time zone; nothing is stored then.
+    for wrong in ("2999-01-01T00:00:00Z", "2023-01-02T09:30:00"):
+        response = await migrated(wrong)
+        assert response.status_code == 422, (wrong, response.text)
+    response = await migrated("2023-01-02T09:30:00+01:00")
+    assert response.status_code == 202, response.text
+    await api.drain()
+    document = (await api.client.get(response.json()["status_url"], headers=auth(owner))).json()
+    assert datetime.fromisoformat(document["created_at"]) == datetime(2023, 1, 2, 8, 30, tzinfo=UTC)
+    log = (await api.client.get(f"{DOCUMENTS}/{document['id']}/log", headers=auth(owner))).json()
+    assert log[0]["output"]["imported"]["created_at"] == "2023-01-02T08:30:00+00:00"
 
 
 class FailsOnce:

@@ -2,6 +2,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import type { Snippet } from 'svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import Segmented, { type Segment } from '#lib/components/Segmented.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -11,7 +12,9 @@
 	// The frame of a master data editor: a form in a dialog whose body scrolls while its title
 	// and its footer (delete, cancel, save) stay; on a phone a sheet over the whole screen with a
 	// fixed bar on top ("Cancel" · title · "Save") and deleting at the end of the body. Deleting
-	// asks first (`ondelete`, only for an item that exists).
+	// asks first (`ondelete`, only for an item that exists). A long editor has `tabs` under its
+	// title (Tobi, 20.10.2026): the caller shows the part of `tab`, the body starts at its top
+	// again, and the dialog keeps one height (`class`), on a phone they share its width.
 	let {
 		open = $bindable(false),
 		title,
@@ -26,6 +29,8 @@
 		deleteTitle = '',
 		deleteDescription = '',
 		class: className,
+		tabs,
+		tab = $bindable(''),
 		children
 	}: {
 		open?: boolean;
@@ -42,12 +47,20 @@
 		ondelete?: () => Promise<void>;
 		deleteTitle?: string;
 		deleteDescription?: string;
-		/** The width of the dialog. */
+		/** The width of the dialog, and its height with tabs. */
 		class?: string;
+		tabs?: readonly Segment[];
+		tab?: string;
 		children: Snippet;
 	} = $props();
 
 	let confirming = $state(false);
+	let body = $state<HTMLElement | null>(null);
+
+	$effect(() => {
+		void tab;
+		if (body) body.scrollTop = 0;
+	});
 </script>
 
 <Dialog.Root bind:open>
@@ -91,6 +104,17 @@
 					{#if description}<Dialog.Description>{description}</Dialog.Description>{/if}
 				</Dialog.Header>
 			{/if}
+			{#if tabs}
+				<div class={cn('shrink-0 px-4 pb-3', phone.current && 'pt-3')}>
+					<Segmented
+						bind:value={tab}
+						options={tabs}
+						label={title}
+						equal={phone.current}
+						class={phone.current ? 'w-full' : ''}
+					/>
+				</div>
+			{/if}
 			{#if error}
 				<p
 					class="shrink-0 border-b bg-destructive/5 px-4 py-2 text-sm text-destructive"
@@ -100,9 +124,10 @@
 				</p>
 			{/if}
 			<div
+				bind:this={body}
 				class={cn(
 					'flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 pb-4',
-					phone.current && 'pt-4'
+					phone.current && !tabs && 'pt-4'
 				)}
 			>
 				{#if phone.current && description}

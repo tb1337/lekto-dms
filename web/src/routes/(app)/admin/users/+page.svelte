@@ -5,7 +5,8 @@
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import EditButton from '#lib/components/EditButton.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import UserManage from '#lib/components/UserManage.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -117,10 +118,11 @@
 							</Badge>
 						</Table.Cell>
 						<Table.Cell>{user.created_at ? formatDate(user.created_at) : '–'}</Table.Cell>
-						<Table.Cell class="text-right">
-							<Button variant="outline" size="sm" onclick={() => (managing = user.id)}>
-								{m.user_manage()}
-							</Button>
+						<Table.Cell class="w-px py-1">
+							<EditButton
+								label={m.user_manage_named({ name: user.username })}
+								onclick={() => (managing = user.id)}
+							/>
 						</Table.Cell>
 					</Table.Row>
 				{/each}
@@ -145,7 +147,7 @@
 			</Field.Field>
 			<Field.Field>
 				<Field.Label for="new-role">{m.user_role()}</Field.Label>
-				<NativeSelect
+				<Select
 					id="new-role"
 					value={role}
 					options={[

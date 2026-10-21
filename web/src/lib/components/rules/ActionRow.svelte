@@ -3,7 +3,7 @@
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import MultiPicker from '#lib/components/MultiPicker.svelte';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import ValueInput from '#lib/components/rules/ValueInput.svelte';
 	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -65,7 +65,7 @@
 		<span class="w-full pt-2 text-sm font-medium sm:w-44">{label}</span>
 		<div class="flex min-w-0 flex-1 basis-64 flex-col gap-2">
 			{#if action.type === 'set_space'}
-				<NativeSelect
+				<Select
 					aria-label={label}
 					aria-invalid={invalid || undefined}
 					bind:value={action.space_id}
@@ -73,7 +73,7 @@
 					class="h-10"
 				/>
 			{:else if action.type === 'set_contact'}
-				<NativeSelect
+				<Select
 					aria-label={label}
 					aria-invalid={invalid || undefined}
 					bind:value={action.contact_id}
@@ -81,7 +81,7 @@
 					class="h-10"
 				/>
 			{:else if action.type === 'set_document_type'}
-				<NativeSelect
+				<Select
 					aria-label={label}
 					aria-invalid={invalid || undefined}
 					bind:value={action.document_type_id}
@@ -89,7 +89,7 @@
 					class="h-10"
 				/>
 			{:else if action.type === 'set_topic'}
-				<NativeSelect
+				<Select
 					aria-label={label}
 					aria-invalid={invalid || undefined}
 					bind:value={action.topic_id}
@@ -109,7 +109,7 @@
 					}}
 				/>
 			{:else if action.type === 'set_field'}
-				<NativeSelect
+				<Select
 					aria-label={m.rule_condition_field()}
 					aria-invalid={(invalid && !action.field_id) || undefined}
 					value={action.field_id}

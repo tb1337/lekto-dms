@@ -116,6 +116,43 @@ class DocumentChanges:
     document_date: date | Unset | None = UNSET
     fields: Mapping[FieldId, object] = field(default_factory=dict)
     topic_id: TagId | Unset | None = UNSET
+    # When the document came in (`Document.created_at`, the receipt): a person corrects it,
+    # say, for a letter scanned days after it arrived. Not in the future.
+    created_at: datetime | Unset = UNSET
+
+    @property
+    def only_receipt(self) -> bool:
+        """Whether all it changes is when the document came in: no metadata a person
+        confirms, and nothing the rules decide on."""
+        return (
+            self.created_at is not UNSET
+            and not self.fields
+            and all(
+                value is UNSET
+                for value in (
+                    self.title,
+                    self.contact_id,
+                    self.document_type_id,
+                    self.tag_ids,
+                    self.document_date,
+                    self.topic_id,
+                )
+            )
+        )
+
+
+RECEIPT = "created_at"
+"""The attribute of `Document` and `DocumentChanges` that holds when the document came in, as
+`Document.apply_changes` names it among the changed fields."""
+
+
+def received_at(value: datetime, now: datetime) -> datetime:
+    """When a document came in, as given (by a person, or a migration from the source
+    system): in UTC and not in the future."""
+    value = require_utc(value, RECEIPT)
+    if value > now:
+        raise ValidationError(f"{RECEIPT}: not in the future")
+    return value
 
 
 def confirms(
@@ -197,6 +234,9 @@ class Document:
     # confirmed it out of yellow or red since, or it never was; documents from before 0.4).
     # Who saw it since is per user (`domain.inbox`).
     new_at: datetime | None = None
+    # When it came in: when it was received, unless a migration took over the source system's
+    # date or a person corrected it since (`DocumentChanges.created_at`). The id still tells
+    # when Lekto received it.
     created_at: datetime
     updated_at: datetime
     version: int = 1
@@ -235,9 +275,11 @@ class Document:
         result: NodeResult,
         now: datetime,
         channel: Channel = Channel.API,
+        received: datetime | None = None,
     ) -> Self:
         """A newly received document. The receive node (hash, duplicate check, storage) is done;
-        the nodes after it are due."""
+        the nodes after it are due. `received`: when it came in, if not now (a migration takes
+        over the source system's date)."""
         if result.outcome is Outcome.FAILED:
             raise ValidationError("a document whose receive node failed is not created")
         filename = require_name(original_filename, "original filename", max_length=None)
@@ -251,7 +293,7 @@ class Document:
             media_type=media_type,
             channel=channel,
             processing=Processing.new(),
-            created_at=now,
+            created_at=now if received is None else received_at(received, now),
             updated_at=now,
         )
         document._record(DocumentReceived(document_id=document.id, occurred_at=now))
@@ -552,6 +594,11 @@ class Document:
         topic_id = _pick(changes.topic_id, self.topic_id)
         tag_ids = set(_pick(changes.tag_ids, frozenset(self.tag_ids)))
         document_date = _pick(changes.document_date, self.document_date)
+        created_at = (
+            self.created_at
+            if isinstance(changes.created_at, Unset)
+            else received_at(changes.created_at, now)
+        )
 
         checked = checked_fields(changes, definitions, document_type_id)
         fields = dict(self.fields)
@@ -573,6 +620,7 @@ class Document:
             CHANGE_FIELDS[TAGS]: tag_ids,
             CHANGE_FIELDS[DOCUMENT_DATE]: document_date,
             CUSTOM_FIELDS: fields,
+            RECEIPT: created_at,
         }
         changed = [name for name, value in new_values.items() if getattr(self, name) != value]
         self.title = title
@@ -582,6 +630,7 @@ class Document:
         self.tag_ids = tag_ids
         self.document_date = document_date
         self.fields = fields
+        self.created_at = created_at
         if changed:
             self._record(
                 DocumentUpdated(document_id=self.id, occurred_at=now, fields=tuple(changed))

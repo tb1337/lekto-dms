@@ -6,6 +6,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import { onMount, tick, type Snippet } from 'svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
+	import Segmented from '#lib/components/Segmented.svelte';
 	import type { Mark, Place } from '#lib/document-view.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
@@ -29,7 +30,8 @@
 	// + − 0 zoom around the pointer; a double click enlarges a page and goes back. `marks` are
 	// drawn over the pages (boxes are fractions of a page), `reveal` scrolls to one. What a page
 	// shows comes from `page`; `onshow` tells when a page comes near the view, `onsettle` when
-	// the zoom has come to rest, with the pages in view (to be drawn anew at their size).
+	// the zoom has come to rest, with the pages in view (to be drawn anew at their size);
+	// `onpage` the page in the upper third of the view, as the toolbar counts it.
 	let {
 		sizes,
 		label,
@@ -38,8 +40,10 @@
 		problem = null,
 		note = null,
 		page,
+		end,
 		onshow,
-		onsettle
+		onsettle,
+		onpage
 	}: {
 		/** Each page's size at 100 %, in CSS pixels. */
 		sizes: readonly { width: number; height: number }[];
@@ -50,8 +54,11 @@
 		/** Said in the toolbar beside the page count. */
 		note?: string | null;
 		page: Snippet<[number]>;
+		/** At the end of the toolbar (the switch of a pane). */
+		end?: Snippet;
 		onshow?: (number: number, node: HTMLElement) => void;
 		onsettle?: (pages: { number: number; node: HTMLElement }[]) => void;
+		onpage?: (current: number, total: number) => void;
 	} = $props();
 
 	const NAMES: Record<Layout, { label: () => string; hint: () => string; icon: typeof File }> = {
@@ -83,6 +90,7 @@
 	let resting: ReturnType<typeof setTimeout> | undefined;
 
 	const widest = $derived(sizes.reduce((most, size) => Math.max(most, size.width), 1));
+	$effect(() => onpage?.(current, sizes.length));
 
 	function room(): Room {
 		if (!container) return { width: 800, padding: 24, gap: 12 };
@@ -298,7 +306,7 @@
 	<div
 		role="toolbar"
 		aria-label={m.pdf_toolbar()}
-		class="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-card px-3 py-2"
+		class="@container flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-card px-3 py-2"
 	>
 		<Button
 			variant="ghost"
@@ -326,36 +334,26 @@
 			<Plus aria-hidden="true" />
 		</Button>
 		<span class="mx-1 h-5 w-px bg-border" aria-hidden="true"></span>
-		<div
-			role="group"
-			aria-label={m.pdf_layouts()}
-			class="flex gap-0.5 rounded-full bg-secondary p-[3px]"
-		>
-			{#each LAYOUTS as entry (entry)}
-				{@const name = NAMES[entry]}
-				<button
-					type="button"
-					aria-pressed={layout === entry}
-					title={name.hint()}
-					onclick={() => choose(entry)}
-					class={cn(
-						'inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-xs transition-colors',
-						layout === entry
-							? 'bg-card font-medium text-foreground shadow-sm'
-							: 'text-muted-foreground hover:text-foreground'
-					)}
-				>
-					<name.icon class="size-3.5" aria-hidden="true" />
-					<span class="sr-only sm:not-sr-only">{name.label()}</span>
-				</button>
-			{/each}
-		</div>
+		<Segmented
+			size="sm"
+			names="@3xl"
+			label={m.pdf_layouts()}
+			value={layout ?? ''}
+			options={LAYOUTS.map((entry) => ({
+				value: entry,
+				label: NAMES[entry].label(),
+				hint: NAMES[entry].hint(),
+				icon: NAMES[entry].icon
+			}))}
+			onchange={(next) => choose(next as Layout)}
+		/>
 		<span class="ml-auto text-sm text-muted-foreground">
 			{#if note}{note} ·{/if}
 			{last > current
 				? m.pdf_pages({ first: current, last, total: sizes.length })
 				: m.pdf_page({ current, total: sizes.length })}
 		</span>
+		{@render end?.()}
 	</div>
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 	<div

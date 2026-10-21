@@ -4,7 +4,7 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
@@ -141,7 +141,7 @@
 			<div class="flex max-h-[70vh] flex-col gap-5 overflow-auto">
 				<Field.Field>
 					<Field.Label for="user-role">{m.user_role()}</Field.Label>
-					<NativeSelect
+					<Select
 						id="user-role"
 						value={account.role ?? 'user'}
 						disabled={busy}

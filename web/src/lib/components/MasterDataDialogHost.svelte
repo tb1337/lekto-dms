@@ -4,6 +4,7 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import { BASE } from '#lib/base.ts';
 	import FieldDialog from '#lib/components/FieldDialog.svelte';
+	import MasterDataCreate from '#lib/components/MasterDataCreate.svelte';
 	import MasterDataDialog from '#lib/components/MasterDataDialog.svelte';
 	import { describeError } from '#lib/errors.ts';
 	import { logoFetching } from '#lib/logos.ts';
@@ -23,8 +24,8 @@
 	// The dialogs that add and change master data, for every page (`masterDataDialogs.open`):
 	// contacts, document types, tags of each scope (a new one of any: its kind comes first) and
 	// fields. A document type's dialog links the rule of its title pattern, unless it was opened
-	// from that rule. A tag made with its details from a picker opens in a second dialog over
-	// the first (`masterDataDialogs.createTag`).
+	// from that rule. What a picker makes opens in a dialog over the page or the first
+	// (`masterDataDialogs.create`, `MasterDataCreate`).
 	const request = $derived(masterDataDialogs.request);
 	const anyTag = $derived(request?.kind === 'any-tag');
 	const simple = $derived(
@@ -134,37 +135,6 @@
 		}
 	}
 
-	const nested = $derived(masterDataDialogs.nested);
-	let nestedTags = $state<Tag[] | null>(null);
-
-	$effect(() => {
-		const wanted = nested;
-		nestedTags = null;
-		if (!wanted) return;
-		let current = true;
-		unwrap(api.GET('/api/v1/tags')).then(
-			(every) => {
-				if (current) nestedTags = every;
-			},
-			(failure) => {
-				if (!current) return;
-				toast.error(describeError(failure));
-				masterDataDialogs.finishTag(null);
-			}
-		);
-		return () => {
-			current = false;
-		};
-	});
-
-	async function submitNested(values: Values) {
-		if (!nested) return;
-		const tag = (await KINDS[kindOfScope(nested.scope)].create(values)) as Tag;
-		toast.success(m.master_created());
-		masterDataDialogs.saved();
-		masterDataDialogs.finishTag(tag);
-	}
-
 	async function remove() {
 		if (!simple || !item) return;
 		await KINDS[simple].remove(item.id);
@@ -232,15 +202,6 @@
 	/>
 {/if}
 
-{#if nested}
-	<MasterDataDialog
-		bind:open={() => nestedTags !== null, (value) => !value && masterDataDialogs.finishTag(null)}
-		title={KINDS[kindOfScope(nested.scope)].add()}
-		extra="tag"
-		presetName={nested.name}
-		submitLabel={m.create()}
-		tags={nestedTags ?? []}
-		scope={nested.scope}
-		onsubmit={submitNested}
-	/>
-{/if}
+{#each masterDataDialogs.nested as nested (nested)}
+	<MasterDataCreate request={nested} />
+{/each}

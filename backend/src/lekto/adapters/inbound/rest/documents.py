@@ -9,6 +9,7 @@ import asyncio
 import os
 import tempfile
 from collections.abc import Callable
+from datetime import UTC
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
@@ -30,6 +31,7 @@ from lekto.adapters.inbound.rest.schemas.documents import (
     DocumentAccepted,
     DocumentChanged,
     DocumentDetails,
+    DocumentFacetsOut,
     DocumentOutOfReach,
     DocumentPage,
     DocumentPatch,
@@ -96,6 +98,26 @@ class DocumentSort(StrEnum):
     @property
     def order(self) -> DocumentOrder:
         return DocumentOrder(SortKey(self.value.lstrip("-")), ascending=not self.startswith("-"))
+
+
+class DocumentListSort(StrEnum):
+    """The keys of `DocumentSort`, and `field`: by the value of the field `sort_field_id`.
+    Only the list sorts by a field; the search index holds no field values."""
+
+    CREATED = "created_at"
+    CREATED_DESC = "-created_at"
+    DOCUMENT_DATE = "document_date"
+    DOCUMENT_DATE_DESC = "-document_date"
+    TITLE = "title"
+    TITLE_DESC = "-title"
+    FIELD = "field"
+    FIELD_DESC = "-field"
+
+    def order(self, field: FieldId | None) -> DocumentOrder:
+        """ValidationError unless `field` is given exactly for `field` and `-field`."""
+        return DocumentOrder(
+            SortKey(self.value.lstrip("-")), ascending=not self.startswith("-"), field=field
+        )
 
 
 _UPLOAD_BODY = upload_body(
@@ -183,14 +205,20 @@ async def upload(
     description=(
         "The documents within the caller's reach, newest first: their own, and green "
         "documents in spaces they own or that are shared with them. Admins may read every "
-        "document and list them all with `all_users` (others: 403). Filters combine; `tag_id`, "
-        "`contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (all "
-        "tags and groups, any topic, any lane; `processing`: no lane yet). A tag matches the "
+        "document and list them all with `all_users` (others: 403). Filters combine; "
+        "`contact_id`, `document_type_id`, `space_id`, `tag_id`, `contact_group_id`, "
+        "`document_type_group_id`, `topic_id` and `lane` may repeat (any contact, type, "
+        "space, group, topic or lane, all tags; `processing`: no lane yet). A tag "
+        "matches the "
         "documents with it or a tag below it; a group those whose contact (type) is in it or a "
         "group below it; a topic the documents with it or one below it. "
-        "`field_id`: a value for the field is set. `sort` orders by arrival (the default, "
-        "newest first), "
-        "document date or title; documents without a date come last. Each document says whether "
+        "`field_id`: a value for the field is set. `document_date_from` and "
+        "`document_date_to`: the document date lies between them, both days included, "
+        "either end open (a document without a date does not match). `sort` orders by "
+        "arrival (the default, newest first), document date, title, or (`field` with "
+        "`sort_field_id`) the value of a field of type date, period (by its first day), number "
+        "or amount (by its value); documents without a date or value come last. Each document "
+        "says whether "
         "it stands in the caller's inbox (`in_inbox`). To search by words and meaning use "
         "`GET /documents/search`."
     ),
@@ -201,7 +229,10 @@ async def list_documents(
     user: CurrentUser,
     context: Context,
     filter: Filter,
-    sort: DocumentSort = DocumentSort.CREATED_DESC,
+    sort: DocumentListSort = DocumentListSort.CREATED_DESC,
+    sort_field_id: Annotated[
+        UUID | None, Query(description="The field to sort by with `sort=field` or `-field`.")
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=PAGE_LIMIT)] = PAGE_SIZE,
     cursor: Cursor = None,
     all_users: AllDocuments = False,
@@ -209,7 +240,7 @@ async def list_documents(
     views = await context.documents.query(
         user,
         filter,
-        order=sort.order,
+        order=sort.order(None if sort_field_id is None else FieldId(sort_field_id)),
         after=decode_cursor(cursor),
         limit=limit,
         all_users=all_users,
@@ -219,6 +250,28 @@ async def list_documents(
         items=[ListedDocument.listed(view.document, view.access, view.in_inbox) for view in views],
         next_cursor=next_cursor,
     )
+
+
+@router.get(
+    "/facets",
+    summary="Counts for the filters of the documents",
+    description=(
+        "How many documents within the caller's reach that match the filter (the parameters "
+        "of `GET /documents`) have each contact, type, group of contacts and types, topic, "
+        "tag and month of their document date. Contacts, types, groups, topics and the period "
+        "combine as either-or: each counts without its own choice, so it tells what one more "
+        "would add. Tags combine as all-of and count with the whole filter. A tag, topic or "
+        "group counts the documents with it or one below it, each once. Admins count every "
+        "document with `all_users` (others: 403)."
+    ),
+    response_model=DocumentFacetsOut,
+    responses=problem_responses(401, 403, 422),
+)
+async def document_facets(
+    user: CurrentUser, context: Context, filter: Filter, all_users: AllDocuments = False
+) -> DocumentFacetsOut:
+    facets = await context.documents.facets(user, filter, all_users=all_users)
+    return DocumentFacetsOut.of(facets)
 
 
 @router.get(
@@ -764,6 +817,8 @@ async def _changes(body: DocumentPatch, user: UserId, context: Context) -> Docum
             )
     if "title" in given and body.title is None:
         raise ValidationError("title: must not be null")
+    if "created_at" in given and body.created_at is None:
+        raise ValidationError("created_at: must not be null")
     return DocumentChanges(
         title=body.title if body.title is not None else UNSET,
         contact_id=_given(given, "contact_id", body.contact_id, ContactId),
@@ -774,6 +829,7 @@ async def _changes(body: DocumentPatch, user: UserId, context: Context) -> Docum
         ),
         document_date=body.document_date if "document_date" in given else UNSET,
         fields=fields,
+        created_at=UNSET if body.created_at is None else body.created_at.astimezone(UTC),
     )
 
 
@@ -808,6 +864,7 @@ async def _imported_metadata(
             tag_ids=frozenset(TagId(tag) for tag in body.tag_ids),
             document_date=body.document_date,
             fields={key: field_from_json(definitions[key], raw) for key, raw in fields.items()},
+            created_at=None if body.created_at is None else body.created_at.astimezone(UTC),
         )
     except ValidationError as error:
         raise ValidationError(f"metadata: {error}") from None

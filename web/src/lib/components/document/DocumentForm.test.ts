@@ -4,9 +4,12 @@ import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { components } from '#lib/api/schema.ts';
 import type { Mark, Review } from '#lib/document-view.ts';
+import type { Item } from '#lib/masterdata-api.ts';
+import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
+import { choose, selectedValue } from '#lib/testing/select.ts';
 import DocumentForm from './DocumentForm.svelte';
 
 type Document = components['schemas']['DocumentDetails'];
@@ -161,6 +164,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	session.clear();
+	masterDataDialogs.finishAll();
 	vi.unstubAllGlobals();
 	// A dialog makes the page unclickable until it has closed; the next test must not wait.
 	globalThis.document.body.style.pointerEvents = '';
@@ -226,8 +230,8 @@ describe('DocumentForm', () => {
 		expect(within(card).getByText(m.review_evidence())).toBeTruthy();
 		expect(within(card).getByText('Stadtwerke Musterstadt GmbH')).toBeTruthy();
 		// The suggestion is preselected.
-		const select = screen.getByLabelText(m.field_contact(), { selector: 'select' });
-		expect((select as HTMLSelectElement).value).toBe(CONTACT);
+		const select = screen.getByRole('combobox', { name: m.field_contact() });
+		expect(selectedValue(select)).toBe(CONTACT);
 	});
 
 	it('lists what the signals propose; a click takes one, a contradiction is marked', async () => {
@@ -293,12 +297,12 @@ describe('DocumentForm', () => {
 		const similar = within(card).getByRole('link', { name: m.candidate_document({ number: 1 }) });
 		expect(similar.getAttribute('href')).toBe(`/ui/documents/${SIMILAR}`);
 
-		const select = screen.getByLabelText(m.field_contact(), { selector: 'select' });
-		expect((select as HTMLSelectElement).value).toBe(CONTACT);
+		const select = screen.getByRole('combobox', { name: m.field_contact() });
+		expect(selectedValue(select)).toBe(CONTACT);
 		await userEvent.click(
 			within(card).getByRole('button', { name: m.candidate_pick({ name: 'Beispielbank' }) })
 		);
-		expect((select as HTMLSelectElement).value).toBe(BANK);
+		expect(selectedValue(select)).toBe(BANK);
 	});
 
 	it('tells where a green value comes from, and marks required fields', async () => {
@@ -338,8 +342,9 @@ describe('DocumentForm', () => {
 		);
 		const kind = screen.getByRole('group', { name: m.field_document_type() });
 		await userEvent.click(within(kind).getByRole('button', { name: m.sources_details() }));
-		expect(within(kind).getByText(m.candidate_classifier({ score: '94%' }))).toBeTruthy();
-		expect(within(kind).getByText(m.candidate_llm())).toBeTruthy();
+		// The box lies in a layer over the page, outside the field.
+		expect(await screen.findByText(m.candidate_classifier({ score: '94%' }))).toBeTruthy();
+		expect(screen.getByText(m.candidate_llm())).toBeTruthy();
 
 		const number = screen.getByRole('group', { name: /Rechnungsnummer/ });
 		expect(within(number).getByText(`(${m.field_required()})`)).toBeTruthy();
@@ -349,17 +354,21 @@ describe('DocumentForm', () => {
 
 	it('marks the quote of the field under the pointer, while the value is the checked one', async () => {
 		const onmarks = vi.fn<(marks: Mark[]) => void>();
-		render(DocumentForm, props({ onmarks }));
+		const onquotes = vi.fn<(quotes: string[]) => void>();
+		render(DocumentForm, props({ onmarks, onquotes }));
 		const dated = screen.getByRole('group', { name: m.field_date() });
 		await fireEvent.mouseEnter(dated);
 		await tick();
+		// On the pages, and in the text.
 		expect(onmarks).toHaveBeenLastCalledWith([
 			{ key: 'document_date', label: m.field_date(), ...place, derived: false, pinned: false }
 		]);
+		expect(onquotes).toHaveBeenLastCalledWith(['Rechnungsdatum 12.03.2026']);
 		const input = screen.getByLabelText(m.field_date(), { selector: 'input' });
 		await fireEvent.input(input, { target: { value: '2026-04-01' } });
 		await tick();
 		expect(onmarks).toHaveBeenLastCalledWith([]);
+		expect(onquotes).toHaveBeenLastCalledWith([]);
 	});
 
 	it('jumps to a source from its page', async () => {
@@ -416,7 +425,7 @@ describe('DocumentForm', () => {
 			nodes: []
 		} as unknown as Review;
 		render(DocumentForm, props({ document: documentOf('completed'), review: waiting, next: null }));
-		expect(screen.getByLabelText(m.field_space(), { selector: 'select' })).toBeTruthy();
+		expect(screen.getByRole('combobox', { name: m.field_space() })).toBeTruthy();
 		await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
 		expect(await fetchMock.mock.calls[0][0].json()).toEqual({
 			changes: {},
@@ -461,10 +470,7 @@ describe('DocumentForm', () => {
 			documentTypes: [...lookup.documentTypes, named(OTHER, 'Vertrag')]
 		};
 		render(DocumentForm, props({ review: typed, lookup: withOther, next: null }));
-		await userEvent.selectOptions(
-			screen.getByLabelText(m.field_document_type(), { selector: 'select' }),
-			OTHER
-		);
+		await choose(userEvent, screen.getByRole('combobox', { name: m.field_document_type() }), OTHER);
 		await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
 		expect(await fetchMock.mock.calls[0][0].json()).toEqual({
 			changes: { document_type_id: OTHER },
@@ -509,10 +515,7 @@ describe('DocumentForm', () => {
 		render(DocumentForm, props({ review: typed, lookup: withOther, next: null }));
 		expect(screen.getByText(m.review_by_hand())).toBeTruthy();
 		await userEvent.type(document.getElementById(`field-${ASN}`) as HTMLInputElement, 'A-17');
-		await userEvent.selectOptions(
-			screen.getByLabelText(m.field_document_type(), { selector: 'select' }),
-			OTHER
-		);
+		await choose(userEvent, screen.getByRole('combobox', { name: m.field_document_type() }), OTHER);
 		await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
 		const sent = await fetchMock.mock.calls[0][0].json();
 		expect(sent.changes.fields).toEqual({ [ASN]: 'A-17' });
@@ -546,11 +549,10 @@ describe('the topic', () => {
 		contact_id: CONTACT,
 		topic_id: HEALTH
 	} as Document;
-	const select = (label: string) =>
-		screen.getByLabelText(label, { selector: 'select' }) as HTMLSelectElement;
+	const select = (label: string) => screen.getByRole('combobox', { name: label });
 	// The topic is a search in a popover: its button carries the chosen topic.
 	const topicField = () =>
-		screen.getByLabelText(m.field_topic(), { selector: 'button' }) as HTMLButtonElement;
+		screen.getByRole('combobox', { name: m.field_topic() }) as HTMLButtonElement;
 	const topicValue = () => topicField().dataset.value;
 	// The popover is placed by measuring, which jsdom does not: its options are found as elements.
 	const options = () => [...globalThis.document.querySelectorAll<HTMLElement>('[role="option"]')];
@@ -584,7 +586,7 @@ describe('the topic', () => {
 		render(DocumentForm, props({ document: filed, lookup: topics, review: null }));
 		expect(topicValue()).toBe(HEALTH);
 		expect(await topicChoices()).toEqual([m.topic_none(), 'Arbeit', 'Krankenversicherung']);
-		await userEvent.selectOptions(select(m.field_contact()), BANK);
+		await choose(userEvent, select(m.field_contact()), BANK);
 		expect(topicValue()).toBe('');
 		await chooseTopic('Arbeit');
 		await userEvent.click(screen.getByRole('button', { name: m.edit_review() }));
@@ -592,11 +594,31 @@ describe('the topic', () => {
 		expect(await fetchMock.mock.calls[0][0].json()).toEqual({ contact_id: BANK, topic_id: WORK });
 		await userEvent.click(await screen.findByRole('button', { name: m.cancel() }));
 		await closed();
-		await userEvent.selectOptions(select(m.field_contact()), BANK);
+		await choose(userEvent, select(m.field_contact()), BANK);
 		expect(await topicChoices()).toEqual([m.topic_none(), 'Arbeit']);
-		await userEvent.selectOptions(select(m.field_contact()), '');
-		expect(topicField().disabled).toBe(true);
-		expect(topicField().textContent?.trim()).toBe(m.topic_no_contact());
+		await choose(userEvent, select(m.field_contact()), m.value_unset());
+		expect(screen.queryByRole('combobox', { name: m.field_topic() })).toBeNull();
+	});
+
+	it('has the field only for a contact with topics, and keeps a topic the document has', async () => {
+		const PLAIN = '0199a6c4-0000-7000-8000-0000000000c3';
+		const plain = {
+			...topics,
+			contacts: [...topics.contacts, named(PLAIN, 'Ohne Themen')]
+		} as unknown as Lookup;
+		const field = () => screen.queryByRole('combobox', { name: m.field_topic() });
+		const unknown = { ...filed, contact_id: null, topic_id: null } as Document;
+		const view = render(DocumentForm, props({ document: unknown, lookup: plain, review: null }));
+		expect(field()).toBeNull();
+		await choose(userEvent, select(m.field_contact()), PLAIN);
+		expect(field()).toBeNull();
+		await choose(userEvent, select(m.field_contact()), BANK);
+		expect(field()).not.toBeNull();
+		view.unmount();
+		// A topic its contact no longer has stays in view, to be removed.
+		const left = { ...filed, contact_id: PLAIN, topic_id: WORK } as Document;
+		render(DocumentForm, props({ document: left, lookup: plain, review: null }));
+		expect(topicValue()).toBe(WORK);
 	});
 
 	it('lets an admin choose any topic, which saving enables at the contact', async () => {
@@ -688,7 +710,7 @@ describe('the topic', () => {
 	it('leaves a topic the next contact does not enable to the API to clear', async () => {
 		fetchMock.mockImplementation(async () => json(PREVIEW));
 		render(DocumentForm, props({ document: filed, lookup: topics, review: null }));
-		await userEvent.selectOptions(select(m.field_contact()), BANK);
+		await choose(userEvent, select(m.field_contact()), BANK);
 		expect(topicValue()).toBe('');
 		// Cleared by the contact, not by the person: no decision on the topic is sent.
 		expect(await sentPatch()).toEqual({ contact_id: BANK });
@@ -698,7 +720,7 @@ describe('the topic', () => {
 		fetchMock.mockImplementation(async () => json(PREVIEW));
 		const working = { ...filed, topic_id: WORK } as Document;
 		render(DocumentForm, props({ document: working, lookup: topics, review: null }));
-		await userEvent.selectOptions(select(m.field_contact()), BANK);
+		await choose(userEvent, select(m.field_contact()), BANK);
 		expect(topicValue()).toBe(WORK);
 		expect(await sentPatch()).toEqual({ contact_id: BANK });
 		await chooseTopic(m.topic_none());
@@ -721,7 +743,7 @@ describe('the topic', () => {
 			DocumentForm,
 			props({ document: filed, lookup: topics, review: null, onenabled, onsaved })
 		);
-		await userEvent.selectOptions(select(m.field_contact()), BANK);
+		await choose(userEvent, select(m.field_contact()), BANK);
 		await chooseTopic('Krankenversicherung');
 		await userEvent.click(screen.getByRole('button', { name: m.edit_review() }));
 		expect(await fetchMock.mock.calls[0][0].json()).toEqual({ contact_id: BANK, topic_id: HEALTH });
@@ -731,7 +753,7 @@ describe('the topic', () => {
 		expect(onenabled).toHaveBeenCalledOnce();
 	});
 
-	it('lets an admin create a topic named as searched; saving enables it at the contact', async () => {
+	it('lets an admin create a topic named as searched in its dialog; saving enables it at the contact', async () => {
 		session.start({
 			user: { id: OWNER, username: 'admin', role: 'admin' },
 			method: 'password',
@@ -739,31 +761,54 @@ describe('the topic', () => {
 			csrf_token: 'token'
 		});
 		const DENTAL = '0199a6c4-0000-7000-8000-0000000000b9';
-		fetchMock.mockImplementation(async (request) => {
-			if (request.method === 'POST' && new URL(request.url).pathname === '/api/v1/tags') {
-				const body = await request.clone().json();
-				return json({ ...topic(DENTAL, body.name), scope: body.scope });
-			}
-			return json(PREVIEW);
-		});
+		fetchMock.mockImplementation(async () => json(PREVIEW));
 		const bank = { ...filed, contact_id: BANK, topic_id: null } as Document;
 		render(DocumentForm, props({ document: bank, lookup: topics, review: null }));
 		await userEvent.click(topicField());
 		await userEvent.type(await screen.findByLabelText(m.picker_search_create()), 'Zahnzusatz');
-		await userEvent.click(screen.getByText(m.tag_create_quick({ name: 'Zahnzusatz' })));
+		await userEvent.click(screen.getByText(m.create_named({ name: 'Zahnzusatz' })));
+		// The topic dialog takes over (the layout hosts it), the name filled in.
+		expect(masterDataDialogs.nested).toMatchObject([{ kind: 'topics', name: 'Zahnzusatz' }]);
+		masterDataDialogs.finish(topic(DENTAL, 'Zahnzusatz') as unknown as Item);
 		await waitFor(() => expect(topicValue()).toBe(DENTAL));
-		const created = fetchMock.mock.calls[0][0];
-		expect(await created.json()).toEqual({ name: 'Zahnzusatz', scope: 'topic' });
 		expect(topicField().textContent?.trim()).toBe('Zahnzusatz');
 		expect(screen.getByText(m.topic_enables_hint())).toBeTruthy();
 		expect(await sentPatch()).toEqual({ topic_id: DENTAL });
+	});
+
+	it('lets an admin create a contact or type named as searched in its dialog, chosen after', async () => {
+		session.start({
+			user: { id: OWNER, username: 'admin', role: 'admin' },
+			method: 'password',
+			expires_at: '2026-10-09T12:00:00Z',
+			csrf_token: 'token'
+		});
+		const BAKERY = '0199a6c4-0000-7000-8000-0000000000c9';
+		const REMINDER = '0199a6c4-0000-7000-8000-0000000000e9';
+		fetchMock.mockImplementation(async () => json(PREVIEW));
+		const bank = { ...filed, contact_id: BANK, topic_id: null } as Document;
+		render(DocumentForm, props({ document: bank, lookup: topics, review: null }));
+		for (const [label, kind, name, id] of [
+			[m.field_contact(), 'contacts', 'Bäckerei Korn', BAKERY],
+			[m.field_document_type(), 'document-types', 'Mahnung', REMINDER]
+		] as const) {
+			await userEvent.click(select(label));
+			await userEvent.type(await screen.findByLabelText(m.picker_search_create()), name);
+			await userEvent.click(screen.getByText(m.create_named({ name })));
+			expect(masterDataDialogs.nested).toMatchObject([{ kind, name }]);
+			masterDataDialogs.finish({ id, name } as Item);
+			await waitFor(() => expect(selectedValue(select(label))).toBe(id));
+			expect(select(label).textContent).toContain(name);
+		}
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(await sentPatch()).toEqual({ contact_id: BAKERY, document_type_id: REMINDER });
 	});
 
 	it('offers others no topic to create', async () => {
 		render(DocumentForm, props({ document: filed, lookup: topics, review: null }));
 		await userEvent.click(topicField());
 		await userEvent.type(await screen.findByLabelText(m.assignment_search()), 'Zahnzusatz');
-		expect(screen.queryByText(m.tag_create_quick({ name: 'Zahnzusatz' }))).toBeNull();
+		expect(screen.queryByText(m.create_named({ name: 'Zahnzusatz' }))).toBeNull();
 	});
 
 	it('confirms a topic the rules left open, also as none', async () => {

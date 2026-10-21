@@ -3,12 +3,12 @@
 	import { toast } from 'svelte-sonner';
 	import type { components } from '#lib/api/schema.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
+	import Segmented from '#lib/components/Segmented.svelte';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { formatNumber } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { splitInput } from '#lib/usage.ts';
-	import { cn } from '#lib/utils.ts';
 
 	type Call = components['schemas']['ModelCallOut'];
 
@@ -66,45 +66,22 @@
 			<Dialog.Description>{meta}</Dialog.Description>
 		</Dialog.Header>
 		<div class="flex flex-wrap items-center gap-3">
-			<div
-				role="group"
-				aria-label={m.prompt_part()}
-				class="flex gap-0.5 rounded-xl border bg-card p-[3px]"
-			>
-				{#each parts as entry (entry.part)}
-					<button
-						type="button"
-						aria-pressed={part === entry.part}
-						onclick={() => (part = entry.part)}
-						class={cn(
-							'h-8 rounded-[10px] px-3 text-sm transition-colors',
-							part === entry.part
-								? 'bg-primary font-medium text-primary-foreground'
-								: 'text-muted-foreground hover:text-foreground'
-						)}
-					>
-						{entry.label()}
-					</button>
-				{/each}
-			</div>
+			<Segmented
+				label={m.prompt_part()}
+				value={part}
+				options={parts.map((entry) => ({ value: entry.part, label: entry.label() }))}
+				onchange={(next) => (part = next as Part)}
+			/>
 			{#if calls.length > 1}
-				<div role="group" aria-label={m.prompt_attempt_choice()} class="flex gap-1">
-					{#each calls.keys() as index (index)}
-						<button
-							type="button"
-							aria-pressed={attempt === index}
-							onclick={() => (attempt = index)}
-							class={cn(
-								'h-8 rounded-full border px-3 text-sm',
-								attempt === index
-									? 'border-primary bg-secondary font-medium'
-									: 'text-muted-foreground'
-							)}
-						>
-							{m.prompt_attempt({ number: index + 1, total: calls.length })}
-						</button>
-					{/each}
-				</div>
+				<Segmented
+					label={m.prompt_attempt_choice()}
+					value={String(attempt)}
+					options={[...calls.keys()].map((index) => ({
+						value: String(index),
+						label: m.prompt_attempt({ number: index + 1, total: calls.length })
+					}))}
+					onchange={(next) => (attempt = Number(next))}
+				/>
 			{/if}
 			<span class="text-sm text-muted-foreground">{size}</span>
 		</div>

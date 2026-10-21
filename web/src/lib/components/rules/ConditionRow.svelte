@@ -4,7 +4,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import X from '@lucide/svelte/icons/x';
 	import MultiPicker from '#lib/components/MultiPicker.svelte';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import ValueInput from '#lib/components/rules/ValueInput.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
@@ -103,7 +103,7 @@
 
 <div class="flex flex-col gap-2 rounded-xl border bg-background p-3" data-key={condition.key}>
 	<div class="flex flex-wrap items-start gap-2">
-		<NativeSelect
+		<Select
 			aria-label={m.rule_condition_subject()}
 			value={condition.field}
 			options={conditionFieldOptions}
@@ -111,7 +111,7 @@
 			class="h-10 w-full sm:w-44"
 		/>
 		{#if condition.field === 'field'}
-			<NativeSelect
+			<Select
 				aria-label={m.rule_condition_field()}
 				aria-invalid={invalid && !condition.fieldId}
 				value={condition.fieldId ?? ''}
@@ -120,7 +120,7 @@
 				class="h-10 w-full sm:w-44"
 			/>
 		{/if}
-		<NativeSelect
+		<Select
 			aria-label={m.rule_condition_operator()}
 			value={condition.op}
 			options={operatorOptions}
@@ -171,7 +171,7 @@
 					</Button>
 				</div>
 			{:else if choices && condition.field !== 'field'}
-				<NativeSelect
+				<Select
 					aria-label={valueLabel}
 					aria-invalid={invalid || undefined}
 					value={single}

@@ -1046,7 +1046,7 @@ export interface paths {
 		};
 		/**
 		 * List documents
-		 * @description The documents within the caller's reach, newest first: their own, and green documents in spaces they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (all tags and groups, any topic, any lane; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; a topic the documents with it or one below it. `field_id`: a value for the field is set. `sort` orders by arrival (the default, newest first), document date or title; documents without a date come last. Each document says whether it stands in the caller's inbox (`in_inbox`). To search by words and meaning use `GET /documents/search`.
+		 * @description The documents within the caller's reach, newest first: their own, and green documents in spaces they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `contact_id`, `document_type_id`, `space_id`, `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (any contact, type, space, group, topic or lane, all tags; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; a topic the documents with it or one below it. `field_id`: a value for the field is set. `document_date_from` and `document_date_to`: the document date lies between them, both days included, either end open (a document without a date does not match). `sort` orders by arrival (the default, newest first), document date, title, or (`field` with `sort_field_id`) the value of a field of type date, period (by its first day), number or amount (by its value); documents without a date or value come last. Each document says whether it stands in the caller's inbox (`in_inbox`). To search by words and meaning use `GET /documents/search`.
 		 */
 		get: operations['list_documents_api_v1_documents_get'];
 		put?: never;
@@ -1055,6 +1055,26 @@ export interface paths {
 		 * @description Stores the file and starts processing in the background. The file is hashed while it is received; a file the caller already has is rejected with 409. Follow the progress at `status_url` or with `GET /events`.
 		 */
 		post: operations['upload_api_v1_documents_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/documents/facets': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Counts for the filters of the documents
+		 * @description How many documents within the caller's reach that match the filter (the parameters of `GET /documents`) have each contact, type, group of contacts and types, topic, tag and month of their document date. Contacts, types, groups, topics and the period combine as either-or: each counts without its own choice, so it tells what one more would add. Tags combine as all-of and count with the whole filter. A tag, topic or group counts the documents with it or one below it, each once. Admins count every document with `all_users` (others: 403).
+		 */
+		get: operations['document_facets_api_v1_documents_facets_get'];
+		put?: never;
+		post?: never;
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -1703,6 +1723,78 @@ export interface paths {
 		options?: never;
 		head?: never;
 		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/lenses': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List lenses
+		 * @description The caller's lenses in their order. Contacts, types, tags, spaces and fields a lens names that were deleted are left out; a sort or grouping that needed a deleted field falls back to the default.
+		 */
+		get: operations['list_lenses_api_v1_lenses_get'];
+		put?: never;
+		/**
+		 * Create a lens
+		 * @description A saved look at the documents: filters, words, sort, grouping, layout, the fields its cards show and the date field that is their deadline; it goes after the caller's other lenses. The card fields must exist, the deadline must be a date field, the sort field one of type date, period, number or amount (422). 409: the caller has a lens of that name (regardless of case) or 100 lenses.
+		 */
+		post: operations['create_lens_api_v1_lenses_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/lenses/order': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/**
+		 * Order the lenses
+		 * @description `ids` names each of the caller's lenses once (422 otherwise).
+		 */
+		put: operations['order_lenses_api_v1_lenses_order_put'];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/lenses/{id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * A lens
+		 * @description Only its owner sees and changes a lens; other users' lenses are not found (404). Contacts, types, tags, spaces and fields a lens names that were deleted are left out; a sort or grouping that needed a deleted field falls back to the default.
+		 */
+		get: operations['get_lens_api_v1_lenses__id__get'];
+		put?: never;
+		post?: never;
+		/**
+		 * Delete a lens
+		 * @description Only its owner sees and changes a lens; other users' lenses are not found (404).
+		 */
+		delete: operations['delete_lens_api_v1_lenses__id__delete'];
+		options?: never;
+		head?: never;
+		/**
+		 * Change a lens
+		 * @description Checks as when creating. Only its owner sees and changes a lens; other users' lenses are not found (404).
+		 */
+		patch: operations['update_lens_api_v1_lenses__id__patch'];
 		trace?: never;
 	};
 	'/api/v1/health': {
@@ -2614,6 +2706,7 @@ export interface components {
 			/**
 			 * Created At
 			 * Format: date-time
+			 * @description When the document came in: when Lekto received it, unless a migration took over the source system's date or it was set since (`PATCH`). `sort=created_at` orders by it.
 			 */
 			created_at: string;
 			/**
@@ -2751,6 +2844,7 @@ export interface components {
 			/**
 			 * Created At
 			 * Format: date-time
+			 * @description When the document came in: when Lekto received it, unless a migration took over the source system's date or it was set since (`PATCH`). `sort=created_at` orders by it.
 			 */
 			created_at: string;
 			/**
@@ -2758,6 +2852,59 @@ export interface components {
 			 * Format: date-time
 			 */
 			updated_at: string;
+		};
+		/**
+		 * DocumentFacetsOut
+		 * @description How many documents of the filter have each value, for the filters of the document view.
+		 *     Contacts, types, groups, topics and the period combine as either-or and count without
+		 *     their own choice (what one more would add); tags count with the whole filter.
+		 */
+		DocumentFacetsOut: {
+			/**
+			 * Total
+			 * @description The documents of the whole filter.
+			 */
+			total: number;
+			/**
+			 * Contacts
+			 * @description Most first; null: without a contact.
+			 */
+			contacts: components['schemas']['ValueCount'][];
+			/**
+			 * Document Types
+			 * @description Most first; null: without a type.
+			 */
+			document_types: components['schemas']['ValueCount'][];
+			/**
+			 * Contact Groups
+			 * @description Most first; a group counts the documents of its contacts and those below.
+			 */
+			contact_groups: components['schemas']['ValueCount'][];
+			/**
+			 * Document Type Groups
+			 * @description Most first; a group counts the documents of its types and those below.
+			 */
+			document_type_groups: components['schemas']['ValueCount'][];
+			/**
+			 * Topics
+			 * @description Most first; a topic counts the documents with it or one below it.
+			 */
+			topics: components['schemas']['ValueCount'][];
+			/**
+			 * Tags
+			 * @description Most first; a tag counts the documents with it or one below it.
+			 */
+			tags: components['schemas']['ValueCount'][];
+			/**
+			 * Years
+			 * @description By document date, newest first.
+			 */
+			years: components['schemas']['YearCount'][];
+			/**
+			 * Undated
+			 * @description Documents without a document date.
+			 */
+			undated: number;
 		};
 		/**
 		 * DocumentFilesOut
@@ -2806,6 +2953,21 @@ export interface components {
 			/** @description Null while there is none. */
 			archive: components['schemas']['StoredFileOut'] | null;
 		};
+		/**
+		 * DocumentListSort
+		 * @description The keys of `DocumentSort`, and `field`: by the value of the field `sort_field_id`.
+		 *     Only the list sorts by a field; the search index holds no field values.
+		 * @enum {string}
+		 */
+		DocumentListSort:
+			| 'created_at'
+			| '-created_at'
+			| 'document_date'
+			| '-document_date'
+			| 'title'
+			| '-title'
+			| 'field'
+			| '-field';
 		/**
 		 * DocumentOutOfReach
 		 * @description After a change by an editor: the owner's rules filed the document where the editor can
@@ -2873,6 +3035,11 @@ export interface components {
 			fields?: {
 				[key: string]: unknown;
 			} | null;
+			/**
+			 * Created At
+			 * @description When the document came in, with a time zone; not in the future, not null. Changed alone, it confirms nothing and the rules do not run.
+			 */
+			created_at?: string | null;
 		};
 		/**
 		 * DocumentPreviewOut
@@ -3023,10 +3190,24 @@ export interface components {
 		 *           "in_code": false,
 		 *           "in_text": true,
 		 *           "kind": "customer_number",
+		 *           "other_contact_ids": [],
 		 *           "other_contacts": 0,
 		 *           "spans": [
 		 *             {
 		 *               "end": 421,
+		 *               "locations": [
+		 *                 {
+		 *                   "boxes": [
+		 *                     {
+		 *                       "height": 0.012,
+		 *                       "width": 0.11,
+		 *                       "x": 0.62,
+		 *                       "y": 0.18
+		 *                     }
+		 *                   ],
+		 *                   "page": 1
+		 *                 }
+		 *               ],
 		 *               "start": 412
 		 *             }
 		 *           ],
@@ -3403,6 +3584,11 @@ export interface components {
 			 * @description For admins: on the confirmed documents of how many contacts other than the document's it stands (the IBAN of one's own account stands on many); null for others.
 			 */
 			other_contacts: number | null;
+			/**
+			 * Other Contact Ids
+			 * @description For admins: those contacts (`other_contacts` of them), to name and open them; null for others.
+			 */
+			other_contact_ids?: string[] | null;
 		};
 		/**
 		 * GiroCodeOut
@@ -3431,6 +3617,13 @@ export interface components {
 			 */
 			requires: components['schemas']['Node'][];
 		};
+		/**
+		 * Grouping
+		 * @description What the documents of a lens stand under: nothing, the month of their document date, how
+		 *     soon their deadline is due, their type or their contact.
+		 * @enum {string}
+		 */
+		Grouping: 'none' | 'month' | 'due' | 'document_type' | 'contact';
 		/** Health */
 		Health: {
 			/**
@@ -3619,6 +3812,192 @@ export interface components {
 		 */
 		LaneFilter: 'green' | 'yellow' | 'red' | 'processing';
 		/**
+		 * Layout
+		 * @enum {string}
+		 */
+		Layout: 'grid' | 'list';
+		/**
+		 * LensCreate
+		 * @example {
+		 *       "card_field_ids": [
+		 *         "01a1f0c2-7c5e-7d43-9b1e-3c4b5d6e7f82",
+		 *         "01a1f0c2-7c5e-7d43-9b1e-3c4b5d6e7f81"
+		 *       ],
+		 *       "due_field_id": "01a1f0c2-7c5e-7d43-9b1e-3c4b5d6e7f81",
+		 *       "filter": {
+		 *         "tag_ids": [
+		 *           "01a1f0c2-7c5e-7d43-9b1e-3c4b5d6e7f80"
+		 *         ]
+		 *       },
+		 *       "grouping": "due",
+		 *       "name": "To pay"
+		 *     }
+		 */
+		LensCreate: {
+			/**
+			 * Name
+			 * @description Unique per user.
+			 */
+			name: string;
+			filter?: components['schemas']['LensFilterBody'];
+			/**
+			 * Query
+			 * @description Words.
+			 */
+			query?: string | null;
+			/** @description `relevance` (only with `query`), or a key of `GET /documents`; `field` and `-field` sort by `sort_field_id` (not with `query`). None: as the list or the search sorts by default. */
+			sort?: components['schemas']['LensSort'] | null;
+			/** Sort Field Id */
+			sort_field_id?: string | null;
+			/**
+			 * @description What the documents stand under: `month` of their document date, `due`: how soon `due_field_id` is due (overdue, within seven days, later, none), `document_type`, `contact`.
+			 * @default none
+			 */
+			grouping: components['schemas']['Grouping'];
+			/** @default grid */
+			layout: components['schemas']['Layout'];
+			/**
+			 * Card Field Ids
+			 * @description The fields a card shows, in this order; at most 3.
+			 */
+			card_field_ids?: string[];
+			/**
+			 * Due Field Id
+			 * @description A date field: the deadline of the documents (yellow from seven days before, red after).
+			 */
+			due_field_id?: string | null;
+		};
+		/**
+		 * LensFilterBody
+		 * @description The filters as `GET /documents` takes them, with a list for each repeated parameter.
+		 */
+		LensFilterBody: {
+			/** Contact Ids */
+			contact_ids?: string[];
+			/** Document Type Ids */
+			document_type_ids?: string[];
+			/** Contact Group Ids */
+			contact_group_ids?: string[];
+			/** Document Type Group Ids */
+			document_type_group_ids?: string[];
+			/** Topic Ids */
+			topic_ids?: string[];
+			/** Tag Ids */
+			tag_ids?: string[];
+			/** Space Ids */
+			space_ids?: string[];
+			/** Field Id */
+			field_id?: string | null;
+			/** Document Date From */
+			document_date_from?: string | null;
+			/** Document Date To */
+			document_date_to?: string | null;
+			/** @description A period that moves with the day the lens is opened; not together with `document_date_from` or `_to`. */
+			document_period?: components['schemas']['RelativePeriod'] | null;
+		};
+		/**
+		 * LensOrder
+		 * @example {
+		 *       "ids": [
+		 *         "01a1f0c2-7c5e-7d43-9b1e-3c4b5d6e7f83",
+		 *         "01a1f0c2-7c5e-7d43-9b1e-3c4b5d6e7f84"
+		 *       ]
+		 *     }
+		 */
+		LensOrder: {
+			/**
+			 * Ids
+			 * @description Each of the caller's lenses once, in the new order.
+			 */
+			ids: string[];
+		};
+		/** LensOut */
+		LensOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Name */
+			name: string;
+			/**
+			 * Position
+			 * @description Where it stands among the user's lenses, from 0.
+			 */
+			position: number;
+			filter: components['schemas']['LensFilterBody'];
+			/** Query */
+			query: string | null;
+			sort: components['schemas']['LensSort'] | null;
+			/** Sort Field Id */
+			sort_field_id: string | null;
+			grouping: components['schemas']['Grouping'];
+			layout: components['schemas']['Layout'];
+			/** Card Field Ids */
+			card_field_ids: string[];
+			/** Due Field Id */
+			due_field_id: string | null;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/**
+			 * Updated At
+			 * Format: date-time
+			 */
+			updated_at: string;
+		};
+		/**
+		 * LensPatch
+		 * @description Parts left out stay as they are; `null` clears `query`, `sort`, `sort_field_id` and
+		 *     `due_field_id`.
+		 * @example {
+		 *       "name": "Bills"
+		 *     }
+		 */
+		LensPatch: {
+			/** Name */
+			name?: string | null;
+			filter?: components['schemas']['LensFilterBody'] | null;
+			/** Query */
+			query?: string | null;
+			/** @description `relevance` (only with `query`), or a key of `GET /documents`; `field` and `-field` sort by `sort_field_id` (not with `query`). None: as the list or the search sorts by default. */
+			sort?: components['schemas']['LensSort'] | null;
+			/** Sort Field Id */
+			sort_field_id?: string | null;
+			/** @description What the documents stand under: `month` of their document date, `due`: how soon `due_field_id` is due (overdue, within seven days, later, none), `document_type`, `contact`. */
+			grouping?: components['schemas']['Grouping'] | null;
+			layout?: components['schemas']['Layout'] | null;
+			/**
+			 * Card Field Ids
+			 * @description The fields a card shows, in this order; at most 3.
+			 */
+			card_field_ids?: string[] | null;
+			/**
+			 * Due Field Id
+			 * @description A date field: the deadline of the documents (yellow from seven days before, red after).
+			 */
+			due_field_id?: string | null;
+		};
+		/**
+		 * LensSort
+		 * @description The sort of a lens: by relevance (only with words), or a key of the documents list,
+		 *     descending with a `-`; `field` sorts by `Lens.sort_field_id` (not with words: the search
+		 *     index holds no field values).
+		 * @enum {string}
+		 */
+		LensSort:
+			| 'relevance'
+			| 'created_at'
+			| '-created_at'
+			| 'document_date'
+			| '-document_date'
+			| 'title'
+			| '-title'
+			| 'field'
+			| '-field';
+		/**
 		 * LinkOut
 		 * @description A link to an account at the identity provider.
 		 */
@@ -3761,6 +4140,7 @@ export interface components {
 			/**
 			 * Created At
 			 * Format: date-time
+			 * @description When the document came in: when Lekto received it, unless a migration took over the source system's date or it was set since (`PATCH`). `sort=created_at` orders by it.
 			 */
 			created_at: string;
 			/**
@@ -4016,6 +4396,17 @@ export interface components {
 			 * @example EUR
 			 */
 			currency: string;
+		};
+		/** MonthCount */
+		MonthCount: {
+			/**
+			 * Month
+			 * @description ISO 8601, `2026-09`.
+			 * @example 2026-09
+			 */
+			month: string;
+			/** Count */
+			count: number;
 		};
 		/**
 		 * MoveRequest
@@ -4396,6 +4787,12 @@ export interface components {
 			 */
 			recovery_codes: string[];
 		};
+		/**
+		 * RelativePeriod
+		 * @description A period that moves with the day the lens is opened (the quick picks of the filters).
+		 * @enum {string}
+		 */
+		RelativePeriod: 'this_year' | 'last_12_months' | 'last_year';
 		/** RemoveTagsAction */
 		RemoveTagsAction: {
 			/**
@@ -5095,6 +5492,11 @@ export interface components {
 			 * @description After the last character.
 			 */
 			end: number;
+			/**
+			 * Locations
+			 * @description Where it stands on the archive's pages, a box per line; empty where the words of the text have no boxes (a text parsed before 0.2).
+			 */
+			locations: components['schemas']['LocationOut'][];
 		};
 		/** StoredFileOut */
 		StoredFileOut: {
@@ -5470,6 +5872,16 @@ export interface components {
 			 */
 			active?: boolean | null;
 		};
+		/** ValueCount */
+		ValueCount: {
+			/**
+			 * Id
+			 * @description The contact, type, topic or tag; null: without one.
+			 */
+			id: string | null;
+			/** Count */
+			count: number;
+		};
 		/**
 		 * VisibilityOut
 		 * @description Who sees the document. Its owner always; while it is green also the space's owner and
@@ -5668,6 +6080,18 @@ export interface components {
 			 * @description Switching on clears the failure count and the reason.
 			 */
 			active?: boolean | null;
+		};
+		/** YearCount */
+		YearCount: {
+			/** Year */
+			year: number;
+			/** Count */
+			count: number;
+			/**
+			 * Months
+			 * @description Its months with documents, newest first.
+			 */
+			months: components['schemas']['MonthCount'][];
 		};
 		/**
 		 * EventMessage
@@ -13639,15 +14063,17 @@ export interface operations {
 				semantic_ratio?: number | null;
 				/** @description Every user's documents instead of the caller's reach (admins). */
 				all_users?: boolean;
-				contact_id?: string | null;
-				document_type_id?: string | null;
+				contact_id?: string[] | null;
+				document_type_id?: string[] | null;
 				tag_id?: string[] | null;
-				space_id?: string | null;
+				space_id?: string[] | null;
 				lane?: components['schemas']['LaneFilter'][] | null;
 				field_id?: string | null;
 				contact_group_id?: string[] | null;
 				document_type_group_id?: string[] | null;
 				topic_id?: string[] | null;
+				document_date_from?: string | null;
+				document_date_to?: string | null;
 			};
 			header?: never;
 			path?: never;
@@ -14031,21 +14457,25 @@ export interface operations {
 	list_documents_api_v1_documents_get: {
 		parameters: {
 			query?: {
-				sort?: components['schemas']['DocumentSort'];
+				sort?: components['schemas']['DocumentListSort'];
+				/** @description The field to sort by with `sort=field` or `-field`. */
+				sort_field_id?: string | null;
 				limit?: number;
 				/** @description `next_cursor`. */
 				cursor?: string | null;
 				/** @description Every user's documents instead of the caller's reach (admins). */
 				all_users?: boolean;
-				contact_id?: string | null;
-				document_type_id?: string | null;
+				contact_id?: string[] | null;
+				document_type_id?: string[] | null;
 				tag_id?: string[] | null;
-				space_id?: string | null;
+				space_id?: string[] | null;
 				lane?: components['schemas']['LaneFilter'][] | null;
 				field_id?: string | null;
 				contact_group_id?: string[] | null;
 				document_type_group_id?: string[] | null;
 				topic_id?: string[] | null;
+				document_date_from?: string | null;
+				document_date_to?: string | null;
 			};
 			header?: never;
 			path?: never;
@@ -14299,6 +14729,108 @@ export interface operations {
 					 *       "title": "Unsupported Media Type",
 					 *       "status": 415,
 					 *       "detail": "unsupported file type"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	document_facets_api_v1_documents_facets_get: {
+		parameters: {
+			query?: {
+				/** @description Every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+				contact_id?: string[] | null;
+				document_type_id?: string[] | null;
+				tag_id?: string[] | null;
+				space_id?: string[] | null;
+				lane?: components['schemas']['LaneFilter'][] | null;
+				field_id?: string | null;
+				contact_group_id?: string[] | null;
+				document_type_group_id?: string[] | null;
+				topic_id?: string[] | null;
+				document_date_from?: string | null;
+				document_date_to?: string | null;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DocumentFacetsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -18246,6 +18778,652 @@ export interface operations {
 					 *       "title": "Too Many Requests",
 					 *       "status": 429,
 					 *       "detail": "too many failed attempts; try again later"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	list_lenses_api_v1_lenses_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['LensOut'][];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	create_lens_api_v1_lenses_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['LensCreate'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['LensOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	order_lenses_api_v1_lenses_order_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['LensOrder'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['LensOut'][];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	get_lens_api_v1_lenses__id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['LensOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	delete_lens_api_v1_lenses__id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	update_lens_api_v1_lenses__id__patch: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['LensPatch'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['LensOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

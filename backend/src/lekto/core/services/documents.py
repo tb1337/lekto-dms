@@ -1,11 +1,11 @@
 import asyncio
 import copy
-import functools
 import hashlib
 import json
 import logging
+from collections import Counter
 from collections.abc import Collection, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from uuid import UUID
@@ -22,10 +22,18 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.exchanges import RunExchange, exchanges_from_json
-from lekto.core.domain.facts import Facts, facts_in
-from lekto.core.domain.fields import FieldType, FieldValue
+from lekto.core.domain.facts import Facts, facts_in, on_pages
+from lekto.core.domain.fields import SORTABLE_TYPES, FieldType, FieldValue
 from lekto.core.domain.identifiers import IdentifierKind
-from lekto.core.domain.ids import ContactId, DocumentId, FieldId, SpaceId, TagId, UserId
+from lekto.core.domain.ids import (
+    ContactId,
+    DocumentId,
+    DocumentTypeId,
+    FieldId,
+    SpaceId,
+    TagId,
+    UserId,
+)
 from lekto.core.domain.locations import Box, Location
 from lekto.core.domain.master_data import Assignment
 from lekto.core.domain.permissions import (
@@ -37,6 +45,8 @@ from lekto.core.domain.permissions import (
 )
 from lekto.core.domain.pipeline import Node, NodeRun
 from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.text_places import TextPlaces
+from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.metadata import FileMetadata, MetadataReader
 from lekto.core.ports.object_store import ObjectStore
@@ -49,6 +59,7 @@ from lekto.core.ports.repository import (
     DocumentFilter,
     DocumentOrder,
     DocumentPosition,
+    FacetRow,
     SortKey,
 )
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
@@ -63,7 +74,7 @@ from lekto.core.services._access import (
     visible_space,
     writable_document,
 )
-from lekto.core.services._tags import expanded, tag_counts
+from lekto.core.services._tags import expand, expanded, tag_counts, tag_tree
 from lekto.core.services.inbox import Review, in_inbox, node_reviews, open_nodes
 from lekto.core.services.maintenance import REMOVE_FILES_JOB, RemoveFiles
 from lekto.core.services.objects import (
@@ -72,6 +83,7 @@ from lekto.core.services.objects import (
     codes_key,
     exchanges_key,
     legacy_exchanges_key,
+    load_layout,
     load_text,
     original_key,
     page_key,
@@ -106,6 +118,23 @@ class DocumentView:
 
 
 @dataclass(frozen=True)
+class DocumentFacets:
+    """How many documents of a filter have each value (`DocumentService.facets`). `contacts`
+    and `document_types` count those without one under None; `months` by `2026-09`, those
+    without a document date in `undated`."""
+
+    total: int
+    contacts: dict[ContactId | None, int]
+    document_types: dict[DocumentTypeId | None, int]
+    contact_groups: dict[TagId, int]
+    document_type_groups: dict[TagId, int]
+    topics: dict[TagId, int]
+    tags: dict[TagId, int]
+    months: dict[str, int]
+    undated: int
+
+
+@dataclass(frozen=True)
 class ListedDocument:
     """A document of a list with the caller's access to it, and whether it stands open in the
     caller's inbox (`inbox.in_inbox`)."""
@@ -134,23 +163,41 @@ class CodeFacts:
 class DocumentFacts:
     """What the document shows of its contact (`domain.facts`, with spans of the text), the
     codes on its pages (None while they are not read), and, for admins, on the confirmed
-    documents of how many contacts besides the document's an identifier stands."""
+    documents of which contacts besides the document's an identifier stands."""
 
     contact_id: ContactId | None
     facts: Facts
     codes: tuple[CodeFacts, ...] | None
-    other_contacts: dict[tuple[IdentifierKind, str], int] | None
+    other_contacts: dict[tuple[IdentifierKind, str], frozenset[ContactId]] | None
+
+
+async def _check_sortable(uow: UnitOfWork, order: DocumentOrder) -> None:
+    """ValidationError if `order` sorts by a field that is missing or of another type than
+    `SORTABLE_TYPES`."""
+    if order.field is None:
+        return
+    definition = await uow.fields.find(order.field)
+    if definition is None or definition.data_type not in SORTABLE_TYPES:
+        raise ValidationError(
+            "sort_field_id: not a field a list sorts by (date, period, number or amount)"
+        )
 
 
 async def _position(
-    uow: UnitOfWork, order: DocumentOrder, after: DocumentId | None
+    uow: UnitOfWork, user: User, order: DocumentOrder, after: DocumentId | None, *, everyone: bool
 ) -> DocumentPosition | None:
-    """Where a page ended: by the last document's id, and its value of the sort key."""
+    """Where a page ended: by the last document's id, and its value of the sort key. That
+    document is looked up within the caller's reach (`everyone`: all documents): one they may
+    not read counts as gone, so that a cursor tells nothing about others' documents (#74)."""
     if after is None:
         return None
-    if order.key is SortKey.CREATED:
+    if order.key is SortKey.ARRIVAL:
         return DocumentPosition(after)
     last = await uow.documents.find(after)
+    if last is not None and not everyone:
+        space = await uow.spaces.find(last.space_id)
+        if space is None or document_access(user, last, space) is None:
+            last = None
     if last is None:
         raise ValidationError("cursor: its document is gone; start from the first page")
     return DocumentPosition.of(last, order)
@@ -305,10 +352,14 @@ class DocumentService:
         except NotFoundError:
             raise ConflictError("document has no text yet") from None
         codes = await self._codes(id)
+        pages = await load_layout(store, id)
+
+        def found() -> Facts:
+            facts = facts_in(text, contacts, codes or (), places=True)
+            return on_pages(facts, TextPlaces(text, pages)) if pages else facts
+
         # Matching every contact's names against a long text takes a while: not in the loop.
-        facts = await asyncio.to_thread(
-            functools.partial(facts_in, text, contacts, codes or (), places=True)
-        )
+        facts = await asyncio.to_thread(found)
         amounts = {
             field: value
             for field, value in document.fields.items()
@@ -323,10 +374,7 @@ class DocumentService:
                 carrying = await uow.document_identifiers.contacts_of(
                     [item.key for item in facts.identifiers]
                 )
-            others = {
-                key: len(contacts_ - {document.contact_id} if document.contact_id else contacts_)
-                for key, contacts_ in carrying.items()
-            }
+            others = {key: contacts_ - {document.contact_id} for key, contacts_ in carrying.items()}
         return DocumentFacts(
             contact_id=document.contact_id, facts=facts, codes=views, other_contacts=others
         )
@@ -369,11 +417,13 @@ class DocumentService:
         after the page ending at the document `after`; with `all_users` (admins only), every
         document. Each is checked against the permission rules once more, and says whether it
         stands open in the caller's inbox (with `all_users`, in every user's). ValidationError
-        if `after` is gone while the list sorts by another key than the order of arrival."""
+        if `after` is gone or out of reach while the list sorts by another key than the order of
+        arrival, or if the order is by a field that is missing or of a type no list sorts by."""
         limit = max(1, min(limit, PAGE_LIMIT))
         async with self._uow() as uow:
             user = await load_lister(uow, actor, all_users, "list the documents of all users")
-            position = await _position(uow, order, after)
+            await _check_sortable(uow, order)
+            position = await _position(uow, user, order, after, everyone=all_users)
             filter = await expanded(uow, filter)
             if all_users:
                 documents = await uow.documents.query(
@@ -471,6 +521,58 @@ class DocumentService:
                 return await tag_counts(uow, user)
             return await uow.documents.count_by(by, user)
 
+    async def facets(
+        self, actor: UserId, filter: DocumentFilter, *, all_users: bool = False
+    ) -> DocumentFacets:
+        """How many documents within the caller's reach (with `all_users`, admins only: every
+        document) that match `filter` have each contact, type, group of contacts and types,
+        topic, tag and month of their document date. What combines as either-or (contacts,
+        types, groups, topics, the period) counts without its own choice, so that it tells
+        what one more would add; tags combine as all-of and count with the whole filter. A
+        tag, topic or group counts the documents with it or one below it, each once, as its
+        filter finds them."""
+        async with self._uow() as uow:
+            await load_lister(uow, actor, all_users, "count the documents of all users")
+            user = None if all_users else actor
+            tree = await tag_tree(uow)
+            found: dict[DocumentFilter, list[FacetRow]] = {}
+
+            async def rows(criteria: DocumentFilter) -> list[FacetRow]:
+                criteria = expand(criteria, tree)
+                if criteria not in found:
+                    found[criteria] = await uow.documents.facet_rows(criteria, user)
+                return found[criteria]
+
+            whole = await rows(filter)
+            by_contact = await rows(replace(filter, contacts=None))
+            by_type = await rows(replace(filter, document_types=None))
+            by_topic = await rows(replace(filter, topics=None))
+            by_date = await rows(replace(filter, document_dates=None))
+            by_contact_group = await rows(replace(filter, contact_groups=()))
+            by_type_group = await rows(replace(filter, document_type_groups=()))
+            contact_groups = {item.id: item.group_ids for item in await uow.contacts.list_all()}
+            type_groups = {item.id: item.group_ids for item in await uow.document_types.list_all()}
+        dates = [row.document_date for row in by_date]
+        return DocumentFacets(
+            total=len(whole),
+            contacts=dict(Counter(row.contact for row in by_contact)),
+            document_types=dict(Counter(row.document_type for row in by_type)),
+            contact_groups=tree.holders(
+                contact_groups.get(row.contact, frozenset())
+                for row in by_contact_group
+                if row.contact is not None
+            ),
+            document_type_groups=tree.holders(
+                type_groups.get(row.document_type, frozenset())
+                for row in by_type_group
+                if row.document_type is not None
+            ),
+            topics=tree.holders([row.topic] for row in by_topic if row.topic is not None),
+            tags=tree.holders(row.tags for row in whole),
+            months=dict(Counter(f"{day.year:04d}-{day.month:02d}" for day in dates if day)),
+            undated=sum(1 for day in dates if day is None),
+        )
+
     async def list_visible(self, actor: UserId) -> list[Document]:
         async with self._uow() as uow:
             await load_actor(uow, actor)
@@ -558,7 +660,9 @@ class DocumentService:
         """As `update_metadata`, and the change rules of the document's owner and the global
         ones run (see `rules.changes`). The rules' report is for the owner and admins. With
         `dry_run`, nothing is stored: what would happen."""
-        rules = self._rules
+        # When the document came in is no metadata the rules decide on: changed alone, they
+        # do not run (Tobi, 21.10.2026).
+        rules = None if changes.only_receipt else self._rules
         prepared = Prepared()
         if rules is not None:
             async with self._uow() as uow:

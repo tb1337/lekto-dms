@@ -2,7 +2,7 @@
 	// The legacy build runs in browsers without the newest JavaScript features.
 	import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 	import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, type Snippet } from 'svelte';
 	import { apiFetch } from '#lib/api/fetch.ts';
 	import { apiError, ApiError } from '#lib/api/problem.ts';
 	import { BASE } from '#lib/base.ts';
@@ -19,12 +19,18 @@
 		sources,
 		label,
 		marks = [],
-		onsource
+		end,
+		onsource,
+		onpage
 	}: {
 		sources: readonly string[];
 		label: string;
 		marks?: readonly Mark[];
+		/** At the end of the toolbar (the switch of a pane). */
+		end?: Snippet;
 		onsource?: (source: string) => void;
+		/** The page in the upper third of the view, and how many there are. */
+		onpage?: (current: number, total: number) => void;
 	} = $props();
 
 	pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -152,6 +158,8 @@
 	{marks}
 	{loading}
 	{problem}
+	{end}
+	{onpage}
 	onshow={(number, node) => void draw(number, node)}
 	onsettle={(pages) => {
 		for (const { number, node } of pages) void draw(number, node);

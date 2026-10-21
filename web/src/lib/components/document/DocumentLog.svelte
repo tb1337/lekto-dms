@@ -478,8 +478,7 @@
 												<span>
 													{time(entry.started_at)} · {m.log_run({
 														run: entry.run
-													})}{#if entry.model_version}
-														· {entry.model_version}{/if}
+													})}{#if entry.model_version}{` · ${entry.model_version}`}{/if}
 												</span>
 												{#if usage}
 													<TokenInfo

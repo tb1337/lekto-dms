@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from lekto.adapters.inbound.rest.schemas.inbox import BoxOut
+from lekto.adapters.inbound.rest.schemas.inbox import BoxOut, LocationOut
 from lekto.adapters.inbound.schemas import MoneyValue
 from lekto.core.domain.facts import Span
 from lekto.core.domain.identifiers import IdentifierKind
@@ -14,10 +14,20 @@ from lekto.core.services.documents import CodeFacts, DocumentFacts
 class SpanOut(BaseModel):
     start: int = Field(description="First character, from 0.")
     end: int = Field(description="After the last character.")
+    locations: list[LocationOut] = Field(
+        description=(
+            "Where it stands on the archive's pages, a box per line; empty where the words of "
+            "the text have no boxes (a text parsed before 0.2)."
+        ),
+    )
 
     @classmethod
     def of(cls, span: Span) -> "SpanOut":
-        return cls(start=span.start, end=span.end)
+        return cls(
+            start=span.start,
+            end=span.end,
+            locations=[LocationOut.of(location) for location in span.locations],
+        )
 
 
 class NamedContactOut(BaseModel):
@@ -47,6 +57,13 @@ class FoundIdentifierOut(BaseModel):
             "document's it stands (the IBAN of one's own account stands on many); null for "
             "others."
         )
+    )
+    other_contact_ids: list[UUID] | None = Field(
+        default=None,
+        description=(
+            "For admins: those contacts (`other_contacts` of them), to name and open them; "
+            "null for others."
+        ),
     )
 
 
@@ -127,8 +144,27 @@ class FactsOut(BaseModel):
                             "contact_id": None,
                             "in_text": True,
                             "in_code": False,
-                            "spans": [{"start": 412, "end": 421}],
+                            "spans": [
+                                {
+                                    "start": 412,
+                                    "end": 421,
+                                    "locations": [
+                                        {
+                                            "page": 1,
+                                            "boxes": [
+                                                {
+                                                    "x": 0.62,
+                                                    "y": 0.18,
+                                                    "width": 0.11,
+                                                    "height": 0.012,
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                }
+                            ],
                             "other_contacts": 0,
+                            "other_contact_ids": [],
                         }
                     ],
                     "codes": [],
@@ -171,7 +207,10 @@ class FactsOut(BaseModel):
                     in_text=item.in_text,
                     in_code=item.in_code,
                     spans=[SpanOut.of(span) for span in item.spans],
-                    other_contacts=None if others is None else others.get(item.key, 0),
+                    other_contacts=None if others is None else len(others.get(item.key, ())),
+                    other_contact_ids=(
+                        None if others is None else sorted(others.get(item.key, frozenset()))
+                    ),
                 )
                 for item in report.facts.identifiers
             ],

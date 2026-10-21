@@ -9,9 +9,10 @@
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
+	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
 	import CodeThumb from '#lib/components/document/CodeThumb.svelte';
 	import SourceChip from '#lib/components/document/SourceChip.svelte';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { reportError } from '#lib/errors.ts';
 	import {
@@ -31,13 +32,16 @@
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { phone } from '#lib/phone.svelte.ts';
 	import { pathLabel, tagOptions } from '#lib/tags.ts';
 	import { cn } from '#lib/utils.ts';
 
 	// The facts beside the text: what supports the document's contact, what speaks of other
 	// contacts, the identifiers of no contact (admins attach them, with a topic of the contact,
 	// the document's by default), and the codes on the pages. Hovering or focusing an entry
-	// marks it in the text; a click keeps the mark.
+	// marks it in the text and on the pages; a click keeps the mark. A contact named here
+	// shows its logo, and for admins it opens its editor (Tobi, 20.10.2026), also the other
+	// contacts whose documents show an identifier.
 	let {
 		facts,
 		documentId,
@@ -55,8 +59,9 @@
 		topicId?: string | null;
 		/** Admins attach identifiers (they are master data). */
 		admin: boolean;
-		/** The spans to mark in the text, none to mark nothing; `reveal` after a click. */
-		onmark: (spans: Span[], reveal: boolean) => void;
+		/** The spans to mark in the text and on the pages under `label`, none to mark nothing;
+		 * `reveal` after a click. */
+		onmark: (spans: Span[], reveal: boolean, label: string) => void;
 		/** Show a code where it stands on its page. */
 		/** Show the code on one of its pages, all its places marked. */
 		onshowcode: (code: CodeFacts, place: CodePlace) => void;
@@ -79,8 +84,9 @@
 
 	const groups = $derived(grouped(facts));
 	const contacts = $derived(lookup?.contacts ?? []);
-	const contactName = (id: string | null | undefined) =>
-		contacts.find((contact) => contact.id === id)?.name ?? '…';
+	const contactOf = (id: string | null | undefined) =>
+		contacts.find((contact) => contact.id === id) ?? null;
+	const contactName = (id: string | null | undefined) => contactOf(id)?.name ?? '…';
 	const documentContact = $derived(facts.contact_id ? contactName(facts.contact_id) : null);
 	const active = $derived(hover ?? pinned);
 	// The topics of the contact an identifier goes to; the document's topic first of all.
@@ -114,17 +120,24 @@
 		const scroll = reveal;
 		reveal = false;
 		if (id === null) {
-			onmark([], false);
+			onmark([], false, '');
 			return;
 		}
 		if (id.startsWith('code:')) {
 			const code = facts.codes?.[Number(id.slice(5))];
-			onmark(code ? codeSpans(facts, code) : [], scroll);
+			onmark(code ? codeSpans(facts, code) : [], scroll, code?.format ?? '');
 			return;
 		}
 		const entry = [...facts.named, ...facts.identifiers].find((item) => entryId(item) === id);
-		onmark(entry?.spans ?? [], scroll);
+		onmark(entry?.spans ?? [], scroll, entry ? entryLabel(entry) : '');
 	});
+
+	/** What a mark of the entry on the page says: the kind of an identifier, a contact's name. */
+	function entryLabel(entry: Entry): string {
+		return 'kind' in entry
+			? kindLabel(entry.kind)
+			: (contactOf(entry.contact_id)?.name ?? entry.name);
+	}
 
 	function pin(id: string) {
 		pinned = pinned === id ? null : id;
@@ -177,9 +190,35 @@
 	}
 
 	const fieldName = (id: string) => lookup?.fields.find((field) => field.id === id)?.name ?? '…';
+	// The contact an IBAN of a code belongs to, as the identifiers of the facts say.
+	const ibanContact = (iban: string) =>
+		facts.identifiers.find(
+			(item) => item.kind === 'iban' && item.value === iban.replace(/\s+/g, '').toUpperCase()
+		)?.contact_id ?? null;
 </script>
 
-{#snippet entryRow(entry: Entry, contactLabel: string | null)}
+{#snippet contactLink(id: string)}
+	{@const contact = contactOf(id)}
+	{#if admin}
+		<!-- Admins change the contact right here: its dialog opens over the page. -->
+		<button
+			type="button"
+			class="inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1.5 font-medium text-foreground underline-offset-2 hover:underline"
+			title={m.facts_contact_open()}
+			onclick={() => masterDataDialogs.open('contacts', id)}
+		>
+			<ContactAvatar contact={contact ?? { name: '…' }} size="xs" />
+			<span class="truncate">{contact?.name ?? '…'}</span>
+		</button>
+	{:else}
+		<span class="inline-flex max-w-full min-w-0 items-center gap-1.5 font-medium text-foreground">
+			<ContactAvatar contact={contact ?? { name: '…' }} size="xs" />
+			<span class="truncate">{contact?.name ?? '…'}</span>
+		</span>
+	{/if}
+{/snippet}
+
+{#snippet entryRow(entry: Entry, contactId: string | null)}
 	{@const id = entryId(entry)}
 	{@const identifier = 'kind' in entry ? entry : null}
 	{@const named = 'kind' in entry ? null : entry}
@@ -213,36 +252,46 @@
 						{m.facts_topic({ topic: topicName(identifier.topic_id) ?? '' })}
 					</span>
 				{/if}
-				{#if contactLabel || entry.in_code}
+				{#if entry.in_code}
 					<span class="text-xs text-muted-foreground">
-						{[
-							contactLabel,
-							entry.in_code ? (entry.in_text ? m.facts_in_code() : m.facts_only_in_code()) : null
-						]
-							.filter(Boolean)
-							.join(' · ')}
+						{entry.in_text ? m.facts_in_code() : m.facts_only_in_code()}
 					</span>
 				{/if}
 			</button>
 			{#if identifier && !identifier.contact_id && admin}
+				<!-- Only the pin: the label would repeat on every line. -->
 				<Button
 					variant="outline"
-					size="sm"
+					size="icon"
+					class="size-8 shrink-0"
+					aria-label={m.facts_attach_value({ value: shown(identifier) })}
+					title={m.facts_attach()}
 					aria-expanded={attaching === id}
 					onclick={() => startAttach(identifier)}
 				>
 					<Pin aria-hidden="true" />
-					{m.facts_attach()}
 				</Button>
 			{/if}
 		</div>
+		{#if contactId}
+			<div class="-mt-1 flex px-2.5 pb-2 text-xs">{@render contactLink(contactId)}</div>
+		{/if}
 		{#if identifier && identifier.other_contacts}
-			<p class="-mt-1 flex items-start gap-1.5 px-2.5 pb-2 text-xs text-lane-yellow-foreground">
-				<TriangleAlert class="mt-px size-3.5 shrink-0" aria-hidden="true" />
-				{identifier.other_contacts === 1
-					? m.facts_other_contacts_one()
-					: m.facts_other_contacts({ count: identifier.other_contacts })}
-			</p>
+			<div class="-mt-1 flex items-start gap-1.5 px-2.5 pb-2 text-xs text-lane-yellow-foreground">
+				<TriangleAlert class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+				{#if identifier.other_contact_ids?.length}
+					<span class="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+						{m.facts_other_contacts_of()}
+						{#each identifier.other_contact_ids as other (other)}
+							{@render contactLink(other)}
+						{/each}
+					</span>
+				{:else}
+					{identifier.other_contacts === 1
+						? m.facts_other_contacts_one()
+						: m.facts_other_contacts({ count: identifier.other_contacts })}
+				{/if}
+			</div>
 		{/if}
 		{#if identifier && attaching === id}
 			<form
@@ -265,7 +314,10 @@
 							class="mt-1 accent-primary"
 						/>
 						<span class="flex flex-col">
-							<span>{documentContact}</span>
+							<span class="inline-flex items-center gap-1.5">
+								<ContactAvatar contact={contactOf(facts.contact_id) ?? { name: '…' }} size="xs" />
+								{documentContact}
+							</span>
 							<span class="text-xs text-muted-foreground">{m.facts_attach_document_contact()}</span>
 						</span>
 					</label>
@@ -281,7 +333,7 @@
 					{m.facts_attach_other()}
 				</label>
 				{#if target === 'other'}
-					<NativeSelect
+					<Select
 						bind:value={other}
 						aria-label={m.facts_attach_other()}
 						options={[
@@ -293,7 +345,7 @@
 				{#if attachTopics.length > 0}
 					<label class="flex flex-col gap-1 text-sm">
 						<span class="text-xs text-muted-foreground">{m.facts_attach_topic()}</span>
-						<NativeSelect
+						<Select
 							bind:value={attachTopic}
 							aria-label={m.facts_attach_topic()}
 							options={[{ value: '', label: m.topic_none() }, ...attachTopics]}
@@ -322,7 +374,9 @@
 	<section aria-labelledby="facts-title" class="rounded-2xl border bg-card p-3.5">
 		<div class="flex items-baseline gap-2 px-1 pb-1">
 			<h2 id="facts-title" class="text-[15px] font-semibold">{m.facts_title()}</h2>
-			<span class="text-xs text-muted-foreground">{m.facts_hint()}</span>
+			<span class="text-xs text-muted-foreground"
+				>{phone.current ? m.facts_hint_phone() : m.facts_hint()}</span
+			>
 		</div>
 		{#if groups.own.length + groups.others.length + groups.unknown.length === 0}
 			<p class="px-1 py-2 text-sm text-muted-foreground">{m.facts_none()}</p>
@@ -333,18 +387,7 @@
 			>
 				<UserCheck class="size-3.5" aria-hidden="true" />
 				{m.facts_own()}
-				<!-- Admins change the contact right here: its dialog opens over the page. -->
-				{#if admin && facts.contact_id}
-					{@const contactId = facts.contact_id}
-					<button
-						type="button"
-						class="cursor-pointer underline-offset-2 hover:underline"
-						title={m.facts_contact_open()}
-						onclick={() => masterDataDialogs.open('contacts', contactId)}>{documentContact}</button
-					>
-				{:else}
-					{documentContact}
-				{/if}
+				{#if facts.contact_id}{@render contactLink(facts.contact_id)}{/if}
 			</h3>
 			{#each groups.own as entry (entryId(entry))}
 				{@render entryRow(entry, null)}
@@ -353,7 +396,7 @@
 		{#if groups.others.length > 0}
 			<h3 class="mt-3 px-1 text-xs font-semibold text-muted-foreground">{m.facts_others()}</h3>
 			{#each groups.others as entry (entryId(entry))}
-				{@render entryRow(entry, contactName(entry.contact_id))}
+				{@render entryRow(entry, entry.contact_id)}
 			{/each}
 		{/if}
 		{#if groups.unknown.length > 0}
@@ -369,9 +412,12 @@
 
 	<section aria-labelledby="codes-title" class="rounded-2xl border bg-card p-3.5">
 		<div class="flex items-baseline gap-2 px-1 pb-1">
-			<h2 id="codes-title" class="flex items-center gap-1.5 text-[15px] font-semibold">
-				<ScanQrCode class="size-4" aria-hidden="true" />
-				{m.codes_title()}
+			<!-- The icon in the line of text: the heading keeps the baseline of the hint beside it. -->
+			<h2 id="codes-title" class="text-[15px] font-semibold">
+				<ScanQrCode
+					class="mr-1 inline-block size-4 align-[-0.15em]"
+					aria-hidden="true"
+				/>{m.codes_title()}
 			</h2>
 			<span class="text-xs text-muted-foreground">{m.codes_hint()}</span>
 		</div>
@@ -420,6 +466,10 @@
 							<dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-[13px]">
 								<dt class="text-muted-foreground">{m.code_giro_name()}</dt>
 								<dd>{code.giro.name}</dd>
+								{#if ibanContact(code.giro.iban)}
+									<dt class="text-muted-foreground">{m.field_contact()}</dt>
+									<dd class="flex min-w-0">{@render contactLink(ibanContact(code.giro.iban)!)}</dd>
+								{/if}
 								<dt class="text-muted-foreground">{m.identifier_kind_iban()}</dt>
 								<dd class="font-mono text-xs break-words">
 									{shown({ kind: 'iban', value: code.giro.iban })}

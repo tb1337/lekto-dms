@@ -1,13 +1,12 @@
 <script lang="ts">
 	import Plus from '@lucide/svelte/icons/plus';
 	import SearchIcon from '@lucide/svelte/icons/search';
-	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import FieldsPanel from '#lib/components/FieldsPanel.svelte';
 	import MasterDataList from '#lib/components/MasterDataList.svelte';
+	import TabBar from '#lib/components/TabBar.svelte';
 	import TagsPanel from '#lib/components/TagsPanel.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
-	import * as Tabs from '#lib/components/ui/tabs/index.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { phone } from '#lib/phone.svelte.ts';
@@ -73,17 +72,19 @@
 	{#if !session.isAdmin}
 		<p class="text-muted-foreground">{m.admin_only()}</p>
 	{:else}
-		<Tabs.Root value={tab} onValueChange={(value) => goto(`?tab=${value}`, { reset: false })}>
+		<div>
 			<!-- Four equal tabs on a phone, a shorter name for the types. -->
-			<Tabs.List
-				class="grid h-auto w-full grid-cols-4 group-data-[orientation=horizontal]/tabs:h-auto sm:inline-flex sm:w-fit"
-			>
-				{#each TABS as value (value)}
-					<Tabs.Trigger {value} class="min-h-11 px-1 sm:min-h-8 sm:px-3">
-						{value === 'document-types' && phone.current ? m.master_types_short() : LABEL[value]()}
-					</Tabs.Trigger>
-				{/each}
-			</Tabs.List>
+			<TabBar
+				label={m.nav_master_data()}
+				tabs={TABS.map((value) => ({
+					key: value,
+					href: `?tab=${value}`,
+					label:
+						value === 'document-types' && phone.current ? m.master_types_short() : LABEL[value]()
+				}))}
+				current={tab}
+				fill
+			/>
 			<div class="mt-4 flex flex-col gap-3 sm:gap-4">
 				<div class="flex items-center gap-3">
 					<label
@@ -115,6 +116,6 @@
 					{/if}
 				{/key}
 			</div>
-		</Tabs.Root>
+		</div>
 	{/if}
 </div>

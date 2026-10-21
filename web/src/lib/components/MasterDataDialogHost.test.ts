@@ -5,6 +5,7 @@ import type { Item } from '#lib/masterdata-api.ts';
 import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { phone } from '#lib/phone.svelte.ts';
+import { choose, optionsOf, selectedValue } from '#lib/testing/select.ts';
 import { session } from '#lib/session.svelte.ts';
 import WithDialogs from '#lib/testing/WithDialogs.svelte';
 
@@ -102,7 +103,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	masterDataDialogs.finishTag(null);
+	masterDataDialogs.finishAll();
 	masterDataDialogs.close();
 	phone.override(null);
 	session.clear();
@@ -113,6 +114,20 @@ afterEach(() => {
 // The icon picker's panel is loaded when it opens; under a full parallel run that can take a
 // while.
 const LOADED = { timeout: 5000 };
+
+/** The choice of a tag field, wider than a phone a popover: placed by measuring, which jsdom
+ * does not, it counts as hidden and has no computed name; its title names it. */
+async function pickerNamed(name: string): Promise<HTMLElement> {
+	let found: HTMLElement | undefined;
+	await waitFor(() => {
+		found = screen.getAllByRole('dialog', { hidden: true }).find((dialog) => {
+			const title = document.getElementById(dialog.getAttribute('aria-labelledby') ?? '');
+			return title?.textContent?.trim() === name;
+		});
+		expect(found).toBeTruthy();
+	});
+	return found!;
+}
 
 describe('MasterDataDialogHost', () => {
 	it('opens a document type from anywhere and links the rule of its pattern', async () => {
@@ -151,10 +166,10 @@ describe('MasterDataDialogHost', () => {
 		render(WithDialogs);
 		masterDataDialogs.open('tags', TAGS[1] as Item);
 		expect(await screen.findByDisplayValue('Health')).toBeTruthy();
-		const parent = screen.getByLabelText(m.tag_parent()) as HTMLSelectElement;
-		const options = [...parent.options].map((option) => option.textContent?.trim());
+		const parent = screen.getByLabelText(m.tag_parent());
+		const options = (await optionsOf(parent)).map((option) => option.label);
 		expect(options).toEqual([m.tag_parent_none(), 'Insurance']);
-		expect(parent.value).toBe('t1');
+		expect(selectedValue(parent)).toBe('t1');
 		expect(screen.getByLabelText(m.tag_assignment_auto())).toBeTruthy();
 	});
 
@@ -163,10 +178,86 @@ describe('MasterDataDialogHost', () => {
 		masterDataDialogs.open('contact-groups');
 		expect(await screen.findByLabelText(m.tag_parent_group())).toBeTruthy();
 		expect(screen.queryByLabelText(m.tag_assignment_auto())).toBeNull();
-		const parent = screen.getByLabelText(m.tag_parent_group()) as HTMLSelectElement;
-		expect([...parent.options].map((option) => option.value)).toEqual(['', 'g1']);
-		expect(parent.options[0].textContent?.trim()).toBe(m.tag_parent_group_none());
+		const parent = screen.getByLabelText(m.tag_parent_group());
+		const options = await optionsOf(parent);
+		expect(options.map((option) => option.value)).toEqual(['', 'g1']);
+		expect(options[0].label).toBe(m.tag_parent_group_none());
 		expect((screen.getByLabelText(m.tag_shown()) as HTMLInputElement).checked).toBe(false);
+	});
+});
+
+describe('tabs', () => {
+	it('shows a contact’s identifiers in a tab of their own, counted', async () => {
+		const user = userEvent.setup();
+		render(WithDialogs);
+		masterDataDialogs.open('contacts', CONTACT as unknown as Item);
+		expect(await screen.findByDisplayValue('Nord Versicherungsgruppe')).toBeTruthy();
+		const tabs = screen.getByRole('group', {
+			name: m.master_edit({ name: 'Nord Versicherungsgruppe' })
+		});
+		const [general, identifiers] = within(tabs).getAllByRole('button');
+		expect(general.getAttribute('aria-pressed')).toBe('true');
+		expect(identifiers.textContent).toContain(m.master_identifiers());
+		expect(identifiers.textContent).toContain('1');
+		expect(screen.queryByRole('button', { name: /^nord\.example/ })).toBeNull();
+		await user.click(identifiers);
+		expect(screen.getByRole('button', { name: /^nord\.example/ })).toBeTruthy();
+		expect(screen.queryByDisplayValue('Nord Versicherungsgruppe')).toBeNull();
+	});
+
+	it('opens the tab and the line of an identifier the API refuses', async () => {
+		const user = userEvent.setup();
+		const before = fetchMock.getMockImplementation()!;
+		fetchMock.mockImplementation(async (request) =>
+			request.method === 'PATCH'
+				? json(
+						{ title: 'Unprocessable', status: 422, detail: "'DE00 1234' is not a valid IBAN" },
+						422
+					)
+				: before(request)
+		);
+		render(WithDialogs);
+		masterDataDialogs.open('contacts', CONTACT as unknown as Item);
+		expect(await screen.findByDisplayValue('Nord Versicherungsgruppe')).toBeTruthy();
+		await user.click(
+			screen.getByRole('button', { name: new RegExp(`^${m.master_identifiers()}`) })
+		);
+		await user.click(screen.getByRole('button', { name: m.identifier_add_short() }));
+		await user.type(screen.getByLabelText(m.identifier_value()), 'DE00 1234');
+		await user.click(screen.getByRole('button', { name: m.master_tab_general() }));
+		await user.click(screen.getByRole('button', { name: m.save() }));
+		const tab = await screen.findByRole('button', {
+			name: new RegExp(`^${m.master_identifiers()}`)
+		});
+		await waitFor(() => expect(tab.getAttribute('aria-pressed')).toBe('true'));
+		expect(tab.textContent).toContain(m.editor_tab_problem());
+		const value = screen.getByLabelText(m.identifier_value());
+		expect(value.getAttribute('aria-invalid')).toBe('true');
+		expect(
+			screen.getAllByRole('alert').some((alert) => alert.textContent?.includes('not a valid IBAN'))
+		).toBe(true);
+	});
+
+	it('has none for a tag', async () => {
+		render(WithDialogs);
+		masterDataDialogs.open('tags', TAGS[2] as Item);
+		expect(await screen.findByDisplayValue('Dental')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: m.master_tab_general() })).toBeNull();
+	});
+});
+
+describe('a contact’s spellings', () => {
+	it('are chips, sent as a list', async () => {
+		const user = userEvent.setup();
+		render(WithDialogs);
+		masterDataDialogs.open('contacts', CONTACT as unknown as Item);
+		expect(await screen.findByDisplayValue('Nord Versicherungsgruppe')).toBeTruthy();
+		const spellings = screen.getByRole('group', { name: m.master_aliases() });
+		await user.click(within(spellings).getByRole('button', { name: m.alias_add() }));
+		await user.type(within(spellings).getByLabelText(m.alias_input()), 'Nord KV{Enter}');
+		await user.click(screen.getByRole('button', { name: m.save() }));
+		const patch = fetchMock.mock.calls.map((call) => call[0]).find((r) => r.method === 'PATCH');
+		expect((await patch!.json()).aliases).toEqual(['Nord KV']);
 	});
 });
 
@@ -184,19 +275,29 @@ describe('a contact’s topics', () => {
 		};
 		masterDataDialogs.open('contacts', contact as unknown as Item);
 		expect(await screen.findByDisplayValue('Nord')).toBeTruthy();
-		const topic = screen.getByLabelText(m.identifier_topic()) as HTMLSelectElement;
-		expect(topic.value).toBe('p1');
-		expect([...topic.options].map((option) => option.value)).toEqual(['', 'p1']);
+		// The identifiers have a tab of their own.
+		const openTab = (name: string) =>
+			userEvent.click(screen.getByRole('button', { name: new RegExp(`^${name}`) }));
+		await openTab(m.master_identifiers());
+		// Each identifier is a line that opens.
+		await userEvent.click(screen.getByRole('button', { name: /^4711/ }));
+		let topic = screen.getByLabelText(m.identifier_topic());
+		expect(selectedValue(topic)).toBe('p1');
+		expect((await optionsOf(topic)).map((option) => option.value)).toEqual(['', 'p1']);
 		// Enabling another (in the picker over the dialog) offers it to the identifiers.
+		await openTab(m.master_tab_general());
 		const chips = screen.getByRole('group', { name: m.master_topics() });
 		expect(within(chips).getByText('Arbeit')).toBeTruthy();
 		await userEvent.click(within(chips).getByRole('button', { name: m.picker_add_topic_label() }));
-		const picker = await screen.findByRole('dialog', { name: m.master_topics() });
+		const picker = await pickerNamed(m.master_topics());
 		await userEvent.click(within(picker).getByLabelText('Krankenversicherung'));
-		await userEvent.click(within(picker).getByRole('button', { name: m.picker_done() }));
+		await userEvent.click(within(picker).getByText(m.picker_done()));
 		expect(within(chips).getByText('Krankenversicherung')).toBeTruthy();
-		expect([...topic.options].map((option) => option.value)).toEqual(['', 'p1', 'p2']);
-		await userEvent.selectOptions(topic, 'p2');
+		// Back in its tab, the line is still open.
+		await openTab(m.master_identifiers());
+		topic = screen.getByLabelText(m.identifier_topic());
+		expect((await optionsOf(topic)).map((option) => option.value)).toEqual(['', 'p1', 'p2']);
+		await choose(userEvent.setup(), topic, 'p2');
 		await userEvent.click(screen.getByRole('button', { name: m.save() }));
 		const patch = fetchMock.mock.calls
 			.map((call) => call[0])
@@ -323,17 +424,17 @@ describe('a new tag', () => {
 			true
 		);
 		await user.click(within(kinds).getByLabelText(m.tag_kind_topic(), { exact: false }));
-		const parent = screen.getByLabelText(m.topic_parent()) as HTMLSelectElement;
-		expect([...parent.options].map((option) => option.value)).toEqual(['', 'p1', 'p2']);
+		const parent = screen.getByLabelText(m.topic_parent());
+		expect((await optionsOf(parent)).map((option) => option.value)).toEqual(['', 'p1', 'p2']);
 		expect(screen.getByText(m.tag_preview_topic())).toBeTruthy();
 		// Another kind: its parents, no assignment for a group, hidden at documents.
 		await user.click(within(kinds).getByLabelText(m.tag_kind_contact(), { exact: false }));
-		const groups = screen.getByLabelText(m.tag_parent_group()) as HTMLSelectElement;
-		expect([...groups.options].map((option) => option.value)).toEqual(['', 'g1']);
+		const groups = screen.getByLabelText(m.tag_parent_group());
+		expect((await optionsOf(groups)).map((option) => option.value)).toEqual(['', 'g1']);
 		expect(screen.queryByLabelText(m.tag_assignment_auto())).toBeNull();
 		expect((screen.getByLabelText(m.tag_shown()) as HTMLInputElement).checked).toBe(false);
 		await user.type(screen.getByLabelText(m.field_name()), 'Versicherungsmakler');
-		await user.selectOptions(groups, 'g1');
+		await choose(user, groups, 'g1');
 		await user.click(screen.getByRole('button', { name: m.create() }));
 		const post = fetchMock.mock.calls.map((call) => call[0]).find((r) => r.method === 'POST');
 		expect(new URL(post!.url).pathname).toBe('/api/v1/tags');
@@ -375,9 +476,9 @@ describe('creating from a picker', () => {
 		masterDataDialogs.open('contacts', CONTACT as unknown as Item);
 		expect(await screen.findByDisplayValue('Nord Versicherungsgruppe')).toBeTruthy();
 		await user.click(screen.getByRole('button', { name: m.picker_add_group_label() }));
-		const picker = await screen.findByRole('dialog', { name: m.master_contact_groups() });
-		await user.type(within(picker).getByRole('searchbox'), 'Makler');
-		await user.click(within(picker).getByText(m.tag_create_details()));
+		const picker = await pickerNamed(m.master_contact_groups());
+		await user.type(within(picker).getByRole('searchbox', { hidden: true }), 'Makler');
+		await user.click(within(picker).getByText(m.create_named({ name: 'Makler' })));
 		// The tag dialog over the contact's: its kind set, the name filled in.
 		const nested = await screen.findByRole('dialog', { name: m.master_add_contact_group() });
 		expect((within(nested).getByLabelText(m.field_name()) as HTMLInputElement).value).toBe(
@@ -398,6 +499,82 @@ describe('creating from a picker', () => {
 	});
 });
 
+describe('creating from a search', () => {
+	it('makes a contact in its dialog over the page, the name filled in, and hands it back', async () => {
+		const user = userEvent.setup();
+		const BAKERY = { ...CONTACT, id: 'c9', name: 'Bäckerei Korn' };
+		const before = fetchMock.getMockImplementation()!;
+		fetchMock.mockImplementation(async (request) => {
+			const path = new URL(request.url).pathname;
+			if (path === '/api/v1/contacts' && request.method === 'POST') return json(BAKERY, 201);
+			return before(request);
+		});
+		const changed = masterDataDialogs.changed;
+		render(WithDialogs);
+		const made = masterDataDialogs.create('contacts', 'Bäckerei Korn');
+		const dialog = await screen.findByRole('dialog', { name: m.master_add_contact() });
+		expect((within(dialog).getByLabelText(m.field_name()) as HTMLInputElement).value).toBe(
+			'Bäckerei Korn'
+		);
+		await user.click(within(dialog).getByRole('button', { name: m.create() }));
+		expect(await made).toMatchObject({ id: 'c9', name: 'Bäckerei Korn' });
+		const post = fetchMock.mock.calls.map((call) => call[0]).find((r) => r.method === 'POST');
+		expect(await post!.json()).toMatchObject({ name: 'Bäckerei Korn' });
+		expect(masterDataDialogs.changed).toBe(changed + 1);
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		expect(masterDataDialogs.nested).toEqual([]);
+	});
+
+	it('hands back nothing when the dialog closes without', async () => {
+		const user = userEvent.setup();
+		render(WithDialogs);
+		const made = masterDataDialogs.create('document-types', 'Mahnung');
+		const dialog = await screen.findByRole('dialog', { name: m.master_add_type() });
+		expect(within(dialog).getByDisplayValue('Mahnung')).toBeTruthy();
+		await user.keyboard('{Escape}');
+		expect(await made).toBeNull();
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		expect(fetchMock.mock.calls.some((call) => call[0].method === 'POST')).toBe(false);
+	});
+});
+
+describe('a group made in a dialog that makes something', () => {
+	it('stays chosen there, and what was typed stays too', async () => {
+		const user = userEvent.setup();
+		const MAKLER = tag('g9', ['Makler'], null, 'contact');
+		let made = false;
+		const before = fetchMock.getMockImplementation()!;
+		fetchMock.mockImplementation(async (request) => {
+			const path = new URL(request.url).pathname;
+			if (path === '/api/v1/tags' && request.method === 'POST') {
+				made = true;
+				return json(MAKLER, 201);
+			}
+			if (path === '/api/v1/tags') return json(made ? [...TAGS, MAKLER] : TAGS);
+			return before(request);
+		});
+		render(WithDialogs);
+		// A contact made from a document's search.
+		void masterDataDialogs.create('contacts', 'N27');
+		const dialog = await screen.findByRole('dialog', { name: m.master_add_contact() });
+		const name = within(dialog).getByLabelText(m.field_name()) as HTMLInputElement;
+		await user.clear(name);
+		await user.type(name, 'N27 Bank');
+		await user.click(within(dialog).getByRole('button', { name: m.picker_add_group_label() }));
+		const picker = await pickerNamed(m.master_contact_groups());
+		await user.type(within(picker).getByRole('searchbox', { hidden: true }), 'Makler');
+		await user.click(within(picker).getByText(m.create_named({ name: 'Makler' })));
+		const nested = await screen.findByRole('dialog', { name: m.master_add_contact_group() });
+		await user.click(within(nested).getByRole('button', { name: m.create() }));
+		await waitFor(() =>
+			expect(
+				within(screen.getByRole('group', { name: m.master_groups() })).getByText('Makler')
+			).toBeTruthy()
+		);
+		expect((screen.getByLabelText(m.field_name()) as HTMLInputElement).value).toBe('N27 Bank');
+	});
+});
+
 describe('stacked dialogs', () => {
 	it('closes only the tag dialog on top with Escape', async () => {
 		const user = userEvent.setup();
@@ -405,16 +582,16 @@ describe('stacked dialogs', () => {
 		masterDataDialogs.open('contacts', CONTACT as unknown as Item);
 		expect(await screen.findByDisplayValue('Nord Versicherungsgruppe')).toBeTruthy();
 		await user.click(screen.getByRole('button', { name: m.picker_add_group_label() }));
-		const picker = await screen.findByRole('dialog', { name: m.master_contact_groups() });
-		await user.type(within(picker).getByRole('searchbox'), 'Makler');
-		await user.click(within(picker).getByText(m.tag_create_details()));
+		const picker = await pickerNamed(m.master_contact_groups());
+		await user.type(within(picker).getByRole('searchbox', { hidden: true }), 'Makler');
+		await user.click(within(picker).getByText(m.create_named({ name: 'Makler' })));
 		const nested = await screen.findByRole('dialog', { name: m.master_add_contact_group() });
 		expect(within(nested).getByDisplayValue('Makler')).toBeTruthy();
 		await user.keyboard('{Escape}');
 		await waitFor(() =>
 			expect(screen.queryByRole('dialog', { name: m.master_add_contact_group() })).toBeNull()
 		);
-		expect(masterDataDialogs.nested).toBeNull();
+		expect(masterDataDialogs.nested).toEqual([]);
 		expect(masterDataDialogs.request).not.toBeNull();
 		expect(screen.getByDisplayValue('Nord Versicherungsgruppe')).toBeTruthy();
 		const posted = fetchMock.mock.calls.some((call) => call[0].method === 'POST');

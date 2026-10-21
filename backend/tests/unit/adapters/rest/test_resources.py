@@ -1,11 +1,12 @@
 """Endpoints for users, master data, spaces and document metadata: they do what they say."""
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 from lekto.adapters.inbound.rest import PREFIX
-from lekto.core.domain.ids import DocumentId
+from lekto.core.domain.ids import DocumentId, new_id
 from lekto.core.services.objects import archive_key
 from tests.api import auth
 from tests.builders import PASSWORD, SAMPLES
@@ -114,15 +115,33 @@ async def test_listing_filters_and_pages(api: Api) -> None:
         f"{PREFIX}/documents", params={"tag_id": tag["id"], "lane": "green"}, headers=auth(owner)
     )
     assert [item["id"] for item in tagged.json()["items"]] == [ids[1]]
+    # Several contacts: documents of one of them.
+    first, second = [
+        await post(api, "/contacts", {"name": name}, auth(admin)) for name in ("Nord", "Süd")
+    ]
+    for document, contact in ((ids[0], first), (ids[2], second)):
+        await api.client.patch(
+            f"{PREFIX}/documents/{document}",
+            json={"contact_id": contact["id"]},
+            headers=auth(owner),
+        )
+    either = await api.client.get(
+        f"{PREFIX}/documents",
+        params=[("contact_id", first["id"]), ("contact_id", second["id"])],
+        headers=auth(owner),
+    )
+    assert {item["id"] for item in either.json()["items"]} == {ids[0], ids[2]}
     for bad in ({"cursor": "!!"}, {"limit": 0}, {"limit": 201}, {"lane": "blue"}):
         response = await api.client.get(f"{PREFIX}/documents", params=bad, headers=auth(owner))
         assert response.status_code == 422, bad
 
 
-async def test_listing_sorts_by_date_and_title_and_filters_by_field(api: Api) -> None:
+async def test_listing_sorts_by_date_title_and_field_and_filters_by_field(api: Api) -> None:
     admin, owner = await api.admin(), await api.user()
     definition = {"name": "Note", "data_type": "text", "document_type_ids": None}
     note = await post(api, "/fields", definition, auth(admin))
+    due_field = {"name": "Due", "data_type": "date", "document_type_ids": None}
+    due = await post(api, "/fields", due_field, auth(admin))
     ids = []
     for number in range(3):
         content = unique_pdf(str(10 + number))
@@ -131,8 +150,12 @@ async def test_listing_sorts_by_date_and_title_and_filters_by_field(api: Api) ->
         )
     await api.drain()
     changes = [
-        {"title": "Zahnarzt", "document_date": "2026-03-01", "fields": {note["id"]: "x"}},
-        {"title": "arzt", "document_date": "2025-01-01"},
+        {
+            "title": "Zahnarzt",
+            "document_date": "2026-03-01",
+            "fields": {note["id"]: "x", due["id"]: "2026-12-01"},
+        },
+        {"title": "arzt", "document_date": "2025-01-01", "fields": {due["id"]: "2026-11-01"}},
         {"title": "Ärztebrief", "document_date": None},
     ]
     for id, change in zip(ids, changes, strict=True):
@@ -158,8 +181,77 @@ async def test_listing_sorts_by_date_and_title_and_filters_by_field(api: Api) ->
     # By title, case and accents aside.
     assert await listed(sort="title") == [ids[1], ids[2], ids[0]]
     assert await listed(field_id=note["id"]) == [ids[0]]
-    bad = await api.client.get(f"{PREFIX}/documents", params={"sort": "size"}, headers=auth(owner))
+    # By the value of a field; without one last.
+    assert await listed(sort="field", sort_field_id=due["id"]) == [ids[1], ids[0], ids[2]]
+    assert await listed(sort="-field", sort_field_id=due["id"]) == [ids[0], ids[1], ids[2]]
+    # Dated within a period, both days included; either end may stay open.
+    year = {"document_date_from": "2026-01-01", "document_date_to": "2026-12-31"}
+    assert await listed(**year) == [ids[0]]
+    assert await listed(document_date_to="2025-01-01") == [ids[1]]
+    assert await listed(document_date_from="2025-01-01", sort="document_date") == ids[1::-1]
+    for bad_params in (
+        {"sort": "size"},
+        {"sort": "field"},
+        {"sort": "title", "sort_field_id": due["id"]},
+        {"sort": "field", "sort_field_id": note["id"]},  # text does not sort
+        {"sort": "field", "sort_field_id": str(new_id())},
+        {"document_date_from": "2026-02-01", "document_date_to": "2026-01-01"},
+        {"document_date_from": "2026-02-30"},
+    ):
+        bad = await api.client.get(f"{PREFIX}/documents", params=bad_params, headers=auth(owner))
+        assert bad.status_code == 422, bad_params
+    # The search index holds no field values.
+    search = {"q": "arzt", "sort": "field", "sort_field_id": due["id"]}
+    bad = await api.client.get(f"{PREFIX}/documents/search", params=search, headers=auth(owner))
     assert bad.status_code == 422
+
+
+async def test_counts_for_the_filters_of_the_documents(api: Api) -> None:
+    admin, owner = await api.admin(), await api.user()
+    nord = await post(api, "/contacts", {"name": "Nord"}, auth(admin))
+    ids = []
+    for number in range(3):
+        content = unique_pdf(str(20 + number))
+        ids.append(
+            await upload(api, auth(owner), content=content, filename=f"{number}.pdf", drain=False)
+        )
+    await api.drain()
+    changes = [
+        {"contact_id": nord["id"], "document_date": "2026-09-30"},
+        {"contact_id": nord["id"], "document_date": "2025-12-24"},
+        {"document_date": None},
+    ]
+    for id, change in zip(ids, changes, strict=True):
+        response = await api.client.patch(
+            f"{PREFIX}/documents/{id}", json=change, headers=auth(owner)
+        )
+        assert response.status_code == 200, response.text
+
+    async def facets(**params: Any) -> dict[str, Any]:
+        response = await api.client.get(
+            f"{PREFIX}/documents/facets", params=params, headers=auth(owner)
+        )
+        assert response.status_code == 200, response.text
+        body: dict[str, Any] = response.json()
+        return body
+
+    counted = await facets()
+    assert counted["total"] == 3
+    assert counted["contacts"] == [{"id": nord["id"], "count": 2}, {"id": None, "count": 1}]
+    assert counted["years"] == [
+        {"year": 2026, "count": 1, "months": [{"month": "2026-09", "count": 1}]},
+        {"year": 2025, "count": 1, "months": [{"month": "2025-12", "count": 1}]},
+    ]
+    assert counted["undated"] == 1
+    # The period counts without its own choice; the contacts follow it.
+    in_2026 = await facets(document_date_from="2026-01-01", document_date_to="2026-12-31")
+    assert in_2026["total"] == 1
+    assert [year["year"] for year in in_2026["years"]] == [2026, 2025]
+    assert in_2026["contacts"] == [{"id": nord["id"], "count": 1}]
+    everyone = await api.client.get(
+        f"{PREFIX}/documents/facets", params={"all_users": True}, headers=auth(owner)
+    )
+    assert everyone.status_code == 403
 
 
 async def test_master_data_with_their_document_counts(api: Api) -> None:
@@ -400,6 +492,35 @@ async def test_secrets_do_not_come_back(api: Api) -> None:
     )
     assert response.status_code == 422
     assert "12345678901234" not in response.text
+
+
+async def test_when_a_document_came_in_is_set_and_orders_the_list(api: Api) -> None:
+    owner = await api.user()
+    o = auth(owner)
+    first = await upload(api, o, content=unique_pdf("first"))
+    second = await upload(api, o, content=unique_pdf("second"))
+    await api.drain()
+    url = f"{PREFIX}/documents/{first}"
+    log = (await api.client.get(f"{url}/log", headers=o)).json()
+
+    response = await api.client.patch(
+        url, json={"created_at": "2023-01-02T09:30:00+01:00"}, headers=o
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert datetime.fromisoformat(body["created_at"]) == datetime(2023, 1, 2, 8, 30, tzinfo=UTC)
+    # It confirms nothing, and the rules do not run: the log has no entry more.
+    assert body["confirmed_at"] is None
+    assert len((await api.client.get(f"{url}/log", headers=o)).json()) == len(log)
+    # Sorted by when they came in, the first arrival is the older one now.
+    listed = await api.client.get(f"{PREFIX}/documents?sort=-created_at", headers=o)
+    assert [item["id"] for item in listed.json()["items"]] == [second, first]
+    oldest = await api.client.get(f"{PREFIX}/documents?sort=created_at", headers=o)
+    assert [item["id"] for item in oldest.json()["items"]] == [first, second]
+    # Never ahead, always with a time zone, never null.
+    for wrong in ("2999-01-01T00:00:00Z", "2023-01-02T09:30:00", None):
+        response = await api.client.patch(url, json={"created_at": wrong}, headers=o)
+        assert response.status_code == 422, (wrong, response.text)
 
 
 async def test_field_definitions_change(api: Api) -> None:
@@ -670,6 +791,9 @@ async def test_tags_with_scopes_trees_and_groups(api: Api) -> None:
     assert await listed(contact_group_id=insurer["id"]) == [document]
     assert await listed(document_type_group_id=bills["id"]) == [document]
     assert await listed(document_type_group_id=insurer["id"]) == []
+    # Several groups: the contact (type) in one of them.
+    assert await listed(contact_group_id=[str(UUID(int=9)), insurer["id"]]) == [document]
+    assert await listed(document_type_group_id=[bills["id"], insurer["id"]]) == [document]
 
     # The tree in order, with counts; one scope.
     response = await api.client.get(f"{PREFIX}/tags", params={"document_counts": True}, headers=o)

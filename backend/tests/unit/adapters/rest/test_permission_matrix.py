@@ -21,6 +21,7 @@ import pytest
 
 from lekto.adapters.inbound.rest import PREFIX
 from lekto.core.domain.encoding import base64url
+from lekto.core.domain.ids import new_id
 from tests.contracts.images import image
 from tests.unit.adapters.rest.support import ACTORS, DENIED, Api, Scene, build_scene
 
@@ -378,14 +379,25 @@ async def test_lists_show_only_readable_documents(api: Api) -> None:
 
 
 async def test_a_cursor_does_not_reveal_hidden_documents(api: Api) -> None:
-    """Paging after a hidden document's id works like after any id: only readable ones."""
+    """Paging after a hidden document's id answers as after an id that does not exist, for
+    every sort: nothing about the hidden one shows (#74). By arrival, the id alone places the
+    page, and only readable documents follow."""
     scene = await build_scene(api)
-    cursor = base64url(UUID(scene.yellow).bytes)
-    response = await api.client.get(
-        f"{PREFIX}/documents", params={"cursor": cursor}, headers=scene.headers["reader"]
+    reader = scene.headers["reader"]
+    hidden, unknown = (base64url(UUID(id).bytes) for id in (scene.yellow, str(new_id())))
+    for sort in ("-created_at", "created_at", "title", "-document_date"):
+        answers = []
+        for cursor in (hidden, unknown):
+            response = await api.client.get(
+                f"{PREFIX}/documents", params={"cursor": cursor, "sort": sort}, headers=reader
+            )
+            answers.append((response.status_code, response.json()["detail"]))
+        assert answers[0] == answers[1], sort
+        assert answers[0][0] == 422, sort
+    owner = await api.client.get(
+        f"{PREFIX}/documents", params={"cursor": hidden}, headers=scene.headers["owner"]
     )
-    assert response.status_code == 200
-    assert {item["id"] for item in response.json()["items"]} <= {scene.green}
+    assert owner.status_code == 200
 
 
 # --- event streams ------------------------------------------------------------------------------

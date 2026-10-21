@@ -31,6 +31,9 @@
 	--destructive: #a11d17;
 	--border: #e3e0da;
 	--input: #dedbd5;
+	/* The edge of a mark on a document's image (`.mark-glass`): dark outside, light inside. */
+	--mark-edge: rgb(0 0 0 / 0.22);
+	--mark-light: rgb(255 255 255 / 0.65);
 	/* Focus outline: petrol, 6:1 on paper (WCAG 1.4.11 asks 3:1). */
 	--ring: #0d6b6b;
 
@@ -48,7 +51,7 @@
 	--lane-red-foreground: #a11d17;
 	--lane-running: #efeeea;
 	--lane-running-foreground: #5f5c55;
-	/* Notes (alerts of the kind `note`): blue, as GitHub and Docusaurus draw them. */
+	/* Notes and tips (alerts `note` and `tip`): blue, as GitHub and Docusaurus draw notes. */
 	--note: #e7f0fb;
 	--note-foreground: #1d4f91;
 }
@@ -71,6 +74,8 @@
 	--destructive: #ff9089;
 	--border: #2e3532;
 	--input: #2e3532;
+	--mark-edge: rgb(0 0 0 / 0.6);
+	--mark-light: rgb(255 255 255 / 0.2);
 	--ring: #3fb5ab;
 
 	--brand: #5fd0c6;
@@ -143,6 +148,18 @@
 	:focus-visible {
 		@apply outline-2 outline-offset-2 outline-ring;
 	}
+	/* Safari on iOS sizes a date field by its own native control: wider than its column (two
+	   side by side overlap) and taller than the other fields. Without that look it takes the
+	   size it is given; the picker still opens on a tap. Only there (`-webkit-touch-callout`). */
+	@supports (-webkit-touch-callout: none) {
+		input:is([type='date'], [type='datetime-local'], [type='month'], [type='time']) {
+			-webkit-appearance: none;
+			appearance: none;
+		}
+		input::-webkit-date-and-time-value {
+			text-align: start;
+		}
+	}
 }
 
 /*
@@ -170,6 +187,21 @@
 }
 
 @layer components {
+	/*
+	 * A mark on a document's image, a tag or the page count on a card (Tobi, 20.10.2026: variant
+	 * I of the canvas page "Kennzeichen"): its colour of the design on glass, so that the text of
+	 * the page below blurs, and an edge dark outside and light inside with a shadow, so that it
+	 * stands apart from light and dark pages alike. The ground (82 % of its colour) comes with it.
+	 */
+	.mark-glass {
+		-webkit-backdrop-filter: blur(10px) saturate(1.4);
+		backdrop-filter: blur(10px) saturate(1.4);
+		box-shadow:
+			0 0 0 1px var(--mark-edge),
+			inset 0 0 0 1px var(--mark-light),
+			0 2px 6px rgb(0 0 0 / 0.28);
+	}
+
 	.tpl-delimiter,
 	.tpl-operator {
 		color: var(--tpl-delimiter);

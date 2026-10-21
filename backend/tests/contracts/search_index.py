@@ -1,7 +1,8 @@
 """Contract of the search index. Needs the fixture `search_index`: an empty index that takes
 vectors of three numbers (`DIMENSIONS`)."""
 
-from datetime import date
+from dataclasses import replace
+from datetime import UTC, date, datetime
 from typing import Any
 
 import pytest
@@ -17,6 +18,7 @@ from lekto.core.domain.ids import (
     UserId,
     new_id,
 )
+from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane
 from lekto.core.domain.search import EmbeddingStamp, IndexDocument, Visibility
 from lekto.core.ports.repository import DocumentFilter, DocumentOrder, SortKey, TagSets
@@ -227,12 +229,12 @@ class SearchIndexContract:
             return await found(search_index, "Rechnung", who, filter=DocumentFilter(**fields))  # type: ignore[arg-type]
 
         assert await with_filter() == {both.id, one_tag.id, processing.id}
-        assert await with_filter(contact=contact) == {both.id}
-        assert await with_filter(document_type=kind) == {both.id}
+        assert await with_filter(contacts=frozenset({contact})) == {both.id}
+        assert await with_filter(document_types=frozenset({kind})) == {both.id}
         assert await with_filter(tags=(frozenset({tag_1}),)) == {both.id, one_tag.id}
         assert await with_filter(tags=(frozenset({tag_1}), frozenset({tag_2}))) == {both.id}
         assert await with_filter(tags=(frozenset({tag_2, TagId(new_id())}),)) == {both.id}
-        assert await with_filter(space=space_b) == {one_tag.id, processing.id}
+        assert await with_filter(spaces=frozenset({space_b})) == {one_tag.id, processing.id}
         assert await with_filter(lanes=frozenset({Lane.GREEN})) == {both.id}
         assert await with_filter(lanes=frozenset({Lane.GREEN, Lane.YELLOW})) == {
             both.id,
@@ -241,9 +243,9 @@ class SearchIndexContract:
         assert await with_filter(lanes=frozenset({None})) == {processing.id}
         assert await with_filter(lanes=frozenset({None, Lane.RED})) == {processing.id}
         assert await with_filter(
-            tags=(frozenset({tag_1}),), space=space_b, lanes=frozenset({Lane.YELLOW})
+            tags=(frozenset({tag_1}),), spaces=frozenset({space_b}), lanes=frozenset({Lane.YELLOW})
         ) == {one_tag.id}
-        assert await with_filter(contact=ContactId(new_id())) == set()
+        assert await with_filter(contacts=frozenset({ContactId(new_id())})) == set()
 
     async def test_tags_with_their_ancestors_and_groups_are_found_by_name(
         self, search_index: SearchIndex
@@ -319,6 +321,22 @@ class SearchIndexContract:
             search_index, "Rechnung", visibility(owner), filter=DocumentFilter(field=field)
         ) == {with_value.id}
 
+    async def test_dated_within_a_period(self, search_index: SearchIndex) -> None:
+        owner = UserId(new_id())
+        first = index_document(owner_id=owner, text="Rechnung", document_date=date(2026, 9, 1))
+        last = index_document(owner_id=owner, text="Rechnung", document_date=date(2026, 9, 30))
+        october = index_document(owner_id=owner, text="Rechnung", document_date=date(2026, 10, 1))
+        undated = index_document(owner_id=owner, text="Rechnung")
+        await search_index.upsert([first, last, october, undated])
+
+        async def within(period: Period) -> set[DocumentId]:
+            criteria = DocumentFilter(document_dates=period)
+            return await found(search_index, "Rechnung", visibility(owner), filter=criteria)
+
+        assert await within(Period.month(2026, 9)) == {first.id, last.id}
+        assert await within(Period(date(2026, 9, 30), date.max)) == {last.id, october.id}
+        assert await within(Period.year(2025)) == set()
+
     async def test_sorted_by_date_and_title_without_a_date_last(
         self, search_index: SearchIndex
     ) -> None:
@@ -343,6 +361,19 @@ class SearchIndexContract:
         assert await ordered(oldest) == [december.id, march.id, undated.id]
         by_title = DocumentOrder(SortKey.TITLE, ascending=True)
         assert await ordered(by_title) == [undated.id, march.id, december.id]
+        # By when they came in, which a migration or a person may have set: not the ids'.
+        came_in = {
+            march.id: datetime(2026, 3, 2, 9, 0, tzinfo=UTC),
+            december.id: datetime(2023, 1, 5, 8, 0, tzinfo=UTC),
+            undated.id: datetime(2026, 9, 1, 7, 0, tzinfo=UTC),
+        }
+        await search_index.upsert(
+            [replace(item, created_at=came_in[item.id]) for item in (march, december, undated)]
+        )
+        latest = DocumentOrder(SortKey.CREATED)
+        assert await ordered(latest) == [undated.id, march.id, december.id]
+        earliest = DocumentOrder(SortKey.CREATED, ascending=True)
+        assert await ordered(earliest) == [december.id, march.id, undated.id]
         # Words and meaning together keep the order.
         if (await search_index.search(query("Rechnung", who, vector=(1.0, 0.0, 0.0)))).semantic:
             assert await ordered(newest, vector=(1.0, 0.0, 0.0), semantic_ratio=0.5) == [
@@ -415,7 +446,9 @@ class SearchIndexContract:
         )
         await search_index.upsert([hidden])
         who = visibility(me, space)
-        fields = DocumentFilter(contact=contact, space=space, lanes=frozenset({Lane.YELLOW}))
+        fields = DocumentFilter(
+            contacts=frozenset({contact}), spaces=frozenset({space}), lanes=frozenset({Lane.YELLOW})
+        )
         assert await found(search_index, "Vertrag", who, filter=fields) == set()
 
     # --- paging ---------------------------------------------------------------------------------

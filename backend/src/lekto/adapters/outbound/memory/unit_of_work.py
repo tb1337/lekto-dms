@@ -26,6 +26,7 @@ from lekto.adapters.outbound.memory.database import (
     DOCUMENTS,
     EXTERNAL_IDENTITIES,
     FIELDS,
+    LENSES,
     LOGIN_FAILURES,
     RULE_APPLICATIONS,
     RULES,
@@ -46,6 +47,7 @@ from lekto.adapters.outbound.memory.identity import (
     MemorySessionRepository,
 )
 from lekto.adapters.outbound.memory.inbox import MemoryInboxRepository, SeenKey
+from lekto.adapters.outbound.memory.lenses import MemoryLensRepository
 from lekto.adapters.outbound.memory.ordering import Rank, rank
 from lekto.adapters.outbound.memory.rows import _REMOVED, MemoryRepository, _copy
 from lekto.adapters.outbound.memory.rules import (
@@ -86,6 +88,7 @@ from lekto.core.ports.repository import (
     DocumentFilter,
     DocumentOrder,
     DocumentPosition,
+    FacetRow,
     FilterView,
 )
 
@@ -123,6 +126,7 @@ class MemoryUnitOfWork:
         self.rule_applications = MemoryRuleApplicationRepository(self, RULE_APPLICATIONS)
         self.classifier_models = MemoryClassifierModelRepository(self, CLASSIFIER_MODELS)
         self.webhooks = MemoryWebhookRepository(self, WEBHOOKS)
+        self.lenses = MemoryLensRepository(self, LENSES)
         self.outbox = MemoryOutbox(self)
         self.jobs = MemoryJobQueue(self)
         self.credentials = MemoryCredentialRepository(self, CREDENTIALS)
@@ -395,6 +399,25 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
     ) -> list[Document]:
         every = [_copy(row) for row in self._all()]
         return _query(every, filter, self._groups(), order=order, after=after, limit=limit)
+
+    async def facet_rows(self, filter: DocumentFilter, user: UserId | None) -> list[FacetRow]:
+        documents = (
+            [_copy(row) for row in self._all()]
+            if user is None
+            else await self.list_visible_to(user)
+        )
+        groups = self._groups()
+        return [
+            FacetRow(
+                contact=document.contact_id,
+                document_type=document.document_type_id,
+                topic=document.topic_id,
+                tags=frozenset(document.tag_ids),
+                document_date=document.document_date,
+            )
+            for document in documents
+            if filter.matches(groups.view(document))
+        ]
 
     def _groups(self) -> "_Groups":
         return _Groups(

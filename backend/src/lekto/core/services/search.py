@@ -14,13 +14,13 @@ from dataclasses import dataclass, replace
 from datetime import timedelta
 
 from lekto.core.domain.documents import Document
-from lekto.core.domain.errors import EmbeddingsError
+from lekto.core.domain.errors import EmbeddingsError, ValidationError
 from lekto.core.domain.ids import SpaceId, UserId
 from lekto.core.domain.permissions import document_access, reach_access
 from lekto.core.domain.search import Segment, Visibility
 from lekto.core.domain.spaces import ShareLevel, Space
 from lekto.core.ports.embeddings import Embeddings
-from lekto.core.ports.repository import DocumentFilter, DocumentOrder
+from lekto.core.ports.repository import DocumentFilter, DocumentOrder, SortKey
 from lekto.core.ports.search_index import (
     MAX_HITS,
     SEARCH_PAGE,
@@ -97,13 +97,16 @@ class SearchService:
         or in `order`; with `all_users` (admins only), any document. Each says whether it stands
         open in the caller's inbox (with `all_users`, in every user's).
 
-        ValidationError for an empty text or a paging outside the limits, AuthenticationError
+        ValidationError for an empty text, a paging outside the limits or an order by a field
+        (the index holds no field values), AuthenticationError
         for a deactivated caller, PermissionDeniedError for `all_users` without being an admin,
         SearchUnavailableError if the index cannot be reached.
         """
         filter = filter or DocumentFilter()
         ratio = self._policy.semantic_ratio if semantic_ratio is None else semantic_ratio
         check_search(text, ratio, offset, limit)
+        if order is not None and order.key is SortKey.FIELD:
+            raise ValidationError("sort: the search cannot sort by a field")
         async with self._uow() as uow:
             user = await load_lister(uow, actor, all_users, "search the documents of all users")
             spaces = await uow.spaces.list_accessible(actor)

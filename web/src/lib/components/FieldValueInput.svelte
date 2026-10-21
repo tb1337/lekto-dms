@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 	import { type InputValue, isMoney, isPeriod } from '#lib/fields.ts';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import PeriodInput from '#lib/components/PeriodInput.svelte';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
@@ -55,21 +55,9 @@
 {:else if field.data_type === 'period' && isPeriod(value)}
 	<PeriodInput bind:value {id} {disabled} invalid={Boolean(error)} />
 {:else if field.data_type === 'boolean' && typeof value === 'string'}
-	<NativeSelect
-		{id}
-		bind:value
-		{disabled}
-		options={yesNo}
-		aria-invalid={error ? true : undefined}
-	/>
+	<Select {id} bind:value {disabled} options={yesNo} aria-invalid={error ? true : undefined} />
 {:else if field.data_type === 'choice' && typeof value === 'string'}
-	<NativeSelect
-		{id}
-		bind:value
-		{disabled}
-		options={choices}
-		aria-invalid={error ? true : undefined}
-	/>
+	<Select {id} bind:value {disabled} options={choices} aria-invalid={error ? true : undefined} />
 {:else if typeof value === 'string'}
 	<Input
 		{id}

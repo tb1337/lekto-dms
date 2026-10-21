@@ -56,7 +56,7 @@ from lekto.core.domain.fields import (
 )
 from lekto.core.domain.ids import ContactId, DocumentId, FieldId
 from lekto.core.domain.json_value import JsonObject, JsonValue, as_list
-from lekto.core.domain.labels import LabelCheck, LabelOutcome, LaidWord, check_label, layout_words
+from lekto.core.domain.labels import LabelCheck, LabelOutcome, check_label
 from lekto.core.domain.locations import Location
 from lekto.core.domain.master_data import Contact, DocumentType, Tag
 from lekto.core.domain.names import match_key, mentions, named_share
@@ -130,9 +130,9 @@ from lekto.core.services.exchanges import keep_calls
 from lekto.core.services.nodes import ARCHIVE_FILE, work_directory
 from lekto.core.services.objects import (
     archive_key,
+    load_layout,
     load_text,
     reading_key,
-    structure_key,
     text_key,
 )
 from lekto.core.services.pipeline import MetadataResult
@@ -1078,7 +1078,7 @@ async def _labelled(
         asked and definition.data_type in _LABELLED and given[definition.id].label is not None
         for asked, definition in zip(read, definitions, strict=True)
     )
-    pages = await _layout_words(store, document) if wanted else {}
+    pages = await load_layout(store, document.id) if wanted else {}
 
     def label(check: FieldCheck, definition: FieldDefinition) -> LabelCheck:
         text = given[definition.id].label
@@ -1101,29 +1101,6 @@ async def _labelled(
             "the labels were not checked", exc_info=True, extra={"document_id": str(document.id)}
         )
         return list(checks)
-
-
-async def _layout_words(
-    store: ObjectStore, document: Document
-) -> Mapping[int, tuple[LaidWord, ...]]:
-    """The words of the document's parsed text by page; none without it, for one of another
-    kind (`layout_words`), or where it cannot be read (the label check is recorded only, so a
-    store that fails leaves it unknown instead of failing the node)."""
-    key = structure_key(document.id)
-    try:
-        data = await store.get(key)
-        pages = await asyncio.to_thread(lambda: layout_words(json.loads(data)))
-    except NotFoundError:
-        return {}
-    except Exception as error:
-        log.warning(
-            "the structure of the text cannot be read: %s",
-            error,
-            exc_info=not isinstance(error, ValueError),
-            extra={"key": key},
-        )
-        return {}
-    return pages or {}
 
 
 type _Place = tuple[Location, Sequence[ReadWord], tuple[ReadWord, ...] | None]

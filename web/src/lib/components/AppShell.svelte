@@ -1,12 +1,14 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import BookOpen from '@lucide/svelte/icons/book-open';
+	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Menu from '@lucide/svelte/icons/menu';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import Users from '@lucide/svelte/icons/users';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { BASE } from '#lib/base.ts';
+	import { API_DOCS, BASE } from '#lib/base.ts';
 	import HeaderSearch from '#lib/components/HeaderSearch.svelte';
 	import LanguageChoices from '#lib/components/LanguageChoices.svelte';
 	import LanguageMenu from '#lib/components/LanguageMenu.svelte';
@@ -17,6 +19,7 @@
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
 	import * as Sheet from '#lib/components/ui/sheet/index.ts';
 	import { reportError } from '#lib/errors.ts';
+	import { searchPlaces } from '#lib/header-search.ts';
 	import { home, loginHref } from '#lib/navigation.ts';
 	import { BADGE_TONES, badgeLabel, badgeText, badgeTone, inbox } from '#lib/inbox.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -99,7 +102,8 @@
 >
 
 <!-- A page that needs the room (the document view) marks itself `data-wide`: from the desktop
-	width on it fills the window, and only its own areas scroll. -->
+	width on it fills the window, and only its own areas scroll. One that only needs the width
+	(the documents) marks itself `data-roomy`: as wide, and it scrolls as a page. -->
 <div class="flex min-h-screen flex-col lg:has-[[data-wide]]:h-dvh">
 	<header class="sticky top-0 z-40 border-b bg-card">
 		<!-- Narrower gaps on a phone, and a little narrower below 380 pixels, so that the menu, the
@@ -155,20 +159,14 @@
 			</nav>
 
 			<div class="ml-auto flex items-center gap-1.5 max-[380px]:gap-1 sm:gap-2">
-				<!-- The field where there is room: instead of the menu from md, beside it from xl
-				     (the admin's menu from xl, the field beside it from 2xl). -->
-				<HeaderSearch
-					class={cn(
-						'hidden w-64 md:flex',
-						adminSections.length ? 'xl:hidden 2xl:flex 2xl:w-80' : 'lg:hidden xl:flex xl:w-80'
-					)}
-				/>
+				<!-- The field where there is room, else a magnifier to the documents page's own
+				     field (`header-search.ts`). -->
+				<HeaderSearch class={searchPlaces(adminSections.length > 0).field} />
 				<a
 					href="{BASE}/documents#search"
 					class={cn(
 						buttonVariants({ variant: 'ghost', size: 'icon' }),
-						'md:hidden',
-						adminSections.length ? 'xl:inline-flex 2xl:hidden' : 'lg:inline-flex xl:hidden'
+						searchPlaces(adminSections.length > 0).icon
 					)}
 					aria-label={m.header_search_label()}
 				>
@@ -232,6 +230,17 @@
 							<SETTINGS.icon aria-hidden="true" />
 							{SETTINGS.label()}
 						</DropdownMenu.Item>
+						<!-- The API's own documentation (Swagger UI), in a new tab. -->
+						<DropdownMenu.Item>
+							{#snippet child({ props })}
+								<a {...props} href={API_DOCS} target="_blank" rel="noopener noreferrer">
+									<BookOpen aria-hidden="true" />
+									{m.api_docs()}
+									<span class="sr-only">({m.opens_in_new_tab()})</span>
+									<ExternalLink aria-hidden="true" class="ml-auto text-muted-foreground" />
+								</a>
+							{/snippet}
+						</DropdownMenu.Item>
 						<DropdownMenu.Item onSelect={signOut}>
 							<LogOut aria-hidden="true" />
 							{m.sign_out()}
@@ -248,7 +257,7 @@
 		class="flex flex-1 justify-center px-4 py-8 outline-none sm:px-8 lg:has-[[data-wide]]:min-h-0 lg:has-[[data-wide]]:py-6"
 	>
 		<div
-			class="w-full max-w-[1040px] has-[[data-wide]]:max-w-[1600px] lg:has-[[data-wide]]:min-h-0"
+			class="w-full max-w-[1040px] has-[[data-roomy]]:max-w-[1600px] has-[[data-wide]]:max-w-[1600px] lg:has-[[data-wide]]:min-h-0"
 		>
 			{@render children()}
 		</div>

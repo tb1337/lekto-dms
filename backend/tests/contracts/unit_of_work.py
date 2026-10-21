@@ -1,6 +1,6 @@
 import asyncio
 from collections.abc import Awaitable, Callable, Collection
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -12,7 +12,7 @@ from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
 from lekto.core.domain.fields import FieldDefinition, FieldType, Money, Url
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
-from lekto.core.domain.ids import DocumentId, SpaceId, TagId, new_id
+from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, SpaceId, TagId, new_id
 from lekto.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
 from lekto.core.domain.periods import Period
 from lekto.core.domain.permissions import can_read_document
@@ -34,6 +34,7 @@ from lekto.core.ports.repository import (
     DocumentFilter,
     DocumentOrder,
     DocumentPosition,
+    FacetRow,
     SortKey,
     TagSets,
 )
@@ -928,14 +929,14 @@ class UnitOfWorkContract:
                 queried = await uow.documents.query_visible(user.id, DocumentFilter(), limit=100)
                 assert {document.id for document in queried} == expected, user.username
                 for lane in (Lane.YELLOW, Lane.RED, None):
-                    only = DocumentFilter(lanes=frozenset({lane}), space=shared.id)
+                    only = DocumentFilter(lanes=frozenset({lane}), spaces=frozenset({shared.id}))
                     found = await uow.documents.query_visible(user.id, only, limit=100)
                     assert {d.id for d in found} <= expected, user.username
         assert len(expected) == 0  # the stranger sees nothing
         async with uow_factory() as uow:
             every = await uow.documents.query(DocumentFilter(), limit=100)
             assert {d.id for d in every} >= {d.id for d in documents}
-            yellow = DocumentFilter(lanes=frozenset({Lane.YELLOW}), space=shared.id)
+            yellow = DocumentFilter(lanes=frozenset({Lane.YELLOW}), spaces=frozenset({shared.id}))
             yellow_ids = {d.id for d in await uow.documents.query(yellow, limit=100)}
             assert yellow_ids == {d.id for d in documents if d.lane is Lane.YELLOW}
 
@@ -1078,24 +1079,35 @@ class UnitOfWorkContract:
             everything = await query(owner.id, DocumentFilter(), limit=100)
             all_ids = [d.id for d in [*documents, processing]]
             assert [d.id for d in everything] == sorted(all_ids, reverse=True)
-            assert set(ids(await query(owner.id, DocumentFilter(contact=contact.id), limit=9))) == {
-                0,
-                2,
-                4,
-            }
-            by_type = DocumentFilter(document_type=invoice.id)
+            by_contact = DocumentFilter(contacts=frozenset({contact.id}))
+            assert set(ids(await query(owner.id, by_contact, limit=9))) == {0, 2, 4}
+            by_type = DocumentFilter(document_types=frozenset({invoice.id}))
             assert set(ids(await query(owner.id, by_type, limit=9))) == {0, 1, 2}
+            # Several contacts, types or spaces: one of them.
+            unknown = new_id()
+            either_contact = DocumentFilter(contacts=frozenset({contact.id, ContactId(unknown)}))
+            assert set(ids(await query(owner.id, either_contact, limit=9))) == {0, 2, 4}
+            either_type = DocumentFilter(
+                document_types=frozenset({invoice.id, DocumentTypeId(unknown)})
+            )
+            assert set(ids(await query(owner.id, either_type, limit=9))) == {0, 1, 2}
+            either_space = DocumentFilter(spaces=frozenset({space.id, other.id}))
+            assert set(ids(await query(owner.id, either_space, limit=9))) == {-1, 0, 1, 2, 3, 4, 5}
             both_tags = DocumentFilter(tags=(frozenset({tax.id}), frozenset({paid.id})))
             assert set(ids(await query(owner.id, both_tags, limit=9))) == {0, 1}
             either_tag = DocumentFilter(tags=(frozenset({tax.id, paid.id}),))
             assert set(ids(await query(owner.id, either_tag, limit=9))) == {0, 1, 2, 3}
-            assert set(ids(await query(owner.id, DocumentFilter(space=other.id), limit=9))) == {5}
+            assert set(
+                ids(await query(owner.id, DocumentFilter(spaces=frozenset({other.id})), limit=9))
+            ) == {5}
             yellow = DocumentFilter(lanes=frozenset({Lane.YELLOW}))
             assert set(ids(await query(owner.id, yellow, limit=9))) == {4}
             in_processing = await query(owner.id, DocumentFilter(lanes=frozenset({None})), limit=9)
             assert [d.id for d in in_processing] == [processing.id]
             combined = DocumentFilter(
-                contact=contact.id, document_type=invoice.id, tags=(frozenset({paid.id}),)
+                contacts=frozenset({contact.id}),
+                document_types=frozenset({invoice.id}),
+                tags=(frozenset({paid.id}),),
             )
             assert set(ids(await query(owner.id, combined, limit=9))) == {0}
 
@@ -1113,9 +1125,11 @@ class UnitOfWorkContract:
                 d.id for d in await uow.documents.query(both_tags, limit=9)
             ]
             in_space = [d.id for d in everything if d.space_id == space.id]
-            first = await uow.documents.query(DocumentFilter(space=space.id), limit=2)
+            first = await uow.documents.query(DocumentFilter(spaces=frozenset({space.id})), limit=2)
             rest = await uow.documents.query(
-                DocumentFilter(space=space.id), after=DocumentPosition(first[-1].id), limit=100
+                DocumentFilter(spaces=frozenset({space.id})),
+                after=DocumentPosition(first[-1].id),
+                limit=100,
             )
             assert [d.id for d in [*first, *rest]] == in_space
 
@@ -1259,6 +1273,130 @@ class UnitOfWorkContract:
         )
         async with uow_factory() as uow:
             assert len(await uow.documents.query(with_note, limit=9)) == 2
+        # Documents dated within a period, both days included; one without a date never.
+        march = DocumentFilter(document_dates=Period.month(2026, 3))
+        assert sorted(await paged(NEWEST_FIRST, march)) == ["arzt", "Ärztebrief"]
+        since_christmas = DocumentFilter(document_dates=Period(date(2025, 12, 24), date.max))
+        assert sorted(await paged(NEWEST_FIRST, since_christmas)) == ["arzt", "bank", "Ärztebrief"]
+        before = DocumentFilter(document_dates=Period(date.min, date(2025, 12, 23)))
+        assert await paged(NEWEST_FIRST, before) == []
+
+    async def test_query_sorts_by_when_documents_came_in_and_by_arrival(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner, space = await owner_with_space(uow_factory)
+        # In the order they reach Lekto; two came in at the same moment, the last long before
+        # (a migration took over the source system's date).
+        came_in = [
+            datetime(2026, 5, 1, 9, 0, tzinfo=UTC),
+            datetime(2026, 7, 1, 9, 0, tzinfo=UTC),
+            datetime(2026, 5, 1, 9, 0, tzinfo=UTC),
+            datetime(2023, 1, 2, 8, 30, tzinfo=UTC),
+        ]
+        documents = []
+        for at in came_in:
+            document = builders.processed(owner, space)
+            document.apply_changes(DocumentChanges(created_at=at), {}, NOW)
+            documents.append(document)
+        async with uow_factory() as uow:
+            for document in documents:
+                await uow.documents.add(document)
+            await uow.commit()
+        index = {document.id: number for number, document in enumerate(documents)}
+
+        async def paged(order: DocumentOrder) -> list[int]:
+            found: list[Document] = []
+            after = None
+            async with uow_factory() as uow:
+                while page := await uow.documents.query_visible(
+                    owner.id, DocumentFilter(), order=order, after=after, limit=2
+                ):
+                    found += page
+                    after = DocumentPosition.of(page[-1], order)
+            return [index[document.id] for document in found]
+
+        def by_id(*numbers: int, descending: bool = False) -> list[int]:
+            # Ids of one millisecond need not grow in the order they were made.
+            return sorted(numbers, key=lambda number: documents[number].id, reverse=descending)
+
+        # By when they came in, ties by id the same way.
+        newest = await paged(DocumentOrder(SortKey.CREATED))
+        assert newest == [1, *by_id(0, 2, descending=True), 3], newest
+        oldest = await paged(DocumentOrder(SortKey.CREATED, ascending=True))
+        assert oldest == [3, *by_id(0, 2), 1], oldest
+        # By when they reached Lekto: their ids, whatever date they carry.
+        assert await paged(NEWEST_FIRST) == by_id(0, 1, 2, 3, descending=True)
+        assert await paged(DocumentOrder(SortKey.ARRIVAL, ascending=True)) == by_id(0, 1, 2, 3)
+        async with uow_factory() as uow:
+            assert (await uow.documents.get(documents[3].id)).created_at == came_in[3]
+
+    async def test_query_sorts_by_the_value_of_a_field(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner, space = await owner_with_space(uow_factory)
+        due = FieldDefinition.create(name="Due", data_type=FieldType.DATE, now=NOW)
+        total = FieldDefinition.create(name="Total", data_type=FieldType.AMOUNT, now=NOW)
+        span = FieldDefinition.create(name="Span", data_type=FieldType.PERIOD, now=NOW)
+        definitions = {item.id: item for item in (due, total, span)}
+        rows = [  # title, due, total, span; in the order they come in
+            ("a", date(2026, 11, 1), Money(Decimal("100"), "EUR"), Period.year(2025)),
+            ("b", date(2026, 10, 1), Money(Decimal("9.50"), "EUR"), None),
+            ("c", None, Money(Decimal("10.00"), "EUR"), Period.month(2024, 5)),
+            ("d", date(2026, 10, 1), Money(Decimal("10"), "USD"), Period.month(2025, 1)),
+            ("e", date(2027, 1, 1), None, None),
+        ]
+        documents = []
+        for title, day, amount, period in rows:
+            document = builders.processed(owner, space)
+            values = {due.id: day, total.id: amount, span.id: period}
+            changes = DocumentChanges(
+                title=title,
+                fields={id: value for id, value in values.items() if value is not None},
+            )
+            document.apply_changes(changes, definitions, NOW)
+            documents.append(document)
+        async with uow_factory() as uow:
+            for definition in definitions.values():
+                await uow.fields.add(definition)
+            for document in documents:
+                await uow.documents.add(document)
+            await uow.commit()
+        titles = {document.id: document.title for document in documents}
+
+        async def paged(field: FieldDefinition, *, ascending: bool) -> list[str]:
+            order = DocumentOrder(SortKey.FIELD, ascending=ascending, field=field.id)
+            found: list[Document] = []
+            after = None
+            async with uow_factory() as uow:
+                while page := await uow.documents.query_visible(
+                    owner.id, DocumentFilter(), order=order, after=after, limit=2
+                ):
+                    found += page
+                    after = DocumentPosition.of(page[-1], order)
+            return [titles[document.id] for document in found]
+
+        def by_id(*names: str, descending: bool = False) -> list[str]:
+            ids = {title: id for id, title in titles.items()}
+            return sorted(names, key=lambda name: ids[name], reverse=descending)
+
+        # Ties by id the same way, without a value last in both directions.
+        assert await paged(due, ascending=True) == [*by_id("b", "d"), "a", "e", "c"]
+        assert await paged(due, ascending=False) == [
+            "e",
+            "a",
+            *by_id("b", "d", descending=True),
+            "c",
+        ]
+        # Amounts by value, whatever the currency; 9.50 before 10 before 100, not as text.
+        assert await paged(total, ascending=True) == ["b", *by_id("c", "d"), "a", "e"]
+        assert await paged(total, ascending=False) == [
+            "a",
+            *by_id("c", "d", descending=True),
+            "b",
+            "e",
+        ]
+        # Periods by their first day: January 2025 and the year 2025 tie.
+        assert await paged(span, ascending=True) == ["c", *by_id("a", "d"), *by_id("b", "e")]
 
     async def test_documents_are_counted_by_master_data(
         self, uow_factory: UnitOfWorkFactory
@@ -1300,6 +1438,59 @@ class UnitOfWorkContract:
             # Every document.
             assert await count(CountBy.CONTACT, None) == {contact.id: 3}
             assert await count(CountBy.FIELD, None) == {note.id: 2}
+
+    async def test_facet_rows_follow_the_filter_and_the_reach(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner, space = await owner_with_space(uow_factory)
+        stranger, theirs = await owner_with_space(uow_factory)
+        contact = Contact.create(name="ACME", now=NOW)
+        invoice = DocumentType.create(name="Invoice", now=NOW)
+        tax, paid = Tag.create(name="tax", now=NOW), Tag.create(name="paid", now=NOW)
+        topic = Tag.create(name="Car", scope=TagScope.TOPIC, now=NOW)
+        documents = []
+        for number, (user, place) in enumerate(
+            [(owner, space), (owner, space), (stranger, theirs)]
+        ):
+            document = builders.processed(user, place)
+            changes = DocumentChanges(
+                contact_id=contact.id if number != 1 else None,
+                document_type_id=invoice.id if number == 0 else None,
+                topic_id=topic.id if number == 0 else None,
+                tag_ids=frozenset({tax.id, paid.id} if number == 0 else {tax.id}),
+                document_date=date(2026, 9, 30) if number == 0 else None,
+            )
+            document.apply_changes(changes, {}, NOW)
+            documents.append(document)
+        async with uow_factory() as uow:
+            for item in (contact, invoice, tax, paid, topic):
+                await getattr(uow, _repository_of(item)).add(item)
+            for document in documents:
+                await uow.documents.add(document)
+            await uow.commit()
+
+        first = FacetRow(
+            contact=contact.id,
+            document_type=invoice.id,
+            topic=topic.id,
+            tags=frozenset({tax.id, paid.id}),
+            document_date=date(2026, 9, 30),
+        )
+        second = FacetRow(
+            contact=None, document_type=None, topic=None, tags=frozenset({tax.id}),
+            document_date=None,
+        )  # fmt: skip
+        async with uow_factory() as uow:
+            rows = uow.documents.facet_rows
+            # Within the owner's reach: their own two, the stranger's space is not shared.
+            assert sorted(await rows(DocumentFilter(), owner.id), key=repr) == sorted(
+                [first, second], key=repr
+            )
+            by_contact = DocumentFilter(contacts=frozenset({contact.id}))
+            assert await rows(by_contact, owner.id) == [first]
+            assert len(await rows(by_contact, None)) == 2  # every document
+            in_september = DocumentFilter(document_dates=Period.month(2026, 9))
+            assert await rows(in_september, owner.id) == [first]
 
     async def test_removing_a_document_removes_its_processing_log(
         self, uow_factory: UnitOfWorkFactory

@@ -331,6 +331,11 @@ def _compare(
                 meta["document_date"],
                 actual.get("document_date"),
             )
+    # When it came in, taken over with the upload (state files from before have none).
+    if meta.get("created_at") and not _same_moment(meta["created_at"], actual.get("created_at")):
+        deviation(
+            "document", id, "date added differs", meta["created_at"], actual.get("created_at")
+        )
     if extracted:
         for field_id in sorted(set(meta["fields"]) | set(actual.get("fields") or {})):
             want, have = (
@@ -370,6 +375,14 @@ def _paperless_checksum(document: dict[str, Any]) -> str | None:
         if version.get("is_root") and _SHA256.fullmatch(checksum):
             return checksum
     return None
+
+
+def _same_moment(want: str, have: Any) -> bool:
+    """Whether two ISO moments are the same, whatever the time zone they are written in."""
+    try:
+        return datetime.fromisoformat(want) == datetime.fromisoformat(str(have))
+    except ValueError:
+        return False
 
 
 def _same(want: Any, have: Any, data_type: str) -> bool:

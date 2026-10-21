@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -66,6 +66,54 @@ def test_receive_cannot_fail() -> None:
             result=FAILED,
             now=NOW,
         )
+
+
+def test_receive_takes_over_when_it_came_in_but_never_a_moment_ahead() -> None:
+    owner = builders.user()
+
+    def received(at: datetime) -> Document:
+        return Document.receive(
+            owner_id=owner.id,
+            space_id=builders.default_space(owner).id,
+            sha256=builders.sha256(),
+            original_filename="a.pdf",
+            media_type="application/pdf",
+            result=UNCERTAIN,
+            now=NOW,
+            received=at,
+        )
+
+    earlier = datetime(2023, 1, 2, 8, 30, tzinfo=UTC)
+    document = received(earlier)
+    assert (document.created_at, document.updated_at) == (earlier, NOW)
+    events = document.pull_events()
+    assert isinstance(events[0], DocumentReceived)
+    assert events[0].occurred_at == NOW
+    for wrong in (LATER, datetime(2023, 1, 2, 8, 30)):  # ahead; no time zone
+        with pytest.raises(ValidationError):
+            received(wrong)
+
+
+def test_when_it_came_in_is_set_alone_and_confirms_nothing() -> None:
+    document = builders.received()
+    document.pull_events()
+    berlin = timezone(timedelta(hours=2))
+    at = datetime(2026, 9, 30, 18, 0, tzinfo=berlin).astimezone(UTC)
+    changes = DocumentChanges(created_at=at)
+    assert changes.only_receipt
+    assert not DocumentChanges(created_at=at, title="Brief").only_receipt
+    assert not DocumentChanges().only_receipt
+    changed = document.apply_changes(changes, {}, LATER)
+    assert changed == ("created_at",)
+    assert not confirms(changed, (), (), ())
+    assert (document.created_at, document.updated_at) == (at, LATER)
+    [event] = document.pull_events()
+    assert isinstance(event, DocumentUpdated)
+    assert event.fields == ("created_at",)
+    assert document.apply_changes(changes, {}, LATER) == ()
+    with pytest.raises(ValidationError):
+        document.apply_changes(DocumentChanges(created_at=LATER + timedelta(seconds=1)), {}, LATER)
+    assert document.created_at == at
 
 
 def test_metadata_change_records_changed_fields() -> None:

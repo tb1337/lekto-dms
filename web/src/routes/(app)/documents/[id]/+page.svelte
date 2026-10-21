@@ -1,5 +1,10 @@
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import File from '@lucide/svelte/icons/file';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
+	import SquarePen from '@lucide/svelte/icons/square-pen';
+	import TextAlignStart from '@lucide/svelte/icons/text-align-start';
+	import { onMount, tick, untrack, type Snippet } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '#lib/api/client.ts';
@@ -7,13 +12,17 @@
 	import { ApiError } from '#lib/api/problem.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
-	import DocumentContent from '#lib/components/document/DocumentContent.svelte';
+	import DocumentFacts from '#lib/components/document/DocumentFacts.svelte';
 	import DocumentFiles from '#lib/components/document/DocumentFiles.svelte';
 	import DocumentForm from '#lib/components/document/DocumentForm.svelte';
 	import DocumentLog from '#lib/components/document/DocumentLog.svelte';
 	import DocumentHeader from '#lib/components/document/DocumentHeader.svelte';
+	import DocumentText from '#lib/components/document/DocumentText.svelte';
 	import PageImages from '#lib/components/document/PageImages.svelte';
 	import PdfViewer from '#lib/components/PdfViewer.svelte';
+	import Segmented from '#lib/components/Segmented.svelte';
+	import TabBar from '#lib/components/TabBar.svelte';
+	import ToTop from '#lib/components/ToTop.svelte';
 	import * as Alert from '#lib/components/ui/alert/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import {
@@ -22,13 +31,19 @@
 		neighbours,
 		nextDecision,
 		type InboxPlace,
+		LEFT,
+		type Left,
+		type Right,
 		tabHref,
 		tabOf,
 		type Mark,
 		type Place,
 		type Review,
 		type Tab,
-		viewerSources
+		type View,
+		viewerSources,
+		viewHref,
+		viewOf
 	} from '#lib/document-view.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
 	import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
@@ -39,17 +54,27 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
 	import { hasText, type GraphNode } from '#lib/pipeline.ts';
+	import { phone } from '#lib/phone.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
-	import { cn } from '#lib/utils.ts';
-	import { factCounts, type CodeFacts, type CodePlace, type Facts } from '#lib/facts.ts';
+	import {
+		factCounts,
+		spanMarks,
+		type CodeFacts,
+		type CodePlace,
+		type Facts,
+		type Span
+	} from '#lib/facts.ts';
 	import { adviceText, visionAvailable, type Reading, type Vision } from '#lib/vision.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
 
-	// One view for every document, from the inbox and from the list: the pages and the fields
-	// (details), the recognised text and structure (content), and the processing (log).
+	// One view for every document, from the inbox and from the list: the document (on the left
+	// its pages or its text, on the right its details or its facts), its files (metadata) and
+	// the processing (log). The view of the document tab is in the link; without one, the pages
+	// and the details: the browser remembers none (Tobi, 21.10.2026).
 	const id = $derived(page.params.id ?? '');
 	const tab = $derived(tabOf(page.url));
+	const view = $derived(viewOf(page.url));
 	const fromInbox = $derived(page.url.searchParams.get('from') === 'inbox');
 	let document = $state<Document | null>(null);
 	let review = $state<Review | null>(null);
@@ -64,8 +89,22 @@
 	let inboxPlaces = $state<InboxPlace[] | null>(null);
 	let inboxReady: Promise<void> = Promise.resolve();
 	let problem = $state<unknown>(null);
+	// Each pane on the right marks what it holds in the one on the left: the form its fields'
+	// quotes, on the pages (`marks`) and in the text (`fieldQuotes`); the facts where they
+	// stand, on the pages (`factMarks`) and in the text (`textMarks`).
 	let marks = $state<Mark[]>([]);
+	let fieldQuotes = $state<string[]>([]);
+	let factMarks = $state<Mark[]>([]);
+	let textMarks = $state<Span[]>([]);
+	// On a phone one pane at a time: the left one or the right one, chosen in the bar of four.
+	let side = $state<'left' | 'right'>('left');
+	// Where one stands in the pages and in the text, for the way back to the top on a phone.
+	let pagesAt = $state({ current: 0, total: 0 });
+	let textAt = $state({ current: 0, total: 0 });
+	const leftAt = $derived(view.left === 'pages' ? pagesAt : textAt);
+	let panes = $state<HTMLDivElement | null>(null);
 	let viewer = $state<PdfViewer | null>(null);
+	let textPane = $state<DocumentText | null>(null);
 	let header = $state<DocumentHeader | null>(null);
 
 	const user = $derived(session.user);
@@ -154,7 +193,8 @@
 			derived: false,
 			pinned: each.page === place.page
 		}));
-		await goto(tabHref(page.url, 'details'));
+		side = 'left';
+		await show({ ...view, left: 'pages' });
 		// The viewer lays its pages out after it is shown.
 		for (const wait of [300, 900, 1800]) setTimeout(() => viewer?.reveal(place), wait);
 	}
@@ -203,6 +243,10 @@
 				facts = null;
 				marks = [];
 				codeMarks = [];
+				side = 'left';
+				fieldQuotes = [];
+				factMarks = [];
+				textMarks = [];
 			}
 		});
 	});
@@ -250,8 +294,65 @@
 		});
 	});
 
+	/** Show a field's quote where it stands in the pane on the left. */
 	function reveal(place: Place) {
-		viewer?.reveal(place);
+		revealLeft(place);
+	}
+
+	/** Show what is marked in the pane on the left: in the text, or `place` on the pages (none:
+	 * nothing to show there). On a phone the left pane takes the screen first. */
+	function revealLeft(place: Place | undefined) {
+		if (view.left === 'pages' && !place) return;
+		const hidden = phone.current && side !== 'left';
+		side = 'left';
+		if (view.left === 'text') void tick().then(() => textPane?.revealMark());
+		else if (place && !hidden) viewer?.reveal(place);
+		// The viewer lays its pages out once it is shown.
+		else if (place)
+			for (const wait of [300, 900, 1800]) setTimeout(() => viewer?.reveal(place), wait);
+	}
+
+	/** A pane's switch for its head; none on a phone, where the bar of four takes its place. */
+	function paneSwitch(snippet: Snippet): Snippet | undefined {
+		return phone.current ? undefined : snippet;
+	}
+
+	/** The pane a phone shows, by what it shows: one of the left's or the right's. Chosen deep
+	 * down the one before, the new one shows from its start, below the bar. */
+	function showOnPhone(next: string) {
+		if ((LEFT as readonly string[]).includes(next)) {
+			side = 'left';
+			if (next !== view.left) void show({ ...view, left: next as Left });
+		} else {
+			side = 'right';
+			if (next !== view.right) void show({ ...view, right: next as Right });
+		}
+		void tick().then(() => {
+			if (panes && panes.getBoundingClientRect().top < 0) panes.scrollIntoView({ block: 'start' });
+		});
+	}
+
+	// A pane once shown stays, hidden while the other one is: the form keeps what was typed,
+	// the pages their zoom and place.
+	const opened = new SvelteSet<Left | Right>();
+	$effect(() => {
+		if (tab !== 'document') return;
+		untrack(() => {
+			opened.add(view.left);
+			opened.add(view.right);
+		});
+	});
+
+	/** Show `view` in the document tab; a switch, not a step back in the history. */
+	function show(next: View) {
+		return goto(viewHref(page.url, next), { replace: true, reset: false });
+	}
+
+	/** Mark where a fact stands; after a click, show the first place in the pane on the left. */
+	function markFact(spans: Span[], scroll: boolean, label: string) {
+		textMarks = spans;
+		factMarks = spanMarks(spans, label);
+		if (scroll && spans.length > 0) revealLeft(spans.flatMap((span) => span.locations)[0]);
 	}
 
 	async function confirmed(next: string | null) {
@@ -262,8 +363,7 @@
 	}
 
 	const tabs: { tab: Tab; label: () => string }[] = [
-		{ tab: 'details', label: m.tab_details },
-		{ tab: 'content', label: m.tab_content },
+		{ tab: 'document', label: m.tab_document },
 		{ tab: 'metadata', label: m.tab_metadata },
 		{ tab: 'log', label: m.tab_log }
 	];
@@ -307,94 +407,182 @@
 		/>
 
 		{#if advice}
-			<Alert.Root variant="tip" role="status" class="flex flex-wrap items-center gap-3">
-				<Alert.Description class="min-w-0 flex-1">{advice}</Alert.Description>
-				<Button size="sm" onclick={() => header?.startVision()}>{m.vision_read()}</Button>
+			<!-- Icon, text and button from the top, the text and the icon half a button's height
+			     down: on one line all three in the middle, wrapped the icon at the first line and
+			     the button below. The button in the tip's blue, not in the green of what is done. -->
+			<Alert.Root
+				variant="tip"
+				role="status"
+				class="flex flex-wrap items-start gap-x-2 gap-y-2 *:[svg]:translate-y-2"
+			>
+				<Alert.Description class="min-w-0 flex-1 py-1.5">{advice}</Alert.Description>
+				<Button
+					size="sm"
+					class="bg-note-foreground text-note hover:bg-note-foreground/85"
+					onclick={() => header?.startVision()}>{m.vision_read()}</Button
+				>
 			</Alert.Root>
 		{/if}
 
-		<nav
-			aria-label={m.tabs_label()}
-			class="flex w-fit max-w-full gap-1 overflow-x-auto rounded-full bg-secondary p-1"
-		>
-			{#each tabs as entry (entry.tab)}
-				<a
-					href={tabHref(page.url, entry.tab)}
-					aria-current={tab === entry.tab ? 'page' : undefined}
-					class={cn(
-						'inline-flex h-[34px] shrink-0 items-center gap-1.5 rounded-full px-3 text-sm whitespace-nowrap transition-colors sm:px-4',
-						tab === entry.tab
-							? 'bg-card font-medium text-foreground shadow-sm'
-							: 'text-muted-foreground hover:text-foreground'
-					)}
-				>
-					{entry.label()}
-					{#if entry.tab === 'log' && attention}
-						<span class="size-[7px] rounded-full bg-lane-yellow-foreground" aria-hidden="true"
-						></span>
-						<span class="sr-only">{m.tab_log_attention()}</span>
-					{/if}
-				</a>
-			{/each}
-		</nav>
+		<TabBar
+			label={m.tabs_label()}
+			tabs={tabs.map((entry) => ({
+				key: entry.tab,
+				href: tabHref(page.url, entry.tab),
+				label: entry.label(),
+				marker: entry.tab === 'log' && attention ? m.tab_log_attention() : undefined
+			}))}
+			current={tab}
+		/>
 
-		{#if tab === 'details'}
+		{#if tab === 'document' && phone.current}
+			<!-- On a phone one pane at a time (Tobi, 20.10.2026): the four in one bar, which stays
+			     below the head while the pages scroll by; the way back to the top beside them. -->
+			<div class="sticky top-16 z-30 -my-2 bg-background py-2">
+				<Segmented
+					equal
+					class="w-full"
+					label={m.view_pane()}
+					value={side === 'left' ? view.left : view.right}
+					options={[
+						{ value: 'pages', label: m.view_pages() },
+						{ value: 'text', label: m.view_text() },
+						{ value: 'form', label: m.view_form() },
+						{ value: 'facts', label: m.view_facts() }
+					]}
+					onchange={showOnPhone}
+				/>
+			</div>
+			{#if side === 'left'}<ToTop current={leftAt.current} total={leftAt.total} />{/if}
+		{/if}
+
+		{#if tab === 'document'}
+			{#snippet leftSwitch()}
+				<Segmented
+					size="sm"
+					names="@xl"
+					label={m.view_left()}
+					value={view.left}
+					options={[
+						{ value: 'pages', label: m.view_pages(), icon: File },
+						{ value: 'text', label: m.view_text(), icon: TextAlignStart }
+					]}
+					onchange={(next) => show({ ...view, left: next as Left })}
+				/>
+			{/snippet}
+			{#snippet rightSwitch()}
+				<Segmented
+					size="sm"
+					names="wide"
+					label={m.view_right()}
+					value={view.right}
+					options={[
+						{ value: 'form', label: m.view_form(), icon: SquarePen },
+						{ value: 'facts', label: m.view_facts(), icon: ListChecks }
+					]}
+					onchange={(next) => show({ ...view, right: next as Right })}
+				/>
+			{/snippet}
+			<!-- `scroll-mt`: below the head and the bar of four, when a phone shows a pane from its start. -->
 			<div
-				class="grid grid-cols-[minmax(0,1fr)] gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_28rem] lg:grid-rows-[minmax(0,1fr)]"
+				bind:this={panes}
+				class="grid scroll-mt-32 grid-cols-[minmax(0,1fr)] gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_28rem] lg:grid-rows-[minmax(0,1fr)]"
 			>
-				<div class="flex min-h-[32rem] flex-col lg:min-h-0">
-					<!-- Anew once the archive exists: the marks belong to it, not to the original. -->
-					{#key `${id}:${archive}`}
-						{#if archive || !document.page_count}
-							<PdfViewer
-								bind:this={viewer}
-								sources={viewerSources(document, archive)}
-								label={document.title}
-								marks={archive ? [...marks, ...codeMarks] : []}
+				<div
+					class="flex min-h-[32rem] flex-col lg:min-h-0"
+					hidden={phone.current && side !== 'left'}
+				>
+					{#if view.left === 'pages' || opened.has('pages')}
+						<div class="flex min-h-0 flex-1 flex-col" hidden={view.left !== 'pages'}>
+							<!-- Anew once the archive exists: the marks belong to it, not to the original. -->
+							{#key `${id}:${archive}`}
+								{#if archive || !document.page_count}
+									<PdfViewer
+										bind:this={viewer}
+										sources={viewerSources(document, archive)}
+										label={document.title}
+										marks={archive
+											? [...(view.right === 'form' ? marks : factMarks), ...codeMarks]
+											: []}
+										end={paneSwitch(leftSwitch)}
+										onpage={(current, total) => (pagesAt = { current, total })}
+									/>
+								{:else}
+									<PageImages
+										documentId={id}
+										pageCount={document.page_count}
+										label={document.title}
+										end={paneSwitch(leftSwitch)}
+										onpage={(current, total) => (pagesAt = { current, total })}
+									/>
+								{/if}
+							{/key}
+						</div>
+					{/if}
+					{#if view.left === 'text' || opened.has('text')}
+						<div class="flex min-h-0 flex-1 flex-col" hidden={view.left !== 'text'}>
+							<DocumentText
+								bind:this={textPane}
+								documentId={id}
+								vision={reading?.vision ?? false}
+								hasText={hasText(document.processing)}
+								marks={view.right === 'facts' ? textMarks : []}
+								quotes={view.right === 'form' ? fieldQuotes : []}
+								end={paneSwitch(leftSwitch)}
+								onpage={(current, total) => (textAt = { current, total })}
 							/>
-						{:else}
-							<PageImages documentId={id} pageCount={document.page_count} label={document.title} />
-						{/if}
-					{/key}
+						</div>
+					{/if}
 				</div>
-				<div class="flex min-h-[32rem] flex-col lg:min-h-0">
-					{#if lookup}
-						{#key id}
-							<DocumentForm
-								{document}
+				<div
+					class="flex min-h-[32rem] flex-col lg:min-h-0"
+					hidden={phone.current && side !== 'right'}
+				>
+					{#if view.right === 'facts' || opened.has('facts')}
+						<div class="flex min-h-0 flex-1 flex-col" hidden={view.right !== 'facts'}>
+							<DocumentFacts
+								{facts}
+								documentId={id}
 								{lookup}
-								{review}
-								{editable}
-								next={nextUp}
-								onsaved={(updated) => (document = updated)}
-								onenabled={() => loadLookup().then((value) => (lookup = value), reportError)}
-								onconfirmed={confirmed}
-								onmarks={(next) => (marks = next)}
-								factCounts={facts ? factCounts(facts) : null}
-								factsHref={tabHref(page.url, 'content')}
-								onreveal={reveal}
+								topicId={document.topic_id}
+								admin={session.isAdmin}
+								onmark={markFact}
+								onshowcode={showCode}
+								onchanged={reloadFacts}
+								end={paneSwitch(rightSwitch)}
 							/>
-						{/key}
-					{:else}
-						<p class="text-muted-foreground">{m.loading()}</p>
+						</div>
+					{/if}
+					{#if view.right === 'form' || opened.has('form')}
+						<div class="flex min-h-0 flex-1 flex-col" hidden={view.right !== 'form'}>
+							{#if lookup}
+								{#key id}
+									<DocumentForm
+										{document}
+										{lookup}
+										{review}
+										{editable}
+										next={nextUp}
+										onsaved={(updated) => (document = updated)}
+										onenabled={() => loadLookup().then((value) => (lookup = value), reportError)}
+										onconfirmed={confirmed}
+										onmarks={(next) => (marks = next)}
+										onquotes={(next) => (fieldQuotes = next)}
+										factCounts={facts ? factCounts(facts) : null}
+										factsHref={viewHref(page.url, { ...view, right: 'facts' })}
+										onreveal={reveal}
+										end={paneSwitch(rightSwitch)}
+									/>
+								{/key}
+							{:else}
+								<p class="text-muted-foreground">{m.loading()}</p>
+							{/if}
+						</div>
 					{/if}
 				</div>
 			</div>
-		{:else if tab === 'content'}
-			<DocumentContent
-				documentId={id}
-				filename={document.original_filename}
-				vision={reading?.vision ?? false}
-				hasText={hasText(document.processing)}
-				{facts}
-				{lookup}
-				topicId={document.topic_id}
-				admin={session.isAdmin}
-				onshowcode={showCode}
-				onfactschanged={reloadFacts}
-			/>
 		{:else if tab === 'metadata'}
-			<DocumentFiles documentId={id} />
+			<DocumentFiles documentId={id} document={document ?? undefined} {editable} onchanged={load} />
 		{:else if tab === 'log'}
 			<div class="lg:min-h-0 lg:flex-1">
 				<DocumentLog

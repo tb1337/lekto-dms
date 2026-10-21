@@ -856,8 +856,12 @@ meaning took part.
   gives one vector per document. A vector is made again only when model or section texts change.
 - **Embeddings.** The query is embedded at request time (`LEKTO_SEARCH_EMBED_TIMEOUT`); if the
   endpoint is down or slow, the search falls back to words (`semantic: false`).
-  The model is `snowflake-arctic-embed2` with `LEKTO_EMBEDDING_QUERY_PREFIX=query:` (compared with
-  `bge-m3` and `qwen3-embedding:0.6b` in `evaluation/search/reports`).
+  The model is Qwen3-Embedding 4B (`hf.co/Qwen/Qwen3-Embedding-4B-GGUF:Q8_0` in Ollama, 2560
+  dimensions) with an instruction before each query and none before the documents
+  (`LEKTO_EMBEDDING_QUERY_PREFIX='Instruct: Given a search query, retrieve the German personal
+  documents (letters, invoices, statements, contracts) that answer it\nQuery:'`, on one line);
+  compared with `snowflake-arctic-embed2` (the model before), `bge-m3` and Qwen3-Embedding 0.6B
+  and 8B in `evaluation/search/reports`.
   `LEKTO_EMBEDDING_DIMENSIONS` is the length of the vectors and required with Meilisearch and an
   embedding endpoint; vectors of another length are refused ("the vectors of <model> do not
   have the <n> dimensions configured"; the query then goes by words).
@@ -965,7 +969,8 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET/POST /spaces`, `GET/PATCH/DELETE /spaces/{id}`, `PUT/DELETE /spaces/{id}/shares/{user_id}` | Spaces and shares (owner) |
 | `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `sort` (`relevance`, the default, or a key of `GET /documents`; relevance breaks ties), `limit`, `offset`, `semantic_ratio`; hits with snippet (the document with `in_inbox`, as in `GET /documents`), `estimated_total`, `next_offset`, `semantic` |
 | `POST /search/reindex` | Rebuild the search index in the background (admins); `202` |
-| `GET /documents` | Readable documents, each with `in_inbox` (it stands open in the caller's inbox); `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), documents without a date last either way; filters `contact_id`, `document_type_id`, `tag_id` (with the tags below it), `contact_group_id` and `document_type_group_id` (the document's contact or type in the group or one below it; these three repeat, all must match), `topic_id` (the topic or one below it; repeats, one of them must match), `space_id`, `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (`next_cursor` of the page before, an opaque value naming its last document; its sort value is looked up, `422` if that document is gone) |
+| `GET /documents` | Readable documents, each with `in_inbox` (it stands open in the caller's inbox); `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), `field`, `-field` (the value of the field `sort_field_id`: a date, a period by its first day, a number, an amount by its value; `422` for other types), documents without a date or value last either way; filters `contact_id`, `document_type_id`, `space_id` (each repeats, one of them must match), `tag_id` (with the tags below it; repeats, all must match), `contact_group_id` and `document_type_group_id` (the document's contact or type in the group or one below it; each repeats, one of them must match), `topic_id` (the topic or one below it; repeats, one of them must match), `document_date_from` and `document_date_to` (the document date lies between them, both days included, either end open; a document without a date does not match; `422` if the end lies before the start), `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (`next_cursor` of the page before, an opaque value naming its last document; its sort value is looked up, `422` if that document is gone) |
+| `GET /documents/facets` | Counts for the filters of the document view, with the filters of `GET /documents` and `all_users` (admins): `total`, per contact and type (`id` null: without one), group of contacts and of types, topic and tag (each with the documents of those below it, once), year and its months of the document date (`undated`: without one). Contacts, types, groups, topics and the period combine as either-or and count without their own choice, so each tells what one more would add; tags count with the whole filter |
 | `POST /documents` | Upload (multipart: `file`, optional `space_id`, optional `channel=migration`; otherwise the channel is `web` with a session, `api` with a token); `202` with `id`, `status_url` |
 | `GET/PATCH/DELETE /documents/{id}` | Metadata and state with the caller's access, `channel`, `topic_id` (see Topics); change (write access; the answer has the change rules' `rules` report for the owner); delete (owner or admin) |
 | `POST /documents/{id}/dry-run` | A change as with `PATCH`, with the change rules, nothing stored: the result and the differences |
@@ -973,7 +978,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /documents/{id}/original`, `/archive`, `/preview`, `/pages/{number}` | Files (read access); pages from 1 to `page_count` |
 | `GET /documents/{id}/text` | The text as it is set (plain text, pages apart by form feeds) in pieces: `offset`, `limit` (at most `LEKTO_MCP_TEXT_MAX`, the default); `409` while not parsed |
 | `GET /documents/{id}/files` | The files as stored (read access): when the document was added and changed, its original's name and type, and for the original and the archive (null while there is none) size, SHA-256 and metadata: a PDF's version, PDF/A level, pages, document information and XMP; an image's format, size, resolution and EXIF |
-| `GET /documents/{id}/facts` | What the document shows of its contacts (read access): names and identifiers with the contact they belong to now and their spans in the text (characters, as `/text` counts them); the codes on its pages, each once for its format and text, with the pages and boxes where it stands (a box per copy), the GiroCode read, their identifiers and the amount fields of the same value; for admins, on the documents of how many other contacts an identifier stands; `409` while not parsed |
+| `GET /documents/{id}/facts` | What the document shows of its contacts (read access): names and identifiers with the contact they belong to now and their spans in the text (characters, as `/text` counts them), each with where it stands on the archive's pages (a box per line; none for a text parsed before 0.2); the codes on its pages, each once for its format and text, with the pages and boxes where it stands (a box per copy), the GiroCode read, their identifiers and the amount fields of the same value; for admins, on the documents of how many other contacts an identifier stands; `409` while not parsed |
 | `GET /documents/{id}/log` | Processing log (owner or admin) |
 | `POST /documents/{id}/retry` | Repeat the failed nodes (owner or admin) |
 | `POST /documents/{id}/reprocess` | `{"from_node": "ocr"}`: process again from a node, with every node after it (owner or admin) |
@@ -991,6 +996,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /events` | Server-sent events of the documents the caller may read, for admins also `classifier.trained`; `?document_id=` |
 | `GET/POST /webhooks`, `GET/PATCH/DELETE /webhooks/{id}` | Webhooks: the caller's own (admins read everybody's, `?owner=`); create (the answer shows the secret once), change, switch on or off, delete; see Webhooks |
 | `POST /webhooks/{id}/secret`, `POST /webhooks/{id}/test`, `GET /webhooks/{id}/deliveries` | Renew the secret (the old one signs 24 hours longer), send a test request, the delivery log (`before`, `limit`) |
+| `GET/POST /lenses`, `GET/PATCH/DELETE /lenses/{id}`, `PUT /lenses/order` | Lenses, the caller's saved looks at the documents (only theirs; others' are `404`, also for admins): `filter` (the filters of `GET /documents` as lists, `document_period` `this_year`, `last_12_months` or `last_year` moves with the day), `query`, `sort` (`relevance` only with `query`, `field` only without), `sort_field_id`, `grouping` (`none`, `month`, `due`, `document_type`, `contact`), `layout` (`grid`, `list`), `card_field_ids` (at most three), `due_field_id` (a date field); names unique per user, at most 100; deleted master data and fields are left out when a lens is read; `order` takes each lens once |
 | `GET /health` | Database, bucket or storage directory and, if configured, the search index reachable; `200` (`ok`, or `degraded` if only the search is down) or `503`, no authentication; not written to the access log |
 
 - Uploads are streamed into a temporary file and hashed on the way; the limit
@@ -1210,7 +1216,7 @@ Secrets (marked *secret*) can also be passed as `LEKTO_<NAME>_FILE=/run/secrets/
 secrets): the file content, without one trailing newline, is the value. Setting both
 `LEKTO_<NAME>` and `LEKTO_<NAME>_FILE` is an error. In production, pass at least
 `LEKTO_SECRET_KEY_FILE` and `LEKTO_ADMIN_PASSWORD_FILE` that way. The key and the admin
-password in `.devcontainer/dev.env` are public; with secure cookies the start refuses the
+password in `.devcontainer/test.env` are public; with secure cookies the start refuses the
 development key.
 
 Variables for the variant that is not selected (for example `LEKTO_DB_HOST` with
@@ -1309,9 +1315,9 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `LEKTO_EMBEDDING_MODEL` | both | unset | see above |
 | `LEKTO_EMBEDDING_API_KEY` | both | unset | *secret* |
 | `LEKTO_EMBEDDING_TIMEOUT` | both | `60` | Seconds per request |
-| `LEKTO_EMBEDDING_DIMENSIONS` | both | unset | Length of the vectors (`snowflake-arctic-embed2`, `bge-m3`: 1024); required with Meilisearch and an embedding endpoint |
-| `LEKTO_EMBEDDING_QUERY_PREFIX` | API | unset | Put before queries, for models that ask for it (`query:`) |
-| `LEKTO_EMBEDDING_DOCUMENT_PREFIX` | Worker | unset | Put before document sections, for models that ask for it |
+| `LEKTO_EMBEDDING_DIMENSIONS` | both | unset | Length of the vectors (Qwen3-Embedding 4B: 2560; `snowflake-arctic-embed2`, `bge-m3`: 1024); required with Meilisearch and an embedding endpoint |
+| `LEKTO_EMBEDDING_QUERY_PREFIX` | API | unset | Put before queries, for models that ask for it (`query:`; Qwen3-Embedding an instruction and `Query:`); `\n` stands for a line break |
+| `LEKTO_EMBEDDING_DOCUMENT_PREFIX` | Worker | unset | Put before document sections, for models that ask for it; `\n` stands for a line break |
 | `LEKTO_VLM_BASE_URL` | both | unset | OpenAI-compatible endpoint of a vision language model that reads a document's pages when a person asks for it (`POST /documents/{id}/vision`); the page images go there. Set together with the model or neither; off without. The API names model and endpoint in `GET /pipeline` |
 | `LEKTO_VLM_MODEL` | both | unset | see above: a model that takes images and gives each line's box in pixels (measured with Claude Sonnet 5.5) |
 | `LEKTO_VLM_API_KEY` | Worker | unset | *secret* |

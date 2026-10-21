@@ -25,12 +25,15 @@ describe('identifiers', () => {
 		const rows = rowsOf([...stored]);
 		render(IdentifiersEditor, { rows });
 		expect(screen.getByText(m.identifier_learned())).toBeTruthy();
+		// Each opens with its line.
+		await userEvent.click(screen.getByRole('button', { name: /^stadtwerke\.example/ }));
 		await userEvent.click(screen.getByRole('button', { name: m.identifier_reject() }));
 		expect(screen.getAllByText(m.identifier_rejected())).toHaveLength(2);
-		await userEvent.click(screen.getAllByRole('button', { name: m.identifier_unblock() })[0]);
+		await userEvent.click(screen.getByRole('button', { name: /^4711/ }));
+		await userEvent.click(screen.getByRole('button', { name: m.identifier_unblock() }));
 		expect(screen.getAllByText(m.identifier_rejected())).toHaveLength(1);
-		await userEvent.click(screen.getByRole('button', { name: m.identifier_add() }));
-		expect(screen.getAllByRole('textbox', { name: m.identifier_value() })).toHaveLength(2);
+		await userEvent.click(screen.getByRole('button', { name: m.identifier_add_short() }));
+		expect(screen.getAllByRole('textbox', { name: m.identifier_value() })).toHaveLength(1);
 	});
 });
 

@@ -101,6 +101,7 @@ from lekto.core.services.documents import DocumentService
 from lekto.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
 from lekto.core.services.inbox import InboxService
 from lekto.core.services.indexing import IndexingPolicy, IndexingService
+from lekto.core.services.lenses import LensService
 from lekto.core.services.logos import LogoService
 from lekto.core.services.maintenance import MaintenanceService
 from lekto.core.services.master_data import MasterDataService
@@ -482,6 +483,7 @@ class Services:
     rule_applications: RuleApplicationService
     webhooks: WebhookService
     webhook_delivery: WebhookDeliveryService
+    lenses: LensService
     documents: DocumentService
     inbox: InboxService
     pipeline: PipelineService
@@ -713,6 +715,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         logos=LogoService(uow, clock, store, container.images, container.logo_fetcher),
         rules=RuleService(uow, clock, container.templates, container.patterns),
         webhooks=WebhookService(uow, clock, container.cipher, webhook_policy_of(settings)),
+        lenses=LensService(uow, clock),
         webhook_delivery=WebhookDeliveryService(
             uow, clock, container.cipher, container.webhook_sender, webhook_policy_of(settings)
         ),

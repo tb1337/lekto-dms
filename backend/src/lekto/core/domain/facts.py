@@ -9,20 +9,23 @@ rejected one is known, but neither evidence nor unknown.
 
 Where it stands: character spans of the text (`spans`), found with the written forms a value
 has (an IBAN in groups of four, a customer number with dashes, a name with any spaces and
-punctuation between its words, umlauts or not). A name broken over two columns has none.
+punctuation between its words, umlauts or not). A name broken over two columns has none. Where
+the words of the text have their boxes, a span also has its places on the pages (`on_pages`).
 """
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import islice
 
 from lekto.core.domain.codes import Code, code_identifiers, giro_code
 from lekto.core.domain.evidence import UMLAUTS
 from lekto.core.domain.identifiers import IdentifierKind, identifiers_in, matches
 from lekto.core.domain.ids import ContactId, TagId
+from lekto.core.domain.locations import Location
 from lekto.core.domain.master_data import Contact
 from lekto.core.domain.names import match_key, mentions
+from lekto.core.domain.text_places import TextPlaces
 
 MOST = 20
 """Names and identifiers reported, each."""
@@ -35,10 +38,12 @@ type Key = tuple[IdentifierKind, str]
 
 @dataclass(frozen=True)
 class Span:
-    """Characters `start` to `end` (exclusive) of the text."""
+    """Characters `start` to `end` (exclusive) of the text, and where they stand on the pages
+    (none where that is not known)."""
 
     start: int
     end: int
+    locations: tuple[Location, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -130,6 +135,20 @@ def facts_in(
     known = [item for item in found if item.contact_id is not None]
     unknown = [item for item in found if item.contact_id is None]
     return Facts(named=tuple(named[:MOST]), identifiers=(*known[:MOST], *unknown[:MOST]))
+
+
+def on_pages(facts: Facts, places: TextPlaces) -> Facts:
+    """The facts with where each of their spans stands on the pages."""
+
+    def placed(spans: tuple[Span, ...]) -> tuple[Span, ...]:
+        return tuple(
+            replace(span, locations=places.locations(span.start, span.end)) for span in spans
+        )
+
+    return Facts(
+        named=tuple(replace(item, spans=placed(item.spans)) for item in facts.named),
+        identifiers=tuple(replace(item, spans=placed(item.spans)) for item in facts.identifiers),
+    )
 
 
 def name_spans(text: str, name: str) -> tuple[Span, ...]:

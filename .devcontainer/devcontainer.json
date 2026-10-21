@@ -2,9 +2,11 @@
   "name": "lekto",
   "dockerComposeFile": "compose.yml",
   "service": "dev",
-  "workspaceFolder": "/workspaces/papiq",
+  "workspaceFolder": "/workspaces/lekto",
   "remoteUser": "vscode",
   "features": {
+    // zsh with Oh My Zsh and the prompt of the devcontainers images; no upgrade of the packages.
+    "ghcr.io/devcontainers/features/common-utils:2": { "upgradePackages": false },
     "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": { "moby": false }
   },
@@ -30,6 +32,7 @@
         "inlang.vs-code-extension"
       ],
       "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh",
         "python.defaultInterpreterPath": "/home/vscode/.venv/bin/python",
         "python.testing.pytestEnabled": true,
         "python.testing.pytestArgs": ["backend/tests"],

@@ -1,13 +1,11 @@
 /**
- * The inbox page: its tabs as they stand in the URL (`?tab=`), and where a document of the
- * archive stands in the inbox.
+ * The inbox page: its tabs as they stand in the URL (`?tab=`).
  */
 import type { components } from '#lib/api/schema.ts';
 import { BASE } from '#lib/base.ts';
 
 export type InboxTab = components['schemas']['InboxTab'];
 export type InboxItem = components['schemas']['InboxItemOut'];
-type Lane = components['schemas']['Lane'];
 
 /** The tabs after "all" (everything open), in their order. */
 export const INBOX_TABS: readonly InboxTab[] = ['new', 'review', 'intervene', 'processing', 'done'];
@@ -21,18 +19,4 @@ export function inboxTabOf(params: Pick<URLSearchParams, 'get'>): InboxTab | nul
 /** The address of a tab of the inbox; null: all that is open. */
 export function inboxTabHref(tab: InboxTab | null): string {
 	return tab ? `${BASE}/inbox?tab=${tab}` : `${BASE}/inbox`;
-}
-
-/** The tab an open document stands under, by its lane: a green one is new there. */
-export function openTabOf(lane: Lane | null): InboxTab {
-	switch (lane) {
-		case null:
-			return 'processing';
-		case 'yellow':
-			return 'review';
-		case 'red':
-			return 'intervene';
-		case 'green':
-			return 'new';
-	}
 }

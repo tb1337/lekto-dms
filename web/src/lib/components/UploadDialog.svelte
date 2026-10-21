@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Upload from '@lucide/svelte/icons/upload';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
@@ -88,12 +88,12 @@
 		{#if session.isAdmin}
 			<Field.Field>
 				<Field.Label for="upload-owner">{m.upload_owner()}</Field.Label>
-				<NativeSelect id="upload-owner" bind:value={ownerId} options={owners} />
+				<Select id="upload-owner" bind:value={ownerId} options={owners} />
 			</Field.Field>
 		{/if}
 		<Field.Field>
 			<Field.Label for="upload-space">{m.upload_space()}</Field.Label>
-			<NativeSelect id="upload-space" bind:value={spaceId} options={choices} />
+			<Select id="upload-space" bind:value={spaceId} options={choices} />
 		</Field.Field>
 
 		<div

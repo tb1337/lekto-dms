@@ -33,6 +33,7 @@ from lekto.adapters.outbound.sql.identity import (
 )
 from lekto.adapters.outbound.sql.inbox import SqlInboxRepository
 from lekto.adapters.outbound.sql.job_queue import SqlJobQueue
+from lekto.adapters.outbound.sql.lenses import SqlLensRepository
 from lekto.adapters.outbound.sql.master_data import (
     SqlContactRepository,
     SqlDocumentTypeRepository,
@@ -103,6 +104,7 @@ class SqlUnitOfWork:
         self.rule_applications = SqlRuleApplicationRepository(self._tx)
         self.classifier_models = SqlClassifierModelRepository(self._tx)
         self.webhooks = SqlWebhookRepository(self._tx)
+        self.lenses = SqlLensRepository(self._tx)
         self.outbox = SqlOutbox(self._tx)
         self.jobs = SqlJobQueue(self._tx)
         self.credentials = SqlCredentialRepository(self._tx)

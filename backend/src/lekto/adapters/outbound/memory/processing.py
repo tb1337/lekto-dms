@@ -17,6 +17,7 @@ from lekto.core.domain import media_types
 from lekto.core.domain.codes import Code
 from lekto.core.domain.errors import UnprocessableDocumentError
 from lekto.core.domain.exchanges import ModelCall
+from lekto.core.domain.json_value import JsonObject
 from lekto.core.domain.locations import Box, Location
 from lekto.core.domain.reading import PageReading, PageWords
 from lekto.core.ports.codes import CodeReading
@@ -133,17 +134,18 @@ class FakeMetadataReader:
 
 
 class FakeParser:
-    def __init__(self, text: str = "Fake text") -> None:
+    """Writes `text`, and `structure` as its structure (one without words if none is given)."""
+
+    def __init__(self, text: str = "Fake text", structure: JsonObject | None = None) -> None:
         self.text = text
+        self.structure = {"text": text} if structure is None else structure
         self.calls: list[Path] = []
 
     async def parse(self, source: Path, *, text: Path, structure: Path) -> ParseResult:
         self.calls.append(source)
         _check(await asyncio.to_thread(source.read_bytes))
         await asyncio.to_thread(text.write_text, self.text, encoding="utf-8")
-        await asyncio.to_thread(
-            structure.write_text, json.dumps({"text": self.text}), encoding="utf-8"
-        )
+        await asyncio.to_thread(structure.write_text, json.dumps(self.structure), encoding="utf-8")
         return ParseResult(pages=1, parser="fake-parser 1")
 
 

@@ -3,7 +3,7 @@
 import hashlib
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from urllib.parse import urlsplit
@@ -161,6 +161,25 @@ def document_title(document: dict[str, Any]) -> tuple[str, list[str]]:
 def document_date(document: dict[str, Any]) -> str | None:
     created = document.get("created")
     return str(created)[:10] if created else None
+
+
+def received_at(
+    document: dict[str, Any], now: datetime | None = None
+) -> tuple[str | None, list[str]]:
+    """When the document came in at Paperless (`added`), as Lekto takes it over for its
+    `created_at`: with a time zone and not ahead; otherwise left out with a note."""
+    added = document.get("added")
+    if not added:
+        return None, []
+    try:
+        at = datetime.fromisoformat(str(added))
+    except ValueError:
+        return None, [f"date added '{added}' cannot be read, not taken over"]
+    if at.tzinfo is None:
+        return None, ["date added without a time zone, not taken over"]
+    if at > (now or datetime.now(UTC)):
+        return None, ["date added lies ahead, not taken over"]
+    return at.isoformat(), []
 
 
 def notes_text(notes: list[dict[str, Any]]) -> tuple[str | None, list[str]]:

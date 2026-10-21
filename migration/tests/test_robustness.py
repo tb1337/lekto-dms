@@ -140,7 +140,9 @@ async def test_what_paperless_has_beyond_documents_is_counted(setup: Setup) -> N
     others = {o["source_id"]: o for o in setup.report("plan")["objects"]["other"]}
     assert others["trash"]["notes"] == ["3 not taken over"]
     assert others["mail_accounts"]["notes"] == ["2 not taken over"]
-    assert others["date_added"]["status"] == others["history"]["status"] == "omitted"
+    # The date added comes along (Tobi, 21.10.2026); the history does not.
+    assert "date_added" not in others
+    assert others["history"]["status"] == "omitted"
 
 
 async def test_further_versions_of_a_file_are_reported(setup: Setup) -> None:

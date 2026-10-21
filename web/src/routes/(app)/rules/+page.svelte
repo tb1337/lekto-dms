@@ -8,6 +8,7 @@
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import EditButton from '#lib/components/EditButton.svelte';
 	import TitlePatternBadge from '#lib/components/rules/TitlePatternBadge.svelte';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
@@ -162,6 +163,10 @@
 								<Trash2 aria-hidden="true" />
 							</Button>
 						</div>
+						<EditButton
+							label={m.rule_edit_title({ name: rule.name })}
+							href="{BASE}/rules/{rule.id}/edit"
+						/>
 					{:else}
 						<Badge variant={rule.enabled ? 'secondary' : 'outline'}>
 							{rule.enabled ? m.rule_on() : m.rule_off()}

@@ -206,11 +206,3 @@ function tagOps(
 		remove: (id) => unwrap(api.DELETE('/api/v1/tags/{id}', path(id)))
 	};
 }
-
-/** One alias per line; empty lines dropped. */
-export function parseAliases(text: string): string[] {
-	return text
-		.split('\n')
-		.map((line) => line.trim())
-		.filter((line) => line !== '');
-}

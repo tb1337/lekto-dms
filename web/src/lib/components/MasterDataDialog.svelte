@@ -1,14 +1,18 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import Workflow from '@lucide/svelte/icons/workflow';
 	import AssignmentList, { type Assignment } from '#lib/components/AssignmentList.svelte';
 	import ColorPicker from '#lib/components/ColorPicker.svelte';
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
+	import ChipInput from '#lib/components/ChipInput.svelte';
 	import ContactLogoEditor from '#lib/components/ContactLogoEditor.svelte';
 	import IconPicker from '#lib/components/IconPicker.svelte';
 	import EditorShell from '#lib/components/EditorShell.svelte';
+	import HintLabel from '#lib/components/HintLabel.svelte';
+	import InfoHint from '#lib/components/InfoHint.svelte';
 	import TagChip from '#lib/components/TagChip.svelte';
 	import TagPicker from '#lib/components/TagPicker.svelte';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import IdentifiersEditor from '#lib/components/IdentifiersEditor.svelte';
 	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
 	import * as Field from '#lib/components/ui/field/index.ts';
@@ -16,7 +20,7 @@
 	import { Textarea } from '#lib/components/ui/textarea/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { changesOf, type IdentifierRow, rowsOf } from '#lib/identifiers.ts';
-	import { type Extra, type Item, parseAliases, type Values } from '#lib/masterdata-api.ts';
+	import { type Extra, type Item, type Values } from '#lib/masterdata-api.ts';
 	import type { Contact, FieldDefinition, Tag, TagScope } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { phone } from '#lib/phone.svelte.ts';
@@ -93,7 +97,7 @@
 	// Ids of this dialog's fields: a second one may stand over it (a tag made from a picker).
 	const uid = $props.id();
 	let name = $state('');
-	let aliases = $state('');
+	let aliases = $state<string[]>([]);
 	let identifiers = $state<IdentifierRow[]>([]);
 	let description = $state('');
 	let titlePattern = $state('');
@@ -129,34 +133,72 @@
 	const typed = $derived((fields ?? []).filter((field) => field.document_type_ids !== null));
 	const everywhere = $derived((fields ?? []).filter((field) => field.document_type_ids === null));
 	let busy = $state(false);
-
-	$effect(() => {
-		if (open) {
-			name = initial?.name ?? presetName;
-			aliases = (initial?.aliases ?? []).join('\n');
-			identifiers = rowsOf(initial?.identifiers);
-			description = initial?.description ?? '';
-			titlePattern = initial?.title_pattern ?? '';
-			groupIds = [...(initial?.group_ids ?? [])];
-			topicIds = [...(initial?.topic_ids ?? [])];
-			kind = scope;
-			parentId = initial?.parent_id ?? '';
-			manual = initial?.assignment === 'manual';
-			shown = initial?.shown ?? (scope === null || scope === 'document' || scope === 'topic');
-			icon = initial?.icon ?? null;
-			color = initial?.color ?? null;
-			const id = initial?.id;
-			assigned = id
-				? typed
-						.filter((field) => field.document_type_ids?.includes(id))
-						.map((field) => ({
-							id: field.id,
-							required: field.required_document_type_ids.includes(id)
-						}))
-				: [];
-			error = null;
+	// A contact and a document type are long: their identifiers or fields stand in a tab of
+	// their own (Tobi, 20.10.2026); a tag's editor is short and has none.
+	let tab = $state('general');
+	// The identifier line that is open, and what the API said about one (it quotes the value it
+	// refuses): saving then opens its tab and its line.
+	let openedIdentifier = $state<number | null>(null);
+	let identifierErrors = $state<Record<number, string>>({});
+	const tabs = $derived.by(() => {
+		const general = { value: 'general', label: m.master_tab_general() };
+		if (extra === 'aliases') {
+			return [
+				general,
+				{
+					value: 'identifiers',
+					label: m.master_identifiers(),
+					count: identifiers.length,
+					alert: Object.keys(identifierErrors).length > 0 ? m.editor_tab_problem() : undefined
+				}
+			];
 		}
+		if (extra === 'description' && fields) {
+			return [general, { value: 'fields', label: m.master_type_fields(), count: assigned.length }];
+		}
+		return undefined;
 	});
+	const part = $derived(tabs ? tab : 'general');
+
+	// The form starts from the item when the dialog opens or shows another one, never again
+	// while it is open: the lists it is given change under it (a group made in a dialog over
+	// this one loads the tags again), and what the person typed and chose stays.
+	let filledFor: string | null = null;
+	$effect(() => {
+		const key = open ? (initial?.id ?? `new:${presetName}`) : null;
+		if (key === filledFor) return;
+		filledFor = key;
+		if (key !== null) untrack(fill);
+	});
+
+	function fill() {
+		tab = 'general';
+		openedIdentifier = null;
+		identifierErrors = {};
+		name = initial?.name ?? presetName;
+		aliases = [...(initial?.aliases ?? [])];
+		identifiers = rowsOf(initial?.identifiers);
+		description = initial?.description ?? '';
+		titlePattern = initial?.title_pattern ?? '';
+		groupIds = [...(initial?.group_ids ?? [])];
+		topicIds = [...(initial?.topic_ids ?? [])];
+		kind = scope;
+		parentId = initial?.parent_id ?? '';
+		manual = initial?.assignment === 'manual';
+		shown = initial?.shown ?? (scope === null || scope === 'document' || scope === 'topic');
+		icon = initial?.icon ?? null;
+		color = initial?.color ?? null;
+		const id = initial?.id;
+		assigned = id
+			? typed
+					.filter((field) => field.document_type_ids?.includes(id))
+					.map((field) => ({
+						id: field.id,
+						required: field.required_document_type_ids.includes(id)
+					}))
+			: [];
+		error = null;
+	}
 
 	/** A new tag becomes one of `next`: no parent yet, shown and set as that kind's are. */
 	function chooseKind(next: TagScope) {
@@ -171,10 +213,11 @@
 		if (busy || (extra === 'tag' && kind === null)) return;
 		busy = true;
 		error = null;
+		identifierErrors = {};
 		try {
 			await onsubmit({
 				name: name.trim(),
-				aliases: parseAliases(aliases),
+				aliases,
 				...changesOf(identifiers, topicIds),
 				description: description.trim() || null,
 				title_pattern: titlePattern.trim() || null,
@@ -191,6 +234,14 @@
 			open = false;
 		} catch (problem) {
 			error = describeError(problem);
+			const refused = identifiers.find(
+				(item) => item.value.trim() !== '' && error?.includes(`'${item.value.trim()}'`)
+			);
+			if (refused) {
+				identifierErrors = { [refused.key]: error };
+				openedIdentifier = refused.key;
+				tab = 'identifiers';
+			}
 		} finally {
 			busy = false;
 		}
@@ -216,242 +267,288 @@
 	ondelete={initial && ondelete ? ondelete : undefined}
 	deleteTitle={m.master_delete({ name: initial?.name ?? '' })}
 	{deleteDescription}
+	{tabs}
+	bind:tab
+	class={tabs ? 'h-[min(53.75rem,calc(100dvh-2rem))] sm:max-w-[40rem]' : undefined}
 >
-	{#if extra === 'tag' && chooseScope}
-		<fieldset class="flex flex-col gap-2">
-			<legend class="mb-2 text-sm font-medium">{m.tag_kind()}</legend>
-			<div class="grid gap-2 sm:grid-cols-2">
-				{#each KIND_CARDS as card (card.scope)}
-					<label
-						class={cn(
-							'flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors hover:bg-secondary/60',
-							kind === card.scope && 'border-primary bg-primary/10 hover:bg-primary/10'
-						)}
-					>
-						<input
-							type="radio"
-							name="{uid}-kind"
-							value={card.scope}
-							checked={kind === card.scope}
-							onchange={() => chooseKind(card.scope)}
-							class="mt-0.5 size-4 shrink-0 accent-primary"
-						/>
-						<span class="flex flex-col gap-0.5">
-							<span class="text-sm font-medium">{card.title()}</span>
-							<span class="text-sm text-muted-foreground">{card.example()}</span>
-						</span>
-					</label>
-				{/each}
-			</div>
-			<p class="text-sm text-muted-foreground">{m.tag_kind_hint()}</p>
-		</fieldset>
-	{/if}
-	{#if extra !== 'tag' || kind !== null}
-		{#if extra === 'aliases' && phone.current}
-			<!-- On a phone the logo stands beside the name, what to do with it below. -->
-			{#if initial}
-				<ContactLogoEditor contact={initial as Contact} {fetching} onchanged={onlogo}>
-					{#snippet beside()}{@render nameField()}{/snippet}
-				</ContactLogoEditor>
-			{:else}
-				<div class="flex flex-col gap-2" data-logo-beside>
-					<div class="flex items-center gap-3">
-						<ContactAvatar contact={{ name }} size="xl" />
-						<div class="min-w-0 flex-1">{@render nameField()}</div>
-					</div>
-					<p class="pl-17 text-xs text-muted-foreground">{m.logo_after_create()}</p>
+	{#if part === 'general'}
+		{#if extra === 'tag' && chooseScope}
+			<fieldset class="flex flex-col gap-2" aria-labelledby="{uid}-kind-label">
+				<div class="mb-2 flex items-center gap-1">
+					<span id="{uid}-kind-label" class="text-sm font-medium">{m.tag_kind()}</span>
+					<InfoHint text={m.tag_kind_hint()} about={m.tag_kind()} />
 				</div>
-			{/if}
-		{:else}
-			{@render nameField()}
-		{/if}
-	{/if}
-	{#if extra === 'aliases' && !phone.current}
-		<Field.Field>
-			<Field.Label>{m.logo_title()}</Field.Label>
-			{#if initial}
-				<ContactLogoEditor contact={initial as Contact} {fetching} onchanged={onlogo} />
-			{:else}
-				<Field.Description>{m.logo_after_create()}</Field.Description>
-			{/if}
-		</Field.Field>
-	{/if}
-	{#if extra === 'description'}{@render iconField()}{/if}
-	{#if extra === 'tag' && kind !== null}
-		<Field.Field>
-			<Field.Label for="{uid}-parent">
-				{isGroup ? m.tag_parent_group() : isTopic ? m.topic_parent() : m.tag_parent()}
-			</Field.Label>
-			<NativeSelect
-				id="{uid}-parent"
-				bind:value={parentId}
-				options={[
-					{
-						value: '',
-						label: isGroup
-							? m.tag_parent_group_none()
-							: isTopic
-								? m.topic_parent_none()
-								: m.tag_parent_none()
-					},
-					...parents
-				]}
-				class="h-10"
-			/>
-		</Field.Field>
-		{@render iconField()}
-		<Field.Field>
-			<Field.Label id="{uid}-color-label">{m.master_color()}</Field.Label>
-			<ColorPicker id="{uid}-color" bind:value={color} />
-		</Field.Field>
-		{#if !isGroup}
-			<fieldset class="flex flex-col gap-2">
-				<legend class="mb-2 text-sm font-medium">{m.tag_assignment()}</legend>
-				<div class="flex flex-wrap gap-x-6 gap-y-2">
-					<label class="flex items-center gap-2 text-sm">
-						<input
-							type="radio"
-							name="{uid}-assignment"
-							checked={!manual}
-							onchange={() => (manual = false)}
-							class="size-4 accent-primary"
-						/>
-						{m.tag_assignment_auto()}
-					</label>
-					<label class="flex items-center gap-2 text-sm">
-						<input
-							type="radio"
-							name="{uid}-assignment"
-							checked={manual}
-							onchange={() => (manual = true)}
-							class="size-4 accent-primary"
-						/>
-						{m.tag_assignment_manual()}
-					</label>
+				<div class="grid gap-2 sm:grid-cols-2">
+					{#each KIND_CARDS as card (card.scope)}
+						<label
+							class={cn(
+								'flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors hover:bg-secondary/60',
+								kind === card.scope && 'border-primary bg-primary/10 hover:bg-primary/10'
+							)}
+						>
+							<input
+								type="radio"
+								name="{uid}-kind"
+								value={card.scope}
+								checked={kind === card.scope}
+								onchange={() => chooseKind(card.scope)}
+								class="mt-0.5 size-4 shrink-0 accent-primary"
+							/>
+							<span class="flex flex-col gap-0.5">
+								<span class="text-sm font-medium">{card.title()}</span>
+								<span class="text-sm text-muted-foreground">{card.example()}</span>
+							</span>
+						</label>
+					{/each}
 				</div>
-				<Field.Description>
-					{isTopic ? m.topic_assignment_hint() : m.tag_assignment_hint()}
-				</Field.Description>
 			</fieldset>
 		{/if}
-		<Field.Field>
-			<label class="flex items-center gap-2 text-sm font-medium">
-				<input
-					type="checkbox"
-					bind:checked={shown}
-					class="size-4 accent-primary"
-					aria-describedby="{uid}-shown-hint"
-				/>
-				{m.tag_shown()}
-			</label>
-			<Field.Description id="{uid}-shown-hint">
-				{isGroup ? m.tag_group_shown_hint() : isTopic ? m.topic_shown_hint() : m.tag_shown_hint()}
-			</Field.Description>
-		</Field.Field>
-		<div
-			class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-muted/60 px-3 py-2.5 text-sm text-muted-foreground"
-		>
-			{m.master_color_preview()}
-			<TagChip
-				tag={{
-					id: initial?.id ?? 'new',
-					name: name.trim() || m.field_name(),
-					path: [name.trim() || m.field_name()],
-					icon,
-					color
-				}}
-				topic={isTopic}
-				group={isGroup}
-				size="md"
-			/>
-			<span class="text-xs">
-				{isTopic
-					? m.tag_preview_topic()
-					: isGroup
-						? m.tag_preview_group()
-						: m.tag_preview_document()}
-			</span>
-		</div>
-	{/if}
-	{#if groupScope !== null}
-		<Field.Field>
-			<Field.Label id="{uid}-groups-label">{m.master_groups()}</Field.Label>
-			<TagPicker
-				id="{uid}-groups"
-				label={m.master_groups()}
-				labelledby="{uid}-groups-label"
-				title={groupScope === 'contact' ? m.master_contact_groups() : m.master_type_groups()}
-				scope={groupScope}
-				{tags}
-				selected={groupIds}
-				onchange={(next) => (groupIds = next)}
-				oncreated={ontagcreated}
-			/>
-			<Field.Description>
-				{groupScope === 'contact' ? m.master_contact_groups_hint() : m.master_type_groups_hint()}
-			</Field.Description>
-		</Field.Field>
-	{/if}
-	{#if extra === 'aliases'}
-		<Field.Field>
-			<Field.Label id="{uid}-topics-label">{m.master_topics()}</Field.Label>
-			<TagPicker
-				id="{uid}-topics"
-				label={m.master_topics()}
-				labelledby="{uid}-topics-label"
-				title={m.master_topics()}
-				scope="topic"
-				{tags}
-				selected={topicIds}
-				onchange={(next) => (topicIds = next)}
-				oncreated={ontagcreated}
-			/>
-			<Field.Description>{m.master_contact_topics_hint()}</Field.Description>
-		</Field.Field>
-		<Field.Field>
-			<Field.Label>{m.master_identifiers()}</Field.Label>
-			<IdentifiersEditor bind:rows={identifiers} topics={enabledTopics} />
-			<Field.Description>{m.master_identifiers_hint()}</Field.Description>
-		</Field.Field>
-		<Field.Field>
-			<Field.Label for="{uid}-aliases">{m.master_aliases()}</Field.Label>
-			<!-- Compact on a phone: as many lines as there are aliases, and one more. -->
-			<Textarea
-				id="{uid}-aliases"
-				bind:value={aliases}
-				rows={phone.current ? Math.min(Math.max(aliases.split('\n').length + 1, 2), 6) : 4}
-			/>
-			<Field.Description>{m.master_aliases_hint()}</Field.Description>
-		</Field.Field>
-	{:else if extra === 'description'}
-		<Field.Field>
-			<Field.Label for="{uid}-description">{m.master_description()}</Field.Label>
-			<Textarea id="{uid}-description" bind:value={description} rows={3} maxlength={300} />
-			<Field.Description>{m.master_description_hint()}</Field.Description>
-		</Field.Field>
-		<Field.Field>
-			<Field.Label for="{uid}-title-pattern">{m.master_title_pattern()}</Field.Label>
-			<TemplateInput
-				id="{uid}-title-pattern"
-				bind:value={titlePattern}
-				label={m.master_title_pattern()}
-				documentType={initial?.id ?? null}
-			/>
-			<Field.Description>{m.master_title_pattern_hint()}</Field.Description>
-			{#if ruleHref}
-				<a
-					href={ruleHref}
-					class="inline-flex items-center gap-1 self-start text-sm text-brand hover:underline"
-					onclick={() => (open = false)}
-				>
-					<Workflow class="size-3.5" aria-hidden="true" />
-					{m.master_title_rule()}
-				</a>
+		{#if extra !== 'tag' || kind !== null}
+			{#if extra === 'aliases' && phone.current}
+				<!-- On a phone the logo stands beside the name, what to do with it below. -->
+				{#if initial}
+					<ContactLogoEditor contact={initial as Contact} {fetching} onchanged={onlogo}>
+						{#snippet beside()}{@render nameField()}{/snippet}
+					</ContactLogoEditor>
+				{:else}
+					<div class="flex flex-col gap-2" data-logo-beside>
+						<div class="flex items-center gap-3">
+							<ContactAvatar contact={{ name }} size="xl" />
+							<div class="min-w-0 flex-1">{@render nameField()}</div>
+						</div>
+						<p class="pl-17 text-xs text-muted-foreground">{m.logo_after_create()}</p>
+					</div>
+				{/if}
+			{:else}
+				{@render nameField()}
 			{/if}
-		</Field.Field>
+		{/if}
+		{#if extra === 'aliases' && !phone.current}
+			<Field.Field>
+				<Field.Label>{m.logo_title()}</Field.Label>
+				{#if initial}
+					<ContactLogoEditor contact={initial as Contact} {fetching} onchanged={onlogo} />
+				{:else}
+					<Field.Description>{m.logo_after_create()}</Field.Description>
+				{/if}
+			</Field.Field>
+		{/if}
+		{#if extra === 'description'}{@render iconField()}{/if}
+		{#if extra === 'tag' && kind !== null}
+			<Field.Field>
+				<Field.Label for="{uid}-parent">
+					{isGroup ? m.tag_parent_group() : isTopic ? m.topic_parent() : m.tag_parent()}
+				</Field.Label>
+				<Select
+					id="{uid}-parent"
+					bind:value={parentId}
+					options={[
+						{
+							value: '',
+							label: isGroup
+								? m.tag_parent_group_none()
+								: isTopic
+									? m.topic_parent_none()
+									: m.tag_parent_none()
+						},
+						...parents
+					]}
+					class="h-10"
+				/>
+			</Field.Field>
+			{@render iconField()}
+			<Field.Field>
+				<Field.Label id="{uid}-color-label">{m.master_color()}</Field.Label>
+				<ColorPicker id="{uid}-color" bind:value={color} />
+			</Field.Field>
+			{#if !isGroup}
+				<fieldset class="flex flex-col gap-2" aria-labelledby="{uid}-assignment-label">
+					<div class="mb-2 flex items-center gap-1">
+						<span id="{uid}-assignment-label" class="text-sm font-medium">
+							{m.tag_assignment()}
+						</span>
+						<InfoHint
+							text={isTopic ? m.topic_assignment_hint() : m.tag_assignment_hint()}
+							about={m.tag_assignment()}
+						/>
+					</div>
+					<div class="flex flex-wrap gap-x-6 gap-y-2">
+						<label class="flex items-center gap-2 text-sm">
+							<input
+								type="radio"
+								name="{uid}-assignment"
+								checked={!manual}
+								onchange={() => (manual = false)}
+								class="size-4 accent-primary"
+							/>
+							{m.tag_assignment_auto()}
+						</label>
+						<label class="flex items-center gap-2 text-sm">
+							<input
+								type="radio"
+								name="{uid}-assignment"
+								checked={manual}
+								onchange={() => (manual = true)}
+								class="size-4 accent-primary"
+							/>
+							{m.tag_assignment_manual()}
+						</label>
+					</div>
+				</fieldset>
+			{/if}
+			<div class="flex items-center gap-1">
+				<label class="flex items-center gap-2 text-sm font-medium">
+					<input
+						type="checkbox"
+						bind:checked={shown}
+						class="size-4 accent-primary"
+						aria-describedby="{uid}-shown-hint"
+					/>
+					{m.tag_shown()}
+				</label>
+				<InfoHint
+					text={isGroup
+						? m.tag_group_shown_hint()
+						: isTopic
+							? m.topic_shown_hint()
+							: m.tag_shown_hint()}
+					about={m.tag_shown()}
+					id="{uid}-shown-hint"
+				/>
+			</div>
+			<div
+				class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-muted/60 px-3 py-2.5 text-sm text-muted-foreground"
+			>
+				{m.master_color_preview()}
+				<TagChip
+					tag={{
+						id: initial?.id ?? 'new',
+						name: name.trim() || m.field_name(),
+						path: [name.trim() || m.field_name()],
+						icon,
+						color
+					}}
+					topic={isTopic}
+					group={isGroup}
+					size="md"
+				/>
+				<span class="text-xs">
+					{isTopic
+						? m.tag_preview_topic()
+						: isGroup
+							? m.tag_preview_group()
+							: m.tag_preview_document()}
+				</span>
+			</div>
+		{/if}
+		{#if groupScope !== null}
+			<Field.Field>
+				<HintLabel
+					id="{uid}-groups-label"
+					label={m.master_groups()}
+					hint={groupScope === 'contact'
+						? m.master_contact_groups_hint()
+						: m.master_type_groups_hint()}
+				/>
+				<TagPicker
+					id="{uid}-groups"
+					label={m.master_groups()}
+					labelledby="{uid}-groups-label"
+					title={groupScope === 'contact' ? m.master_contact_groups() : m.master_type_groups()}
+					scope={groupScope}
+					{tags}
+					selected={groupIds}
+					onchange={(next) => (groupIds = next)}
+					oncreated={ontagcreated}
+				/>
+			</Field.Field>
+		{/if}
+		{#if extra === 'aliases'}
+			<Field.Field>
+				<HintLabel
+					id="{uid}-topics-label"
+					label={m.master_topics()}
+					hint={m.master_contact_topics_hint()}
+				/>
+				<TagPicker
+					id="{uid}-topics"
+					label={m.master_topics()}
+					labelledby="{uid}-topics-label"
+					title={m.master_topics()}
+					scope="topic"
+					{tags}
+					selected={topicIds}
+					onchange={(next) => (topicIds = next)}
+					oncreated={ontagcreated}
+				/>
+			</Field.Field>
+			<Field.Field>
+				<HintLabel
+					id="{uid}-aliases-label"
+					label={m.master_aliases()}
+					hint={m.master_aliases_hint()}
+					hintId="{uid}-aliases-hint"
+				/>
+				<ChipInput
+					bind:values={aliases}
+					labelledby="{uid}-aliases-label"
+					describedby="{uid}-aliases-hint"
+					addLabel={m.alias_add()}
+					inputLabel={m.alias_input()}
+				/>
+			</Field.Field>
+		{:else if extra === 'description'}
+			<Field.Field>
+				<HintLabel
+					for="{uid}-description"
+					label={m.master_description()}
+					hint={m.master_description_hint()}
+					hintId="{uid}-description-hint"
+				/>
+				<Textarea
+					id="{uid}-description"
+					bind:value={description}
+					rows={3}
+					maxlength={300}
+					aria-describedby="{uid}-description-hint"
+				/>
+			</Field.Field>
+			<Field.Field>
+				<HintLabel
+					for="{uid}-title-pattern"
+					label={m.master_title_pattern()}
+					hint={m.master_title_pattern_hint()}
+				/>
+				<TemplateInput
+					id="{uid}-title-pattern"
+					bind:value={titlePattern}
+					label={m.master_title_pattern()}
+					documentType={initial?.id ?? null}
+				/>
+				{#if ruleHref}
+					<a
+						href={ruleHref}
+						class="inline-flex items-center gap-1 self-start text-sm text-brand hover:underline"
+						onclick={() => (open = false)}
+					>
+						<Workflow class="size-3.5" aria-hidden="true" />
+						{m.master_title_rule()}
+					</a>
+				{/if}
+			</Field.Field>
+		{/if}
+	{/if}
+	{#if part === 'identifiers'}
+		<IdentifiersEditor
+			bind:rows={identifiers}
+			bind:opened={openedIdentifier}
+			topics={enabledTopics}
+			errors={identifierErrors}
+			hint={m.master_identifiers_hint()}
+		/>
+	{:else if part === 'fields'}
 		{#if fields}
 			<Field.Field>
-				<Field.Label>{m.master_type_fields()}</Field.Label>
 				<AssignmentList
 					{assigned}
 					candidates={typed.map((field) => ({
@@ -478,8 +575,7 @@
 
 {#snippet iconField()}
 	<Field.Field>
-		<Field.Label id="{uid}-icon-label">{m.master_icon()}</Field.Label>
+		<HintLabel id="{uid}-icon-label" label={m.master_icon()} hint={m.master_icon_hint()} />
 		<IconPicker id="{uid}-icon" bind:value={icon} />
-		<Field.Description>{m.master_icon_hint()}</Field.Description>
 	</Field.Field>
 {/snippet}

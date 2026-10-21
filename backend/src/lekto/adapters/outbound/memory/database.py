@@ -16,6 +16,7 @@ from lekto.core.domain.identity import ApiToken, ExternalIdentity, Session
 from lekto.core.domain.ids import DocumentId, EventId, JobId, UserId
 from lekto.core.domain.inbox import Confirmation
 from lekto.core.domain.jobs import Job
+from lekto.core.domain.lenses import Lens
 from lekto.core.domain.master_data import Contact, DocumentType, MasterData, Tag
 from lekto.core.domain.pipeline import NodeRun
 from lekto.core.domain.spaces import Space
@@ -71,6 +72,10 @@ def _document_keys(document: Document) -> Iterable[Hashable]:
     return [("sha256", document.owner_id, document.sha256)]
 
 
+def _lens_keys(lens: Lens) -> Iterable[Hashable]:
+    return [("name", lens.owner_id, name_key(lens.name))]
+
+
 def _no_keys(item: Entity[UUID]) -> Iterable[Hashable]:
     return []
 
@@ -110,6 +115,7 @@ DOCUMENT_IDENTIFIERS = Table[IdentifiersRow]("document identifiers", _no_keys)
 CLASSIFIER_MODELS = Table("classifier model", _classifier_model_keys)
 WEBHOOKS = Table("webhook", _no_keys)
 WEBHOOK_DELIVERIES = Table("webhook delivery", _no_keys)
+LENSES = Table("lens", _lens_keys)
 
 
 @dataclass

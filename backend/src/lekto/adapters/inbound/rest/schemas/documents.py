@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import Any, ClassVar, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, Json, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, Json, field_validator
 
 from lekto.adapters.inbound.rest.schemas.spaces import ShareOut
 from lekto.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
@@ -25,6 +25,7 @@ from lekto.core.domain.pipeline import (
 from lekto.core.domain.reading import DocumentReading, VisionAdvice
 from lekto.core.domain.spaces import ShareLevel, Space
 from lekto.core.domain.users import User
+from lekto.core.services.documents import DocumentFacets
 from lekto.core.services.objects import EXCHANGE_NODES
 
 ReprocessNode = StrEnum(  # type: ignore[misc]
@@ -180,7 +181,13 @@ class DocumentDetails(BaseModel):
         )
     )
     processing: Processing
-    created_at: datetime
+    created_at: datetime = Field(
+        description=(
+            "When the document came in: when Lekto received it, unless a migration took over "
+            "the source system's date or it was set since (`PATCH`). `sort=created_at` orders "
+            "by it."
+        )
+    )
     updated_at: datetime
 
     @classmethod
@@ -242,6 +249,70 @@ class DocumentPage(BaseModel):
     )
 
 
+class ValueCount(BaseModel):
+    id: UUID | None = Field(description="The contact, type, topic or tag; null: without one.")
+    count: int
+
+
+class MonthCount(BaseModel):
+    month: str = Field(description="ISO 8601, `2026-09`.", examples=["2026-09"])
+    count: int
+
+
+class YearCount(BaseModel):
+    year: int
+    count: int
+    months: list[MonthCount] = Field(description="Its months with documents, newest first.")
+
+
+class DocumentFacetsOut(BaseModel):
+    """How many documents of the filter have each value, for the filters of the document view.
+    Contacts, types, groups, topics and the period combine as either-or and count without
+    their own choice (what one more would add); tags count with the whole filter."""
+
+    total: int = Field(description="The documents of the whole filter.")
+    contacts: list[ValueCount] = Field(description="Most first; null: without a contact.")
+    document_types: list[ValueCount] = Field(description="Most first; null: without a type.")
+    contact_groups: list[ValueCount] = Field(
+        description="Most first; a group counts the documents of its contacts and those below."
+    )
+    document_type_groups: list[ValueCount] = Field(
+        description="Most first; a group counts the documents of its types and those below."
+    )
+    topics: list[ValueCount] = Field(
+        description="Most first; a topic counts the documents with it or one below it."
+    )
+    tags: list[ValueCount] = Field(
+        description="Most first; a tag counts the documents with it or one below it."
+    )
+    years: list[YearCount] = Field(description="By document date, newest first.")
+    undated: int = Field(description="Documents without a document date.")
+
+    @classmethod
+    def of(cls, facets: DocumentFacets) -> "DocumentFacetsOut":
+        def counted(counts: Mapping[Any, int]) -> list[ValueCount]:
+            ranked = sorted(counts.items(), key=lambda item: (-item[1], str(item[0])))
+            return [ValueCount(id=id, count=count) for id, count in ranked]
+
+        years: dict[int, list[MonthCount]] = {}
+        for month, count in sorted(facets.months.items(), reverse=True):
+            years.setdefault(int(month[:4]), []).append(MonthCount(month=month, count=count))
+        return cls(
+            total=facets.total,
+            contacts=counted(facets.contacts),
+            document_types=counted(facets.document_types),
+            contact_groups=counted(facets.contact_groups),
+            document_type_groups=counted(facets.document_type_groups),
+            topics=counted(facets.topics),
+            tags=counted(facets.tags),
+            years=[
+                YearCount(year=year, count=sum(month.count for month in months), months=months)
+                for year, months in years.items()
+            ],
+            undated=facets.undated,
+        )
+
+
 class DocumentPatch(BaseModel):
     """Fields left out stay as they are; null removes a value. A new contact that does not
     enable the document's topic removes the topic; a topic given must be one the contact
@@ -277,6 +348,13 @@ class DocumentPatch(BaseModel):
         default=None,
         description="Values by field id, in the form of `fields` above; null removes.",
     )
+    created_at: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "When the document came in, with a time zone; not in the future, not null. Changed "
+            "alone, it confirms nothing and the rules do not run."
+        ),
+    )
 
 
 class ImportedMetadataIn(BaseModel):
@@ -293,6 +371,7 @@ class ImportedMetadataIn(BaseModel):
                     "tag_ids": ["01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b"],
                     "document_date": "2026-03-31",
                     "fields": {"01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b": "84.20"},
+                    "created_at": "2026-04-02T09:15:00+02:00",
                 }
             ]
         },
@@ -305,6 +384,13 @@ class ImportedMetadataIn(BaseModel):
     document_date: date | None = None
     fields: dict[UUID, Any] = Field(
         default_factory=dict, description="Values by field id, as in `PATCH /documents/{id}`."
+    )
+    created_at: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "When the document came in at the source system (Paperless-ngx: `added`), with a "
+            "time zone; not in the future. It becomes the document's `created_at`."
+        ),
     )
 
 

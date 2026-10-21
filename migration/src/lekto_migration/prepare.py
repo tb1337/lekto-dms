@@ -19,6 +19,7 @@ from lekto_migration.mapping import (
     field_key,
     norm,
     notes_text,
+    received_at,
 )
 
 SUPPORTED = ("application/pdf", "image/jpeg", "image/png", "image/tiff")
@@ -73,6 +74,8 @@ def prepare(
     notes: list[str] = []
     title, title_notes = document_title(document)
     notes += title_notes
+    received, received_notes = received_at(document)
+    notes += received_notes
     access = access_of(document, users)
     notes += access.notes
     owner_id = ids.usernames.get(norm(access.owner)) if access.owner else None
@@ -138,6 +141,8 @@ def prepare(
         "tag_ids": sorted({ids.tags[tag] for tag in document.get("tags") or [] if tag in ids.tags}),
         "document_date": document_date(document),
         "fields": fields,
+        # When it came in at Paperless: the milestones start there (Tobi, 21.10.2026).
+        "created_at": received,
     }
     while len(json.dumps(metadata)) > METADATA_LIMIT and fields:
         # Too large for the upload: leave out the biggest value, the notes first.

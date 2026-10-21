@@ -1,6 +1,9 @@
 import { render, screen, within } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { formatDate, formatNumber } from '#lib/i18n.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { localMinute } from '#lib/file-passport.ts';
 import DocumentFiles from './DocumentFiles.svelte';
 
 const fetchMock = vi.fn<(request: Request) => Promise<Response>>();
@@ -37,20 +40,131 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('DocumentFiles', () => {
-	it('shows the file, the original with its metadata, and that there is no archive yet', async () => {
-		fetchMock.mockImplementation(async () => Response.json(FILES));
+	it('tells the life of the file and shows the original’s passport, without an archive yet', async () => {
+		const original = {
+			...FILES.original,
+			metadata: {
+				...FILES.original.metadata,
+				entries: [
+					{ source: 'info', key: 'Producer', value: 'Scanner 2.1' },
+					{ source: 'info', key: 'CreationDate', value: "D:20260702173000+02'00'" }
+				]
+			}
+		};
+		fetchMock.mockImplementation(async () => Response.json({ ...FILES, original }));
 		render(DocumentFiles, { documentId: 'doc-1' });
-		const file = await screen.findByRole('region', { name: m.files_title() });
-		expect(within(file).getByText('scan-2026-07-03.pdf')).toBeTruthy();
-		const original = screen.getByRole('region', { name: m.files_original() });
-		expect(within(original).getByText(SHA)).toBeTruthy();
-		expect(within(original).getByText(/10[.,]8\s?MB/)).toBeTruthy();
-		expect(within(original).getByText('1.4')).toBeTruthy();
-		expect(within(original).getByText('Producer')).toBeTruthy();
-		expect(within(original).getByText('Scanner 2.1')).toBeTruthy();
-		expect(within(original).getByRole('button', { name: m.files_copy_hash() })).toBeTruthy();
+		const life = await screen.findByRole('list');
+		expect(
+			within(life)
+				.getAllByRole('listitem')
+				.map((step) => step.querySelector('.font-semibold')?.textContent?.trim())
+		).toEqual([m.files_step_created(), m.files_step_added(), m.files_step_modified()]);
+		expect(within(life).getByText(m.files_step_sender())).toBeTruthy();
+		const passport = screen.getByRole('article', { name: m.files_original() });
+		expect(within(passport).getByText(/10[.,]8\s?MB/)).toBeTruthy();
+		expect(within(passport).getByText('PDF 1.4')).toBeTruthy();
+		expect(within(passport).getByText(`${'a'.repeat(16)}…${'a'.repeat(8)}`)).toBeTruthy();
+		expect(within(passport).getByRole('img', { name: m.files_fingerprint() })).toBeTruthy();
+		expect(within(passport).getByText(m.files_made_with())).toBeTruthy();
+		expect(within(passport).getAllByText('Scanner 2.1').length).toBeGreaterThan(0);
+		expect(within(passport).getByRole('button', { name: m.files_copy_hash() })).toBeTruthy();
 		const archive = screen.getByRole('region', { name: m.files_archive() });
 		expect(within(archive).getByText(m.files_no_archive())).toBeTruthy();
+	});
+
+	it('lists every entry of the file chosen, to search, in columns that keep their width', async () => {
+		const user = userEvent.setup();
+		const archive = {
+			size: 12_000_000,
+			sha256: 'b'.repeat(64),
+			metadata: {
+				...FILES.original.metadata,
+				pdfa: '2B',
+				entries: [{ source: 'xmp', key: 'pdfaid:part', value: '2' }]
+			}
+		};
+		fetchMock.mockImplementation(async () => Response.json({ ...FILES, archive }));
+		render(DocumentFiles, { documentId: 'doc-1' });
+		const table = await screen.findByRole('table');
+		expect(table.querySelectorAll('col')).toHaveLength(3);
+		expect(within(table).getByText('Producer')).toBeTruthy();
+		expect(screen.getByText(m.files_size_more({ percent: '11' }))).toBeTruthy();
+		await user.click(screen.getByRole('button', { name: m.files_archive() }));
+		expect(within(table).getByText('pdfaid:part')).toBeTruthy();
+		expect(within(table).queryByText('Producer')).toBeNull();
+		await user.type(screen.getByLabelText(m.files_search()), 'nichts');
+		expect(within(table).getByText(m.assignment_none_found())).toBeTruthy();
+	});
+
+	it('ends the life with a review still to come, and says how long lay between the steps', async () => {
+		vi.useFakeTimers({ now: new Date('2026-07-09T10:12:00Z'), toFake: ['Date'] });
+		fetchMock.mockImplementation(async () => Response.json(FILES));
+		render(DocumentFiles, {
+			documentId: 'doc-1',
+			document: {
+				lane: 'yellow',
+				confirmed_at: null,
+				channel: 'web',
+				processing: { status: 'review', run: 1, vision: false, nodes: [] }
+			}
+		});
+		const life = await screen.findByRole('list');
+		const steps = within(life).getAllByRole('listitem');
+		expect(steps.map((step) => step.querySelector('.font-semibold')?.textContent?.trim())).toEqual([
+			m.files_step_added(),
+			m.files_step_modified(),
+			m.files_step_confirmed()
+		]);
+		const review = steps.at(-1)!;
+		expect(within(review).getByText(m.files_step_pending())).toBeTruthy();
+		expect(review.querySelector('time')).toBeNull();
+		const days = (value: number) =>
+			m.files_gap_after({
+				duration: formatNumber(value, { style: 'unit', unit: 'day', unitDisplay: 'long' })
+			});
+		// Received to changed: four days; the review to come says since when instead.
+		expect(within(steps[1]).getByText(days(4))).toBeTruthy();
+		expect(within(review).queryByText(days(2))).toBeNull();
+		expect(
+			within(review).getByText(
+				m.files_step_since({ date: formatDate(FILES.added, { dateStyle: 'medium' }) })
+			)
+		).toBeTruthy();
+		vi.useRealTimers();
+	});
+
+	it('sets anew when the document came in, at its milestone', async () => {
+		fetchMock.mockImplementation(async (request) =>
+			request.method === 'PATCH' ? Response.json({}) : Response.json(FILES)
+		);
+		const onchanged = vi.fn();
+		render(DocumentFiles, { documentId: 'doc-1', editable: true, onchanged });
+		await userEvent.click(await screen.findByRole('button', { name: m.files_received_edit() }));
+		// jsdom never places the popover: it stays invisible to the queries by role, and its
+		// name with it.
+		const dialog = await screen.findByRole('dialog', { hidden: true });
+		const title = globalThis.document.getElementById(dialog.getAttribute('aria-labelledby')!);
+		expect(title?.textContent).toBe(m.files_received_label());
+		const field = within(dialog).getByLabelText(m.files_received_label()) as HTMLInputElement;
+		expect(field.value).toBe(localMinute(new Date(FILES.added)));
+		await userEvent.clear(field);
+		await userEvent.type(field, '2026-06-30T09:15');
+		await userEvent.click(within(dialog).getByText(m.save()));
+		await vi.waitFor(() => expect(onchanged).toHaveBeenCalledOnce());
+		const patch = fetchMock.mock.calls
+			.map(([request]) => request)
+			.find((r) => r.method === 'PATCH')!;
+		expect(new URL(patch.url).pathname).toBe('/api/v1/documents/doc-1');
+		expect(await patch.json()).toEqual({
+			created_at: new Date('2026-06-30T09:15').toISOString()
+		});
+	});
+
+	it('offers no pencil to someone who may not change the document', async () => {
+		fetchMock.mockImplementation(async () => Response.json(FILES));
+		render(DocumentFiles, { documentId: 'doc-1' });
+		await screen.findByRole('list');
+		expect(screen.queryByRole('button', { name: m.files_received_edit() })).toBeNull();
 	});
 
 	it('says when a file’s metadata cannot be read', async () => {
@@ -58,6 +172,6 @@ describe('DocumentFiles', () => {
 			Response.json({ ...FILES, original: { ...FILES.original, metadata: null } })
 		);
 		render(DocumentFiles, { documentId: 'doc-1' });
-		expect(await screen.findByText(m.files_unreadable())).toBeTruthy();
+		expect((await screen.findAllByText(m.files_unreadable())).length).toBeGreaterThan(0);
 	});
 });

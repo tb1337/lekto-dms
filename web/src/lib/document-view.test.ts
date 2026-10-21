@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
 	fieldEvidence,
 	byPage,
@@ -13,6 +13,8 @@ import {
 	tabHref,
 	tabOf,
 	viewerSources,
+	viewHref,
+	viewOf,
 	type Check,
 	type Review
 } from './document-view.ts';
@@ -37,18 +39,46 @@ function check(field: string, changes: Partial<Check> = {}): Check {
 const place = { page: 2, boxes: [{ x: 0.1, y: 0.5, width: 0.2, height: 0.02 }] };
 
 describe('tabs', () => {
-	it('come from the URL, the details without one', () => {
-		expect(tabOf(new URL('http://lekto/ui/documents/1'))).toBe('details');
+	it('come from the URL, the document without one', () => {
+		expect(tabOf(new URL('http://lekto/ui/documents/1'))).toBe('document');
 		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=log'))).toBe('log');
-		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=nonsense'))).toBe('details');
+		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=nonsense'))).toBe('document');
+		// The tabs of before are the document's.
+		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=content'))).toBe('document');
 	});
 
 	it('keep the other parameters', () => {
-		const url = new URL('http://lekto/ui/documents/1?from=inbox&tab=log');
-		expect(tabHref(url, 'content')).toBe('/ui/documents/1?from=inbox&tab=content');
-		expect(tabHref(url, 'details')).toBe('/ui/documents/1?from=inbox');
-		expect(tabHref(new URL('http://lekto/ui/documents/1?tab=log'), 'details')).toBe(
+		const url = new URL('http://lekto/ui/documents/1?from=inbox&tab=log&left=text&right=form');
+		expect(tabHref(url, 'metadata')).toBe(
+			'/ui/documents/1?from=inbox&tab=metadata&left=text&right=form'
+		);
+		expect(tabHref(url, 'document')).toBe('/ui/documents/1?from=inbox&left=text&right=form');
+		expect(tabHref(new URL('http://lekto/ui/documents/1?tab=log'), 'document')).toBe(
 			'/ui/documents/1'
+		);
+	});
+});
+
+describe('the view of the document tab', () => {
+	afterEach(() => localStorage.clear());
+
+	it('comes from the URL, a link of before, else checks: nothing is remembered', () => {
+		const at = (query: string) => new URL(`http://lekto/ui/documents/1${query}`);
+		const reading = { left: 'text', right: 'facts' } as const;
+		// What an earlier version kept in the browser counts no more.
+		localStorage.setItem('lekto.document.view', JSON.stringify(reading));
+		expect(viewOf(at(''))).toEqual({ left: 'pages', right: 'form' });
+		expect(viewOf(at('?left=text&right=form'))).toEqual({ left: 'text', right: 'form' });
+		expect(viewOf(at('?tab=content'))).toEqual(reading);
+		expect(viewOf(at('?tab=details'))).toEqual({ left: 'pages', right: 'form' });
+		expect(viewOf(at('?tab=content&right=form'))).toEqual({ left: 'text', right: 'form' });
+		expect(viewOf(at('?left=nonsense&right=facts'))).toEqual({ left: 'pages', right: 'facts' });
+	});
+
+	it('is linked, leaving a tab of before behind', () => {
+		const url = new URL('http://lekto/ui/documents/1?from=inbox&tab=content');
+		expect(viewHref(url, { left: 'pages', right: 'facts' })).toBe(
+			'/ui/documents/1?from=inbox&left=pages&right=facts'
 		);
 	});
 });

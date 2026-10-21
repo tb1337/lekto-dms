@@ -1,7 +1,6 @@
 <script lang="ts">
 	import History from '@lucide/svelte/icons/history';
 	import KeyRound from '@lucide/svelte/icons/key-round';
-	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Send from '@lucide/svelte/icons/send';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -12,6 +11,7 @@
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import EditButton from '#lib/components/EditButton.svelte';
 	import SecretDialog from '#lib/components/SecretDialog.svelte';
 	import WebhookDialog from '#lib/components/WebhookDialog.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
@@ -162,20 +162,16 @@
 						<Button
 							variant="ghost"
 							size="icon"
-							aria-label={m.webhook_edit_named({ name: hook.name })}
-							onclick={() => (editing = hook)}
-						>
-							<Pencil aria-hidden="true" />
-						</Button>
-						<Button
-							variant="ghost"
-							size="icon"
 							aria-label={m.webhook_delete({ name: hook.name })}
 							onclick={() => (removing = hook)}
 						>
 							<Trash2 aria-hidden="true" />
 						</Button>
 					</div>
+					<EditButton
+						label={m.webhook_edit_named({ name: hook.name })}
+						onclick={() => (editing = hook)}
+					/>
 				</li>
 			{/each}
 		</ul>

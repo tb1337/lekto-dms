@@ -80,8 +80,10 @@ name another value, a contradiction, so yellow.
 `search/queries.json` holds queries for the same documents (`query`, `kind`, `expected`: the
 cases that answer it). The kinds are `exact` (words of the document), `number` (identifiers and
 amounts), `compound` (compound words), `typo`, `paraphrase` (other words for the same thing),
-`english` (query in English, documents in German) and `late` (only in the back part of the long
-statement, beyond the sections that get a vector).
+`english` (query in English, documents in German), `late` (only in the back part of the long
+statement, beyond the sections that get a vector), `confusable` (the right one among documents
+alike: the pay slips, the electrician's, the mail-order house's, the statements, the insurer's),
+`question` (asked as a person asks) and `purpose` (what a document is for, in none of its words).
 
 ```sh
 uv run python -m lekto.composition evaluate-search --fake                # flow only, as in CI

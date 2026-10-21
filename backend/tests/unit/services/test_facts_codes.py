@@ -12,6 +12,7 @@ from lekto.core.domain.identifiers import Identifier, IdentifierKind
 from lekto.core.domain.ids import ContactId
 from lekto.core.domain.master_data import Contact
 from lekto.core.domain.pipeline import Node
+from lekto.core.domain.users import Role
 from lekto.core.ports.codes import CodeReading
 from lekto.core.services.classification.signals import FactsResult, FactsSignal
 from lekto.core.services.nodes import OcrNode
@@ -114,6 +115,20 @@ async def test_the_identifiers_a_document_shows_are_kept(world: World) -> None:
     # The owner's own IBAN stands on both; the GiroCode's only on the utility's.
     assert await contacts_of(world, OWN_IBAN) == {utility.id, bank.id}
     assert await contacts_of(world, GIRO_IBAN) == {utility.id}
+
+
+async def test_admins_learn_which_other_contacts_show_an_identifier(world: World) -> None:
+    utility, bank = (Contact.create(name=name, now=builders.NOW) for name in ("Werke", "Bank"))
+    await contacts(world, utility, bank)
+    await confirmed(world, utility, [FAKE_GIRO_CODE])
+    await confirmed(world, bank, [])
+    document = await with_archive(world, await stored(world, await world.user(), TEXT, utility))
+    admin = await world.user(role=Role.ADMIN)
+    report = await world.documents.facts(admin.id, document.id)
+    assert report.other_contacts is not None
+    # The owner's own IBAN stands on the bank's documents too, never counting the utility.
+    assert report.other_contacts[(IdentifierKind.IBAN, OWN_IBAN)] == {bank.id}
+    assert (await world.documents.facts(document.owner_id, document.id)).other_contacts is None
 
 
 async def test_read_codes_reads_the_facts_of_documents_from_before(world: World) -> None:

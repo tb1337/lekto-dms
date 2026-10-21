@@ -21,6 +21,7 @@ from lekto.adapters.outbound.meilisearch.index import (
 )
 from lekto.core.domain.errors import SearchIndexError, SearchUnavailableError
 from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, SpaceId, TagId, UserId
+from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane
 from lekto.core.domain.search import EmbeddingStamp, Segment, Visibility
 from lekto.core.ports.repository import DocumentFilter
@@ -529,22 +530,24 @@ def test_the_filter_for_a_user_with_spaces_and_criteria() -> None:
         "x",
         visibility,
         filter=DocumentFilter(
-            contact=ContactId(uid(3)),
-            document_type=DocumentTypeId(uid(4)),
+            contacts=frozenset({ContactId(uid(10)), ContactId(uid(3))}),
+            document_types=frozenset({DocumentTypeId(uid(4))}),
             tags=(frozenset({TagId(uid(6)), TagId(uid(5))}), frozenset({TagId(uid(7))})),
             contact_groups=(frozenset({TagId(uid(8))}),),
             document_type_groups=(frozenset({TagId(uid(9))}),),
-            space=SpaceId(uid(1)),
+            spaces=frozenset({SpaceId(uid(1))}),
             lanes=frozenset({Lane.GREEN, None}),
+            document_dates=Period.month(2026, 9),
         ),
     )
     assert filter_expression(query.visibility, query.filter) == (
         f'(owner_id = "{uid(100)}" OR (lane = "green" AND space_id IN '
         f'["{uid(1)}", "{uid(2)}"])) '
-        f'AND contact_id = "{uid(3)}" AND document_type_id = "{uid(4)}" '
+        f'AND contact_id IN ["{uid(3)}", "{uid(10)}"] AND document_type_id IN ["{uid(4)}"] '
+        f'AND space_id IN ["{uid(1)}"] '
         f'AND tag_ids IN ["{uid(5)}", "{uid(6)}"] AND tag_ids IN ["{uid(7)}"] '
         f'AND contact_group_ids IN ["{uid(8)}"] AND document_type_group_ids IN ["{uid(9)}"] '
-        f'AND space_id = "{uid(1)}" '
+        "AND document_date 1788220800 TO 1790726400 "
         'AND lane IN ["green", "processing"]'
     )
 
@@ -552,8 +555,10 @@ def test_the_filter_for_a_user_with_spaces_and_criteria() -> None:
 def test_the_filter_of_a_search_over_everything() -> None:
     everything = Visibility(UserId(uid(100)), frozenset(), everything=True)
     assert filter_expression(everything, DocumentFilter()) is None
-    query = search_query("x", everything, filter=DocumentFilter(contact=ContactId(uid(3))))
-    assert filter_expression(query.visibility, query.filter) == f'contact_id = "{uid(3)}"'
+    query = search_query(
+        "x", everything, filter=DocumentFilter(contacts=frozenset({ContactId(uid(3))}))
+    )
+    assert filter_expression(query.visibility, query.filter) == f'contact_id IN ["{uid(3)}"]'
 
 
 def test_the_filter_for_confirmed_documents() -> None:

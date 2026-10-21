@@ -67,6 +67,24 @@ class Url:
 
 type FieldValue = str | Decimal | Money | date | bool | Url | Period
 
+SORTABLE_TYPES = frozenset({FieldType.DATE, FieldType.PERIOD, FieldType.NUMBER, FieldType.AMOUNT})
+"""The types whose values a list sorts by (`sort_value`)."""
+
+
+def sort_value(value: FieldValue | None) -> date | Decimal | None:
+    """What a value sorts by: a date as it is, a period by its first day, a number as it is, an
+    amount by its value whatever its currency; None for other types and no value."""
+    match value:
+        case Money():
+            return value.amount
+        case Period():
+            return value.start
+        case bool():
+            return None
+        case Decimal() | date():
+            return value
+    return None
+
 
 @dataclass(kw_only=True)
 class FieldDefinition(MasterData):

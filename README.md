@@ -45,8 +45,8 @@ Ollama or another OpenAI-compatible endpoint; without one, documents stop yellow
 classify and the search works with words only.
 
 **Run it from the devcontainer** (development, or a personal instance on your machine): open the
-repository in VS Code, "Reopen in Container", run the task **Lekto: Devinstanz einrichten**, fill
-in `.devcontainer/live.env`, run **Lekto starten**. Details, data separation, backup and the
+repository in VS Code, "Reopen in Container", run the task **Lekto: Set up dev instance**, fill
+in `.devcontainer/dev.env`, run **Lekto: Start**. Details, data separation, backup and the
 migration from Paperless: [.devcontainer/README.md](.devcontainer/README.md).
 
 **Take a Paperless-ngx archive over:** [migration/README.md](migration/README.md) (`plan`, `run`,

@@ -423,9 +423,9 @@ class IndexingService:
         or type in it or a group below it."""
         match kind:
             case RefreshKind.CONTACT:
-                filters = [DocumentFilter(contact=ContactId(item))]
+                filters = [DocumentFilter(contacts=frozenset({ContactId(item)}))]
             case RefreshKind.DOCUMENT_TYPE:
-                filters = [DocumentFilter(document_type=DocumentTypeId(item))]
+                filters = [DocumentFilter(document_types=frozenset({DocumentTypeId(item)}))]
             case RefreshKind.TAG:
                 async with self._uow() as uow:
                     tags = (await tag_tree(uow)).with_descendants([TagId(item)])

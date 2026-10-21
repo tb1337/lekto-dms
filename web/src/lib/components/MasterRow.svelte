@@ -1,9 +1,8 @@
 <script lang="ts">
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
-	import Pencil from '@lucide/svelte/icons/pencil';
 	import type { Snippet } from 'svelte';
+	import EditButton from '#lib/components/EditButton.svelte';
 	import UsageCount, { type Unit, usageLabel } from '#lib/components/UsageCount.svelte';
-	import { Button } from '#lib/components/ui/button/index.ts';
 	import { formatNumber } from '#lib/i18n.ts';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { cn } from '#lib/utils.ts';
@@ -16,7 +15,8 @@
 
 	// A row of a master data list. On a phone the whole row is a button that opens the editor:
 	// its usage as a bare number (the last of `usage`) and a chevron, no other buttons. Wider,
-	// the usage links to where it is listed and a pencil opens the editor. `before` stands
+	// the usage links to where it is listed and a pencil, in a column of its own behind a line,
+	// opens the editor. `before` stands
 	// outside the button (a tree's chevron), `lead` before the content (avatar, icon).
 	let {
 		onopen,
@@ -74,8 +74,6 @@
 				{/each}
 			</span>
 		{/if}
-		<Button variant="ghost" size="icon" class="shrink-0" aria-label={editLabel} onclick={onopen}>
-			<Pencil aria-hidden="true" />
-		</Button>
+		<EditButton label={editLabel} onclick={onopen} />
 	</li>
 {/if}

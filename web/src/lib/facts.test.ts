@@ -5,8 +5,10 @@ import {
 	grouped,
 	inUnits,
 	pageRanges,
+	quoteStretches,
 	segmentsOf,
 	shown,
+	spanMarks,
 	type Facts
 } from './facts.ts';
 
@@ -21,7 +23,7 @@ const FACTS: Facts = {
 			alias: false,
 			in_text: true,
 			in_code: true,
-			spans: [{ start: 0, end: 10 }]
+			spans: [{ start: 0, end: 10, locations: [] }]
 		}
 	],
 	identifiers: [
@@ -31,7 +33,7 @@ const FACTS: Facts = {
 			contact_id: CONTACT,
 			in_text: true,
 			in_code: true,
-			spans: [{ start: 20, end: 47 }],
+			spans: [{ start: 20, end: 47, locations: [] }],
 			other_contacts: null
 		},
 		{
@@ -49,7 +51,7 @@ const FACTS: Facts = {
 			contact_id: null,
 			in_text: true,
 			in_code: false,
-			spans: [{ start: 60, end: 69 }],
+			spans: [{ start: 60, end: 69, locations: [] }],
 			other_contacts: 0
 		}
 	],
@@ -128,8 +130,41 @@ describe('facts', () => {
 	it('finds the content of a code in the text', () => {
 		const code = FACTS.codes![0];
 		expect(codeSpans(FACTS, code)).toEqual([
-			{ start: 20, end: 47 },
-			{ start: 0, end: 10 }
+			{ start: 20, end: 47, locations: [] },
+			{ start: 0, end: 10, locations: [] }
+		]);
+	});
+
+	it('finds a quote however its lines and spaces fall, case aside', () => {
+		const text = 'Rechnung   Nr. 4711\nGesamtbetrag      84,20 EUR\n\fgesamtbetrag 84,20 eur';
+		const found = quoteStretches(text, ' Gesamtbetrag 84,20 EUR ');
+		expect(found.map((stretch) => text.slice(stretch.start, stretch.end))).toEqual([
+			'Gesamtbetrag      84,20 EUR',
+			'gesamtbetrag 84,20 eur'
+		]);
+		// Its marks stand for themselves; at most a few places.
+		expect(quoteStretches(text, 'Nr. 4711 Gesamtbetrag')).toEqual([{ start: 11, end: 32 }]);
+		expect(quoteStretches(text, 'Nr 4711')).toEqual([]);
+		expect(quoteStretches('a a a a a a a', 'a', 3)).toHaveLength(3);
+		expect(quoteStretches(text, '  ')).toEqual([]);
+	});
+
+	it('marks a fact on each page it stands on, under its label', () => {
+		const box = { x: 0.1, y: 0.2, width: 0.3, height: 0.01 };
+		const spans = [
+			{
+				start: 0,
+				end: 10,
+				locations: [
+					{ page: 1, boxes: [box] },
+					{ page: 2, boxes: [box, box] }
+				]
+			},
+			{ start: 40, end: 50, locations: [] }
+		];
+		expect(spanMarks(spans, 'IBAN')).toEqual([
+			{ key: 'fact:0', label: 'IBAN', page: 1, boxes: [box], derived: false, pinned: false },
+			{ key: 'fact:0', label: 'IBAN', page: 2, boxes: [box, box], derived: false, pinned: false }
 		]);
 	});
 });

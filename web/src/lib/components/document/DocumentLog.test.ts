@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { components } from '#lib/api/schema.ts';
@@ -110,6 +110,16 @@ afterEach(() => {
 	window.document.body.style.pointerEvents = '';
 });
 
+/** Opens an info icon's box; it lies in a layer over the page, outside its column. */
+async function openTip(button: HTMLElement): Promise<HTMLElement> {
+	await userEvent.click(button);
+	return waitFor(() => {
+		const tip = globalThis.document.querySelector<HTMLElement>('[data-info-tip]');
+		expect(tip).not.toBeNull();
+		return tip!;
+	});
+}
+
 describe('DocumentLog', () => {
 	it('shows the nodes in rows by level, side by side where they run so', async () => {
 		const { container } = render(DocumentLog, {
@@ -136,12 +146,12 @@ describe('DocumentLog', () => {
 			manageable: true,
 			onreprocess: vi.fn()
 		});
-		const info = await screen.findByRole('button', { name: m.tokens_details() });
-		await fireEvent.mouseEnter(info);
-		const tooltip = screen.getByRole('tooltip');
+		const tooltip = await openTip(await screen.findByRole('button', { name: m.tokens_details() }));
 		expect(within(tooltip).getByText(m.tokens_input())).toBeTruthy();
 		expect(tooltip.textContent).toContain('2,318');
 		const proposal = container.querySelector('[data-node="signal_llm"]') as HTMLElement;
+		// The dot between run and model with a space on both sides.
+		expect(proposal.textContent).toMatch(/\d · qwen3:8b/);
 		await userEvent.click(within(proposal).getByRole('button', { name: m.prompt_open() }));
 		expect(await screen.findByText('You read one document.')).toBeTruthy();
 		await userEvent.click(screen.getByRole('button', { name: m.prompt_answer() }));
@@ -191,11 +201,10 @@ describe('DocumentLog', () => {
 		});
 		const ocr = container.querySelector('[data-node="ocr"]') as HTMLElement;
 		// One call per page, not attempts.
-		await fireEvent.mouseEnter(
+		const tooltip = await openTip(
 			await within(ocr).findByRole('button', { name: m.tokens_details() })
 		);
-		const tooltip = screen.getByRole('tooltip');
-		expect(tooltip.textContent).toContain(m.prompt_calls({ count: 2 }));
+		expect(tooltip.textContent).toContain(`(read-1) · ${m.prompt_calls({ count: 2 })}`);
 		expect(tooltip.textContent).toContain('4,258');
 		await userEvent.click(within(ocr).getByRole('button', { name: m.prompt_open() }));
 		expect(await screen.findByText('You transcribe one page of a document.')).toBeTruthy();

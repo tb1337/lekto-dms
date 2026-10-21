@@ -19,13 +19,15 @@ Common rules for every adapter:
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
 from lekto.core.domain.classifier import ClassifierModel
 from lekto.core.domain.documents import Document, Sha256
-from lekto.core.domain.fields import FieldDefinition
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.fields import FieldDefinition, sort_value
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import (
     ClassifierModelId,
@@ -34,6 +36,7 @@ from lekto.core.domain.ids import (
     DocumentId,
     DocumentTypeId,
     FieldId,
+    LensId,
     RuleApplicationId,
     RuleId,
     SpaceId,
@@ -42,7 +45,9 @@ from lekto.core.domain.ids import (
     WebhookId,
 )
 from lekto.core.domain.inbox import Confirmation, InboxTab
+from lekto.core.domain.lenses import Lens
 from lekto.core.domain.master_data import Contact, DocumentType, Tag, TagScope
+from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane, NodeRun
 from lekto.core.domain.rules import Rule, RuleApplication, RuleVersion
 from lekto.core.domain.sorting import sort_key
@@ -129,47 +134,74 @@ type TagSets = tuple[frozenset[TagId], ...]
 class DocumentFilter:
     """Criteria for listing documents; all given ones must match.
 
-    `tags`: sets of tags; the document carries one tag of each set. The core gives a tag with
-    its descendants as one set (`TagTree.with_descendants`), so no adapter walks the tree.
+    `contacts`, `document_types`, `spaces`: the document's is one of them. `tags`: sets of
+    tags; the document carries one tag of each set. The core gives a tag with its descendants
+    as one set (`TagTree.with_descendants`), so no adapter walks the tree.
     `contact_groups`, `document_type_groups` likewise: the document's contact (type) is in one
     group of each set. `topics`: the document's topic is one of them (a topic with its
     descendants). `lanes`: one of them, where None stands for documents still in processing.
     `confirmed`: whether a person set or confirmed the metadata (`Document.confirmed_at`).
-    `field`: a value for it is set."""
+    `field`: a value for it is set. `document_dates`: the document date lies in the period (a
+    document without one does not match)."""
 
-    contact: ContactId | None = None
-    document_type: DocumentTypeId | None = None
+    contacts: frozenset[ContactId] | None = None
+    document_types: frozenset[DocumentTypeId] | None = None
     tags: TagSets = ()
     contact_groups: TagSets = ()
     document_type_groups: TagSets = ()
     topics: frozenset[TagId] | None = None
-    space: SpaceId | None = None
+    spaces: frozenset[SpaceId] | None = None
     lanes: frozenset[Lane | None] | None = None
     confirmed: bool | None = None
     field: FieldId | None = None
+    document_dates: Period | None = None
 
     def __post_init__(self) -> None:
         for sets in (self.tags, self.contact_groups, self.document_type_groups):
             if any(not tags for tags in sets):
                 raise ValueError("a set of tags in a filter is never empty")
-        if self.topics is not None and not self.topics:
-            raise ValueError("a set of topics in a filter is never empty")
+        for name, chosen in (
+            ("topics", self.topics),
+            ("contacts", self.contacts),
+            ("document types", self.document_types),
+            ("spaces", self.spaces),
+        ):
+            if chosen is not None and not chosen:
+                raise ValueError(f"a set of {name} in a filter is never empty")
 
     def matches(self, view: "FilterView") -> bool:
         """Whether a document (as `view` shows it) matches; for the core and the in-memory
         adapters, where SQL and the search index have their query languages."""
         return (
-            (self.contact is None or view.contact == self.contact)
-            and (self.document_type is None or view.document_type == self.document_type)
+            (self.contacts is None or view.contact in self.contacts)
+            and (self.document_types is None or view.document_type in self.document_types)
             and (self.topics is None or bool(self.topics & view.topics))
             and all(tags & view.tags for tags in self.tags)
             and all(groups & view.contact_groups for groups in self.contact_groups)
             and all(groups & view.document_type_groups for groups in self.document_type_groups)
-            and (self.space is None or view.space == self.space)
+            and (self.spaces is None or view.space in self.spaces)
             and (self.lanes is None or view.lane in self.lanes)
             and (self.confirmed is None or view.confirmed is self.confirmed)
             and (self.field is None or self.field in view.fields)
+            and (
+                self.document_dates is None
+                or (
+                    view.document_date is not None
+                    and self.document_dates.start <= view.document_date <= self.document_dates.end
+                )
+            )
         )
+
+
+@dataclass(frozen=True, kw_only=True)
+class FacetRow:
+    """What counts of the documents of a filter look at of one of them (`facet_rows`)."""
+
+    contact: ContactId | None
+    document_type: DocumentTypeId | None
+    topic: TagId | None
+    tags: frozenset[TagId]
+    document_date: date | None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -187,6 +219,7 @@ class FilterView:
     lane: Lane | None
     confirmed: bool
     fields: frozenset[FieldId]
+    document_date: date | None = None
 
     @classmethod
     def of(
@@ -207,22 +240,31 @@ class FilterView:
             lane=document.lane,
             confirmed=document.confirmed_at is not None,
             fields=frozenset(document.fields),
+            document_date=document.document_date,
         )
 
 
 class SortKey(StrEnum):
-    CREATED = "created_at"  # the order documents came in, which is their ids'
+    ARRIVAL = "arrival"  # the order documents reached Lekto, which is their ids'
+    CREATED = "created_at"  # by when they came in (`Document.created_at`, which may be set)
     DOCUMENT_DATE = "document_date"
     TITLE = "title"  # by `sort_key` of the title
+    FIELD = "field"  # by the value of a field (`DocumentOrder.field`, `fields.sort_value`)
 
 
 @dataclass(frozen=True)
 class DocumentOrder:
     """How a list of documents is sorted: by `key`, descending unless `ascending`, ties by id
-    the same way. Documents without a document date come last either way."""
+    the same way. Documents without a document date come last either way, as do those without
+    a value when sorted by the field `field` (only then given; one of `SORTABLE_TYPES`)."""
 
-    key: SortKey = SortKey.CREATED
+    key: SortKey = SortKey.ARRIVAL
     ascending: bool = False
+    field: FieldId | None = None
+
+    def __post_init__(self) -> None:
+        if (self.key is SortKey.FIELD) != (self.field is not None):
+            raise ValidationError("sort_field_id: needed to sort by a field, and only then")
 
 
 NEWEST_FIRST = DocumentOrder()
@@ -248,26 +290,31 @@ PAGE_LIMIT = 200
 @dataclass(frozen=True)
 class DocumentPosition:
     """Where a page of a sorted list ended: its last document, and that document's value of
-    the sort key (none for `CREATED`, which sorts by id)."""
+    the sort key (none for `ARRIVAL`, which sorts by id)."""
 
     id: DocumentId
-    value: date | str | None = None
+    value: datetime | date | str | Decimal | None = None
 
     @classmethod
     def after(cls, id: DocumentId | None) -> "DocumentPosition | None":
-        """The position after the document `id` in a list sorted by `CREATED`; None: from the
+        """The position after the document `id` in a list sorted by `ARRIVAL`; None: from the
         start."""
         return None if id is None else cls(id)
 
     @classmethod
     def of(cls, document: Document, order: DocumentOrder) -> "DocumentPosition":
         match order.key:
-            case SortKey.CREATED:
+            case SortKey.ARRIVAL:
                 return cls(document.id)
+            case SortKey.CREATED:
+                return cls(document.id, document.created_at)
             case SortKey.DOCUMENT_DATE:
                 return cls(document.id, document.document_date)
             case SortKey.TITLE:
                 return cls(document.id, sort_key(document.title))
+            case SortKey.FIELD:
+                value = None if order.field is None else document.fields.get(order.field)
+                return cls(document.id, sort_value(value))
 
 
 class DocumentRepository(Repository[DocumentId, Document], Protocol):
@@ -313,6 +360,12 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         limit: int,
     ) -> list[Document]:
         """As `query_visible`, over every document (for admins)."""
+        ...
+
+    async def facet_rows(self, filter: DocumentFilter, user: UserId | None) -> list[FacetRow]:
+        """Of each document that matches `filter` and the user may read (as
+        `list_visible_to`; None: every document), what its counts look at: contact, type,
+        topic, tags, document date. In no order."""
         ...
 
     async def count_by(self, by: CountBy, user: UserId | None) -> dict[UUID, int]:
@@ -547,6 +600,34 @@ class ClassifierModelRepository(Protocol):
         ...
 
     async def remove(self, id: ClassifierModelId) -> None: ...
+
+
+class LensRepository(Protocol):
+    """A user's lenses (`domain.lenses`)."""
+
+    async def get(self, id: LensId) -> Lens: ...
+
+    async def find(self, id: LensId) -> Lens | None: ...
+
+    async def add(self, lens: Lens) -> None:
+        """ConflictError if the owner has a lens of that name (regardless of case)."""
+        ...
+
+    async def update(self, lens: Lens) -> None:
+        """As `add` for the name; ConcurrencyError if it was changed meanwhile."""
+        ...
+
+    async def remove(self, id: LensId) -> None:
+        """NotFoundError if it does not exist."""
+        ...
+
+    async def remove_for_owner(self, owner: UserId) -> int:
+        """Delete the user's lenses; returns how many."""
+        ...
+
+    async def list_for_owner(self, owner: UserId) -> list[Lens]:
+        """The user's lenses by `position`, ties oldest first."""
+        ...
 
 
 class WebhookRepository(Protocol):

@@ -4,7 +4,7 @@
 	import ListPlus from '@lucide/svelte/icons/list-plus';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import ConditionGroup from '#lib/components/rules/ConditionGroup.svelte';
 	import ConditionRow from '#lib/components/rules/ConditionRow.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -64,7 +64,7 @@
 	aria-label={root ? m.rule_conditions() : m.rule_subgroup()}
 >
 	<div class="flex flex-wrap items-center gap-2">
-		<NativeSelect
+		<Select
 			aria-label={m.rule_mode()}
 			value={group.mode}
 			options={modes}

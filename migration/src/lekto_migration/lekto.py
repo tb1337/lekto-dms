@@ -110,6 +110,19 @@ class Lekto:
     async def log(self, id: str) -> list[dict[str, Any]]:
         return cast("list[dict[str, Any]]", await self.request("GET", f"/documents/{id}/log"))
 
+    async def text(self, id: str) -> str:
+        """The whole text of a document's archive, piece by piece."""
+        pieces, offset = [], 0
+        while True:
+            piece = await self._object("GET", f"/documents/{id}/text", params={"offset": offset})
+            pieces.append(str(piece["text"]))
+            if piece.get("next_offset") is None:
+                return "".join(pieces)
+            offset = int(piece["next_offset"])
+
+    async def reading(self, id: str) -> dict[str, Any]:
+        return await self._object("GET", f"/documents/{id}/reading")
+
     # --- writing -----------------------------------------------------------------------------
 
     async def create_user(self, username: str) -> dict[str, Any]:
@@ -120,6 +133,16 @@ class Lekto:
 
     async def create_named(self, path: str, name: str) -> dict[str, Any]:
         return await self._object("POST", path, json={"name": name})
+
+    async def create_tag(self, name: str, scope: str, parent_id: str | None) -> dict[str, Any]:
+        body: dict[str, Any] = {"name": name, "scope": scope}
+        if parent_id is not None:
+            body["parent_id"] = parent_id
+        return await self._object("POST", "/tags", json=body)
+
+    async def set_groups(self, path: str, id: str, group_ids: list[str]) -> dict[str, Any]:
+        """The groups of a contact (`/contacts`) or a document type (`/document-types`)."""
+        return await self._object("PATCH", f"{path}/{id}", json={"group_ids": group_ids})
 
     async def create_field(
         self, name: str, data_type: str, choices: tuple[str, ...]
@@ -142,6 +165,20 @@ class Lekto:
 
     async def upload(self, path: Path, filename: str, fields: dict[str, str]) -> dict[str, Any]:
         return await self._object("POST", "/documents", data=fields, upload=(path, filename))
+
+    async def align(self, id: str, changes: dict[str, Any], *, dry_run: bool = False) -> Any:
+        """Change a migrated document like its source without confirming it; with `dry_run`,
+        what would happen (the rules included)."""
+        if dry_run:
+            return await self._object(
+                "POST", f"/documents/{id}/dry-run", json=changes, params={"confirm": "false"}
+            )
+        return await self._object(
+            "PATCH", f"/documents/{id}", json=changes, params={"confirm": "false"}
+        )
+
+    async def move(self, id: str, space_id: str) -> Any:
+        return await self.request("POST", f"/documents/{id}/move", json={"space_id": space_id})
 
 
 def _wait(header: str | None) -> float:

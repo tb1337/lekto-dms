@@ -44,6 +44,9 @@ class FakeLekto:
     lanes: dict[str, str] = field(default_factory=dict)  # file name -> lane (default green)
     errors: dict[str, tuple[int, int]] = field(default_factory=dict)  # file name -> (status, times)
     log: list[tuple[str, str]] = field(default_factory=list)
+    texts: dict[str, str] = field(default_factory=dict)  # file name -> the archive's text
+    advice: dict[str, str] = field(default_factory=dict)  # file name -> reading advice
+    aligned: list[tuple[str, dict[str, Any]]] = field(default_factory=list)  # PATCH confirm=false
     uploads: list[dict[str, str]] = field(default_factory=list)
     after_upload: Callable[[int], None] | None = None
     refuse: dict[str, int] = field(default_factory=dict)  # "POST /users" -> status
@@ -90,6 +93,17 @@ class FakeLekto:
                 scope = request.url.params["scope"]
                 store = {k: v for k, v in store.items() if v.get("scope", "document") == scope}
             return self._collection(path, store, method, body)
+        if found := re.fullmatch(r"/(contacts|document-types|tags)/([^/]+)", path):
+            store = {
+                "contacts": self.contacts,
+                "document-types": self.document_types,
+                "tags": self.tags,
+            }[found[1]]
+            if method == "PATCH" and found[2] in store:
+                for key in ("group_ids", "parent_id", "name"):
+                    if key in body:
+                        store[found[2]][key] = body[key]
+                return httpx2.Response(200, json=store[found[2]])
         if found := re.fullmatch(r"/(users|fields)/([^/]+)", path):
             store = self.users if found[1] == "users" else self.fields
             if method == "PATCH" and found[2] in store:
@@ -112,13 +126,11 @@ class FakeLekto:
         if path == "/documents" and method == "GET":
             items = list(self.documents.values())
             return httpx2.Response(200, json={"items": items, "next_cursor": None})
-        if found := re.fullmatch(r"/documents/([^/]+)(/log)?", path):
+        if found := re.fullmatch(r"/documents/([^/]+)(/[a-z-]+)?", path):
             document = self.documents.get(found[1])
             if document is None:
                 return _problem(404, "document not found")
-            if found[2]:
-                return httpx2.Response(200, json=document["_log"])
-            return httpx2.Response(200, json=self._poll(document))
+            return self._document(document, method, found[2] or "", request, body)
         return _problem(404, f"unknown {method} {path}")
 
     def _collection(
@@ -162,7 +174,14 @@ class FakeLekto:
                 "document_type_ids": None,
             }
         elif path == "/tags":
-            item = {"id": id, "name": name, "scope": body.get("scope", "document")}
+            item = {
+                "id": id,
+                "name": name,
+                "scope": body.get("scope", "document"),
+                "parent_id": body.get("parent_id"),
+            }
+        elif path in ("/contacts", "/document-types"):
+            item = {"id": id, "name": name, "group_ids": []}
         else:
             item = {"id": id, "name": name}
         store[id] = item
@@ -229,18 +248,77 @@ class FakeLekto:
             "space_id": fields.get("space_id", f"default:{owner}"),
             "contact_id": metadata.get("contact_id"),
             "document_type_id": metadata.get("document_type_id"),
+            "topic_id": None,
             "tag_ids": sorted(metadata.get("tag_ids", [])),
             "document_date": metadata.get("document_date"),
             "fields": metadata.get("fields", {}),
+            "_metadata": fields.get("metadata", "{}"),
             "created_at": metadata.get("created_at") or datetime.now(UTC).isoformat(),
             "lane": None,
             "processing": {"status": "processing", "run": 1, "nodes": _nodes({"receive": "ok"})},
-            "_lane": self.lanes.get(filename, "green"),
-            "_log": [],
+            "_lane": "yellow" if metadata.get("review") else self.lanes.get(filename, "green"),
+            "_log": [
+                {
+                    "node": "receive",
+                    "outcome": "ok",
+                    "reason": None,
+                    "output": {"imported": metadata} if metadata else {},
+                }
+            ],
+            "_text": self.texts.get(filename, f"{metadata.get('title', filename)} text " * 50),
         }
         if self.after_upload is not None:
             self.after_upload(len(self.uploads))
         return httpx2.Response(202, json={"id": id, "status_url": f"{PREFIX}/documents/{id}"})
+
+    def _document(
+        self,
+        document: dict[str, Any],
+        method: str,
+        sub: str,
+        request: httpx2.Request,
+        body: dict[str, Any],
+    ) -> httpx2.Response:
+        if sub == "/log" and method == "GET":
+            return httpx2.Response(200, json=document["_log"])
+        if sub == "/text" and method == "GET":
+            text = document["_text"]
+            return httpx2.Response(
+                200,
+                json={"text": text, "offset": 0, "total_length": len(text), "next_offset": None},
+            )
+        if sub == "/reading" and method == "GET":
+            advice = self.advice.get(document["original_filename"])
+            return httpx2.Response(200, json={"vision": False, "pages": [], "advice": advice})
+        if sub == "/move" and method == "POST":
+            document["space_id"] = body["space_id"]
+            return httpx2.Response(204)
+        if sub in ("", "/dry-run") and method in ("PATCH", "POST"):
+            if request.url.params.get("confirm") != "false" or self.role != "admin":
+                return _problem(403, "only admins align documents")
+            if document["channel"] != "migration":
+                return _problem(422, "only a document of the channel 'migration'")
+            after = self._public(document) | {k: v for k, v in body.items() if k != "fields"}
+            fields = dict(document["fields"])
+            for key, value in (body.get("fields") or {}).items():
+                if value is None:
+                    fields.pop(key, None)
+                else:
+                    fields[key] = value
+            after["fields"] = fields
+            if "tag_ids" in body:
+                after["tag_ids"] = sorted(body["tag_ids"])
+            if sub == "/dry-run":
+                return httpx2.Response(200, json={"document": after, "changed": [], "rules": []})
+            self.aligned.append((document["id"], body))
+            document.update(after)
+            return httpx2.Response(200, json={**after, "rules": []})
+        if sub == "" and method == "GET":
+            return httpx2.Response(200, json=self._poll(document))
+        return _problem(404, f"unknown {method} {sub}")
+
+    def _public(self, document: dict[str, Any]) -> dict[str, Any]:
+        return {key: value for key, value in document.items() if not key.startswith("_")}
 
     def _poll(self, document: dict[str, Any]) -> dict[str, Any]:
         id = document["id"]
@@ -254,6 +332,13 @@ class FakeLekto:
                     "run": 1,
                     "nodes": _nodes(dict.fromkeys(NODES, "ok")),
                 }
+            elif lane == "yellow":
+                outcomes = dict.fromkeys(NODES[:-1], "ok") | {"judge": "uncertain"}
+                document["processing"] = {"status": "review", "run": 1, "nodes": _nodes(outcomes)}
+                reasons = [r["reason"] for r in json.loads(document["_metadata"]).get("review", [])]
+                document["_log"].append(
+                    {"node": "judge", "outcome": "uncertain", "reason": "; ".join(reasons)}
+                )
             else:
                 document["processing"] = {
                     "status": "failed",
@@ -262,9 +347,9 @@ class FakeLekto:
                         {"receive": "ok", "ocr": "ok", "pages": "ok", "parse": "failed"}
                     ),
                 }
-                document["_log"] = [
+                document["_log"].append(
                     {"node": "parse", "outcome": "failed", "reason": "no text recognised"}
-                ]
+                )
         return {key: value for key, value in document.items() if not key.startswith("_")}
 
 

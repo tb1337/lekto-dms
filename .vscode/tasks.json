@@ -137,25 +137,14 @@
 			"problemMatcher": []
 		},
 		{
-			"label": "Migration: plan",
-			"detail": "Trial run against Paperless: reads, writes nothing",
+			// A new terminal for the migration from Paperless-ngx: in migration/, with the settings
+			// of dev.local.env, the commands shown; it stays open for plan, check, prepare and run.
+			"label": "Lekto: Migrate",
+			"detail": "Take a Paperless-ngx archive over: a terminal in migration/ with dev.local.env, showing lekto-migration --help",
 			"type": "shell",
-			"command": "set -a && . .devcontainer/dev.local.env && set +a && cd migration && uv run lekto-migration plan",
-			"problemMatcher": []
-		},
-		{
-			"label": "Migration: run",
-			"detail": "Take the Paperless archive over into the dev instance (Ctrl-C stops, run again continues)",
-			"type": "shell",
-			"command": "set -a && . .devcontainer/dev.local.env && set +a && cd migration && uv run lekto-migration run",
-			"problemMatcher": []
-		},
-		{
-			"label": "Migration: verify",
-			"detail": "Compare Paperless and Lekto object by object",
-			"type": "shell",
-			"command": "set -a && . .devcontainer/dev.local.env && set +a && cd migration && uv run lekto-migration verify",
-			"problemMatcher": []
+			"command": "set -a && . .devcontainer/dev.local.env && set +a && cd migration && uv run lekto-migration --help; exec zsh -l",
+			"problemMatcher": [],
+			"presentation": { "panel": "new", "reveal": "always", "focus": true, "clear": true }
 		}
 	],
 	"inputs": [

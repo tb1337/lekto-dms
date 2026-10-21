@@ -1,6 +1,7 @@
 """Reading Paperless-ngx through its REST API. Only GET requests, nothing is written."""
 
 import hashlib
+import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +16,7 @@ DOCUMENT_FIELDS = ",".join(
         "title",
         "created",
         "added",
+        "modified",
         "owner",
         "correspondent",
         "document_type",
@@ -37,6 +39,18 @@ COUNTED = ("saved_views", "workflows", "mail_rules", "mail_accounts", "share_lin
 
 class PaperlessError(Exception):
     pass
+
+
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+def checksum(document: dict[str, Any]) -> str | None:
+    """Paperless keeps the SHA-256 of the original per version; the root version is the file."""
+    for version in document.get("versions") or []:
+        value = str(version.get("checksum") or "")
+        if version.get("is_root") and _SHA256.fullmatch(value):
+            return value
+    return None
 
 
 @dataclass
@@ -132,6 +146,14 @@ class Paperless:
                 snapshot.counted[name] = -1  # this Paperless has no such endpoint
         snapshot.version = self.version
         return snapshot
+
+    async def contents(self, ids: set[int]) -> dict[int, str]:
+        """The text Paperless recognised, by document; read only for the comparison."""
+        found: dict[int, str] = {}
+        async for item in self.pages("/api/documents/", ordering="id", fields="id,content"):
+            if int(item["id"]) in ids:
+                found[int(item["id"])] = str(item.get("content") or "")
+        return found
 
     async def download_original(self, id: int, target: Path) -> Download:
         """The original file of a document, written to `target`; its SHA-256 and size."""

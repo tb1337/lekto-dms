@@ -12,6 +12,7 @@ from lekto.adapters.inbound.rest.schemas.spaces import ShareOut
 from lekto.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
 from lekto.core.domain.documents import MAX_TITLE, Channel, Document
 from lekto.core.domain.exchanges import ModelCall, RunExchange
+from lekto.core.domain.imports import MAX_REVIEW_REASON, MAX_REVIEWS
 from lekto.core.domain.json_value import JsonObject
 from lekto.core.domain.pipeline import (
     Lane,
@@ -357,6 +358,22 @@ class DocumentPatch(BaseModel):
     )
 
 
+class ImportedReviewIn(BaseModel):
+    """Why a person should look at a document taken over from another system."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=MAX_REVIEW_REASON)
+    field: str | None = Field(
+        default=None,
+        description=(
+            "The field the reason is about (`contact`, `document_type`, `topic`, `tags`, "
+            "`document_date`, `title` or `field:<id>`); it is open in the inbox and, without "
+            "a value, needs a decision. Null: the document as a whole."
+        ),
+    )
+
+
 class ImportedMetadataIn(BaseModel):
     """The metadata a document taken over from another system comes with (form field
     `metadata` of `POST /documents`, as JSON)."""
@@ -390,6 +407,14 @@ class ImportedMetadataIn(BaseModel):
         description=(
             "When the document came in at the source system (Paperless-ngx: `added`), with a "
             "time zone; not in the future. It becomes the document's `created_at`."
+        ),
+    )
+    review: list[ImportedReviewIn] = Field(
+        default_factory=list,
+        max_length=MAX_REVIEWS,
+        description=(
+            "Reasons to have a person look at the document: it waits in the inbox (yellow) "
+            "with the values applied, and is filed once confirmed."
         ),
     )
 

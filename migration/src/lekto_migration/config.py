@@ -41,17 +41,21 @@ def public(url: str | None) -> str | None:
 
 @dataclass(frozen=True)
 class Config:
+    """How a command runs; what is taken over and how is the plan's (`plan`)."""
+
     paperless_url: str
     lekto_url: str | None
     state: Path
     report_dir: Path
     paperless_token: str = field(repr=False, default="")
     lekto_token: str | None = field(repr=False, default=None)
-    currency: str = "EUR"
+    plan: Path = Path("migration-plan.yaml")
     concurrency: int = 4
     limit: int | None = None
     pipeline_timeout: float = 3600.0
-    rehash: bool = False
+    download: bool = False  # check: download the originals and check the files
+    yes: bool = False  # write without asking
+    reupload: bool = False  # run: upload a document again that was deleted in Lekto
 
     @classmethod
     def load(
@@ -61,11 +65,13 @@ class Config:
         lekto_url: str | None,
         state: Path,
         report_dir: Path,
-        currency: str,
-        concurrency: int,
-        limit: int | None,
-        pipeline_timeout: float,
-        rehash: bool = False,
+        plan: Path = Path("migration-plan.yaml"),
+        concurrency: int = 4,
+        limit: int | None = None,
+        pipeline_timeout: float = 3600.0,
+        download: bool = False,
+        yes: bool = False,
+        reupload: bool = False,
         env: Mapping[str, str] | None = None,
     ) -> "Config":
         env = os.environ if env is None else env
@@ -78,8 +84,6 @@ class Config:
         token = secret(env, "PAPERLESS_TOKEN")
         if not token:
             raise ConfigError(f"the Paperless API key is missing ({PREFIX}PAPERLESS_TOKEN)")
-        if len(currency) != 3 or not currency.isalpha():
-            raise ConfigError("the currency is an ISO 4217 code such as EUR")
         if concurrency < 1:
             raise ConfigError("the concurrency is at least 1")
         return cls(
@@ -89,9 +93,11 @@ class Config:
             report_dir=report_dir,
             paperless_token=token,
             lekto_token=secret(env, "LEKTO_TOKEN"),
-            currency=currency.upper(),
+            plan=plan,
             concurrency=concurrency,
             limit=limit,
             pipeline_timeout=pipeline_timeout,
-            rehash=rehash,
+            download=download,
+            yes=yes,
+            reupload=reupload,
         )

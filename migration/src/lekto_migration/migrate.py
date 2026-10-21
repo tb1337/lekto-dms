@@ -1,6 +1,11 @@
-"""The migration: users, master data, spaces, then documents. The same code path serves the
-trial run (`dry`: reads only, writes nothing, knows nothing of Lekto but what it can read) and
-the real run (resumable: what the state file knows is not done twice)."""
+"""The warm run (`run`): upload what is new, align what was migrated. It starts only when the
+plan is complete and Lekto has everything it names (`prepare`), is resumable (what the state
+file knows is not done twice), and never stops for one document.
+
+A new document is uploaded with its owner, space and metadata (the reviews included), waited
+for, and then aligned: the topic, which an upload cannot carry, is set then, and the rules see
+it. A migrated document is aligned from three states (`align`); one deleted in Lekto is
+reported, or uploaded again with `--reupload`."""
 
 import asyncio
 import json
@@ -11,491 +16,188 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from lekto_migration.align import KEPT, Alignment, align, current, uploaded
 from lekto_migration.config import Config
+from lekto_migration.expect import Expected
 from lekto_migration.lekto import ApiError, Lekto
-from lekto_migration.mapping import (
-    ASN_SPEC,
-    NAME_LIMIT,
-    NOTES_SPEC,
-    FieldSpec,
-    field_key,
-    field_spec,
-    norm,
-    space_name,
-)
-from lekto_migration.paperless import Paperless, PaperlessError, Snapshot
-from lekto_migration.prepare import Ids, Prepared, prepare
+from lekto_migration.paperless import Paperless, PaperlessError
+from lekto_migration.plan import norm
+from lekto_migration.resolve import Resolved, resolve
+from lekto_migration.session import Loaded, MigrationError, Progress, unmanaged
 from lekto_migration.state import DOCUMENT_DONE, DocumentRow, State
 
-NEW, EXISTING, OMITTED, FAILED = "new", "existing", "omitted", "failed"
 DONE_PIPELINE = ("completed", "failed", "review")
-# Kind, path, Paperless's key, the key of the ids, and what lists the ones to match by name:
-# tags of documents only (a contact group of the same name is another thing).
-NAMED: tuple[tuple[str, str, str, str, dict[str, Any] | None], ...] = (
-    ("contact", "/contacts", "correspondents", "contacts", None),
-    ("document_type", "/document-types", "document_types", "document_types", None),
-    ("tag", "/tags", "tags", "tags", {"scope": "document"}),
-)
-
-Progress = Callable[[str], None]
+FAILED = "failed"
 
 
 @dataclass
 class Totals:
-    """What happened to the documents in this run."""
+    """What happened to the selected documents in this run."""
 
     documents: int = 0
     uploaded: int = 0
+    aligned: int = 0
     resumed: int = 0
     duplicates: int = 0
     skipped: int = 0
+    deleted: int = 0  # migrated, but deleted in Lekto since
     failed: int = 0
     stopped: int = 0
     seconds: dict[str, float] = field(default_factory=dict)
 
 
-class MigrationError(Exception):
-    """The migration cannot go on (a wrong token, an unreachable server)."""
-
-
-class Migration:
+class Run:
     def __init__(
         self,
         config: Config,
+        loaded: Loaded,
         source: Paperless,
-        target: Lekto | None,
+        target: Lekto,
         state: State,
         *,
-        dry: bool,
         stop: asyncio.Event | None = None,
         progress: Progress = lambda message: None,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         poll: tuple[float, float] = (0.5, 5.0),
     ) -> None:
-        if target is None and not dry:
-            raise MigrationError("a real run needs the Lekto URL and API token")
         self._config = config
+        self._loaded = loaded
         self._source = source
         self._target = target
         self._state = state
-        self._dry = dry
         self._stop = stop or asyncio.Event()
         self._progress = progress
         self._clock = clock
         self._sleep = sleep
         self._poll = poll
         self.totals = Totals()
-        self.snapshot: Snapshot | None = None
-        self.ids = Ids(admin="admin")
-        self.prepared: list[Prepared] = []
-        self._inactive: list[tuple[str, str]] = []
-        self._asleep: dict[str, str] = {}  # ours, inactive in Lekto from an earlier run
-
-    # --- the whole run -----------------------------------------------------------------------
+        directory = loaded.directory
+        self._parents = {
+            str(tag["id"]): tag.get("parent_id") for tag in directory.tags["document"].values()
+        }
+        self._types = {str(f["id"]): str(f.get("data_type")) for f in directory.fields.values()}
+        self._unmanaged = unmanaged(state)
+        self._sleeping: list[tuple[str, str]] = []  # users woken for this run: deactivate again
 
     async def execute(self) -> Totals:
         started = self._clock()
-        try:
-            self.snapshot = snapshot = await self._source.snapshot(limit=self._config.limit)
-        except PaperlessError as error:
-            raise MigrationError(str(error)) from None
-        self._progress(
-            f"Paperless {snapshot.version}: {len(snapshot.documents)} documents, "
-            f"{len(snapshot.users)} users"
-        )
-        self.totals.seconds["read"] = self._clock() - started
-        await self._admin()
-        phase = self._clock()
-        await self._users(snapshot)
-        await self._master_data(snapshot)
-        await self._fields(snapshot)
-        self.totals.seconds["master_data"] = self._clock() - phase
-        self._note_unmapped(snapshot)
-        users = {int(user["id"]): user for user in snapshot.users}
-        fields = {int(item["id"]): item for item in snapshot.custom_fields}
-        self.prepared = [
-            prepare(
-                document,
-                ids=self.ids,
-                users=users,
-                custom_fields=fields,
-                currency=self._config.currency,
-            )
-            for document in snapshot.documents
-        ]
         await self._wake()
-        phase = self._clock()
-        spaces = await self._spaces()
-        self.totals.seconds["spaces"] = self._clock() - phase
-        phase = self._clock()
-        await self._documents(spaces)
-        self.totals.seconds["documents"] = self._clock() - phase
+        await self._documents()
         if not self._stop.is_set():
             await self._deactivate()
         self.totals.seconds["total"] = self._clock() - started
         return self.totals
 
-    # --- reading Lekto -----------------------------------------------------------------------
-
-    async def _list(self, path: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        return [] if self._target is None else await self._target.items(path, params)
-
-    async def _admin(self) -> None:
-        if self._target is None:
-            return
-        try:
-            me = await self._target.me()
-        except ApiError as error:
-            raise MigrationError(f"Lekto refused the API key: {error}") from None
-        user = me["user"]
-        if user.get("role") != "admin":
-            raise MigrationError("the Lekto API key must belong to an admin")
-        if not self._dry and me.get("token_scope") != "read_write":
-            raise MigrationError("the Lekto API key needs the scope read_write")
-        self.ids.admin = user["id"]
-        self.ids.usernames[norm(user["username"])] = user["id"]
-
-    def _record(
-        self,
-        kind: str,
-        source_id: str,
-        name: str,
-        lekto_id: str | None,
-        status: str,
-        notes: list[str],
-    ) -> None:
-        """Remember an object. A second run finds what the first created: it stays `new`."""
-        prior = self._state.object(kind, source_id)
-        if prior is not None and prior[0] == lekto_id and prior[1] == NEW and status == EXISTING:
-            status = NEW
-        self._state.put_object(kind, source_id, name, lekto_id, status, notes)
-
     # --- users -------------------------------------------------------------------------------
 
-    async def _users(self, snapshot: Snapshot) -> None:
-        """Users by name; missing ones are created (active: a user who owns documents or gets
-        shares must be active; the ones inactive in Paperless are deactivated at the end)."""
-        existing = {norm(user["username"]): user for user in await self._list("/users")}
-        for user in snapshot.users:
-            name = str(user["username"])
-            notes: list[str] = []
-            found = existing.get(norm(name))
-            if user.get("is_superuser") and found is None:
-                notes.append(
-                    "administrator in Paperless: role 'user' in Lekto (admins are named by hand)"
-                )
-            active = bool(user.get("is_active", True))
-            ours = (self._state.object("user", str(user["id"])) or (None, ""))[1] == NEW
-            try:
-                if found is None and not (self._dry or self._target is None):
-                    try:
-                        found = await self._target.create_user(name)
-                        ours = True
-                    except ApiError as error:
-                        if error.status != 409:
-                            raise
-                        # Created by an earlier attempt whose answer was lost.
-                        found = next(
-                            (
-                                u
-                                for u in await self._list("/users")
-                                if norm(u["username"]) == norm(name)
-                            ),
-                            None,
-                        )
-                        if found is None:
-                            raise
-                    existing[norm(name)] = found
-                    status = NEW if ours else EXISTING
-                    id = found["id"]
-                elif found is not None:
-                    id, status = found["id"], NEW if ours else EXISTING
-                else:
-                    id, status = f"new:{name}", NEW
-                if not active:
-                    if status == NEW:
-                        notes.append("deactivated at the end of the migration")
-                        if found is not None and found.get("active") is False:
-                            self._asleep[id] = name
-                        else:
-                            self._inactive.append((id, name))
-                    else:
-                        notes.append("inactive in Paperless; the Lekto user stays as it is")
-                if found is not None and found.get("active") is False and status == EXISTING:
-                    self.ids.inactive.add(id)
-            except ApiError as error:
-                self._record("user", str(user["id"]), name, None, FAILED, [str(error)])
-                raise MigrationError(f"cannot create the user '{name}': {error}") from None
-            self.ids.users[int(user["id"])] = id
-            self.ids.usernames[norm(name)] = id
-            self._record("user", str(user["id"]), name, id, status, notes)
-        for group in snapshot.groups:
-            self._record(
-                "group",
-                str(group["id"]),
-                str(group["name"]),
-                None,
-                OMITTED,
-                ["only used to resolve document permissions to users"],
-            )
-
-    async def _wake(self) -> None:
-        """Activate the users deactivated by an earlier run if documents of theirs (owned or
-        shared) are still to be taken over; they are deactivated again at the end."""
-        if self._dry or self._target is None or not self._asleep:
-            return
-        needed: set[str] = set()
-        for item in self.prepared:
+    def _pending(self) -> list[Expected]:
+        out = []
+        for item in self._loaded.expected.values():
             row = self._state.document(item.id)
             if item.skip is None and not (row is not None and row.status in DOCUMENT_DONE):
-                needed.add(item.owner)
-                needed.update(self.ids.usernames[norm(name)] for name, _ in item.shares)
-        for id, name in self._asleep.items():
-            if id in needed:
-                await self._target.set_active(id, True)
-                self._inactive.append((id, name))
+                out.append(item)
+        return out
+
+    async def _wake(self) -> None:
+        """Users the migration created and deactivated before own or share documents still to
+        come: active for this run, deactivated again at its end."""
+        directory = self._loaded.directory
+        needed = set()
+        for item in self._pending():
+            needed.add(norm(item.owner or directory.admin["username"]))
+            needed |= {norm(name) for name, _ in item.shares}
+        for key in needed:
+            user = directory.users.get(key)
+            if user is None or user.get("active") is not False:
+                continue
+            if str(user["id"]) in self._loaded.ours:
+                await self._target.set_active(str(user["id"]), True)
+                user["active"] = True
+                self._sleeping.append((str(user["id"]), str(user["username"])))
 
     async def _deactivate(self) -> None:
-        """The users that are inactive in Paperless are inactive in Lekto, too, now that no
-        document of theirs is left to upload."""
-        if self._dry or self._target is None:
-            return
-        for id, name in self._inactive:
+        """The users inactive in Paperless are inactive in Lekto too, now that nothing of
+        theirs is left to upload (users the migration did not create stay as they are)."""
+        plan, directory = self._loaded.plan, self._loaded.directory
+        targets: dict[str, str] = {}
+        if plan.settings.deactivate_inactive_users:
+            for user in self._loaded.snapshot.users:
+                entry = plan.entry("users", str(user["username"]))
+                if user.get("is_active", True) or entry is None or entry.dropped:
+                    continue
+                name = next(t.name for t in entry.targets if t.to == "user")
+                found = directory.find("user", name or "")
+                if found is not None and str(found["id"]) in self._loaded.ours:
+                    targets[str(found["id"])] = str(found["username"])
+        targets.update(dict(self._sleeping))
+        for id, name in targets.items():
+            found = directory.by_id("user", id)
+            if found is not None and found.get("active") is False:
+                continue
             try:
                 await self._target.set_active(id, False)
             except ApiError as error:
                 self._progress(f"cannot deactivate {name}: {error}")
 
-    # --- contacts, document types, tags ------------------------------------------------------
-
-    async def _master_data(self, snapshot: Snapshot) -> None:
-        for kind, path, source_key, ids_key, listed in NAMED:
-            existing = {norm(item["name"]): item for item in await self._list(path, listed)}
-            mapping: dict[int, str] = getattr(self.ids, ids_key)
-            first: dict[str, str] = {}
-            for item in getattr(snapshot, source_key):
-                name = str(item["name"]).strip()
-                notes = _named_notes(kind, item)
-                if len(name) > NAME_LIMIT:
-                    name = name[:NAME_LIMIT].rstrip()
-                    notes.append(f"the name was shortened to {NAME_LIMIT} characters")
-                key = norm(name)
-                found = existing.get(key)
-                try:
-                    if found is not None:
-                        id, status = found["id"], EXISTING
-                        if key in first:
-                            notes.append(f"same name as '{first[key]}': merged")
-                    elif self._dry or self._target is None:
-                        id, status = f"new:{kind}:{key}", NEW
-                    else:
-                        try:
-                            id, status = (await self._target.create_named(path, name))["id"], NEW
-                        except ApiError as error:
-                            if error.status != 409:
-                                raise
-                            # Created by an earlier attempt whose answer was lost.
-                            again = {norm(i["name"]): i for i in await self._list(path, listed)}
-                            if key not in again:
-                                raise
-                            id, status = again[key]["id"], EXISTING
-                except ApiError as error:
-                    self._record(kind, str(item["id"]), name, None, FAILED, [str(error)])
-                    raise MigrationError(f"cannot create {kind} '{name}': {error}") from None
-                if found is None:
-                    existing[key] = {"id": id, "name": name}
-                first.setdefault(key, name)
-                mapping[int(item["id"])] = id
-                self._record(kind, str(item["id"]), name, id, status, notes)
-
-    # --- fields --------------------------------------------------------------------------
-
-    async def _fields(self, snapshot: Snapshot) -> None:
-        existing = {norm(item["name"]): item for item in await self._list("/fields")}
-        specs: list[tuple[str, str, FieldSpec | None, list[str]]] = []
-        for custom_field in snapshot.custom_fields:
-            spec, notes = field_spec(custom_field)
-            specs.append((str(custom_field["id"]), str(custom_field["name"]), spec, notes))
-        if any(
-            document.get("archive_serial_number") is not None for document in snapshot.documents
-        ):
-            specs.append(("asn", ASN_SPEC.name, ASN_SPEC, ["the archive serial number"]))
-        if any(document.get("notes") for document in snapshot.documents):
-            specs.append(("notes", NOTES_SPEC.name, NOTES_SPEC, ["the notes of the documents"]))
-        for source_id, name, spec, notes in specs:
-            if spec is None:
-                self._record("field", source_id, name, None, OMITTED, notes)
-                continue
-            found = existing.get(norm(spec.name))
-            status, id = NEW, None
-            try:
-                if found is not None:
-                    status, id = EXISTING, found["id"]
-                    problem = _conflict(spec, found)
-                    if problem:
-                        self._record("field", source_id, name, None, OMITTED, [*notes, problem])
-                        continue
-                    missing = [c for c in spec.choices if c not in found.get("choices", [])]
-                    if missing:
-                        notes.append(f"the options {missing} are added")
-                        if not self._dry and self._target is not None:
-                            await self._target.set_choices(id, [*found["choices"], *missing])
-                elif self._dry or self._target is None:
-                    id = f"new:field:{spec.key}"
-                else:
-                    created = await self._target.create_field(
-                        spec.name, spec.data_type, spec.choices
-                    )
-                    id = created["id"]
-            except ApiError as error:
-                self._record("field", source_id, name, None, FAILED, [*notes, str(error)])
-                continue
-            assert id is not None
-            self.ids.fields[spec.key] = id
-            self.ids.specs[spec.key] = spec
-            self._record("field", source_id, name, id, status, notes)
-
-    def _note_unmapped(self, snapshot: Snapshot) -> None:
-        counts: dict[str, int] = {}
-        for document in snapshot.documents:
-            if document.get("storage_path") is not None:
-                counts[str(document["storage_path"])] = (
-                    counts.get(str(document["storage_path"]), 0) + 1
-                )
-        for path in snapshot.storage_paths:
-            self._record(
-                "storage_path",
-                str(path["id"]),
-                str(path["name"]),
-                None,
-                OMITTED,
-                [f"no counterpart in Lekto; {counts.get(str(path['id']), 0)} documents use it"],
-            )
-        for name, count in snapshot.counted.items():
-            what = "could not be read" if count < 0 else f"{count} not taken over"
-            self._record("other", name, name.replace("_", " "), None, OMITTED, [what])
-        self._record(
-            "other",
-            "history",
-            "history",
-            None,
-            OMITTED,
-            [f"not taken over for the {len(snapshot.documents)} documents"],
-        )
-        # Make sure the ids of fields that could not be created do not linger.
-        for key in list(self.ids.specs):
-            if key not in self.ids.fields:
-                del self.ids.specs[key]
-
-    # --- spaces -----------------------------------------------------------------------------
-
-    async def _spaces(self) -> dict[str, str]:
-        """The spaces the documents need: one per owner and combination of readers and
-        writers, shared accordingly. Returns the Lekto id by key."""
-        wanted: dict[str, Prepared] = {}
-        for item in self.prepared:
-            key = item.space_key()
-            if item.skip is None and key is not None:
-                wanted.setdefault(key, item)
-        existing: dict[tuple[str, str], dict[str, Any]] = {}
-        for space in await self._list("/spaces"):
-            existing[(space["owner_id"], norm(space["name"]))] = space
-        result: dict[str, str] = {}
-        for key, item in sorted(wanted.items()):
-            name = space_name(item.shares)
-            found = existing.get((item.owner, norm(name)))
-            notes = [f"owner {item.owner_name or 'the executing admin'}"]
-            status = EXISTING
-            try:
-                if found is not None:
-                    id = found["id"]
-                elif self._dry or self._target is None:
-                    id, status = f"new:space:{key}", NEW
-                else:
-                    id, status = (await self._target.create_space(name, item.owner))["id"], NEW
-                    found = {"shares": []}
-                have = {
-                    share["user_id"]: share["level"] for share in (found or {}).get("shares") or []
-                }
-                for username, level in item.shares:
-                    user_id = self.ids.usernames[norm(username)]
-                    if have.get(user_id) != level and not self._dry and self._target is not None:
-                        await self._target.share(id, user_id, level)
-            except ApiError as error:
-                # The documents that need this space fail with this reason; the others go on.
-                self._record("space", key, name, None, FAILED, [str(error)])
-                continue
-            result[key] = id
-            self._record("space", key, name, id, status, notes)
-        return result
-
     # --- documents ---------------------------------------------------------------------------
 
-    async def _documents(self, spaces: dict[str, str]) -> None:
-        self.totals.documents = len(self.prepared)
+    async def _documents(self) -> None:
+        items = list(self._loaded.expected.values())
+        self.totals.documents = len(items)
         done = 0
         gate = asyncio.Semaphore(self._config.concurrency)
 
-        async def one(item: Prepared) -> None:
+        async def one(item: Expected) -> None:
             nonlocal done
             async with gate:
                 if self._stop.is_set():
                     self.totals.stopped += 1
                     return
                 try:
-                    await self._document(item, spaces)
+                    await self._document(item)
                 except Exception as error:  # one document never stops the others
                     self.totals.failed += 1
                     row = self._state.document(item.id)
-                    # An upload stays `uploaded`: the next run waits for it, it does not repeat it.
+                    # An upload stays `uploaded`: the next run waits for it, it does not repeat
+                    # it; a migrated one stays migrated.
+                    keep = row is not None and row.status in ("uploaded", *DOCUMENT_DONE)
                     self._state.put_document(
                         item.id,
-                        "uploaded" if row is not None and row.status == "uploaded" else FAILED,
+                        row.status if keep and row is not None else FAILED,
+                        lane=row.lane if row is not None else None,
                         reason=f"{type(error).__name__}: {error}"[:300],
                     )
                 done += 1
-                if done % 25 == 0 or done == len(self.prepared):
-                    self._progress(f"{done}/{len(self.prepared)} documents handled")
+                if done % 25 == 0 or done == len(items):
+                    self._progress(f"{done}/{len(items)} documents handled")
 
-        await asyncio.gather(*(one(item) for item in self.prepared))
+        await asyncio.gather(*(one(item) for item in items))
 
-    def _detail(self, item: Prepared) -> dict[str, Any]:
-        key = item.space_key()
+    def _detail(self, item: Expected) -> dict[str, Any]:
         return {
             "title": item.title,
-            "owner": item.owner_name,
-            "space": space_name(item.shares) if key else "default",
+            "owner": item.owner_source,
+            "space": item.space or "default",
             "media_type": item.media_type,
         }
 
-    async def _document(self, item: Prepared, spaces: dict[str, str]) -> None:
+    async def _document(self, item: Expected) -> None:
         detail = self._detail(item)
-        prior = self._state.document(item.id)
-        if self._dry:
-            if item.skip:
-                self._state.put_document(
-                    item.id, "skipped", reason=item.skip, notes=item.notes, detail=detail
-                )
-                self.totals.skipped += 1
-            else:
-                self._state.put_document(item.id, "planned", notes=item.notes, detail=detail)
-            return
         if item.skip:
             self._state.put_document(
                 item.id, "skipped", reason=item.skip, notes=item.notes, detail=detail
             )
             self.totals.skipped += 1
             return
-        if prior is not None and prior.status in DOCUMENT_DONE:
-            self.totals.resumed += 1
-            if prior.lekto_id and prior.status != "skipped" and prior.lane != "green":
-                await self._refresh(prior)
+        resolved = resolve(item, self._loaded.directory)
+        if resolved.missing:  # `run` checks before; Lekto changed meanwhile
+            raise MigrationError("Lekto lacks " + ", ".join(resolved.missing))
+        row = self._state.document(item.id)
+        if row is not None and row.lekto_id and row.status in ("done", "duplicate"):
+            await self._existing(item, row, resolved)
             return
-        assert self._target is not None
-        lekto_id = prior.lekto_id if prior is not None and prior.status == "uploaded" else None
-        upload_seconds = prior.upload_seconds if prior else None
-        sha256 = prior.sha256 if prior else None
+        lekto_id = row.lekto_id if row is not None and row.status == "uploaded" else None
         if lekto_id is not None:
             try:
                 await self._target.document(lekto_id)
@@ -507,94 +209,57 @@ class Migration:
                 self.totals.resumed += 1
         if lekto_id is None:
             began = self._clock()
-            uploaded = await self._upload(item, spaces, detail)
-            if uploaded is None:
+            sent = await self._upload(item, resolved, detail)
+            if sent is None:
                 return
-            lekto_id, sha256, duplicate = uploaded
-            upload_seconds = self._clock() - began
+            lekto_id, sha256, duplicate = sent
             detail = {**detail, "duplicate": duplicate}
             self._state.put_document(
                 item.id,
                 "uploaded",
                 lekto_id=lekto_id,
                 sha256=sha256,
-                notes=item.notes,
+                notes=[*item.notes, *resolved.notes],
                 detail=detail,
-                upload_seconds=upload_seconds,
+                upload_seconds=self._clock() - began,
+                applied=None if duplicate else self._sent(resolved),
             )
-            if not duplicate:
-                self.totals.uploaded += 1
+            if duplicate:
+                await self._duplicate(item, lekto_id, resolved)
+                return
+            self.totals.uploaded += 1
         waited = self._clock()
         finished = await self._wait(lekto_id)
         if finished is None:
             if not self._stop.is_set():
                 self.totals.failed += 1
-                # Stays `uploaded`: a later run waits for it again instead of uploading again.
+                timeout = int(self._config.pipeline_timeout)
                 self._state.put_document(
                     item.id,
                     "uploaded",
                     lekto_id=lekto_id,
-                    reason=f"processing did not finish in {int(self._config.pipeline_timeout)} s",
+                    reason=f"processing did not finish in {timeout} s",
                 )
             else:
                 self.totals.stopped += 1
             return
-        lane = finished.get("lane")
-        reason = None
-        if lane != "green":
-            reason = await self._why_not_green(lekto_id)
-        known = self._state.document(item.id)
-        duplicate = bool(known is not None and known.detail.get("duplicate"))
-        if duplicate:
-            reason = "; ".join(filter(None, ["Lekto has the file already (same owner)", reason]))
-        self._state.put_document(
-            item.id,
-            "duplicate" if duplicate else "done",
-            lekto_id=lekto_id,
-            lane=lane,
-            reason=reason,
-            pipeline_seconds=self._clock() - waited,
-        )
-
-    async def _refresh(self, row: DocumentRow) -> None:
-        """A document that was not green may have been repaired since (retried, confirmed):
-        note its lane as it is now."""
-        assert self._target is not None and row.lekto_id is not None
-        try:
-            document = await self._target.document(row.lekto_id)
-        except ApiError:
-            return
-        lane = document.get("lane")
-        if document["processing"]["status"] not in DONE_PIPELINE or lane == row.lane:
-            return
-        reason = None if lane == "green" else await self._why_not_green(row.lekto_id)
-        self._state.put_document(row.source_id, row.status, lane=lane, reason=reason)
+        row = self._state.document(item.id)
+        base = (row.applied if row is not None else None) or self._sent(resolved)
+        alignment = await self._align(lekto_id, finished, base, resolved)
+        await self._finish(item.id, "done", lekto_id, alignment, waited)
 
     async def _upload(
-        self, item: Prepared, spaces: dict[str, str], detail: dict[str, Any]
+        self, item: Expected, resolved: Resolved, detail: dict[str, Any]
     ) -> tuple[str, str, bool] | None:
-        """Download the original and upload it with owner, space and metadata; the Lekto id,
-        the file's SHA-256 and whether Lekto had the file already. None: not taken over
-        (recorded)."""
-        assert self._target is not None
-        key = item.space_key()
+        """Download the original and upload it with owner, space and metadata: the Lekto id,
+        the file's SHA-256 and whether Lekto had the file already. None: not taken over."""
         fields = {
             "channel": "migration",
-            "owner": item.owner,
-            "metadata": json.dumps(item.metadata),
+            "owner": resolved.owner_id,
+            "metadata": json.dumps(resolved.metadata()),
         }
-        if key is not None:
-            if key not in spaces:
-                self.totals.failed += 1
-                self._state.put_document(
-                    item.id,
-                    FAILED,
-                    reason="its space could not be prepared (see the spaces)",
-                    notes=item.notes,
-                    detail=detail,
-                )
-                return None
-            fields["space_id"] = spaces[key]
+        if resolved.space_id is not None:
+            fields["space_id"] = resolved.space_id
         with tempfile.TemporaryDirectory(prefix="lekto-migration-") as directory:
             path = Path(directory) / "original"
             try:
@@ -611,33 +276,143 @@ class Migration:
                 if error.status == 409 and error.existing:
                     self.totals.duplicates += 1
                     return error.existing, download.sha256, True
-                self._refused(item, error, download.sha256, detail)
+                status = "skipped" if error.status == 415 else FAILED
+                if status == "skipped":
+                    self.totals.skipped += 1
+                else:
+                    self.totals.failed += 1
+                self._state.put_document(
+                    item.id,
+                    status,
+                    sha256=download.sha256,
+                    reason=error.detail if error.status == 415 else str(error),
+                    notes=item.notes,
+                    detail=detail,
+                )
                 return None
-        return accepted["id"], download.sha256, False
+        return str(accepted["id"]), download.sha256, False
 
-    def _refused(
-        self, item: Prepared, error: ApiError, sha256: str, detail: dict[str, Any]
-    ) -> None:
-        if error.status == 415:
-            self.totals.skipped += 1
+    async def _duplicate(self, item: Expected, lekto_id: str, resolved: Resolved) -> None:
+        """Lekto has the file already (same owner): that document stands for this one; if it
+        is a migrated one, it is aligned like one."""
+        details = await self._target.document(lekto_id)
+        alignment = None
+        if details.get("channel") == "migration":
+            base = await self._baseline(lekto_id, None, details)
+            alignment = await self._align(lekto_id, details, base, resolved)
+        await self._finish(item.id, "duplicate", lekto_id, alignment, None, details=details)
+
+    async def _existing(self, item: Expected, row: DocumentRow, resolved: Resolved) -> None:
+        assert row.lekto_id is not None
+        try:
+            details = await self._target.document(row.lekto_id)
+        except ApiError as error:
+            if error.status != 404:
+                raise
+            if self._config.reupload:
+                self._state.put_document(item.id, "deleted", reason="deleted in Lekto")
+                self._state.forget(item.id)
+                await self._document(item)
+                return
+            self.totals.deleted += 1
+            self._state.put_document(item.id, row.status, lane=row.lane, reason="deleted in Lekto")
+            return
+        self.totals.resumed += 1
+        if details["processing"]["status"] not in DONE_PIPELINE:
+            return  # reprocessed meanwhile: aligned the next time
+        if details.get("channel") != "migration":
             self._state.put_document(
                 item.id,
-                "skipped",
-                sha256=sha256,
-                reason=error.detail,
-                notes=item.notes,
-                detail=detail,
+                row.status,
+                lane=details.get("lane"),
+                reason="not taken over by the migration: not aligned",
             )
-        else:
-            self.totals.failed += 1
-            self._state.put_document(
-                item.id, FAILED, sha256=sha256, reason=str(error), notes=item.notes, detail=detail
-            )
+            return
+        base = await self._baseline(row.lekto_id, row.applied, details)
+        alignment = await self._align(row.lekto_id, details, base, resolved)
+        await self._finish(item.id, row.status, row.lekto_id, alignment, None, details=details)
+
+    async def _baseline(
+        self, lekto_id: str, applied: dict[str, Any] | None, details: dict[str, Any]
+    ) -> dict[str, Any]:
+        """What the migration set last: the state's, else the upload's from the log (its
+        space is taken as it is now: the migration never moved documents then)."""
+        if applied is not None:
+            return applied
+        log = await self._target.log(lekto_id)
+        return uploaded(log, details.get("space_id")) or current(details)
+
+    def _sent(self, resolved: Resolved) -> dict[str, Any]:
+        """What the upload sets: its metadata (no topic), in the space it goes to."""
+        return {**self._want(resolved), "topic_id": None}
+
+    def _want(self, resolved: Resolved) -> dict[str, Any]:
+        space = resolved.space_id
+        if space is None:
+            default = self._loaded.directory.default_space(resolved.owner_id)
+            space = None if default is None else str(default["id"])
+        return {**resolved.values, "space_id": space}
+
+    async def _align(
+        self,
+        lekto_id: str,
+        details: dict[str, Any],
+        base: dict[str, Any],
+        resolved: Resolved,
+    ) -> Alignment:
+        alignment = align(
+            base,
+            current(details),
+            self._want(resolved),
+            parents=self._parents,
+            types=self._types,
+            unmanaged=self._unmanaged,
+        )
+        if alignment.changes:
+            await self._target.align(lekto_id, alignment.changes)
+        if alignment.move is not None:
+            await self._target.move(lekto_id, alignment.move)
+        if alignment.needed:
+            self.totals.aligned += 1
+        return alignment
+
+    async def _finish(
+        self,
+        source_id: int,
+        status: str,
+        lekto_id: str,
+        alignment: Alignment | None,
+        waited: float | None,
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        details = details or await self._target.document(lekto_id)
+        if alignment is not None and alignment.needed:
+            details = await self._target.document(lekto_id)
+        lane = details.get("lane")
+        reasons = []
+        if status == "duplicate":
+            reasons.append("Lekto has the file already (same owner)")
+        if lane != "green":
+            reasons.append(await self._why_not_green(lekto_id))
+        kept = [d.what for d in alignment.differences if d.action == KEPT] if alignment else []
+        if kept:
+            reasons.append("changed in Lekto since, kept: " + ", ".join(kept))
+        row = self._state.document(source_id)
+        self._state.put_document(
+            source_id,
+            status,
+            lekto_id=lekto_id,
+            lane=lane,
+            reason="; ".join(reasons) or None,
+            pipeline_seconds=None if waited is None else self._clock() - waited,
+            applied=alignment.applied if alignment is not None else None,
+            detail={**(row.detail if row else {}), "aligned": bool(alignment and alignment.needed)},
+        )
 
     async def _wait(self, lekto_id: str) -> dict[str, Any] | None:
         """The document once its pipeline is through (or has stopped); None if the run is
         stopped or the time is up."""
-        assert self._target is not None
         deadline = self._clock() + self._config.pipeline_timeout
         delay = self._poll[0]
         while not self._stop.is_set():
@@ -651,7 +426,6 @@ class Migration:
         return None
 
     async def _why_not_green(self, lekto_id: str) -> str:
-        assert self._target is not None
         try:
             log = await self._target.log(lekto_id)
         except ApiError:
@@ -664,38 +438,4 @@ class Migration:
         return "; ".join(dict.fromkeys(reasons)) or "not green"
 
 
-def _named_notes(kind: str, item: dict[str, Any]) -> list[str]:
-    notes: list[str] = []
-    if item.get("matching_algorithm") not in (None, 0):
-        notes.append("the matching rule is not taken over")
-    if kind == "tag":
-        if item.get("parent"):
-            notes.append(f"the hierarchy (parent {item['parent']}) is not taken over")
-        if item.get("is_inbox_tag"):
-            notes.append("the inbox flag is not taken over")
-    if item.get("owner") is not None:
-        notes.append("the owner of the Paperless object is not taken over (master data is global)")
-    return notes
-
-
-def _conflict(spec: FieldSpec, found: dict[str, Any]) -> str | None:
-    if found.get("data_type") != spec.data_type:
-        return (
-            f"a field '{found['name']}' of type {found.get('data_type')} exists already; "
-            f"the values (type {spec.data_type}) are not taken over"
-        )
-    if found.get("document_type_ids") is not None:
-        return f"the field '{found['name']}' exists but applies only to some document types"
-    return None
-
-
-__all__ = [
-    "EXISTING",
-    "FAILED",
-    "NEW",
-    "OMITTED",
-    "Migration",
-    "MigrationError",
-    "Totals",
-    "field_key",
-]
+__all__ = ["DONE_PIPELINE", "MigrationError", "Run", "Totals"]

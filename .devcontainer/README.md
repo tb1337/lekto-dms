@@ -80,7 +80,7 @@ name without asking.
 | Lekto: Rebuild search index | `reindex`: rebuild the search index from database and bucket (after a restore, a model change, or to add vectors) |
 | Lekto: Render page images | `render-pages`: queue the page images of documents from before the pages node; the worker renders them |
 | Lekto: Read codes | `read-codes`: queue reading the bar and QR codes of documents from before code reading; the worker reads them and keeps the identifiers each document shows |
-| Migration: plan, run, verify | The Paperless migration client with the `LEKTO_MIGRATION_*` variables of `dev.local.env` (see below) |
+| Lekto: Migrate | A new terminal in `migration/` with the variables of `dev.local.env` (`LEKTO_MIGRATION_*`), showing `lekto-migration --help`; the commands are typed there (see below) |
 
 When the folder opens, only the task **zsh** starts: a terminal without `dev.local.env` (VS Code
 asks once whether automatic tasks may run). After **Lekto: Start**, open
@@ -129,14 +129,21 @@ instance:
    (`/tmp/lekto-token`, outside the repository). Write the Paperless API key to
    `LEKTO_MIGRATION_PAPERLESS_TOKEN_FILE` (`/tmp/paperless-token`). `/tmp` is emptied when the
    container restarts; recreate the files then.
-2. **Migration: plan** reads Paperless and writes nothing; the report in
-   `migration/migration-reports/` lists what would happen.
-3. **Migration: run** takes everything over (with OCR and Docling on the CPU and no
-   language model it took about 12 s per document, 1500 documents in about 4.5 hours; reading
-   the text as it is set takes milliseconds of that now). Ctrl-C in the terminal
-   stops cleanly; running the task again continues. The state is in
-   `migration/migration-state.sqlite`.
-4. **Migration: verify** compares Paperless and Lekto object by object.
+2. **Lekto: Migrate** opens a terminal for the client; run the phases there:
+   - `uv run lekto-migration plan` reads Paperless and Lekto and writes
+     `migration/migration-plan.yaml`: what is taken over, and how. Change it as you like; run
+     it again after changes in Paperless (it asks before it writes).
+   - `uv run lekto-migration check` writes nothing; the report in
+     `migration/migration-reports/` lists what `prepare` and `run` would do, document by
+     document.
+   - `uv run lekto-migration prepare` creates the users, contacts, types, tags, fields and
+     spaces the plan needs. Set up rules in Lekto now if they should act on the documents as
+     they come.
+   - `uv run lekto-migration run` takes the documents over (with OCR and Docling on the CPU and
+     no language model it took about 12 s per document, 1500 documents in about 4.5 hours;
+     reading the text as it is set takes milliseconds of that now) and aligns what was
+     migrated before. Ctrl-C stops cleanly; running it again continues. The state is in
+     `migration/migration-state.sqlite`.
 
 Run the migration with the embedding variables commented out in `dev.local.env` (restart API and
 worker after changing it): the pipeline then does not call Ollama for every document. Afterwards

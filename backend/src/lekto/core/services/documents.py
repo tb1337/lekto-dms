@@ -46,6 +46,7 @@ from lekto.core.domain.permissions import (
 from lekto.core.domain.pipeline import Node, NodeRun
 from lekto.core.domain.spaces import ShareLevel, Space
 from lekto.core.domain.text_places import TextPlaces
+from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.metadata import FileMetadata, MetadataReader
 from lekto.core.ports.object_store import ObjectStore
@@ -183,14 +184,20 @@ async def _check_sortable(uow: UnitOfWork, order: DocumentOrder) -> None:
 
 
 async def _position(
-    uow: UnitOfWork, order: DocumentOrder, after: DocumentId | None
+    uow: UnitOfWork, user: User, order: DocumentOrder, after: DocumentId | None, *, everyone: bool
 ) -> DocumentPosition | None:
-    """Where a page ended: by the last document's id, and its value of the sort key."""
+    """Where a page ended: by the last document's id, and its value of the sort key. That
+    document is looked up within the caller's reach (`everyone`: all documents): one they may
+    not read counts as gone, so that a cursor tells nothing about others' documents (#74)."""
     if after is None:
         return None
     if order.key is SortKey.ARRIVAL:
         return DocumentPosition(after)
     last = await uow.documents.find(after)
+    if last is not None and not everyone:
+        space = await uow.spaces.find(last.space_id)
+        if space is None or document_access(user, last, space) is None:
+            last = None
     if last is None:
         raise ValidationError("cursor: its document is gone; start from the first page")
     return DocumentPosition.of(last, order)
@@ -410,13 +417,13 @@ class DocumentService:
         after the page ending at the document `after`; with `all_users` (admins only), every
         document. Each is checked against the permission rules once more, and says whether it
         stands open in the caller's inbox (with `all_users`, in every user's). ValidationError
-        if `after` is gone while the list sorts by another key than the order of arrival, or
-        if the order is by a field that is missing or of a type no list sorts by."""
+        if `after` is gone or out of reach while the list sorts by another key than the order of
+        arrival, or if the order is by a field that is missing or of a type no list sorts by."""
         limit = max(1, min(limit, PAGE_LIMIT))
         async with self._uow() as uow:
             user = await load_lister(uow, actor, all_users, "list the documents of all users")
             await _check_sortable(uow, order)
-            position = await _position(uow, order, after)
+            position = await _position(uow, user, order, after, everyone=all_users)
             filter = await expanded(uow, filter)
             if all_users:
                 documents = await uow.documents.query(

@@ -171,4 +171,17 @@ describe('AppShell', () => {
 		]);
 		expect(within(menu).getByRole('menuitem', { name: m.sign_out() })).toBeTruthy();
 	});
+
+	it('links the API documentation from the account menu, in a new tab', async () => {
+		signIn('user');
+		render(AppShell, { children });
+		const menu = await openAccountMenu();
+		const docs = within(menu).getByRole('menuitem', {
+			name: `${m.api_docs()} (${m.opens_in_new_tab()})`
+		});
+		expect(docs.tagName).toBe('A');
+		expect(docs.getAttribute('href')).toBe('/api/v1/docs');
+		expect(docs.getAttribute('target')).toBe('_blank');
+		expect(docs.getAttribute('rel')).toBe('noopener noreferrer');
+	});
 });

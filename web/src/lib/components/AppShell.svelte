@@ -1,12 +1,14 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import BookOpen from '@lucide/svelte/icons/book-open';
+	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Menu from '@lucide/svelte/icons/menu';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import Users from '@lucide/svelte/icons/users';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { BASE } from '#lib/base.ts';
+	import { API_DOCS, BASE } from '#lib/base.ts';
 	import HeaderSearch from '#lib/components/HeaderSearch.svelte';
 	import LanguageChoices from '#lib/components/LanguageChoices.svelte';
 	import LanguageMenu from '#lib/components/LanguageMenu.svelte';
@@ -227,6 +229,17 @@
 						<DropdownMenu.Item onSelect={() => goto(href(SETTINGS))}>
 							<SETTINGS.icon aria-hidden="true" />
 							{SETTINGS.label()}
+						</DropdownMenu.Item>
+						<!-- The API's own documentation (Swagger UI), in a new tab. -->
+						<DropdownMenu.Item>
+							{#snippet child({ props })}
+								<a {...props} href={API_DOCS} target="_blank" rel="noopener noreferrer">
+									<BookOpen aria-hidden="true" />
+									{m.api_docs()}
+									<span class="sr-only">({m.opens_in_new_tab()})</span>
+									<ExternalLink aria-hidden="true" class="ml-auto text-muted-foreground" />
+								</a>
+							{/snippet}
 						</DropdownMenu.Item>
 						<DropdownMenu.Item onSelect={signOut}>
 							<LogOut aria-hidden="true" />

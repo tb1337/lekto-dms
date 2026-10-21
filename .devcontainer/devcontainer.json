@@ -2,7 +2,7 @@
   "name": "lekto",
   "dockerComposeFile": "compose.yml",
   "service": "dev",
-  "workspaceFolder": "/workspaces/papiq",
+  "workspaceFolder": "/workspaces/lekto",
   "remoteUser": "vscode",
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {},

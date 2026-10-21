@@ -156,7 +156,7 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 
 ENV CLAUDE_CONFIG_DIR=/home/vscode/.claude
 
-WORKDIR /workspaces/papiq
+WORKDIR /workspaces/lekto
 
 # --- runtime: production image ------------------------------------------------------------------
 FROM base AS runtime

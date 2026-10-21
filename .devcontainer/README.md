@@ -29,8 +29,17 @@ The tests create and remove their databases, prefixes and indexes themselves. Ru
 `lekto-dev` or `lekto-dev-documents`. The volumes (`postgres-data`, `garage-meta`,
 `garage-data`, `meilisearch-data`) outlive rebuilds of the devcontainer; `docker compose down -v`
 in `.devcontainer/` deletes them all, including the development instance.
-The Compose project keeps the former name `papiq-dev`, so the volumes of a devcontainer from
-before the rename to Lekto stay (containers `papiq-dev-postgres-1`, network `papiq-dev_default`).
+Until 21.10.2026 the Compose project was called `papiq-dev`; a devcontainer from then starts
+with empty volumes. To take its data along, copy them once before the first start, with the old
+containers stopped (on the host or from the devcontainer):
+
+```sh
+for v in postgres-data garage-meta garage-data meilisearch-data uv-cache; do
+  docker volume create --label com.docker.compose.project=lekto-dev \
+    --label com.docker.compose.volume=$v lekto-dev_$v
+  docker run --rm -v papiq-dev_$v:/from:ro -v lekto-dev_$v:/to alpine:3.22 cp -a /from/. /to/
+done
+```
 
 ## Set the development instance up
 
@@ -145,14 +154,14 @@ change; an object that arrived after the database copy is only an unused file). 
 The backup uses the Postgres container and an `rclone` image. Run the commands **on the host**,
 in the repository folder (the paths of `-v` are host paths); from inside the devcontainer they
 work as well, since it talks to the host's Docker, but `BACKUP` must then be the host's path of
-the workspace (for example `/Users/you/lekto/backup/...`, not `/workspaces/papiq/...`). The
+the workspace (for example `/Users/you/lekto/backup/...`, not `/workspaces/lekto/...`). The
 folder `backup/` in the repository is ignored by Git.
 
 ```sh
 BACKUP=$PWD/backup/$(date +%Y-%m-%d)
 mkdir -p "$BACKUP"
-docker exec papiq-dev-postgres-1 pg_dump -U lekto -Fc lekto_dev > "$BACKUP/lekto_dev.dump"
-docker run --rm --network papiq-dev_default -v "$BACKUP:/backup" \
+docker exec lekto-dev-postgres-1 pg_dump -U lekto -Fc lekto_dev > "$BACKUP/lekto_dev.dump"
+docker run --rm --network lekto-dev_default -v "$BACKUP:/backup" \
   -e RCLONE_CONFIG_GARAGE_TYPE=s3 -e RCLONE_CONFIG_GARAGE_PROVIDER=Other \
   -e RCLONE_CONFIG_GARAGE_ENDPOINT=http://garage:3900 -e RCLONE_CONFIG_GARAGE_REGION=garage \
   -e RCLONE_CONFIG_GARAGE_ACCESS_KEY_ID=GKdeadbeefdeadbeefdeadbeef \
@@ -163,10 +172,10 @@ docker run --rm --network papiq-dev_default -v "$BACKUP:/backup" \
 Restore (into the same devcontainer; stop Lekto first with **Lekto stoppen**):
 
 ```sh
-docker exec papiq-dev-postgres-1 dropdb -U lekto --if-exists lekto_dev
-docker exec papiq-dev-postgres-1 createdb -U lekto lekto_dev
-docker exec -i papiq-dev-postgres-1 pg_restore -U lekto -d lekto_dev --no-owner < "$BACKUP/lekto_dev.dump"
-docker run --rm --network papiq-dev_default -v "$BACKUP:/backup:ro" \
+docker exec lekto-dev-postgres-1 dropdb -U lekto --if-exists lekto_dev
+docker exec lekto-dev-postgres-1 createdb -U lekto lekto_dev
+docker exec -i lekto-dev-postgres-1 pg_restore -U lekto -d lekto_dev --no-owner < "$BACKUP/lekto_dev.dump"
+docker run --rm --network lekto-dev_default -v "$BACKUP:/backup:ro" \
   -e RCLONE_CONFIG_GARAGE_TYPE=s3 -e RCLONE_CONFIG_GARAGE_PROVIDER=Other \
   -e RCLONE_CONFIG_GARAGE_ENDPOINT=http://garage:3900 -e RCLONE_CONFIG_GARAGE_REGION=garage \
   -e RCLONE_CONFIG_GARAGE_ACCESS_KEY_ID=GKdeadbeefdeadbeefdeadbeef \

@@ -1,5 +1,5 @@
 # Devcontainer services. Credentials are fixed development values (see test.env); never reuse them.
-name: papiq-dev
+name: lekto-dev
 
 x-garage-admin-token: &garage-admin-token dev-garage-admin-token
 
@@ -12,7 +12,7 @@ services:
     command: sleep infinity
     env_file: test.env
     volumes:
-      - ..:/workspaces/papiq:cached
+      - ..:/workspaces/lekto:cached
       - uv-cache:/home/vscode/.cache/uv
       - claude-config:/home/vscode/.claude
     extra_hosts:

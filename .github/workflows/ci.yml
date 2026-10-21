@@ -262,7 +262,7 @@ jobs:
           context: .
           target: dev
           load: true
-          tags: papiq-dev-dev:latest
+          tags: lekto-dev-dev:latest
           cache-from: type=gha,scope=dev-image
           cache-to: ${{ env.WRITE_CACHE == 'true' && 'type=gha,scope=dev-image,mode=max' || '' }}
       - name: Start the services

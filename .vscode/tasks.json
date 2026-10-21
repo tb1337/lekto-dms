@@ -1,6 +1,6 @@
 {
 	// Lekto as a development instance inside the devcontainer (see .devcontainer/README.md).
-	// Every task runs in /workspaces/papiq with the settings of .devcontainer/dev.env (not in the
+	// Every task runs in /workspaces/lekto with the settings of .devcontainer/dev.env (not in the
 	// repository; "Lekto: Devinstanz einrichten" creates it). Nothing starts on its own.
 	"version": "2.0.0",
 	"options": {

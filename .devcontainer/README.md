@@ -8,7 +8,7 @@ search index. Nothing here is reachable from outside the machine; Lekto speaks p
 
 | Service (`compose.yml`) | Purpose |
 | --- | --- |
-| `dev` | The workspace: target `dev` of the `Dockerfile` (the system packages of the runtime image, Python 3.13 with uv, Node.js with pnpm, Git, GitHub CLI, Claude Code) |
+| `dev` | The workspace: target `dev` of the `Dockerfile` (the system packages of the runtime image, Python 3.13 with uv, Node.js with pnpm, Git, GitHub CLI, Claude Code; zsh with Oh My Zsh from the feature `common-utils`) |
 | `postgres` | Databases `lekto_dev` (the development instance) and `lekto_test_*` (integration tests, created and dropped per test); `lekto` is only the server's first database |
 | `garage` | S3 object store; `garage-init` creates the key and the buckets `lekto-dev` (the development instance) and `lekto` (tests, below `tests/`) at every start |
 | `meilisearch` | Search; indexes `lekto-dev-documents` (the development instance) and `lekto-test-*` (tests) |

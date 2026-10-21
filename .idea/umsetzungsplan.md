@@ -1309,6 +1309,7 @@ Entwickelt und getestet wird im Devcontainer; er startet alle Abhängigkeiten pe
 **Weitere Punkte**
 
 - Funktion „Docker outside of Docker", damit sich aus dem Devcontainer das Lekto-Image bauen und starten lässt (M9).
+- Shell (Tobi, 21.10.2026): zsh mit Oh My Zsh und dem Prompt der Devcontainer-Images (Thema `devcontainers`), wie in pypaperless. Es kommt aus der Devcontainer-Funktion `common-utils` (ohne Upgrade der Pakete), nicht aus dem Dockerfile; VS Code öffnet Terminals mit zsh. Die Login-Shell von `vscode` bleibt bash, ebenso die VS-Code-Tasks.
 - Weitergeleitete Ports: API, Vite-Entwicklungsserver, Meilisearch, Garage.
 - Nach dem Erstellen: `uv sync` und `pnpm install` automatisch.
 - Tests: Kern-Tests mit In-Memory-Adaptern; Vertragstests gegen SQLite, Postgres, Dateisystem, Garage und Meilisearch aus dem Compose-Netz.

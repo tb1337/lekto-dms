@@ -15069,7 +15069,10 @@ export interface operations {
 	};
 	update_document_api_v1_documents__id__patch: {
 		parameters: {
-			query?: never;
+			query?: {
+				/** @description `false`: admins only, for a document taken over from another system (channel `migration`): the change aligns it with its source and neither confirms it nor counts as a person's decision; the checks and the rules are the same. */
+				confirm?: boolean;
+			};
 			header?: never;
 			path: {
 				id: string;
@@ -15215,7 +15218,10 @@ export interface operations {
 	};
 	preview_change_api_v1_documents__id__dry_run_post: {
 		parameters: {
-			query?: never;
+			query?: {
+				/** @description `false`: admins only, for a document taken over from another system (channel `migration`): the change aligns it with its source and neither confirms it nor counts as a person's decision; the checks and the rules are the same. */
+				confirm?: boolean;
+			};
 			header?: never;
 			path: {
 				id: string;

@@ -10617,6 +10617,18 @@
               "format": "uuid",
               "title": "Id"
             }
+          },
+          {
+            "name": "confirm",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "`false`: admins only, for a document taken over from another system (channel `migration`): the change aligns it with its source and neither confirms it nor counts as a person's decision; the checks and the rules are the same.",
+              "default": true,
+              "title": "Confirm"
+            },
+            "description": "`false`: admins only, for a document taken over from another system (channel `migration`): the change aligns it with its source and neither confirms it nor counts as a person's decision; the checks and the rules are the same."
           }
         ],
         "requestBody": {
@@ -10902,6 +10914,18 @@
               "format": "uuid",
               "title": "Id"
             }
+          },
+          {
+            "name": "confirm",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "`false`: admins only, for a document taken over from another system (channel `migration`): the change aligns it with its source and neither confirms it nor counts as a person's decision; the checks and the rules are the same.",
+              "default": true,
+              "title": "Confirm"
+            },
+            "description": "`false`: admins only, for a document taken over from another system (channel `migration`): the change aligns it with its source and neither confirms it nor counts as a person's decision; the checks and the rules are the same."
           }
         ],
         "requestBody": {

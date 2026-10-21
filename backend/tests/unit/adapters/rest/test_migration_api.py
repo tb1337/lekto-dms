@@ -434,6 +434,87 @@ async def test_a_review_of_a_field_with_a_value_keeps_it(api: Api) -> None:
     assert document["fields"][data["amount"]["id"]] == {"amount": "84.20", "currency": "EUR"}
 
 
+async def test_an_admin_aligns_a_migrated_document_without_confirming_it(api: Api) -> None:
+    admin, owner = await api.admin(), await api.user()
+    data = await master_data(api, admin)
+    other = await post(api, "/contacts", {"name": "Nord Strom"}, auth(admin))
+    household = await post(
+        api, "/spaces", {"name": "Household", "owner_id": str(owner.id)}, auth(admin)
+    )
+    await post(
+        api,
+        "/rules",
+        {
+            "name": "Nord Strom to the household",
+            "triggers": ["change"],
+            "conditions": {"all": [{"field": "contact", "op": "is", "value": other["id"]}]},
+            "actions": [{"type": "set_space", "space_id": household["id"]}],
+        },
+        auth(owner),
+    )
+    response = await upload(
+        api, auth(admin), channel="migration", owner=str(owner.id), metadata=metadata(data)
+    )
+    url = response.json()["status_url"]
+    await api.drain()
+    taken_over = (await api.client.get(url, headers=auth(owner))).json()["confirmed_at"]
+    assert taken_over is not None
+
+    body = {"contact_id": other["id"]}
+    preview = await api.client.post(f"{url}/dry-run?confirm=false", json=body, headers=auth(admin))
+    assert preview.status_code == 200, preview.text
+    assert [effect["field"] for effect in preview.json()["rules"][0]["applied"]] == ["space"]
+    changed = await api.client.patch(f"{url}?confirm=false", json=body, headers=auth(admin))
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["space_id"] == household["id"]  # the rules ran
+    document = (await api.client.get(url, headers=auth(owner))).json()
+    assert (document["contact_id"], document["confirmed_at"]) == (other["id"], taken_over)
+
+    # One that waits for a review stays unconfirmed; the person's confirmation keeps the value.
+    review = [{"reason": "resolve the contact", "field": "contact"}]
+    response = await upload(
+        api,
+        auth(admin),
+        channel="migration",
+        owner=str(owner.id),
+        name="photo.jpg",
+        metadata=metadata(data, contact_id=None, review=review),
+    )
+    url = response.json()["status_url"]
+    await api.drain()
+    changed = await api.client.patch(f"{url}?confirm=false", json=body, headers=auth(admin))
+    assert changed.status_code == 200, changed.text
+    document = (await api.client.get(url, headers=auth(owner))).json()
+    assert (document["lane"], document["confirmed_at"]) == ("yellow", None)
+    confirmed = await api.client.post(f"{url}/confirm", json={}, headers=auth(owner))
+    assert confirmed.status_code == 202, confirmed.text
+    await api.drain()
+    document = (await api.client.get(url, headers=auth(owner))).json()
+    assert (document["lane"], document["contact_id"]) == ("green", other["id"])
+
+
+async def test_only_an_admin_aligns_and_only_a_migrated_document(api: Api) -> None:
+    admin, owner = await api.admin(), await api.user()
+    data = await master_data(api, admin)
+    migrated = await upload(
+        api, auth(admin), channel="migration", owner=str(owner.id), metadata=metadata(data)
+    )
+    own = await upload(api, auth(owner), name="photo.jpg")
+    await api.drain()
+    body = {"title": "Aligned"}
+    for path in ("", "/dry-run"):
+        method = api.client.patch if path == "" else api.client.post
+        url = migrated.json()["status_url"] + path + "?confirm=false"
+        response = await method(url, json=body, headers=auth(owner))
+        assert response.status_code == 403, (path, response.text)
+        url = own.json()["status_url"] + path + "?confirm=false"
+        response = await method(url, json=body, headers=auth(admin))
+        assert response.status_code == 422, (path, response.text)
+        assert "migration" in response.json()["detail"]
+    document = (await api.client.get(own.json()["status_url"], headers=auth(owner))).json()
+    assert document["title"] != "Aligned"
+
+
 async def test_spaces_for_another_owner(api: Api) -> None:
     admin, owner, other = await api.admin(), await api.user(), await api.user()
     created = await api.client.post(

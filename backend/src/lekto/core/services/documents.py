@@ -13,7 +13,7 @@ from uuid import UUID
 from lekto.core.domain import media_types
 from lekto.core.domain.classification import CONFIRMING
 from lekto.core.domain.codes import Code, GiroCode, code_identifiers, codes_from_json, giro_code
-from lekto.core.domain.documents import Document, DocumentChanges, confirms
+from lekto.core.domain.documents import Channel, Document, DocumentChanges, confirms
 from lekto.core.domain.errors import (
     ConflictError,
     NotFoundError,
@@ -65,6 +65,7 @@ from lekto.core.ports.repository import (
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import (
     access_to,
+    admin_only,
     checked_changes,
     controllable_document,
     field_definitions,
@@ -655,11 +656,20 @@ class DocumentService:
         return (await self.change_metadata(actor, id, changes)).document
 
     async def change_metadata(
-        self, actor: UserId, id: DocumentId, changes: DocumentChanges, *, dry_run: bool = False
+        self,
+        actor: UserId,
+        id: DocumentId,
+        changes: DocumentChanges,
+        *,
+        dry_run: bool = False,
+        confirm: bool = True,
     ) -> MetadataChange:
         """As `update_metadata`, and the change rules of the document's owner and the global
         ones run (see `rules.changes`). The rules' report is for the owner and admins. With
-        `dry_run`, nothing is stored: what would happen."""
+        `dry_run`, nothing is stored: what would happen. Without `confirm` (an admin, on a
+        document taken over from another system: the migration aligns it with its source), the
+        change neither confirms the document nor counts as a person's decision; the checks and
+        the rules are the same."""
         # When the document came in is no metadata the rules decide on: changed alone, they
         # do not run (Tobi, 21.10.2026).
         rules = None if changes.only_receipt else self._rules
@@ -672,6 +682,13 @@ class DocumentService:
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             document, _ = await writable_document(uow, user, id)
+            if not confirm:
+                admin_only(user, "change a document without confirming it")
+                if document.channel is not Channel.MIGRATION:
+                    raise ValidationError(
+                        "only a document taken over from another system (channel "
+                        "'migration') is changed without confirming it"
+                    )
             # What the person decided is the change as given; one the checks add (a topic the
             # new contact does not enable, cleared) is none of their decisions.
             given = changes
@@ -680,11 +697,12 @@ class DocumentService:
             now = self._clock.now()
             before = copy.deepcopy(document)
             changed = document.apply_changes(changes, definitions, now)
-            if confirms(
+            # Without `confirm`: the migration's alignment, the source system's values.
+            if confirm and confirms(
                 changed, before.tag_ids, document.tag_ids, await _manual(uow, before, document)
             ):
                 document.mark_confirmed(now)
-            elif CONFIRMING & set(changed):
+            elif confirm and CONFIRMING & set(changed):
                 document.record_decision()  # tags set by hand: no confirmation, but a decision
             run = None
             if rules is not None:

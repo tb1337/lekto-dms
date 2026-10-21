@@ -288,6 +288,18 @@ async def get_document(id: UUID, user: CurrentUser, context: Context) -> Documen
     return DocumentDetails.of(view.document, view.access)
 
 
+Confirm = Annotated[
+    bool,
+    Query(
+        description=(
+            "`false`: admins only, for a document taken over from another system (channel "
+            "`migration`): the change aligns it with its source and neither confirms it nor "
+            "counts as a person's decision; the checks and the rules are the same."
+        )
+    ),
+]
+
+
 @router.patch(
     "/{id}",
     summary="Change a document's metadata",
@@ -304,10 +316,10 @@ async def get_document(id: UUID, user: CurrentUser, context: Context) -> Documen
     responses=problem_responses(401, 403, 404, 409, 422),
 )
 async def update_document(
-    id: UUID, body: DocumentPatch, user: CurrentUser, context: Context
+    id: UUID, body: DocumentPatch, user: CurrentUser, context: Context, confirm: Confirm = True
 ) -> DocumentChanged | DocumentOutOfReach:
     changes = await _changes(body, user, context)
-    change = await context.documents.change_metadata(user, DocumentId(id), changes)
+    change = await context.documents.change_metadata(user, DocumentId(id), changes, confirm=confirm)
     return _changed(change)
 
 
@@ -323,11 +335,17 @@ async def update_document(
     responses=problem_responses(401, 403, 404, 409, 422),
 )
 async def preview_change(
-    id: UUID, body: DocumentPatch, principal: Authenticated, context: Context
+    id: UUID,
+    body: DocumentPatch,
+    principal: Authenticated,
+    context: Context,
+    confirm: Confirm = True,
 ) -> DocumentPreviewOut:
     user = principal.id
     changes = await _changes(body, user, context)
-    change = await context.documents.change_metadata(user, DocumentId(id), changes, dry_run=True)
+    change = await context.documents.change_metadata(
+        user, DocumentId(id), changes, dry_run=True, confirm=confirm
+    )
     readable = change.access is not None
     return DocumentPreviewOut(
         document=DocumentDetails.of(change.document, change.access) if change.access else None,

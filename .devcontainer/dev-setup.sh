@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 # Prepare the development instance in the devcontainer, once; safe to run again:
-#   - .devcontainer/dev.env from dev.env.example, with a fresh LEKTO_SECRET_KEY
+#   - .devcontainer/dev.local.env from dev.local.env.example, with a fresh LEKTO_SECRET_KEY
 #   - the database lekto_dev (the bucket lekto-dev is created by garage-init at every start,
 #     the search index by Lekto itself)
 # Run from the repository root (the VS Code task "Lekto: Set up dev instance" does).
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
-env_file=$here/dev.env
+env_file=$here/dev.local.env
 
 if [ -e "$env_file" ]; then
-  echo "dev.env exists; keeping it"
+  echo "dev.local.env exists; keeping it"
 else
   key=$(openssl rand -base64 32)
-  sed "s|^LEKTO_SECRET_KEY=$|LEKTO_SECRET_KEY=$key|" "$here/dev.env.example" >"$env_file"
+  sed "s|^LEKTO_SECRET_KEY=$|LEKTO_SECRET_KEY=$key|" "$here/dev.local.env.example" >"$env_file"
   chmod 600 "$env_file"
-  echo "dev.env written with a new LEKTO_SECRET_KEY; fill in LEKTO_ADMIN_USERNAME, LEKTO_ADMIN_PASSWORD the Open WebUI address and its API keys"
+  echo "dev.local.env written with a new LEKTO_SECRET_KEY; fill in LEKTO_ADMIN_USERNAME, LEKTO_ADMIN_PASSWORD the Open WebUI address and its API keys"
 fi
 
 set -a

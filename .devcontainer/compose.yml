@@ -6,7 +6,7 @@ x-garage-admin-token: &garage-admin-token dev-garage-admin-token
 # The environment of the `dev` container and of the CI job `integration` (which reads it with
 # `docker compose config`): the fixed credentials of the services, for the integration tests
 # (they derive their own databases, bucket prefixes and indexes). The development instance has
-# its own settings in dev.env (see README.md).
+# its own settings in dev.local.env (see README.md).
 x-test-environment: &test-environment
   LEKTO_LOG_FORMAT: console
   LEKTO_LOG_LEVEL: DEBUG
@@ -87,7 +87,7 @@ services:
       <<: *test-environment
       GARAGE_ADMIN_URL: http://garage:3903
       GARAGE_ADMIN_TOKEN: *garage-admin-token
-      # The bucket of the development instance (dev.env, see README.md).
+      # The bucket of the development instance (dev.local.env, see README.md).
       LEKTO_S3_EXTRA_BUCKETS: lekto-dev
     depends_on:
       - garage

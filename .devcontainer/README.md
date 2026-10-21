@@ -21,7 +21,7 @@ Ports 8000 (API), 5173 (Vite), 7700 (Meilisearch) and 3900 (Garage) are forwarde
 
 | Use | Settings | Database | Bucket | Index |
 | --- | --- | --- | --- | --- |
-| Development instance (the tasks) | `dev.env` (not in the repository) | `lekto_dev` | `lekto-dev` | `lekto-dev-documents` |
+| Development instance (the tasks) | `dev.local.env` (not in the repository) | `lekto_dev` | `lekto-dev` | `lekto-dev-documents` |
 | Tests (`uv run pytest -m integration`), CI | `x-test-environment` in `compose.yml`, the environment of the container; the tests derive their own names | `lekto_test_<random>` | `lekto`, prefix `tests/<random>/` | `lekto-test-<random>` |
 
 The tests create and remove their databases, prefixes and indexes themselves. Running
@@ -45,13 +45,13 @@ done
 
 Once, in the devcontainer (VS Code: Terminal → Run Task):
 
-1. **Lekto: Set up dev instance** copies `dev.env.example` to `dev.env` with a fresh
+1. **Lekto: Set up dev instance** copies `dev.local.env.example` to `dev.local.env` with a fresh
    `LEKTO_SECRET_KEY` and creates the database `lekto_dev` (the bucket comes from
-   `garage-init`, the index from Lekto). It never overwrites an existing `dev.env`. In a
+   `garage-init`, the index from Lekto). It never overwrites an existing `dev.local.env`. In a
    devcontainer that was started before the bucket `lekto-dev` existed, run `garage-init`
    once (`docker compose -f .devcontainer/compose.yml run --rm garage-init`, from the container
    or the host) or rebuild the container; `/api/v1/health` says `object_store: failed` until then.
-2. Fill in `dev.env`: `LEKTO_ADMIN_USERNAME` and `LEKTO_ADMIN_PASSWORD` for the first admin
+2. Fill in `dev.local.env`: `LEKTO_ADMIN_USERNAME` and `LEKTO_ADMIN_PASSWORD` for the first admin
    (use the user name you have in Paperless, so the migration maps the documents to you), the
    address of your Open WebUI (`https://<host>/api`) in `LEKTO_LLM_BASE_URL` and
    `LEKTO_EMBEDDING_BASE_URL` and its API key in `LEKTO_LLM_API_KEY` and
@@ -61,7 +61,11 @@ Once, in the devcontainer (VS Code: Terminal → Run Task):
 3. **Lekto: Start** (below).
 
 Keep `LEKTO_SECRET_KEY` (TOTP and webhook secrets are encrypted with it) and the admin password
-in your password manager, not only in `dev.env`.
+in your password manager, not only in `dev.local.env`.
+
+Never call the file `dev.env`: the commits before 21.10.2026, every tag up to v0.4 among them,
+track a `.devcontainer/dev.env`, and checking one of them out overwrites an ignored file of that
+name without asking.
 
 ## Start, stop, update
 
@@ -70,18 +74,18 @@ in your password manager, not only in `dev.env`.
 | **Lekto: Start** | `Lekto: Migrate schema`, `Lekto: Build UI`, then `Lekto: API` and `Lekto: Worker` side by side, each in its own terminal |
 | **Lekto: Stop** | Ends the API and worker tasks (SIGTERM; the worker finishes running jobs within `LEKTO_WORKER_SHUTDOWN_TIMEOUT`, 30 s) |
 | Lekto: API, Lekto: Worker | One service alone (both run migration first; the API also builds the UI) |
-| Lekto: Migrate schema | `python -m lekto.composition migrate` with `dev.env` |
+| Lekto: Migrate schema | `python -m lekto.composition migrate` with `dev.local.env` |
 | Lekto: Build UI | `pnpm build` in `web/`; the API serves `web/build` below `/ui` (`LEKTO_UI_DIR`) |
 | Lekto: UI dev | Vite on <http://localhost:5173/ui/> with `/api` proxied to the API, for UI work with hot reload |
 | Lekto: Rebuild search index | `reindex`: rebuild the search index from database and bucket (after a restore, a model change, or to add vectors) |
 | Lekto: Render page images | `render-pages`: queue the page images of documents from before the pages node; the worker renders them |
 | Lekto: Read codes | `read-codes`: queue reading the bar and QR codes of documents from before code reading; the worker reads them and keeps the identifiers each document shows |
-| Migration: plan, run, verify | The Paperless migration client with the `LEKTO_MIGRATION_*` variables of `dev.env` (see below) |
+| Migration: plan, run, verify | The Paperless migration client with the `LEKTO_MIGRATION_*` variables of `dev.local.env` (see below) |
 
-When the folder opens, only the task **zsh** starts: a terminal without `dev.env` (VS Code asks
-once whether automatic tasks may run). After **Lekto: Start**, open
-<http://localhost:8000/ui/> and sign in as the admin from `dev.env`; the API documentation is
-at <http://localhost:8000/api/v1/docs>. The tasks use the terminals of VS Code; the logs are
+When the folder opens, only the task **zsh** starts: a terminal without `dev.local.env` (VS Code
+asks once whether automatic tasks may run). After **Lekto: Start**, open
+<http://localhost:8000/ui/> and sign in as the admin from `dev.local.env`; the API documentation
+is at <http://localhost:8000/api/v1/docs>. The tasks use the terminals of VS Code; the logs are
 there (`LEKTO_LOG_FORMAT=console`).
 
 **Update after `git pull`:** `uv sync` in `backend/` and `pnpm install` in `web/` when the lock
@@ -90,13 +94,13 @@ files changed (the devcontainer runs both after a rebuild), then **Lekto: Stop**
 and worker come up) and builds the UI anew. A schema migration cannot be undone: take a backup first
 when the pull brings a new revision (`git log --stat -- backend/src/lekto/adapters/outbound/sql/migrations/versions`).
 
-**Rebuild of the devcontainer** ("Rebuild Container"): the volumes stay, `dev.env` stays (it is
-a file in the workspace), the tasks work as before.
+**Rebuild of the devcontainer** ("Rebuild Container"): the volumes stay, `dev.local.env` stays
+(it is a file in the workspace), the tasks work as before.
 
 ## The language model
 
-`dev.env.example` points at Open WebUI (in front of Ollama) with `qwen3:8b-ctx8k` (classification)
-and Qwen3-Embedding 4B (search vectors), the models evaluated in
+`dev.local.env.example` points at Open WebUI (in front of Ollama) with `qwen3:8b-ctx8k`
+(classification) and Qwen3-Embedding 4B (search vectors), the models evaluated in
 `.idea/architektur.md`. On a CPU a document takes 3 to 10 minutes in the model
 (`LEKTO_LLM_TIMEOUT=600`); embeddings take about 4 s per section of 1500 characters on Ollama
 with two vGPUs (21.10.2026), a query about 0.5 s. Single uploads are fine at any time. Mass runs (the migration with
@@ -111,7 +115,7 @@ endpoint outside the local network.
 ## Memory
 
 A job needs little memory (OCRmyPDF about 150 MB, the worker about 0.5 GB); the OCR is bound
-by the CPU. `dev.env.example` sets `LEKTO_WORKER_CONCURRENCY=3`; more jobs than the VM has
+by the CPU. `dev.local.env.example` sets `LEKTO_WORKER_CONCURRENCY=3`; more jobs than the VM has
 cores gain nothing (Docker Desktop or OrbStack: the cores of the VM, not of the Mac). See
 [backend/README.md](../backend/README.md#worker).
 
@@ -121,7 +125,7 @@ cores gain nothing (Docker Desktop or OrbStack: the cores of the VM, not of the 
 instance:
 
 1. In Lekto (as the admin): Settings → API tokens → create a token with scope `read_write`;
-   write it to the file `LEKTO_MIGRATION_LEKTO_TOKEN_FILE` names in `dev.env`
+   write it to the file `LEKTO_MIGRATION_LEKTO_TOKEN_FILE` names in `dev.local.env`
    (`/tmp/lekto-token`, outside the repository). Write the Paperless API key to
    `LEKTO_MIGRATION_PAPERLESS_TOKEN_FILE` (`/tmp/paperless-token`). `/tmp` is emptied when the
    container restarts; recreate the files then.
@@ -134,7 +138,7 @@ instance:
    `migration/migration-state.sqlite`.
 4. **Migration: verify** compares Paperless and Lekto object by object.
 
-Run the migration with the embedding variables commented out in `dev.env` (restart API and
+Run the migration with the embedding variables commented out in `dev.local.env` (restart API and
 worker after changing it): the pipeline then does not call Ollama for every document. Afterwards
 switch them on again, restart, and run **Lekto: Rebuild search index** once to get the vectors.
 The rebuild runs in one go and cannot be split: measured in M13 over the reverse proxy it took
@@ -190,9 +194,9 @@ fixed development key from `compose.yml`.
 
 ## Without VS Code
 
-Every task is a shell command (`.vscode/tasks.json`): load `dev.env` and run it, for example
+Every task is a shell command (`.vscode/tasks.json`): load `dev.local.env` and run it, for example
 
 ```sh
-set -a; . .devcontainer/dev.env; set +a
+set -a; . .devcontainer/dev.local.env; set +a
 cd backend && uv run python -m lekto.composition api      # and `worker` in a second terminal
 ```

@@ -8,6 +8,11 @@
 import type { components } from '#lib/api/schema.ts';
 
 type Files = components['schemas']['DocumentFilesOut'];
+/** What the life needs of the document itself: its lane, its confirmation, its processing. */
+export type Reviewed = Pick<
+	components['schemas']['DocumentDetails'],
+	'lane' | 'confirmed_at' | 'processing' | 'channel'
+>;
 type Metadata = NonNullable<components['schemas']['StoredFileOut']['metadata']>;
 type Entry = Metadata['entries'][number];
 
@@ -99,21 +104,28 @@ export function saidBy(metadata: Metadata | null): [SaidKey, string][] {
 	return said.filter((entry): entry is [SaidKey, string] => entry[1] !== null);
 }
 
-export type StepKind = 'created' | 'changed' | 'added' | 'archived' | 'modified';
+export type StepKind =
+	'created' | 'changed' | 'added' | 'archived' | 'confirmed' | 'unreviewed' | 'modified' | 'review';
 
 export interface Step {
 	kind: StepKind;
 	at: Date;
 	/** Before Lekto: as the file says, at the sender. */
 	outside: boolean;
+	/** Still to come (the review); `at` is now. */
+	open?: boolean;
+	/** Confirmed with the metadata taken over from the source system, not by a person. */
+	takenOver?: boolean;
 }
 
 const MINUTE = 60_000;
 
 /** The life of a document's file, in order: made and changed at the sender (as the original
  * says), received, archived (as the archive says), changed in Lekto last. A step as late as
- * the one before it, within a minute, is left out. */
-export function lifeOf(files: Files): Step[] {
+ * the one before it, within a minute, is left out. With the document, the review too (Tobi,
+ * 21.10.2026): reviewed by a person (`confirmed_at`), filed by the pipeline without one, or
+ * still to come while its lane is yellow or red, at the end. */
+export function lifeOf(files: Files, document?: Reviewed, now = new Date()): Step[] {
 	const original = madeOn(files.original.metadata);
 	const archived = files.archive ? madeOn(files.archive.metadata).changed : null;
 	const added = new Date(files.added);
@@ -124,14 +136,56 @@ export function lifeOf(files: Files): Step[] {
 		steps.push({ kind: 'changed', at: original.changed, outside: true });
 	}
 	steps.push({ kind: 'added', at: added, outside: false });
+	const inLekto: Step[] = [];
 	if (archived && !before(archived, added)) {
-		steps.push({ kind: 'archived', at: archived, outside: false });
+		inLekto.push({ kind: 'archived', at: archived, outside: false });
 	}
+	const review = document ? reviewOf(document) : {};
+	if (review.done) inLekto.push({ ...review.done, at: notBefore(review.done.at, added) });
+	steps.push(...inLekto.sort((a, b) => a.at.getTime() - b.at.getTime()));
 	if (later(modified, steps.at(-1)!.at))
 		steps.push({ kind: 'modified', at: modified, outside: false });
+	if (review.due) steps.push({ kind: 'review', at: now, outside: false, open: true });
 	return steps;
 }
 
+/** Where the review stands: due (not while the pipeline still runs; a field a person changed
+ * meanwhile does not end it), or done, by a person or the pipeline filing it without one. */
+function reviewOf(document: Reviewed): { done?: Step; due?: boolean } {
+	const running = document.processing.status === 'processing';
+	const due = !running && (document.lane === 'yellow' || document.lane === 'red');
+	const finished = document.processing.nodes
+		.map((node) => (node.finished_at ? new Date(node.finished_at).getTime() : 0))
+		.reduce((latest, at) => Math.max(latest, at), 0);
+	if (due) return { due };
+	if (document.confirmed_at) {
+		const at = new Date(document.confirmed_at);
+		// A migration confirms in its run; a person later.
+		const takenOver = document.channel === 'migration' && !later(at, new Date(finished));
+		return { done: { kind: 'confirmed', at, outside: false, takenOver } };
+	}
+	if (!running && document.lane === 'green' && finished > 0) {
+		return { done: { kind: 'unreviewed', at: new Date(finished), outside: false } };
+	}
+	return {};
+}
+
+export type GapUnit = 'minute' | 'hour' | 'day' | 'month' | 'year';
+
+/** How long from one step to the next, in the largest unit that fits once; nothing under a
+ * minute. */
+export function gapOf(from: Date, to: Date): { value: number; unit: GapUnit } | null {
+	const minutes = Math.floor((to.getTime() - from.getTime()) / MINUTE);
+	if (minutes < 1) return null;
+	const days = minutes / (60 * 24);
+	if (days >= 365) return { value: Math.max(1, Math.floor(days / 365.25)), unit: 'year' };
+	if (days >= 30) return { value: Math.max(1, Math.floor(days / 30.44)), unit: 'month' };
+	if (days >= 1) return { value: Math.floor(days), unit: 'day' };
+	if (minutes >= 60) return { value: Math.floor(minutes / 60), unit: 'hour' };
+	return { value: minutes, unit: 'minute' };
+}
+
+const notBefore = (at: Date, floor: Date) => (at.getTime() < floor.getTime() ? floor : at);
 const later = (a: Date, b: Date) => a.getTime() - b.getTime() > MINUTE;
 const before = (a: Date, b: Date) => b.getTime() - a.getTime() > MINUTE;
 

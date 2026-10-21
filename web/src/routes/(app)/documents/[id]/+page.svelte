@@ -571,7 +571,7 @@
 				</div>
 			</div>
 		{:else if tab === 'metadata'}
-			<DocumentFiles documentId={id} />
+			<DocumentFiles documentId={id} document={document ?? undefined} />
 		{:else if tab === 'log'}
 			<div class="lg:min-h-0 lg:flex-1">
 				<DocumentLog

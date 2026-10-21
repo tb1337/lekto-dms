@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { formatDate, formatNumber } from '#lib/i18n.ts';
 import { m } from '#lib/paraglide/messages.js';
 import DocumentFiles from './DocumentFiles.svelte';
 
@@ -92,6 +93,43 @@ describe('DocumentFiles', () => {
 		expect(within(table).queryByText('Producer')).toBeNull();
 		await user.type(screen.getByLabelText(m.files_search()), 'nichts');
 		expect(within(table).getByText(m.assignment_none_found())).toBeTruthy();
+	});
+
+	it('ends the life with a review still to come, and says how long lay between the steps', async () => {
+		vi.useFakeTimers({ now: new Date('2026-07-09T10:12:00Z'), toFake: ['Date'] });
+		fetchMock.mockImplementation(async () => Response.json(FILES));
+		render(DocumentFiles, {
+			documentId: 'doc-1',
+			document: {
+				lane: 'yellow',
+				confirmed_at: null,
+				channel: 'web',
+				processing: { status: 'review', run: 1, vision: false, nodes: [] }
+			}
+		});
+		const life = await screen.findByRole('list');
+		const steps = within(life).getAllByRole('listitem');
+		expect(steps.map((step) => step.querySelector('.font-semibold')?.textContent?.trim())).toEqual([
+			m.files_step_added(),
+			m.files_step_modified(),
+			m.files_step_confirmed()
+		]);
+		const review = steps.at(-1)!;
+		expect(within(review).getByText(m.files_step_pending())).toBeTruthy();
+		expect(review.querySelector('time')).toBeNull();
+		const days = (value: number) =>
+			m.files_gap_after({
+				duration: formatNumber(value, { style: 'unit', unit: 'day', unitDisplay: 'long' })
+			});
+		// Received to changed: four days; the review to come says since when instead.
+		expect(within(steps[1]).getByText(days(4))).toBeTruthy();
+		expect(within(review).queryByText(days(2))).toBeNull();
+		expect(
+			within(review).getByText(
+				m.files_step_since({ date: formatDate(FILES.added, { dateStyle: 'medium' }) })
+			)
+		).toBeTruthy();
+		vi.useRealTimers();
 	});
 
 	it('says when a file’s metadata cannot be read', async () => {

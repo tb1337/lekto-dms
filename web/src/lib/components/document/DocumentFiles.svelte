@@ -1,5 +1,8 @@
 <script lang="ts">
 	import Archive from '@lucide/svelte/icons/archive';
+	import ClipboardCheck from '@lucide/svelte/icons/clipboard-check';
+	import ClipboardClock from '@lucide/svelte/icons/clipboard-clock';
+	import ClipboardMinus from '@lucide/svelte/icons/clipboard-minus';
 	import Copy from '@lucide/svelte/icons/copy';
 	import FilePen from '@lucide/svelte/icons/file-pen';
 	import FilePlus from '@lucide/svelte/icons/file-plus';
@@ -17,11 +20,14 @@
 	import { events } from '#lib/events.svelte.ts';
 	import {
 		fingerprint,
+		gapOf,
 		lifeOf,
 		madeOn,
 		madeWith,
 		saidBy,
+		type Reviewed,
 		type SaidKey,
+		type Step,
 		type StepKind
 	} from '#lib/file-passport.ts';
 	import { formatDate, formatNumber } from '#lib/i18n.ts';
@@ -32,8 +38,10 @@
 	// life of the file from the sender to its last change in Lekto, one passport each for the
 	// original and the archive (format, size beside the other's, a fingerprint of its SHA-256,
 	// what made it, what it says about itself), and below every entry of their metadata, to
-	// search and to narrow by file and source, in columns that keep their width.
-	let { documentId }: { documentId: string } = $props();
+	// search and to narrow by file and source, in columns that keep their width. With the
+	// document, the life ends with its review, and the line between two steps says how long
+	// lay between them (Tobi, 21.10.2026).
+	let { documentId, document }: { documentId: string; document?: Reviewed } = $props();
 
 	type Files = components['schemas']['DocumentFilesOut'];
 	type Stored = components['schemas']['StoredFileOut'];
@@ -94,10 +102,15 @@
 		changed: { label: m.files_step_changed, icon: FilePen },
 		added: { label: m.files_step_added, icon: Inbox },
 		archived: { label: m.files_step_archived, icon: Archive },
-		modified: { label: m.files_step_modified, icon: Pencil }
+		confirmed: { label: m.files_step_confirmed, icon: ClipboardCheck },
+		unreviewed: { label: m.files_step_unreviewed, icon: ClipboardMinus },
+		modified: { label: m.files_step_modified, icon: Pencil },
+		review: { label: m.files_step_confirmed, icon: ClipboardClock }
 	};
 
-	const life = $derived(files ? lifeOf(files) : []);
+	const life = $derived(files ? lifeOf(files, document) : []);
+	// A review still to come in the colour of the lane that waits for it.
+	const red = $derived(document?.lane === 'red');
 	const shown = $derived(
 		files ? (which === 'archive' && files.archive ? files.archive : files.original) : null
 	);
@@ -140,11 +153,21 @@
 		return metadata.pdfa ? `PDF/A-${metadata.pdfa}` : metadata.format;
 	}
 
-	function stepNote(step: StepKind): string {
-		if (step === 'created' || step === 'changed') return m.files_step_sender();
-		if (step === 'archived' && files?.archive)
+	function stepNote(step: Step): string {
+		if (step.kind === 'created' || step.kind === 'changed') return m.files_step_sender();
+		if (step.kind === 'archived' && files?.archive)
 			return m.files_step_as({ format: kind(files.archive) });
+		if (step.kind === 'confirmed')
+			return step.takenOver ? m.files_step_taken_over() : m.files_step_by_hand();
+		if (step.kind === 'unreviewed') return m.files_step_pipeline();
+		if (step.kind === 'review' && files)
+			return m.files_step_since({ date: formatDate(files.added, { dateStyle: 'medium' }) });
 		return m.files_step_lekto();
+	}
+
+	/** How long lay between two steps: 5 minutes, 2 days, 1 year. */
+	function duration(gap: NonNullable<ReturnType<typeof gapOf>>): string {
+		return formatNumber(gap.value, { style: 'unit', unit: gap.unit, unitDisplay: 'long' });
 	}
 
 	function sizeNote(file: Stored, original: Stored): string {
@@ -335,25 +358,53 @@
 					>
 						{#each life as step, index (step.kind)}
 							{@const Icon = STEPS[step.kind].icon}
+							{@const gap = index > 0 ? gapOf(life[index - 1].at, step.at) : null}
+							{@const grey = step.outside || step.kind === 'unreviewed'}
 							<li
 								class="relative flex items-start gap-3 @3xl:flex-col @3xl:items-center @3xl:gap-1.5 @3xl:px-2 @3xl:text-center"
 							>
 								{#if index > 0}
-									<!-- The line from the step before, in the colour of where it happened. -->
+									<!-- The line from the step before, in the colour of where it happened;
+									     dashed to a review still to come. -->
 									<span
 										class={cn(
-											'absolute top-3 right-1/2 hidden h-0.5 w-full @3xl:block',
-											step.outside ? 'bg-muted-foreground/40' : 'bg-brand/50'
+											'absolute top-3 right-1/2 hidden w-full @3xl:block',
+											step.open
+												? cn(
+														'h-0 border-t-2 border-dashed',
+														red
+															? 'border-lane-red-foreground/60'
+															: 'border-lane-yellow-foreground/60'
+													)
+												: grey
+													? 'h-0.5 bg-muted-foreground/40'
+													: 'h-0.5 bg-brand/50'
 										)}
 										aria-hidden="true"
 									></span>
+									{#if gap}
+										<!-- How long lay between the two, on the line where they meet. -->
+										<span
+											class="absolute top-3 left-0 z-10 hidden -translate-x-1/2 -translate-y-1/2 rounded-full bg-card px-1.5 text-[11px] leading-4 whitespace-nowrap text-muted-foreground tabular-nums @3xl:block"
+											aria-hidden="true"
+										>
+											{duration(gap)}
+										</span>
+									{/if}
 								{/if}
 								<span
 									class={cn(
 										'relative z-10 grid size-6 shrink-0 place-items-center rounded-full border-2 bg-card',
-										step.outside
-											? 'border-muted-foreground/60 text-muted-foreground'
-											: 'border-brand text-brand'
+										step.open
+											? cn(
+													'border-dashed',
+													red
+														? 'border-lane-red-foreground text-lane-red-foreground'
+														: 'border-lane-yellow-foreground text-lane-yellow-foreground'
+												)
+											: grey
+												? 'border-muted-foreground/60 text-muted-foreground'
+												: 'border-brand text-brand'
 									)}
 									aria-hidden="true"
 								>
@@ -361,13 +412,31 @@
 								</span>
 								<span class="flex min-w-0 flex-col gap-0.5 @3xl:items-center">
 									<span class="text-sm font-semibold">{STEPS[step.kind].label()}</span>
-									<time
-										class="text-xs text-muted-foreground tabular-nums"
-										datetime={step.at.toISOString()}
-									>
-										{when(step.at)}
-									</time>
-									<span class="text-xs text-muted-foreground">{stepNote(step.kind)}</span>
+									{#if step.open}
+										<span
+											class={cn(
+												'text-xs font-medium',
+												red ? 'text-lane-red-foreground' : 'text-lane-yellow-foreground'
+											)}
+										>
+											{m.files_step_pending()}
+										</span>
+									{:else}
+										<time
+											class="text-xs text-muted-foreground tabular-nums"
+											datetime={step.at.toISOString()}
+										>
+											{when(step.at)}
+										</time>
+									{/if}
+									<span class="text-xs text-muted-foreground">{stepNote(step)}</span>
+									{#if gap && !step.open}
+										<!-- On the line where there is one; below it a line of its own (a review
+										     to come says since when instead). -->
+										<span class="text-xs text-muted-foreground @3xl:sr-only">
+											{m.files_gap_after({ duration: duration(gap) })}
+										</span>
+									{/if}
 								</span>
 							</li>
 						{/each}

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { components } from '#lib/api/schema.ts';
-import { fileDate, fingerprint, lifeOf, madeWith, saidBy } from '#lib/file-passport.ts';
+import {
+	fileDate,
+	fingerprint,
+	gapOf,
+	lifeOf,
+	madeWith,
+	saidBy,
+	type Reviewed
+} from '#lib/file-passport.ts';
 
 type Files = components['schemas']['DocumentFilesOut'];
 const entry = (source: 'info' | 'xmp' | 'exif', key: string, value: string) => ({
@@ -90,6 +98,103 @@ describe('the passport of a file', () => {
 		expect(
 			lifeOf({ ...files, modified: files.added, archive: null }).map((step) => step.kind)
 		).toEqual(['created', 'added']);
+	});
+
+	it('ends its life with the review: by hand, taken over, without one, or still to come', () => {
+		const files = {
+			added: '2026-10-20T07:13:00Z',
+			modified: '2026-10-21T08:30:00Z',
+			original_filename: 'brief.pdf',
+			media_type: 'application/pdf',
+			page_count: 1,
+			original: pdf([]),
+			archive: pdf([entry('xmp', 'xmp:ModifyDate', '2026-10-20T07:14:02Z')])
+		} as unknown as Files;
+		const processing = (status: Reviewed['processing']['status']) =>
+			({
+				status,
+				run: 1,
+				vision: false,
+				nodes: [
+					{
+						node: 'ocr',
+						status: 'done',
+						outcome: 'ok',
+						started_at: null,
+						finished_at: '2026-10-20T07:14:00Z'
+					},
+					{
+						node: 'file',
+						status: 'done',
+						outcome: 'ok',
+						started_at: null,
+						finished_at: '2026-10-20T07:15:30Z'
+					}
+				]
+			}) as Reviewed['processing'];
+		const document = (changes: Partial<Reviewed>): Reviewed => ({
+			lane: 'green',
+			confirmed_at: null,
+			channel: 'web',
+			processing: processing('completed'),
+			...changes
+		});
+		const kinds = (steps: ReturnType<typeof lifeOf>) => steps.map((step) => step.kind);
+		const now = new Date('2026-10-22T09:00:00Z');
+
+		// Reviewed by a person; the change with it is the same step.
+		const reviewed = lifeOf(files, document({ confirmed_at: '2026-10-21T08:30:00Z' }), now);
+		expect(kinds(reviewed)).toEqual(['added', 'archived', 'confirmed']);
+		expect(reviewed.at(-1)?.takenOver).toBe(false);
+		// Taken over in the run of a migration.
+		const migrated = lifeOf(
+			files,
+			document({ channel: 'migration', confirmed_at: '2026-10-20T07:15:00Z' }),
+			now
+		);
+		expect(kinds(migrated)).toEqual(['added', 'archived', 'confirmed', 'modified']);
+		expect(migrated[2].takenOver).toBe(true);
+		// Filed by the pipeline without anyone looking: when it was filed.
+		const unreviewed = lifeOf(files, document({}), now);
+		expect(kinds(unreviewed)).toEqual(['added', 'archived', 'unreviewed', 'modified']);
+		expect(unreviewed[2].at.toISOString()).toBe('2026-10-20T07:15:30.000Z');
+		// Waiting for a review: open at the end, now.
+		const due = lifeOf(files, document({ lane: 'yellow', processing: processing('review') }), now);
+		expect(kinds(due)).toEqual(['added', 'archived', 'modified', 'review']);
+		expect(due.at(-1)).toMatchObject({ open: true, at: now });
+		expect(
+			kinds(lifeOf(files, document({ lane: 'red', processing: processing('failed') }), now)).at(-1)
+		).toBe('review');
+		// A field changed in the inbox does not end the review.
+		expect(
+			kinds(
+				lifeOf(
+					files,
+					document({
+						lane: 'yellow',
+						confirmed_at: '2026-10-21T08:30:00Z',
+						processing: processing('review')
+					}),
+					now
+				)
+			)
+		).toEqual(['added', 'archived', 'modified', 'review']);
+		// While the pipeline runs, nothing about a review yet.
+		expect(
+			kinds(lifeOf(files, document({ lane: 'yellow', processing: processing('processing') }), now))
+		).toEqual(['added', 'archived', 'modified']);
+	});
+
+	it('says how long lay between two steps, in the largest unit that fits', () => {
+		const at = (iso: string) => new Date(iso);
+		const from = at('2026-10-20T07:13:00Z');
+		expect(gapOf(from, at('2026-10-20T07:13:40Z'))).toBeNull();
+		expect(gapOf(from, at('2026-10-20T07:18:59Z'))).toEqual({ value: 5, unit: 'minute' });
+		expect(gapOf(from, at('2026-10-20T10:13:00Z'))).toEqual({ value: 3, unit: 'hour' });
+		expect(gapOf(from, at('2026-10-22T07:12:00Z'))).toEqual({ value: 1, unit: 'day' });
+		expect(gapOf(from, at('2026-12-20T07:13:00Z'))).toEqual({ value: 2, unit: 'month' });
+		expect(gapOf(at('2023-12-05T14:03:00Z'), from)).toEqual({ value: 2, unit: 'year' });
+		expect(gapOf(at('2025-10-20T07:13:00Z'), from)).toEqual({ value: 1, unit: 'year' });
 	});
 
 	it('draws the same fingerprint for the same file, a mirrored one', () => {

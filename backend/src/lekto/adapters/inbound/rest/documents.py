@@ -8,7 +8,7 @@ the list leaves them out, filters and pages only ever see readable ones.
 import asyncio
 import os
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC
 from enum import StrEnum
 from pathlib import Path
@@ -39,6 +39,7 @@ from lekto.adapters.inbound.rest.schemas.documents import (
     DocumentTextOut,
     ExchangeNode,
     ImportedMetadataIn,
+    ImportedReviewIn,
     ListedDocument,
     LogEntry,
     MoveRequest,
@@ -60,10 +61,10 @@ from lekto.adapters.inbound.rest.schemas.inbox import (
 )
 from lekto.adapters.inbound.rest.upload import read_upload, upload_body
 from lekto.adapters.inbound.schemas import RuleReportOut
-from lekto.core.domain.classification import CHANGE_FIELDS, SPACE, field_key
+from lekto.core.domain.classification import CHANGE_FIELDS, SPACE, field_id_of, field_key
 from lekto.core.domain.documents import UNSET, Channel, Document, DocumentChanges, Unset
 from lekto.core.domain.errors import ValidationError
-from lekto.core.domain.fields import field_from_json
+from lekto.core.domain.fields import FieldDefinition, field_from_json
 from lekto.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -73,7 +74,7 @@ from lekto.core.domain.ids import (
     TagId,
     UserId,
 )
-from lekto.core.domain.imports import ImportedMetadata
+from lekto.core.domain.imports import ImportedMetadata, ImportedReview
 from lekto.core.domain.inbox import InboxTab
 from lekto.core.domain.pipeline import Node
 from lekto.core.ports.pages import PAGE_MEDIA_TYPE
@@ -844,7 +845,8 @@ def _given[T](
 async def _imported_metadata(
     body: ImportedMetadataIn, user: UserId, context: Context
 ) -> ImportedMetadata:
-    """The metadata field as domain values (field values by their definitions)."""
+    """The metadata field as domain values (field values by their definitions; a review may
+    name existing fields only)."""
     definitions = {a.id: a for a in await context.master_data.list_fields(user)}
     fields = {}
     for field_id, raw in body.fields.items():
@@ -865,6 +867,17 @@ async def _imported_metadata(
             document_date=body.document_date,
             fields={key: field_from_json(definitions[key], raw) for key, raw in fields.items()},
             created_at=None if body.created_at is None else body.created_at.astimezone(UTC),
+            review=tuple(_review(item, definitions) for item in body.review),
         )
     except ValidationError as error:
         raise ValidationError(f"metadata: {error}") from None
+
+
+def _review(
+    body: ImportedReviewIn, definitions: Mapping[FieldId, FieldDefinition]
+) -> ImportedReview:
+    review = ImportedReview(reason=body.reason, field=body.field)
+    field_id = None if review.field is None else field_id_of(review.field)
+    if field_id is not None and field_id not in definitions:
+        raise ValidationError(f"review: field {field_id} does not exist")
+    return review

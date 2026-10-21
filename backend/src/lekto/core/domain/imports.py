@@ -5,6 +5,15 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from uuid import UUID
 
+from lekto.core.domain.classification import (
+    CONTACT,
+    DOCUMENT_DATE,
+    DOCUMENT_TYPE,
+    TAGS,
+    TITLE,
+    TOPIC,
+    field_id_of,
+)
 from lekto.core.domain.documents import UNSET, DocumentChanges
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.fields import FieldDefinition, FieldValue, field_from_json, field_to_json
@@ -25,11 +34,44 @@ IMPORTED = "imported"
 """Key of the receive log entry's output that holds the metadata, and the `model_version` of
 the nodes that applied it."""
 
+MAX_REVIEWS = 50
+MAX_REVIEW_REASON = 500  # characters
+REVIEWABLE: frozenset[str] = frozenset({CONTACT, DOCUMENT_TYPE, TOPIC, TAGS, DOCUMENT_DATE, TITLE})
+"""The fields of the judge a review can name; a custom field is named `field:<id>`."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class ImportedReview:
+    """Why a person should look at a document taken over from another system before it is
+    filed: the reason, and the field it is about (`contact`, ..., `field:<id>`), or None for the
+    document as a whole. A named field is open in the inbox: without a value, the person
+    decides one."""
+
+    reason: str
+    field: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.reason.strip() or len(self.reason) > MAX_REVIEW_REASON:
+            raise ValidationError(f"review: a reason of 1 to {MAX_REVIEW_REASON} characters")
+        named = self.field is None or self.field in REVIEWABLE
+        if not named and field_id_of(self.field or "") is None:
+            raise ValidationError(f"review: {self.field!r} is no field of a document")
+
+    def to_json(self) -> JsonObject:
+        return {"reason": self.reason, "field": self.field}
+
+    @classmethod
+    def from_json(cls, data: JsonValue) -> "ImportedReview":
+        data = require_object(data, "review")
+        return cls(reason=as_text(data.get("reason")) or "", field=as_text(data.get("field")))
+
 
 @dataclass(frozen=True, kw_only=True)
 class ImportedMetadata:
     """What the source system knew about a document. The classification nodes apply it instead
-    of asking the language model. `None` leaves a field unset."""
+    of asking the language model. `None` leaves a field unset. With `review`, the judge (or for
+    a custom field the fields node) is uncertain for those reasons: the document waits in the
+    inbox, with the values applied."""
 
     title: str | None = None
     contact_id: ContactId | None = None
@@ -40,6 +82,11 @@ class ImportedMetadata:
     # When it came in at the source system (Paperless-ngx: `added`); the document keeps it as
     # its `created_at`. In UTC.
     created_at: datetime | None = None
+    review: tuple[ImportedReview, ...] = ()
+
+    def __post_init__(self) -> None:
+        if len(self.review) > MAX_REVIEWS:
+            raise ValidationError(f"review: at most {MAX_REVIEWS} reasons")
 
     def classification(self) -> DocumentChanges:
         """Title, contact, type and date as a change; the tags are added separately."""
@@ -61,6 +108,7 @@ class ImportedMetadata:
             "document_date": None if self.document_date is None else self.document_date.isoformat(),
             "fields": {str(key): field_to_json(value) for key, value in self.fields.items()},
             "created_at": None if self.created_at is None else self.created_at.isoformat(),
+            "review": [item.to_json() for item in self.review],
         }
 
     @classmethod
@@ -96,6 +144,7 @@ class ImportedMetadata:
                     if (at := data.get("created_at")) is None
                     else require_utc(datetime.fromisoformat(as_text(at) or ""), "created_at")
                 ),
+                review=tuple(map(ImportedReview.from_json, as_list(data.get("review")))),
             )
         except (ValidationError, ValueError, TypeError) as error:
             raise ValidationError(f"imported metadata: {error}") from None

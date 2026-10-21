@@ -6,9 +6,11 @@ other document goes to the node they wrap. The applied values are not model outp
 trust them (they have no field checks in the log, see `rules.running.provenance`).
 """
 
+from lekto.core.domain.classification import CHECKS, FieldCheck, checks_to_json, field_id_of
 from lekto.core.domain.documents import Channel, Document, DocumentChanges
 from lekto.core.domain.errors import ValidationError
-from lekto.core.domain.imports import IMPORTED, ImportedMetadata
+from lekto.core.domain.imports import IMPORTED, ImportedMetadata, ImportedReview
+from lekto.core.domain.json_value import JsonObject
 from lekto.core.domain.pipeline import Node, NodeResult, Outcome
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from lekto.core.services._access import field_definitions
@@ -60,26 +62,45 @@ class ImportedSignal(_ImportedStep):
 
 
 class ImportedJudgeNode(_ImportedStep):
-    """Title, contact, document type, tags and document date from the source system."""
+    """Title, contact, document type, tags and document date from the source system. Reviews
+    of the document or of one of these fields make it uncertain; it then confirms nothing."""
 
     def _apply(self, imported: ImportedMetadata) -> MetadataResult:
-        result = NodeResult(
-            outcome=Outcome.OK,
-            reason=REASON,
-            model_version=IMPORTED,
-            output={IMPORTED: imported.to_json()},
+        reviews = [item for item in imported.review if field_id_of(item.field or "") is None]
+        output: JsonObject = {IMPORTED: imported.to_json()}
+        if reviews:
+            output[CHECKS] = checks_to_json(_open(reviews))
+        result = _result(reviews, output)
+        return MetadataResult(
+            result, imported.classification(), imported.tag_ids, confirms=not reviews
         )
-        return MetadataResult(result, imported.classification(), imported.tag_ids, confirms=True)
 
 
 class ImportedFieldsNode(_ImportedStep):
-    """Field values from the source system."""
+    """Field values from the source system; a review of one of them makes it uncertain."""
 
     def _apply(self, imported: ImportedMetadata) -> MetadataResult:
-        result = NodeResult(
-            outcome=Outcome.OK,
-            reason=REASON,
-            model_version=IMPORTED,
-            output={"fields": len(imported.fields)},
-        )
+        reviews = [item for item in imported.review if field_id_of(item.field or "") is not None]
+        output: JsonObject = {"fields": len(imported.fields)}
+        if reviews:
+            output[CHECKS] = checks_to_json(_open(reviews))
+        result = _result(reviews, output)
         return MetadataResult(result, DocumentChanges(fields=dict(imported.fields)))
+
+
+def _result(reviews: list[ImportedReview], output: JsonObject) -> NodeResult:
+    if not reviews:
+        return NodeResult(outcome=Outcome.OK, reason=REASON, model_version=IMPORTED, output=output)
+    reason = "; ".join(dict.fromkeys(item.reason for item in reviews))
+    return NodeResult(
+        outcome=Outcome.UNCERTAIN, reason=reason, model_version=IMPORTED, output=output
+    )
+
+
+def _open(reviews: list[ImportedReview]) -> list[FieldCheck]:
+    """The named fields as open checks: kept with a value, decided by a person without one."""
+    return [
+        FieldCheck(field=item.field, outcome=Outcome.UNCERTAIN, confidence=0.0, reason=item.reason)
+        for item in reviews
+        if item.field is not None
+    ]

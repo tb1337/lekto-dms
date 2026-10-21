@@ -280,6 +280,26 @@ async def test_metadata_needs_the_channel_and_must_fit_the_master_data(api: Api)
         ),
         ({"channel": "migration", "metadata": metadata(data, unknown=1)}, "unknown"),
         ({"channel": "migration", "metadata": metadata(data, title="  ")}, "title"),
+        (
+            {"channel": "migration", "metadata": metadata(data, review=[{"reason": ""}])},
+            "reason",
+        ),
+        (
+            {
+                "channel": "migration",
+                "metadata": metadata(data, review=[{"reason": "who?", "field": "owner"}]),
+            },
+            "review",
+        ),
+        (
+            {
+                "channel": "migration",
+                "metadata": metadata(
+                    data, review=[{"reason": "gone", "field": f"field:{UUID(int=9)}"}]
+                ),
+            },
+            "review",
+        ),
     ]:
         response = await upload(api, headers, owner=str(owner.id), **fields)
         assert response.status_code == 422, (fields, response.text)
@@ -345,6 +365,73 @@ async def test_reprocessing_applies_the_metadata_again(api: Api) -> None:
 
 
 # --- spaces and users ------------------------------------------------------------------------
+
+
+async def test_a_review_holds_the_document_until_a_person_decides(api: Api) -> None:
+    admin, owner = await api.admin(), await api.user()
+    data = await master_data(api, admin)
+    contact = "Paperless correspondent 'Sonstiges': resolve it in Lekto"
+    review = [{"reason": contact, "field": "contact"}, {"reason": "owned by 'scanner'"}]
+    response = await upload(
+        api,
+        auth(admin),
+        channel="migration",
+        owner=str(owner.id),
+        metadata=metadata(data, contact_id=None, review=review),
+    )
+    assert response.status_code == 202, response.text
+    url = response.json()["status_url"]
+    await api.drain()
+
+    document = (await api.client.get(url, headers=auth(owner))).json()
+    assert (document["lane"], document["processing"]["status"]) == ("yellow", "review")
+    assert document["confirmed_at"] is None
+    assert document["document_type_id"] == data["type"]["id"]  # the values are applied
+    (item,) = (await api.client.get(f"{PREFIX}/inbox", headers=auth(owner))).json()["items"]
+    (open,) = item["open"]
+    assert (open["node"], open["outcome"]) == ("judge", "uncertain")
+    assert open["reason"] == f"{contact}; owned by 'scanner'"
+    assert [(field["field"], field["reason"]) for field in open["fields"]] == [("contact", contact)]
+
+    undecided = await api.client.post(f"{url}/confirm", json={}, headers=auth(owner))
+    assert undecided.status_code == 422
+    assert undecided.json()["open_fields"] == ["contact"]
+    confirmed = await api.client.post(
+        f"{url}/confirm",
+        json={"changes": {"contact_id": data["contact"]["id"]}},
+        headers=auth(owner),
+    )
+    assert confirmed.status_code == 202, confirmed.text
+    await api.drain()
+    document = (await api.client.get(url, headers=auth(owner))).json()
+    assert (document["lane"], document["contact_id"]) == ("green", data["contact"]["id"])
+    assert document["confirmed_at"] is not None
+
+
+async def test_a_review_of_a_field_with_a_value_keeps_it(api: Api) -> None:
+    admin, owner = await api.admin(), await api.user()
+    data = await master_data(api, admin)
+    amount = f"field:{data['amount']['id']}"
+    response = await upload(
+        api,
+        auth(admin),
+        channel="migration",
+        owner=str(owner.id),
+        metadata=metadata(data, review=[{"reason": "currency guessed", "field": amount}]),
+    )
+    url = response.json()["status_url"]
+    await api.drain()
+
+    (item,) = (await api.client.get(f"{PREFIX}/inbox", headers=auth(owner))).json()["items"]
+    (open,) = item["open"]
+    assert (open["node"], open["reason"]) == ("fields", "currency guessed")
+    assert [field["field"] for field in open["fields"]] == [amount]
+    confirmed = await api.client.post(f"{url}/confirm", json={}, headers=auth(owner))
+    assert confirmed.status_code == 202, confirmed.text
+    await api.drain()
+    document = (await api.client.get(url, headers=auth(owner))).json()
+    assert document["lane"] == "green"
+    assert document["fields"][data["amount"]["id"]] == {"amount": "84.20", "currency": "EUR"}
 
 
 async def test_spaces_for_another_owner(api: Api) -> None:

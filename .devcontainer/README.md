@@ -13,16 +13,16 @@ search index. Nothing here is reachable from outside the machine; Lekto speaks p
 | `garage` | S3 object store; `garage-init` creates the key and the buckets `lekto-dev` (the development instance) and `lekto` (tests, below `tests/`) at every start |
 | `meilisearch` | Search; indexes `lekto-dev-documents` (the development instance) and `lekto-test-*` (tests) |
 
-The credentials of the services are fixed development values in `test.env` and never leave the
-machine. Ports 8000 (API), 5173 (Vite), 7700 (Meilisearch) and 3900 (Garage) are forwarded to
-the host.
+The credentials of the services are fixed development values in `compose.yml`
+(`x-test-environment`, also the environment of the `dev` container) and never leave the machine.
+Ports 8000 (API), 5173 (Vite), 7700 (Meilisearch) and 3900 (Garage) are forwarded to the host.
 
 ## Two sets of data that never touch each other
 
 | Use | Settings | Database | Bucket | Index |
 | --- | --- | --- | --- | --- |
 | Development instance (the tasks) | `dev.env` (not in the repository) | `lekto_dev` | `lekto-dev` | `lekto-dev-documents` |
-| Tests (`uv run pytest -m integration`), CI | `test.env`, injected into the container; the tests derive their own names | `lekto_test_<random>` | `lekto`, prefix `tests/<random>/` | `lekto-test-<random>` |
+| Tests (`uv run pytest -m integration`), CI | `x-test-environment` in `compose.yml`, the environment of the container; the tests derive their own names | `lekto_test_<random>` | `lekto`, prefix `tests/<random>/` | `lekto-test-<random>` |
 
 The tests create and remove their databases, prefixes and indexes themselves. Running
 `pytest -m integration` while the development instance is up changes nothing in `lekto_dev`,
@@ -186,7 +186,7 @@ docker run --rm --network lekto-dev_default -v "$BACKUP:/backup:ro" \
 
 Then **Lekto: Start** and **Lekto: Rebuild search index**. `rclone sync` makes the target equal
 to the source: a restore removes objects that are not in the backup. The Garage key above is the
-fixed development key from `test.env`.
+fixed development key from `compose.yml`.
 
 ## Without VS Code
 

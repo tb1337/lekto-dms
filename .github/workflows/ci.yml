@@ -66,7 +66,7 @@ jobs:
           ci='^\.github/(workflows/ci\.yml|compose\.ci\.yml)$'
           lock='^backend/(pyproject\.toml|uv\.lock)$'
           # web/openapi.json: a backend test compares it with the API.
-          code="^backend/|^web/openapi\.json$|^\.devcontainer/(compose\.yml|dev\.env|garage)|$ci"
+          code="^backend/|^web/openapi\.json$|^\.devcontainer/(compose\.yml|garage)|$ci"
           migration="^migration/|^web/openapi\.json$|$ci"
           # The backend's unit tests run the migration client against the API, too.
           backend_tests="$code|^migration/"
@@ -202,9 +202,10 @@ jobs:
       COMPOSE: docker compose -f .devcontainer/compose.yml -f .github/compose.ci.yml
     steps:
       - uses: actions/checkout@v6
-      - name: Configure from test.env, with the services on localhost
+      - name: Configure like the dev container, with the services on localhost
         run: |
-          grep '^LEKTO_' .devcontainer/test.env \
+          $COMPOSE config --format json \
+            | jq -r '.services.dev.environment | to_entries[] | "\(.key)=\(.value)"' \
             | sed -E 's#^LEKTO_DB_HOST=.*#LEKTO_DB_HOST=localhost#; s#//(garage|meilisearch):#//localhost:#' \
             >> "$GITHUB_ENV"
       - name: Start the services and install the OCR programs, in parallel

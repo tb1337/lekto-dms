@@ -81,7 +81,12 @@ class OcrRuns:
         self.runs: list[Run] = []
 
     async def __call__(
-        self, args: Sequence[str], *, timeout: timedelta, env: dict[str, str] | None = None
+        self,
+        args: Sequence[str],
+        *,
+        timeout: timedelta,
+        env: dict[str, str] | None = None,
+        tail: int = 0,
     ) -> Completed:
         self.runs.append((list(args), timeout, env or {}))
         return Completed(returncode=15, stdout="", stderr="stopped by the test")

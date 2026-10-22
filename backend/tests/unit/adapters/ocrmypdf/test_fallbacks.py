@@ -13,6 +13,7 @@ from lekto.adapters.outbound.ocrmypdf import engine as module
 from lekto.adapters.outbound.ocrmypdf.engine import (
     COLOUR_NOTE,
     COLOUR_OPTIONS,
+    OUTPUT_KEPT,
     SIGNATURE_NOTE,
     OcrmypdfEngine,
     pdfa_reasons,
@@ -79,16 +80,23 @@ class Runs:
         self.outcomes = list(outcomes)
         self.pages: list[dict[int, str]] = []
         self.calls: list[list[str]] = []
+        self.tails: list[int] = []  # how much of its output each run asked to keep
         self.hidden_text = False  # the source carries the invisible layer of another OCR
         self.unreadable_text = False  # the source has text in a font without a character map
         self.vision_error: str | None = None  # what the vision plugin leaves of a failed page
 
     async def __call__(
-        self, args: Sequence[str], *, timeout: timedelta, env: dict[str, str] | None = None
+        self,
+        args: Sequence[str],
+        *,
+        timeout: timedelta,
+        env: dict[str, str] | None = None,
+        tail: int = 0,
     ) -> Completed:
         if args[0] == "tesseract":
             return Completed(returncode=0, stdout="tesseract 5.5.0\n", stderr="")
         self.calls.append(list(args))
+        self.tails.append(tail)
         code, stderr = self.outcomes.pop(0)
         assert env is not None and "--keep-temporary-files" in args
         kept = Path(env["TMPDIR"]) / "ocrmypdf.io.test"
@@ -307,6 +315,15 @@ async def test_ocrmypdfs_own_fallback_names_ghostscripts_reasons(
         "set; A CIDFont uses CID 0, which is not legal for PDF/A, reverting to normal PDF output."
     )
     assert len(runs.calls) == 1
+
+
+async def test_ghostscript_s_reason_far_before_the_end_is_kept(runs: Runs, tmp_path: Path) -> None:
+    # OCRmyPDF writes tens of thousands of characters after Ghostscript's messages.
+    runs.outcomes = [(10, GHOSTSCRIPT + "Postprocessing done\n" * 2_000)]
+    result, _ = await convert(runs, tmp_path)
+    assert result.note is not None and "CIDFont uses CID 0" in result.note
+    assert runs.tails == [OUTPUT_KEPT]
+    assert len(GHOSTSCRIPT) + 40_000 < OUTPUT_KEPT
 
 
 def test_pdfa_reasons_without_ghostscript_messages() -> None:

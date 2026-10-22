@@ -375,7 +375,7 @@
 	"create": "Anlegen",
 	"save": "Speichern",
 	"profile_title": "Profil",
-	"profile_hint": "Nur der Nutzer selbst und Admins sehen das Profil; andere sehen den Anzeigenamen. Steht etwas davon in einem Dokument, weiß Lekto, wessen es ist. Nichts davon geht an das Sprachmodell.",
+	"profile_hint": "Nur der Nutzer selbst und Admins sehen das Profil; andere sehen den Anzeigenamen. Steht etwas davon in einem Dokument, weiß Lekto, wessen es ist; wer sonst am Dokument arbeitet, sieht das nur, wo der Anzeigename darin steht. Nichts Privates geht an das Sprachmodell, nur der Anzeigename als Name des persönlichen Space.",
 	"profile_display_name": "Anzeigename",
 	"profile_display_name_hint": "So sehen andere den Nutzer; leer: der Benutzername.",
 	"profile_aliases": "Weitere Namen",

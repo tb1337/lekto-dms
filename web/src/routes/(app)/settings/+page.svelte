@@ -17,6 +17,7 @@
 	import { userLabel } from '#lib/masterdata.svelte.ts';
 	import { oidcErrorMessage } from '#lib/oidc-errors.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { session } from '#lib/session.svelte.ts';
 
 	type Me = components['schemas']['Me'];
 	type Oidc = components['schemas']['OidcInfo'];
@@ -39,6 +40,11 @@
 	}
 
 	onMount(load);
+
+	// A new display name shows at once in the account menu too.
+	async function saved() {
+		await Promise.all([load(), session.load()]);
+	}
 
 	async function link() {
 		try {
@@ -93,7 +99,7 @@
 				<Card.Title>{m.profile_title()}</Card.Title>
 			</Card.Header>
 			<Card.Content>
-				<ProfileForm onsaved={load} />
+				<ProfileForm onsaved={saved} />
 			</Card.Content>
 		</Card.Root>
 

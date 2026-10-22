@@ -84,6 +84,16 @@ export function userLabel(user: { username: string; display_name?: string | null
 	return user.display_name ?? user.username;
 }
 
+/** How a user is offered for a choice (a member, a hand-over, whose number): the display name
+ * with the username beside it where they differ ("Anna Busch (anna)"), so that a display name
+ * chosen to look like another user's cannot pass for them. */
+export function userChoice(user: { username: string; display_name?: string | null }): string {
+	const shown = userLabel(user);
+	return shown.toLowerCase() === user.username.toLowerCase()
+		? shown
+		: `${shown} (${user.username})`;
+}
+
 /** The name of a space the caller is no member of (an admin sees every space), for a badge on a
  * document lying there; null for the caller's own spaces. */
 export function foreignSpace(
@@ -115,7 +125,7 @@ export function spaceOptions(
 			.filter((other) => !offered.includes(other.personal_space_id))
 			.map((other) => ({
 				value: other.personal_space_id,
-				label: m.move_hand_over({ name: userName(users, other.id) })
+				label: m.move_hand_over({ name: userChoice(other) })
 			}))
 	];
 }

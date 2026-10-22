@@ -54,7 +54,13 @@
 	import { phone } from '#lib/phone.svelte.ts';
 	import { fieldId, initialValue, isRuleField, type ReviewValue } from '#lib/review.ts';
 	import { session } from '#lib/session.svelte.ts';
-	import { suggestedSpace, suggestionText, unseenBy, unseenText } from '#lib/space-suggestion.ts';
+	import {
+		suggestedSpace,
+		suggestionText,
+		unseenBy,
+		unseenHere,
+		unseenText
+	} from '#lib/space-suggestion.ts';
 	import { above, normalise, ofScope } from '#lib/tags.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
@@ -159,6 +165,10 @@
 	const spaceSuggestion = $derived(hasSpace ? suggestedSpace(review?.open ?? []) : null);
 	// Whom the document names who would not see it where the check leads (a warning).
 	const spaceUnseen = $derived(hasSpace ? unseenBy(review?.open ?? []) : []);
+	// The same when the judge settled the space by itself (a green document stays, or moved).
+	const settledUnseen = $derived(
+		hasSpace ? [] : unseenHere(review?.nodes ?? [], document.space_id, lookup)
+	);
 	// Confirmed into a space the caller edits (an admin: any), or handed over into another user's
 	// personal space.
 	const spaceChoices = $derived(
@@ -845,6 +855,10 @@
 						<p class="text-sm text-muted-foreground">{unseenText(spaceUnseen, lookup)}</p>
 					{/if}
 				</FieldShell>
+			{:else if settledUnseen.length > 0}
+				<p class="text-sm text-muted-foreground" data-testid="space-unseen">
+					{unseenText(settledUnseen, lookup)}
+				</p>
 			{/if}
 		</FieldGroup>
 

@@ -10,6 +10,7 @@ import {
 	suggestedSpace,
 	suggestionText,
 	unseenBy,
+	unseenHere,
 	unseenText
 } from '#lib/space-suggestion.ts';
 
@@ -122,5 +123,21 @@ describe('the suggested space', () => {
 			m.space_named_unseen({ names: `anna, ${m.space_named_someone()}` })
 		);
 		expect(unseenText([], lookup)).toBe('');
+	});
+
+	it('warns on a settled space check too, for those still no member', () => {
+		const judge = (outcome: string, unseen_by: string[]) =>
+			[
+				{
+					node: 'judge',
+					fields: [{ field: 'space', outcome, unseen_by }]
+				}
+			] as never;
+		expect(unseenHere(judge('ok', ['u2', 'u9']), 'mine', lookup)).toEqual(['u2', 'u9']);
+		// Anna reads Haushalt: there she sees it.
+		expect(unseenHere(judge('ok', ['u2']), 'house', lookup)).toEqual([]);
+		// An open check is the form's own warning.
+		expect(unseenHere(judge('uncertain', ['u2']), 'mine', lookup)).toEqual([]);
+		expect(unseenHere([], 'mine', lookup)).toEqual([]);
 	});
 });

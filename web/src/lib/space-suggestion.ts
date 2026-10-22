@@ -9,6 +9,7 @@ import { userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 type OpenNode = components['schemas']['OpenNodeOut'];
+type NodeReview = components['schemas']['NodeReviewOut'];
 
 /** The suggested space of the open fields: the first open `space` check with a suggestion. */
 export function suggestedSpace(open: readonly OpenNode[]): string | null {
@@ -71,6 +72,22 @@ export function unseenBy(open: readonly OpenNode[]): string[] {
 		}
 	}
 	return [];
+}
+
+/** Whom the document names who does not see it where it lies, from the judge's space check
+ * when that settled without a person (it stays, or the judge moved it): those still no member
+ * of `current`. The API names someone else only where the text has their display name. */
+export function unseenHere(
+	nodes: readonly NodeReview[],
+	current: string,
+	lookup: Lookup | null
+): string[] {
+	const check = nodes
+		.find((node) => node.node === 'judge')
+		?.fields.find((field) => field.field === 'space');
+	if (!check || check.outcome !== 'ok' || !check.unseen_by?.length) return [];
+	const here = lookup?.spaces.find((space) => space.id === current);
+	return check.unseen_by.filter((id) => !here?.members.some((member) => member.user_id === id));
 }
 
 /** "Genannt, sieht es dort aber nicht: Anna Busch": those `ids` by name; someone the caller

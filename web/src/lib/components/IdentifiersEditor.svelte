@@ -20,7 +20,7 @@
 		NAMING_KINDS,
 		row
 	} from '#lib/identifiers.ts';
-	import { type Tag, userLabel, userName, type UserName } from '#lib/masterdata.svelte.ts';
+	import { type Tag, userChoice, userName, type UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { pathLabel } from '#lib/tags.ts';
@@ -59,7 +59,7 @@
 	const kinds = $derived(offered.map((kind) => ({ value: kind, label: kindLabel(kind) })));
 	const userOptions = $derived([
 		{ value: '', label: m.identifier_user_none() },
-		...users.map((user) => ({ value: user.id, label: userLabel(user) }))
+		...users.map((user) => ({ value: user.id, label: userChoice(user) }))
 	]);
 
 	$effect(() => {

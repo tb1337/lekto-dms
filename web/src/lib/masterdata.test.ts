@@ -4,6 +4,7 @@ import {
 	foreignSpace,
 	spaceLabel,
 	spaceOptions,
+	userChoice,
 	userLabel,
 	userName,
 	type Space
@@ -73,5 +74,13 @@ describe('the names of users', () => {
 		expect(spaceLabel({ name: 'Personal', personal_of: 'u4' }, [named], 'u1')).toBe(
 			'Carla Example'
 		);
+	});
+});
+
+describe('a user offered for a choice', () => {
+	it('shows the username beside a display name that differs', () => {
+		expect(userChoice({ username: 'bob', display_name: 'anna' })).toBe('anna (bob)');
+		expect(userChoice({ username: 'anna', display_name: 'Anna' })).toBe('Anna');
+		expect(userChoice({ username: 'anna', display_name: null })).toBe('anna');
 	});
 });

@@ -633,6 +633,29 @@ describe('DocumentForm', () => {
 				resume_at: 'apply_rules'
 			});
 		});
+
+		it('warns on a green document that someone it names does not see it where it lies', () => {
+			const settled = {
+				document: {},
+				open: [],
+				nodes: [
+					{
+						node: 'judge',
+						fields: [
+							check('space', {
+								outcome: 'ok',
+								reason: 'names someone who would not see it there',
+								unseen_by: [ANNA]
+							})
+						]
+					}
+				]
+			} as unknown as Review;
+			render(DocumentForm, props({ document: mine(), review: settled, lookup: household }));
+			expect(screen.getByTestId('space-unseen').textContent).toContain(
+				m.space_named_unseen({ names: 'anna' })
+			);
+		});
 	});
 
 	it('lets a failed document with nothing to decide be changed instead of confirmed', () => {

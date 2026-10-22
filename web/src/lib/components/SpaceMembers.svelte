@@ -12,6 +12,7 @@
 	import { reportError } from '#lib/errors.ts';
 	import {
 		spaceLabel,
+		userChoice,
 		userLabel,
 		userName,
 		type Space,
@@ -160,7 +161,7 @@
 						bind:value={userId}
 						options={[
 							{ value: '', label: m.members_choose_user() },
-							...candidates.map((user) => ({ value: user.id, label: userLabel(user) }))
+							...candidates.map((user) => ({ value: user.id, label: userChoice(user) }))
 						]}
 					/>
 				</Field.Field>

@@ -42,6 +42,7 @@ from lekto.core.services._jobs import LEASE, JobRunner, Step, retrying
 from lekto.core.services._pages import document_pages
 from lekto.core.services.master_data import replace_learned_identifiers
 from lekto.core.services.objects import classifier_key, load_text
+from lekto.core.services.profiles import person_identifiers
 
 log = logging.getLogger(__name__)
 
@@ -245,9 +246,16 @@ class ClassifierService:
                 for item in contact.identifiers
                 if item.source is not IdentifierSource.LEARNED
             ]
+            personal = await person_identifiers(uow)
+            # A person's e-mail domain is no contact's (their family's, their own).
+            taken += [
+                (IdentifierKind.EMAIL_DOMAIN, value.rpartition("@")[2])
+                for kind, value in personal
+                if kind is IdentifierKind.EMAIL_ADDRESS
+            ]
             learned = await replace_learned_identifiers(
                 uow,
-                mine_identifiers(found, taken),
+                mine_identifiers(found, taken, personal),
                 fetch_logos_at=self._clock.now() if self._fetch_logos else None,
             )
             summary: JsonObject = {

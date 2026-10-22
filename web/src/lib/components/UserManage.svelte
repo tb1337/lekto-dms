@@ -4,6 +4,7 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import ProfileForm from '#lib/components/ProfileForm.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import UserDeleteDialog from '#lib/components/UserDeleteDialog.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -11,6 +12,7 @@
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
+	import { userLabel } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 
@@ -131,7 +133,7 @@
 <Dialog.Root bind:open>
 	<Dialog.Content class="max-w-lg">
 		<Dialog.Header>
-			<Dialog.Title>{account?.username ?? m.loading()}</Dialog.Title>
+			<Dialog.Title>{account ? userLabel(account) : m.loading()}</Dialog.Title>
 		</Dialog.Header>
 		{#if problem}
 			<p class="text-destructive" role="alert">{problem}</p>
@@ -185,6 +187,11 @@
 					</form>
 				{/if}
 
+				<section class="flex flex-col gap-3 border-t pt-4" aria-labelledby="user-profile">
+					<h3 id="user-profile" class="text-sm font-semibold">{m.profile_title()}</h3>
+					<ProfileForm userId={account.id} onsaved={onchanged} />
+				</section>
+
 				<div class="flex flex-col gap-2 border-t pt-4">
 					<p class="text-sm text-muted-foreground">
 						{account.totp_enabled ? m.user_totp_on() : m.user_totp_off()}
@@ -226,7 +233,7 @@
 	<UserDeleteDialog
 		bind:open={deleting}
 		{userId}
-		username={account.username}
+		username={userLabel(account)}
 		ondeleted={() => {
 			open = false;
 			onchanged();

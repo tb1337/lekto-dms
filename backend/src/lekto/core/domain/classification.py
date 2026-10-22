@@ -101,8 +101,10 @@ class CandidateSource:
     (it counts for the judge's rule), `score` its match, probability or share of the similar
     documents, `threshold` the score from which it names a value, `votes` of `of` similar
     documents (`documents`) that carry it and the highest `similarity` among them, the `quote`
-    the language model gave, the `identifiers` (kinds) of the contact found in the text, and
-    whether its name or an alias stands in the text (`named_in_text`)."""
+    the language model gave, the `identifiers` (kinds) of the contact found in the text,
+    whether its name or an alias stands in the text (`named_in_text`), and, for a personal
+    space the language model proposes, whether its recipient is that space's user by their
+    display name (`recipient`)."""
 
     signal: str  # the node: signal_llm, signal_classifier, signal_neighbours, signal_facts
     names: bool = False
@@ -115,6 +117,7 @@ class CandidateSource:
     identifiers: tuple[str, ...] = ()
     documents: tuple[str, ...] = ()
     named_in_text: bool = False
+    recipient: bool = False
 
     def to_json(self) -> JsonObject:
         data: JsonObject = {"signal": self.signal, "names": self.names}
@@ -134,6 +137,8 @@ class CandidateSource:
             data["documents"] = list(self.documents)
         if self.named_in_text:
             data["named_in_text"] = True
+        if self.recipient:
+            data["recipient"] = True
         return data
 
     @classmethod
@@ -152,6 +157,7 @@ class CandidateSource:
             identifiers=as_texts(data.get("identifiers")),
             documents=as_texts(data.get("documents")),
             named_in_text=data.get("named_in_text") is True,
+            recipient=data.get("recipient") is True,
         )
 
 
@@ -209,6 +215,9 @@ class FieldCheck:
     - `label`: the label the model gave for the value and whether the value stands by it
       (`labels.check_label`); recorded for fields the model read a value for, it changes no
       outcome (issue #55, step 1). None for other checks and entries from before it.
+    - `unseen_by`: for the space, the users the document names (with medium or hard evidence)
+      who would not see it where the check leads (ids only; the web names whom its viewer may
+      see); none for other checks.
     """
 
     field: str
@@ -224,6 +233,7 @@ class FieldCheck:
     locations: tuple[Location, ...] = ()
     candidates: tuple[Candidate, ...] = ()
     label: LabelCheck | None = None
+    unseen_by: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.outcome is Outcome.FAILED:
@@ -238,7 +248,7 @@ class FieldCheck:
         return self.outcome is Outcome.OK
 
     def to_json(self) -> JsonObject:
-        return {
+        data: JsonObject = {
             "field": self.field,
             "outcome": self.outcome.value,
             "confidence": round(self.confidence, 4),
@@ -253,6 +263,9 @@ class FieldCheck:
             "candidates": [candidate.to_json() for candidate in self.candidates],
             "label": None if self.label is None else self.label.to_json(),
         }
+        if self.unseen_by:
+            data["unseen_by"] = list(self.unseen_by)
+        return data
 
     @classmethod
     def from_json(cls, data: JsonValue) -> Self:
@@ -276,6 +289,7 @@ class FieldCheck:
                 locations=locations_from_json(data.get("locations")),
                 candidates=_candidates(data.get("candidates")),
                 label=LabelCheck.from_json(data.get("label")),
+                unseen_by=tuple(str(item) for item in as_list(data.get("unseen_by"))),
             )
         except (KeyError, ValueError) as error:
             raise ValidationError(f"invalid field check: {error}") from None

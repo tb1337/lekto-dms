@@ -124,6 +124,30 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/auth/me/profile': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The own profile
+		 * @description The caller's display name and private profile. Only the user and admins see the profile; others see the display name. Of the profile nothing goes to the language model or the search index (the display name does: it labels the user's personal space in the prompt); the processing log keeps only which users a document names and the kinds of evidence, never the values, and shows them to admins and to the user named. Needs a session; API tokens are refused (403).
+		 */
+		get: operations['own_profile_api_v1_auth_me_profile_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		/**
+		 * Change the own profile
+		 * @description Display name, aliases, birth date, e-mail and identifiers; what is given changes. Only the user and admins see the profile; others see the display name. Of the profile nothing goes to the language model or the search index (the display name does: it labels the user's personal space in the prompt); the processing log keeps only which users a document names and the kinds of evidence, never the values, and shows them to admins and to the user named. Needs a session; API tokens are refused (403).
+		 */
+		patch: operations['change_own_profile_api_v1_auth_me_profile_patch'];
+		trace?: never;
+	};
 	'/api/v1/auth/password': {
 		parameters: {
 			query?: never;
@@ -362,6 +386,30 @@ export interface paths {
 		 * @description Admins only. Deactivating ends the user's sessions and blocks their API tokens. The last active admin stays an active admin (409). Changing a role, or deactivating an admin, needs a session, as for `/auth/*`: an API token only deactivates and reactivates users (e.g. a migration).
 		 */
 		patch: operations['update_user_api_v1_users__id__patch'];
+		trace?: never;
+	};
+	'/api/v1/users/{id}/profile': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * A user's profile
+		 * @description Admins and the user themself (`GET /auth/me/profile`), with a session. An admin's API token reads the display name and e-mail address alone (the rest comes empty); a user's own token is refused (403). Only the user and admins see the profile; others see the display name. Of the profile nothing goes to the language model or the search index (the display name does: it labels the user's personal space in the prompt); the processing log keeps only which users a document names and the kinds of evidence, never the values, and shows them to admins and to the user named.
+		 */
+		get: operations['get_profile_api_v1_users__id__profile_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		/**
+		 * Change a user's profile
+		 * @description Admins and the user themself (`PATCH /auth/me/profile`), with a session. What is given changes. An admin's API token (a migration) sets only the display name and the e-mail address (403 for the rest); a user's own token is refused. Only the user and admins see the profile; others see the display name. Of the profile nothing goes to the language model or the search index (the display name does: it labels the user's personal space in the prompt); the processing log keeps only which users a document names and the kinds of evidence, never the values, and shows them to admins and to the user named.
+		 */
+		patch: operations['change_profile_api_v1_users__id__profile_patch'];
 		trace?: never;
 	};
 	'/api/v1/users/{id}/password': {
@@ -1851,6 +1899,11 @@ export interface components {
 			 */
 			username: string;
 			/**
+			 * Display Name
+			 * @description How others see the user ("Alice Example"); null or missing: the username.
+			 */
+			display_name?: string | null;
+			/**
 			 * Personal Space Id
 			 * @description The user's personal space, where a document is handed over to them (`POST /documents/{id}/move`); in `GET /users` and `GET /users/{id}`.
 			 */
@@ -2258,6 +2311,12 @@ export interface components {
 			 * @default false
 			 */
 			named_in_text: boolean;
+			/**
+			 * Recipient
+			 * @description `signal_llm`, a space: the model proposes the personal space of another user, and its recipient is that user by their display name (the judge suggests the hand-over).
+			 * @default false
+			 */
+			recipient: boolean;
 		};
 		/**
 		 * Channel
@@ -2828,6 +2887,11 @@ export interface components {
 			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, topic, tags, date or fields; adding or removing tags set by hand alone does not count), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
 			 */
 			confirmed_at: string | null;
+			/**
+			 * Space Confirmed At
+			 * @description When a person last decided the space: confirming in the inbox (also keeping it), moving or handing the document over, choosing it on upload, or a migration; null while the pipeline or rules placed it. Such documents teach the classifier the space.
+			 */
+			space_confirmed_at?: string | null;
 			processing: components['schemas']['Processing'];
 			/**
 			 * Created At
@@ -2967,6 +3031,11 @@ export interface components {
 			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, topic, tags, date or fields; adding or removing tags set by hand alone does not count), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
 			 */
 			confirmed_at: string | null;
+			/**
+			 * Space Confirmed At
+			 * @description When a person last decided the space: confirming in the inbox (also keeping it), moving or handing the document over, choosing it on upload, or a migration; null while the pipeline or rules placed it. Such documents teach the classifier the space.
+			 */
+			space_confirmed_at?: string | null;
 			processing: components['schemas']['Processing'];
 			/**
 			 * Created At
@@ -3362,6 +3431,11 @@ export interface components {
 			 * @description The codes on the pages; null while they are not read (`read-codes`).
 			 */
 			codes: components['schemas']['CodeOut'][] | null;
+			/**
+			 * Persons
+			 * @description The users the document names, the surest first: for the editors of its space and admins; null for readers. What is private about a person (aliases, birth date, identifiers, a contact's number that names them) finds them only for admins and that person: anyone else sees another user only where the text has their display name (that a number is Anna's tax ID is Anna's).
+			 */
+			persons?: components['schemas']['FoundPersonOut'][] | null;
 		};
 		/**
 		 * FieldAssignmentIn
@@ -3474,6 +3548,11 @@ export interface components {
 			candidates?: components['schemas']['CandidateOut'][];
 			/** @description Fields the model read a value for: its label and whether the value stands by it. Recorded only, it changes no outcome; null for other checks and older ones. */
 			label?: components['schemas']['LabelCheckOut'] | null;
+			/**
+			 * Unseen By
+			 * @description `space` only: the users the document names (by an identifier, their birth date or as the model's recipient) who would not see it where the check leads: the suggestion, the space it moves to, or the one it lies in. A warning, it changes no outcome; ids only, as names are the users' own.
+			 */
+			unseen_by?: string[];
 		};
 		/**
 		 * FieldCreate
@@ -3718,6 +3797,34 @@ export interface components {
 			other_contact_ids?: string[] | null;
 		};
 		/**
+		 * FoundPersonOut
+		 * @description A user the document names, with the kinds of evidence (never the values).
+		 */
+		FoundPersonOut: {
+			/**
+			 * User Id
+			 * Format: uuid
+			 */
+			user_id: string;
+			/**
+			 * Name
+			 * @description Their display name, else the username.
+			 */
+			name: string;
+			/** @description `hard`: one of their identifiers (or a contact's number that names them); `medium`: their birth date; `weak`: their display name or an alias. */
+			strength: components['schemas']['Strength'];
+			/**
+			 * Evidence
+			 * @description `name`, `alias`, `birth_date` and the kinds of identifiers found.
+			 */
+			evidence: string[];
+			/**
+			 * Spans
+			 * @description Where their names and identifiers stand.
+			 */
+			spans: components['schemas']['SpanOut'][];
+		};
+		/**
 		 * GiroCodeOut
 		 * @description The credit transfer of a GiroCode (EPC QR code).
 		 */
@@ -3797,12 +3904,26 @@ export interface components {
 			 * @description One of the contact's topics it points to (a personnel number to work): found in a document, it is evidence for the contact and the topic. Not for a rejected one.
 			 */
 			topic_id?: string | null;
+			/**
+			 * User Id
+			 * @description The user a customer or personnel number belongs to (Anna's contract): found in a document, it is hard evidence for whose it is. Not for other kinds, not for a rejected one.
+			 */
+			user_id?: string | null;
 		};
 		/**
 		 * IdentifierKind
 		 * @enum {string}
 		 */
-		IdentifierKind: 'iban' | 'vat_id' | 'customer_number' | 'personnel_number' | 'email_domain';
+		IdentifierKind:
+			| 'iban'
+			| 'vat_id'
+			| 'customer_number'
+			| 'personnel_number'
+			| 'email_domain'
+			| 'tax_id'
+			| 'social_security_number'
+			| 'health_insurance_number'
+			| 'email_address';
 		/** IdentifierOut */
 		IdentifierOut: {
 			kind: components['schemas']['IdentifierKind'];
@@ -3818,6 +3939,11 @@ export interface components {
 			 * @description The topic of the contact it points to; a learned one points to a topic only if all the confirmed documents it stands in carry it.
 			 */
 			topic_id: string | null;
+			/**
+			 * User Id
+			 * @description The user it belongs to; only one entered by hand has one.
+			 */
+			user_id?: string | null;
 		};
 		/**
 		 * IdentifierSource
@@ -4264,6 +4390,11 @@ export interface components {
 			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, topic, tags, date or fields; adding or removing tags set by hand alone does not count), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
 			 */
 			confirmed_at: string | null;
+			/**
+			 * Space Confirmed At
+			 * @description When a person last decided the space: confirming in the inbox (also keeping it), moving or handing the document over, choosing it on upload, or a migration; null while the pipeline or rules placed it. Such documents teach the classifier the space.
+			 */
+			space_confirmed_at?: string | null;
 			processing: components['schemas']['Processing'];
 			/**
 			 * Created At
@@ -4467,6 +4598,11 @@ export interface components {
 			role: components['schemas']['SpaceRole'];
 			/** Username */
 			username: string;
+			/**
+			 * Display Name
+			 * @description How others see the member; null: the username.
+			 */
+			display_name?: string | null;
 			/**
 			 * Active
 			 * @description A deactivated member keeps their place until an editor removes them.
@@ -4814,6 +4950,29 @@ export interface components {
 			end: string;
 		};
 		/**
+		 * PersonIdentifierIn
+		 * @description Written as in documents; Lekto stores it normalised.
+		 * @example {
+		 *       "kind": "tax_id",
+		 *       "value": "..."
+		 *     }
+		 */
+		PersonIdentifierIn: {
+			/** @description `iban`, `tax_id` (11 digits with check digit), `social_security_number`, `health_insurance_number` (a letter and nine digits) or `email_address`; other kinds are a contact's (422). */
+			kind: components['schemas']['IdentifierKind'];
+			/** Value */
+			value: string;
+		};
+		/** PersonIdentifierOut */
+		PersonIdentifierOut: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @description Normalised.
+			 */
+			value: string;
+		};
+		/**
 		 * PipelineOut
 		 * @example {
 		 *       "logo_fetch": false,
@@ -4893,6 +5052,63 @@ export interface components {
 		 * @enum {string}
 		 */
 		ProcessingStatus: 'processing' | 'completed' | 'failed' | 'review';
+		/** ProfileOut */
+		ProfileOut: {
+			/**
+			 * User Id
+			 * Format: uuid
+			 */
+			user_id: string;
+			/**
+			 * Display Name
+			 * @description Public; null: the username is shown.
+			 */
+			display_name: string | null;
+			/**
+			 * Aliases
+			 * @description Other names (a maiden name), to find the person.
+			 */
+			aliases: string[];
+			/** Birth Date */
+			birth_date: string | null;
+			/**
+			 * Email
+			 * @description Also counts as an identifier.
+			 */
+			email: string | null;
+			/** Identifiers */
+			identifiers: components['schemas']['PersonIdentifierOut'][];
+		};
+		/**
+		 * ProfilePatch
+		 * @description What is given changes; null removes the display name, birth date or e-mail; `aliases`
+		 *     and `identifiers` replace all of them.
+		 * @example {
+		 *       "aliases": [
+		 *         "Anna Sample"
+		 *       ],
+		 *       "birth_date": "1980-06-15",
+		 *       "display_name": "Anna Example"
+		 *     }
+		 */
+		ProfilePatch: {
+			/**
+			 * Display Name
+			 * @description Unique across users regardless of case, also against their aliases (409).
+			 */
+			display_name?: string | null;
+			/** Aliases */
+			aliases?: string[];
+			/** Birth Date */
+			birth_date?: string | null;
+			/** Email */
+			email?: string | null;
+			/**
+			 * Identifiers
+			 * @description The person's own numbers; found in a document, they tell whose it is. Several users may share one (a joint account), a contact may not have it (409 if a contact entered it by hand; a learned one gives way).
+			 */
+			identifiers?: components['schemas']['PersonIdentifierIn'][];
+		};
 		/**
 		 * ReadingOut
 		 * @example {
@@ -5727,6 +5943,12 @@ export interface components {
 			metadata: components['schemas']['FileMetadataOut'] | null;
 		};
 		/**
+		 * Strength
+		 * @description How surely a document names a person.
+		 * @enum {string}
+		 */
+		Strength: 'weak' | 'medium' | 'hard';
+		/**
 		 * TagCreate
 		 * @description Names are unique per scope. `parent_id`: a tag of the same scope; at most five levels.
 		 *     `assignment` and `shown` follow the scope unless given.
@@ -6044,6 +6266,11 @@ export interface components {
 		UserCreate: {
 			/** Username */
 			username: string;
+			/**
+			 * Display Name
+			 * @description How others see the user; unique regardless of case (409).
+			 */
+			display_name?: string | null;
 			/** @default user */
 			role: components['schemas']['Role'];
 			/**
@@ -6054,7 +6281,8 @@ export interface components {
 		};
 		/**
 		 * UserOut
-		 * @description A user. Others than admins see only `id`, `username` and `personal_space_id`.
+		 * @description A user. Others than admins see only `id`, `username`, `display_name` and
+		 *     `personal_space_id`.
 		 */
 		UserOut: {
 			/**
@@ -6067,6 +6295,11 @@ export interface components {
 			 * @example alice
 			 */
 			username: string;
+			/**
+			 * Display Name
+			 * @description How others see the user ("Alice Example"); null or missing: the username.
+			 */
+			display_name?: string | null;
 			/**
 			 * Personal Space Id
 			 * @description The user's personal space, where a document is handed over to them (`POST /documents/{id}/move`); in `GET /users` and `GET /users/{id}`.
@@ -6856,6 +7089,203 @@ export interface operations {
 					 *       "title": "Unauthorized",
 					 *       "status": 401,
 					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	own_profile_api_v1_auth_me_profile_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ProfileOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	change_own_profile_api_v1_auth_me_profile_patch: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['ProfilePatch'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ProfileOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8526,6 +8956,258 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['UserOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	get_profile_api_v1_users__id__profile_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ProfileOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	change_profile_api_v1_users__id__profile_patch: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['ProfilePatch'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ProfileOut'];
 				};
 			};
 			/** @description Unauthorized */

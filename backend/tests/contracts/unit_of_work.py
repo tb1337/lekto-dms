@@ -12,7 +12,7 @@ from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
 from lekto.core.domain.fields import FieldDefinition, FieldType, Money, Url
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
-from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, TagId, new_id
+from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, TagId, UserId, new_id
 from lekto.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
 from lekto.core.domain.periods import Period
 from lekto.core.domain.permissions import can_read_document
@@ -25,6 +25,7 @@ from lekto.core.domain.pipeline import (
     Outcome,
     ProcessingStatus,
 )
+from lekto.core.domain.profiles import Profile
 from lekto.core.domain.rules import (
     AddTags,
     Condition,
@@ -1727,6 +1728,81 @@ class UnitOfWorkContract:
                 await uow.spaces.remove(space.id)
             await uow.users.remove(other.id)  # no membership left
             await uow.commit()
+
+    async def test_profiles_round_trip_and_go_with_their_user(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        anna, bob = builders.user(), builders.user()
+        anna.display_name = "Anna Example"
+        await seed(uow_factory, anna, bob)
+        iban = Identifier(IdentifierKind.IBAN, "DE89370400440532013000")
+        profile = Profile(
+            id=anna.id,
+            aliases=["Anna Sample", "Anna Muster"],
+            birth_date=date(1980, 6, 15),
+            email="anna@mail.example",
+            identifiers=[Identifier(IdentifierKind.TAX_ID, "12345678911"), iban],
+            version=1,
+        )
+        contact = Contact.create(name="Insurer", now=NOW)
+        contact.set_identifiers(
+            [Identifier(IdentifierKind.CUSTOMER_NUMBER, "K4711", user_id=anna.id)]
+        )
+        async with uow_factory() as uow:
+            await uow.profiles.add(profile)
+            await uow.profiles.add(Profile(id=bob.id, identifiers=[iban], version=1))  # joint
+            await uow.contacts.add(contact)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.users.get(anna.id)).display_name == "Anna Example"
+            stored = await uow.profiles.get(anna.id)
+            assert stored.aliases == ["Anna Sample", "Anna Muster"]
+            assert stored.birth_date == date(1980, 6, 15)
+            assert stored.email == "anna@mail.example"
+            assert {item.key for item in stored.identifiers} == {
+                (IdentifierKind.TAX_ID, "12345678911"),
+                iban.key,
+            }
+            assert (await uow.contacts.get(contact.id)).identifiers[0].user_id == anna.id
+            stored.aliases = ["Anna Muster"]
+            stored.birth_date = None
+            await uow.profiles.update(stored)
+            await uow.commit()
+        async with uow_factory() as uow:
+            changed = await uow.profiles.get(anna.id)
+            assert (changed.aliases, changed.birth_date, changed.version) == (
+                ["Anna Muster"],
+                None,
+                2,
+            )
+            assert await uow.profiles.find(UserId(new_id())) is None
+            for space in await uow.spaces.list_accessible(anna.id):
+                await uow.spaces.remove(space.id)
+            await uow.users.remove(anna.id)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.profiles.find(anna.id) is None
+            assert (await uow.contacts.get(contact.id)).identifiers[0].user_id is None
+            assert [item.id for item in await uow.profiles.list_all()] == [bob.id]
+
+    async def test_display_names_are_unique_and_aliases_need_not_be(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        anna, bob = builders.user(), builders.user()
+        anna.display_name = "Anna"
+        await seed(uow_factory, anna, bob)
+        bob.display_name = "ANNA"
+        async with uow_factory() as uow:
+            with pytest.raises(ConflictError):
+                await uow.users.update(bob)
+                await uow.commit()
+        # Aliases are private: two users may have the same (a conflict would tell whose it is).
+        async with uow_factory() as uow:
+            await uow.profiles.add(Profile(id=anna.id, aliases=["Ann"], version=1))
+            await uow.profiles.add(Profile(id=bob.id, aliases=["ann"], version=1))
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.profiles.get(bob.id)).aliases == ["ann"]
 
     async def test_a_lock_makes_other_units_wait(self, uow_factory: UnitOfWorkFactory) -> None:
         order: list[str] = []

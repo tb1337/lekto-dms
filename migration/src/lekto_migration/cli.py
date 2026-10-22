@@ -20,12 +20,12 @@ from lekto_migration.config import Config, ConfigError, env_file, public
 from lekto_migration.expect import Context, expect, field_infos
 from lekto_migration.lekto import DELAYS, ApiError, Lekto
 from lekto_migration.masterdata import (
-    CREATE,
     CREATED,
     FAILED,
     MISSING,
     OPEN,
-    UPDATE,
+    PENDING,
+    UPDATED,
     Action,
     needs,
     prepare,
@@ -354,7 +354,7 @@ async def _prepare(
     ask: Ask,
 ) -> int:
     _ready(loaded)
-    pending = [a for a in loaded.actions if a.status in (CREATE, UPDATE)]
+    pending = [a for a in loaded.actions if a.status in PENDING]
     report = {**_head(config, "prepare", loaded.snapshot), "actions": []}
     if not pending:
         progress("Lekto has everything the plan needs")
@@ -370,6 +370,10 @@ async def _prepare(
     def record(action: Action, id: str) -> None:
         if action.kind in ("choices", "group"):
             return
+        if action.kind == "user" and action.data.get("profiled"):
+            state.put_object("profile", action.name, action.name, id, "filled", action.notes)
+        if action.kind == "user" and action.status == UPDATED:
+            return  # only the profile of a user Lekto had: the user's own row stays
         status = "new" if action.status == CREATED else "updated"
         state.put_object(action.kind, action.name, action.name, id, status, action.notes)
 

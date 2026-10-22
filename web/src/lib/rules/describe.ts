@@ -1,6 +1,6 @@
 /** Texts of the rule builder: fields, operators, actions, problems; a rule as sentences. */
 import { describeValue } from '#lib/describe.ts';
-import { spaceLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+import { spaceLabel, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import type {
 	ActionNode,
@@ -197,7 +197,7 @@ function targetName(id: string, lookup: Lookup | null): string {
 	const space = lookup?.spaces.find((entry) => entry.id === id);
 	if (space) return spaceLabel(space, lookup?.users ?? [], session.user?.id);
 	const user = lookup?.users.find((entry) => entry.personal_space_id === id);
-	return user ? m.move_hand_over({ name: user.username }) : m.rule_unknown();
+	return user ? m.move_hand_over({ name: userLabel(user) }) : m.rule_unknown();
 }
 
 /** A tag by its path ("Insurance › Health"); unknown ones as such. */

@@ -3,7 +3,16 @@ import type { components } from '#lib/api/schema.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
-import { newReaders, onlySpace, suggestedSpace, suggestionText } from '#lib/space-suggestion.ts';
+import {
+	handedTo,
+	newReaders,
+	onlySpace,
+	suggestedSpace,
+	suggestionText,
+	unseenBy,
+	unseenHere,
+	unseenText
+} from '#lib/space-suggestion.ts';
 
 type OpenNode = components['schemas']['OpenNodeOut'];
 
@@ -39,7 +48,7 @@ const lookup = {
 	]
 } as unknown as Lookup;
 
-const node = (fields: { field: string; suggestion?: unknown }[]) =>
+const node = (fields: { field: string; suggestion?: unknown; unseen_by?: string[] }[]) =>
 	({ node: 'judge', outcome: 'uncertain', reason: null, fields }) as unknown as OpenNode;
 
 describe('the suggested space', () => {
@@ -92,5 +101,53 @@ describe('the suggested space', () => {
 		expect(suggestionText('mine', 'house', lookup)).toBe(
 			m.space_suggestion({ space: m.space_personal() })
 		);
+	});
+
+	it('reads a suggested personal space of another user as a hand-over', () => {
+		expect(handedTo('annas', 'mine', lookup)).toBe('anna');
+		expect(suggestionText('annas', 'mine', lookup)).toBe(
+			m.space_suggestion_hand_over({ name: 'anna' })
+		);
+		// Anna reads Haushalt already: her personal space is no hand-over from there.
+		expect(handedTo('annas', 'house', lookup)).toBeNull();
+		expect(handedTo('house', 'mine', lookup)).toBeNull();
+	});
+
+	it('says the hand-over in the words of the move dialog, in both languages', () => {
+		for (const locale of ['de', 'en'] as const) {
+			const options = { locale };
+			expect(m.space_suggestion_hand_over({ name: 'Anna' }, options)).toContain(
+				m.move_hand_over({ name: 'Anna' }, options)
+			);
+			expect(m.move_handed_over({ name: 'Anna' }, options)).not.toMatch(/^An Anna/);
+		}
+	});
+
+	it('names those the document names who would not see it there', () => {
+		const open = [node([{ field: 'space', suggestion: null, unseen_by: ['u2', 'u9'] }])];
+		expect(unseenBy(open)).toEqual(['u2', 'u9']);
+		expect(unseenBy([node([{ field: 'space' }])])).toEqual([]);
+		expect(unseenText(['u2'], lookup)).toBe(m.space_named_unseen({ names: 'anna' }));
+		// Someone the caller cannot tell stays unnamed.
+		expect(unseenText(['u2', 'u9'], lookup)).toBe(
+			m.space_named_unseen({ names: `anna, ${m.space_named_someone()}` })
+		);
+		expect(unseenText([], lookup)).toBe('');
+	});
+
+	it('warns on a settled space check too, for those still no member', () => {
+		const judge = (outcome: string, unseen_by: string[]) =>
+			[
+				{
+					node: 'judge',
+					fields: [{ field: 'space', outcome, unseen_by }]
+				}
+			] as never;
+		expect(unseenHere(judge('ok', ['u2', 'u9']), 'mine', lookup)).toEqual(['u2', 'u9']);
+		// Anna reads Haushalt: there she sees it.
+		expect(unseenHere(judge('ok', ['u2']), 'house', lookup)).toEqual([]);
+		// An open check is the form's own warning.
+		expect(unseenHere(judge('uncertain', ['u2']), 'mine', lookup)).toEqual([]);
+		expect(unseenHere([], 'mine', lookup)).toEqual([]);
 	});
 });

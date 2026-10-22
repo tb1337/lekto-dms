@@ -143,6 +143,7 @@ def build_environment(
         run=run,
         indexing=services.indexing if trained else None,
         classifier=classifier,
+        profiles=services.profiles,
     )
 
 

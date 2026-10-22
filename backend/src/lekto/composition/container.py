@@ -108,6 +108,7 @@ from lekto.core.services.master_data import MasterDataService
 from lekto.core.services.nodes import OcrNode, PagesNode, ParseNode
 from lekto.core.services.oidc import OidcService
 from lekto.core.services.pipeline import NodeExecutor, PipelineService
+from lekto.core.services.profiles import ProfileService
 from lekto.core.services.rules import RuleService
 from lekto.core.services.rules.changes import ChangeRules
 from lekto.core.services.rules.nodes import ApplyRulesNode, FileNode
@@ -476,6 +477,7 @@ class Services:
     auth: AuthService
     oidc: OidcService | None  # with a configured provider
     users: UserService
+    profiles: ProfileService
     spaces: SpaceService
     master_data: MasterDataService
     logos: LogoService
@@ -710,6 +712,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             )
         ),
         users=UserService(uow, clock, container.password_hasher, rules=change_rules),
+        profiles=ProfileService(uow, clock),
         spaces=SpaceService(uow, clock),
         master_data=MasterDataService(
             uow,

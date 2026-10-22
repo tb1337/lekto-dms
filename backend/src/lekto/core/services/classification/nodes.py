@@ -45,6 +45,7 @@ from lekto.core.domain.evidence import (
     truth_value,
 )
 from lekto.core.domain.exchanges import ModelCall, tokens_of
+from lekto.core.domain.facts import Strength
 from lekto.core.domain.fields import (
     FieldDefinition,
     FieldType,
@@ -54,7 +55,7 @@ from lekto.core.domain.fields import (
     field_from_json,
     field_to_json,
 )
-from lekto.core.domain.ids import ContactId, DocumentId, FieldId, SpaceId
+from lekto.core.domain.ids import ContactId, DocumentId, FieldId, SpaceId, UserId
 from lekto.core.domain.json_value import JsonObject, JsonValue, as_list
 from lekto.core.domain.labels import LabelCheck, LabelOutcome, check_label
 from lekto.core.domain.locations import Location
@@ -92,6 +93,8 @@ from lekto.core.domain.verdict import (
     judge_tags,
     judge_topic,
     judge_type,
+    named_persons,
+    recipient_persons,
 )
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.llm import LanguageModel, StructuredAnswer, StructuredRequest
@@ -138,6 +141,7 @@ from lekto.core.services.objects import (
     text_key,
 )
 from lekto.core.services.pipeline import MetadataResult
+from lekto.core.services.profiles import matching_persons
 from lekto.core.services.titles import has_machine_title
 
 log = logging.getLogger(__name__)
@@ -478,6 +482,12 @@ class JudgeNode:
             tags = await uow.tags.list_all()
             candidates = await space_candidates(uow, document.uploaded_by)
             current = await uow.spaces.find(document.space_id)
+            matched = await matching_persons(uow) if candidates is not None else []
+        people = [(person.user_id, person.names) for person in matched]
+        # By display name alone: whom the recipient names by what anyone may know.
+        shown = [
+            (person.user_id, (person.display_name,)) for person in matched if person.display_name
+        ]
         entries = ProcessingHistory(log).signals()
         signals = signals_of(entries)
         proposal = model_proposal(entries)
@@ -497,11 +507,34 @@ class JudgeNode:
                 reason=f"no date recognised: the language model gave none ({why})",
             )
         else:
-            date_check = _check_date(DOCUMENT_DATE, proposal.document_date, facts, self._today())
+            date_check = _check_date(
+                DOCUMENT_DATE,
+                proposal.document_date,
+                facts,
+                self._today(),
+                document.created_at.date(),
+            )
         contact = judge_contact(signals, contacts, self._thresholds)
         kind = judge_type(signals, types, self._thresholds)
         topic = judge_topic(signals, contact, contacts, tags, self._thresholds)
         tagged = judge_tags(signals, tags, self._thresholds)
+        # The persons the document names: the facts' and the model's recipient (only names
+        # are matched here; the facts matched the rest of the profiles).
+        recipient = signals.model.recipient if signals.model is not None else None
+        active = {person.user_id for person in matched}
+        persons = named_persons(
+            {  # facts of an earlier run may name a user deactivated since
+                user: strength
+                for user, strength in (signals.facts.persons if signals.facts else {}).items()
+                if user in active
+            },
+            recipient_persons(recipient, people, self._thresholds),
+        )
+        addressed = recipient_persons(recipient, shown, self._thresholds)
+        public = named_persons(
+            {user: Strength.WEAK for user in (signals.facts.public if signals.facts else ())},
+            addressed,
+        )
         space = (
             None
             if candidates is None or current is None or len(candidates.spaces) < 2
@@ -509,6 +542,8 @@ class JudgeNode:
                 signals,
                 candidates.choice(current, locked=document.space_confirmed_at is not None),
                 self._thresholds,
+                persons,
+                frozenset(user for user in addressed if user in active),
             )
         )
         model_entry = entries.get(Node.SIGNAL_LLM)
@@ -555,13 +590,16 @@ class JudgeNode:
         # Tags are added: those the document has (set by its owner) stay.
         add_tags = frozenset(_by_id(tags, value).id for value in as_list(tagged.value))
         uncertain = [check for check in checks if not check.ok]
+        output: JsonObject = {CHECKS: checks_to_json(checks)}
+        if space is not None and persons:
+            output[PERSONS] = _persons_json(persons, public)
         result = NodeResult(
             outcome=Outcome.UNCERTAIN if uncertain else Outcome.OK,
             reason="; ".join(_reason(check) for check in uncertain) or None,
             confidence=min(check.confidence for check in checks),
             model_version=model_version,
             input=input,
-            output={CHECKS: checks_to_json(checks)},
+            output=output,
         )
         moved = _applied(space, lambda value: SpaceId(UUID(value))) if space else UNSET
         target = None if isinstance(moved, Unset) or moved == document.space_id else moved
@@ -569,6 +607,28 @@ class JudgeNode:
 
     def _today(self) -> date:
         return self._clock.now().date()
+
+
+PERSONS = "persons"
+
+
+def _persons_json(
+    persons: Mapping[UserId, Strength], public: Mapping[UserId, Strength]
+) -> JsonValue:
+    """The persons the judge weighed for the space, by id with the strength of the evidence
+    (ids only, as the facts keep them), and `public` the strength of the evidence anyone may
+    know (their display name in the text or as the recipient): the log shows another user
+    only by that (`_access.readable_log`)."""
+    return [
+        {
+            "user_id": str(user),
+            "strength": strength.value,
+            **({"public": public[user].value} if user in public else {}),
+        }
+        for user, strength in sorted(
+            persons.items(), key=lambda item: (-item[1].rank, str(item[0]))
+        )
+    ]
 
 
 class FieldsNode(_ModelStep):
@@ -675,6 +735,7 @@ class FieldsNode(_ModelStep):
                 required=definition.is_required_for(document.document_type_id),
                 language=language,
                 default_currency=self._policy.default_currency,
+                received=document.created_at.date(),
             )
             if definition.is_read
             else _set_by_hand(definition)
@@ -755,13 +816,21 @@ def _same_name(proposed: str | None, name: str) -> bool:
 # --- checks -----------------------------------------------------------------------------------
 
 
-def _check_date(field: str, proposal: Proposal, facts: DocumentText, today: date) -> FieldCheck:
+def _check_date(
+    field: str, proposal: Proposal, facts: DocumentText, today: date, received: date | None
+) -> FieldCheck:
+    """A date as the model gives it; `received`, the day the document came in, picks the
+    reading of a two-digit year the text does not decide (`read_date`)."""
     common = _common(field, proposal)
     if proposal.value is None:
         return FieldCheck(
             outcome=Outcome.UNCERTAIN, confidence=0, reason="no date recognised", **common
         )
-    value = read_date(proposal.value, facts) if isinstance(proposal.value, str) else None
+    value = (
+        read_date(proposal.value, facts, received=received)
+        if isinstance(proposal.value, str)
+        else None
+    )
     if value is None:
         return FieldCheck(
             outcome=Outcome.UNCERTAIN,
@@ -800,6 +869,7 @@ def _check_field(
     required: bool,
     language: str | None = None,
     default_currency: str | None = None,
+    received: date | None = None,
 ) -> FieldCheck:
     """A required field must be found, an optional one may stay empty; a value given must
     pass the checks either way. A date equal to the document date is only suggested: models
@@ -817,9 +887,9 @@ def _check_field(
             **common,
         )
     if definition.data_type is FieldType.PERIOD:
-        return _check_period(definition, proposal, facts, today, document_date)
+        return _check_period(definition, proposal, facts, today, document_date, received)
     if definition.data_type is FieldType.DATE:
-        check = _check_date(field, proposal, facts, today)
+        check = _check_date(field, proposal, facts, today, received)
         if check.ok and document_date is not None and check.value == document_date.isoformat():
             check = replace(
                 check,
@@ -841,7 +911,9 @@ def _check_field(
             **common,
         )
     try:
-        value = _parse_value(definition, proposal.value, facts, language, default_currency)
+        value = _parse_value(
+            definition, proposal.value, facts, language, default_currency, received
+        )
     except ValidationError:
         return FieldCheck(
             outcome=Outcome.UNCERTAIN,
@@ -886,13 +958,14 @@ def _check_period(
     facts: DocumentText,
     today: date,
     document_date: date | None,
+    received: date | None = None,
 ) -> FieldCheck:
     """A period as the model gives it: `{start, end}` (extract-5) or as written (propose-4:
     `September 2026`, `KW 38/2026`, `01.09.-30.09.2026`). Its quoted passage must show it. One
     without a year takes that of the document date and is only suggested, as is a single day
     equal to the document date (models put the document date where the text shows none)."""
     common = _common(field_key(definition.id), proposal)
-    read = _read_period(proposal.value, document_date)
+    read = _read_period(proposal.value, document_date, received)
     if read is None:
         return FieldCheck(
             outcome=Outcome.UNCERTAIN,
@@ -938,16 +1011,19 @@ def _check_period(
     )
 
 
-def _read_period(raw: JsonValue, document_date: date | None) -> tuple[Period, bool] | None:
+def _read_period(
+    raw: JsonValue, document_date: date | None, received: date | None = None
+) -> tuple[Period, bool] | None:
     """The period of a proposed value, and whether its year was assumed."""
     if isinstance(raw, dict) and set(raw) == {"start", "end"}:
         start, end = (
-            read_date(day) if isinstance(day, str) else None for day in (raw["start"], raw["end"])
+            read_date(day, received=received) if isinstance(day, str) else None
+            for day in (raw["start"], raw["end"])
         )
         if start is None or end is None or end < start:
             return None
         return Period(start, end), False
-    return read_period(raw, document_date) if isinstance(raw, str) else None
+    return read_period(raw, document_date, received=received) if isinstance(raw, str) else None
 
 
 def _shown(
@@ -1243,6 +1319,7 @@ def _parse_value(
     facts: DocumentText,
     language: str | None,
     default_currency: str | None = None,
+    received: date | None = None,
 ) -> FieldValue:
     """A proposed value read leniently, as a person writes it (`2.111,68 €`, `12.03.2026`,
     `ja`; an ambiguous number the way the text shows it, else as the document's `language`
@@ -1260,7 +1337,7 @@ def _parse_value(
             amount = read_amount(raw, facts, language=language, default=default_currency)
             value = None if amount is None else Money(*amount)
         case FieldType.DATE if isinstance(raw, str):
-            value = read_date(raw, facts)
+            value = read_date(raw, facts, received=received)
         case FieldType.BOOLEAN if isinstance(raw, str):
             truth = truth_value(raw)
             value = raw if truth is None else truth

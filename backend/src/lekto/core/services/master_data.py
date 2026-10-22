@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Awaitable, Callable, Collection, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from uuid import UUID
 
@@ -11,7 +11,7 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.fields import FieldDefinition, FieldType
-from lekto.core.domain.identifiers import Identifier, IdentifierSource
+from lekto.core.domain.identifiers import Identifier, IdentifierSource, of_person
 from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
 from lekto.core.domain.jobs import Job, RetryPolicy
 from lekto.core.domain.master_data import (
@@ -30,6 +30,7 @@ from lekto.core.domain.rules_json import definition_to_json
 from lekto.core.domain.sorting import sort_key
 from lekto.core.domain.templates import rename_field_key, unknown_values
 from lekto.core.domain.templates import uses_field as field_used
+from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.object_store import ObjectStore
 from lekto.core.ports.repository import DocumentFilter, DocumentPosition, NamedRepository
@@ -47,6 +48,7 @@ from lekto.core.services._tags import tag_tree
 # A rename queues the indexing service's refresh job; the worker runs it through that service.
 from lekto.core.services.indexing import REFRESH_JOB, RefreshKind, refresh_payload
 from lekto.core.services.logos import drop_logo, queue_logo_fetch
+from lekto.core.services.profiles import person_identifiers
 from lekto.core.services.rules.management import renamed_field, uses_field
 from lekto.core.services.rules.references import disable_rules, misfits, refers_to
 
@@ -230,7 +232,9 @@ class MasterDataService:
         others stay as they are. One the contact learned or rejected is then entered; one
         another contact learned or rejected moves here; one another contact has entered is a
         conflict."""
-        entered = Identifier(identifier.kind, identifier.value, MANUAL, identifier.topic_id)
+        entered = Identifier(
+            identifier.kind, identifier.value, MANUAL, identifier.topic_id, identifier.user_id
+        )
         known: list[str] = []
 
         def change(item: Contact) -> None:
@@ -631,7 +635,14 @@ class MasterDataService:
     # --- reading (every signed-in user) ----------------------------------------------------------
 
     async def list_contacts(self, actor: UserId) -> list[Contact]:
-        return await self._list(actor, _contacts)
+        """By name; whose a customer or personnel number is (`Identifier.user_id`) only for
+        admins and that user: it is private."""
+        async with self._uow() as uow:
+            user = await load_actor(uow, actor)
+            items = await uow.contacts.list_all()
+        return sorted(
+            (_as_seen(item, user) for item in items), key=lambda item: sort_key(item.name)
+        )
 
     async def list_document_types(self, actor: UserId) -> list[DocumentType]:
         return await self._list(actor, _document_types)
@@ -661,7 +672,10 @@ class MasterDataService:
         )
 
     async def get_contact(self, actor: UserId, id: ContactId) -> Contact:
-        return await self._get(actor, _contacts, id)
+        """Whose a number is only for admins and that user (`list_contacts`)."""
+        async with self._uow() as uow:
+            user = await load_actor(uow, actor)
+            return _as_seen(await uow.contacts.get(id), user)
 
     async def get_document_type(self, actor: UserId, id: DocumentTypeId) -> DocumentType:
         return await self._get(actor, _document_types, id)
@@ -1082,15 +1096,36 @@ async def _title_rule(uow: UnitOfWork, document_type: DocumentTypeId) -> Rule | 
     return None
 
 
+def _as_seen(contact: Contact, user: User) -> Contact:
+    """`contact` as `user` sees it: the user a number names only if it is them, or for an
+    admin."""
+    if user.is_active_admin or all(item.user_id in (None, user.id) for item in contact.identifiers):
+        return contact
+    hidden = [
+        item if item.user_id in (None, user.id) else replace(item, user_id=None)
+        for item in contact.identifiers
+    ]
+    return replace(contact, identifiers=hidden)
+
+
 async def _check_contact(uow: UnitOfWork, contact: Contact) -> None:
     await _check_contact_names(uow, contact)
     await _check_contact_identifiers(uow, contact)
 
 
 async def _check_contact_identifiers(uow: UnitOfWork, contact: Contact) -> None:
-    """No identifier of the contact is one another contact entered by hand. Another contact's
-    learned or rejected one gives way, in `uow`: a person's choice is the newer word."""
+    """No identifier of the contact is one another contact entered by hand, or a person's (a
+    user's profile). Another contact's learned or rejected one gives way, in `uow`: a person's
+    choice is the newer word. A user an identifier names exists."""
     mine = {item.key for item in contact.identifiers}
+    persons = await person_identifiers(uow)
+    personal = sorted(key for key in mine if of_person(key, persons))
+    if personal:
+        _, value = personal[0]
+        raise ConflictError(f"'{value}' is an identifier of a person")
+    for item in contact.identifiers:
+        if item.user_id is not None:
+            await uow.users.get(item.user_id)
     for other in await uow.contacts.list_all():
         if other.id == contact.id:
             continue

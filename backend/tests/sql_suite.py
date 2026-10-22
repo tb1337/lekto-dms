@@ -2081,6 +2081,94 @@ class MigrationSuite:
         async with empty_database.reading() as connection:
             assert await connection.run_sync(_schema) == schema
 
+    async def test_users_get_profiles_and_back(self, empty_database: Database) -> None:
+        """Revision 0035: users get display names and profiles, a contact's identifier may name
+        a user; the identifiers of contacts stay. The downgrade drops all of it."""
+        await migrate(empty_database, "0034")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        ids = {name: new_id() for name in ("anna", "bob", "contact", "topic")}
+        await _insert(
+            empty_database,
+            [
+                *(
+                    (
+                        _before_0035(t.users),
+                        {"id": ids[name], "username": name, "username_key": name, "role": "user"},
+                    )
+                    for name in ("anna", "bob")
+                ),
+                (t.contacts, {"id": ids["contact"], "name": "Insurer", "name_key": "insurer"}),
+                (
+                    t.tags,
+                    {"id": ids["topic"], "name": "Health", "name_key": "health", "scope": "topic"},
+                ),
+                (
+                    _before_0035(t.contact_identifiers),
+                    {
+                        "contact_id": ids["contact"],
+                        "kind": "customer_number",
+                        "value": "K4711",
+                        "source": "manual",
+                        "topic_id": ids["topic"],
+                    },
+                ),
+            ],
+        )
+
+        await migrate(empty_database)
+        await _insert(
+            empty_database,
+            [
+                (t.user_profiles, {"user_id": ids["anna"], "email": "a@b.example", "version": 1}),
+                *(  # an alias is private: two users may have the same
+                    (
+                        t.user_aliases,
+                        {"user_id": ids[name], "name": "Ann", "name_key": "ann", "position": 0},
+                    )
+                    for name in ("anna", "bob")
+                ),
+                *(
+                    (
+                        t.user_identifiers,
+                        {"user_id": ids[name], "kind": "iban", "value": "DE89370400440532013000"},
+                    )
+                    for name in ("anna", "bob")  # a joint account
+                ),
+            ],
+        )
+        async with empty_database.writing() as connection:
+            await connection.execute(
+                t.users.update()
+                .where(t.users.c.id == ids["anna"])
+                .values(display_name="Anna", display_name_key="anna")
+            )
+            await connection.execute(t.contact_identifiers.update().values(user_id=ids["anna"]))
+        with pytest.raises(sa.exc.IntegrityError):
+            async with empty_database.writing() as connection:
+                await connection.execute(
+                    t.users.update()
+                    .where(t.users.c.id == ids["bob"])
+                    .values(display_name="ANNA", display_name_key="anna")
+                )
+        async with empty_database.reading() as connection:
+            identifiers = await _read_all(
+                connection,
+                select(
+                    t.contact_identifiers.c.value,
+                    t.contact_identifiers.c.topic_id,
+                    t.contact_identifiers.c.user_id,
+                ),
+            )
+        assert identifiers == [("K4711", ids["topic"], ids["anna"])]
+
+        await downgrade(empty_database, "0034")
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+            before = _before_0035(t.contact_identifiers)
+            kept = await _read_all(connection, select(before.c.value, before.c.topic_id))
+        assert kept == [("K4711", ids["topic"])]
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -2285,6 +2373,16 @@ def _drawer(table: sa.TableClause) -> sa.TableClause:
 
 # The columns of `documents` revision 0030 added for the inbox.
 _INBOX_COLUMNS = frozenset({"new_at", "processing_baseline", "processing_decided"})
+
+
+def _before_0035(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0035 had it: no display name of a user, no user named by
+    a contact's identifier."""
+    added = {"users": {"display_name", "display_name_key"}, "contact_identifiers": {"user_id"}}
+    return sa.table(
+        table.name,
+        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+    )
 
 
 def _before_0034(table: sa.Table) -> sa.TableClause:

@@ -131,6 +131,12 @@ class Lekto:
     async def set_active(self, id: str, active: bool) -> dict[str, Any]:
         return await self._object("PATCH", f"/users/{id}", json={"active": active})
 
+    async def profile(self, id: str) -> dict[str, Any]:
+        return await self._object("GET", f"/users/{id}/profile")
+
+    async def change_profile(self, id: str, changes: dict[str, Any]) -> dict[str, Any]:
+        return await self._object("PATCH", f"/users/{id}/profile", json=changes)
+
     async def create_named(self, path: str, name: str) -> dict[str, Any]:
         return await self._object("POST", path, json={"name": name})
 

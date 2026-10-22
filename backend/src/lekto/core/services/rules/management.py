@@ -489,7 +489,7 @@ async def document_values(
         contact=None if contact is None else contact.name,
         document_type=None if kind is None else kind.name,
         space=None if space is None else space_label(space, users),
-        uploaded_by=None if uploader is None else uploader.username,
+        uploaded_by=None if uploader is None else uploader.label,
         tags=tags,
         document_date=document.document_date,
         fields=[(item, document.fields.get(item.id)) for item in fields],

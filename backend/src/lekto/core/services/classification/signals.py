@@ -37,9 +37,9 @@ from lekto.core.domain.errors import (
     SearchError,
     ValidationError,
 )
-from lekto.core.domain.facts import facts_in
+from lekto.core.domain.facts import NAME, Strength, facts_in
 from lekto.core.domain.identifiers import IdentifierKind, identifiers_in
-from lekto.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId
+from lekto.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId, UserId
 from lekto.core.domain.json_value import (
     JsonObject,
     JsonValue,
@@ -52,6 +52,7 @@ from lekto.core.domain.json_value import (
 from lekto.core.domain.master_data import Contact
 from lekto.core.domain.permissions import Reach, reach_access
 from lekto.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
+from lekto.core.domain.profiles import Person
 from lekto.core.domain.search import Visibility
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.verdict import (
@@ -74,6 +75,7 @@ from lekto.core.services.classifier import ClassifierService
 from lekto.core.services.indexing import split_sections
 from lekto.core.services.nodes import ARCHIVE_FILE, work_directory
 from lekto.core.services.objects import archive_key, codes_key, load_text
+from lekto.core.services.profiles import matching_persons
 
 log = logging.getLogger(__name__)
 
@@ -121,8 +123,9 @@ class FactsSignal:
         codes = await self.codes(document)
         async with self._uow() as uow:
             contacts = await uow.contacts.list_all()
+            persons = await matching_persons(uow)
         # Matching every contact's names against a long text takes a while: not in the loop.
-        output = await asyncio.to_thread(facts_of, text, contacts, codes or ())
+        output = await asyncio.to_thread(facts_of, text, contacts, codes or (), persons)
         if codes is not None:
             output["codes"] = len(codes)
         found = await asyncio.to_thread(identifiers_in, text)
@@ -180,10 +183,16 @@ class FactsResult:
         return self.result
 
 
-def facts_of(text: str, contacts: Sequence[Contact], codes: Sequence[Code] = ()) -> JsonObject:
+def facts_of(
+    text: str,
+    contacts: Sequence[Contact],
+    codes: Sequence[Code] = (),
+    persons: Sequence[Person] = (),
+) -> JsonObject:
     """What `signal_facts` reports for `text` and the `codes` of its pages (`domain.facts`);
-    what a code holds is marked `in_code`."""
-    facts = facts_in(text, contacts, codes)
+    what a code holds is marked `in_code`. Of the persons only their ids and the kinds of
+    evidence, never the values (the log is read by the document's editors)."""
+    facts = facts_in(text, contacts, codes, persons=persons)
 
     def marked(item: JsonObject, in_code: bool) -> JsonObject:
         return {**item, "in_code": True} if in_code else item
@@ -213,6 +222,14 @@ def facts_of(text: str, contacts: Sequence[Contact], codes: Sequence[Code] = ())
             marked({"kind": item.kind.value, "value": item.value}, item.in_code)
             for item in facts.identifiers
             if item.contact_id is None
+        ],
+        "persons": [
+            {
+                "user_id": str(item.user_id),
+                "strength": item.strength.value,
+                "evidence": list(item.evidence),
+            }
+            for item in facts.persons
         ],
     }
 
@@ -610,10 +627,21 @@ def _facts_view(output: JsonObject | None) -> FactsView | None:
         _id_of(ContactId, (as_object(value) or {}).get("contact_id"))
         for value in as_list(output.get("named"))
     )
+    persons: dict[UserId, Strength] = {}
+    public: set[UserId] = set()
+    for value in as_list(output.get("persons")):
+        item = as_object(value) or {}
+        user, strength = _id_of(UserId, item.get("user_id")), as_text(item.get("strength"))
+        if user is not None and strength in set(Strength):
+            persons[user] = Strength(strength)
+            if NAME in as_list(item.get("evidence")):
+                public.add(user)
     return FactsView(
         named=frozenset(contact for contact in named if contact is not None),
         identifiers=identifiers,
         topics=topics,
+        persons=persons,
+        public=frozenset(public),
     )
 
 

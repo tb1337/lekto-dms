@@ -370,6 +370,8 @@ async def test_downloads(api: Api) -> None:
 async def test_moving_and_deleting(api: Api) -> None:
     owner = await api.user()
     document = await upload(api, auth(owner))
+    before = await api.client.get(f"{PREFIX}/documents/{document}", headers=auth(owner))
+    assert before.json()["space_confirmed_at"] is None
     target = await post(api, "/spaces", {"name": "Archive"}, auth(owner))
     moved = await api.client.post(
         f"{PREFIX}/documents/{document}/move", json={"space_id": target["id"]}, headers=auth(owner)
@@ -377,6 +379,8 @@ async def test_moving_and_deleting(api: Api) -> None:
     assert moved.status_code == 204
     details = await api.client.get(f"{PREFIX}/documents/{document}", headers=auth(owner))
     assert details.json()["space_id"] == target["id"]
+    # A person's move decides the space: the filing box says when.
+    assert details.json()["space_confirmed_at"] is not None
     deleted = await api.client.delete(f"{PREFIX}/documents/{document}", headers=auth(owner))
     assert deleted.status_code == 204
     gone = await api.client.get(f"{PREFIX}/documents/{document}", headers=auth(owner))
@@ -439,7 +443,15 @@ async def test_a_space_describes_what_belongs_in_it(api: Api) -> None:
 async def test_spaces_and_members(api: Api) -> None:
     owner, friend = await api.user(), await api.user("friend")
     space = await post(api, "/spaces", {"name": "Household"}, auth(owner))
-    mine = [{"user_id": str(owner.id), "role": "edit", "username": owner.username, "active": True}]
+    mine = [
+        {
+            "user_id": str(owner.id),
+            "role": "edit",
+            "username": owner.username,
+            "display_name": None,
+            "active": True,
+        }
+    ]
     assert (space["role"], space["members"], space["personal_of"]) == ("edit", mine, None)
     url = f"{PREFIX}/spaces/{space['id']}"
     shared = await api.client.put(
@@ -695,7 +707,13 @@ async def test_contact_identifiers(api: Api) -> None:
     iban = {"kind": "iban", "value": "de89 3704 0044 0532 0130 00"}
     contact = await post(api, "/contacts", {"name": "Stadtwerke", "identifiers": [iban]}, a)
     assert contact["identifiers"] == [
-        {"kind": "iban", "value": "DE89370400440532013000", "source": "manual", "topic_id": None}
+        {
+            "kind": "iban",
+            "value": "DE89370400440532013000",
+            "source": "manual",
+            "topic_id": None,
+            "user_id": None,
+        }
     ]
     path = f"{PREFIX}/contacts/{contact['id']}"
     domain = {"kind": "email_domain", "value": "www.stadtwerke.example"}
@@ -1060,7 +1078,13 @@ async def test_topics_at_contacts_identifiers_and_documents(api: Api) -> None:
     )
     assert contact["topic_ids"] == sorted([work["id"], health["id"]])
     assert contact["identifiers"] == [
-        {"kind": "personnel_number", "value": "4711", "source": "manual", "topic_id": work["id"]}
+        {
+            "kind": "personnel_number",
+            "value": "4711",
+            "source": "manual",
+            "topic_id": work["id"],
+            "user_id": None,
+        }
     ]
     path = f"{PREFIX}/contacts/{contact['id']}"
     attach = {"kind": "customer_number", "value": "KV-2026-1", "topic_id": insurance["id"]}

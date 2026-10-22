@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import IdentifiersEditor from '#lib/components/IdentifiersEditor.svelte';
-import { changesOf, rowsOf } from '#lib/identifiers.ts';
+import { changesOf, kindLabel, PERSON_KINDS, rowsOf } from '#lib/identifiers.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 const stored = [
@@ -34,6 +34,36 @@ describe('identifiers', () => {
 		expect(screen.getAllByText(m.identifier_rejected())).toHaveLength(1);
 		await userEvent.click(screen.getByRole('button', { name: m.identifier_add_short() }));
 		expect(screen.getAllByRole('textbox', { name: m.identifier_value() })).toHaveLength(1);
+	});
+});
+
+describe('the user a number belongs to', () => {
+	it('sends it with customer and personnel numbers only', () => {
+		const rows = rowsOf([
+			{
+				kind: 'customer_number',
+				value: 'K-4711',
+				source: 'manual',
+				topic_id: null,
+				user_id: 'anna'
+			},
+			{ kind: 'iban', value: 'DE89370400440532013000', source: 'manual', topic_id: null }
+		]);
+		rows[1].user_id = 'anna';
+		expect(changesOf(rows).identifiers).toEqual([
+			{ kind: 'customer_number', value: 'K-4711', user_id: 'anna' },
+			{ kind: 'iban', value: 'DE89370400440532013000' }
+		]);
+	});
+
+	it('names every kind of a person', () => {
+		expect(PERSON_KINDS.map(kindLabel)).toEqual([
+			m.identifier_kind_iban(),
+			m.identifier_kind_tax_id(),
+			m.identifier_kind_social_security_number(),
+			m.identifier_kind_health_insurance_number(),
+			m.identifier_kind_email_address()
+		]);
 	});
 });
 

@@ -29,6 +29,7 @@ from lekto.core.domain.users import (
     Settlement,
     User,
     UserDeletionBlockedError,
+    display_name_of,
 )
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.identity import PasswordHasher
@@ -36,6 +37,7 @@ from lekto.core.ports.repository import DocumentFilter, DocumentPosition
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import load_actor, require_admin
 from lekto.core.services._moves import move_by_person
+from lekto.core.services.profiles import USER_NAMES_LOCK, check_display_name, check_username
 from lekto.core.services.rules.changes import ChangeRules
 from lekto.core.services.rules.references import disable_rules, refers_to
 from lekto.core.services.rules.running import Prepared
@@ -75,7 +77,7 @@ class UserService:
             user = await load_actor(uow, actor)
             users = await uow.users.list_all()
         visible = users if user.is_active_admin else [u for u in users if u.active]
-        return sorted(visible, key=lambda u: sort_key(u.username))
+        return sorted(visible, key=lambda u: sort_key(u.label))
 
     async def get(self, actor: UserId, id: UserId) -> User:
         """Like `list_users`: a deactivated user is not found for others than admins."""
@@ -114,9 +116,11 @@ class UserService:
         password: str | None = None,
         *,
         session: bool = True,
+        display_name: str | None = None,
     ) -> User:
         """Admins only. Creates the user together with their personal space and, if
-        given, a password (which must meet the policy).
+        given, a password (which must meet the policy) and a display name (ConflictError if it
+        is another user's name).
 
         `session`: whether the caller is signed in with a session. With an API token (as a
         migration uses) only a user with the role `user` and no password can be created: a
@@ -131,7 +135,7 @@ class UserService:
         now = self._clock.now()
         async with self._uow() as uow:
             await require_admin(uow, actor, "manage users")
-            user = await add_user(uow, username, role, now)
+            user = await add_user(uow, username, role, now, display_name=display_name)
             if password_hash is not None:
                 await uow.credentials.add(
                     Credential(
@@ -398,12 +402,20 @@ def _not_own(actor: UserId, id: UserId, what: str) -> None:
         raise PermissionDeniedError(f"admins cannot {what}")
 
 
-async def add_user(uow: UnitOfWork, username: str, role: Role, now: datetime) -> User:
+async def add_user(
+    uow: UnitOfWork, username: str, role: Role, now: datetime, *, display_name: str | None = None
+) -> User:
     """Add a user with their personal space; ConflictError if the name is taken (looked up for
-    the message; the repository's rule catches two requests at once, `core.ports.repository`)."""
+    the message; the repository's rule catches two requests at once, `core.ports.repository`),
+    is another user's display name, or the display name is another user's name. Takes
+    `USER_NAMES_LOCK`: the unit must not have written yet."""
     user = User.create(username=username, role=role, now=now)
+    user.display_name = display_name_of(display_name)
+    await uow.lock(USER_NAMES_LOCK)
     if await uow.users.find_by_username(user.username) is not None:
         raise ConflictError(f"username '{user.username}' is taken")
+    await check_username(uow, user.username)
+    await check_display_name(uow, user.id, user.display_name)
     await uow.users.add(user)
     await uow.spaces.add(Space.create_personal(user=user.id, now=user.created_at))
     return user

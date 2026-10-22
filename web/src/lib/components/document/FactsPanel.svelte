@@ -5,6 +5,7 @@
 	import ScanQrCode from '@lucide/svelte/icons/scan-qr-code';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import UserCheck from '@lucide/svelte/icons/user-check';
+	import UsersIcon from '@lucide/svelte/icons/users';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
@@ -17,13 +18,16 @@
 	import { reportError } from '#lib/errors.ts';
 	import {
 		codeSpans,
+		evidenceLabel,
 		grouped,
 		identifierKey,
 		shown,
+		strengthLabel,
 		type CodeFacts,
 		type CodePlace,
 		type Facts,
 		type FoundIdentifier,
+		type FoundPerson,
 		type NamedContact,
 		type Span
 	} from '#lib/facts.ts';
@@ -113,6 +117,7 @@
 	const entryId = (entry: Entry) =>
 		'kind' in entry ? `id:${identifierKey(entry)}` : `name:${entry.contact_id}`;
 	const codeId = (index: number) => `code:${index}`;
+	const personId = (person: FoundPerson) => `person:${person.user_id}`;
 
 	$effect(() => {
 		const id = active;
@@ -126,6 +131,11 @@
 		if (id.startsWith('code:')) {
 			const code = facts.codes?.[Number(id.slice(5))];
 			onmark(code ? codeSpans(facts, code) : [], scroll, code?.format ?? '');
+			return;
+		}
+		if (id.startsWith('person:')) {
+			const person = facts.persons?.find((item) => personId(item) === id);
+			onmark(person?.spans ?? [], scroll, person?.name ?? '');
 			return;
 		}
 		const entry = [...facts.named, ...facts.identifiers].find((item) => entryId(item) === id);
@@ -409,6 +419,46 @@
 			{/each}
 		{/if}
 	</section>
+
+	{#if facts.persons && facts.persons.length > 0}
+		<section aria-labelledby="persons-title" class="rounded-2xl border bg-card p-3.5">
+			<div class="flex items-baseline gap-2 px-1 pb-1">
+				<h2 id="persons-title" class="text-[15px] font-semibold">
+					<UsersIcon
+						class="mr-1 inline-block size-4 align-[-0.15em]"
+						aria-hidden="true"
+					/>{m.facts_persons()}
+				</h2>
+				<span class="text-xs text-muted-foreground">{m.facts_persons_hint()}</span>
+			</div>
+			{#each facts.persons as person (person.user_id)}
+				{@const id = personId(person)}
+				<div
+					class={cn('rounded-xl transition-colors', active === id && 'bg-panel')}
+					onmouseenter={() => (hover = id)}
+					onmouseleave={() => (hover = null)}
+					role="presentation"
+				>
+					<button
+						type="button"
+						class="flex w-full min-w-0 flex-col items-start gap-0.5 px-2.5 py-2 text-left"
+						aria-pressed={pinned === id}
+						onclick={() => pin(id)}
+						onfocus={() => (hover = id)}
+						onblur={() => (hover = null)}
+					>
+						<span class="text-xs font-medium text-muted-foreground">
+							{strengthLabel(person.strength)}
+						</span>
+						<span class="text-sm break-words">{person.name}</span>
+						<span class="text-xs text-muted-foreground">
+							{person.evidence.map(evidenceLabel).join(' · ')}
+						</span>
+					</button>
+				</div>
+			{/each}
+		</section>
+	{/if}
 
 	<section aria-labelledby="codes-title" class="rounded-2xl border bg-card p-3.5">
 		<div class="flex items-baseline gap-2 px-1 pb-1">

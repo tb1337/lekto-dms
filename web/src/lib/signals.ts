@@ -10,7 +10,8 @@ import { documentHref } from '#lib/candidates.ts';
 import { describeValue, fieldLabel } from '#lib/describe.ts';
 import { formatNumber } from '#lib/i18n.ts';
 import { IDENTIFIER_KINDS, kindLabel, type IdentifierKind } from '#lib/identifiers.ts';
-import type { Lookup } from '#lib/masterdata.svelte.ts';
+import { strengthLabel, type Strength } from '#lib/facts.ts';
+import { userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 type LogEntry = components['schemas']['LogEntry'];
@@ -64,6 +65,43 @@ function ranked(value: unknown, lookup: Lookup | null, count = 3): SummaryItem[]
 			const [id, probability] = list(pair);
 			return { text: `${named(id, lookup)} ${percent(probability)}` };
 		});
+}
+
+/** The persons an entry names, by name, with the strength of the evidence. */
+function persons(value: unknown, lookup: Lookup | null): SummaryItem[] {
+	return list(value).map((item) => {
+		const found = object(item);
+		const strength = String(found.strength ?? '');
+		const label = ['hard', 'medium', 'weak'].includes(strength)
+			? strengthLabel(strength as Strength)
+			: strength;
+		return { text: `${person(found.user_id, lookup)} · ${label}` };
+	});
+}
+
+function person(id: unknown, lookup: Lookup | null): string {
+	const user = lookup?.users.find((entry) => entry.id === id);
+	return user ? userLabel(user) : m.space_named_someone();
+}
+
+/** The judge's entry: the persons it weighed for the space, and those of them who would not
+ * see the document where the space check leads. None without a space check. */
+function judged(output: Json, lookup: Lookup | null): SummaryRow[] {
+	const space = list(output.fields)
+		.map(object)
+		.find((check) => check.field === 'space');
+	if (!space) return [];
+	const rows: SummaryRow[] = [];
+	if ('persons' in output) rows.push(row(m.facts_persons(), persons(output.persons, lookup)));
+	const unseen = list(space.unseen_by);
+	if (unseen.length > 0)
+		rows.push(
+			row(
+				m.log_space_unseen(),
+				unseen.map((id) => ({ text: person(id, lookup) }))
+			)
+		);
+	return rows;
 }
 
 function row(label: string, items: SummaryItem[]): SummaryRow {
@@ -153,6 +191,7 @@ function rules(entry: LogEntry, lookup: Lookup | null): SummaryRow[] {
  * other nodes. */
 export function signalSummary(entry: LogEntry, lookup: Lookup | null): SummaryRow[] {
 	if (entry.node === 'ocr') return readings(object(entry.output));
+	if (entry.node === 'judge') return judged(object(entry.output), lookup);
 	if (entry.node === 'fields') return labels(object(entry.output), lookup);
 	if (entry.node === 'apply_rules') return rules(entry, lookup);
 	if (!(SIGNAL_NODES as readonly string[]).includes(entry.node)) return [];
@@ -242,7 +281,8 @@ export function signalSummary(entry: LogEntry, lookup: Lookup | null): SummaryRo
 						const found = object(item);
 						return { text: `${kind(found.kind)} ${String(found.value ?? '')}` };
 					})
-				)
+				),
+				...('persons' in output ? [row(m.facts_persons(), persons(output.persons, lookup))] : [])
 			];
 		default:
 			return [];

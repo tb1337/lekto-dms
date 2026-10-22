@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { m } from '#lib/paraglide/messages.js';
-import { foreignSpace, spaceLabel, spaceOptions, type Space } from './masterdata.svelte.ts';
+import {
+	foreignSpace,
+	spaceLabel,
+	spaceOptions,
+	userChoice,
+	userLabel,
+	userName,
+	type Space
+} from './masterdata.svelte.ts';
 
 const users = [
 	{ id: 'u1', username: 'tobi', role: 'user' as const, personal_space_id: 'mine' },
@@ -53,5 +61,26 @@ describe('spaces by name', () => {
 			{ value: 'anna', label: m.move_hand_over({ name: 'anna' }) },
 			{ value: 'bobs', label: m.move_hand_over({ name: 'bob' }) }
 		]);
+	});
+});
+
+describe('the names of users', () => {
+	it('shows the display name, else the username', () => {
+		const named = { id: 'u4', username: 'carla', display_name: 'Carla Example' };
+		expect(userLabel(named)).toBe('Carla Example');
+		expect(userLabel({ username: 'carla', display_name: null })).toBe('carla');
+		expect(userName([...users, named], 'u4')).toBe('Carla Example');
+		expect(userName(users, 'nobody')).toBe('nobody');
+		expect(spaceLabel({ name: 'Personal', personal_of: 'u4' }, [named], 'u1')).toBe(
+			'Carla Example'
+		);
+	});
+});
+
+describe('a user offered for a choice', () => {
+	it('shows the username beside a display name that differs', () => {
+		expect(userChoice({ username: 'bob', display_name: 'anna' })).toBe('anna (bob)');
+		expect(userChoice({ username: 'anna', display_name: 'Anna' })).toBe('Anna');
+		expect(userChoice({ username: 'anna', display_name: null })).toBe('anna');
 	});
 });

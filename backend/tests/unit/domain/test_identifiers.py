@@ -82,6 +82,8 @@ def test_identifiers_in_a_letter() -> None:
         (CUSTOMER, "123456789"),
         (CUSTOMER, "K77881"),
         (DOMAIN, "stadtwerke-musterstadt.de"),
+        (IdentifierKind.EMAIL_ADDRESS, "service@stadtwerke-musterstadt.de"),
+        (IdentifierKind.EMAIL_ADDRESS, "max.nord@gmail.com"),
     }
 
 

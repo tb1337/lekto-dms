@@ -44,7 +44,15 @@ from lekto.core.domain.classification import (
 from lekto.core.domain.documents import UNSET, Channel, Document, DocumentChanges
 from lekto.core.domain.fields import FieldDefinition, field_from_json, field_to_json
 from lekto.core.domain.identifiers import Identifier, IdentifierKind
-from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
+from lekto.core.domain.ids import (
+    ContactId,
+    DocumentId,
+    DocumentTypeId,
+    FieldId,
+    SpaceId,
+    TagId,
+    UserId,
+)
 from lekto.core.domain.imports import ImportedMetadata
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.labels import grid_layout
@@ -60,6 +68,7 @@ from lekto.core.services.indexing import IndexingService
 from lekto.core.services.master_data import MasterDataService
 from lekto.core.services.objects import structure_key, text_key
 from lekto.core.services.pipeline import IncomingFile, PipelineService
+from lekto.core.services.profiles import ProfileChanges, ProfileService
 from lekto.core.services.users import UserService
 
 ADMIN = "evaluation-admin"  # creates the master data
@@ -87,6 +96,7 @@ class Environment:
     run: Run = Run.COLD
     indexing: IndexingService | None = None
     classifier: ClassifierService | None = None
+    profiles: ProfileService | None = None  # the household's users of the set get a profile
 
 
 @dataclass(frozen=True)
@@ -98,6 +108,9 @@ class MasterData:
     tags: dict[TagId, str]
     fields: dict[FieldId, FieldDefinition]
     topics: dict[TagId, str] = field(default_factory=dict)
+    # The personal spaces as an expected `space` names them: `own` for the uploader's,
+    # `personal space of <username>` for the others'.
+    spaces: dict[SpaceId, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -138,6 +151,9 @@ async def evaluate(
     `filename_for`: the file name a case is received with (default: the case's name)."""
     admin, owner = await _accounts(environment)
     master = await _seed(environment, evaluation.master_data, admin)
+    master = replace(
+        master, spaces=await _people(environment, evaluation.master_data, admin, owner)
+    )
     if environment.run is Run.TRAINED:
         await _take_over(environment, evaluation.training, master, admin, owner)
     results = []
@@ -159,6 +175,41 @@ async def _accounts(environment: Environment) -> tuple[User, User]:
         raise RuntimeError("the evaluation needs a database without an admin")
     owner = await environment.users.create_user(admin.id, OWNER, Role.USER)
     return admin, owner
+
+
+async def _people(
+    environment: Environment, spec: MasterDataSpec, admin: User, owner: User
+) -> dict[SpaceId, str]:
+    """The household's other users of the set, and the profiles it gives (the uploader's
+    too); the personal spaces of all, by how an expected `space` names them."""
+    users = {owner.username: owner}
+    for item in spec.users:
+        user = users.get(item.username)
+        if user is None:
+            user = await environment.users.create_user(admin.id, item.username, Role.USER)
+            users[item.username] = user
+        if environment.profiles is None:
+            continue
+        await environment.profiles.update(
+            admin.id,
+            user.id,
+            ProfileChanges(
+                display_name=item.display_name,
+                aliases=item.aliases,
+                birth_date=_date(item.birth_date),
+                identifiers=[
+                    Identifier.parse(IdentifierKind(identifier.kind), identifier.value)
+                    for identifier in item.identifiers
+                ],
+            ),
+        )
+    names = {user.id: user.username for user in (admin, *users.values())}
+    personal = await environment.users.personal_spaces(admin.id)
+    return {
+        space: "own" if user == owner.id else f"personal space of {names[user]}"
+        for user, space in personal.items()
+        if user in names
+    }
 
 
 async def _seed(environment: Environment, spec: MasterDataSpec, admin: User) -> MasterData:
@@ -488,6 +539,8 @@ def _resolved(check: FieldCheck, master: MasterData) -> JsonValue:
             names = {str(id): name for id, name in master.tags.items()}
             labels = sorted((names.get(item, item) for item in _strings(value)), key=sort_key)
             return list[JsonValue](labels)
+        case CheckField.SPACE:
+            names = {str(id): name for id, name in master.spaces.items()}
         case _:
             return value
     return names.get(value, value) if isinstance(value, str) else value

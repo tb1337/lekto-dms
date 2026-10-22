@@ -189,7 +189,8 @@ def _identifier(item: IdentifierIn, *, rejected: bool = False) -> Identifier:
     """As written, normalised (ValidationError, 422, if it is none), with its topic; a rejected
     one has none."""
     topic = None if rejected or item.topic_id is None else TagId(item.topic_id)
-    return Identifier.parse(item.kind, item.value, topic_id=topic)
+    user = None if rejected or item.user_id is None else UserId(item.user_id)
+    return Identifier.parse(item.kind, item.value, topic_id=topic, user_id=user)
 
 
 def _contact_arguments(given: dict[str, Any]) -> dict[str, Any]:

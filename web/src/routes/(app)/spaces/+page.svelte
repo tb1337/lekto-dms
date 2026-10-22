@@ -16,7 +16,7 @@
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
-	import { spaceLabel, type Space, type UserName } from '#lib/masterdata.svelte.ts';
+	import { spaceLabel, userLabel, type Space, type UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import {
 		canChooseMembers,
@@ -52,7 +52,9 @@
 		space.members
 			.filter((member) => member.user_id !== me)
 			.map((member) =>
-				member.role === 'read' ? m.space_member_reads({ name: member.username }) : member.username
+				member.role === 'read'
+					? m.space_member_reads({ name: userLabel(member) })
+					: userLabel(member)
 			)
 			.join(', ');
 

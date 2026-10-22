@@ -10,7 +10,14 @@
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { reportError } from '#lib/errors.ts';
-	import { spaceLabel, userName, type Space, type UserName } from '#lib/masterdata.svelte.ts';
+	import {
+		spaceLabel,
+		userChoice,
+		userLabel,
+		userName,
+		type Space,
+		type UserName
+	} from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 
@@ -37,8 +44,10 @@
 
 	const label = $derived(spaceLabel(space, users, session.user?.id));
 	// Members come with their names, a deactivated one too (whom the users list hides).
-	const name = (id: string) =>
-		space.members.find((member) => member.user_id === id)?.username ?? userName(users, id);
+	const name = (id: string) => {
+		const member = space.members.find((entry) => entry.user_id === id);
+		return member ? userLabel(member) : userName(users, id);
+	};
 	const editors = $derived(space.members.filter((member) => member.role === 'edit').length);
 	// The user of a personal space stays an editor; the last editor of a space stays one.
 	const fixed = (member: Space['members'][number]) =>
@@ -105,7 +114,7 @@
 		<ul class="flex flex-col gap-2">
 			{#each space.members as member (member.user_id)}
 				<li class="flex items-center gap-2">
-					<span class="min-w-0 flex-1 truncate">{member.username}</span>
+					<span class="min-w-0 flex-1 truncate">{userLabel(member)}</span>
 					{#if fixed(member)}
 						<Badge variant="secondary">{m.space_role_edit()}</Badge>
 					{:else if !member.active}
@@ -115,7 +124,7 @@
 							variant="ghost"
 							size="icon"
 							disabled={busy}
-							aria-label={m.members_remove({ name: member.username })}
+							aria-label={m.members_remove({ name: userLabel(member) })}
 							onclick={() => remove(member.user_id)}
 						>
 							<X aria-hidden="true" />
@@ -152,7 +161,7 @@
 						bind:value={userId}
 						options={[
 							{ value: '', label: m.members_choose_user() },
-							...candidates.map((user) => ({ value: user.id, label: user.username }))
+							...candidates.map((user) => ({ value: user.id, label: userChoice(user) }))
 						]}
 					/>
 				</Field.Field>

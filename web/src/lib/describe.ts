@@ -1,7 +1,7 @@
 /** Texts for values in a change: ids become names, the rest is shown plainly. */
 import { isMoney, isPeriod } from '#lib/fields.ts';
 import { formatDate, formatMoney } from '#lib/i18n.ts';
-import { spaceLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+import { spaceLabel, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { writePeriod } from '#lib/periods.ts';
 import { session } from '#lib/session.svelte.ts';
@@ -44,9 +44,9 @@ export function describeValue(value: unknown, lookup: Lookup | null): string {
 		if (space) return spaceLabel(space, lookup.users, session.user?.id);
 		// Another user's personal space the caller is no member of: named by its user.
 		const holder = lookup.users.find((entry) => entry.personal_space_id === text);
-		if (holder) return holder.id === session.user?.id ? m.space_personal() : holder.username;
+		if (holder) return holder.id === session.user?.id ? m.space_personal() : userLabel(holder);
 		const user = lookup.users.find((entry) => entry.id === text);
-		if (user) return user.username;
+		if (user) return userLabel(user);
 	}
 	return /^\d{4}-\d{2}-\d{2}$/.test(text) ? formatDate(text) : text;
 }

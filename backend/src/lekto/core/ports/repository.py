@@ -7,9 +7,10 @@ Common rules for every adapter:
 - `add` keeps the entity's version; `update` succeeds only if the stored version equals the
   entity's version, then increments both. Otherwise it raises ConcurrencyError (at the latest on
   commit).
-- Uniqueness (raises ConflictError at the latest on commit): usernames; names of the spaces
-  that are nobody's personal one; one personal space per user; names of contacts, document
-  types and field definitions, and of tags per scope; the original (SHA-256).
+- Uniqueness (raises ConflictError at the latest on commit): usernames; display names of
+  users (that none is another user's username the services check under a lock); names of the
+  spaces that are nobody's personal one; one personal space per user; names of contacts,
+  document types and field definitions, and of tags per scope; the original (SHA-256).
   Names compare regardless of case. The services look a name up before they write, for a
   message that names it ("'X' already exists"); the adapter's rule is the net for two
   requests at once, which the look-up cannot see.
@@ -49,6 +50,7 @@ from lekto.core.domain.lenses import Lens
 from lekto.core.domain.master_data import Contact, DocumentType, Tag, TagScope
 from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane, NodeRun
+from lekto.core.domain.profiles import Profile
 from lekto.core.domain.rules import Rule, RuleApplication, RuleVersion
 from lekto.core.domain.sorting import sort_key
 from lekto.core.domain.spaces import Space
@@ -91,6 +93,11 @@ class UserRepository(Repository[UserId, User], Protocol):
         of other spaces and their identity data must be removed first; the documents they
         uploaded keep no uploader (`Document.uploaded_by` becomes None)."""
         ...
+
+
+class ProfileRepository(Repository[UserId, Profile], Protocol):
+    """The users' private profiles, by user id; a user without one has none (`find` returns
+    None). A profile goes with its user."""
 
 
 class SpaceRepository(Repository[SpaceId, Space], Protocol):

@@ -9,7 +9,7 @@ import asyncio
 import copy
 import dataclasses
 from collections.abc import Callable, Collection, Hashable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from types import TracebackType
 from typing import Any, Self, cast
@@ -28,6 +28,7 @@ from lekto.adapters.outbound.memory.database import (
     FIELDS,
     LENSES,
     LOGIN_FAILURES,
+    PROFILES,
     RULE_APPLICATIONS,
     RULES,
     SESSIONS,
@@ -79,6 +80,7 @@ from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.master_data import Contact, DocumentType, MasterData, Tag, TagScope
 from lekto.core.domain.permissions import Reach
 from lekto.core.domain.pipeline import NodeRun
+from lekto.core.domain.profiles import Profile
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import User
 from lekto.core.domain.validation import name_key, require_utc
@@ -112,6 +114,7 @@ class MemoryUnitOfWork:
         self._confirmations: dict[DocumentId, Confirmation | None] = {}
 
         self.users = MemoryUserRepository(self, USERS)
+        self.profiles = MemoryRepository[UserId, Profile](self, PROFILES)
         self.spaces = MemorySpaceRepository(self, SPACES)
         self.contacts = MemoryNamedRepository[ContactId, Contact](self, CONTACTS)
         self.document_types = MemoryNamedRepository[DocumentTypeId, DocumentType](
@@ -338,7 +341,8 @@ class MemoryUserRepository(MemoryRepository[UserId, User]):
         return next((_copy(row) for row in self._all() if name_key(row.username) == key), None)
 
     async def remove(self, id: UserId) -> None:
-        """As the SQL schema's ON DELETE SET NULL: the user's documents keep no uploader."""
+        """As the SQL schema's ON DELETE SET NULL: the user's documents keep no uploader, the
+        contacts' identifiers that named them name nobody; their profile goes with them."""
         await self.get(id)
         self._uow._check_unreferenced(self._table, id)
         for row in self._uow._rows(DOCUMENTS):
@@ -346,6 +350,16 @@ class MemoryUserRepository(MemoryRepository[UserId, User]):
                 changed = _copy(row)
                 changed.uploaded_by = None
                 self._uow._write(DOCUMENTS, row.id, changed)
+        for contact in self._uow._rows(CONTACTS):
+            if any(item.user_id == id for item in contact.identifiers):
+                updated = _copy(contact)
+                updated.identifiers = [
+                    replace(item, user_id=None) if item.user_id == id else item
+                    for item in contact.identifiers
+                ]
+                self._uow._write(CONTACTS, contact.id, updated)
+        if self._uow._row(PROFILES, id) is not None:
+            self._uow._write(PROFILES, id, _REMOVED)
         self._uow._write(self._table, id, _REMOVED)
 
 

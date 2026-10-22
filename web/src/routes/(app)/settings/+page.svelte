@@ -7,14 +7,17 @@
 	import type { components } from '#lib/api/schema.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import PasswordCard from '#lib/components/PasswordCard.svelte';
+	import ProfileForm from '#lib/components/ProfileForm.svelte';
 	import TokensCard from '#lib/components/TokensCard.svelte';
 	import TotpCard from '#lib/components/TotpCard.svelte';
 	import * as Alert from '#lib/components/ui/alert/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
+	import { userLabel } from '#lib/masterdata.svelte.ts';
 	import { oidcErrorMessage } from '#lib/oidc-errors.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { session } from '#lib/session.svelte.ts';
 
 	type Me = components['schemas']['Me'];
 	type Oidc = components['schemas']['OidcInfo'];
@@ -37,6 +40,11 @@
 	}
 
 	onMount(load);
+
+	// A new display name shows at once in the account menu too.
+	async function saved() {
+		await Promise.all([load(), session.load()]);
+	}
 
 	async function link() {
 		try {
@@ -79,11 +87,20 @@
 	{:else}
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>{me.user.username}</Card.Title>
+				<Card.Title>{userLabel(me.user)}</Card.Title>
 				<Card.Description>
-					{me.user.role === 'admin' ? m.role_admin() : m.role_user()}
+					{me.user.username} · {me.user.role === 'admin' ? m.role_admin() : m.role_user()}
 				</Card.Description>
 			</Card.Header>
+		</Card.Root>
+
+		<Card.Root>
+			<Card.Header>
+				<Card.Title>{m.profile_title()}</Card.Title>
+			</Card.Header>
+			<Card.Content>
+				<ProfileForm onsaved={saved} />
+			</Card.Content>
 		</Card.Root>
 
 		{#if me.has_password}<PasswordCard />{/if}

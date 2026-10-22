@@ -49,8 +49,32 @@ cases on top.
 
 ## Identity
 
-`core/domain/identity.py` and `core/services/auth.py`; `User` itself only knows its role and
-whether it is active. A deactivated user has no rights and cannot authenticate.
+`core/domain/identity.py` and `core/services/auth.py`; `User` itself only knows its role,
+whether it is active and its display name. A deactivated user has no rights and cannot
+authenticate.
+
+- Profiles (`core/domain/profiles.py`, `core/services/profiles.py`): the display name is
+  public (`UserOut.display_name`, shown instead of the username where set); the rest is private
+  to the user and admins: aliases (a maiden name), birth date, e-mail and the person's own
+  identifiers (`iban`, `tax_id`, `social_security_number`, `health_insurance_number`,
+  `email_address`, each checked: the tax ID's and the social security number's check digits,
+  the health insurance number's). A display name is unique across users regardless of case and
+  never another user's username, nor a new username another user's display name (`409`; checked
+  under a lock, so that a name shown stands for one person); choices of a user (members,
+  hand-overs, whose number) show the username beside a display name that differs. Aliases are
+  private and need not be unique: a `409` would tell whose alias it is. An identifier may
+  belong to several users (a joint account), never to a user and a contact: one a contact
+  entered by hand is `409`, a learned one gives way, and training never learns a person's
+  identifier as a contact's, nor a customer or personnel number that is one of a person's
+  values or stands in one (a pension fund's "Versicherungsnummer" is the start of the social
+  security number), nor a person's e-mail domain. Whose a contact's number is
+  (`IdentifierOut.user_id`) only admins and that user see. An identity provider's `name` and
+  `email` fill a new account's display name and e-mail, once, if free and valid. A profile
+  needs a session: the own one at `/auth/me/profile`, anyone's for admins at
+  `/users/{id}/profile`; an admin's API token (a migration) reads and sets only the display
+  name and the e-mail address, a user's own token nothing. Nothing of a profile goes to the
+  language model or the search index; the display name labels the user's personal space in the
+  prompt.
 
 - Passwords: Argon2id (`adapters/outbound/crypto`, RFC 9106 low-memory profile: 3 passes,
   64 MiB, 4 lanes), at most four hashes at a time, in a worker thread. Normalised to Unicode
@@ -465,7 +489,28 @@ and the space, the fields node reads the fields of the decided type and the titl
   identifier in a code counts as one in the text, the payee of a GiroCode as a name in the
   text, which proposes nothing alone. Reading the codes may fail; the signal warns and goes on
   without them. Which identifiers the document shows goes to `document_identifiers`, which
-  tells on the confirmed documents of how many contacts an identifier stands.
+  tells on the confirmed documents of how many contacts an identifier stands. It also finds
+  persons (`persons`: user id, strength, kinds of evidence, never the values): one of their
+  own identifiers, or a contact's customer or personnel number that names them, is `hard`;
+  their birth date in the text `medium`; their display name or an alias `weak` (an address
+  block names a whole household). Only active users are found, also by a contact's number. A
+  tax ID stands after its label (`Steuer-ID`, `IdNr.`, `Identifikationsnummer (IdNr.)`) or in
+  its groups (`12 345 678 901`), a social security number anywhere, a health insurance number
+  after its label (`Versichertennummer`, `Krankenversicherungsnummer`); a customer or personnel
+  number that is one of these, stands in one or overlaps it is none (a pension fund writes
+  "Versicherungsnummer: 65 170839 J 003"). A person's own numbers, a user's IBAN among them, are
+  no unknown identifiers. The judge weighs the persons for the space (below), and adds the
+  model's recipient: every user whose display name or alias stands whole in it, else one whose
+  name matches it from `LEKTO_CONFIDENCE_THRESHOLD` on, unless another user's name matches it
+  nearly as well (within 0.05, as for contacts), is `medium` (never their
+  username; nothing of a profile goes to the model). The judge's entry keeps the persons it
+  weighed (`persons`: user id, strength, and `public`: the strength of what anyone may know,
+  their display name in the text or as the recipient). What is private about a person found
+  them only for admins and that person: the log, the review and the facts show anyone else a
+  user only where the text has their display name (`weak`, or `medium` as the recipient), and
+  `unseen_by` names another user only for a public `medium`; their numbers then show as unknown
+  identifiers. Inherent, and accepted: a suggestion to hand a document over to Anna tells its
+  uploader that something in it is Anna's.
 
 A signal *names* a value it is sure of: the model, a contact whose name or alias its sender
 matches at least `LEKTO_CONFIDENCE_THRESHOLD` (legal forms and punctuation aside) with no other
@@ -483,7 +528,7 @@ sources. The judge's rule:
 | Document type | two signals name it, or only the model and no other signal covers it (the classifier was not trained on it, no confirmed document carries it) | yellow; a type outside the list is proposed as new |
 | Tags (automatic document tags; one set by hand is never proposed) | set as a type is green, without the parent of a tag set | a suggestion (ids); tags never make a document yellow |
 | Document date | a valid date that appears in the text, in a quoted passage that shows it (`31.03.2026`, `31.3.26`, `2026-03-31`, `31. März 2026`, `March 31, 2026`, ...) | suggested |
-| Space (among the uploader's candidates; only with two or more) | sure as a type: two signals name it, or only the model and no other signal covers it. The space it lies in: nothing changes (no model value, so rules file it as they would). One that shows the document to no one new, keeps it with its uploader and is no one else's personal space: it moves there. One with new readers, one its uploader would not see, or another user's personal space (a hand-over): yellow with the space as suggestion ("suggests another space, which shows it to more people", "suggests handing it over into another user's personal space"); more visibility and a hand-over only with a person's click. Reasons and candidates name no space and no person (the editors of the document may not see them; the web names what its viewer sees). A space a person decided is left | it stays where it is, never yellow (the best candidate is kept in the log) |
+| Space (among the uploader's candidates; only with two or more) | sure as a type: two signals name it, or only the model and no other signal covers it. The space it lies in: nothing changes (no model value, so rules file it as they would). One that shows the document to no one new, keeps it with its uploader and is no one else's personal space: it moves there. One with new readers, one its uploader would not see, or another user's personal space (a hand-over): yellow with the space as suggestion ("suggests another space, which shows it to more people", "suggests handing it over into another user's personal space"); more visibility and a hand-over only with a person's click. Reasons and candidates name no space and no person (the editors of the document may not see them; the web names what its viewer sees). A space a person decided is left. The persons the document names (its uploader aside) weigh in: hard evidence backs the one space whose members are exactly those it names (one other person alone: their personal space; else the one smallest space with all of them), with a signal naming it it is sure; hard evidence against a sure space, or against the one it lies in while unsure, makes it yellow with the backed space as suggestion ("names someone who would not see it there; ..."), unless the space it lies in shows it to all of them: then it stays. Medium evidence only warns: `unseen_by` lists who is named but would not see it where the check leads. Weak evidence only breaks ties among spaces the signals name equally. Persons never move a document by themselves | it stays where it is, never yellow (the best candidate is kept in the log); hard evidence of others it does not show it to leaves a warning (`unseen_by`) |
 
 Without the model's proposal the judge is uncertain; it fails (red) only if the model answered
 and no signal recognised anything.
@@ -739,6 +784,14 @@ while they are a member of its space, a space rule is a user rule again). It sto
 could not load the data: a shared personal space, a global rule that does more than tag, set
 fields and force a review.
 
+Revision 0035 adds display names (`users.display_name`, unique through `display_name_key`) and
+the profiles (`user_profiles`, `user_aliases` (unique per user only), `user_identifiers`), and
+lets a contact's identifier name a user (`contact_identifiers.user_id`, set to null with the
+user). Nothing is filled in: users are shown by their username until they or an admin enter a
+display name (settings, user management), a migration fills them from Paperless. Once a user has
+one, `{{ uploaded_by }}` in titles and paths renders it instead of the username: titles and
+paths rendered anew change.
+
 **Evaluation.** `lekto evaluate [--fake]` runs the synthetic documents in
 `evaluation/` cold and trained and writes a report; see [evaluation/README.md](evaluation/README.md).
 
@@ -837,7 +890,7 @@ where it is and edits where it goes (global: admins); every version names its sp
   filters with `|`. They see `title`, `filename`, `original_filename`, `contact`, `topic`,
   `document_type`, `document_date`, `added`, `tags` (those set), `contact_groups` and
   `document_type_groups` (the groups the contact and the type are in, by name, sorted), `space`
-  (a personal space by its user's name), `uploaded_by` (who uploaded it, by username),
+  (a personal space by its user's name), `uploaded_by` (who uploaded it, by display name, else username),
   `channel`, `pages` and
   `field.<key>` (`FieldOut.key`, from the name: `LA_Brutto` is `la_brutto`; an amount has
   `.amount` and `.currency`, a period `.start` and `.end`), as the rules leave the document. A
@@ -1050,19 +1103,21 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | --- | --- |
 | `POST /auth/login` | Username, password, optional `code` or `recovery_code`; sets the cookie, returns the CSRF token |
 | `POST /auth/logout`, `GET /auth/me` | Sign out; who is calling and how |
+| `GET/PATCH /auth/me/profile` | The own profile: display name, aliases, birth date, e-mail, identifiers; what is given changes (a session; API tokens `403`) |
 | `POST /auth/password` | Change the own password: other sessions end, `revoke_tokens` optional |
 | `DELETE /auth/sessions` | End all other sessions |
 | `POST /auth/totp`, `/totp/confirm`, `/totp/disable`, `/totp/recovery-codes` | TOTP |
 | `GET/POST /auth/tokens`, `DELETE /auth/tokens/{id}` | Own API tokens |
 | `GET /auth/oidc`, `/auth/oidc/login`, `/auth/oidc/callback`; `POST/DELETE /auth/oidc/link` | OpenID Connect |
-| `GET /users`, `GET/PATCH/DELETE /users/{id}`, `GET /users/{id}/removal` | Accounts: list (others see active users' names), role and state, delete with the spaces it settles (admins) |
+| `GET /users`, `GET/PATCH/DELETE /users/{id}`, `GET /users/{id}/removal` | Accounts: list (others see active users' names, display names and personal spaces), role and state, delete with the spaces it settles (admins) |
+| `GET/PATCH /users/{id}/profile` | A user's profile (admins and the user themself, with a session; an admin's API token reads and sets only the display name and e-mail, as a migration does) |
 | `POST /users`, `POST /users/{id}/password`, `DELETE /users/{id}/totp`, `DELETE /users/{id}/oidc` | Create with password, reset password, turn TOTP off, remove links (admins, session only, not the own account) |
 | `/contacts`, `/document-types`, `/tags`, `/fields` (`GET`, `POST`, `GET/PATCH/DELETE /{id}`) | Master data: read by all, changed by admins, deleted only when unused. Contacts and types take `group_ids`, contacts `topic_ids` (the topics they enable) and identifiers with an optional `topic_id`. Fields: name, description, choices and scope change, the data type does not; removing a used choice or narrowing the scope past documents with values is `409`. The lists take `document_counts=true` (and `all_users` for admins): each item with `document_count`, the documents in the caller's reach that have it (a field: a value for it; a tag: see Tags), counted in one query (tags in a few: the parents' counts and the groups' come apart) |
 | `GET /tags` | The tags in the order of their trees (each after its parent, siblings by name; document tags, contact groups, type groups, topics), or of one `scope`; each with `scope`, `parent_id`, `path` (the names from the top), `assignment`, `shown`, `icon`, `color`. `POST` takes `scope` (default `document`), `parent_id`, `assignment` and `shown` (by scope unless given), `icon` and `color`; `PATCH` name, parent (`null`: the top), assignment, `shown`, `icon` and `color` (`null` removes them), never the scope. Document types take an `icon` too |
 | `PUT/DELETE /contacts/{id}/logo`, `GET /contacts/{id}/logo` | A contact's logo (see Icons, colours and logos): upload (multipart `file`, admins; `413` above 1 MiB, `415` for another kind than PNG, JPEG or WebP, `422` if it cannot be read), remove (admins), read (everyone; WebP with `Cache-Control: private, max-age=86400`, the only answer of the API a browser may keep: `ContactOut.logo.url` carries the version). `ContactOut` has `logo` (source, domain, time, URL) and `logo_failure` (the domains whose fetch found none, the time of the last) |
 | `POST /contacts/{id}/logo/fetch` | Fetch the logo from the contact's website (admins, `202`); `503` without `LEKTO_LOGO_FETCH`, `409` with an uploaded logo, `422` without a domain |
 | `PUT /document-types/{id}/fields` | The fields of a document type, each required or optional, set from the type in one transaction (admins); answers its fields. A global field is `422`; taking off a field that has values on its documents or that the type's title pattern uses is `409` |
-| `POST /contacts/{id}/identifiers` | Attach one identifier to a contact, entered by hand (admins), optionally with a `topic_id` the contact enables; the others stay; `409` if another contact has it by hand. `PATCH` replaces the whole list |
+| `POST /contacts/{id}/identifiers` | Attach one identifier to a contact, entered by hand (admins), optionally with a `topic_id` the contact enables and, for a customer or personnel number, the `user_id` it belongs to; the others stay; `409` if another contact has it by hand or it is a person's. `PATCH` replaces the whole list; a person's kinds are `422` |
 | `GET/POST /spaces`, `GET/PATCH/DELETE /spaces/{id}`, `PUT/DELETE /spaces/{id}/members/{user_id}` | Spaces the caller is a member of (admins: all), with `personal_of`, the caller's `role`, the `members` and the `description` (what belongs in it, for the language model, at most 300 characters); create (`members`, `description`; the caller edits it, an admin may give the members alone), rename and describe (`PATCH` with `name` and/or `description`, null removes it; a personal space keeps its name), delete (empty, never a personal space), members with `role` `read` or `edit` and their `username` and `active` (editors; of a personal space its user); every member leaves a space themselves (`204`) |
 | `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `sort` (`relevance`, the default, or a key of `GET /documents`; relevance breaks ties), `limit`, `offset`, `semantic_ratio`; hits with snippet (the document with `in_inbox`, as in `GET /documents`), `estimated_total`, `next_offset`, `semantic` |
 | `POST /search/reindex` | Rebuild the search index in the background (admins); `202` |
@@ -1075,7 +1130,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /documents/{id}/original`, `/archive`, `/preview`, `/pages/{number}` | Files (read access); pages from 1 to `page_count` |
 | `GET /documents/{id}/text` | The text as it is set (plain text, pages apart by form feeds) in pieces: `offset`, `limit` (at most `LEKTO_MCP_TEXT_MAX`, the default); `409` while not parsed |
 | `GET /documents/{id}/files` | The files as stored (read access): when the document was added and changed, its original's name and type, and for the original and the archive (null while there is none) size, SHA-256 and metadata: a PDF's version, PDF/A level, pages, document information and XMP; an image's format, size, resolution and EXIF |
-| `GET /documents/{id}/facts` | What the document shows of its contacts (read access): names and identifiers with the contact they belong to now and their spans in the text (characters, as `/text` counts them), each with where it stands on the archive's pages (a box per line; none for a text parsed before 0.2); the codes on its pages, each once for its format and text, with the pages and boxes where it stands (a box per copy), the GiroCode read, their identifiers and the amount fields of the same value; for admins, on the documents of how many other contacts an identifier stands; `409` while not parsed |
+| `GET /documents/{id}/facts` | What the document shows of its contacts (read access): names and identifiers with the contact they belong to now and their spans in the text (characters, as `/text` counts them), each with where it stands on the archive's pages (a box per line; none for a text parsed before 0.2); the codes on its pages, each once for its format and text, with the pages and boxes where it stands (a box per copy), the GiroCode read, their identifiers and the amount fields of the same value; for admins, on the documents of how many other contacts an identifier stands; for the editors of its space and admins the persons it names (`persons`: name, strength, kinds of evidence, spans; `null` for readers; what is private about a person finds them only for admins and that person, anyone else sees another user by their display name alone); `409` while not parsed |
 | `GET /documents/{id}/log` | Processing log (editors and admins) |
 | `POST /documents/{id}/retry` | Repeat the failed nodes (editors and admins) |
 | `POST /documents/{id}/reprocess` | `{"from_node": "ocr"}`: process again from a node, with every node after it (editors and admins) |

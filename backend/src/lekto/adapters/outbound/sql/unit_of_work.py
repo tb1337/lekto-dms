@@ -43,7 +43,7 @@ from lekto.adapters.outbound.sql.master_data import (
 from lekto.adapters.outbound.sql.rules import SqlRuleApplicationRepository, SqlRuleRepository
 from lekto.adapters.outbound.sql.spaces import SqlSpaceRepository
 from lekto.adapters.outbound.sql.transaction import Transaction
-from lekto.adapters.outbound.sql.users import SqlUserRepository
+from lekto.adapters.outbound.sql.users import SqlProfileRepository, SqlUserRepository
 from lekto.adapters.outbound.sql.webhooks import SqlWebhookRepository
 from lekto.core.domain.events import DomainEvent
 
@@ -91,6 +91,7 @@ class SqlUnitOfWork:
         self._tx = Transaction(database)
         self._locked = False
         self.users = SqlUserRepository(self._tx)
+        self.profiles = SqlProfileRepository(self._tx)
         self.spaces = SqlSpaceRepository(self._tx)
         self.contacts = SqlContactRepository(self._tx)
         self.document_types = SqlDocumentTypeRepository(self._tx)

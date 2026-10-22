@@ -45,11 +45,21 @@ value.
   members): it moves there. Sure of one with members who cannot see it now: uncertain, with
   the space as suggestion and its new readers in the reason (more visibility only with a
   person's click). Not sure: it stays where it is, never uncertain.
+- The persons a document names weigh in on the space (`judge_space`'s `persons`; the uploader
+  aside): those with *hard* evidence (one of their identifiers) back the one space whose
+  members they are exactly, as an identifier backs a contact (one other person alone: their
+  personal space, a hand-over); with a signal naming it, it is sure. Hard evidence against a
+  sure space that would not show the document to such a person makes it uncertain, and alone
+  it suggests the space it backs when the document lies where such a person does not see it.
+  *Medium* evidence (a birth date, the model's recipient) only warns: the check lists who is
+  named but would not see the document there (`unseen_by`). *Weak* evidence (a name) only
+  breaks ties between spaces the signals name equally. Persons never move a document by
+  themselves.
 """
 
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Protocol
 
 from lekto.core.domain.classification import (
@@ -62,6 +72,7 @@ from lekto.core.domain.classification import (
     CandidateSource,
     FieldCheck,
 )
+from lekto.core.domain.facts import Strength
 from lekto.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId, UserId
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.master_data import Contact, DocumentType, Tag
@@ -137,11 +148,14 @@ class Neighbour:
 class FactsView:
     """Contacts named in the text, the kinds of their identifiers found in it, and the topics
     those identifiers point to (each with the kinds that point to it): the pairs of contact and
-    topic the text shows."""
+    topic the text shows. `persons`: the users it names, each with the strongest evidence;
+    `public` those of them it names by their display name (what anyone may know)."""
 
     named: frozenset[ContactId] = frozenset()
     identifiers: Mapping[ContactId, tuple[str, ...]] = field(default_factory=dict)
     topics: Mapping[ContactId, Mapping[TagId, tuple[str, ...]]] = field(default_factory=dict)
+    persons: Mapping[UserId, Strength] = field(default_factory=dict)
+    public: frozenset[UserId] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -787,30 +801,95 @@ class SpaceChoice:
     uploader: UserId | None = None
 
 
-def judge_space(signals: Signals, choice: SpaceChoice, thresholds: Thresholds) -> FieldCheck:
+_NAMED_UNSEEN = "names someone who would not see it there"
+_STAYS_FOR_NAMED = "stays: the space the signals name leaves out someone it names"
+
+
+def recipient_persons(
+    recipient: str | None,
+    people: Iterable[tuple[UserId, Sequence[str]]],
+    thresholds: Thresholds,
+) -> dict[UserId, Strength]:
+    """The users the model's recipient names, as medium evidence: every one whose display name
+    or an alias stands whole in it ("Tobias und Anna Busch" names both), else the one whose
+    name matches it at least `accept`, unless another user's name matches it nearly as well
+    (within `ambiguity`, as for contacts: "Anna Busch" and "Hanna Busch" name neither).
+    `people`: the users with their display name and aliases (never the username: what the user
+    called themselves)."""
+    if recipient is None or not recipient.strip():
+        return {}
+    named = [(user, tuple(name for name in names if match_key(name))) for user, names in people]
+    key = match_key(recipient)
+    found = {
+        user: Strength.MEDIUM
+        for user, names in named
+        if any(mentions(key, match_key(name)) for name in names)
+    }
+    if found:
+        return found
+    match = best_match(recipient, [(user, name) for user, names in named for name in names])
+    ambiguous = match.runner_up >= match.score - thresholds.ambiguity
+    if match.best is not None and match.score >= thresholds.accept and not ambiguous:
+        return {match.best: Strength.MEDIUM}
+    return {}
+
+
+def named_persons(*sources: Mapping[UserId, Strength]) -> dict[UserId, Strength]:
+    """The persons the `sources` name, each with the strongest evidence any of them has."""
+    merged: dict[UserId, Strength] = {}
+    for source in sources:
+        for user, strength in source.items():
+            known = merged.get(user)
+            if known is None or strength.rank > known.rank:
+                merged[user] = strength
+    return merged
+
+
+def judge_space(
+    signals: Signals,
+    choice: SpaceChoice,
+    thresholds: Thresholds,
+    persons: Mapping[UserId, Strength] | None = None,
+    recipients: frozenset[UserId] = frozenset(),
+) -> FieldCheck:
     """The space for the document (see the module): the check's `value` is the space the judge
     moves it to (None: it stays where it is). A move is the judge's own only if it shows the
     document to no one new and keeps it with its uploader in a space that is no one else's
     personal space; any other one it suggests (uncertain, a person decides): one that shows it
-    to others, one its uploader would not see, a hand-over. Reasons and candidates name no
-    space and no person (the editors of the document may not see them): the suggestion is the
-    space's id."""
+    to others, one its uploader would not see, a hand-over. `persons`: the users the document
+    names, with the strongest evidence (`named_persons`); `recipients`: those the model's
+    recipient names by their display name (what anyone may know). The model proposing the
+    personal space of a user its recipient names suggests handing it over to them, whatever
+    the other signals say (Tobi, 22.10.2026: a payslip for Anna among Tobi's payslips).
+    Reasons and candidates name no space and no person (the editors of the document may not
+    see them): the suggestion is the space's id, `unseen_by` the ids of those named (medium or
+    hard) who would not see the document where the check leads."""
     current = choice.current
     names = choice.options
     if choice.locked:
         return FieldCheck(
             field=SPACE, outcome=Outcome.OK, confidence=1.0, reason="a person chose the space"
         )
+    named = _Persons.of(persons or {}, choice.uploader)
+    backed = named.backed(names)
     model = signals.model
     by_model = model.space if model is not None and model.space in names else None
+    # The model proposes the personal space of another user, and its recipient is that user.
+    addressed = by_model is not None and _addressed(names[by_model], recipients, choice.uploader)
     classifier = signals.classifier
     ranking = _Ranking.of(
         names,
         signals,
         thresholds,
-        answer={by_model: CandidateSource(signal=LLM, names=True)} if by_model else {},
+        answer=(
+            {by_model: CandidateSource(signal=LLM, names=True, recipient=addressed)}
+            if by_model
+            else {}
+        ),
         classified=classifier.spaces if classifier else (),
         carried=lambda item: item.space,
+        evidence={backed: CandidateSource(signal=FACTS, named_in_text=True)} if backed else None,
+        identified=(backed,) if backed else (),
     )
     namers, probabilities = ranking.namers, ranking.probabilities
     known = signals.neighbours_know
@@ -821,56 +900,205 @@ def judge_space(signals: Signals, choice: SpaceChoice, thresholds: Thresholds) -
         return by_classifier or by_neighbours
 
     def contradicted(id: SpaceId) -> bool:
-        return any(other != id for other in namers)
+        return any(other != id for other in namers) or named.lack(names[id], hard=True)
 
     def sure(id: SpaceId) -> bool:
         naming = namers.get(id, ())
+        if any(other != id for other in namers):
+            return False
         sole = naming == (LLM,) and not covered_by_others(id)
-        return not contradicted(id) and (len(naming) >= 2 or sole)
+        return len(naming) >= 2 or sole or (id == backed and bool(naming))
 
-    ranked = ranking.candidates()
+    ranked = named.preferred(ranking.candidates(), names, namers, backed)
     listed = tuple(ranking.listed(ranked, contradicted))
     chosen = next((id for id in ranked if sure(id)), None)
+    here = names.get(current)
+    seeing = here.members if here is not None else frozenset()
+
+    def leading(check: FieldCheck, where: SpaceId) -> FieldCheck:
+        """`check` with those named who would not see the document in `where`."""
+        unseen = tuple(str(user) for user in named.unseen(names[where])) if where in names else ()
+        if not unseen:
+            return check
+        reason = check.reason or _NAMED_UNSEEN
+        return replace(check, reason=reason, unseen_by=unseen)
+
+    def suggested(target: SpaceId, why: str, confidence: float) -> FieldCheck:
+        return leading(
+            FieldCheck(
+                field=SPACE,
+                outcome=Outcome.UNCERTAIN,
+                confidence=min(confidence, _UNSURE),
+                reason=why,
+                suggestion=str(target) if target != current else None,
+                candidates=listed,
+            ),
+            target,
+        )
+
+    # Hard evidence against the space the signals are sure of (or, unsure, the one it lies
+    # in): someone it names would not see the document there. Where it lies everyone it names
+    # sees it: it stays (no hand-over, no narrowing that would leave them out).
+    landing = chosen if chosen is not None else current
+    if landing in names and named.lack(names[landing], hard=True):
+        if landing != current and here is not None and not named.lack(here, hard=True):
+            return FieldCheck(
+                field=SPACE,
+                outcome=Outcome.OK,
+                confidence=1.0,
+                reason=_STAYS_FOR_NAMED,
+                candidates=listed,
+            )
+        if backed is not None and backed != landing:
+            target, why = backed, _moving_why(names[backed], seeing, choice.uploader)
+            return suggested(target, f"{_NAMED_UNSEEN}; {why or 'suggests another space'}", 1.0)
+        if chosen is not None:
+            return suggested(chosen, _NAMED_UNSEEN, 1.0)
+    if addressed and chosen is None and by_model is not None and by_model != current:
+        # The model and its recipient name the same person: a hand-over to suggest, even
+        # against similar documents that all stayed with the uploader (there was no one else).
+        why = _moving_why(names[by_model], seeing, choice.uploader)
+        return suggested(by_model, why or _HANDING_OVER, thresholds.accept)
     if chosen is None or chosen == current:
         top = next((id for id in ranked if id != current), None)
-        return FieldCheck(  # it stays: nothing to doubt (as an unsure topic), no model value
-            field=SPACE,
-            outcome=Outcome.OK,
-            confidence=1.0,
-            reason="the signals name different spaces" if len(namers) > 1 else None,
-            suggestion=None if chosen is not None or top is None else str(top),
-            candidates=listed,
+        return leading(
+            FieldCheck(  # it stays: nothing to doubt (as an unsure topic), no model value
+                field=SPACE,
+                outcome=Outcome.OK,
+                confidence=1.0,
+                reason="the signals name different spaces" if len(namers) > 1 else None,
+                suggestion=None if chosen is not None or top is None else str(top),
+                candidates=listed,
+            ),
+            current,
         )
     confidence = (
         1.0
         if len(namers[chosen]) >= 2 or not probabilities
         else max(probabilities.get(chosen, 0.0), thresholds.accept)
     )
-    here = names.get(current)
-    target = names[chosen]
-    seeing = here.members if here is not None else frozenset()
-    if target.members - seeing:
-        why = "suggests another space, which shows it to more people"
-    elif target.personal_of is not None and target.personal_of != choice.uploader:
-        why = "suggests handing it over into another user's personal space"
-    elif choice.uploader is not None and choice.uploader not in target.members:
-        why = "suggests a space its uploader does not see"
-    else:
-        return FieldCheck(
-            field=SPACE,
-            outcome=Outcome.OK,
-            confidence=confidence,
-            value=str(chosen),
-            candidates=listed,
+    why = _moving_why(names[chosen], seeing, choice.uploader)
+    if why is None:
+        return leading(
+            FieldCheck(
+                field=SPACE,
+                outcome=Outcome.OK,
+                confidence=confidence,
+                value=str(chosen),
+                candidates=listed,
+            ),
+            chosen,
         )
-    return FieldCheck(
-        field=SPACE,
-        outcome=Outcome.UNCERTAIN,
-        confidence=min(confidence, _UNSURE),
-        reason=why,
-        suggestion=str(chosen),
-        candidates=listed,
+    return suggested(chosen, why, confidence)
+
+
+_HANDING_OVER = "suggests handing it over into another user's personal space"
+
+
+def _addressed(target: SpaceOption, recipients: frozenset[UserId], uploader: UserId | None) -> bool:
+    """Whether `target` is the personal space of another user the model's recipient names, and
+    the recipient does not name the uploader too (a letter to both is no hand-over)."""
+    return (
+        target.personal_of is not None
+        and target.personal_of != uploader
+        and target.personal_of in recipients
+        and uploader not in recipients
     )
+
+
+def _moving_why(
+    target: SpaceOption, seeing: frozenset[UserId], uploader: UserId | None
+) -> str | None:
+    """Why a move into `target` needs a person (None: the judge may make it): it shows the
+    document to more people than those `seeing` it now, hands it over into another user's
+    personal space, or leaves its uploader without it."""
+    if target.members - seeing:
+        return "suggests another space, which shows it to more people"
+    if target.personal_of is not None and target.personal_of != uploader:
+        return _HANDING_OVER
+    if uploader is not None and uploader not in target.members:
+        return "suggests a space its uploader does not see"
+    return None
+
+
+@dataclass(frozen=True)
+class _Persons:
+    """The persons a document names, its uploader aside, by the strength of the evidence:
+    `hard` (identifiers), `named` (medium or hard: a birth date, the model's recipient), `all`
+    (also a name alone). `uploader_hard`: the uploader's own identifiers stand in it too."""
+
+    hard: frozenset[UserId]
+    named: frozenset[UserId]
+    all: frozenset[UserId]
+    uploader_hard: bool = False
+    uploader: UserId | None = None
+
+    @classmethod
+    def of(cls, persons: Mapping[UserId, Strength], uploader: UserId | None) -> "_Persons":
+        others = {user: strength for user, strength in persons.items() if user != uploader}
+        return cls(
+            hard=frozenset(user for user, strength in others.items() if strength is Strength.HARD),
+            named=frozenset(
+                user for user, strength in others.items() if strength.rank >= Strength.MEDIUM.rank
+            ),
+            all=frozenset(others),
+            uploader_hard=uploader is not None and persons.get(uploader) is Strength.HARD,
+            uploader=uploader,
+        )
+
+    def backed(self, options: Mapping[SpaceId, SpaceOption]) -> SpaceId | None:
+        """The space hard evidence backs: the one whose members are exactly those it names
+        (the uploader among them only if named too); one other person alone: their personal
+        space (a hand-over); else the one smallest space that shows it to all of them (a
+        household's account names two, the household space has their child too). None
+        without hard evidence of another person, or without one such space."""
+        if not self.hard:
+            return None
+        wanted = self.hard | ({self.uploader} if self.uploader_hard and self.uploader else set())
+        exact = [id for id, option in options.items() if option.members == wanted]
+        if len(exact) == 1:
+            return exact[0]
+        if len(self.hard) == 1 and not self.uploader_hard:
+            (person,) = self.hard
+            own = [id for id, option in options.items() if option.personal_of == person]
+            return own[0] if len(own) == 1 else None
+        covering = [
+            (len(option.members), id) for id, option in options.items() if wanted <= option.members
+        ]
+        smallest = [
+            id for size, id in covering if size == min((size for size, _ in covering), default=0)
+        ]
+        return smallest[0] if len(smallest) == 1 else None
+
+    def lack(self, option: SpaceOption, *, hard: bool) -> bool:
+        """Whether someone named (`hard`: with hard evidence) is no member of `option`."""
+        return bool((self.hard if hard else self.named) - option.members)
+
+    def unseen(self, option: SpaceOption) -> list[UserId]:
+        """Those named with medium or hard evidence who are no members of `option`."""
+        return sorted(self.named - option.members, key=str)
+
+    def preferred(
+        self,
+        ranked: list[SpaceId],
+        options: Mapping[SpaceId, SpaceOption],
+        namers: Mapping[SpaceId, tuple[str, ...]],
+        backed: SpaceId | None,
+    ) -> list[SpaceId]:
+        """`ranked` with ties broken by the persons: among the spaces the signals name equally
+        (and hard evidence backs equally), first those that show the document to everyone
+        named with medium or hard evidence, then to everyone named at all."""
+        if not self.all:
+            return ranked
+        return sorted(
+            ranked,
+            key=lambda id: (
+                -len(namers.get(id, ())),
+                -(id == backed),
+                -(self.named <= options[id].members),
+                -(self.all <= options[id].members),
+            ),
+        )
 
 
 # --- helpers ----------------------------------------------------------------------------------

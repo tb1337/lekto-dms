@@ -115,6 +115,7 @@ _DOCUMENT_EXAMPLE: dict[str, Any] = {
     "lane": "green",
     "page_count": 2,
     "confirmed_at": None,
+    "space_confirmed_at": None,
     "processing": {
         "status": "completed",
         "run": 1,
@@ -190,6 +191,15 @@ class DocumentDetails(BaseModel):
             "it is the pipeline's own. Confirmed documents train the classifier."
         )
     )
+    space_confirmed_at: datetime | None = Field(
+        default=None,
+        description=(
+            "When a person last decided the space: confirming in the inbox (also keeping it), "
+            "moving or handing the document over, choosing it on upload, or a migration; null "
+            "while the pipeline or rules placed it. Such documents teach the classifier the "
+            "space."
+        ),
+    )
     processing: Processing
     created_at: datetime = Field(
         description=(
@@ -222,6 +232,7 @@ class DocumentDetails(BaseModel):
             lane=document.lane,
             page_count=document.page_count,
             confirmed_at=document.confirmed_at,
+            space_confirmed_at=document.space_confirmed_at,
             processing=Processing(
                 status=state.status,
                 run=state.run,

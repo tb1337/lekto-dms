@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from lekto.adapters.inbound.problems import BlockingSpaceOut
 from lekto.adapters.inbound.rest.schemas.account import LinkOut, Password, UserOut
 from lekto.core.domain.ids import SpaceId, UserId
-from lekto.core.domain.users import MAX_USERNAME, Role, Settle, Settlement
+from lekto.core.domain.users import MAX_DISPLAY_NAME, MAX_USERNAME, Role, Settle, Settlement
 
 
 class UserCreate(BaseModel):
@@ -20,6 +20,11 @@ class UserCreate(BaseModel):
     )
 
     username: str = Field(min_length=1, max_length=MAX_USERNAME)
+    display_name: str | None = Field(
+        default=None,
+        max_length=MAX_DISPLAY_NAME,
+        description="How others see the user; unique regardless of case (409).",
+    )
     role: Role = Role.USER
     password: Password | None = Field(
         default=None, description="Optional; 12 to 256 characters, not the username."

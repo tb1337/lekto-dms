@@ -7,6 +7,15 @@ A found identifier is matched with the contacts' (`identifiers.matches`): one th
 (entered or learned) is evidence for its contact, and for its topic if it points to one; a
 rejected one is known, but neither evidence nor unknown.
 
+Persons (Tobi, 21.10.2026): a user is found by their identifiers (hard evidence: one of their
+own, or a contact's customer or personnel number that names them), their birth date (medium)
+and their display name or aliases (weak: an address block names everyone in a household). Only
+the persons given are found: a deactivated user, or one not given, never (also not by a
+contact's number); a person given in their public form (`Person.public`) only by their display
+name. A person's own numbers are no contact's: they never show as unknown identifiers (of a
+person in public form they do: that they are someone's is private). Only user ids and the kinds
+of evidence leave this module's results for the log, never the values.
+
 Where it stands: character spans of the text (`spans`), found with the written forms a value
 has (an IBAN in groups of four, a customer number with dashes, a name with any spaces and
 punctuation between its words, umlauts or not). A name broken over two columns has none. Where
@@ -16,15 +25,23 @@ the words of the text have their boxes, a span also has its places on the pages 
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from enum import StrEnum
 from itertools import islice
 
 from lekto.core.domain.codes import Code, code_identifiers, giro_code
-from lekto.core.domain.evidence import UMLAUTS
-from lekto.core.domain.identifiers import IdentifierKind, identifiers_in, matches
-from lekto.core.domain.ids import ContactId, TagId
+from lekto.core.domain.evidence import UMLAUTS, dates_in, normalise
+from lekto.core.domain.identifiers import (
+    CONTACT_KINDS,
+    IdentifierKind,
+    identifiers_in,
+    matches,
+    of_person,
+)
+from lekto.core.domain.ids import ContactId, TagId, UserId
 from lekto.core.domain.locations import Location
 from lekto.core.domain.master_data import Contact
 from lekto.core.domain.names import match_key, mentions
+from lekto.core.domain.profiles import Person
 from lekto.core.domain.text_places import TextPlaces
 
 MOST = 20
@@ -71,16 +88,52 @@ class FoundIdentifier:
         return (self.kind, self.value)
 
 
+class Strength(StrEnum):
+    """How surely a document names a person."""
+
+    WEAK = "weak"  # their display name or an alias
+    MEDIUM = "medium"  # their birth date (in the judge also the model's recipient)
+    HARD = "hard"  # one of their identifiers
+
+    @property
+    def rank(self) -> int:
+        return _RANKS[self]
+
+
+_RANKS = {Strength.WEAK: 1, Strength.MEDIUM: 2, Strength.HARD: 3}
+NAME = "name"
+ALIAS = "alias"
+BIRTH_DATE = "birth_date"
+
+
+@dataclass(frozen=True, kw_only=True)
+class FoundPerson:
+    """A user the document names: the strongest evidence, the kinds of all of it (`name`,
+    `alias`, `birth_date`, the kinds of identifiers), and where names and identifiers stand."""
+
+    user_id: UserId
+    strength: Strength
+    evidence: tuple[str, ...]
+    spans: tuple[Span, ...] = ()
+
+
 @dataclass(frozen=True, kw_only=True)
 class Facts:
     named: tuple[NamedContact, ...]
     identifiers: tuple[FoundIdentifier, ...]  # those of contacts first, then the unknown
+    persons: tuple[FoundPerson, ...] = ()  # the surest first
 
 
 def facts_in(
-    text: str, contacts: Sequence[Contact], codes: Sequence[Code] = (), *, places: bool = False
+    text: str,
+    contacts: Sequence[Contact],
+    codes: Sequence[Code] = (),
+    *,
+    persons: Sequence[Person] = (),
+    places: bool = False,
 ) -> Facts:
-    """The facts of `text` and of the `codes` on its pages; with `places`, their spans."""
+    """The facts of `text` and of the `codes` on its pages, the `persons` among them; with
+    `places`, their spans."""
     text_key = match_key(text)
     payees = [match_key(giro.name) for code in codes if (giro := giro_code(code.text))]
     named: list[NamedContact] = []
@@ -119,6 +172,8 @@ def facts_in(
                             topics[key] = identifier.topic_id
                     else:
                         rejected.add(key)
+    found_persons = _persons(text, text_key, in_text | in_codes, contacts, persons, places=places)
+    personal = {key for person in persons for item in person.identifiers for key in [item.key]}
     found = [
         FoundIdentifier(
             kind=kind,
@@ -130,11 +185,73 @@ def facts_in(
             topic_id=topics.get((kind, value)),
         )
         for kind, value in sorted(in_text | in_codes, key=lambda key: (key[0].value, key[1]))
-        if (kind, value) in owners or (kind, value) not in rejected
+        if kind in CONTACT_KINDS
+        and (
+            (kind, value) in owners
+            or ((kind, value) not in rejected and not of_person((kind, value), personal))
+        )
     ]
     known = [item for item in found if item.contact_id is not None]
     unknown = [item for item in found if item.contact_id is None]
-    return Facts(named=tuple(named[:MOST]), identifiers=(*known[:MOST], *unknown[:MOST]))
+    return Facts(
+        named=tuple(named[:MOST]),
+        identifiers=(*known[:MOST], *unknown[:MOST]),
+        persons=found_persons,
+    )
+
+
+def _persons(
+    text: str,
+    text_key: str,
+    keys: set[Key],
+    contacts: Sequence[Contact],
+    persons: Sequence[Person],
+    *,
+    places: bool,
+) -> tuple[FoundPerson, ...]:
+    """The persons `text` names, the surest first (then by user id)."""
+    evidence: dict[UserId, list[tuple[Strength, str, tuple[Span, ...]]]] = {}
+
+    def add(user: UserId, strength: Strength, kind: str, spans: tuple[Span, ...] = ()) -> None:
+        evidence.setdefault(user, []).append((strength, kind, spans))
+
+    for person in persons:
+        for identifier in person.identifiers:
+            for key in keys:
+                if matches(identifier, key):
+                    spans = identifier_spans(text, *key) if places else ()
+                    add(person.user_id, Strength.HARD, identifier.kind.value, spans)
+    private = {person.user_id for person in persons if person.private}
+    for contact in contacts:
+        for identifier in contact.evidence():
+            if identifier.user_id not in private:
+                continue
+            for key in keys:
+                if matches(identifier, key):
+                    spans = identifier_spans(text, *key) if places else ()
+                    assert identifier.user_id is not None
+                    add(identifier.user_id, Strength.HARD, identifier.kind.value, spans)
+    if any(person.birth_date is not None for person in persons):
+        # A two-digit year reads in both centuries, so `15.06.80` meets 15 June 1980.
+        days = dates_in(normalise(text))
+        for person in persons:
+            if person.birth_date is not None and person.birth_date in days:
+                add(person.user_id, Strength.MEDIUM, BIRTH_DATE)
+    for person in persons:
+        for name in person.names:
+            if mentions(text_key, match_key(name)):
+                spans = name_spans(text, name) if places else ()
+                kind = NAME if name == person.display_name else ALIAS
+                add(person.user_id, Strength.WEAK, kind, spans)
+                break
+    found = []
+    for user, items in evidence.items():
+        items.sort(key=lambda item: -item[0].rank)
+        kinds = tuple(dict.fromkeys(kind for _, kind, _ in items))
+        spans = tuple(span for _, _, spans in items for span in spans)[:_SPANS]
+        found.append(FoundPerson(user_id=user, strength=items[0][0], evidence=kinds, spans=spans))
+    found.sort(key=lambda item: (-item.strength.rank, str(item.user_id)))
+    return tuple(found[:MOST])
 
 
 def on_pages(facts: Facts, places: TextPlaces) -> Facts:
@@ -148,6 +265,7 @@ def on_pages(facts: Facts, places: TextPlaces) -> Facts:
     return Facts(
         named=tuple(replace(item, spans=placed(item.spans)) for item in facts.named),
         identifiers=tuple(replace(item, spans=placed(item.spans)) for item in facts.identifiers),
+        persons=tuple(replace(item, spans=placed(item.spans)) for item in facts.persons),
     )
 
 
@@ -167,6 +285,8 @@ def identifier_spans(text: str, kind: IdentifierKind, value: str) -> tuple[Span,
     also with leading zeros."""
     if kind is IdentifierKind.EMAIL_DOMAIN:
         return _spans(rf"(?<![\w-]){re.escape(value)}(?![\w-])", text)
+    if kind is IdentifierKind.EMAIL_ADDRESS:
+        return _spans(rf"(?<![\w.%+-]){re.escape(value)}(?![\w-])", text)
     pattern = r"[\s./-]?".join(re.escape(char) for char in value)
     if kind is IdentifierKind.PERSONNEL_NUMBER:
         pattern = rf"(?:0[\s./-]?)*{pattern}"

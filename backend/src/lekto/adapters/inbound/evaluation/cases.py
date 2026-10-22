@@ -9,13 +9,19 @@ Layout of a set directory:
   `topics` (names, or `name` and `parent`, a parent before its children), `contact_topics`
   (the topics by contact name), `contact_aliases` (aliases by contact name),
   `contact_identifiers` (by contact name, a list of `kind`, `value` and optionally `topic`,
-  entered by hand), `type_descriptions` and `title_patterns` (by type name).
+  entered by hand), `type_descriptions` and `title_patterns` (by type name), `users`: the
+  household's other users and their profiles (`username`, `display_name`, `aliases`,
+  `birth_date`, `identifiers` as `kind` and `value`; synthetic numbers only), one named
+  `evaluation` profiling the uploader of the documents.
 - `training/<name>.md` and `training/<name>.json`: the corpus the trained run takes over
   before the cases, a document's text and its metadata (`contact`, `document_type`, `tags`,
   `document_date`, `topic`: set by a person after the takeover, as Paperless has none).
 - `cases/<name>.md`: the document text, as the parse node would produce it.
 - `cases/<name>.json`: `description`, `expected` (`lane`, `contact`, `document_type`,
-  `topic`, `tags`, `document_date`, `fields` by name, in the JSON form of the API) and `fake`
+  `topic`, `tags`, `document_date`, `fields` by name, in the JSON form of the API, `space`:
+  the space Lekto moves the document to or suggests, `own` for the uploader's personal
+  space, `personal space of <username>` for another user's, or a shared space's name; none:
+  it stays without a suggestion) and `fake`
   (`classification`: `contact`, `document_type`, `new_document_type`, `tags`, `new_tags`,
   `document_date`, optionally `recipient`, `topic`, `title` and `language`, from which the
   answer of the language model's signal is built; `fields`: proposals by field name
@@ -79,6 +85,17 @@ class IdentifierSpec:
 
 
 @dataclass(frozen=True)
+class UserSpec:
+    """A user of the household and their profile (`username` `evaluation`: the uploader)."""
+
+    username: str
+    display_name: str | None = None
+    aliases: tuple[str, ...] = ()
+    birth_date: str | None = None
+    identifiers: tuple[IdentifierSpec, ...] = ()
+
+
+@dataclass(frozen=True)
 class MasterDataSpec:
     """`topics`: each with its parent (a parent before its children)."""
 
@@ -92,6 +109,7 @@ class MasterDataSpec:
     title_patterns: dict[str, str] = field(default_factory=dict)
     topics: tuple[tuple[str, str | None], ...] = ()
     contact_topics: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    users: tuple[UserSpec, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -104,6 +122,7 @@ class Expected:
     fields: dict[str, JsonValue] = field(default_factory=dict)
     lanes: dict[Run, Lane] = field(default_factory=dict)
     topic: str | None = None
+    space: str | None = None
 
     def lane_in(self, run: Run) -> Lane:
         return self.lanes.get(run, self.lane)
@@ -283,6 +302,19 @@ def _space_keys(message: str) -> dict[str, str]:
     }
 
 
+def _user(data: Any) -> UserSpec:
+    return UserSpec(
+        username=str(data["username"]),
+        display_name=data.get("display_name"),
+        aliases=tuple(data.get("aliases", ())),
+        birth_date=data.get("birth_date"),
+        identifiers=tuple(
+            IdentifierSpec(str(item["kind"]), str(item["value"]))
+            for item in data.get("identifiers", ())
+        ),
+    )
+
+
 def _keys(line: str) -> list[str]:
     return [key for key in (part.strip() for part in line.split(",")) if re.fullmatch(r"a\d+", key)]
 
@@ -348,6 +380,7 @@ def _master_data(data: Any) -> MasterDataSpec:
             type_descriptions=dict(data.get("type_descriptions", {})),
             title_patterns=dict(data.get("title_patterns", {})),
             topics=tuple(_topic(item) for item in data.get("topics", ())),
+            users=tuple(_user(item) for item in data.get("users", ())),
             contact_topics={
                 name: tuple(topics) for name, topics in data.get("contact_topics", {}).items()
             },
@@ -403,6 +436,7 @@ def _case(markdown: Path, master: MasterDataSpec) -> Case:
             fields=dict(expected_data.get("fields", {})),
             lanes=_lanes(expected_data),
             topic=expected_data.get("topic"),
+            space=expected_data.get("space"),
         )
         fake = None
         if data.get("fake") is not None:

@@ -50,6 +50,9 @@ class SpaceMember(MemberOut):
 
 class MemberDetails(MemberOut):
     username: str
+    display_name: str | None = Field(
+        default=None, description="How others see the member; null: the username."
+    )
     active: bool = Field(
         description="A deactivated member keeps their place until an editor removes them."
     )
@@ -116,6 +119,7 @@ class SpaceOut(BaseModel):
                     user_id=user,
                     role=member,
                     username=people[user].username,
+                    display_name=people[user].display_name,
                     active=people[user].active,
                 )
                 for user, member in sorted(space.members.items())

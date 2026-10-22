@@ -146,7 +146,16 @@ async def load(
     )
     expected = {int(d["id"]): expect(d, context) for d in chosen}
     recorded = frozenset(str(o["lekto_id"]) for o in state.objects("space") if o["lekto_id"])
-    actions = needs(plan, directory, snapshot, list(expected.values()), fields, recorded=recorded)
+    profiled = frozenset(str(o["lekto_id"]) for o in state.objects("profile") if o["lekto_id"])
+    actions = needs(
+        plan,
+        directory,
+        snapshot,
+        list(expected.values()),
+        fields,
+        recorded=recorded,
+        profiled=profiled,
+    )
     progress(f"the plan takes {len(chosen)} of {len(snapshot.documents)} documents over")
     return Loaded(
         snapshot=snapshot,

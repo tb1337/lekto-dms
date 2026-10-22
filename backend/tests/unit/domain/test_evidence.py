@@ -62,8 +62,32 @@ def test_dates_need_a_whole_date() -> None:
     assert found == set()
 
 
-def test_two_digit_years() -> None:
-    assert dates_in("01.02.69 01.02.70") == {date(2069, 2, 1), date(1970, 2, 1)}
+def test_a_two_digit_year_gives_both_readings() -> None:
+    # No fixed year divides the centuries (Tobi, 22.10.2026).
+    assert dates_in("01.02.69 01.02.70") == {
+        date(1969, 2, 1),
+        date(2069, 2, 1),
+        date(1970, 2, 1),
+        date(2070, 2, 1),
+    }
+    assert dates_in("29.02.00") == {date(2000, 2, 29)}  # 1900 was no leap year
+
+
+def test_a_full_date_matches_its_two_digit_form() -> None:
+    receipt = DocumentText("Kassenbon 12.03.24 14:02")
+    assert receipt.has_date(date(2024, 3, 12))
+    assert read_date("2024-03-12", receipt) == date(2024, 3, 12)
+
+
+def test_a_two_digit_year_takes_the_reading_nearest_to_when_the_document_came_in() -> None:
+    assert read_date("12.03.79", received=date(2080, 1, 15)) == date(2079, 3, 12)
+    assert read_date("12.03.79", received=date(2026, 10, 5)) == date(1979, 3, 12)
+    due = DocumentText("zahlbar bis 15.01.27")
+    assert read_date("15.01.27", due, received=date(2026, 10, 5)) == date(2027, 1, 15)
+    # The text decides before the day it came in does.
+    assert read_date("15.01.27", DocumentText("Geburtstag 15.01.1927")) == date(1927, 1, 15)
+    # Neither text nor the day it came in: no guess.
+    assert read_date("12.03.79") is None
 
 
 @pytest.mark.parametrize(
@@ -204,7 +228,7 @@ def test_an_ambiguous_number_is_read_the_way_the_text_shows_it() -> None:
     "written", ["2026-03-12", "12.03.2026", "12.3.26", "12. März 2026", "March 12, 2026"]
 )
 def test_dates_as_written(written: str) -> None:
-    assert read_date(written) == date(2026, 3, 12)
+    assert read_date(written, received=date(2026, 3, 20)) == date(2026, 3, 12)
 
 
 def test_of_several_dates_the_one_in_the_text() -> None:
@@ -264,6 +288,28 @@ SEPTEMBER = Period.month(2026, 9)
 )
 def test_periods_as_written(raw: str, expected: Period) -> None:
     assert read_period(raw, DOCUMENT_DATE) == (expected, False)
+
+
+def test_a_span_with_a_two_digit_year_takes_the_reading_nearest_to_when_it_came_in() -> None:
+    assert read_period("01.09.-30.09.26", DOCUMENT_DATE, received=DOCUMENT_DATE) == (
+        SEPTEMBER,
+        False,
+    )
+    assert read_period("01.09.-30.09.26", DOCUMENT_DATE) is None
+    assert read_period("01.09.26 - 30.09.26", received=date(2090, 1, 1)) == (
+        Period.month(2026, 9),
+        False,
+    )
+
+
+def test_the_readings_of_two_digit_years_never_span_a_century() -> None:
+    found = periods_in(normalise("01.12.24 - 31.01.25"))
+    assert Period(date(1924, 12, 1), date(1925, 1, 31)) in found
+    assert Period(date(2024, 12, 1), date(2025, 1, 31)) in found
+    assert Period(date(1924, 12, 1), date(2025, 1, 31)) not in found
+    assert Period(date(1999, 12, 1), date(2000, 1, 31)) in periods_in(
+        normalise("01.12.1999 - 31.01.00")
+    )
 
 
 def test_a_period_without_its_year_takes_that_of_the_document_date() -> None:

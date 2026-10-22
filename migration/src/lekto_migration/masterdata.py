@@ -15,8 +15,10 @@ from lekto_migration.paperless import Snapshot
 from lekto_migration.plan import SECTIONS, TAG_SCOPES, Plan, Target, norm
 
 EXISTS, CREATE, UPDATE, MISSING = "exists", "create", "update", "missing"
+FILL = "fill"  # an existing user's profile gets a name or e-mail; `run` does not wait for it
 CREATED, UPDATED, FAILED = "created", "updated", "failed"
 OPEN = (CREATE, UPDATE, MISSING)
+PENDING = (CREATE, UPDATE, FILL)  # what `prepare` does
 PATHS = {"contact": "/contacts", "document_type": "/document-types"}
 TITLES = {
     "user": "Users",
@@ -60,12 +62,14 @@ def needs(
     fields: Mapping[str, FieldInfo],
     *,
     recorded: frozenset[str] = frozenset(),
+    profiled: frozenset[str] = frozenset(),
 ) -> list[Action]:
     """What Lekto needs; `recorded` are the ids of the spaces an earlier `prepare` created
-    or completed (from the state)."""
+    or completed, `profiled` those of the users whose profile it filled or tried to (both
+    from the state)."""
     actions: list[Action] = []
     taken = [item for item in expected if item.skip is None]
-    actions += _users(plan, directory, snapshot)
+    actions += _users(plan, directory, snapshot, profiled)
     named, by_value = _named_targets(plan)
     used: dict[str, set[str]] = {kind: set() for kind in ("contact", "document_type", *TAG_SCOPES)}
     for item in taken:
@@ -87,7 +91,9 @@ def needs(
     return sorted(actions, key=lambda a: ORDER.index(a.kind))
 
 
-def _users(plan: Plan, directory: Directory, snapshot: Snapshot) -> list[Action]:
+def _users(
+    plan: Plan, directory: Directory, snapshot: Snapshot, profiled: frozenset[str]
+) -> list[Action]:
     inactive = {norm(str(u["username"])) for u in snapshot.users if not u.get("is_active", True)}
     actions: dict[str, Action] = {}
     for entry in plan.entries["users"].values():
@@ -100,7 +106,18 @@ def _users(plan: Plan, directory: Directory, snapshot: Snapshot) -> list[Action]
             found = directory.find("user", target.name)
             status = EXISTS if found else CREATE if target.create else MISSING
             action = Action("user", target.name, status, f"user '{entry.source}'")
-            action.data = {"paperless": [], "id": found["id"] if found else None}
+            action.data = {
+                "paperless": [],
+                "id": found["id"] if found else None,
+                # What profiles may fill in: an existing user without a name, if active,
+                # once (an earlier prepare filled it or got Lekto's answer).
+                "named": found is not None
+                and (
+                    bool(found.get("display_name"))
+                    or found.get("active") is False
+                    or str(found["id"]) in profiled
+                ),
+            }
             actions[key] = action
             if found is not None and found.get("active") is False:
                 action.notes.append("inactive in Lekto: uploads and gets nothing of the migration")
@@ -109,6 +126,7 @@ def _users(plan: Plan, directory: Directory, snapshot: Snapshot) -> list[Action]
             action.data["deactivate"] = plan.settings.deactivate_inactive_users
             if action.status == CREATE and plan.settings.deactivate_inactive_users:
                 action.notes.append("inactive in Paperless: deactivated at the end of the run")
+    _profiles(actions, snapshot)
     owner = plan.settings.fallback_owner
     if owner is not None and norm(owner) not in actions:
         found = directory.find("user", owner)
@@ -116,6 +134,51 @@ def _users(plan: Plan, directory: Directory, snapshot: Snapshot) -> list[Action]
             "user", owner, EXISTS if found else MISSING, "settings.fallback_owner"
         )
     return list(actions.values())
+
+
+def _profiles(actions: Mapping[str, Action], snapshot: Snapshot) -> None:
+    """The display name (first and last name) and e-mail address Paperless knows of each user:
+    a new user gets them, an existing one without a display name only what Lekto does not
+    have (`_fill_profile` looks again; nothing is ever overwritten). Filling an existing
+    user's profile (`FILL`) is no open need: `run` does not wait for it."""
+    paperless = {norm(str(user["username"])): user for user in snapshot.users}
+    for action in actions.values():
+        if action.status not in (CREATE, EXISTS):
+            continue
+        known = [
+            paperless[norm(name)] for name in action.data["paperless"] if norm(name) in paperless
+        ]
+        name = next((n for user in known if (n := _full_name(user))), None)
+        email = next((str(user["email"]).strip() for user in known if user.get("email")), None)
+        profile = {key: value for key, value in (("display_name", name), ("email", email)) if value}
+        if not profile:
+            continue
+        if action.status == EXISTS:
+            if action.data["named"]:
+                continue  # Lekto has a name; the e-mail alone does not make it a change
+            action.status = FILL
+        action.data["profile"] = profile
+        if name:
+            action.detail = name
+        action.notes.append(
+            "display name and e-mail from Paperless"
+            if name and email
+            else "display name from Paperless"
+            if name
+            else "e-mail from Paperless"
+        )
+
+
+def _full_name(user: Mapping[str, Any]) -> str | None:
+    name = " ".join(
+        part
+        for part in (
+            str(user.get("first_name") or "").strip(),
+            str(user.get("last_name") or "").strip(),
+        )
+        if part
+    )
+    return name or None
 
 
 def _named_targets(
@@ -432,7 +495,7 @@ async def prepare(
     woken = await _wake(actions, lekto, directory, ours, progress)
     try:
         for action in actions:
-            if action.status not in (CREATE, UPDATE):
+            if action.status not in PENDING:
                 continue
             try:
                 id = await _do(action, lekto, directory)
@@ -451,6 +514,42 @@ async def prepare(
                 user["active"] = False
             except ApiError as error:
                 progress(f"cannot deactivate {user['username']} again: {error}")
+
+
+async def _fill_profile(lekto: Lekto, id: str, action: Action) -> None:
+    """Give the user the display name and e-mail of `action` that their profile lacks; a name
+    Lekto refuses as another user's (409) and an e-mail address it refuses (422) are left out
+    (noted). Once Lekto answered, `action.data["profiled"]` is set and the state remembers
+    it, so later loads do not ask again; a failure without an answer is tried again."""
+    wanted = action.data.get("profile") or {}
+    if not wanted:
+        return
+    try:
+        current = await lekto.profile(id)
+    except ApiError as error:
+        action.notes.append(f"profile not read: {error}")
+        return
+    changes = {key: value for key, value in wanted.items() if not current.get(key)}
+    while changes:
+        try:
+            await lekto.change_profile(id, changes)
+            break
+        except ApiError as error:
+            if "display_name" in changes and error.status == 409:
+                action.notes.append(
+                    f"display name '{changes.pop('display_name')}' is taken: left out"
+                )
+                continue
+            if "email" in changes and error.status == 422:
+                action.notes.append(
+                    f"e-mail address '{changes.pop('email')}' refused by Lekto: left out"
+                )
+                continue
+            action.notes.append(f"profile not filled: {error}")
+            if error.status not in (409, 422):
+                return  # no answer on the values: the next prepare tries again
+            break
+    action.data["profiled"] = True
 
 
 async def _wake(
@@ -482,10 +581,14 @@ async def _wake(
 async def _do(action: Action, lekto: Lekto, directory: Directory) -> str | None:
     kind, name = action.kind, action.name
     if kind == "user":
+        if action.status == FILL:
+            await _fill_profile(lekto, str(action.data["id"]), action)
+            return str(action.data["id"])
         found = await _created(
             lambda: lekto.create_user(name), lambda: _relist(lekto, "/users", "username", name)
         )
         directory.add("user", found)
+        await _fill_profile(lekto, str(found["id"]), action)
         return str(found["id"])
     if kind in PATHS:
         path = PATHS[kind]

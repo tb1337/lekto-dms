@@ -9,9 +9,12 @@ rejected one is known, but neither evidence nor unknown.
 
 Persons (Tobi, 21.10.2026): a user is found by their identifiers (hard evidence: one of their
 own, or a contact's customer or personnel number that names them), their birth date (medium)
-and their display name or aliases (weak: an address block names everyone in a household). A
-person's own numbers are no contact's: they never show as unknown identifiers. Only user ids and
-the kinds of evidence leave this module's results for the log, never the values.
+and their display name or aliases (weak: an address block names everyone in a household). Only
+the persons given are found: a deactivated user, or one not given, never (also not by a
+contact's number); a person given in their public form (`Person.public`) only by their display
+name. A person's own numbers are no contact's: they never show as unknown identifiers (of a
+person in public form they do: that they are someone's is private). Only user ids and the kinds
+of evidence leave this module's results for the log, never the values.
 
 Where it stands: character spans of the text (`spans`), found with the written forms a value
 has (an IBAN in groups of four, a customer number with dashes, a name with any spaces and
@@ -27,7 +30,13 @@ from itertools import islice
 
 from lekto.core.domain.codes import Code, code_identifiers, giro_code
 from lekto.core.domain.evidence import UMLAUTS, dates_in, normalise
-from lekto.core.domain.identifiers import CONTACT_KINDS, IdentifierKind, identifiers_in, matches
+from lekto.core.domain.identifiers import (
+    CONTACT_KINDS,
+    IdentifierKind,
+    identifiers_in,
+    matches,
+    of_person,
+)
 from lekto.core.domain.ids import ContactId, TagId, UserId
 from lekto.core.domain.locations import Location
 from lekto.core.domain.master_data import Contact
@@ -179,7 +188,7 @@ def facts_in(
         if kind in CONTACT_KINDS
         and (
             (kind, value) in owners
-            or ((kind, value) not in rejected and (kind, value) not in personal)
+            or ((kind, value) not in rejected and not of_person((kind, value), personal))
         )
     ]
     known = [item for item in found if item.contact_id is not None]
@@ -212,13 +221,15 @@ def _persons(
                 if matches(identifier, key):
                     spans = identifier_spans(text, *key) if places else ()
                     add(person.user_id, Strength.HARD, identifier.kind.value, spans)
+    private = {person.user_id for person in persons if person.private}
     for contact in contacts:
         for identifier in contact.evidence():
-            if identifier.user_id is None:
+            if identifier.user_id not in private:
                 continue
             for key in keys:
                 if matches(identifier, key):
                     spans = identifier_spans(text, *key) if places else ()
+                    assert identifier.user_id is not None
                     add(identifier.user_id, Strength.HARD, identifier.kind.value, spans)
     if any(person.birth_date is not None for person in persons):
         days = dates_in(normalise(text))

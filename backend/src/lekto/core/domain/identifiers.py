@@ -285,14 +285,16 @@ _EMAIL = re.compile(r"[a-z0-9._%+-]+@((?:[a-z0-9-]+\.)+[a-z]{2,63})")
 _TAX_ID_LABEL = re.compile(
     r"(?<![a-z])(?:steuer[-\s]*id(?:entifikations)?(?:[-\s]*(?:nummer|nr))?"
     r"|steuerliche[-\s]*identifikations[-\s]*(?:nummer|nr)|identifikations[-\s]*(?:nummer|nr)"
-    r"|id[-.\s]*nr|tin)\.?\s*[:.]?\s*(\d{2} ?\d{3} ?\d{3} ?\d{3}|\d{11})(?!\d)"
+    r"|id[-.\s]*nr|tin)\.?(?:\s*\([a-z.\s-]{1,20}\))?\s*[:.]?\s*"
+    r"(\d{2} ?\d{3} ?\d{3} ?\d{3}|\d{11})(?!\d)"
 )
 _GROUPED_TAX_ID = re.compile(r"(?<![\d.,/-])\d{2} \d{3} \d{3} \d{3}(?![\d.,/-]?\d)")
 _SOCIAL_SECURITY_IN_TEXT = re.compile(
     r"(?<![a-z0-9])\d{2} ?\d{2} ?\d{2} ?\d{2} ?[a-z] ?\d{2} ?\d(?![a-z0-9])"
 )
 _HEALTH_INSURANCE_LABEL = re.compile(
-    r"(?<![a-z])(?:(?:kranken)?versicherten[-\s]*(?:nummer|nr|id)|kvnr)\.?\s*[:.]?\s*"
+    r"(?<![a-z])(?:(?:kranken)?versicherten[-\s]*(?:nummer|nr|id)"
+    r"|kranken[-\s]*versicherungs[-\s]*(?:nummer|nr)|kvnr)\.?\s*[:.]?\s*"
     r"([a-z] ?\d(?: ?\d){8})(?![a-z0-9])"
 )
 _PERSONAL_KINDS = frozenset(PERSON_KINDS - CONTACT_KINDS)
@@ -306,14 +308,23 @@ def identifiers_in(text: str) -> set[tuple[IdentifierKind, str]]:
     mail aside) and the addresses themselves; a person's numbers with a valid check digit: the
     tax ID after its label ("Steuer-ID", "IdNr.") or in its groups (`12 345 678 901`), the social
     security number anywhere, the health insurance number after its label
-    ("Versichertennummer"). A customer number that is one of the person's numbers is theirs
-    only (a pension fund writes "Versicherungsnummer" before the social security number)."""
+    ("Versichertennummer", "Krankenversicherungsnummer"). A customer or personnel number that
+    is one of the person's numbers found, stands in one or overlaps it is theirs only (a pension
+    fund writes "Versicherungsnummer" before the social security number, `65 170839 J 003`)."""
     normalised = normalise(text)
     found: set[tuple[IdentifierKind, str]] = set()
+    naming: list[tuple[tuple[IdentifierKind, str], tuple[int, int]]] = []
+    personal_spans: list[tuple[int, int]] = []
 
-    def add(kind: IdentifierKind, raw: str) -> None:
+    def add(kind: IdentifierKind, raw: str, span: tuple[int, int] | None = None) -> None:
         with suppress(ValidationError):
-            found.add((kind, normalise_identifier(kind, raw)))
+            key = (kind, normalise_identifier(kind, raw))
+            if kind in NAMING_KINDS and span is not None:
+                naming.append((key, span))
+                return
+            found.add(key)
+            if kind in _PERSONAL_KINDS and span is not None:
+                personal_spans.append(span)
 
     for match in _IBAN_IN_TEXT.finditer(normalised):
         # The groups may run into what follows (`DE89 3704 … 3000 Sparkasse`): the longest
@@ -328,28 +339,57 @@ def identifiers_in(text: str) -> set[tuple[IdentifierKind, str]]:
     for match in _VAT_LABEL.finditer(normalised):
         add(IdentifierKind.VAT_ID, match.group(1))
     for match in _CUSTOMER_LABEL.finditer(normalised):
-        add(IdentifierKind.CUSTOMER_NUMBER, match.group(1))
+        add(IdentifierKind.CUSTOMER_NUMBER, match.group(1), match.span(1))
     for match in _PERSONNEL_LABEL.finditer(normalised):
-        add(IdentifierKind.PERSONNEL_NUMBER, match.group(1))
+        add(IdentifierKind.PERSONNEL_NUMBER, match.group(1), match.span(1))
     for pattern in (_EMAIL, _WEB):
         for match in pattern.finditer(normalised):
             add(IdentifierKind.EMAIL_DOMAIN, match.group(1))
     for match in _EMAIL.finditer(normalised):
         add(IdentifierKind.EMAIL_ADDRESS, match.group())
     for match in _TAX_ID_LABEL.finditer(normalised):
-        add(IdentifierKind.TAX_ID, match.group(1))
+        add(IdentifierKind.TAX_ID, match.group(1), match.span(1))
     for match in _GROUPED_TAX_ID.finditer(normalised):
-        add(IdentifierKind.TAX_ID, match.group())
+        add(IdentifierKind.TAX_ID, match.group(), match.span())
     for match in _SOCIAL_SECURITY_IN_TEXT.finditer(normalised):
-        add(IdentifierKind.SOCIAL_SECURITY_NUMBER, match.group())
+        add(IdentifierKind.SOCIAL_SECURITY_NUMBER, match.group(), match.span())
     for match in _HEALTH_INSURANCE_LABEL.finditer(normalised):
-        add(IdentifierKind.HEALTH_INSURANCE_NUMBER, match.group(1))
-    personal = {value for kind, value in found if kind in _PERSONAL_KINDS}
-    return {
-        (kind, value)
-        for kind, value in found
-        if not (kind is IdentifierKind.CUSTOMER_NUMBER and value in personal)
-    }
+        add(IdentifierKind.HEALTH_INSURANCE_NUMBER, match.group(1), match.span(1))
+    personal = [key for key in found if key[0] in _PERSONAL_KINDS]
+    for key, (start, end) in naming:
+        overlaps = any(
+            start < theirs_end and theirs_start < end for theirs_start, theirs_end in personal_spans
+        )
+        if not overlaps and not of_person(key, personal):
+            found.add(key)
+    return found
+
+
+_CONTAINED = 6
+"""Characters a customer or personnel number has at least to count as part of a person's number
+it stands in."""
+
+
+def of_person(
+    key: tuple[IdentifierKind, str], personal: Iterable[tuple[IdentifierKind, str]]
+) -> bool:
+    """Whether an identifier is one of a person's values `personal`: the same, or a customer or
+    personnel number with the value of one of them (of any kind: the IBAN as an "account
+    number"), or one that stands in a tax ID, social security or health insurance number (a
+    pension fund's "Versicherungsnummer" is the start of the social security number)."""
+    kind, value = key
+    for theirs in personal:
+        if theirs == key:
+            return True
+        if kind not in NAMING_KINDS:
+            continue
+        their_kind, their_value = theirs
+        compact = re.sub(r"[^A-Z0-9]", "", their_value.upper())
+        if value == compact:
+            return True
+        if their_kind in _PERSONAL_KINDS and len(value) >= _CONTAINED and value in compact:
+            return True
+    return False
 
 
 def matches(identifier: Identifier, found: tuple[IdentifierKind, str]) -> bool:
@@ -371,13 +411,16 @@ def mine_identifiers(
         tuple[ContactId | None, TagId | None, Iterable[tuple[IdentifierKind, str]]]
     ],
     taken: Iterable[tuple[IdentifierKind, str]] = (),
+    personal: Iterable[tuple[IdentifierKind, str]] = (),
 ) -> Mapping[ContactId, list[Identifier]]:
     """The identifiers to learn from confirmed documents (each its contact, its topic and the
     identifiers in its text): a value that stands in at least `LEARN_FROM` documents, all with
     the same contact. A document without a contact counts as another contact. `taken` (entered
-    by hand or rejected anywhere) is never learned. A learned value points to a topic if all
-    its documents carry that one; otherwise to none. Only the kinds of contacts are learned
-    (`CONTACT_KINDS`): a person's numbers never become a contact's."""
+    by hand or rejected anywhere) is never learned, nor what is one of the persons' values
+    `personal` (`of_person`: also a customer number that stands in a social security number).
+    A learned value points to a topic if all its documents carry that one; otherwise to none.
+    Only the kinds of contacts are learned (`CONTACT_KINDS`): a person's numbers never become a
+    contact's."""
     holders: dict[tuple[IdentifierKind, str], list[tuple[ContactId | None, TagId | None]]] = (
         defaultdict(list)
     )
@@ -385,12 +428,14 @@ def mine_identifiers(
         for key in set(found):
             holders[key].append((contact, topic))
     skip = set(taken)
+    persons = list(personal)
     learned: dict[ContactId, list[Identifier]] = defaultdict(list)
     for (kind, value), pairs in sorted(holders.items()):
         owners = {contact for contact, _ in pairs}
         if (
             kind not in CONTACT_KINDS
             or (kind, value) in skip
+            or of_person((kind, value), persons)
             or len(pairs) < LEARN_FROM
             or len(owners) != 1
         ):

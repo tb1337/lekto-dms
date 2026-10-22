@@ -7,10 +7,13 @@ the social security and the health insurance number, further e-mail addresses). 
 document, they tell whose it is (`facts.FoundPerson`); none of it ever goes to the language
 model, the search index or the processing log (Tobi, 21.10.2026).
 
-Display names and aliases are unique across users regardless of case, so that a name stands for
-one person (the services check it, the repositories keep the rule for two requests at once). An
-identifier may belong to several users (the IBAN of a joint account), never to a user and a
-contact (`ProfileService`, `MasterDataService`).
+Display names are unique across users regardless of case, and no display name is another user's
+username, so that a name shown stands for one person (the services check it under a lock, the
+repositories keep the rule among display names for two requests at once). Aliases are private
+and need not be unique: a 409 for an alias would tell that it is someone's (they are only weak
+or medium evidence, and a recipient that matches two people names neither). An identifier may
+belong to several users (the IBAN of a joint account), never to a user and a contact
+(`ProfileService`, `MasterDataService`).
 """
 
 from collections.abc import Iterable
@@ -71,13 +74,16 @@ class Profile:
 @dataclass(frozen=True)
 class Person:
     """What finds a user in a document: their display name and aliases (never the username),
-    birth date and identifiers. Private: built for matching only."""
+    birth date and identifiers. Private: built for matching only. `private`: whether what is
+    private about them may find them (also a contact's number that names them); `public()` is
+    what anyone may match, the display name alone."""
 
     user_id: UserId
     display_name: str | None = None
     aliases: tuple[str, ...] = ()
     birth_date: date | None = None
     identifiers: tuple[Identifier, ...] = ()
+    private: bool = True
 
     @classmethod
     def of(cls, user: User, profile: Profile | None) -> "Person":
@@ -95,6 +101,10 @@ class Person:
     def names(self) -> tuple[str, ...]:
         """The display name, then the aliases."""
         return (*((self.display_name,) if self.display_name else ()), *self.aliases)
+
+    def public(self) -> "Person":
+        """The person as anyone may find them: by their display name, nothing private."""
+        return Person(self.user_id, self.display_name, private=False)
 
 
 def _aliases(aliases: Iterable[str]) -> list[str]:

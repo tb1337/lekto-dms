@@ -14,6 +14,7 @@ from lekto.core.domain.identifiers import (
     identifiers_in,
     mine_identifiers,
     normalise_identifier,
+    of_person,
     social_security_number_valid,
     tax_id_valid,
 )
@@ -194,3 +195,51 @@ def test_a_contacts_number_names_its_user() -> None:
     )
     assert person.spans
     assert [item.contact_id for item in facts.identifiers] == [contact.id]
+
+
+def test_a_pension_funds_insurance_number_is_the_social_security_number() -> None:
+    """The DRV writes "Versicherungsnummer" before the social security number, in groups."""
+    grouped = f"{SV[:2]} {SV[2:8]} {SV[8]} {SV[9:]}"
+    assert identifiers_in(f"Versicherungsnummer: {grouped}") == {(SOCIAL, SV)}
+
+
+def test_the_health_insurance_number_after_its_long_label() -> None:
+    assert identifiers_in(f"Krankenversicherungsnummer: {KVNR}") == {(HEALTH, KVNR)}
+
+
+def test_a_tax_id_after_its_label_with_the_short_form() -> None:
+    assert identifiers_in(f"Identifikationsnummer (IdNr.): {TAX_ID}") == {(TAX, TAX_ID)}
+
+
+def test_a_customer_number_that_stands_in_a_persons_number_is_theirs() -> None:
+    personal = [(SOCIAL, SV)]
+    assert of_person((CUSTOMER, SV[:8]), personal)
+    assert of_person((CUSTOMER, SV), personal)
+    assert of_person((CUSTOMER, IBAN), [(IdentifierKind.IBAN, IBAN)])  # an "account number"
+    assert not of_person((CUSTOMER, "4711"), personal)  # too short to tell
+    assert not of_person((CUSTOMER, IBAN[4:12]), [(IdentifierKind.IBAN, IBAN)])
+    contact = ContactId(new_id())
+    found = [(CUSTOMER, SV[:8]), (CUSTOMER, "K4711")]
+    learned = mine_identifiers([(contact, None, found)] * 2, personal=personal)
+    assert [item.key for item in learned[contact]] == [(CUSTOMER, "K4711")]
+
+
+def test_a_deactivated_or_unlisted_user_is_never_named() -> None:
+    """Only the persons given are found, also by a contact's number that names a user."""
+    anna = _anna()
+    contact = Contact.create(name="Insurer", now=builders.NOW)
+    contact.set_identifiers([Identifier.parse(CUSTOMER, "K-4711", user_id=anna.user_id)])
+    assert facts_in("Kundennummer K-4711", [contact], persons=[]).persons == ()
+
+
+def test_a_person_in_public_form_is_found_by_their_display_name_alone() -> None:
+    anna = _anna()
+    contact = Contact.create(name="Insurer", now=builders.NOW)
+    contact.set_identifiers([Identifier.parse(CUSTOMER, "K-4711", user_id=anna.user_id)])
+    text = f"Anna Sample, 15.06.1980, Steuer-ID {TAX_ID}, Kundennummer K-4711"
+    assert facts_in(text, [contact], persons=[anna.public()]).persons == ()
+    named = facts_in(f"An Anna Example. {text}", [contact], persons=[anna.public()])
+    assert [(p.strength, p.evidence) for p in named.persons] == [(Strength.WEAK, ("name",))]
+    # Her IBAN shows as unknown: that it is hers is private.
+    iban = facts_in("IBAN DE89 3704 0044 0532 0130 00", [], persons=[anna.public()])
+    assert [item.key for item in iban.identifiers] == [(IdentifierKind.IBAN, IBAN)]

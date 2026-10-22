@@ -246,10 +246,16 @@ class ClassifierService:
                 for item in contact.identifiers
                 if item.source is not IdentifierSource.LEARNED
             ]
-            taken += await person_identifiers(uow)
+            personal = await person_identifiers(uow)
+            # A person's e-mail domain is no contact's (their family's, their own).
+            taken += [
+                (IdentifierKind.EMAIL_DOMAIN, value.rpartition("@")[2])
+                for kind, value in personal
+                if kind is IdentifierKind.EMAIL_ADDRESS
+            ]
             learned = await replace_learned_identifiers(
                 uow,
-                mine_identifiers(found, taken),
+                mine_identifiers(found, taken, personal),
                 fetch_logos_at=self._clock.now() if self._fetch_logos else None,
             )
             summary: JsonObject = {

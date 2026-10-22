@@ -375,15 +375,31 @@
 		formError = null;
 		const enabling = session.isAdmin && enablesTopic;
 		try {
-			await unwrap(
+			const body = buildConfirm();
+			const result = await unwrap(
 				api.POST('/api/v1/documents/{id}/confirm', {
 					params: { path: { id: document.id } },
-					body: buildConfirm()
+					body
 				})
 			);
 			baseline = null;
 			if (enabling) onenabled?.();
-			toast.success(m.review_confirmed());
+			// The answer says `access: null` when the caller cannot read the document any more.
+			const away =
+				typeof result === 'object' &&
+				result !== null &&
+				'access' in result &&
+				(result as { access: unknown }).access === null;
+			if (!away) toast.success(m.review_confirmed());
+			else {
+				// Handed over, or into a space the caller only reads, where it is not green yet.
+				const receiver = (lookup?.users ?? []).find(
+					(other) => other.personal_space_id === body.space_id && other.id !== session.user?.id
+				);
+				toast.success(
+					receiver ? m.move_handed_over({ name: receiver.username }) : m.document_moved_away()
+				);
+			}
 			onconfirmed(openNext ? next : null);
 		} catch (error) {
 			readProblem(error);

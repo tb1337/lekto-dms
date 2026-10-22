@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Archive from '@lucide/svelte/icons/archive';
+	import LogOut from '@lucide/svelte/icons/log-out';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import UserRound from '@lucide/svelte/icons/user-round';
@@ -15,9 +16,9 @@
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
-	import { spaceLabel, userName, type Space, type UserName } from '#lib/masterdata.svelte.ts';
+	import { spaceLabel, type Space, type UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { canChooseMembers, canManageSpace } from '#lib/permissions.ts';
+	import { canChooseMembers, canLeaveSpace, canManageSpace } from '#lib/permissions.ts';
 	import { session } from '#lib/session.svelte.ts';
 
 	let spaces = $state<Space[] | null>(null);
@@ -26,6 +27,7 @@
 	let creating = $state(false);
 	let renaming = $state<Space | null>(null);
 	let removing = $state<Space | null>(null);
+	let leaving = $state<Space | null>(null);
 	let choosing = $state<string | null>(null);
 
 	const me = $derived(session.user?.id);
@@ -43,9 +45,7 @@
 		space.members
 			.filter((member) => member.user_id !== me)
 			.map((member) =>
-				member.role === 'read'
-					? m.space_member_reads({ name: userName(users, member.user_id) })
-					: userName(users, member.user_id)
+				member.role === 'read' ? m.space_member_reads({ name: member.username }) : member.username
 			)
 			.join(', ');
 
@@ -78,6 +78,17 @@
 			})
 		);
 		toast.success(m.space_renamed());
+		await load();
+	}
+
+	async function leave() {
+		if (!leaving || !me) return;
+		await unwrap(
+			api.DELETE('/api/v1/spaces/{id}/members/{user_id}', {
+				params: { path: { id: leaving.id, user_id: me } }
+			})
+		);
+		toast.success(m.space_left());
 		await load();
 	}
 
@@ -160,6 +171,16 @@
 					<Users aria-hidden="true" />
 				</Button>
 			{/if}
+			{#if canLeaveSpace(space, session.user)}
+				<Button
+					variant="ghost"
+					size="icon"
+					aria-label={m.space_leave({ name: label(space) })}
+					onclick={() => (leaving = space)}
+				>
+					<LogOut aria-hidden="true" />
+				</Button>
+			{/if}
 			{#if canManageSpace(space, session.user)}
 				<Button
 					variant="ghost"
@@ -190,6 +211,13 @@
 	description={m.space_delete_confirm()}
 	confirmLabel={m.delete_title()}
 	onconfirm={remove}
+/>
+<ConfirmDialog
+	bind:open={() => leaving !== null, (open) => !open && (leaving = null)}
+	title={m.space_leave({ name: leaving ? label(leaving) : '' })}
+	description={m.space_leave_confirm()}
+	confirmLabel={m.space_leave_action()}
+	onconfirm={leave}
 />
 {#if chosen}
 	<SpaceMembers

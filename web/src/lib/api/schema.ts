@@ -773,7 +773,7 @@ export interface paths {
 		post?: never;
 		/**
 		 * Remove a member
-		 * @description Editors of the space and admins. As adding one. The user of a personal space stays, and a space keeps one editor (422).
+		 * @description Editors of the space and admins. As adding one; and every member leaves a space themselves with their own id, a reader too (204: the caller no longer sees the space). The user of a personal space stays, and a space keeps one editor (422).
 		 */
 		delete: operations['remove_member_api_v1_spaces__id__members__user_id__delete'];
 		options?: never;
@@ -1484,7 +1484,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Confirm a document from the inbox
-		 * @description Editors of the document's space and admins, for yellow and red documents that are not being processed. `space_id` moves the document as `POST /documents/{id}/move` does: into a space the caller edits, or another user's personal space; an admin chooses any space. Every open field of the nodes before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The rules' fields `space`, `title` and `review` always have a value: confirming keeps it, `space_id` moves the document. The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the person decided or changed as it is. From `fields` on, the fields read again replace the ones the document has; otherwise the type's title pattern is rendered with the decided values (while the title is the machine's).
+		 * @description Editors of the document's space and admins, for yellow and red documents that are not being processed. `space_id` moves the document as `POST /documents/{id}/move` does: into a space the caller edits, or another user's personal space; an admin chooses any space. Every open field of the nodes before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The rules' fields `space`, `title` and `review` always have a value: confirming keeps it, `space_id` moves the document. The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the person decided or changed as it is. From `fields` on, the fields read again replace the ones the document has; otherwise the type's title pattern is rendered with the decided values (while the title is the machine's). If the caller cannot read the document where it lies now (handed over, or moved into a space they only read, where it is not green yet), the answer is `DocumentOutOfReach`. Editors of `space_id` who could not read the document before find it as new once it is green.
 		 */
 		post: operations['confirm_api_v1_documents__id__confirm_post'];
 		delete?: never;
@@ -4337,6 +4337,22 @@ export interface components {
 			/** Linked Accounts */
 			linked_accounts: components['schemas']['LinkOut'][];
 		};
+		/** MemberDetails */
+		MemberDetails: {
+			/**
+			 * User Id
+			 * Format: uuid
+			 */
+			user_id: string;
+			role: components['schemas']['SpaceRole'];
+			/** Username */
+			username: string;
+			/**
+			 * Active
+			 * @description A deactivated member keeps their place until an editor removes them.
+			 */
+			active: boolean;
+		};
 		/**
 		 * MemberIn
 		 * @example {
@@ -5487,7 +5503,7 @@ export interface components {
 			/** @description The caller's role; admins edit every space. */
 			role: components['schemas']['SpaceRole'];
 			/** Members */
-			members: components['schemas']['MemberOut'][];
+			members: components['schemas']['MemberDetails'][];
 			/**
 			 * Created At
 			 * Format: date-time
@@ -12603,6 +12619,13 @@ export interface operations {
 					'application/json': components['schemas']['SpaceOut'];
 				};
 			};
+			/** @description The caller left the space. */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
 			/** @description Unauthorized */
 			401: {
 				headers: {
@@ -17352,7 +17375,8 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['DocumentDetails'];
+					'application/json':
+						components['schemas']['DocumentDetails'] | components['schemas']['DocumentOutOfReach'];
 				};
 			};
 			/** @description Unauthorized */

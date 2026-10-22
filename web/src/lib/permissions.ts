@@ -22,8 +22,6 @@ type RuleLike = Pick<components['schemas']['RuleOut'], 'scope' | 'space_id'> & {
 
 const isAdmin = (user: Actor): boolean => user?.role === 'admin';
 const owns = (item: Owned, user: Actor): boolean => user !== null && item.owner_id === user.id;
-const isOthersPersonal = (space: SpaceLike, user: Actor): boolean =>
-	space.personal_of !== null && space.personal_of !== user?.id;
 const edits = (spaces: readonly SpaceLike[], id: string | null): boolean =>
 	spaces.some((space) => space.id === id && space.role === 'edit');
 
@@ -33,10 +31,11 @@ export function canEdit(document: Document, user: Actor): boolean {
 	return user !== null && document.access === 'edit';
 }
 
-/** Spaces the caller files into and moves into: the ones they edit (every one for admins),
- * apart from other users' personal spaces, which take documents as a hand-over. */
+/** Spaces the caller files into and moves into: the ones they edit (every one for admins), also
+ * another user's personal space they edit, which stays theirs to move into when its user is
+ * deactivated. Other personal spaces take documents as a hand-over (`handOverTargets`). */
 export function editableSpaces<T extends SpaceLike>(spaces: readonly T[], user: Actor): T[] {
-	return spaces.filter((space) => space.role === 'edit' && !isOthersPersonal(space, user));
+	return spaces.filter((space) => user !== null && space.role === 'edit');
 }
 
 /** The other users a document is handed over to: into their personal space
@@ -63,6 +62,18 @@ export function canChooseMembers(space: SpaceLike, user: Actor): boolean {
 	if (user === null) return false;
 	if (space.personal_of !== null) return space.personal_of === user.id || isAdmin(user);
 	return space.role === 'edit';
+}
+
+/** Leave a space: every member, a reader too; not the user of a personal space, and not the last
+ * editor of a space. */
+export function canLeaveSpace(
+	space: SpaceLike & { members: readonly { user_id: string; role: string }[] },
+	user: Actor
+): boolean {
+	if (user === null || space.personal_of === user.id) return false;
+	const own = space.members.find((member) => member.user_id === user.id);
+	if (!own) return false;
+	return own.role !== 'edit' || space.members.filter((member) => member.role === 'edit').length > 1;
 }
 
 /** Change, delete, test a webhook and renew its secret: its owner and admins. */

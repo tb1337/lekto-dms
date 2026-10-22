@@ -36,7 +36,9 @@
 	let busy = $state(false);
 
 	const label = $derived(spaceLabel(space, users, session.user?.id));
-	const name = (id: string) => userName(users, id);
+	// Members come with their names, a deactivated one too (whom the users list hides).
+	const name = (id: string) =>
+		space.members.find((member) => member.user_id === id)?.username ?? userName(users, id);
 	const editors = $derived(space.members.filter((member) => member.role === 'edit').length);
 	// The user of a personal space stays an editor; the last editor of a space stays one.
 	const fixed = (member: Space['members'][number]) =>
@@ -103,9 +105,21 @@
 		<ul class="flex flex-col gap-2">
 			{#each space.members as member (member.user_id)}
 				<li class="flex items-center gap-2">
-					<span class="min-w-0 flex-1 truncate">{name(member.user_id)}</span>
+					<span class="min-w-0 flex-1 truncate">{member.username}</span>
 					{#if fixed(member)}
 						<Badge variant="secondary">{m.space_role_edit()}</Badge>
+					{:else if !member.active}
+						<!-- A deactivated member takes no new role; an editor removes them. -->
+						<Badge variant="outline">{m.user_inactive()}</Badge>
+						<Button
+							variant="ghost"
+							size="icon"
+							disabled={busy}
+							aria-label={m.members_remove({ name: member.username })}
+							onclick={() => remove(member.user_id)}
+						>
+							<X aria-hidden="true" />
+						</Button>
 					{:else}
 						<Select
 							aria-label={m.members_role_of({ name: name(member.user_id) })}

@@ -94,12 +94,25 @@
 		)
 	);
 	const space = $derived(lookup?.spaces.find((space) => space.id === document.space_id) ?? null);
-	// Who sees the document besides the caller: the members of its space.
+	// Who sees the document besides the caller: the editors of its space, its readers once it
+	// is green.
+	const others = $derived(space?.members.filter((member) => member.user_id !== user?.id) ?? []);
+	const green = $derived(document.lane === 'green');
 	const visibleTo = $derived(
-		space?.members
-			.filter((member) => member.user_id !== user?.id)
-			.map((member) => userName(users, member.user_id))
-			.join(', ') ?? null
+		space === null
+			? null
+			: others
+					.filter((member) => member.role === 'edit' || green)
+					.map((member) => member.username)
+					.join(', ')
+	);
+	const readersLater = $derived(
+		green
+			? ''
+			: others
+					.filter((member) => member.role === 'read')
+					.map((member) => member.username)
+					.join(', ')
 	);
 	const uploader = $derived(
 		document.uploaded_by && document.uploaded_by !== user?.id
@@ -194,9 +207,13 @@
 	async function move() {
 		if (!target) return;
 		const into = lookup?.spaces.find((space) => space.id === target);
-		// Handed over, or into a space the caller only reads: the document leaves their hands,
-		// and the view goes back where it came from instead of showing it gone.
-		if (into && into.role !== 'edit') {
+		const receiver = users.find(
+			(other) => other.personal_space_id === target && other.id !== user?.id
+		);
+		// Handed over (a personal space the caller is no member of is not among their spaces),
+		// or into a space the caller only reads: the document leaves their hands, and the view
+		// goes back where it came from instead of showing it gone.
+		if (!into || into.role !== 'edit') {
 			busy = true;
 			try {
 				await unwrap(
@@ -205,11 +222,7 @@
 						body: { space_id: target }
 					})
 				);
-				toast.success(
-					into.personal_of && into.personal_of !== user?.id
-						? m.move_handed_over({ name: userName(users, into.personal_of) })
-						: m.move_done()
-				);
+				toast.success(receiver ? m.move_handed_over({ name: receiver.username }) : m.move_done());
 				moveOpen = false;
 				await goto(inbox ? `${BASE}/inbox` : `${BASE}/documents`);
 			} catch (error) {
@@ -288,6 +301,7 @@
 				{#if space}
 					· {spaceLabel(space, users, user?.id)} ·
 					{visibleTo ? m.visible_to({ names: visibleTo }) : m.visible_to_you()}
+					{#if readersLater}· {m.visible_to_readers_later({ names: readersLater })}{/if}
 				{/if}
 				{#if uploader}· {m.uploaded_by({ name: uploader })}{/if}
 				{#if document.page_count}· {m.doc_pages({ count: document.page_count })}{/if}

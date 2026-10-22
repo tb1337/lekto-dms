@@ -193,8 +193,8 @@ describe('DocumentHeader', () => {
 					personal_of: null,
 					role: 'edit',
 					members: [
-						{ user_id: OWNER, role: 'edit' },
-						{ user_id: 'user-2', role: 'read' }
+						{ user_id: OWNER, role: 'edit', username: 'tobi', active: true },
+						{ user_id: 'user-2', role: 'read', username: 'anna', active: true }
 					]
 				},
 				{
@@ -202,7 +202,7 @@ describe('DocumentHeader', () => {
 					name: 'Personal',
 					personal_of: OWNER,
 					role: 'edit',
-					members: [{ user_id: OWNER, role: 'edit' }]
+					members: [{ user_id: OWNER, role: 'edit', username: 'tobi', active: true }]
 				},
 				{
 					id: 'space-3',
@@ -210,16 +210,23 @@ describe('DocumentHeader', () => {
 					personal_of: 'user-2',
 					role: 'read',
 					members: [
-						{ user_id: 'user-2', role: 'edit' },
-						{ user_id: OWNER, role: 'read' }
+						{ user_id: 'user-2', role: 'edit', username: 'anna', active: true },
+						{ user_id: OWNER, role: 'read', username: 'tobi', active: true }
 					]
 				}
 			]
 		} as unknown as Lookup;
 
-		it('names the space and who else sees the document', () => {
-			render(DocumentHeader, props({ lookup }));
+		it('names the space and who else sees the document: readers once it is green', () => {
+			const green = { ...document(), lane: 'green' } as Document;
+			const { unmount } = render(DocumentHeader, props({ lookup, document: green }));
 			expect(screen.getByText(new RegExp(m.visible_to({ names: 'anna' })))).toBeTruthy();
+			unmount();
+			render(DocumentHeader, props({ lookup }));
+			expect(screen.getByText(new RegExp(m.visible_to_you()))).toBeTruthy();
+			expect(
+				screen.getByText(new RegExp(m.visible_to_readers_later({ names: 'anna' })))
+			).toBeTruthy();
 		});
 
 		it('moves into an edited space or hands over into another personal one', async () => {
@@ -244,6 +251,23 @@ describe('DocumentHeader', () => {
 		it('goes back to the documents after handing the document over', async () => {
 			const onchanged = vi.fn();
 			render(DocumentHeader, props({ lookup, onchanged }));
+			const user = userEvent.setup({ pointerEventsCheck: 0 });
+			await user.click(screen.getByRole('button', { name: m.move_title() }));
+			const dialog = await screen.findByRole('dialog');
+			await choose(user, within(dialog).getByLabelText(m.field_space()), 'space-3');
+			await user.click(within(dialog).getByRole('button', { name: m.move_title() }));
+			await waitFor(() => expect(goto).toHaveBeenCalledWith('/ui/documents'));
+			expect(await fetchMock.mock.calls[0][0].json()).toEqual({ space_id: 'space-3' });
+			expect(onchanged).not.toHaveBeenCalled();
+		});
+
+		it('hands over to a user whose personal space the caller is no member of', async () => {
+			const strangers = {
+				...lookup,
+				spaces: lookup.spaces.filter((space) => space.id !== 'space-3')
+			} as Lookup;
+			const onchanged = vi.fn();
+			render(DocumentHeader, props({ lookup: strangers, onchanged }));
 			const user = userEvent.setup({ pointerEventsCheck: 0 });
 			await user.click(screen.getByRole('button', { name: m.move_title() }));
 			const dialog = await screen.findByRole('dialog');

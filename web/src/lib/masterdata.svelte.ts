@@ -93,14 +93,19 @@ export function spaceOptions(
 	users: readonly UserName[],
 	user: { id: string; role?: UserName['role'] } | null
 ): { value: string; label: string }[] {
+	const editable = editableSpaces(spaces, user);
+	const offered = editable.map((space) => space.id);
 	return [
-		...editableSpaces(spaces, user).map((space) => ({
+		...editable.map((space) => ({
 			value: space.id,
 			label: spaceLabel(space, users, user?.id)
 		})),
-		...handOverTargets(users, user).map((other) => ({
-			value: other.personal_space_id,
-			label: m.move_hand_over({ name: userName(users, other.id) })
-		}))
+		// A personal space the caller edits is offered as itself above.
+		...handOverTargets(users, user)
+			.filter((other) => !offered.includes(other.personal_space_id))
+			.map((other) => ({
+				value: other.personal_space_id,
+				label: m.move_hand_over({ name: userName(users, other.id) })
+			}))
 	];
 }

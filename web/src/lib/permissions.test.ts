@@ -5,6 +5,7 @@ import {
 	canChooseMembers,
 	canEdit,
 	canListAllUsers,
+	canLeaveSpace,
 	canManageSpace,
 	canManageWebhook,
 	editableSpaces,
@@ -42,11 +43,28 @@ const spaces = [
 const ids = (list: readonly { id: string }[]) => list.map((space) => space.id);
 
 describe('spaces', () => {
-	it('files into the spaces the caller edits, not into other personal ones', () => {
+	it('files into the spaces the caller edits, another personal one too', () => {
 		expect(ids(editableSpaces(spaces, me))).toEqual(['mine', 'house']);
-		// An admin edits every space; another user's personal one still takes a hand-over.
-		const asAdmin = spaces.map((space) => ({ ...space, role: 'edit' as const }));
-		expect(ids(editableSpaces(asAdmin, admin))).toEqual(['house', 'tax']);
+		// A personal space the caller edits stays theirs to file into, as an admin's every space.
+		const edited = spaces.map((space) => ({ ...space, role: 'edit' as const }));
+		expect(ids(editableSpaces(edited, me))).toEqual(['mine', 'house', 'tax', 'anna']);
+		expect(ids(editableSpaces(edited, admin))).toEqual(['mine', 'house', 'tax', 'anna']);
+		expect(editableSpaces(spaces, null)).toEqual([]);
+	});
+
+	it('lets a member leave a space, not the user of a personal one nor its last editor', () => {
+		const members = (...list: [string, 'read' | 'edit'][]) =>
+			list.map(([user_id, role]) => ({ user_id, role }));
+		const house = { ...spaces[1], members: members(['u1', 'edit'], ['u2', 'read']) };
+		expect(canLeaveSpace(house, me)).toBe(false); // the last editor
+		expect(canLeaveSpace(house, other)).toBe(true); // a reader
+		expect(canLeaveSpace({ ...house, members: members(['u1', 'edit'], ['u2', 'edit']) }, me)).toBe(
+			true
+		);
+		const lent = { ...spaces[3], members: members(['u2', 'edit'], ['u1', 'read']) };
+		expect(canLeaveSpace(lent, me)).toBe(true);
+		expect(canLeaveSpace(lent, other)).toBe(false); // their own personal space
+		expect(canLeaveSpace(house, admin)).toBe(false); // no member
 	});
 
 	it('hands over to the other active users, into their personal spaces', () => {

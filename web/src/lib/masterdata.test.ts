@@ -12,7 +12,7 @@ const space = (id: string, changes: Partial<Space> = {}): Space => ({
 	name: 'Personal',
 	personal_of: null,
 	role: 'edit',
-	members: [{ user_id: 'u1', role: 'edit' }],
+	members: [{ user_id: 'u1', role: 'edit', username: 'tobi', active: true }],
 	created_at: '2026-10-21T08:00:00Z',
 	version: 1,
 	...changes
@@ -24,8 +24,8 @@ const anna = space('anna', {
 	personal_of: 'u2',
 	role: 'read',
 	members: [
-		{ user_id: 'u2', role: 'edit' },
-		{ user_id: 'u1', role: 'read' }
+		{ user_id: 'u2', role: 'edit', username: 'anna', active: true },
+		{ user_id: 'u1', role: 'read', username: 'tobi', active: true }
 	]
 });
 

@@ -57,6 +57,22 @@
 		];
 	}
 
+	// A space the rule files into that the caller may not file into (another editor saved it,
+	// into a space the caller is no member of): kept, but saving needs another choice.
+	const unreachable = $derived(
+		action.type === 'set_space' &&
+			action.space_id !== '' &&
+			!targets.some((entry) => entry.value === action.space_id)
+	);
+
+	function spaceTargets(list: readonly { value: string; label: string }[], value: string) {
+		return [
+			{ value: '', label: m.rule_choose() },
+			...list,
+			...(unreachable ? [{ value, label: m.rule_space_unreachable() }] : [])
+		];
+	}
+
 	const field = $derived(
 		action.type === 'set_field'
 			? (lookup.fields.find((entry) => entry.id === action.field_id) ?? null)
@@ -73,9 +89,12 @@
 					aria-label={label}
 					aria-invalid={invalid || undefined}
 					bind:value={action.space_id}
-					options={withUnknown([...targets], action.space_id)}
+					options={spaceTargets(targets, action.space_id)}
 					class="h-10"
 				/>
+				{#if unreachable}
+					<p class="text-sm text-muted-foreground">{m.rule_space_unreachable_hint()}</p>
+				{/if}
 			{:else if action.type === 'set_contact'}
 				<Select
 					aria-label={label}

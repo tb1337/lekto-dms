@@ -158,8 +158,11 @@ name); admins edit every space. `lib/permissions.ts` keeps the UI to what the AP
 user's name for others, `spaceLabel`), with the members; admins also see the spaces they are no
 member of. `SpaceMembers` adds members with a role, changes and removes them; the user of a
 personal space and the last editor of a space stay editors, and only its user (or an admin)
-chooses the members of a personal space. A personal space is neither renamed nor deleted, a
-shared one only while empty.
+chooses the members of a personal space. Members come with their names and whether they are
+active (`SpaceOut.members`): a deactivated member takes no new role, an editor removes them.
+Every member leaves a space themselves (`canLeaveSpace`), apart from the user of a personal
+space and the last editor. A personal space is neither renamed nor deleted, a shared one only
+while empty.
 
 The document's head names its space and who else sees it. Moving goes into a space the caller
 edits, or hands the document over into another user's personal space ("Hand over to Anna",

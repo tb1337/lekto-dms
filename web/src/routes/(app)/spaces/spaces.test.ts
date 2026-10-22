@@ -31,17 +31,20 @@ const space = (id: string, changes: Partial<Space>): Space => ({
 const HOUSE = space('house', {
 	name: 'Haushalt',
 	members: [
-		{ user_id: 'u1', role: 'edit' },
-		{ user_id: 'u2', role: 'read' }
+		{ user_id: 'u1', role: 'edit', username: 'tobi', active: true },
+		{ user_id: 'u2', role: 'read', username: 'anna', active: true }
 	]
 });
-const TOBI = space('tobi', { personal_of: 'u1', members: [{ user_id: 'u1', role: 'edit' }] });
+const TOBI = space('tobi', {
+	personal_of: 'u1',
+	members: [{ user_id: 'u1', role: 'edit', username: 'tobi', active: true }]
+});
 const ANNA = space('anna', {
 	personal_of: 'u2',
 	role: 'read',
 	members: [
-		{ user_id: 'u2', role: 'edit' },
-		{ user_id: 'u1', role: 'read' }
+		{ user_id: 'u2', role: 'edit', username: 'anna', active: true },
+		{ user_id: 'u1', role: 'read', username: 'tobi', active: true }
 	]
 });
 
@@ -97,7 +100,7 @@ describe('spaces', () => {
 		signIn('u3', 'admin');
 		const admins = space('admins', {
 			personal_of: 'u3',
-			members: [{ user_id: 'u3', role: 'edit' }]
+			members: [{ user_id: 'u3', role: 'edit', username: 'admin', active: true }]
 		});
 		start([HOUSE, TOBI, admins]);
 		const others = await screen.findByRole('region', { name: m.spaces_others() });
@@ -129,5 +132,42 @@ describe('spaces', () => {
 		await waitFor(() => expect(calls(api)).toContain('PUT /api/v1/spaces/house/members/u3'));
 		const put = api.mock.calls.find(([request]) => request.method === 'PUT')![0];
 		expect(await put.json()).toEqual({ role: 'read' });
+	});
+	it('lets a reader leave a space, after asking', async () => {
+		signIn('u2');
+		// A dialog of an earlier test may still leave the body without pointer events.
+		const user = userEvent.setup({ pointerEventsCheck: 0 });
+		const api = start([{ ...HOUSE, role: 'read' }, ANNA]);
+		// Not their own personal space.
+		expect(
+			screen.queryByRole('button', { name: m.space_leave({ name: m.space_personal() }) })
+		).toBeNull();
+		await user.click(
+			await screen.findByRole('button', { name: m.space_leave({ name: 'Haushalt' }) })
+		);
+		const dialog = await screen.findByRole('alertdialog');
+		await user.click(within(dialog).getByRole('button', { name: m.space_leave_action() }));
+		await waitFor(() => expect(calls(api)).toContain('DELETE /api/v1/spaces/house/members/u2'));
+	});
+
+	it('keeps a deactivated member without a role to change, for removing', async () => {
+		const user = userEvent.setup({ pointerEventsCheck: 0 });
+		const gone = {
+			...HOUSE,
+			members: [
+				{ user_id: 'u1', role: 'edit' as const, username: 'tobi', active: true },
+				{ user_id: 'u9', role: 'read' as const, username: 'otto', active: false }
+			]
+		};
+		start([gone, TOBI]);
+		await user.click(
+			await screen.findByRole('button', { name: m.space_members({ name: 'Haushalt' }) })
+		);
+		const dialog = await screen.findByRole('dialog');
+		expect(within(dialog).getByText(m.user_inactive())).toBeTruthy();
+		expect(within(dialog).queryByLabelText(m.members_role_of({ name: 'otto' }))).toBeNull();
+		expect(
+			within(dialog).getByRole('button', { name: m.members_remove({ name: 'otto' }) })
+		).toBeTruthy();
 	});
 });

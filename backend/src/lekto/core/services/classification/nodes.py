@@ -530,9 +530,10 @@ class JudgeNode:
             },
             recipient_persons(recipient, people, self._thresholds),
         )
+        addressed = recipient_persons(recipient, shown, self._thresholds)
         public = named_persons(
             {user: Strength.WEAK for user in (signals.facts.public if signals.facts else ())},
-            recipient_persons(recipient, shown, self._thresholds),
+            addressed,
         )
         space = (
             None
@@ -542,6 +543,7 @@ class JudgeNode:
                 candidates.choice(current, locked=document.space_confirmed_at is not None),
                 self._thresholds,
                 persons,
+                frozenset(user for user in addressed if user in active),
             )
         )
         model_entry = entries.get(Node.SIGNAL_LLM)

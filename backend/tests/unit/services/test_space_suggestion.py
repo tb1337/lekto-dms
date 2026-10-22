@@ -404,6 +404,29 @@ async def test_the_model_s_recipient_only_warns(world: World) -> None:
     assert result.space is None
 
 
+async def test_the_model_proposing_the_recipient_s_space_marks_the_hand_over(
+    world: World,
+) -> None:
+    """The model proposes Anna's personal space and reads Anna as the recipient (by her
+    display name): the candidate says so (`recipient`), and the judge suggests the hand-over;
+    against similar documents that stay with Tobi too (`test_space_persons`)."""
+    await seed(world)
+    tobi, anna, _ = await household(world)
+    await annas_profile(world, anna)
+    document = await tobis_invoice(world, tobi)
+
+    result = await judge(world, document, model(proposal(space="s3", recipient="Frau Anna Busch")))
+
+    assert isinstance(result, MetadataResult)
+    check = space_check(result)
+    annas = (await world.personal_space(anna)).id
+    assert check.outcome is Outcome.UNCERTAIN
+    assert check.suggestion == str(annas)
+    assert result.space is None  # never by itself
+    proposed = next(c for c in check.candidates if c.value == str(annas))
+    assert any(source.recipient for source in proposed.sources)
+
+
 async def test_the_recipient_is_matched_by_display_names_not_usernames(world: World) -> None:
     await seed(world)
     tobi, _, _ = await household(world)

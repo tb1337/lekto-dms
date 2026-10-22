@@ -11,6 +11,7 @@ from lekto.core.domain.verdict import (
     ClassifierView,
     FactsView,
     ModelProposal,
+    Neighbour,
     Signals,
     SpaceChoice,
     SpaceOption,
@@ -208,3 +209,63 @@ def test_the_joint_account_in_the_household_stays() -> None:
 def test_a_recipient_two_users_match_alike_names_neither() -> None:
     people = [(ANNA, ("Anna Busch",)), (BOB, ("Hanna Busch",))]
     assert recipient_persons("Ana Busch", people, builders.THRESHOLDS) == {}
+
+
+def payslip_signals(proposed: SpaceId = ANNAS) -> Signals:
+    """Anna's payslip uploaded by Tobi: the model proposes `proposed`; Tobi's five payslips,
+    the most similar documents, all lie in his personal space (there was no one else); the
+    classifier knows no spaces yet."""
+    neighbours = tuple(
+        Neighbour(document=str(new_id()), contact=None, document_type=None, space=OWN)
+        for _ in range(5)
+    )
+    return Signals(model=ModelProposal(space=proposed), neighbours=neighbours)
+
+
+def test_the_model_and_its_recipient_suggest_handing_it_over() -> None:
+    """Tobi, 22.10.2026: the model proposes Anna's personal space and reads Anna as the
+    recipient; the similar documents stay with Tobi. Without the recipient the signals only
+    disagree; with it Lekto suggests the hand-over (a click, never automatic)."""
+    persons = {ANNA: Strength.MEDIUM}
+    without = judge_space(payslip_signals(), choice(), persons=persons)
+    assert without.outcome is Outcome.OK
+    assert without.value is None  # it stays
+    check = judge_space(payslip_signals(), choice(), persons=persons, recipients=frozenset({ANNA}))
+    assert check.outcome is Outcome.UNCERTAIN
+    assert check.value is None
+    assert check.suggestion == str(ANNAS)
+    assert check.reason == "suggests another space, which shows it to more people"
+    assert "anna" not in str(check.reason).lower()
+    proposed = next(item for item in check.candidates if item.value == str(ANNAS))
+    assert any(source.recipient for source in proposed.sources)
+    stays = next(item for item in check.candidates if item.value == str(OWN))
+    assert not any(source.recipient for source in stays.sources)
+
+
+def test_a_letter_to_both_is_no_hand_over() -> None:
+    """The recipient names Tobi and Anna: handing it over would leave Tobi without it."""
+    check = judge_space(
+        payslip_signals(),
+        choice(),
+        persons={ANNA: Strength.MEDIUM, TOBI: Strength.MEDIUM},
+        recipients=frozenset({ANNA, TOBI}),
+    )
+    assert check.outcome is Outcome.OK  # stays, with a warning that Anna does not see it
+    assert check.value is None
+    assert check.unseen_by == (str(ANNA),)
+
+
+def test_the_recipient_alone_moves_nothing() -> None:
+    """The model proposes Haushalt, the recipient is Anna: no hand-over the model did not
+    propose; and the model proposing Anna's space without her as recipient changes nothing."""
+    household = judge_space(payslip_signals(HOUSEHOLD), choice(), recipients=frozenset({ANNA}))
+    assert household.suggestion != str(ANNAS)
+    unaddressed = judge_space(payslip_signals(), choice(), recipients=frozenset({BOB}))
+    assert unaddressed.outcome is Outcome.OK
+    assert unaddressed.value is None
+
+
+def test_already_in_anna_s_space_nothing_to_suggest() -> None:
+    check = judge_space(payslip_signals(), choice(ANNAS), recipients=frozenset({ANNA}))
+    assert check.suggestion != str(ANNAS)
+    assert check.value is None

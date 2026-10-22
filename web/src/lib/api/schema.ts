@@ -2311,6 +2311,12 @@ export interface components {
 			 * @default false
 			 */
 			named_in_text: boolean;
+			/**
+			 * Recipient
+			 * @description `signal_llm`, a space: the model proposes the personal space of another user, and its recipient is that user by their display name (the judge suggests the hand-over).
+			 * @default false
+			 */
+			recipient: boolean;
 		};
 		/**
 		 * Channel

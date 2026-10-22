@@ -17481,6 +17481,12 @@
             "title": "Named In Text",
             "description": "`signal_facts`: the contact's name or an alias stands in the text.",
             "default": false
+          },
+          "recipient": {
+            "type": "boolean",
+            "title": "Recipient",
+            "description": "`signal_llm`, a space: the model proposes the personal space of another user, and its recipient is that user by their display name (the judge suggests the hand-over).",
+            "default": false
           }
         },
         "type": "object",

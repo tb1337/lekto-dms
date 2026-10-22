@@ -130,6 +130,13 @@ class CandidateSourceOut(BaseModel):
         default=False,
         description="`signal_facts`: the contact's name or an alias stands in the text.",
     )
+    recipient: bool = Field(
+        default=False,
+        description=(
+            "`signal_llm`, a space: the model proposes the personal space of another user, and "
+            "its recipient is that user by their display name (the judge suggests the hand-over)."
+        ),
+    )
 
     @classmethod
     def of(cls, source: CandidateSource) -> "CandidateSourceOut":
@@ -145,6 +152,7 @@ class CandidateSourceOut(BaseModel):
             identifiers=list(source.identifiers),
             documents=[UUID(document) for document in source.documents],
             named_in_text=source.named_in_text,
+            recipient=source.recipient,
         )
 
 

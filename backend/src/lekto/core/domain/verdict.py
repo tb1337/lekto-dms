@@ -850,16 +850,20 @@ def judge_space(
     choice: SpaceChoice,
     thresholds: Thresholds,
     persons: Mapping[UserId, Strength] | None = None,
+    recipients: frozenset[UserId] = frozenset(),
 ) -> FieldCheck:
     """The space for the document (see the module): the check's `value` is the space the judge
     moves it to (None: it stays where it is). A move is the judge's own only if it shows the
     document to no one new and keeps it with its uploader in a space that is no one else's
     personal space; any other one it suggests (uncertain, a person decides): one that shows it
     to others, one its uploader would not see, a hand-over. `persons`: the users the document
-    names, with the strongest evidence (`named_persons`). Reasons and candidates name no space
-    and no person (the editors of the document may not see them): the suggestion is the
-    space's id, `unseen_by` the ids of those named (medium or hard) who would not see the
-    document where the check leads."""
+    names, with the strongest evidence (`named_persons`); `recipients`: those the model's
+    recipient names by their display name (what anyone may know). The model proposing the
+    personal space of a user its recipient names suggests handing it over to them, whatever
+    the other signals say (Tobi, 22.10.2026: a payslip for Anna among Tobi's payslips).
+    Reasons and candidates name no space and no person (the editors of the document may not
+    see them): the suggestion is the space's id, `unseen_by` the ids of those named (medium or
+    hard) who would not see the document where the check leads."""
     current = choice.current
     names = choice.options
     if choice.locked:
@@ -870,12 +874,18 @@ def judge_space(
     backed = named.backed(names)
     model = signals.model
     by_model = model.space if model is not None and model.space in names else None
+    # The model proposes the personal space of another user, and its recipient is that user.
+    addressed = by_model is not None and _addressed(names[by_model], recipients, choice.uploader)
     classifier = signals.classifier
     ranking = _Ranking.of(
         names,
         signals,
         thresholds,
-        answer={by_model: CandidateSource(signal=LLM, names=True)} if by_model else {},
+        answer=(
+            {by_model: CandidateSource(signal=LLM, names=True, recipient=addressed)}
+            if by_model
+            else {}
+        ),
         classified=classifier.spaces if classifier else (),
         carried=lambda item: item.space,
         evidence={backed: CandidateSource(signal=FACTS, named_in_text=True)} if backed else None,
@@ -944,6 +954,11 @@ def judge_space(
             return suggested(target, f"{_NAMED_UNSEEN}; {why or 'suggests another space'}", 1.0)
         if chosen is not None:
             return suggested(chosen, _NAMED_UNSEEN, 1.0)
+    if addressed and chosen is None and by_model is not None and by_model != current:
+        # The model and its recipient name the same person: a hand-over to suggest, even
+        # against similar documents that all stayed with the uploader (there was no one else).
+        why = _moving_why(names[by_model], seeing, choice.uploader)
+        return suggested(by_model, why or _HANDING_OVER, thresholds.accept)
     if chosen is None or chosen == current:
         top = next((id for id in ranked if id != current), None)
         return leading(
@@ -977,6 +992,20 @@ def judge_space(
     return suggested(chosen, why, confidence)
 
 
+_HANDING_OVER = "suggests handing it over into another user's personal space"
+
+
+def _addressed(target: SpaceOption, recipients: frozenset[UserId], uploader: UserId | None) -> bool:
+    """Whether `target` is the personal space of another user the model's recipient names, and
+    the recipient does not name the uploader too (a letter to both is no hand-over)."""
+    return (
+        target.personal_of is not None
+        and target.personal_of != uploader
+        and target.personal_of in recipients
+        and uploader not in recipients
+    )
+
+
 def _moving_why(
     target: SpaceOption, seeing: frozenset[UserId], uploader: UserId | None
 ) -> str | None:
@@ -986,7 +1015,7 @@ def _moving_why(
     if target.members - seeing:
         return "suggests another space, which shows it to more people"
     if target.personal_of is not None and target.personal_of != uploader:
-        return "suggests handing it over into another user's personal space"
+        return _HANDING_OVER
     if uploader is not None and uploader not in target.members:
         return "suggests a space its uploader does not see"
     return None

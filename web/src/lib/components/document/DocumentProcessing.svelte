@@ -174,7 +174,8 @@
 		chosen = { id: document.id, current: currentRun, run };
 	}
 
-	const glanceOf = (run: number) => glance(entries, graph, document.processing, run);
+	const glanceOf = (run: number) =>
+		glance(entries, graph, document.processing, run, document.first_lane);
 	const shown = $derived(glanceOf(shownRun));
 	const steps = $derived(
 		stepsOf(nodes, entries ?? [], states, {

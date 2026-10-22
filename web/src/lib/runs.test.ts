@@ -185,6 +185,18 @@ describe('glance', () => {
 		expect(glance(LOG, GRAPH, processing('completed', 2), 2).status).toBe('completed');
 	});
 
+	it('ends a past first run as the document keeps it, other runs by the log', () => {
+		// The kept lane decides over what the log of run 1 tells (filed, or stopped for review).
+		const settled = [...LOG.slice(0, 4), entry('file', 1, 'ok', '2026-10-14T08:50:14Z')];
+		expect(glance(settled, GRAPH, processing('completed', 2), 1).status).toBe('completed');
+		expect(glance(settled, GRAPH, processing('completed', 2), 1, 'yellow').status).toBe('review');
+		expect(glance(LOG, GRAPH, processing('completed', 3), 1, 'red').status).toBe('failed');
+		expect(glance(LOG, GRAPH, processing('completed', 3), 1, 'green').status).toBe('completed');
+		// Only the first run, and only while it is past.
+		expect(glance(LOG, GRAPH, processing('completed', 3), 2, 'red').status).toBe('completed');
+		expect(glance(LOG, GRAPH, processing('review', 1), 1, 'green').status).toBe('review');
+	});
+
 	it('takes the states of the nodes without the log, and has no end while running', () => {
 		expect(glance(null, GRAPH, processing('completed', 1), 1)).toEqual({
 			status: 'completed',

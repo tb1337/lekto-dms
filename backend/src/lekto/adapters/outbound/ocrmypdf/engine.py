@@ -10,15 +10,19 @@ characters) gets `--force-ocr`: `--skip-text` would take such a page as read and
 keeps visible text, so every page is recognised from its image and the archive holds the pages
 as images (`UNREADABLE_NOTE`).
 
-Two things make OCRmyPDF refuse or downgrade a file, and both get a second run:
+Three things make OCRmyPDF refuse or downgrade a file, and each gets a further run:
 
 - A digitally signed PDF (exit code 2, "digital signature"): the second run passes
   `--invalidate-digital-signatures`. The original is never changed; only the archive lacks the
   signature, and `OcrResult.note` says so.
-- A file whose PDF/A conversion fails outright (exit code 1, e.g. an unusual colour space):
-  the second run writes a plain PDF (`--output-type pdf`); `pdfa` is False and `note` names the
-  reason. Exit code 10 means OCRmyPDF itself fell back to a plain PDF (Ghostscript refused a
-  construct of the file); the reason is read from its output.
+- A colour space PDF/A cannot hold (exit code 1, `ColorConversionNeededError`, or exit code 10
+  with a colour space as the issue): the next run has Ghostscript convert the colours to RGB
+  (`COLOUR_OPTIONS`), which makes such files PDF/A; `note` says so (`COLOUR_NOTE`). Only if
+  that fails too does the archive become a plain PDF, as below (Tobi, 22.10.2026).
+- A file whose PDF/A conversion fails outright (exit code 1): the next run writes a plain PDF
+  (`--output-type pdf`); `pdfa` is False and `note` names the reason. Exit code 10 means
+  OCRmyPDF itself fell back to a plain PDF (Ghostscript refused a construct of the file); the
+  reason is read from its output.
 
 Images are prepared before OCRmyPDF sees them (`prepare_image`):
 
@@ -101,6 +105,13 @@ SIGNATURE_NOTE = (
     "the original is digitally signed; the archive does not carry the signature "
     "(the original is unchanged)"
 )
+COLOUR_NOTE = (
+    "the colours were converted to RGB to make the archive PDF/A (the original is unchanged)"
+)
+# Ghostscript converts what PDF/A cannot hold; OCRmyPDF's own PDF/A writer converts nothing.
+COLOUR_OPTIONS = ("--pdfa-backend", "ghostscript", "--color-conversion-strategy", "RGB")
+_COLOUR_ERROR = "ColorConversionNeededError"
+_COLOUR_ISSUE = re.compile(r"colou?r ?space", re.I)
 # Known reasons a first run fails with exit code 1, in words for the processing log.
 _KNOWN_ERRORS = {
     "ColorConversionNeededError": "the colour space of the file cannot be represented in PDF/A",
@@ -250,11 +261,11 @@ class OcrmypdfEngine:
         notes: list[str] = []
         invalidate = False
 
-        async def run(*, pdfa: bool, invalidate: bool) -> Completed:
+        async def run(*, pdfa: bool, invalidate: bool, colours: bool = False) -> Completed:
             return await self._run(
                 source,
                 output,
-                extra,
+                [*extra, *COLOUR_OPTIONS] if colours else extra,
                 work,
                 pdfa=pdfa,
                 invalidate=invalidate,
@@ -268,7 +279,16 @@ class OcrmypdfEngine:
             notes.append(SIGNATURE_NOTE)
             completed = await run(pdfa=True, invalidate=True)
         pdfa = True
-        if completed.returncode == _BAD_ARGS:
+        if (reason := _colour_problem(completed)) is not None:
+            converted = await run(pdfa=True, invalidate=invalidate, colours=True)
+            if converted.returncode == 0:
+                notes.append(COLOUR_NOTE)
+                return True, notes
+            # Converting did not help either: a plain PDF, for the first run's reason.
+            notes.append(f"not PDF/A: {reason}")
+            pdfa = False
+            completed = await run(pdfa=False, invalidate=invalidate)
+        elif completed.returncode == _BAD_ARGS:
             notes.append(f"not PDF/A: {_error_reason(completed.stderr)}")
             pdfa = False
             completed = await run(pdfa=False, invalidate=invalidate)
@@ -402,6 +422,18 @@ def pdfa_reasons(stderr: str) -> str:
         issue = _PDFA_ISSUE.search(stderr)
         reasons.append(issue.group(1) if issue else "Ghostscript could not convert the file")
     return "; ".join(reasons)
+
+
+def _colour_problem(completed: Completed) -> str | None:
+    """Why the run could not make PDF/A if a colour space is the reason (OCRmyPDF refused the
+    file, exit code 1, or fell back to a plain PDF, exit code 10); None for anything else."""
+    if completed.returncode == _BAD_ARGS and _COLOUR_ERROR in completed.stderr:
+        return _error_reason(completed.stderr)
+    if completed.returncode == _PDFA_CONVERSION_FAILED:
+        reasons = pdfa_reasons(completed.stderr)
+        if _COLOUR_ISSUE.search(reasons):
+            return reasons
+    return None
 
 
 def _error_reason(stderr: str) -> str:

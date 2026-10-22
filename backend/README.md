@@ -262,10 +262,14 @@ jobs of the old run are recognised as stale.
   /documents/{id}/reading` gives each recognised page and the advice to read with the model:
   `no_text` (red, the parse found no text) or `poor_page` (yellow or red, with a poorly read
   page); none once the model has read it.
-- Two kinds of file get a second OCRmyPDF run. A digitally signed PDF is processed with
+- Three kinds of file get a further OCRmyPDF run. A digitally signed PDF is processed with
   `--invalidate-digital-signatures`: the original keeps its signature (originals never change),
-  the archive has none, and the OCR entry of the log says so (outcome OK, `note`). A file whose
-  PDF/A conversion fails outright (OCRmyPDF exit code 1, for example an unusual colour space) is
+  the archive has none, and the OCR entry of the log says so (outcome OK, `note`). A file with
+  a colour space PDF/A cannot hold (exit code 1 `ColorConversionNeededError`, or exit code 10
+  with a colour space as the issue) is run again with `--pdfa-backend ghostscript
+  --color-conversion-strategy RGB`: the archive becomes PDF/A with its colours converted to
+  RGB, and the log says so (outcome OK, `note`); only if that fails too is it a plain PDF. A file
+  whose PDF/A conversion fails outright for another reason (OCRmyPDF exit code 1) is
   written as a plain PDF (`--output-type pdf`); the node is uncertain with the reason. When
   Ghostscript itself refuses a construct of the file (overprint mode, a font with CID 0; exit
   code 10), the archive is a plain PDF as well and the reason comes from Ghostscript's

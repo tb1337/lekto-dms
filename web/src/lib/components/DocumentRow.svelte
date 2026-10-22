@@ -9,12 +9,12 @@
 	import TagChips from '#lib/components/TagChips.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { formatDate } from '#lib/i18n.ts';
-	import type { Lookup } from '#lib/masterdata.svelte.ts';
+	import { foreignSpace, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 
 	// One document in a list: preview, title, contact (with its logo or initials) and type
-	// (with its icon) each with its shown groups, date, its shown tags, for admins the owner of
-	// another user's document. `children` adds a line, `fields` the fields of a lens;
+	// (with its icon) each with its shown groups, date, its shown tags, for admins the space of
+	// a document in a space they are no member of. `children` adds a line, `fields` the fields of a lens;
 	// `aside` stands at the end of the row, beside its link (a button, a link of its own).
 	let {
 		document,
@@ -36,11 +36,8 @@
 	const kind = $derived(
 		lookup?.documentTypes.find((entry) => entry.id === document.document_type_id)
 	);
-	const owner = $derived(
-		session.isAdmin && document.owner_id !== session.user?.id
-			? (lookup?.users.find((user) => user.id === document.owner_id)?.username ?? null)
-			: null
-	);
+	// For admins, the space of a document in a space they are no member of.
+	const foreign = $derived(foreignSpace(document.space_id, lookup, session.user?.id));
 </script>
 
 <div
@@ -55,7 +52,7 @@
 		<div class="flex min-w-0 flex-1 flex-col gap-1">
 			<span class="flex min-w-0 items-center gap-2">
 				<span class="truncate font-medium">{document.title}</span>
-				{#if owner}<Badge variant="outline" class="shrink-0">{owner}</Badge>{/if}
+				{#if foreign}<Badge variant="outline" class="shrink-0">{foreign}</Badge>{/if}
 			</span>
 			<NamesLine
 				parts={[

@@ -11,7 +11,14 @@ from sqlalchemy import Row, and_, delete, insert, or_, select, tuple_
 from lekto.adapters.outbound.sql import tables as t
 from lekto.adapters.outbound.sql.repositories import SqlRepository, Values
 from lekto.core.domain.errors import NotFoundError
-from lekto.core.domain.ids import DocumentId, DocumentTypeId, RuleApplicationId, RuleId, UserId
+from lekto.core.domain.ids import (
+    DocumentId,
+    DocumentTypeId,
+    RuleApplicationId,
+    RuleId,
+    SpaceId,
+    UserId,
+)
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.rules import (
     ApplicationStatus,
@@ -47,13 +54,13 @@ class SqlRuleRepository(SqlRepository[RuleId, Rule]):
             )
 
     async def list_for(
-        self, *, owners: Collection[UserId] | None, include_global: bool
+        self, *, spaces: Collection[SpaceId] | None, include_global: bool
     ) -> list[Rule]:
         rules = t.rules
-        users = rules.c.scope == RuleScope.USER.value
-        if owners is not None:
-            users = and_(users, rules.c.owner_id.in_(list(owners)))
-        scopes = [users]
+        of_spaces = rules.c.scope == RuleScope.SPACE.value
+        if spaces is not None:
+            of_spaces = and_(of_spaces, rules.c.space_id.in_(list(spaces)))
+        scopes = [of_spaces]
         if include_global:
             scopes.append(rules.c.scope == RuleScope.GLOBAL.value)
         return await self._load(and_(rules.c.deleted_at.is_(None), or_(*scopes)))
@@ -78,13 +85,14 @@ class SqlRuleRepository(SqlRepository[RuleId, Rule]):
             raise NotFoundError(f"version {number} of rule", id)
         return _version(row)
 
-    async def remove_for_owner(self, owner: UserId) -> int:
-        """The user's rules and their applications of any rule. Versions and applications go
-        with their rule (ON DELETE CASCADE); the user's applications of other rules are
-        removed here, as the port asks."""
+    async def remove_for_space(self, space: SpaceId) -> int:
+        """Versions and applications go with their rule (ON DELETE CASCADE)."""
+        result = await self._tx.write(delete(t.rules).where(t.rules.c.space_id == space))
+        return int(result.rowcount)
+
+    async def remove_applications_by(self, user: UserId) -> int:
         applications = t.rule_applications
-        await self._tx.write(delete(applications).where(applications.c.user_id == owner))
-        result = await self._tx.write(delete(t.rules).where(t.rules.c.owner_id == owner))
+        result = await self._tx.write(delete(applications).where(applications.c.user_id == user))
         return int(result.rowcount)
 
     async def _entities(self, rows: Sequence[Row[Any]]) -> list[Rule]:
@@ -117,7 +125,7 @@ class SqlRuleRepository(SqlRepository[RuleId, Rule]):
             Rule(
                 id=RuleId(row.id),
                 scope=RuleScope(row.scope),
-                owner_id=None if row.owner_id is None else UserId(row.owner_id),
+                space_id=None if row.space_id is None else SpaceId(row.space_id),
                 current=current[(row.id, row.current_version)],
                 enabled=row.enabled,
                 disabled_reason=row.disabled_reason,
@@ -134,7 +142,7 @@ class SqlRuleRepository(SqlRepository[RuleId, Rule]):
         return {
             "id": entity.id,
             "scope": entity.scope.value,
-            "owner_id": entity.owner_id,
+            "space_id": entity.space_id,
             "current_version": entity.current.number,
             "enabled": entity.enabled,
             "disabled_reason": entity.disabled_reason,
@@ -167,6 +175,7 @@ class SqlRuleRepository(SqlRepository[RuleId, Rule]):
                 actions=data["actions"],
                 created_at=version.created_at,
                 created_by=version.created_by,
+                space_id=version.space_id,
             )
         )
 
@@ -187,6 +196,7 @@ def _version(row: Row[Any]) -> RuleVersion:
         definition=definition,
         created_at=row.created_at,
         created_by=None if row.created_by is None else UserId(row.created_by),
+        space_id=None if row.space_id is None else SpaceId(row.space_id),
     )
 
 

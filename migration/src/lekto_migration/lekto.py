@@ -155,12 +155,15 @@ class Lekto:
     async def set_choices(self, id: str, choices: list[str]) -> dict[str, Any]:
         return await self._object("PATCH", f"/fields/{id}", json={"choices": choices})
 
-    async def create_space(self, name: str, owner_id: str) -> dict[str, Any]:
-        return await self._object("POST", "/spaces", json={"name": name, "owner_id": owner_id})
+    async def create_space(self, name: str, members: dict[str, str]) -> dict[str, Any]:
+        """A shared space with `members` (user id -> `read` or `edit`); the executing admin
+        is not one of them."""
+        body = {"name": name, "members": [{"user_id": u, "role": r} for u, r in members.items()]}
+        return await self._object("POST", "/spaces", json=body)
 
-    async def share(self, space_id: str, user_id: str, level: str) -> dict[str, Any]:
+    async def set_member(self, space_id: str, user_id: str, role: str) -> dict[str, Any]:
         return await self._object(
-            "PUT", f"/spaces/{space_id}/shares/{user_id}", json={"level": level}
+            "PUT", f"/spaces/{space_id}/members/{user_id}", json={"role": role}
         )
 
     async def upload(self, path: Path, filename: str, fields: dict[str, str]) -> dict[str, Any]:

@@ -165,20 +165,20 @@ class World:
         )
 
     async def user(self, name: str | None = None, role: Role = Role.USER) -> User:
-        """A user with their default space, seeded directly."""
+        """A user with their personal space, seeded directly."""
         return await builders.seed_user(self.uow, name, role=role)
 
     async def account(
         self, name: str | None = None, role: Role = Role.USER, password: str = builders.PASSWORD
     ) -> User:
-        """A user with default space and password."""
+        """A user with their personal space and password."""
         return await builders.seed_account(
             self.uow, self.hasher, name, role=role, password=password
         )
 
-    async def default_space(self, user: User) -> Space:
+    async def personal_space(self, user: User) -> Space:
         async with self.uow() as uow:
-            return await uow.spaces.get_default(user.id)
+            return await uow.spaces.get_personal(user.id)
 
     async def drain(self, pipeline: PipelineService | None = None) -> int:
         """Run due jobs until none is left; returns how many ran."""

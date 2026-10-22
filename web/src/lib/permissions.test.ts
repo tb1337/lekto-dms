@@ -2,146 +2,140 @@ import { describe, expect, it } from 'vitest';
 import {
 	canApplyRule,
 	canChangeRule,
+	canChooseMembers,
 	canEdit,
 	canListAllUsers,
-	canManage,
+	canLeaveSpace,
 	canManageSpace,
 	canManageWebhook,
-	canMove,
-	spacesFor,
-	spacesWritableBy,
-	writableSpaces
+	editableSpaces,
+	handOverTargets,
+	ruleSpaces
 } from './permissions.ts';
 
-const owner = { id: 'u1', role: 'user' as const };
+const me = { id: 'u1', role: 'user' as const };
 const other = { id: 'u2', role: 'user' as const };
 const admin = { id: 'u3', role: 'admin' as const };
-const own = { owner_id: 'u1', access: 'read_write' as const };
-const sharedRead = { owner_id: 'u1', access: 'read' as const };
-const sharedWrite = { owner_id: 'u1', access: 'read_write' as const };
-const asAdmin = { owner_id: 'u1', access: 'read_write' as const };
 
 describe('document rights', () => {
-	it('lets the owner do everything', () => {
-		expect(canEdit(own, owner)).toBe(true);
-		expect(canManage(own, owner)).toBe(true);
-		expect(canMove(own, owner)).toBe(true);
+	it('lets an editor (and an admin, whose access is edit) do everything', () => {
+		expect(canEdit({ access: 'edit' }, me)).toBe(true);
+		expect(canEdit({ access: 'edit' }, admin)).toBe(true);
 	});
 
-	it('lets a read share only read', () => {
-		expect(canEdit(sharedRead, other)).toBe(false);
-		expect(canManage(sharedRead, other)).toBe(false);
-		expect(canMove(sharedRead, other)).toBe(false);
-	});
-
-	it('lets a write share edit but not manage or move', () => {
-		expect(canEdit(sharedWrite, other)).toBe(true);
-		expect(canManage(sharedWrite, other)).toBe(false);
-		expect(canMove(sharedWrite, other)).toBe(false);
-	});
-
-	it('lets an admin do everything (the API gives them read_write)', () => {
-		expect(canEdit(asAdmin, admin)).toBe(true);
-		expect(canManage(asAdmin, admin)).toBe(true);
-		expect(canMove(asAdmin, admin)).toBe(true);
+	it('lets a reader only read', () => {
+		expect(canEdit({ access: 'read' }, me)).toBe(false);
 	});
 
 	it('offers nothing without a user', () => {
-		expect(canEdit(own, null)).toBe(false);
-		expect(canManage(own, null)).toBe(false);
-		expect(canMove(own, null)).toBe(false);
+		expect(canEdit({ access: 'edit' }, null)).toBe(false);
 	});
 });
 
-describe('spaces, webhooks, lists', () => {
-	const space = { owner_id: 'u1' };
+// As the API lists them for u1: their personal space, a space they edit, one they read, and
+// u2's personal space, which u2 shared with them to read.
+const spaces = [
+	{ id: 'mine', role: 'edit' as const, personal_of: 'u1' },
+	{ id: 'house', role: 'edit' as const, personal_of: null },
+	{ id: 'tax', role: 'read' as const, personal_of: null },
+	{ id: 'anna', role: 'read' as const, personal_of: 'u2' }
+];
+const ids = (list: readonly { id: string }[]) => list.map((space) => space.id);
 
-	it('lets the owner and admins manage a space or a webhook', () => {
-		for (const check of [canManageSpace, canManageWebhook]) {
-			expect(check(space, owner)).toBe(true);
-			expect(check(space, admin)).toBe(true);
-			expect(check(space, other)).toBe(false);
-			expect(check(space, null)).toBe(false);
-		}
+describe('spaces', () => {
+	it('files into the spaces the caller edits, another personal one too', () => {
+		expect(ids(editableSpaces(spaces, me))).toEqual(['mine', 'house']);
+		// A personal space the caller edits stays theirs to file into, as an admin's every space.
+		const edited = spaces.map((space) => ({ ...space, role: 'edit' as const }));
+		expect(ids(editableSpaces(edited, me))).toEqual(['mine', 'house', 'tax', 'anna']);
+		expect(ids(editableSpaces(edited, admin))).toEqual(['mine', 'house', 'tax', 'anna']);
+		expect(editableSpaces(spaces, null)).toEqual([]);
+	});
+
+	it('lets a member leave a space, not the user of a personal one nor its last editor', () => {
+		const members = (...list: [string, 'read' | 'edit'][]) =>
+			list.map(([user_id, role]) => ({ user_id, role }));
+		const house = { ...spaces[1], members: members(['u1', 'edit'], ['u2', 'read']) };
+		expect(canLeaveSpace(house, me)).toBe(false); // the last editor
+		expect(canLeaveSpace(house, other)).toBe(true); // a reader
+		expect(canLeaveSpace({ ...house, members: members(['u1', 'edit'], ['u2', 'edit']) }, me)).toBe(
+			true
+		);
+		const lent = { ...spaces[3], members: members(['u2', 'edit'], ['u1', 'read']) };
+		expect(canLeaveSpace(lent, me)).toBe(true);
+		expect(canLeaveSpace(lent, other)).toBe(false); // their own personal space
+		expect(canLeaveSpace(house, admin)).toBe(false); // no member
+	});
+
+	it('hands over to the other active users, into their personal spaces', () => {
+		const users = [
+			{ id: 'u1', personal_space_id: 'mine' },
+			{ id: 'u2', personal_space_id: 'anna' },
+			{ id: 'u4', personal_space_id: 'gone', active: false },
+			{ id: 'u5', personal_space_id: null }
+		];
+		expect(ids(handOverTargets(users, me))).toEqual(['u2']);
+		expect(ids(handOverTargets(users, other))).toEqual(['u1']);
+	});
+
+	it('lets editors rename and delete a shared space, nobody a personal one', () => {
+		expect(canManageSpace(spaces[1], me)).toBe(true);
+		expect(canManageSpace(spaces[2], me)).toBe(false);
+		expect(canManageSpace(spaces[0], me)).toBe(false);
+		expect(canManageSpace(spaces[1], null)).toBe(false);
+	});
+
+	it('lets editors choose members; of a personal space its user and admins', () => {
+		expect(canChooseMembers(spaces[1], me)).toBe(true);
+		expect(canChooseMembers(spaces[2], me)).toBe(false);
+		expect(canChooseMembers(spaces[0], me)).toBe(true);
+		expect(canChooseMembers({ ...spaces[0], role: 'edit' }, other)).toBe(false);
+		expect(canChooseMembers({ ...spaces[0], role: 'edit' }, admin)).toBe(true);
+		expect(canChooseMembers(spaces[0], null)).toBe(false);
+	});
+});
+
+describe('webhooks, lists', () => {
+	it('lets the owner and admins manage a webhook', () => {
+		const webhook = { owner_id: 'u1' };
+		expect(canManageWebhook(webhook, me)).toBe(true);
+		expect(canManageWebhook(webhook, admin)).toBe(true);
+		expect(canManageWebhook(webhook, other)).toBe(false);
+		expect(canManageWebhook(webhook, null)).toBe(false);
 	});
 
 	it('lets only admins list every user', () => {
 		expect(canListAllUsers(admin)).toBe(true);
-		expect(canListAllUsers(owner)).toBe(false);
+		expect(canListAllUsers(me)).toBe(false);
 		expect(canListAllUsers(null)).toBe(false);
 	});
 });
 
 describe('rules', () => {
-	const mine = { owner_id: 'u1', scope: 'user' };
-	const global = { owner_id: null, scope: 'global' };
+	const house = { scope: 'space' as const, space_id: 'house' };
+	const tax = { scope: 'space' as const, space_id: 'tax' };
+	const global = { scope: 'global' as const, space_id: null };
 
-	it('lets the owner change a user rule, admins any rule', () => {
-		expect(canChangeRule(mine, owner)).toBe(true);
-		expect(canChangeRule(mine, other)).toBe(false);
-		expect(canChangeRule(mine, admin)).toBe(true);
-		expect(canChangeRule(global, owner)).toBe(false);
-		expect(canChangeRule(global, admin)).toBe(true);
+	it('lets the editors of its space change a space rule, admins any rule', () => {
+		expect(canChangeRule(house, me, spaces)).toBe(true);
+		expect(canChangeRule(tax, me, spaces)).toBe(false);
+		expect(canChangeRule(global, me, spaces)).toBe(false);
+		expect(canChangeRule(global, admin, [])).toBe(true);
+		expect(canChangeRule(house, null, spaces)).toBe(false);
 		// The rule of a title pattern follows its document type: nobody changes it here.
 		const pattern = { ...global, managed_by_document_type_id: 'type' };
-		expect(canChangeRule(pattern, admin)).toBe(false);
+		expect(canChangeRule(pattern, admin, [])).toBe(false);
 	});
 
-	it('lets anyone apply a global rule, a user rule its owner and admins', () => {
-		expect(canApplyRule(global, other)).toBe(true);
-		expect(canApplyRule(mine, owner)).toBe(true);
-		expect(canApplyRule(mine, admin)).toBe(true);
-		expect(canApplyRule(mine, other)).toBe(false);
-		expect(canApplyRule(global, null)).toBe(false);
-	});
-});
-
-describe('writableSpaces', () => {
-	const spaces = [
-		{ id: 'a', owner_id: 'u1', access: 'read_write' },
-		{ id: 'b', owner_id: 'u9', access: 'read' },
-		{ id: 'c', owner_id: 'u9', access: 'read_write' }
-	];
-
-	it('keeps own and write-shared spaces', () => {
-		expect(writableSpaces(spaces, owner).map((space) => space.id)).toEqual(['a', 'c']);
+	it('lets anyone apply a global rule, a space rule its editors and admins', () => {
+		expect(canApplyRule(global, other, [])).toBe(true);
+		expect(canApplyRule(house, me, spaces)).toBe(true);
+		expect(canApplyRule(tax, me, spaces)).toBe(false);
+		expect(canApplyRule(tax, admin, [])).toBe(true);
+		expect(canApplyRule(global, null, [])).toBe(false);
 	});
 
-	it('gives an admin all of them', () => {
-		expect(writableSpaces(spaces, admin)).toHaveLength(3);
-	});
-});
-
-describe('spacesWritableBy', () => {
-	const spaces = [
-		{ id: 'a', owner_id: 'u1', shares: null },
-		{ id: 'b', owner_id: 'u9', shares: [{ user_id: 'u1', level: 'read' }] },
-		{ id: 'c', owner_id: 'u9', shares: [{ user_id: 'u1', level: 'read_write' }] },
-		{ id: 'd', owner_id: 'u9', shares: [] }
-	];
-
-	it('keeps the spaces the given user owns or may write to by share', () => {
-		expect(spacesWritableBy(spaces, owner).map((space) => space.id)).toEqual(['a', 'c']);
-	});
-
-	it('keeps every space for an admin and none for nobody', () => {
-		expect(spacesWritableBy(spaces, { id: 'u1', role: 'admin' })).toHaveLength(4);
-		expect(spacesWritableBy(spaces, null)).toEqual([]);
-		expect(spacesWritableBy(spaces, { id: 'u1', role: 'admin', active: false })).toEqual([]);
-	});
-});
-
-describe('spacesFor', () => {
-	const spaces = [
-		{ id: 'a', owner_id: 'u1', access: 'read_write', shares: null },
-		{ id: 'b', owner_id: 'u2', access: 'read', shares: [] },
-		{ id: 'c', owner_id: 'u3', access: 'read', shares: null }
-	];
-
-	it("offers the caller their own choice, and an admin acting for a user that user's", () => {
-		expect(spacesFor(spaces, owner, owner).map((space) => space.id)).toEqual(['a']);
-		expect(spacesFor(spaces, admin, admin)).toHaveLength(3);
-		expect(spacesFor(spaces, other, admin).map((space) => space.id)).toEqual(['b']);
-		expect(spacesFor(spaces, null, admin)).toEqual([]);
+	it('puts a rule into a space the caller edits', () => {
+		expect(ids(ruleSpaces(spaces))).toEqual(['mine', 'house']);
 	});
 });

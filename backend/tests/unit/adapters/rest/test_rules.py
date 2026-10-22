@@ -25,7 +25,9 @@ async def test_a_rule_is_created_changed_disabled_and_deleted(api: Api) -> None:
         "actions": [{"type": "add_tags", "tag_ids": [tag["id"]]}],
     }
     rule = await post(api, "/rules", body, auth(owner))
-    assert rule["scope"] == "user" and rule["version"] == 1 and rule["enabled"]
+    assert rule["scope"] == "space" and rule["version"] == 1 and rule["enabled"]
+    spaces = (await api.client.get(f"{PREFIX}/spaces", headers=auth(owner))).json()
+    assert rule["space_id"] == next(item["id"] for item in spaces if item["personal_of"])
     assert rule["conditions"]["all"][1]["not"] is True
     url = f"{PREFIX}/rules/{rule['id']}"
 
@@ -46,7 +48,37 @@ async def test_a_rule_is_created_changed_disabled_and_deleted(api: Api) -> None:
     assert listed.json() == []
 
 
-async def test_global_rules_are_for_admins_and_only_tag(api: Api) -> None:
+async def test_a_rule_moves_into_another_space_with_a_change(api: Api) -> None:
+    """Tobi, 22.10.2026: the space of a rule is changed with its content; the versions name
+    where it belonged."""
+    owner = await api.user()
+    household = await post(api, "/spaces", {"name": "Household"}, auth(owner))
+    body = {
+        "name": "Scan",
+        "conditions": {"all": [{"field": "channel", "op": "is", "value": "api"}]},
+        "actions": [{"type": "set_title", "template": "Scan"}],
+    }
+    rule = await post(api, "/rules", body, auth(owner))
+    url = f"{PREFIX}/rules/{rule['id']}"
+    lone = await api.client.put(
+        url, json={**body, "space_id": household["id"]}, headers=auth(owner)
+    )
+    assert lone.status_code == 422  # a space needs the scope
+    moved = await api.client.put(
+        url, json={**body, "scope": "space", "space_id": household["id"]}, headers=auth(owner)
+    )
+    assert moved.status_code == 200, moved.text
+    assert (moved.json()["space_id"], moved.json()["version"]) == (household["id"], 2)
+    refused = await api.client.put(url, json={**body, "scope": "global"}, headers=auth(owner))
+    assert refused.status_code == 403
+    versions = (await api.client.get(f"{url}/versions", headers=auth(owner))).json()
+    assert [(item["scope"], item["space_id"]) for item in versions] == [
+        ("space", rule["space_id"]),
+        ("space", household["id"]),
+    ]
+
+
+async def test_global_rules_are_for_admins_and_may_do_everything(api: Api) -> None:
     admin, user = await api.admin(), await api.user()
     contact = await post(api, "/contacts", {"name": "ACME"}, auth(admin))
     body = {
@@ -55,12 +87,15 @@ async def test_global_rules_are_for_admins_and_only_tag(api: Api) -> None:
         "conditions": {"all": [{"field": "contact", "op": "is", "value": contact["id"]}]},
         "actions": [{"type": "set_contact", "contact_id": contact["id"]}],
     }
-    response = await api.client.post(f"{PREFIX}/rules", json=body, headers=auth(admin))
-    assert response.status_code == 422, response.text
-    body["actions"] = [{"type": "force_review", "reason": "check"}]
     response = await api.client.post(f"{PREFIX}/rules", json=body, headers=auth(user))
     assert response.status_code == 403
+    space = (await api.client.get(f"{PREFIX}/spaces", headers=auth(admin))).json()[0]
+    response = await api.client.post(
+        f"{PREFIX}/rules", json={**body, "space_id": space["id"]}, headers=auth(admin)
+    )
+    assert response.status_code == 422  # a global rule belongs to no space
     rule = await post(api, "/rules", body, auth(admin))
+    assert (rule["scope"], rule["space_id"]) == ("global", None)
     listed = await api.client.get(f"{PREFIX}/rules", headers=auth(user))
     assert [item["id"] for item in listed.json()] == [rule["id"]]
 
@@ -69,8 +104,8 @@ async def test_a_rule_does_not_file_into_a_space_its_owner_only_reads(api: Api) 
     owner, reader = await api.user(), await api.user()
     space = await post(api, "/spaces", {"name": "Household"}, auth(owner))
     await api.client.put(
-        f"{PREFIX}/spaces/{space['id']}/shares/{reader.id}",
-        json={"level": "read"},
+        f"{PREFIX}/spaces/{space['id']}/members/{reader.id}",
+        json={"role": "read"},
         headers=auth(owner),
     )
     body = {
@@ -180,16 +215,17 @@ async def test_a_change_sets_off_the_rules_that_become_true(api: Api) -> None:
     telekom = await post(api, "/contacts", {"name": "Telekom"}, a)
     vodafone = await post(api, "/contacts", {"name": "Vodafone"}, a)
     space = await post(api, "/spaces", {"name": "Household"}, o)
-    await post(
+    await post(  # a global rule: it acts in every space
         api,
         "/rules",
         {
+            "scope": "global",
             "name": "Telekom to household",
             "triggers": ["change"],
             "conditions": {"all": [{"field": "contact", "op": "is", "value": telekom["id"]}]},
             "actions": [{"type": "set_space", "space_id": space["id"]}],
         },
-        o,
+        a,
     )
     id = await upload(api, o)
     url = f"{PREFIX}/documents/{id}"
@@ -306,7 +342,7 @@ async def test_a_dry_run_shows_what_a_change_would_do(api: Api) -> None:
     preview = response.json()
     assert preview["changed"] == ["contact", "space"]
     assert preview["visibility"]["space_id"] == space["id"]
-    assert preview["visibility"]["shares"] == []
+    assert preview["visibility"]["members"] == [{"user_id": str(owner.id), "role": "edit"}]
     stored = (await api.client.get(f"{PREFIX}/documents/{id}", headers=auth(owner))).json()
     assert stored["contact_id"] is None
 
@@ -320,14 +356,22 @@ async def test_an_editor_whose_change_files_the_document_away_learns_nothing_mor
     shared = await post(api, "/spaces", {"name": "Shared"}, o)
     private = await post(api, "/spaces", {"name": "Private"}, o)
     response = await api.client.put(
-        f"{PREFIX}/spaces/{shared['id']}/shares/{editor.id}",
-        json={"level": "read_write"},
+        f"{PREFIX}/spaces/{shared['id']}/members/{editor.id}",
+        json={"role": "edit"},
         headers=o,
     )
     assert response.status_code < 300, response.text
-    for name, triggers, condition, space in (
-        ("Shared", ["ingest"], {"field": "channel", "op": "is", "value": "api"}, shared),
-        ("Private", ["change"], {"field": "contact", "op": "is", "value": acme["id"]}, private),
+    # The first rule (of the owner's personal space) files arrivals into the shared space;
+    # the second, a rule of the shared space, files a document of ACME into the private one.
+    for name, triggers, condition, space, of in (
+        ("Shared", ["ingest"], {"field": "channel", "op": "is", "value": "api"}, shared, None),
+        (
+            "Private",
+            ["change"],
+            {"field": "contact", "op": "is", "value": acme["id"]},
+            private,
+            shared,
+        ),
     ):
         await post(
             api,
@@ -337,6 +381,7 @@ async def test_an_editor_whose_change_files_the_document_away_learns_nothing_mor
                 "triggers": triggers,
                 "conditions": {"all": [condition]},
                 "actions": [{"type": "set_space", "space_id": space["id"]}],
+                **({} if of is None else {"space_id": of["id"]}),
             },
             o,
         )

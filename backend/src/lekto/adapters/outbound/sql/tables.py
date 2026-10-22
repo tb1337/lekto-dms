@@ -67,29 +67,28 @@ spaces = Table(
     "spaces",
     metadata,
     Column("id", Uuid, primary_key=True),
-    Column("owner_id", Uuid, ForeignKey("users.id"), nullable=False),
     Column("name", Text, nullable=False),
     Column("name_key", Text, nullable=False),
-    Column("is_default", Boolean, nullable=False),
+    # The user whose personal space it is (`Space.personal_of`); None for every other space.
+    Column("personal_of", Uuid, ForeignKey("users.id"), nullable=True, unique=True),
     Column("created_at", UtcDateTime, nullable=False),
     Column("version", Integer, nullable=False),
-    Index(None, "owner_id", "name_key", unique=True),
 )
-# One default space per owner.
+# Names are unique among the spaces that are nobody's personal one.
 Index(
-    "uq_spaces_default_owner_id",
-    spaces.c.owner_id,
+    "uq_spaces_name_key",
+    spaces.c.name_key,
     unique=True,
-    sqlite_where=spaces.c.is_default,
-    postgresql_where=spaces.c.is_default,
+    sqlite_where=spaces.c.personal_of.is_(None),
+    postgresql_where=spaces.c.personal_of.is_(None),
 )
 
-space_shares = Table(
-    "space_shares",
+space_members = Table(
+    "space_members",
     metadata,
     Column("space_id", Uuid, ForeignKey("spaces.id", ondelete="CASCADE"), primary_key=True),
     Column("user_id", Uuid, ForeignKey("users.id"), primary_key=True, index=True),
-    Column("level", Text, nullable=False),
+    Column("role", Text, nullable=False),  # `SpaceRole`
 )
 
 
@@ -265,7 +264,10 @@ documents = Table(
     "documents",
     metadata,
     Column("id", Uuid, primary_key=True),
-    Column("owner_id", Uuid, ForeignKey("users.id"), nullable=False),
+    # Who uploaded it (`Document.uploaded_by`): information only; cleared with their account.
+    Column(
+        "uploaded_by", Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    ),
     Column("space_id", Uuid, ForeignKey("spaces.id"), nullable=False, index=True),
     Column("sha256", String(64), nullable=False),
     Column("title", Text, nullable=False),
@@ -297,14 +299,14 @@ documents = Table(
     # When a person last set or confirmed the metadata (see `Document.confirmed_at`).
     Column("confirmed_at", UtcDateTime, nullable=True, index=True),
     # When processing last made it new for the inbox (see `Document.new_at`). No index: most
-    # green documents keep it, and the inbox queries go by owner and lane with the viewer's
+    # green documents keep it, and the inbox queries go by space and lane with the viewer's
     # seen marks.
     Column("new_at", UtcDateTime, nullable=True),
     Column("created_at", UtcDateTime, nullable=False),
     Column("updated_at", UtcDateTime, nullable=False),
     Column("version", Integer, nullable=False),
-    # The original is unique per owner, also against concurrent uploads.
-    Index(None, "owner_id", "sha256", unique=True),
+    # Every file exists once per installation, also against concurrent uploads.
+    Index(None, "sha256", unique=True),
     # Lists sorted by date, title or when documents came in page by these and the id.
     Index(None, "document_date", "id"),
     Index(None, "title_key", "id"),
@@ -389,6 +391,9 @@ inbox_seen = Table(
         index=True,
     ),
     Column("seen_at", UtcDateTime, nullable=False),
+    # Set by a move for someone who knew the document already: it is not new for them, but
+    # they did not look at it, so it does not stand under done.
+    Column("silent", Boolean, nullable=False, server_default=false()),
 )
 
 # Who confirmed a document out of yellow or red last, and when: for "done", removed by the
@@ -410,7 +415,10 @@ rules = Table(
     metadata,
     Column("id", Uuid, primary_key=True),
     Column("scope", Text, nullable=False),
-    Column("owner_id", Uuid, ForeignKey("users.id"), nullable=True, index=True),
+    # The space a space rule belongs to; None for global rules. Its rules go with the space.
+    Column(
+        "space_id", Uuid, ForeignKey("spaces.id", ondelete="CASCADE"), nullable=True, index=True
+    ),
     Column("current_version", Integer, nullable=False),
     Column("enabled", Boolean, nullable=False),
     Column("disabled_reason", Text, nullable=True),
@@ -434,6 +442,9 @@ rule_versions = Table(
     Column("actions", json_type(), nullable=False),
     Column("created_at", UtcDateTime, nullable=False),
     Column("created_by", Uuid, nullable=True),
+    # The space the rule belonged to with this version (None: global); no foreign key, the
+    # history keeps it after the space is gone.
+    Column("space_id", Uuid, nullable=True),
 )
 
 # The rule of a document type's title pattern (`Rule.managed_by`), while it is not deleted.

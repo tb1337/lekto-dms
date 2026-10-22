@@ -2,7 +2,8 @@
 plan is complete and Lekto has everything it names (`prepare`), is resumable (what the state
 file knows is not done twice), and never stops for one document.
 
-A new document is uploaded with its owner, space and metadata (the reviews included), waited
+A new document is uploaded in the name of its uploader, with space and metadata (the reviews
+included), waited
 for, and then aligned: the topic, which an upload cannot carry, is set then, and the rules see
 it. A migrated document is aligned from three states (`align`); one deleted in Lekto is
 reported, or uploaded again with `--reupload`."""
@@ -16,13 +17,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from lekto_migration.align import KEPT, Alignment, align, current, uploaded
+from lekto_migration.align import KEPT, Alignment, align, current, foreign, uploaded
 from lekto_migration.config import Config
 from lekto_migration.expect import Expected
 from lekto_migration.lekto import ApiError, Lekto
 from lekto_migration.paperless import Paperless, PaperlessError
 from lekto_migration.plan import norm
-from lekto_migration.resolve import Resolved, resolve
+from lekto_migration.resolve import Resolved, resolve, space_of
 from lekto_migration.session import Loaded, MigrationError, Progress, unmanaged
 from lekto_migration.state import DOCUMENT_DONE, DocumentRow, State
 
@@ -100,13 +101,13 @@ class Run:
         return out
 
     async def _wake(self) -> None:
-        """Users the migration created and deactivated before own or share documents still to
-        come: active for this run, deactivated again at its end."""
+        """Users the migration created and deactivated before who upload documents still to come
+        or are members of their spaces: active for this run, deactivated again at its end."""
         directory = self._loaded.directory
         needed = set()
         for item in self._pending():
-            needed.add(norm(item.owner or directory.admin["username"]))
-            needed |= {norm(name) for name, _ in item.shares}
+            needed.add(norm(item.uploader or directory.admin["username"]))
+            needed |= {norm(name) for name, _ in item.members}
         for key in needed:
             user = directory.users.get(key)
             if user is None or user.get("active") is not False:
@@ -177,8 +178,9 @@ class Run:
     def _detail(self, item: Expected) -> dict[str, Any]:
         return {
             "title": item.title,
+            "uploaded_by": item.uploader,
             "owner": item.owner_source,
-            "space": item.space or "default",
+            "space": item.space or "personal",
             "media_type": item.media_type,
         }
 
@@ -251,11 +253,11 @@ class Run:
     async def _upload(
         self, item: Expected, resolved: Resolved, detail: dict[str, Any]
     ) -> tuple[str, str, bool] | None:
-        """Download the original and upload it with owner, space and metadata: the Lekto id,
+        """Download the original and upload it with uploader, space and metadata: the Lekto id,
         the file's SHA-256 and whether Lekto had the file already. None: not taken over."""
         fields = {
             "channel": "migration",
-            "owner": resolved.owner_id,
+            "uploaded_by": resolved.uploader_id,
             "metadata": json.dumps(resolved.metadata()),
         }
         if resolved.space_id is not None:
@@ -293,14 +295,25 @@ class Run:
         return str(accepted["id"]), download.sha256, False
 
     async def _duplicate(self, item: Expected, lekto_id: str, resolved: Resolved) -> None:
-        """Lekto has the file already (same owner): that document stands for this one; if it
-        is a migrated one, it is aligned like one."""
+        """Lekto has the file already (every file exists once per installation): that
+        document stands for this one. A migrated one is aligned like one, unless it is
+        another Paperless document's or lies outside the planned space (`foreign`)."""
         details = await self._target.document(lekto_id)
-        alignment = None
+        alignment, reason = None, None
         if details.get("channel") == "migration":
-            base = await self._baseline(lekto_id, None, details)
-            alignment = await self._align(lekto_id, details, base, resolved)
-        await self._finish(item.id, "duplicate", lekto_id, alignment, None, details=details)
+            reason = self._foreign(item, lekto_id, details, resolved)
+            if reason is None:
+                base = await self._baseline(lekto_id, None, details)
+                alignment = await self._align(lekto_id, details, base, resolved)
+        await self._finish(
+            item.id, "duplicate", lekto_id, alignment, None, details=details, reason=reason
+        )
+
+    def _foreign(
+        self, item: Expected, lekto_id: str, details: dict[str, Any], resolved: Resolved
+    ) -> str | None:
+        target = space_of(resolved, self._loaded.directory)
+        return foreign(self._state.claimant(lekto_id, item.id), details.get("space_id"), target)
 
     async def _existing(self, item: Expected, row: DocumentRow, resolved: Resolved) -> None:
         assert row.lekto_id is not None
@@ -328,6 +341,13 @@ class Run:
                 reason="not taken over by the migration: not aligned",
             )
             return
+        if row.status == "duplicate":
+            reason = self._foreign(item, row.lekto_id, details, resolved)
+            if reason is not None:
+                await self._finish(
+                    item.id, row.status, row.lekto_id, None, None, details=details, reason=reason
+                )
+                return
         base = await self._baseline(row.lekto_id, row.applied, details)
         alignment = await self._align(row.lekto_id, details, base, resolved)
         await self._finish(item.id, row.status, row.lekto_id, alignment, None, details=details)
@@ -347,11 +367,7 @@ class Run:
         return {**self._want(resolved), "topic_id": None}
 
     def _want(self, resolved: Resolved) -> dict[str, Any]:
-        space = resolved.space_id
-        if space is None:
-            default = self._loaded.directory.default_space(resolved.owner_id)
-            space = None if default is None else str(default["id"])
-        return {**resolved.values, "space_id": space}
+        return {**resolved.values, "space_id": space_of(resolved, self._loaded.directory)}
 
     async def _align(
         self,
@@ -385,6 +401,7 @@ class Run:
         waited: float | None,
         *,
         details: dict[str, Any] | None = None,
+        reason: str | None = None,
     ) -> None:
         details = details or await self._target.document(lekto_id)
         if alignment is not None and alignment.needed:
@@ -392,7 +409,9 @@ class Run:
         lane = details.get("lane")
         reasons = []
         if status == "duplicate":
-            reasons.append("Lekto has the file already (same owner)")
+            reasons.append("Lekto has the file already")
+        if reason is not None:
+            reasons.append(reason)
         if lane != "green":
             reasons.append(await self._why_not_green(lekto_id))
         kept = [d.what for d in alignment.differences if d.action == KEPT] if alignment else []

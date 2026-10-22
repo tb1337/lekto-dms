@@ -48,7 +48,7 @@ def setup(world: World) -> Setup:
     return Setup(world)
 
 
-async def test_a_document_in_processing_is_indexed_for_its_owner(setup: Setup) -> None:
+async def test_a_document_in_processing_is_indexed_in_its_space(setup: Setup) -> None:
     owner = await setup.world.user()
     received = await setup.world.pipeline().receive(
         owner.id, incoming(b"%PDF-1 a"), filename="a.pdf"
@@ -57,7 +57,7 @@ async def test_a_document_in_processing_is_indexed_for_its_owner(setup: Setup) -
     await setup.settle(pipeline=False)
     entry = setup.entry(received.id)
     assert entry.lane_value == "processing"
-    assert entry.owner_id == owner.id
+    assert entry.space_id == received.space_id
     assert entry.text == "Stromrechnung"
     assert entry.filename == "a.pdf"
 

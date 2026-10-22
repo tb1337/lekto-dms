@@ -37,6 +37,7 @@ from lekto.adapters.outbound.memory.database import (
     WEBHOOKS,
     IdentifiersRow,
     MemoryDatabase,
+    SeenMark,
     Table,
 )
 from lekto.adapters.outbound.memory.identity import (
@@ -76,7 +77,7 @@ from lekto.core.domain.inbox import Confirmation
 from lekto.core.domain.jobs import Job, JobStatus
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.master_data import Contact, DocumentType, MasterData, Tag, TagScope
-from lekto.core.domain.permissions import within_reach
+from lekto.core.domain.permissions import Reach
 from lekto.core.domain.pipeline import NodeRun
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import User
@@ -107,7 +108,7 @@ class MemoryUnitOfWork:
         self._purged_jobs: set[JobId] = set()
         self._held: asyncio.Lock | None = None
         # The inbox's marks this unit wrote; None removes one.
-        self._seen: dict[SeenKey, datetime | None] = {}
+        self._seen: dict[SeenKey, SeenMark | None] = {}
         self._confirmations: dict[DocumentId, Confirmation | None] = {}
 
         self.users = MemoryUserRepository(self, USERS)
@@ -199,11 +200,11 @@ class MemoryUnitOfWork:
 
     def _commit_inbox(self, removed: set[UUID]) -> None:
         """Apply the inbox's marks; those of removed documents go with them."""
-        for key, at in self._seen.items():
-            if at is None:
+        for key, mark in self._seen.items():
+            if mark is None:
                 self._db.seen.pop(key, None)
             else:
-                self._db.seen[key] = at
+                self._db.seen[key] = mark
         for document, confirmation in self._confirmations.items():
             if confirmation is None:
                 self._db.confirmations.pop(document, None)
@@ -292,11 +293,7 @@ class MemoryUnitOfWork:
 
 # What refers to a row, as the SQL schema's foreign keys without ON DELETE CASCADE do.
 _REFERRERS: dict[str, tuple[tuple[Table[Any], Callable[[Any, UUID], bool]], ...]] = {
-    USERS.name: (
-        (SPACES, lambda space, id: space.owner_id == id or id in space.shares),
-        (DOCUMENTS, lambda document, id: document.owner_id == id),
-        (RULES, lambda rule, id: rule.owner_id == id),
-    ),
+    USERS.name: ((SPACES, lambda space, id: space.personal_of == id or id in space.members),),
     SPACES.name: ((DOCUMENTS, lambda document, id: document.space_id == id),),
     CONTACTS.name: ((DOCUMENTS, lambda document, id: document.contact_id == id),),
     DOCUMENT_TYPES.name: (
@@ -340,28 +337,57 @@ class MemoryUserRepository(MemoryRepository[UserId, User]):
         key = name_key(username)
         return next((_copy(row) for row in self._all() if name_key(row.username) == key), None)
 
+    async def remove(self, id: UserId) -> None:
+        """As the SQL schema's ON DELETE SET NULL: the user's documents keep no uploader."""
+        await self.get(id)
+        self._uow._check_unreferenced(self._table, id)
+        for row in self._uow._rows(DOCUMENTS):
+            if row.uploaded_by == id:
+                changed = _copy(row)
+                changed.uploaded_by = None
+                self._uow._write(DOCUMENTS, row.id, changed)
+        self._uow._write(self._table, id, _REMOVED)
+
 
 class MemorySpaceRepository(MemoryRepository[SpaceId, Space]):
-    async def get_default(self, owner: UserId) -> Space:
+    async def get_personal(self, user: UserId) -> Space:
         for row in self._all():
-            if row.owner_id == owner and row.is_default:
+            if row.personal_of == user:
                 return _copy(row)
-        raise NotFoundError("default space of user", owner)
+        raise NotFoundError("personal space of user", user)
+
+    async def personal_ids(self) -> dict[UserId, SpaceId]:
+        return {row.personal_of: row.id for row in self._all() if row.personal_of is not None}
+
+    async def find_by_name(self, name: str) -> Space | None:
+        key = name_key(name)
+        return next(
+            (
+                _copy(row)
+                for row in self._all()
+                if row.personal_of is None and name_key(row.name) == key
+            ),
+            None,
+        )
 
     async def list_accessible(self, user: UserId) -> list[Space]:
-        return [_copy(row) for row in self._all() if row.owner_id == user or user in row.shares]
+        return [_copy(row) for row in self._all() if user in row.members]
+
+    async def remove(self, id: SpaceId) -> None:
+        """With its rules, as the SQL schema's ON DELETE CASCADE."""
+        await self.get(id)
+        self._uow._check_unreferenced(self._table, id)
+        await self._uow.rules.remove_for_space(id)
+        self._uow._write(self._table, id, _REMOVED)
 
 
 class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
-    async def find_by_sha256(self, owner: UserId, sha256: Sha256) -> Document | None:
-        for row in self._all():
-            if row.owner_id == owner and row.sha256 == sha256:
-                return _copy(row)
-        return None
+    async def find_by_sha256(self, sha256: Sha256) -> Document | None:
+        return next((_copy(row) for row in self._all() if row.sha256 == sha256), None)
 
     async def list_visible_to(self, user: UserId) -> list[Document]:
-        readable = {space.id for space in await self._uow.spaces.list_accessible(user)}
-        return [_copy(row) for row in self._all() if within_reach(user, readable, row)]
+        reach = Reach.of(user, await self._uow.spaces.list_accessible(user))
+        return [_copy(row) for row in self._all() if reach.allows(row)]
 
     async def field_in_use(
         self,
@@ -483,7 +509,7 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
     async def exists(
         self,
         *,
-        owner: UserId | None = None,
+        uploaded_by: UserId | None = None,
         space: SpaceId | None = None,
         contact: ContactId | None = None,
         document_type: DocumentTypeId | None = None,
@@ -492,11 +518,11 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
         field: FieldId | None = None,
         sha256: Sha256 | None = None,
     ) -> bool:
-        criteria = (owner, space, contact, document_type, tag, topic, field, sha256)
+        criteria = (uploaded_by, space, contact, document_type, tag, topic, field, sha256)
         if all(value is None for value in criteria):
             raise ValueError("exists needs at least one criterion")
         return any(
-            (owner is None or row.owner_id == owner)
+            (uploaded_by is None or row.uploaded_by == uploaded_by)
             and (space is None or row.space_id == space)
             and (contact is None or row.contact_id == contact)
             and (document_type is None or row.document_type_id == document_type)

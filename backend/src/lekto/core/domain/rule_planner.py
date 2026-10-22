@@ -68,6 +68,7 @@ from lekto.core.domain.ids import (
     RuleId,
     SpaceId,
     TagId,
+    UserId,
 )
 from lekto.core.domain.json_value import JsonObject, JsonValue, as_list, as_object, as_uuid
 from lekto.core.domain.master_data import TagScope
@@ -100,12 +101,20 @@ class Mode(StrEnum):
 
 @dataclass(frozen=True)
 class SpaceTarget:
-    """What the rules need to know about a space they file into, from the owner's view.
-    `shared`: other users can see documents in it (it belongs to someone else or is shared)."""
+    """What the rules need to know about a space they file into. `filers`: who may file into
+    it (its active editors and the active admins); `personal`: the personal space of an active
+    user, into which a document may be handed over by anyone (a deactivated user receives
+    nothing); `widens`: moving the document there shows it to someone who cannot read it where
+    it lies (`Space.widens`)."""
 
     name: str
-    writable: bool
-    shared: bool
+    filers: frozenset[UserId]
+    personal: bool
+    widens: bool
+
+    def open_to(self, author: UserId | None) -> bool:
+        """Whether a rule last saved by `author` may file into it."""
+        return self.personal or (author is not None and author in self.filers)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -114,8 +123,10 @@ class Situation:
 
     - `spaces`: the spaces the rules file into that exist.
     - `existing`: ids of the contacts, types, tags and fields that exist.
-    - `names`: names of contacts, types, tags and spaces, for templates; `owner_name` that of
-      the document's owner.
+    - `names`: names of contacts, types, tags and spaces, for templates; `uploader_name` that
+      of who uploaded the document.
+    - `in_personal_space`: the document lies in a personal space; for applying to existing
+      documents its space counts as empty there.
     - `render`: renders the templates of titles, text fields and review reasons (the port
       `TemplateRenderer`).
     - `model_values`: single fields that hold the value the model set, unconfirmed, as JSON.
@@ -125,16 +136,18 @@ class Situation:
       likewise for tags.
     - `reviewed`: rules whose forced review a person confirmed in this processing run.
     - `accept_conflicts` (retroactive): the person accepted the rule's values over others.
+    - `applier` (retroactive): who applies the rules; they file only where they may file
+      themselves (or hand over), whoever saved the rule.
     - `taxonomy`: the tag trees (tags added are document tags, the result is normalised) and
       the groups of the contacts and types the rules may leave (for templates).
     """
 
     mode: Mode
     document: Document
-    default_space: SpaceId
     definitions: Mapping[FieldId, FieldDefinition]
     render: Render
-    owner_name: str | None = None
+    in_personal_space: bool = False
+    uploader_name: str | None = None
     spaces: Mapping[SpaceId, SpaceTarget] = field(default_factory=dict)
     existing: frozenset[object] = frozenset()
     names: Mapping[object, str] = field(default_factory=dict)
@@ -146,6 +159,7 @@ class Situation:
     reviewed: frozenset[RuleId] = frozenset()
     accept_conflicts: bool = False
     taxonomy: Taxonomy = field(default_factory=Taxonomy)
+    applier: UserId | None = None
 
 
 @dataclass(frozen=True)
@@ -398,9 +412,7 @@ class _Planner:
     def _candidate(
         self, field_name: str, value: str, id: object, match: Match, report: RuleReport
     ) -> None:
-        if match.rule.scope is RuleScope.GLOBAL:
-            report.notes.append(Note(field_name, NoteKind.REFUSED, "global rules cannot set it"))
-        elif id not in self._s.existing:
+        if id not in self._s.existing:
             report.notes.append(
                 Note(field_name, NoteKind.SKIPPED, f"{field_name} {value} no longer exists")
             )
@@ -410,33 +422,37 @@ class _Planner:
     def _space(self, match: Match, report: RuleReport, space: SpaceId) -> None:
         s = self._s
         target = s.spaces.get(space)
-        if match.rule.scope is RuleScope.GLOBAL:
-            report.notes.append(
-                Note(SPACE, NoteKind.REFUSED, "global rules never change visibility")
-            )
-        elif match.rule.owner_id != self._document.owner_id:
-            report.notes.append(Note(SPACE, NoteKind.REFUSED, "the rule's owner does not own it"))
+        rule = match.rule
+        if rule.scope is RuleScope.SPACE and rule.space_id != self._document.space_id:
+            report.notes.append(Note(SPACE, NoteKind.REFUSED, "the rule belongs to another space"))
         elif target is None:
             report.notes.append(Note(SPACE, NoteKind.SKIPPED, f"space {space} no longer exists"))
-        elif not target.writable:
-            reason = f"no write access to space '{target.name}' (any more)"
+        elif not target.open_to(rule.current.created_by):
+            reason = f"no right to file into space '{target.name}' (any more)"
             report.notes.append(Note(SPACE, NoteKind.REFUSED, reason))
             if s.mode is Mode.INGEST and SPACE not in s.locked:
                 self._uncertain(SPACE, f"rule '{report.name}': {reason}", suggestion=None)
-        elif target.shared and not match.trusted and s.mode is Mode.RETROACTIVE:
+        elif s.mode is Mode.RETROACTIVE and not target.open_to(s.applier):
+            # Applying a rule moves no document where the person could not move it by hand.
+            reason = f"you have no right to file into space '{target.name}'"
+            report.notes.append(Note(SPACE, NoteKind.REFUSED, reason))
+        elif target.widens and not match.trusted and s.mode is Mode.RETROACTIVE:
             # The person sees the move in the preview and may accept it, as any conflict.
             fields = ", ".join(match.distrusted)
             if s.accept_conflicts:
                 self._candidates.setdefault(SPACE, []).append(_Candidate(report, str(space), match))
             else:
                 reason = (
-                    f"files into the shared space '{target.name}' with an unconfirmed "
-                    f"{fields}; not accepted"
+                    f"files into the space '{target.name}', which more people see, with an "
+                    f"unconfirmed {fields}; not accepted"
                 )
                 report.notes.append(Note(SPACE, NoteKind.CONFLICT, reason))
-        elif target.shared and not match.trusted:
+        elif target.widens and not match.trusted:
             fields = ", ".join(match.distrusted)
-            reason = f"files into the shared space '{target.name}' only with a confirmed {fields}"
+            reason = (
+                f"files into the space '{target.name}', which more people see, only with a "
+                f"confirmed {fields}"
+            )
             report.notes.append(Note(SPACE, NoteKind.REFUSED, reason))
             if s.mode is Mode.INGEST:
                 for name in match.distrusted:
@@ -612,9 +628,6 @@ class _Planner:
         patterns: list[_Candidate] = []
         for report, action, match in self._titles:
             pattern = match.rule.managed_by is not None
-            if match.rule.scope is RuleScope.GLOBAL and not pattern:
-                report.notes.append(Note(TITLE, NoteKind.REFUSED, "global rules cannot set it"))
-                continue
             rendered = self._render(report, TITLE, action.template, values)
             if rendered is None:
                 continue
@@ -686,7 +699,7 @@ class _Planner:
             contact=None if contact_id is None else s.names.get(contact_id),
             document_type=None if type_after is None else s.names.get(type_after),
             space=s.names.get(space),
-            owner=s.owner_name,
+            uploaded_by=s.uploader_name,
             tags=[
                 s.names[tag]
                 for tag in (document.tag_ids if tags is None else tags)
@@ -782,10 +795,10 @@ class _Planner:
 
     def _empty(self, field_name: str, current: JsonValue) -> bool:
         """For applying to existing documents: the field has no value of its own (a space
-        counts as empty in the owner's default space, a title as long as it is the file
-        name or the machine's)."""
+        counts as empty while the document lies in a personal space, a title as long as it is
+        the file name or the machine's)."""
         if field_name == SPACE:
-            return current == str(self._s.default_space)
+            return self._s.in_personal_space
         if field_name == TITLE:
             return current in (_default_title(self._document), self._s.machine_title)
         return current is None

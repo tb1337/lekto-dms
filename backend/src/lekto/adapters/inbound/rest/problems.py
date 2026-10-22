@@ -13,6 +13,7 @@ from lekto.adapters.inbound.problems import (
     PROBLEM_JSON,
     PROBLEMS,
     Problem,
+    blocking_space_out,
     problem,
     problem_responses,
 )
@@ -43,6 +44,7 @@ from lekto.core.domain.errors import (
     UnsupportedMediaTypeError,
     ValidationError,
 )
+from lekto.core.domain.users import UserDeletionBlockedError
 
 __all__ = [
     "NOT_FROM_REQUESTS",
@@ -71,6 +73,10 @@ def install(app: FastAPI) -> None:
             return problem(409, str(error), existing_document_id=error.existing)
         if isinstance(error, SpaceWriteDeniedError):
             return problem(403, str(error), space_id=error.space_id)
+        if isinstance(error, UserDeletionBlockedError):
+            return problem(
+                409, str(error), blocking_spaces=[blocking_space_out(item) for item in error.spaces]
+            )
         if isinstance(error, OpenFieldsError):
             return problem(422, str(error), open_fields=list(error.fields))
         if isinstance(error, SecondFactorRequiredError):

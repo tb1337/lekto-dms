@@ -10,7 +10,7 @@ from lekto.adapters.inbound.rest import PREFIX
 from lekto.core.domain.errors import SearchUnavailableError
 from lekto.core.domain.ids import DocumentId
 from lekto.core.domain.pipeline import Node
-from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.spaces import SpaceRole
 from tests.api import auth
 from tests.unit.adapters.rest.support import ACTORS, DENIED, Api, Scene, indexed_scene
 
@@ -38,11 +38,11 @@ async def test_search_shows_only_what_the_caller_may_read(api: Api) -> None:
     everything = {scene.green, scene.yellow, scene.processing}
     assert await found(scene, "owner") == everything
     assert await found(scene, "read_token") == everything
-    for actor in ("reader", "writer"):
-        assert await found(scene, actor) == {scene.green}
-        assert await found(scene, actor, lane="yellow") == set()
-        assert await found(scene, actor, lane="processing") == set()
-        assert await found(scene, actor, space_id=str(scene.shared.id)) == {scene.green}
+    assert await found(scene, "writer") == everything  # editors find every lane
+    assert await found(scene, "reader") == {scene.green}
+    assert await found(scene, "reader", lane="yellow") == set()
+    assert await found(scene, "reader", lane="processing") == set()
+    assert await found(scene, "reader", space_id=str(scene.shared.id)) == {scene.green}
     for actor in ("stranger", "admin"):
         assert await found(scene, actor) == set()
         assert await found(scene, actor, space_id=str(scene.shared.id)) == set()
@@ -53,8 +53,9 @@ async def test_search_shows_only_what_the_caller_may_read(api: Api) -> None:
 
 
 async def test_lists_and_search_tell_what_stands_in_the_inbox(api: Api) -> None:
-    """`in_inbox`: the owner's documents in processing, yellow, or new and unseen (the green
-    one); a share brings none into an inbox; an admin with `all_users` has every user's."""
+    """`in_inbox`: the documents in processing, yellow, or new and unseen (the green one) in
+    the spaces a user edits; reading a space brings none into an inbox; an admin with
+    `all_users` has every user's."""
     scene = await indexed_scene(api)
 
     async def in_inbox(actor: str, **params: Any) -> dict[str, bool]:
@@ -71,6 +72,7 @@ async def test_lists_and_search_tell_what_stands_in_the_inbox(api: Api) -> None:
 
     everything = {scene.green: True, scene.yellow: True, scene.processing: True}
     assert await in_inbox("owner") == everything
+    assert await in_inbox("writer") == everything
     assert await in_inbox("reader") == {scene.green: False}
     assert await in_inbox("admin", all_users=True) == everything
     seen = await api.client.put(
@@ -94,15 +96,15 @@ def test_every_actor_is_covered() -> None:
     assert set(ACTORS) >= set(DENIED)
 
 
-async def test_a_withdrawn_share_ends_the_search_at_once(api: Api) -> None:
+async def test_a_removed_member_finds_nothing_at_once(api: Api) -> None:
     scene = await indexed_scene(api)
     assert await found(scene, "reader") == {scene.green}
     owner_spaces = api.services.spaces
     shared = await owner_spaces.get(scene.owner.id, scene.shared.id)
-    reader_id = next(user for user, level in shared.shares.items() if level is ShareLevel.READ)
-    await owner_spaces.unshare(scene.owner.id, scene.shared.id, reader_id)
+    reader_id = next(user for user, role in shared.members.items() if role is SpaceRole.READ)
+    await owner_spaces.remove_member(scene.owner.id, scene.shared.id, reader_id)
     assert await found(scene, "reader") == set()
-    assert await found(scene, "writer") == {scene.green}
+    assert scene.green in await found(scene, "writer")
 
 
 async def test_a_lane_that_changed_before_the_index_heard_of_it(api: Api) -> None:

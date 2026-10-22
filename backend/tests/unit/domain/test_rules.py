@@ -20,7 +20,6 @@ from lekto.core.domain.ids import (
 from lekto.core.domain.json_value import JsonObject, JsonValue
 from lekto.core.domain.master_data import TagScope
 from lekto.core.domain.rules import (
-    GLOBAL_ACTIONS,
     MAX_ACTIONS,
     MAX_CONDITIONS,
     MAX_DEPTH,
@@ -49,7 +48,6 @@ from lekto.core.domain.rules import (
     SetTitle,
     SetTopic,
     check_fields,
-    check_scope,
 )
 from lekto.core.domain.rules_json import (
     action_from_json,
@@ -385,38 +383,13 @@ def test_action_values() -> None:
         SetTitle("{contact}"),
     ],
 )
-def test_global_rules_cannot_change_who_sees_or_files(action: Action) -> None:
-    with pytest.raises(ValidationError, match=f"a global rule cannot {action.type}"):
-        check_scope(definition(action), RuleScope.GLOBAL)
-    check_scope(definition(action), RuleScope.USER)
-
-
-def test_global_actions() -> None:
-    allowed = definition(
-        AddTags(frozenset({TAG})),
-        RemoveTags(frozenset({OTHER_TAG})),
-        SetField(FIELD, "x"),
-        ForceReview("look"),
-    )
-    assert all(isinstance(action, GLOBAL_ACTIONS) for action in allowed.actions)
-    check_scope(allowed, RuleScope.GLOBAL)
-
-
-def test_global_rule_is_created_and_changed_with_global_actions_only() -> None:
-    with pytest.raises(ValidationError, match="a global rule cannot set_space"):
-        Rule.create(
-            scope=RuleScope.GLOBAL,
-            owner_id=None,
-            definition=definition(SetSpace(SPACE)),
-            by=ADMIN,
-            now=NOW,
-        )
+def test_global_rules_may_do_everything(action: Action) -> None:
+    """Tobi, 21.10.2026: global rules (admins) have no limits."""
     rule = Rule.create(
-        scope=RuleScope.GLOBAL, owner_id=None, definition=definition(), by=ADMIN, now=NOW
+        scope=RuleScope.GLOBAL, space_id=None, definition=definition(action), by=ADMIN, now=NOW
     )
-    with pytest.raises(ValidationError, match="a global rule cannot set_contact"):
-        rule.change(definition(SetContact(CONTACT)), ADMIN, NOW)
-    assert rule.current.number == 1
+    rule.change(definition(AddTags(frozenset({TAG})), action), ADMIN, NOW)
+    assert rule.current.number == 2
 
 
 # --- fields -------------------------------------------------------------------------------
@@ -573,11 +546,6 @@ def test_errors_of_stored_data_and_scope_name_the_place() -> None:
     fitting = definition(SetField(number.id, "seven"), AddTags(frozenset({TAG})))
     with pytest.raises(ValidationError, match=r"^actions\[0\]: .*does not accept"):
         check_fields(fitting, {number.id: number})
-    with pytest.raises(ValidationError, match=r"^actions\[1\]: a global rule cannot set_space"):
-        check_scope(
-            definition(AddTags(frozenset({TAG})), SetSpace(SpaceId(new_id()))),
-            RuleScope.GLOBAL,
-        )
     with pytest.raises(ValidationError, match=r"^actions\[2\]: an action sets the same field"):
         definition(SetTitle("A"), AddTags(frozenset({TAG})), SetTitle("B"))
 
@@ -663,14 +631,14 @@ def test_uses_text_and_patterns() -> None:
 # --- rule -------------------------------------------------------------------------------------
 
 
-def user_rule() -> Rule:
+def space_rule() -> Rule:
     return Rule.create(
-        scope=RuleScope.USER, owner_id=OWNER, definition=definition(), by=OWNER, now=NOW
+        scope=RuleScope.SPACE, space_id=SPACE, definition=definition(), by=OWNER, now=NOW
     )
 
 
 def test_create_rule() -> None:
-    rule = user_rule()
+    rule = space_rule()
 
     assert rule.current.number == 1
     assert rule.current.rule_id == rule.id
@@ -680,7 +648,7 @@ def test_create_rule() -> None:
 
 
 def test_change_makes_a_new_version() -> None:
-    rule = user_rule()
+    rule = space_rule()
     first = rule.current
     later = NOW + timedelta(hours=1)
     changed = definition(SetContact(CONTACT), name="Invoices from ACME")
@@ -695,7 +663,7 @@ def test_change_makes_a_new_version() -> None:
 
 
 def test_enable_and_disable_make_no_version() -> None:
-    rule = user_rule()
+    rule = space_rule()
     later = NOW + timedelta(minutes=5)
 
     rule.disable(later, "contact deleted")
@@ -710,7 +678,7 @@ def test_enable_and_disable_make_no_version() -> None:
 
 
 def test_delete_rule() -> None:
-    rule = user_rule()
+    rule = space_rule()
     later = NOW + timedelta(days=1)
 
     rule.delete(later)
@@ -728,18 +696,20 @@ def test_delete_rule() -> None:
 
 
 def test_rule_invariants() -> None:
-    with pytest.raises(ValidationError, match="global rules have no owner"):
+    with pytest.raises(ValidationError, match="global rules belong to no space"):
         Rule.create(
-            scope=RuleScope.GLOBAL, owner_id=ADMIN, definition=definition(), by=ADMIN, now=NOW
+            scope=RuleScope.GLOBAL, space_id=SPACE, definition=definition(), by=ADMIN, now=NOW
         )
-    with pytest.raises(ValidationError, match="global rules have no owner"):
-        Rule.create(scope=RuleScope.USER, owner_id=None, definition=definition(), by=ADMIN, now=NOW)
-    rule = user_rule()
+    with pytest.raises(ValidationError, match="global rules belong to no space"):
+        Rule.create(
+            scope=RuleScope.SPACE, space_id=None, definition=definition(), by=ADMIN, now=NOW
+        )
+    rule = space_rule()
     with pytest.raises(ValidationError, match="belongs to another rule"):
         Rule(
             id=RuleId(new_id()),
-            scope=RuleScope.USER,
-            owner_id=OWNER,
+            scope=RuleScope.SPACE,
+            space_id=SPACE,
             current=rule.current,
             created_at=NOW,
             updated_at=NOW,
@@ -762,7 +732,7 @@ def test_rule_order() -> None:
     def make(priority: int, scope: RuleScope, minutes: int) -> Rule:
         return Rule.create(
             scope=scope,
-            owner_id=None if scope is RuleScope.GLOBAL else OWNER,
+            space_id=None if scope is RuleScope.GLOBAL else SPACE,
             definition=RuleDefinition(
                 name="R", conditions=group(ALWAYS), actions=(ForceReview("x"),), priority=priority
             ),
@@ -770,11 +740,11 @@ def test_rule_order() -> None:
             now=NOW + timedelta(minutes=minutes),
         )
 
-    low = make(50, RuleScope.USER, 0)
-    user_newer = make(100, RuleScope.USER, 2)
-    user_older = make(100, RuleScope.USER, 1)
+    low = make(50, RuleScope.SPACE, 0)
+    user_newer = make(100, RuleScope.SPACE, 2)
+    user_older = make(100, RuleScope.SPACE, 1)
     global_newest = make(100, RuleScope.GLOBAL, 3)
-    high = make(900, RuleScope.USER, 4)
+    high = make(900, RuleScope.SPACE, 4)
 
     ordered = sorted([low, user_newer, user_older, global_newest, high], key=lambda r: r.order)
 
@@ -866,3 +836,34 @@ def test_a_topic_condition_and_action() -> None:
         Condition(field=ConditionField.TOPIC, op=Operator.CONTAINS, value=str(topic))
     with pytest.raises(ValidationError, match="the same field twice"):
         definition(SetTopic(topic), SetTopic(other))
+
+
+def test_a_rule_moves_and_its_versions_name_the_space() -> None:
+    rule = space_rule()
+    assert rule.current.space_id == SPACE
+    other = SpaceId(new_id())
+    rule.change(definition(), ADMIN, NOW, scope=RuleScope.SPACE, space_id=other)
+    assert (rule.space_id, rule.current.space_id, rule.current.number) == (other, other, 2)
+    version = rule.change(definition(), ADMIN, NOW, scope=RuleScope.GLOBAL)
+    assert (rule.scope, rule.space_id, version.space_id) == (RuleScope.GLOBAL, None, None)
+    with pytest.raises(ValidationError, match="global rules belong to no space"):
+        rule.change(definition(), ADMIN, NOW, scope=RuleScope.SPACE)
+    with pytest.raises(ValidationError, match="names another space"):
+        Rule(
+            id=rule.id,
+            scope=RuleScope.SPACE,
+            space_id=other,
+            current=rule.current,
+            created_at=NOW,
+            updated_at=NOW,
+        )
+    pattern = Rule.create(
+        scope=RuleScope.GLOBAL,
+        space_id=None,
+        definition=definition(),
+        by=ADMIN,
+        now=NOW,
+        managed_by=DocumentTypeId(new_id()),
+    )
+    with pytest.raises(ValidationError, match="title pattern is global"):
+        pattern.change(definition(), ADMIN, NOW, scope=RuleScope.SPACE, space_id=other)

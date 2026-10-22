@@ -6,7 +6,8 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Self
 
-from lekto.core.domain.ids import UserId, new_id
+from lekto.core.domain.errors import ConflictError, ValidationError
+from lekto.core.domain.ids import SpaceId, UserId, new_id
 from lekto.core.domain.validation import require_name, require_utc
 
 MAX_USERNAME = 150
@@ -42,3 +43,52 @@ class User:
     @property
     def is_active_admin(self) -> bool:
         return self.active and self.is_admin
+
+
+# --- deleting a user ----------------------------------------------------------------------------
+
+
+class Settle(StrEnum):
+    """What becomes of a space that stops deleting its user (Tobi, 22.10.2026)."""
+
+    REMOVE = "remove"  # an empty space goes with the user
+    MOVE_TO = "move_to"  # its documents move into another space, then it goes with the user
+    EDITOR = "editor"  # another user edits it; it stays with its documents
+
+
+@dataclass(frozen=True)
+class BlockingSpace:
+    """A space that stops deleting a user until the deletion settles it: their personal space
+    while it holds documents, or a shared space they alone edit. `choices`: how it may be
+    settled."""
+
+    id: SpaceId
+    name: str
+    personal: bool
+    documents: int
+    choices: tuple[Settle, ...]
+
+
+@dataclass(frozen=True)
+class Settlement:
+    """How a deletion settles one blocking space: `move_to` names the space its documents go
+    into, `editor` the user who edits it from then on."""
+
+    how: Settle
+    move_to: SpaceId | None = None
+    editor: UserId | None = None
+
+    def __post_init__(self) -> None:
+        if (self.how is Settle.MOVE_TO) != (self.move_to is not None):
+            raise ValidationError("move_to: the space the documents move into, and only then")
+        if (self.how is Settle.EDITOR) != (self.editor is not None):
+            raise ValidationError("editor: the user who edits the space, and only then")
+
+
+class UserDeletionBlockedError(ConflictError):
+    """Deleting the user needs a decision on each of `spaces` (`Settlement`)."""
+
+    def __init__(self, spaces: tuple[BlockingSpace, ...]) -> None:
+        names = ", ".join(f"'{space.name}'" for space in spaces)
+        super().__init__(f"deleting the user needs a decision on these spaces: {names}")
+        self.spaces = spaces

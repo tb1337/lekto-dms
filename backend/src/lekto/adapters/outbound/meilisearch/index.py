@@ -18,7 +18,7 @@
 import asyncio
 import json
 import logging
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Collection, Mapping, Sequence
 from datetime import UTC, date, datetime, time
 from time import monotonic
 from typing import Any
@@ -72,7 +72,6 @@ SEARCHABLE = [
     "text",
 ]
 FILTERABLE = [
-    "owner_id",
     "space_id",
     "lane",
     "contact_id",
@@ -375,7 +374,6 @@ class MeilisearchIndex:
         payload: dict[str, Any] = {
             "id": str(document.id),
             "version": document.version,
-            "owner_id": str(document.owner_id),
             "space_id": str(document.space_id),
             "lane": document.lane_value,
             "title": document.title,
@@ -523,12 +521,19 @@ def filter_expression(visibility: Visibility, criteria: DocumentFilter) -> str |
 
 
 def _visibility_filter(visibility: Visibility) -> str:
-    own = f"owner_id = {_quote(visibility.user)}"
-    if not visibility.spaces:
-        return f"({own})"
-    spaces = ", ".join(_quote(space) for space in sorted(visibility.spaces, key=str))
-    green = _quote(lane_value(Lane.GREEN))
-    return f"({own} OR (lane = {green} AND space_id IN [{spaces}]))"
+    parts: list[str] = []
+    if visibility.edits:
+        parts.append(f"space_id IN [{_spaces(visibility.edits)}]")
+    if visibility.reads:
+        green = _quote(lane_value(Lane.GREEN))
+        parts.append(f"(lane = {green} AND space_id IN [{_spaces(visibility.reads)}])")
+    if not parts:  # no space at all: a space no document lies in
+        parts.append(f"space_id = {_quote(UUID(int=0))}")
+    return f"({' OR '.join(parts)})"
+
+
+def _spaces(spaces: Collection[UUID]) -> str:
+    return ", ".join(_quote(space) for space in sorted(spaces, key=str))
 
 
 def _normalised(key: str, setting: Any) -> Any:

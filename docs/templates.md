@@ -39,8 +39,8 @@ attributes of objects, no `include` or `render`.
 | `tags` | the tags set on the document (not those above them), a list sorted by name | `{{ tags \| join: ', ' }}` → `Steuer, Wichtig` |
 | `contact_groups` | the groups the contact is in, a list | as `tags` |
 | `document_type_groups` | the groups the type is in, a list | as `tags` |
-| `space` | the space's name | `Haushalt` |
-| `owner` | the owner's user name | `tobi` |
+| `space` | the space's name; a personal space by its user's name | `Haushalt` |
+| `uploaded_by` | the user name of who uploaded it (no rights come with it; until 0.5 `owner`) | `tobi` |
 | `channel` | how the document came: `web` (uploaded in the web UI), `api` (with an API token), `migration` (taken over from Paperless-ngx) | `web` |
 | `pages` | the number of pages | `2` |
 | `field.<key>` | the value of a field, see below | |

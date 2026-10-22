@@ -46,10 +46,9 @@ def _user_keys(user: User) -> Iterable[Hashable]:
 
 
 def _space_keys(space: Space) -> Iterable[Hashable]:
-    keys: list[Hashable] = [("name", space.owner_id, name_key(space.name))]
-    if space.is_default:
-        keys.append(("default", space.owner_id))
-    return keys
+    if space.personal_of is not None:
+        return [("personal", space.personal_of)]
+    return [("name", name_key(space.name))]
 
 
 def _name_keys(item: MasterData) -> Iterable[Hashable]:
@@ -69,7 +68,7 @@ def _tag_keys(tag: Tag) -> Iterable[Hashable]:
 
 
 def _document_keys(document: Document) -> Iterable[Hashable]:
-    return [("sha256", document.owner_id, document.sha256)]
+    return [("sha256", document.sha256)]
 
 
 def _lens_keys(lens: Lens) -> Iterable[Hashable]:
@@ -135,6 +134,15 @@ class SubscriptionState:
     retries: list[Retry] = field(default_factory=list)  # failed events, in order of failure
 
 
+@dataclass(frozen=True)
+class SeenMark:
+    """A user's seen mark on a document: when, and whether a move set it silently (it keeps
+    the document from being new but is no seeing, `InboxRepository.mark_seen`)."""
+
+    at: datetime
+    silent: bool = False
+
+
 @dataclass
 class MemoryDatabase:
     """What has been committed. Rows are private copies; insertion order is creation order."""
@@ -148,5 +156,5 @@ class MemoryDatabase:
     subscriptions: dict[str, SubscriptionState] = field(default_factory=dict)
     locks: dict[str, asyncio.Lock] = field(default_factory=dict)  # see MemoryUnitOfWork.lock
     # What the inbox keeps: when each user saw a document last, who confirmed it last.
-    seen: dict[tuple[UserId, DocumentId], datetime] = field(default_factory=dict)
+    seen: dict[tuple[UserId, DocumentId], "SeenMark"] = field(default_factory=dict)
     confirmations: dict[DocumentId, Confirmation] = field(default_factory=dict)

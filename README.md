@@ -13,8 +13,8 @@ three lanes: green (done), yellow (confirm), red (intervene).
 ## What it does
 
 - **Multi-user.** Native logins with optional TOTP, optional OpenID Connect. Permissions are
-  attached to spaces (filing units that can be shared), never to single documents; admins see
-  and manage everything.
+  attached to spaces, never to single documents: every member of a space reads or edits its
+  documents; admins see and manage everything.
 - **Explainable ingest.** Receive → OCR (OCRmyPDF, PDF/A) → read the text as it is set → classify
   (language model, OpenAI-compatible: Ollama or cloud) → extract fields → apply rules → file.
   Every step is logged with input, result, confidence, model version and duration, and can be
@@ -79,15 +79,15 @@ migration from Paperless: [.devcontainer/README.md](.devcontainer/README.md).
 
 | Term | Meaning |
 | --- | --- |
-| Document | A file with metadata. Has an owner, exactly one space, at most one contact and one type. |
+| Document | A file with metadata. Lies in exactly one space; at most one contact and one type. Names who uploaded it, which carries no rights. |
 | Contact | The other party of a document (Paperless: correspondent). Global. |
 | Document type | Kind of document. Global; brings its own fields. |
 | Tag | Free classification, any number per document. Carries no permissions. |
 | Field | User-defined field (Paperless: custom field). Scope: global or per document type. |
-| Space | Filing and permission unit (before 0.3: drawer). Has an owner, can be shared with other users. |
-| Inbox | Where yellow and red documents wait for their owner. |
+| Space | Filing and permission unit (before 0.3: drawer). Its members read or edit its documents; every user has a personal space, where their uploads land. |
+| Inbox | Where new, yellow and red documents wait for the editors of their space. |
 | Lane | Processing outcome: green, yellow or red. |
-| Rule | Trigger, conditions and actions. Global rules by admins, personal rules by each user. |
+| Rule | Trigger, conditions and actions. Global rules by admins, space rules by the editors of a space. |
 
 ## Development
 

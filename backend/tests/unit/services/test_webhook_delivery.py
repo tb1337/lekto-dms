@@ -20,7 +20,7 @@ from lekto.core.domain.events import (
 from lekto.core.domain.ids import DocumentId, WebhookId, new_id
 from lekto.core.domain.jobs import Job, JobStatus
 from lekto.core.domain.pipeline import Lane
-from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.domain.webhooks import (
     DISABLED_FAILING,
@@ -47,7 +47,7 @@ async def seed(
     world: World, owner: User, space: Space | None = None, *, green: bool = True
 ) -> Document:
     """A document of the owner; green, or still in processing."""
-    space = space or await world.default_space(owner)
+    space = space or await world.personal_space(owner)
     document = builders.processed(owner, space) if green else builders.document(owner, space)
     async with world.uow() as uow:
         await uow.documents.add(document)
@@ -92,7 +92,7 @@ async def test_an_event_is_queued_for_each_webhook_that_wants_its_type(world: Wo
 async def test_only_those_who_may_read_the_document_are_told(world: World) -> None:
     owner, friend, stranger = await world.user(), await world.user(), await world.user()
     shared = builders.space(owner, "shared")
-    shared.share(friend.id, ShareLevel.READ)
+    shared.set_member(friend.id, SpaceRole.READ)
     async with world.uow() as uow:
         await uow.spaces.add(shared)
         await uow.commit()
@@ -117,7 +117,7 @@ async def test_an_admins_webhooks_report_their_reach_only(world: World) -> None:
     as a user: their own documents and green ones in their spaces and shares."""
     admin, user = await world.user(role=Role.ADMIN), await world.user()
     shared = builders.space(user, "shared")
-    shared.share(admin.id, ShareLevel.READ)
+    shared.set_member(admin.id, SpaceRole.READ)
     async with world.uow() as uow:
         await uow.spaces.add(shared)
         await uow.commit()
@@ -138,7 +138,7 @@ async def test_an_admins_webhooks_report_their_reach_only(world: World) -> None:
 
     # The rights are checked again when sending: still the reach, although the admin may
     # read the document.
-    await world.spaces.unshare(user.id, shared.id, admin.id)
+    await world.spaces.remove_member(user.id, shared.id, admin.id)
     assert await run_all(service) == 2
     rows = await log(world, webhook)
     dropped = [row.document_id for row in rows if row.outcome is DeliveryOutcome.DROPPED]
@@ -158,7 +158,7 @@ async def test_filed_is_skipped_while_the_document_has_no_lane(world: World) -> 
     user = await world.user()
     await hook(world, user, "document.filed")
     service = world.webhook_delivery()
-    space = await world.default_space(user)
+    space = await world.personal_space(user)
     early = await seed(world, user, green=False)
     await service.on_event(DocumentFiled(occurred_at=NOW, document_id=early.id, space_id=space.id))
     assert deliveries(world) == []
@@ -373,7 +373,7 @@ async def test_a_webhook_is_switched_off_after_repeated_failures_and_success_res
 async def test_a_lost_right_drops_the_delivery_without_sending(world: World) -> None:
     owner, friend = await world.user(), await world.user()
     shared = builders.space(owner, "shared")
-    shared.share(friend.id, ShareLevel.READ)
+    shared.set_member(friend.id, SpaceRole.READ)
     async with world.uow() as uow:
         await uow.spaces.add(shared)
         await uow.commit()
@@ -381,7 +381,7 @@ async def test_a_lost_right_drops_the_delivery_without_sending(world: World) -> 
     webhook, _ = await hook(world, friend)
     service = world.webhook_delivery()
     await queue(world, document, service)
-    await world.spaces.unshare(owner.id, shared.id, friend.id)
+    await world.spaces.remove_member(owner.id, shared.id, friend.id)
 
     assert await service.run_next_job()
     assert world.sender.requests == []

@@ -104,6 +104,38 @@ async def test_the_cold_run_says_what_would_happen_and_writes_nothing(setup: Set
     assert PAPERLESS_KEY not in text and fake_lekto.TOKEN not in text
 
 
+async def test_the_cold_run_says_who_sees_a_document_beyond_paperless(setup: Setup) -> None:
+    """The plan puts ACME's documents of tobias (10) and anna (12) into one space: each sees
+    the other's there, which Paperless did not let them."""
+    assert await setup.run("plan") == 0
+    setup.edit(
+        "correspondents",
+        "ACME Energy",
+        "[{to: contact, name: ACME Energy, create: true},"
+        " {to: space, name: Energie, create: true}]",
+    )
+    assert await setup.run("check") == 0
+    report = setup.report("check")
+    ten, twelve = row(report, 10), row(report, 12)
+    assert ten["becomes"]["members"] == ["anna: edit", "tobias: edit"]
+    assert (ten["becomes"]["beyond"], twelve["becomes"]["beyond"]) == (["anna"], ["tobias"])
+    space = next(a for a in report["actions"] if a["kind"] == "space" and a["name"] == "Energie")
+    assert "anna and tobias see each other's documents in 'Energie'" in space["notes"]
+    text = (setup.directory / "reports" / "check.md").read_text()
+    assert "## New documents visible beyond Paperless' permissions" in text
+    # In their personal spaces only the uploader sees a document.
+    setup.edit("correspondents", "ACME Energy", "{to: contact, name: ACME Energy, create: true}")
+    assert await setup.run("check") == 0
+    ten = row(setup.report("check"), 10)
+    assert (ten["becomes"]["members"], ten["becomes"]["beyond"]) == (["tobias: edit"], [])
+
+
+async def test_a_plan_cannot_name_a_shared_space_like_a_personal_one(setup: Setup) -> None:
+    assert await setup.run("plan") == 0
+    setup.edit("storage_paths", "Bank", "{to: space, name: Persönlich, create: true}")
+    assert await setup.run("check") == 2
+
+
 async def test_run_waits_for_prepare_and_prepare_for_a_complete_plan(setup: Setup) -> None:
     assert await setup.run("plan") == 0
     assert await setup.run("run") == 2
@@ -135,7 +167,9 @@ async def test_prepare_asks_and_creates_the_master_data(setup: Setup) -> None:
     assert tags["tax/2024"]["parent_id"] == tags["tax"]["id"]
     assert "Notizen" not in {f["name"] for f in lekto.fields.values()}
     assert named(lekto.fields, "Kind")["choices"] == ["One", "Two"]
-    assert sum(1 for s in lekto.spaces.values() if not s["is_default"]) == 1
+    # One space for each combination of members: document 13's and document 16's (gone,
+    # deactivated in Paperless, reads it as Paperless lets them).
+    assert sum(1 for s in lekto.spaces.values() if s["personal_of"] is None) == 2
     writes = len(lekto.writes())
     assert await setup.run("prepare") == 0  # nothing left to do
     assert len(lekto.writes()) == writes
@@ -151,7 +185,8 @@ async def test_the_migration_takes_everything_over(setup: Setup) -> None:
     assert len(lekto.documents) == 8
     first = by_title(setup, "Document 10")
     assert first["channel"] == "migration"
-    assert first["owner_id"] == named(lekto.users, "tobias")["id"]
+    assert first["uploaded_by"] == named(lekto.users, "tobias")["id"]
+    assert first["space_id"] == f"personal:{first['uploaded_by']}"
     assert first["document_date"] == "2024-05-01"
     assert datetime.fromisoformat(first["created_at"]) == datetime(2024, 4, 2, 7, 30, tzinfo=UTC)
     assert first["contact_id"] == named(lekto.contacts, "ACME Energy")["id"]
@@ -172,15 +207,18 @@ async def test_the_migration_takes_everything_over(setup: Setup) -> None:
         "ASN": "77",
     }
     assert by_title(setup, "Document 11")["fields"] == {}  # an invalid URL is left out
-    assert by_title(setup, "Document 14")["owner_id"] == fake_lekto.ADMIN["id"]
-    assert by_title(setup, "Document 15")["owner_id"] == fake_lekto.ADMIN["id"]
-    assert by_title(setup, "Document 12")["space_id"].startswith("default:")
+    assert by_title(setup, "Document 14")["uploaded_by"] == fake_lekto.ADMIN["id"]
+    assert by_title(setup, "Document 15")["uploaded_by"] == fake_lekto.ADMIN["id"]
+    assert by_title(setup, "Document 12")["space_id"].startswith("personal:")
     shared = by_title(setup, "Document 13")
     space = lekto.spaces[shared["space_id"]]
-    assert space["name"] == "Geteilt: bob (lesen), tobias (schreiben)"
-    assert space["owner_id"] == named(lekto.users, "anna")["id"]
+    assert space["name"] == "Geteilt: anna (bearbeiten), bob (lesen), tobias (bearbeiten)"
+    anna = named(lekto.users, "anna")["id"]
+    assert shared["uploaded_by"] == anna
+    assert {"user_id": anna, "role": "edit"} in space["members"]
     upload = next(u for u in lekto.uploads if u["filename"] == "scan-13.pdf")
     assert upload["channel"] == "migration" and upload["space_id"] == space["id"]
+    assert upload["uploaded_by"] == anna
     assert json.loads(upload["metadata"])["review"] == []
     report = setup.report("run")
     assert report["document_results"] == {"done": 8, "skipped": 2}
@@ -204,6 +242,17 @@ async def test_a_second_run_writes_nothing(setup: Setup) -> None:
     assert await setup.run("run") == 0
     assert len(setup.lekto.uploads) == uploads and len(setup.paperless.downloads) == downloads
     assert len(setup.lekto.writes()) == writes
+
+
+async def test_a_member_taken_out_of_a_migration_space_stays_out(setup: Setup) -> None:
+    assert await setup.migrate() == 0
+    space = next(s for s in setup.lekto.spaces.values() if "bob (lesen)" in s["name"])
+    bob = named(setup.lekto.users, "bob")
+    space["members"] = [m for m in space["members"] if m["user_id"] != bob["id"]]
+    writes = len(setup.lekto.writes())
+    assert await setup.run("prepare") == 0  # its uploader anna is in: nothing to do
+    assert len(setup.lekto.writes()) == writes
+    assert bob["id"] not in {m["user_id"] for m in space["members"]}
 
 
 async def test_a_changed_plan_aligns_what_was_migrated(setup: Setup) -> None:
@@ -413,6 +462,50 @@ async def test_a_duplicate_is_mapped_not_counted_as_an_error(setup: Setup) -> No
     found = row(setup.report("run"), 30)
     assert found["status"] == "duplicate" and found["lekto_id"] == existing["id"]
     assert len(setup.lekto.documents) == 8
+
+
+async def test_the_same_file_is_a_duplicate_wherever_it_lies(setup: Setup) -> None:
+    """Every file exists once per installation: a copy is a duplicate also for a user who
+    cannot see the document that holds it."""
+    assert await setup.migrate() == 0
+    twelve = setup.archive.documents[2]  # anna's, in her personal space
+    setup.archive.documents += [
+        {**twelve, "id": 30, "title": "Anna's copy"},
+        {**twelve, "id": 31, "title": "Bob's copy", "owner": 3},
+    ]
+    setup.archive.files[30] = setup.archive.files[31] = setup.archive.files[12]
+    assert await setup.run("check", download=True) == 0
+    files = {f["id"]: f for f in setup.report("check")["files"]}
+    assert "Lekto has the file already" in files[30]["note"]
+    assert "Lekto has the file already" in files[31]["note"]
+    assert await setup.run("run") == 0
+    results = {d["id"]: d["status"] for d in setup.report("run")["documents"]}
+    assert (results[30], results[31]) == ("duplicate", "duplicate")
+
+
+async def test_a_copy_of_another_users_document_leaves_it_as_it_is(setup: Setup) -> None:
+    """tobias may change anna's document 13 in Paperless and has a copy of his own: Lekto
+    finds the file in the space he edits, and that document stays anna's, where it is."""
+    assert await setup.migrate() == 0
+    thirteen = next(d for d in setup.archive.documents if d["id"] == 13)
+    original = row(setup.report("run"), 13)["lekto_id"]
+    before = dict(setup.lekto.documents[original])
+    setup.archive.documents.append(
+        {**thirteen, "id": 30, "title": "Tobias' copy", "owner": 1, "permissions": {}}
+    )
+    setup.archive.files[30] = setup.archive.files[13]
+    assert await setup.run("run") == 0
+    copy = row(setup.report("run"), 30)
+    assert copy["status"] == "duplicate" and copy["lekto_id"] == original
+    assert "Paperless document 13" in copy["reason"]
+    after = setup.lekto.documents[original]
+    assert (after["title"], after["space_id"]) == (before["title"], before["space_id"])
+    writes = len(setup.lekto.writes())
+    assert await setup.run("run") == 0  # the next run leaves it alone too
+    assert len(setup.lekto.writes()) == writes
+    assert await setup.run("check") == 0
+    checked = row(setup.report("check"), 30)
+    assert checked["status"] == "not aligned" and "Paperless document 13" in checked["reason"]
 
 
 async def test_a_new_state_file_finds_what_is_there(setup: Setup) -> None:

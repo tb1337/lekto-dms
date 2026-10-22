@@ -43,8 +43,7 @@ SchemaState = Literal["current", "outdated", "newer"]
 async def schema_state(database: Database) -> SchemaState:
     """Compare the database's revision with the newest migration. Read-only: a missing SQLite
     file is not created. Raises if the database is unreachable."""
-    sqlite_file = database.engine.url.database if database.is_sqlite else None
-    if sqlite_file and not Path(sqlite_file).exists():
+    if database.sqlite_path is not None and not database.sqlite_path.exists():
         return "outdated"
     script = ScriptDirectory.from_config(alembic_config())
     async with database.reading() as connection:
@@ -65,8 +64,8 @@ async def schema_state(database: Database) -> SchemaState:
 async def migrate(database: Database, revision: str = "head") -> None:
     """Upgrade the schema to `revision`; a no-op if it is there already. Creates a missing
     SQLite file and its directory."""
-    if database.is_sqlite and database.engine.url.database:
-        Path(database.engine.url.database).parent.mkdir(parents=True, exist_ok=True)
+    if database.sqlite_path is not None:
+        database.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
     await _run(database, lambda sync: command.upgrade(alembic_config(sync), revision))
 
 

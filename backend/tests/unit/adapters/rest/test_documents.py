@@ -17,7 +17,7 @@ from lekto.core.domain.errors import UnprocessableDocumentError
 from lekto.core.domain.exchanges import ModelCall, RunExchange, exchanges_to_json
 from lekto.core.domain.ids import DocumentId
 from lekto.core.domain.pipeline import Node
-from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.spaces import SpaceRole
 from lekto.core.services.objects import exchanges_key, original_key
 from tests import builders
 from tests.api import auth, issue_token
@@ -84,7 +84,7 @@ async def test_upload_is_accepted_and_processed(api: Api) -> None:
     assert ocr["model_version"] == "fake-ocr 1"
 
 
-async def test_a_duplicate_of_the_same_owner_is_rejected(api: Api) -> None:
+async def test_a_file_exists_once_per_installation(api: Api) -> None:
     owner, other = await api.user(), await api.user()
     first = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
     again = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
@@ -92,10 +92,11 @@ async def test_a_duplicate_of_the_same_owner_is_rejected(api: Api) -> None:
     assert again.headers["content-type"] == PROBLEM
     assert again.json()["existing_document_id"] == first.json()["id"]
     assert again.json()["title"] == "Conflict"
-    # Another owner gets a document of their own for the same file.
-    assert (
-        await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(other))
-    ).status_code == 202
+    # Another user who cannot see it learns only that the file is there.
+    elsewhere = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(other))
+    assert elsewhere.status_code == 409
+    assert "existing_document_id" not in elsewhere.json()
+    assert elsewhere.json()["detail"] == "the file lies in Lekto already, in a space you cannot see"
 
 
 async def test_unsupported_files_are_rejected(api: Api) -> None:
@@ -200,8 +201,8 @@ async def test_upload_into_a_space(api: Api) -> None:
     owner, writer, reader = await api.user(), await api.user(), await api.user()
     spaces = api.services  # space service lives in the services, not in the API (M4)
     shared = await spaces.spaces.create(owner.id, "Household")
-    await spaces.spaces.share(owner.id, shared.id, writer.id, ShareLevel.READ_WRITE)
-    await spaces.spaces.share(owner.id, shared.id, reader.id, ShareLevel.READ)
+    await spaces.spaces.set_member(owner.id, shared.id, writer.id, SpaceRole.EDIT)
+    await spaces.spaces.set_member(owner.id, shared.id, reader.id, SpaceRole.READ)
     data = {"space_id": str(shared.id)}
 
     accepted = await api.client.post(
@@ -223,15 +224,15 @@ async def test_upload_into_a_space(api: Api) -> None:
 async def test_the_form_fields_are_checked_like_a_body(api: Api) -> None:
     """Every invalid field is named, as for a JSON body; a blank one counts as not given."""
     owner = await api.user()
-    data = {"space_id": "no-uuid", "owner": "nobody", "channel": "web"}
+    data = {"space_id": "no-uuid", "uploaded_by": "nobody", "channel": "web"}
     invalid = await api.client.post(DOCUMENTS, files=sample_file(), data=data, headers=auth(owner))
     assert invalid.status_code == 422
     assert [part.split(":")[0] for part in invalid.json()["detail"].split("; ")] == [
         "space_id",
         "channel",
-        "owner",
+        "uploaded_by",
     ]
-    blank = {"space_id": " ", "owner": "", "channel": " "}
+    blank = {"space_id": " ", "uploaded_by": "", "channel": " "}
     accepted = await api.client.post(
         DOCUMENTS, files=sample_file(), data=blank, headers=auth(owner)
     )
@@ -290,7 +291,7 @@ async def test_the_original_is_stored_by_its_hash(api: Api) -> None:
 async def test_others_see_a_document_only_through_a_share_once_green(api: Api) -> None:
     owner, reader, stranger = await api.user(), await api.user(), await api.user()
     shared = await api.services.spaces.create(owner.id, "Shared")
-    await api.services.spaces.share(owner.id, shared.id, reader.id, ShareLevel.READ)
+    await api.services.spaces.set_member(owner.id, shared.id, reader.id, SpaceRole.READ)
     response = await api.client.post(
         DOCUMENTS, files=sample_file(), data={"space_id": str(shared.id)}, headers=auth(owner)
     )
@@ -483,10 +484,10 @@ async def test_reprocess_validates_the_step(api: Api) -> None:
     assert "frm_node" in misspelt.json()["detail"]
 
 
-async def test_only_the_owner_controls_processing(api: Api) -> None:
+async def test_only_editors_control_processing(api: Api) -> None:
     owner, writer = await api.user(), await api.user()
     shared = await api.services.spaces.create(owner.id, "Shared")
-    await api.services.spaces.share(owner.id, shared.id, writer.id, ShareLevel.READ_WRITE)
+    await api.services.spaces.set_member(owner.id, shared.id, writer.id, SpaceRole.READ)
     response = await api.client.post(
         DOCUMENTS, files=sample_file(), data={"space_id": str(shared.id)}, headers=auth(owner)
     )

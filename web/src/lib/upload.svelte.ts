@@ -1,6 +1,7 @@
 /**
  * Uploads of documents, from the inbox: a few files at a time (the workers set the real limit),
- * one call each, into a space and for an owner (an admin's choice). What came of them stays in
+ * one call each, into the uploader's personal space (the API keeps a space and an uploader for
+ * scripts and the migration; the UI offers no choice). What came of them stays in
  * this browser until dismissed, lost on reload: uploaded, duplicates with the document they
  * duplicate, skipped with the reason (another type, hidden, too large), failed with the error.
  * An uploaded document stands in the inbox from its arrival on, with its progress.
@@ -24,15 +25,6 @@ export interface Upload {
 	message: string | null;
 }
 
-/** Where the documents go: a space (null: the owner's default) and, for admins, an owner (null:
- * the caller). */
-export interface Target {
-	spaceId: string | null;
-	owner: string | null;
-}
-
-export const DEFAULT_TARGET: Target = { spaceId: null, owner: null };
-
 /** Requests at the same time. */
 export const PARALLEL = 3;
 
@@ -40,7 +32,7 @@ const PENDING: readonly UploadState[] = ['waiting', 'uploading'];
 
 export class Uploads {
 	items = $state<Upload[]>([]);
-	#queue: { upload: Upload; file: File; target: Target }[] = [];
+	#queue: { upload: Upload; file: File }[] = [];
 	#running = 0;
 	#next = 1;
 
@@ -62,14 +54,14 @@ export class Uploads {
 		};
 	}
 
-	add(intake: Intake, target: Target = DEFAULT_TARGET): void {
+	add(intake: Intake): void {
 		for (const skipped of intake.skipped) {
 			this.#push({ name: skipped.name, state: 'skipped', reason: skipped.reason });
 		}
 		for (const { file, name } of intake.files) {
 			// The pushed item is a proxy; keep working on that one so the page sees the changes.
 			const upload = this.#push({ name, state: 'waiting' });
-			this.#queue.push({ upload, file, target });
+			this.#queue.push({ upload, file });
 		}
 		this.#pump();
 	}
@@ -100,19 +92,17 @@ export class Uploads {
 		while (this.#running < PARALLEL && this.#queue.length > 0) {
 			const job = this.#queue.shift()!;
 			this.#running++;
-			void this.#send(job.upload, job.file, job.target).finally(() => {
+			void this.#send(job.upload, job.file).finally(() => {
 				this.#running--;
 				this.#pump();
 			});
 		}
 	}
 
-	async #send(upload: Upload, file: File, target: Target): Promise<void> {
+	async #send(upload: Upload, file: File): Promise<void> {
 		upload.state = 'uploading';
 		const form = new FormData();
 		form.append('file', file, file.name);
-		if (target.spaceId) form.append('space_id', target.spaceId);
-		if (target.owner) form.append('owner', target.owner);
 		try {
 			const { data, error, response } = await api.POST('/api/v1/documents', {
 				// The generated type wants a string for the file; the form carries the binary.
@@ -123,10 +113,11 @@ export class Uploads {
 			upload.documentId = data.id;
 			upload.state = 'uploaded';
 		} catch (error) {
-			const existing = error instanceof ApiError ? error.problem?.existing_document_id : null;
-			if (error instanceof ApiError && error.status === 409 && existing) {
+			if (error instanceof ApiError && error.status === 409) {
+				// Every file exists once per installation; without an id it lies in a space the
+				// caller cannot see.
 				upload.state = 'duplicate';
-				upload.documentId = existing;
+				upload.documentId = error.problem?.existing_document_id ?? null;
 			} else if (error instanceof ApiError && (error.status === 413 || error.status === 415)) {
 				upload.state = 'skipped';
 				upload.reason = error.status === 413 ? 'too_large' : 'type';

@@ -247,7 +247,7 @@ async def test_get_document_names_what_the_document_refers_to(api: Api, scene: S
     assert document["tags"] == [{"id": str(tag.id), "name": "Strom"}]
     assert document["fields"] == {"Betrag": {"amount": "84.20", "currency": "EUR"}}
     assert document["lane"] == "green" and document["status"] == "completed"
-    assert document["owner_id"] == str(scene.owner.id)
+    assert document["uploaded_by"] == str(scene.owner.id)
 
 
 async def test_a_document_one_may_not_read_is_just_not_found(api: Api, scene: Scene) -> None:
@@ -445,7 +445,7 @@ async def test_update_metadata_changes_what_is_given(api: Api, scene: Scene) -> 
         )
     )
     document = result["document"]
-    assert result["access"] == "read_write" and document["title"] == "Strom März"
+    assert result["access"] == "edit" and document["title"] == "Strom März"
     assert document["contact"]["id"] == str(contact.id)
     assert [tag["name"] for tag in document["tags"]] == ["Strom", "Wohnung"]
     assert document["document_date"] == "2026-03-31"
@@ -557,14 +557,22 @@ async def test_an_editor_whose_change_files_the_document_away_learns_nothing_mor
     shared = await post(api, "/spaces", {"name": "Shared"}, o)
     private = await post(api, "/spaces", {"name": "Private"}, o)
     response = await api.client.put(
-        f"{PREFIX}/spaces/{shared['id']}/shares/{editor.id}",
-        json={"level": "read_write"},
+        f"{PREFIX}/spaces/{shared['id']}/members/{editor.id}",
+        json={"role": "edit"},
         headers=o,
     )
     assert response.status_code < 300, response.text
-    for name, triggers, condition, space in (
-        ("Shared", ["ingest"], {"field": "channel", "op": "is", "value": "api"}, shared),
-        ("Private", ["change"], {"field": "contact", "op": "is", "value": acme["id"]}, private),
+    # A rule of the owner's personal space files arrivals into the shared space; a rule of the
+    # shared space files a document of ACME into the private one.
+    for name, triggers, condition, space, of in (
+        ("Shared", ["ingest"], {"field": "channel", "op": "is", "value": "api"}, shared, None),
+        (
+            "Private",
+            ["change"],
+            {"field": "contact", "op": "is", "value": acme["id"]},
+            private,
+            shared,
+        ),
     ):
         await post(
             api,
@@ -574,6 +582,7 @@ async def test_an_editor_whose_change_files_the_document_away_learns_nothing_mor
                 "triggers": triggers,
                 "conditions": {"all": [condition]},
                 "actions": [{"type": "set_space", "space_id": space["id"]}],
+                **({} if of is None else {"space_id": of["id"]}),
             },
             o,
         )

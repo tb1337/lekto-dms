@@ -17,7 +17,7 @@ from lekto.adapters.outbound.sql import Database
 from lekto.adapters.outbound.sql.tables import jobs
 from lekto.composition.settings import Settings
 from lekto.core.domain.jobs import JobStatus
-from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.ports.object_store import ObjectStore
 from lekto.core.services.indexing import INDEX_JOB, REBUILD_JOB, REFRESH_JOB
@@ -117,7 +117,7 @@ async def test_documents_are_found_by_those_who_may_read_them(system: SearchSyst
     admin = await system.user(Role.ADMIN)
     async with system.container.unit_of_work() as uow:
         shared = builders.space(owner, "Household")
-        shared.share(reader.id, ShareLevel.READ)
+        shared.set_member(reader.id, SpaceRole.READ)
         await uow.spaces.add(shared)
         await uow.commit()
 
@@ -131,7 +131,7 @@ async def test_documents_are_found_by_those_who_may_read_them(system: SearchSyst
     assert await system.ids(owner, "Wohnung Berlin") == {lease}
     assert await system.ids(owner, "document.pdf") == private  # the file name
 
-    # Others find what is green in a space shared with them, nothing else.
+    # Readers of a space find what is green in it, nothing else.
     await system.found(reader, "Stromrechnung", {bill})  # once it is green, not while in processing
     assert await system.ids(reader, "Mietvertrag") == set()
     for user in (stranger, admin):
@@ -155,9 +155,9 @@ async def test_documents_are_found_by_those_who_may_read_them(system: SearchSyst
     assert patched.status_code == 200, patched.text
     await system.found(owner, "Hamburg", {lease})
 
-    # A withdrawn share ends the search at once, before the index could have changed.
+    # A removed member finds nothing at once, before the index could have changed.
     revoked = await system.client.delete(
-        f"{PREFIX}/spaces/{shared.id}/shares/{reader.id}", headers=auth(owner)
+        f"{PREFIX}/spaces/{shared.id}/members/{reader.id}", headers=auth(owner)
     )
     assert revoked.status_code in {200, 204}, revoked.text
     assert await system.ids(reader, "Stromrechnung") == set()

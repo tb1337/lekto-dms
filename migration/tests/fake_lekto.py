@@ -27,15 +27,7 @@ class FakeLekto:
     tags: dict[str, dict[str, Any]] = field(default_factory=dict)
     fields: dict[str, dict[str, Any]] = field(default_factory=dict)
     spaces: dict[str, dict[str, Any]] = field(
-        default_factory=lambda: {
-            f"default:{ADMIN['id']}": {
-                "id": f"default:{ADMIN['id']}",
-                "name": "Default",
-                "owner_id": ADMIN["id"],
-                "is_default": True,
-                "shares": [],
-            }
-        }
+        default_factory=lambda: {f"personal:{ADMIN['id']}": _personal(ADMIN["id"])}
     )
     documents: dict[str, dict[str, Any]] = field(default_factory=dict)
     scope: str = "read_write"
@@ -92,6 +84,13 @@ class FakeLekto:
             if path == "/tags" and method == "GET" and "scope" in request.url.params:
                 scope = request.url.params["scope"]
                 store = {k: v for k, v in store.items() if v.get("scope", "document") == scope}
+            if path == "/spaces" and method == "GET" and "all_users" not in request.url.params:
+                # Like the API: without `all_users` an admin lists their own spaces only.
+                store = {
+                    k: v
+                    for k, v in store.items()
+                    if any(m["user_id"] == ADMIN["id"] for m in v.get("members", []))
+                }
             return self._collection(path, store, method, body)
         if found := re.fullmatch(r"/(contacts|document-types|tags)/([^/]+)", path):
             store = {
@@ -112,14 +111,14 @@ class FakeLekto:
                 if "choices" in body:
                     store[found[2]]["choices"] = body["choices"]
                 return httpx2.Response(200, json=store[found[2]])
-        if found := re.fullmatch(r"/spaces/([^/]+)/shares/([^/]+)", path):
+        if found := re.fullmatch(r"/spaces/([^/]+)/members/([^/]+)", path):
             space = self.spaces[found[1]]
-            if found[2] == space["owner_id"]:
-                return _problem(422, "a space cannot be shared with its owner")
-            if not self.users[found[2]]["active"]:
+            if found[2] == space["personal_of"] and body.get("role") != "edit":
+                return _problem(422, "the user of a personal space edits it")
+            if found[2] not in self.users or not self.users[found[2]]["active"]:
                 return _problem(404, "user not found")
-            space["shares"] = [s for s in space["shares"] if s["user_id"] != found[2]]
-            space["shares"].append({"user_id": found[2], "level": body["level"]})
+            space["members"] = [m for m in space["members"] if m["user_id"] != found[2]]
+            space["members"].append({"user_id": found[2], "role": body["role"]})
             return httpx2.Response(200, json=space)
         if path == "/documents" and method == "POST":
             return self._upload(request)
@@ -147,24 +146,23 @@ class FakeLekto:
         if any(
             (item.get("username") or item["name"]).casefold() == name.casefold()
             and (path != "/tags" or item.get("scope", "document") == scope)
+            and (path != "/spaces" or item.get("personal_of") is None)
             for item in store.values()
         ):
             return _problem(409, f"{name} exists")
         id = uuid4().hex
         if path == "/users":
             item = {"id": id, "username": name, "role": "user", "active": True}
-            self._default_space(id)
+            self.spaces[f"personal:{id}"] = _personal(id)
         elif path == "/spaces":
-            owner = self.users.get(body.get("owner_id", ADMIN["id"]))
-            if owner is None or not owner["active"]:
-                return _problem(404, "user not found")
-            item = {
-                "id": id,
-                "name": name,
-                "owner_id": body.get("owner_id", ADMIN["id"]),
-                "is_default": False,
-                "shares": [],
-            }
+            members = body.get("members") or [{"user_id": ADMIN["id"], "role": "edit"}]
+            for member in members:
+                user = self.users.get(member["user_id"])
+                if user is None or not user["active"]:
+                    return _problem(404, "user not found")
+            if not any(member["role"] == "edit" for member in members):
+                return _problem(422, "a space keeps one editor")
+            item = {"id": id, "name": name, "personal_of": None, "members": list(members)}
         elif path == "/fields":
             item = {
                 "id": id,
@@ -190,15 +188,6 @@ class FakeLekto:
             return _problem(503, "lost")
         return httpx2.Response(201, json=item)
 
-    def _default_space(self, owner: str) -> None:
-        self.spaces[f"default:{owner}"] = {
-            "id": f"default:{owner}",
-            "name": "Default",
-            "owner_id": owner,
-            "is_default": True,
-            "shares": [],
-        }
-
     # --- documents ---------------------------------------------------------------------------
 
     def _upload(self, request: httpx2.Request) -> httpx2.Response:
@@ -223,13 +212,15 @@ class FakeLekto:
         if times > 0:
             self.errors[filename] = (status, times - 1)
             return _problem(status, f"injected failure {status}")
-        owner = fields.get("owner", ADMIN["id"])
-        if owner in self.users and not self.users[owner]["active"]:
+        uploader = fields.get("uploaded_by", ADMIN["id"])
+        if uploader not in self.users or not self.users[uploader]["active"]:
             return _problem(404, "user not found")
+        space = fields.get("space_id", f"personal:{uploader}")
         sha256 = hashlib.sha256(content).hexdigest()
+        # Every file exists once per installation; the migration's admin reads every document.
         for existing in self.documents.values():
-            if existing["owner_id"] == owner and existing["sha256"] == sha256:
-                response = _problem(409, "you have this file already")
+            if existing["sha256"] == sha256:
+                response = _problem(409, "Lekto has this file already")
                 body = json.loads(response.content)
                 body["existing_document_id"] = existing["id"]
                 return httpx2.Response(409, json=body)
@@ -244,8 +235,8 @@ class FakeLekto:
             "media_type": "application/pdf",
             "channel": fields.get("channel", "api"),
             "sha256": sha256,
-            "owner_id": owner,
-            "space_id": fields.get("space_id", f"default:{owner}"),
+            "uploaded_by": uploader,
+            "space_id": space,
             "contact_id": metadata.get("contact_id"),
             "document_type_id": metadata.get("document_type_id"),
             "topic_id": None,
@@ -382,6 +373,15 @@ def _nodes(outcomes: dict[str, str]) -> list[dict[str, Any]]:
         }
         for node in NODES
     ]
+
+
+def _personal(user_id: str) -> dict[str, Any]:
+    return {
+        "id": f"personal:{user_id}",
+        "name": "Personal",
+        "personal_of": user_id,
+        "members": [{"user_id": user_id, "role": "edit"}],
+    }
 
 
 def _problem(status: int, detail: str) -> httpx2.Response:

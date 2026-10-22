@@ -7,6 +7,7 @@ from lekto.core.domain.fields import FieldType
 from lekto.core.domain.ids import FieldId, new_id
 from lekto.core.domain.lenses import Grouping, LensChanges, LensFilter, LensSort
 from lekto.core.domain.master_data import TagScope
+from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.users import Role
 from lekto.core.services.lenses import MAX_LENSES
 from tests.unit.services.support import World
@@ -93,6 +94,26 @@ async def test_what_is_gone_is_left_out(world: World) -> None:
     # What is stored stays; a change saves what is shown.
     renamed = await world.lenses.update(user.id, lens.id, LensChanges(name="Bills"))
     assert renamed.name == "Bills" and renamed.card_field_ids == (total.id,)
+
+
+async def test_a_lens_keeps_only_the_spaces_its_owner_sees(world: World) -> None:
+    """A space the owner left (or never saw) is left out, as a deleted one (Tobi,
+    22.10.2026)."""
+    owner, other = await world.user(), await world.user()
+    household = await world.spaces.create(other.id, "Household")
+    await world.spaces.set_member(other.id, household.id, owner.id, SpaceRole.READ)
+    personal = await world.personal_space(owner)
+    lens = await world.lenses.create(
+        owner.id,
+        "Mine",
+        LensChanges(filter=LensFilter(space_ids=(personal.id, household.id))),
+    )
+    assert (await world.lenses.get(owner.id, lens.id)).filter.space_ids == (
+        personal.id,
+        household.id,
+    )
+    await world.spaces.remove_member(owner.id, household.id, owner.id)  # leaves it
+    assert (await world.lenses.get(owner.id, lens.id)).filter.space_ids == (personal.id,)
 
 
 async def test_lenses_are_ordered_by_naming_each_once(world: World) -> None:

@@ -65,9 +65,11 @@ place of the editor (`tests/setup.ts`); `codemirror.test.ts` runs the real one.
 `/ui/inbox` is the start page and the way in: documents are uploaded there only, and
 everything new stands there until a person saw it or decided.
 
-- **Upload:** the button opens `UploadDialog` (the space and, for admins, the owner; files
-  chosen, on a phone through the system's picker with camera and photos, or dropped there).
-  Dropping files on the page uploads them at once into the default space; an overlay shows
+- **Upload:** the button opens `UploadDialog` (files chosen, on a phone through the system's
+  picker with camera and photos, or dropped there); it asks for no space and no uploader:
+  every upload lands in the uploader's personal space, and Lekto suggests where it belongs
+  (the API keeps `space_id` and `uploaded_by` for scripts and the migration). Dropping files on
+  the page uploads them at once as well; an overlay shows
   while files are dragged over it (not on a phone). A drop may hold folders, read in full
   and recursively through the browser's entries (`lib/intake.ts`, batched `readEntries`),
   without their structure; files of other types (only PDF, JPEG, PNG, TIFF go) and hidden
@@ -147,6 +149,36 @@ test keeps equal to `curated.ts`); the map of all 1,866 (about 43 KB gzip) loads
 icon picker's panel (`IconPickerPanel`, with the search and its words) or for an icon beyond
 those (`lib/icons/load.ts`).
 
+## Spaces
+
+Rights hang on the space a document lies in, as the caller's role there (`SpaceOut.role`:
+`read` sees the green documents, `edit` every document and the space's rules, members and
+name); admins edit every space. `lib/permissions.ts` keeps the UI to what the API allows.
+`/ui/spaces` lists the caller's spaces, their personal one first ("Personal" for its user, its
+user's name for others, `spaceLabel`), with the members; admins also see the spaces they are no
+member of. `SpaceMembers` adds members with a role, changes and removes them; the user of a
+personal space and the last editor of a space stay editors, and only its user (or an admin)
+chooses the members of a personal space. Members come with their names and whether they are
+active (`SpaceOut.members`): a deactivated member takes no new role, an editor removes them.
+Every member leaves a space themselves (`canLeaveSpace`), apart from the user of a personal
+space and the last editor. A personal space is neither renamed nor deleted, a shared one only
+while empty.
+
+The document's head names its space and who else sees it. Moving goes into a space the caller
+edits, or hands the document over into another user's personal space ("Hand over to Anna",
+`spaceOptions`); the same choice stands where a document is confirmed into a space and in a
+rule's "File into space". The hand-overs come from the users list (`personal_space_id` of
+`GET /users`), as a hand-over needs no membership. A rule belongs to
+a space the caller edits (their personal one by default) or, for admins, is global; it files
+where whoever saves it may file. Editing a rule may move it ("Applies to", `lib/rules/places.ts`):
+the save sends `scope` and `space_id` with the content, and the rule's version list says where a
+version moved it.
+
+Deleting a user (admin › users) asks for the spaces they leave behind (`UserDeleteDialog`,
+`lib/user-removal.ts`, from `GET /users/{id}/removal`): per space "Delete with the user" (empty),
+"Move the documents, then delete" with the space they go to, or "New editor, the space stays"
+with the user; one click deletes the user and settles all of them in one request.
+
 ## Document view
 
 `/ui/documents/{id}` serves the inbox and the document list (`/ui/inbox/{id}` leads there with
@@ -173,8 +205,8 @@ processing (`nextDecision`); without one, back to the inbox.
   the wheel, a pinch on a trackpad, Safari's gestures and two fingers zoom around the pointer
   (`lib/viewer/gestures.ts`); a double click enlarges a page and goes back; the keys + − 0.
   Pages are scaled while the zoom moves and drawn anew once it rests. A field with a quote
-  marks it on the page while hovered or focused (the places come from `/review`, owner and
-  admins), a click on its page jumps there; so does a code from the content tab.
+  marks it on the page while hovered or focused (the places come from `/review`, the space's
+  editors and admins), a click on its page jumps there; so does a code from the content tab.
 - **Content:** the text as it is set, page by page, and beside it the facts and codes
   (`FactsPanel`, from `/facts`). Text and facts are asked for once the document has its text
   (`hasText`: `parse` done in the first run; a later run keeps the text of the one before), not
@@ -206,6 +238,7 @@ cd web && pnpm gen:api   # writes src/lib/api/schema.ts
 | `src/lib/periods.ts`           | Periods in ISO 8601 (`2026-Q2`, `2026-W17`), read also in German forms          |
 | `src/lib/listing.ts`           | Sort and grid or list of the document view, remembered in this browser          |
 | `src/lib/scope.svelte.ts`      | An admin's choice to include all users, remembered in this browser              |
+| `src/lib/permissions.ts`       | What the UI offers by role in a space: edit, move, hand over, members, rules    |
 | `src/routes`                   | `login`, the app pages in `(app)`; `(app)/dev/components` in development only   |
 | `messages/{en,de}.json`        | All texts; a test fails on raw text in markup and on missing keys               |
 | `tests/`                       | Tests across files (messages, raw text); `e2e/` the Playwright smoke test       |

@@ -17,7 +17,7 @@
 	import { describeError, reportError } from '#lib/errors.ts';
 	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { canChangeRule } from '#lib/permissions.ts';
+	import { canApplyRule, canChangeRule } from '#lib/permissions.ts';
 	import {
 		applyRequest,
 		follow,
@@ -67,6 +67,11 @@
 		]).then(
 			([found, loaded]) => {
 				if (wanted !== id) return;
+				// Only who may apply the rule gets its preview (the API refuses the others).
+				if (!canApplyRule(found, session.user, loaded.spaces)) {
+					[rule, lookup, problem] = [found, loaded, m.error_forbidden()];
+					return;
+				}
 				[rule, lookup, problem] = [found, loaded, null];
 				restart();
 				void more();
@@ -337,7 +342,7 @@
 		{/if}
 
 		<div class="flex flex-wrap gap-2 border-t pt-4">
-			{#if saved && canChangeRule(rule, session.user) && !rule.enabled}
+			{#if saved && canChangeRule(rule, session.user, lookup?.spaces ?? []) && !rule.enabled}
 				<Button disabled={busy} onclick={switchOnOnly}>{m.rule_switch_on_only()}</Button>
 				<Button variant="outline" disabled={busy || count === 0} onclick={() => apply(true)}>
 					{m.rule_switch_on_apply({ count })}

@@ -35,14 +35,14 @@ class LensService:
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             lenses = await uow.lenses.list_for_owner(user.id)
-            existing = await _existing(uow)
+            existing = await _existing(uow, user)
         return [existing.prune(lens) for lens in lenses]
 
     async def get(self, actor: UserId, id: LensId) -> Lens:
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             lens = await _own(uow, user, id)
-            return (await _existing(uow)).prune(lens)
+            return (await _existing(uow, user)).prune(lens)
 
     async def create(self, actor: UserId, name: str, changes: LensChanges) -> Lens:
         """A new lens at the end of the caller's. ValidationError for parts that do not fit or
@@ -66,7 +66,7 @@ class LensService:
         """Change what `changes` sets, on the lens without what is gone; errors as `create`."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            existing = await _existing(uow)
+            existing = await _existing(uow, user)
             lens = existing.prune(await _own(uow, user, id))
             lens.change(changes, now=self._clock.now())
             _check_fields(lens, existing.fields)
@@ -95,7 +95,7 @@ class LensService:
                     lens.position = position
                     lens.updated_at = now
                     await uow.lenses.update(lens)
-            existing = await _existing(uow)
+            existing = await _existing(uow, user)
             await uow.commit()
             return [existing.prune(lenses[id]) for id in ids]
 
@@ -170,11 +170,18 @@ class _Existing:
         return pruned
 
 
-async def _existing(uow: UnitOfWork) -> _Existing:
+async def _existing(uow: UnitOfWork, user: User) -> _Existing:
+    """What a lens of `user` may still name: the spaces among it only those they see (every
+    one for an admin)."""
+    spaces = (
+        await uow.spaces.list_all()
+        if user.is_active_admin
+        else await uow.spaces.list_accessible(user.id)
+    )
     return _Existing(
         contacts=frozenset(item.id for item in await uow.contacts.list_all()),
         document_types=frozenset(item.id for item in await uow.document_types.list_all()),
         tags=frozenset(item.id for item in await uow.tags.list_all()),
-        spaces=frozenset(space.id for space in await uow.spaces.list_all()),
+        spaces=frozenset(space.id for space in spaces),
         fields=await field_definitions(uow),
     )

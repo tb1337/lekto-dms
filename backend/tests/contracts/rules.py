@@ -133,12 +133,12 @@ def full() -> RuleDefinition:
     )
 
 
-def user_rule(owner: User, definition: RuleDefinition | None = None) -> Rule:
+def space_rule(author: User, space: SpaceId, definition: RuleDefinition | None = None) -> Rule:
     return Rule.create(
-        scope=RuleScope.USER,
-        owner_id=owner.id,
+        scope=RuleScope.SPACE,
+        space_id=space,
         definition=definition or simple(),
-        by=owner.id,
+        by=author.id,
         now=NOW,
     )
 
@@ -146,7 +146,7 @@ def user_rule(owner: User, definition: RuleDefinition | None = None) -> Rule:
 def global_rule(admin: User, definition: RuleDefinition | None = None) -> Rule:
     return Rule.create(
         scope=RuleScope.GLOBAL,
-        owner_id=None,
+        space_id=None,
         definition=definition or simple("Tag everything"),
         by=admin.id,
         now=NOW,
@@ -194,8 +194,8 @@ class RuleRepositoriesContract:
     async def test_a_rule_round_trips_with_its_definition(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
-        owner, _ = await owner_with_space(uow_factory)
-        rule = user_rule(owner, full())
+        owner, owned = await owner_with_space(uow_factory)
+        rule = space_rule(owner, owned.id, full())
         await store(uow_factory, rule)
         async with uow_factory() as uow:
             stored = await uow.rules.get(rule.id)
@@ -205,19 +205,19 @@ class RuleRepositoriesContract:
         assert stored == rule
         assert definition_to_json(stored.definition) == definition_to_json(rule.definition)
         assert stored.definition.conditions.items[2] == rule.definition.conditions.items[2]
-        assert (stored.scope, stored.owner_id, stored.version) == (RuleScope.USER, owner.id, 1)
+        assert (stored.scope, stored.space_id, stored.version) == (RuleScope.SPACE, owned.id, 1)
         assert stored.current.created_by == owner.id
         assert stored.created_at == stored.updated_at == NOW
         assert versions == [rule.current] and first == rule.current
 
-    async def test_a_global_rule_has_no_owner(self, uow_factory: UnitOfWorkFactory) -> None:
+    async def test_a_global_rule_has_no_space(self, uow_factory: UnitOfWorkFactory) -> None:
         (admin,) = await users(uow_factory, 1)
         rule = global_rule(admin)
         await store(uow_factory, rule)
         async with uow_factory() as uow:
             stored = await uow.rules.get(rule.id)
         assert stored == rule
-        assert (stored.scope, stored.owner_id) == (RuleScope.GLOBAL, None)
+        assert (stored.scope, stored.space_id) == (RuleScope.GLOBAL, None)
         assert stored.current.created_by == admin.id
 
     async def test_the_rule_of_a_title_pattern_names_its_type(
@@ -242,7 +242,7 @@ class RuleRepositoriesContract:
         )
         rule = Rule.create(
             scope=RuleScope.GLOBAL,
-            owner_id=None,
+            space_id=None,
             definition=title,
             by=admin.id,
             now=NOW,
@@ -251,7 +251,7 @@ class RuleRepositoriesContract:
         await store(uow_factory, rule)
         async with uow_factory() as uow:
             stored = await uow.rules.get(rule.id)
-            listed = await uow.rules.list_for(owners=[], include_global=True)
+            listed = await uow.rules.list_for(spaces=[], include_global=True)
         assert stored == rule and stored.managed_by == kind.id
         assert [item.managed_by for item in listed] == [kind.id]
         # Deleted, it is no type's rule any more: the type may get another one.
@@ -263,7 +263,7 @@ class RuleRepositoriesContract:
             assert (await uow.rules.get(rule.id)).managed_by is None
             again = Rule.create(
                 scope=RuleScope.GLOBAL,
-                owner_id=None,
+                space_id=None,
                 definition=title,
                 by=admin.id,
                 now=NOW,
@@ -273,8 +273,8 @@ class RuleRepositoriesContract:
             await uow.commit()
 
     async def test_missing_rules_and_versions(self, uow_factory: UnitOfWorkFactory) -> None:
-        owner, _ = await owner_with_space(uow_factory)
-        rule = user_rule(owner)
+        owner, owned = await owner_with_space(uow_factory)
+        rule = space_rule(owner, owned.id)
         await store(uow_factory, rule)
         missing = RuleId(new_id())
         async with uow_factory() as uow:
@@ -289,8 +289,8 @@ class RuleRepositoriesContract:
                 await uow.rules.get_version(rule.id, 2)
 
     async def test_add_twice_is_a_conflict(self, uow_factory: UnitOfWorkFactory) -> None:
-        owner, _ = await owner_with_space(uow_factory)
-        rule = user_rule(owner)
+        owner, owned = await owner_with_space(uow_factory)
+        rule = space_rule(owner, owned.id)
         await store(uow_factory, rule)
         with pytest.raises(ConflictError):
             await store(uow_factory, rule)
@@ -300,9 +300,9 @@ class RuleRepositoriesContract:
     async def test_update_stores_a_new_version_and_keeps_the_earlier_ones(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
-        owner, _ = await owner_with_space(uow_factory)
+        owner, owned = await owner_with_space(uow_factory)
         (editor,) = await users(uow_factory, 1)
-        rule = user_rule(owner, simple("first"))
+        rule = space_rule(owner, owned.id, simple("first"))
         await store(uow_factory, rule)
         second, third = full(), simple("third", priority=900)
         async with uow_factory() as uow:
@@ -334,8 +334,8 @@ class RuleRepositoriesContract:
     async def test_several_versions_in_one_unit_of_work(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
-        owner, _ = await owner_with_space(uow_factory)
-        rule = user_rule(owner, simple("v1"))
+        owner, owned = await owner_with_space(uow_factory)
+        rule = space_rule(owner, owned.id, simple("v1"))
         async with uow_factory() as uow:
             await uow.rules.add(rule)
             for name in ("v2", "v3"):
@@ -352,8 +352,8 @@ class RuleRepositoriesContract:
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
         """Enabling and disabling are state, not content: no version."""
-        owner, _ = await owner_with_space(uow_factory)
-        rule = user_rule(owner)
+        owner, owned = await owner_with_space(uow_factory)
+        rule = space_rule(owner, owned.id)
         await store(uow_factory, rule)
         async with uow_factory() as uow:
             loaded = await uow.rules.get(rule.id)
@@ -380,8 +380,8 @@ class RuleRepositoriesContract:
         assert (enabled.enabled, enabled.disabled_reason, enabled.version) == (True, None, 3)
 
     async def test_stale_update_is_rejected(self, uow_factory: UnitOfWorkFactory) -> None:
-        owner, _ = await owner_with_space(uow_factory)
-        rule = user_rule(owner, simple("v1"))
+        owner, owned = await owner_with_space(uow_factory)
+        rule = space_rule(owner, owned.id, simple("v1"))
         await store(uow_factory, rule)
         async with uow_factory() as first, uow_factory() as second:
             mine = await first.rules.get(rule.id)
@@ -400,18 +400,21 @@ class RuleRepositoriesContract:
         assert [version.definition.name for version in versions] == ["v1", "mine"]
 
     async def test_update_of_missing_rule(self, uow_factory: UnitOfWorkFactory) -> None:
-        owner, _ = await owner_with_space(uow_factory)
+        owner, owned = await owner_with_space(uow_factory)
         async with uow_factory() as uow:
             with pytest.raises(NotFoundError):
-                await uow.rules.update(user_rule(owner))
+                await uow.rules.update(space_rule(owner, owned.id))
 
     # --- rules: deleting and listing ------------------------------------------------------------
 
     async def test_a_deleted_rule_stays_readable_but_is_not_listed(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
-        owner, _ = await owner_with_space(uow_factory)
-        kept, deleted = user_rule(owner, simple("kept")), user_rule(owner, simple("deleted"))
+        owner, owned = await owner_with_space(uow_factory)
+        kept, deleted = (
+            space_rule(owner, owned.id, simple("kept")),
+            space_rule(owner, owned.id, simple("deleted")),
+        )
         await store(uow_factory, kept, deleted)
         await change(uow_factory, deleted.id, simple("deleted v2"), owner)
         async with uow_factory() as uow:
@@ -424,37 +427,38 @@ class RuleRepositoriesContract:
             assert await uow.rules.find(deleted.id) == stored
             versions = await uow.rules.versions(deleted.id)
             first = await uow.rules.get_version(deleted.id, 1)
-            listed = await uow.rules.list_for(owners=None, include_global=True)
-            own = await uow.rules.list_for(owners=[owner.id], include_global=False)
+            listed = await uow.rules.list_for(spaces=None, include_global=True)
+            own = await uow.rules.list_for(spaces=[owned.id], include_global=False)
         assert (stored.deleted_at, stored.enabled, stored.is_active) == (LATER, False, False)
         assert [version.definition.name for version in versions] == ["deleted", "deleted v2"]
         assert first == deleted.current
         assert [rule.id for rule in listed] == [kept.id]
         assert [rule.id for rule in own] == [kept.id]
 
-    async def test_rules_are_listed_by_owner_and_scope(
+    async def test_rules_are_listed_by_space_and_scope(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
-        admin, alice, bob, carol = await users(uow_factory, 4)
+        (admin,) = await users(uow_factory, 1)
+        alice, at_alice = await owner_with_space(uow_factory)
+        bob, at_bob = await owner_with_space(uow_factory)
+        carol, at_carol = await owner_with_space(uow_factory)
         everyone = global_rule(admin)
-        of_alice, of_bob, of_carol = user_rule(alice), user_rule(bob), user_rule(carol)
-        disabled = user_rule(alice, simple("disabled"))
+        of_alice = space_rule(alice, at_alice.id)
+        of_bob, of_carol = space_rule(bob, at_bob.id), space_rule(carol, at_carol.id)
+        disabled = space_rule(alice, at_alice.id, simple("disabled"))
         disabled.disable(NOW)
         await store(uow_factory, everyone, of_alice, of_bob, of_carol, disabled)
 
-        async def listed(owners: list[User] | None, include_global: bool) -> set[RuleId]:
+        async def listed(spaces: list[SpaceId] | None, include_global: bool) -> set[RuleId]:
             async with uow_factory() as uow:
-                found = await uow.rules.list_for(
-                    owners=None if owners is None else {user.id for user in owners},
-                    include_global=include_global,
-                )
+                found = await uow.rules.list_for(spaces=spaces, include_global=include_global)
             return {rule.id for rule in found}
 
-        users_rules = {of_alice.id, of_bob.id, of_carol.id, disabled.id}
-        assert await listed(None, True) == users_rules | {everyone.id}
-        assert await listed(None, False) == users_rules
-        assert await listed([alice], False) == {of_alice.id, disabled.id}
-        assert await listed([alice, bob], True) == {
+        space_rules = {of_alice.id, of_bob.id, of_carol.id, disabled.id}
+        assert await listed(None, True) == space_rules | {everyone.id}
+        assert await listed(None, False) == space_rules
+        assert await listed([at_alice.id], False) == {of_alice.id, disabled.id}
+        assert await listed([at_alice.id, at_bob.id], True) == {
             of_alice.id,
             disabled.id,
             of_bob.id,
@@ -462,30 +466,27 @@ class RuleRepositoriesContract:
         }
         assert await listed([], True) == {everyone.id}
         assert await listed([], False) == set()
-        assert await listed([admin], False) == set()
         async with uow_factory() as uow:
-            (found,) = await uow.rules.list_for(owners=[bob.id], include_global=False)
+            (found,) = await uow.rules.list_for(spaces=[at_bob.id], include_global=False)
         assert found == of_bob  # with the current version
 
-    async def test_remove_for_owner(self, uow_factory: UnitOfWorkFactory) -> None:
-        """The owner's rules with their versions, and every application of them or by the owner,
-        go for good; nothing else does."""
-        admin, owner, other = await users(uow_factory, 3)
-        first, second = user_rule(owner), user_rule(owner)
-        others, everyone = user_rule(other), global_rule(admin)
+    async def test_remove_for_space(self, uow_factory: UnitOfWorkFactory) -> None:
+        """The space's rules with their versions and applications go for good; nothing else
+        does."""
+        (admin,) = await users(uow_factory, 1)
+        owner, owned = await owner_with_space(uow_factory)
+        other, elsewhere = await owner_with_space(uow_factory)
+        first, second = space_rule(owner, owned.id), space_rule(owner, owned.id)
+        others, everyone = space_rule(other, elsewhere.id), global_rule(admin)
         await store(uow_factory, first, second, others, everyone)
         await change(uow_factory, first.id, simple("first v2"), owner)
         await change(uow_factory, everyone.id, simple("everyone v2"), admin)
-        removed_applications = [
-            application(first, owner),  # of the owner's rule
-            application(first, admin),  # of the owner's rule, by someone else
-            application(everyone, owner),  # by the owner, of another rule
-        ]
-        kept_applications = [application(others, other), application(everyone, admin)]
+        removed_applications = [application(first, owner), application(first, admin)]
+        kept_applications = [application(others, other), application(everyone, owner)]
         await store(uow_factory, applications=(*removed_applications, *kept_applications))
 
         async with uow_factory() as uow:
-            assert await uow.rules.remove_for_owner(owner.id) == 2
+            assert await uow.rules.remove_for_space(owned.id) == 2
             await uow.commit()
 
         async with uow_factory() as uow:
@@ -501,29 +502,38 @@ class RuleRepositoriesContract:
                 assert await uow.rule_applications.get(item.id) == item
             assert await uow.rules.get(others.id) == others
             assert [v.number for v in await uow.rules.versions(everyone.id)] == [1, 2]
-            remaining = await uow.rules.list_for(owners=None, include_global=True)
+            remaining = await uow.rules.list_for(spaces=None, include_global=True)
             assert {rule.id for rule in remaining} == {others.id, everyone.id}
-            # Nothing refers to the owner any more: the user can go.
-            assert await uow.rules.remove_for_owner(owner.id) == 0
-            await uow.users.remove(owner.id)
-            # A global rule has no owner; its author's removal leaves it alone.
-            assert await uow.rules.remove_for_owner(admin.id) == 0
+            assert await uow.rules.remove_for_space(owned.id) == 0
+
+    async def test_remove_applications_by(self, uow_factory: UnitOfWorkFactory) -> None:
+        (admin,) = await users(uow_factory, 1)
+        owner, owned = await owner_with_space(uow_factory)
+        rule, everyone = space_rule(owner, owned.id), global_rule(admin)
+        await store(uow_factory, rule, everyone)
+        theirs = [application(rule, owner), application(everyone, owner)]
+        kept = application(everyone, admin)
+        await store(uow_factory, applications=(*theirs, kept))
+        async with uow_factory() as uow:
+            assert await uow.rules.remove_applications_by(owner.id) == 2
             await uow.commit()
         async with uow_factory() as uow:
-            assert await uow.users.find(owner.id) is None
-            assert (await uow.rules.get(everyone.id)).current.number == 2
+            for item in theirs:
+                assert await uow.rule_applications.find(item.id) is None
+            assert await uow.rule_applications.get(kept.id) == kept
+            assert await uow.rules.get(rule.id) == rule
 
     # --- rules: copies and transactions ---------------------------------------------------------
 
     async def test_reads_are_copies(self, uow_factory: UnitOfWorkFactory) -> None:
-        owner, _ = await owner_with_space(uow_factory)
-        rule = user_rule(owner, full())
+        owner, owned = await owner_with_space(uow_factory)
+        rule = space_rule(owner, owned.id, full())
         await store(uow_factory, rule)
         async with uow_factory() as uow:
             loaded = await uow.rules.get(rule.id)
             loaded.disable(LATER, reason="changed")
             loaded.change(simple("changed"), by=owner.id, now=LATER)
-            (listed,) = await uow.rules.list_for(owners=[owner.id], include_global=False)
+            (listed,) = await uow.rules.list_for(spaces=[owned.id], include_global=False)
             listed.enabled = False
             assert await uow.rules.get(rule.id) == rule
             await uow.commit()
@@ -533,8 +543,8 @@ class RuleRepositoriesContract:
 
     async def test_versions_are_copies(self, uow_factory: UnitOfWorkFactory) -> None:
         """A version is frozen, but values in its conditions are JSON lists and objects."""
-        owner, _ = await owner_with_space(uow_factory)
-        rule = user_rule(owner, full())
+        owner, owned = await owner_with_space(uow_factory)
+        rule = space_rule(owner, owned.id, full())
         await store(uow_factory, rule)
         async with uow_factory() as uow:
             for version in [
@@ -550,8 +560,8 @@ class RuleRepositoriesContract:
             assert (await uow.rules.get(rule.id)).current == rule.current
 
     async def test_without_commit_no_rule_is_stored(self, uow_factory: UnitOfWorkFactory) -> None:
-        owner, _ = await owner_with_space(uow_factory)
-        added, rolled_back = user_rule(owner), user_rule(owner)
+        owner, owned = await owner_with_space(uow_factory)
+        added, rolled_back = space_rule(owner, owned.id), space_rule(owner, owned.id)
         async with uow_factory() as uow:
             await uow.rules.add(added)
             assert await uow.rules.get(added.id) == added  # own changes are visible
@@ -561,13 +571,13 @@ class RuleRepositoriesContract:
         async with uow_factory() as uow:
             assert await uow.rules.find(added.id) is None
             assert await uow.rules.find(rolled_back.id) is None
-            assert await uow.rules.list_for(owners=None, include_global=True) == []
+            assert await uow.rules.list_for(spaces=None, include_global=True) == []
 
     async def test_a_rolled_back_change_keeps_the_versions(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
-        owner, _ = await owner_with_space(uow_factory)
-        rule = user_rule(owner, simple("v1"))
+        owner, owned = await owner_with_space(uow_factory)
+        rule = space_rule(owner, owned.id, simple("v1"))
         await store(uow_factory, rule)
         with pytest.raises(LookupError):
             async with uow_factory() as uow:
@@ -577,8 +587,8 @@ class RuleRepositoriesContract:
                 assert [v.number for v in await uow.rules.versions(rule.id)] == [1, 2]
                 raise LookupError
         async with uow_factory() as uow:
-            await uow.rules.add(user_rule(owner))
-            assert await uow.rules.remove_for_owner(owner.id) == 2
+            await uow.rules.add(space_rule(owner, owned.id))
+            assert await uow.rules.remove_for_space(owned.id) == 2
             await uow.rollback()
         async with uow_factory() as uow:
             assert await uow.rules.get(rule.id) == rule
@@ -594,8 +604,8 @@ class RuleRepositoriesContract:
     # --- applications ---------------------------------------------------------------------------
 
     async def test_an_application_round_trips(self, uow_factory: UnitOfWorkFactory) -> None:
-        owner, _ = await owner_with_space(uow_factory)
-        rule = user_rule(owner)
+        owner, owned = await owner_with_space(uow_factory)
+        rule = space_rule(owner, owned.id)
         item = application(rule, owner, documents=4)
         await store(uow_factory, rule, applications=(item,))
         async with uow_factory() as uow:
@@ -609,8 +619,8 @@ class RuleRepositoriesContract:
         assert stored.remaining == item.documents
 
     async def test_application_progress_is_stored(self, uow_factory: UnitOfWorkFactory) -> None:
-        owner, _ = await owner_with_space(uow_factory)
-        rule = user_rule(owner)
+        owner, owned = await owner_with_space(uow_factory)
+        rule = space_rule(owner, owned.id)
         item = application(rule, owner, documents=5)
         _, _, third, *rest = item.documents
         await store(uow_factory, rule, applications=(item,))
@@ -650,8 +660,8 @@ class RuleRepositoriesContract:
         )
 
     async def test_a_finished_application(self, uow_factory: UnitOfWorkFactory) -> None:
-        owner, _ = await owner_with_space(uow_factory)
-        rule = user_rule(owner)
+        owner, owned = await owner_with_space(uow_factory)
+        rule = space_rule(owner, owned.id)
         item = application(rule, owner, documents=1)
         item.record_applied()
         item.finish(LATER)
@@ -662,8 +672,8 @@ class RuleRepositoriesContract:
         assert (stored.status, stored.error, stored.remaining) == (ApplicationStatus.DONE, None, ())
 
     async def test_missing_applications(self, uow_factory: UnitOfWorkFactory) -> None:
-        owner, _ = await owner_with_space(uow_factory)
-        rule = user_rule(owner)
+        owner, owned = await owner_with_space(uow_factory)
+        rule = space_rule(owner, owned.id)
         await store(uow_factory, rule)
         async with uow_factory() as uow:
             missing = RuleApplicationId(new_id())
@@ -676,8 +686,8 @@ class RuleRepositoriesContract:
     async def test_stale_application_update_is_rejected(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
-        owner, _ = await owner_with_space(uow_factory)
-        rule = user_rule(owner)
+        owner, owned = await owner_with_space(uow_factory)
+        rule = space_rule(owner, owned.id)
         item = application(rule, owner)
         await store(uow_factory, rule, applications=(item,))
         async with uow_factory() as first, uow_factory() as second:
@@ -695,8 +705,8 @@ class RuleRepositoriesContract:
         assert (stored.status, stored.position, stored.version) == (ApplicationStatus.RUNNING, 1, 2)
 
     async def test_application_reads_are_copies(self, uow_factory: UnitOfWorkFactory) -> None:
-        owner, _ = await owner_with_space(uow_factory)
-        rule = user_rule(owner)
+        owner, owned = await owner_with_space(uow_factory)
+        rule = space_rule(owner, owned.id)
         item = application(rule, owner)
         await store(uow_factory, rule, applications=(item,))
         async with uow_factory() as uow:
@@ -711,8 +721,8 @@ class RuleRepositoriesContract:
     async def test_without_commit_no_application_is_stored(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
-        owner, _ = await owner_with_space(uow_factory)
-        rule = user_rule(owner)
+        owner, owned = await owner_with_space(uow_factory)
+        rule = space_rule(owner, owned.id)
         await store(uow_factory, rule)
         item = application(rule, owner)
         async with uow_factory() as uow:

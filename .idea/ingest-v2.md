@@ -156,6 +156,11 @@ Stammdatennamen ab, der Abgleich ist nicht wörtlich.
    bleibt es leer.
 6. **Schublade:** Der Klassifikator schlägt keine Schublade vor. Schubladen tragen Rechte; sie
    sind kein Speicherpfad wie in Paperless. Ablegen bleibt bei Regeln und Personen.
+   **Aufgehoben (Tobi, 21.10.2026):** Mit dem Umbau der Rechte in 0.5.0 ist der Space ein Ziel
+   der Klassifizierung: Klassifikator und Nachbarn lernen ihn aus bestätigten Dokumenten, das
+   Modell wählt unter den infrage kommenden Spaces mit ihrer Beschreibung. Sichtbarkeit wird
+   trotzdem nie still erweitert: Weitet der Vorschlag sie, wird das Dokument gelb, und ein Klick
+   bestätigt. Siehe `architektur.md` › Berechtigungen und › Urteil.
 7. **Titel:** Das Modell schlägt den Titel vor, wenn keine Regel ihn setzt (heute der
    Dateiname). Neu je Dokumenttyp ein optionales **Titelmuster**, etwa `{datum:YYYY}/{datum:MM}`
    für Lohnnachweise, mit Platzhaltern für Datum, Kontakt und Felder des Typs. Vorschlag: Hat

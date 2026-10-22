@@ -68,7 +68,8 @@ def run_documents(state: State, selected: set[int]) -> list[dict[str, Any]]:
             {
                 "id": row.source_id,
                 "title": row.detail.get("title"),
-                "owner": row.detail.get("owner"),
+                # Before 0.5 the state kept only the Paperless owner.
+                "uploaded_by": row.detail.get("uploaded_by", row.detail.get("owner")),
                 "space": row.detail.get("space"),
                 "status": row.status,
                 "lekto_id": row.lekto_id,
@@ -228,13 +229,25 @@ def _check(report: dict[str, Any]) -> list[str]:
     if new:
         out += [f"## New documents ({len(new)})", ""]
         out += _table(
-            ["Paperless", "Title", "Owner", "Space", "Contact", "Type", "Topic", "Tags", "Review"],
+            [
+                "Paperless",
+                "Title",
+                "Uploaded by",
+                "Space",
+                "Members",
+                "Contact",
+                "Type",
+                "Topic",
+                "Tags",
+                "Review",
+            ],
             [
                 [
                     d["id"],
                     d["title"],
-                    d["becomes"]["owner"],
+                    d["becomes"]["uploaded_by"],
                     d["becomes"]["space"],
+                    d["becomes"]["members"],
                     d["becomes"]["contact"],
                     d["becomes"]["document_type"],
                     d["becomes"]["topic"],
@@ -244,6 +257,22 @@ def _check(report: dict[str, Any]) -> list[str]:
                 for d in new
             ],
         )
+        beyond = [d for d in new if d["becomes"].get("beyond")]
+        if beyond:
+            out += [f"## New documents visible beyond Paperless' permissions ({len(beyond)})", ""]
+            out += _table(
+                ["Paperless", "Title", "Uploaded by", "Space", "Also seen by"],
+                [
+                    [
+                        d["id"],
+                        d["title"],
+                        d["becomes"]["uploaded_by"],
+                        d["becomes"]["space"],
+                        d["becomes"]["beyond"],
+                    ]
+                    for d in beyond
+                ],
+            )
     for status, title in (
         ("deleted in Lekto", "Migrated, deleted in Lekto"),
         ("gone from Paperless", "Migrated, gone from Paperless"),
@@ -330,12 +359,12 @@ def _run(report: dict[str, Any]) -> list[str]:
         )
     out += ["## All documents", ""]
     out += _table(
-        ["Paperless", "Title", "Owner", "Space", "Lekto", "Result", "Lane", "Aligned"],
+        ["Paperless", "Title", "Uploaded by", "Space", "Lekto", "Result", "Lane", "Aligned"],
         [
             [
                 d["id"],
                 d["title"],
-                d["owner"] or "(executing admin)",
+                d["uploaded_by"] or "(executing admin)",
                 d["space"],
                 d["lekto_id"],
                 d["status"],

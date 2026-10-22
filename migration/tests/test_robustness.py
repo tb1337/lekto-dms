@@ -1,5 +1,5 @@
-"""Edge cases found in review: inactive owners, shares with the executing admin, spaces that
-cannot be made, lost answers, big values, documents moved in Lekto, old state files."""
+"""Edge cases found in review: inactive uploaders, the executing admin among the members, spaces
+that cannot be made, lost answers, big values, documents moved in Lekto, old state files."""
 
 import json
 from pathlib import Path
@@ -7,6 +7,7 @@ from typing import Any
 
 from lekto_migration.config import public
 from lekto_migration.fake_paperless import pdf
+from lekto_migration.report import run_documents
 from lekto_migration.state import State
 from tests.conftest import PDF, Setup
 from tests.fake_lekto import ADMIN
@@ -48,8 +49,9 @@ async def test_documents_of_an_inactive_user_are_taken_over_and_the_user_deactiv
     assert await setup.migrate() == 0
     document = titled(setup, "Extra 30")
     gone = next(u for u in setup.lekto.users.values() if u["username"] == "gone")
-    assert document["owner_id"] == gone["id"] and gone["active"] is False
-    assert setup.lekto.spaces[document["space_id"]]["owner_id"] == gone["id"]
+    assert document["uploaded_by"] == gone["id"] and gone["active"] is False
+    members = setup.lekto.spaces[document["space_id"]]["members"]
+    assert {"user_id": gone["id"], "role": "edit"} in members
     # A second run wakes nobody up and writes nothing.
     writes = len(setup.lekto.writes())
     assert await setup.run("run") == 0
@@ -57,7 +59,7 @@ async def test_documents_of_an_inactive_user_are_taken_over_and_the_user_deactiv
     assert await setup.run("check") == 0
 
 
-async def test_a_run_that_failed_for_an_inactive_owner_wakes_the_user_for_the_retry(
+async def test_a_run_that_failed_for_an_inactive_uploader_wakes_the_user_for_the_retry(
     setup: Setup,
 ) -> None:
     add_document(setup, 30, 4)
@@ -67,11 +69,34 @@ async def test_a_run_that_failed_for_an_inactive_owner_wakes_the_user_for_the_re
     assert gone["active"] is False
     setup.lekto.errors.clear()
     assert await setup.run("run") == 0
-    assert titled(setup, "Extra 30")["owner_id"] == gone["id"]
+    assert titled(setup, "Extra 30")["uploaded_by"] == gone["id"]
     assert gone["active"] is False
 
 
-async def test_a_share_with_the_executing_admin_is_dropped_not_fatal(setup: Setup) -> None:
+async def test_prepare_wakes_a_user_it_deactivated_to_make_them_a_member(setup: Setup) -> None:
+    assert await setup.migrate() == 0
+    gone = next(u for u in setup.lekto.users.values() if u["username"] == "gone")
+    assert gone["active"] is False
+    # tobias' new document is one gone (deactivated in Paperless) may change: a new space.
+    add_document(
+        setup,
+        30,
+        1,
+        permissions={"view": {"users": [], "groups": []}, "change": {"users": [4], "groups": []}},
+    )
+    assert await setup.run("prepare") == 0
+    space = next(
+        s
+        for s in setup.lekto.spaces.values()
+        if s["name"] == "Geteilt: gone (bearbeiten), tobias (bearbeiten)"
+    )
+    assert {"user_id": gone["id"], "role": "edit"} in space["members"]
+    assert gone["active"] is False  # deactivated again
+    assert await setup.run("run") == 0
+    assert titled(setup, "Extra 30")["space_id"] == space["id"]
+
+
+async def test_a_share_with_the_executing_admin_makes_it_an_editor(setup: Setup) -> None:
     setup.archive.users.append(
         {
             "id": 5,
@@ -81,7 +106,7 @@ async def test_a_share_with_the_executing_admin_is_dropped_not_fatal(setup: Setu
             "groups": [],
         }
     )
-    # No owner: the executing admin owns the document, and the permissions name the admin.
+    # No owner: the executing admin uploads the document, and the permissions name the admin.
     add_document(
         setup,
         31,
@@ -93,17 +118,20 @@ async def test_a_share_with_the_executing_admin_is_dropped_not_fatal(setup: Setu
     )
     assert await setup.migrate() == 0
     document = titled(setup, "Extra 31")
-    assert document["owner_id"] == ADMIN["id"]
+    assert document["uploaded_by"] == ADMIN["id"]
     space = setup.lekto.spaces[document["space_id"]]
-    assert [s["level"] for s in space["shares"]] == ["read"]  # bob only
-    assert any("owns the document" in note for note in row(setup, "run", 31)["notes"])
+    bob = next(u["id"] for u in setup.lekto.users.values() if u["username"] == "bob")
+    # The uploader edits the space; the admin's own read share does not lower that.
+    assert sorted((m["user_id"], m["role"]) for m in space["members"]) == sorted(
+        [(ADMIN["id"], "edit"), (bob, "read")]
+    )
 
 
 async def test_a_space_that_cannot_be_made_holds_the_run_back(setup: Setup) -> None:
     setup.lekto.refuse["POST /spaces"] = 422
     assert await setup.migrate() == 1  # prepare
     spaces = [a for a in setup.report("prepare")["actions"] if a["kind"] == "space"]
-    assert [a["status"] for a in spaces] == ["failed"]
+    assert [a["status"] for a in spaces] == ["failed", "failed"]
     assert await setup.run("run") == 2
     assert setup.lekto.documents == {}
     setup.lekto.refuse.clear()
@@ -154,13 +182,13 @@ async def test_further_versions_of_a_file_are_reported(setup: Setup) -> None:
 
 async def test_a_document_a_person_moved_stays_where_it_is(setup: Setup) -> None:
     assert await setup.migrate() == 0
-    document = titled(setup, "Document 12")  # anna's, in her default space
-    document["space_id"] = f"default:{ADMIN['id']}"  # a rule or a person filed it elsewhere
+    document = titled(setup, "Document 12")  # anna's, in her personal space
+    document["space_id"] = f"personal:{ADMIN['id']}"  # a rule or a person filed it elsewhere
     assert await setup.run("check") == 0
     differences = row(setup, "check", 12)["differences"]
     assert [(d["what"], d["action"]) for d in differences] == [("space", "kept")]
     assert await setup.run("run") == 0
-    assert document["space_id"] == f"default:{ADMIN['id']}"
+    assert document["space_id"] == f"personal:{ADMIN['id']}"
 
 
 async def test_a_duplicate_gets_its_lane_too(setup: Setup) -> None:
@@ -203,6 +231,8 @@ def test_a_state_from_before_spaces_reads_its_drawers_as_spaces(tmp_path: Path) 
     found = state.document(7)
     assert found is not None
     assert found.detail == {"title": "T", "space": "Shared", "owner": "anna"}
+    # Before 0.5 the state kept the Paperless owner, which uploaded the document.
+    assert run_documents(state, {7})[0]["uploaded_by"] == "anna"
     state.close()
 
 

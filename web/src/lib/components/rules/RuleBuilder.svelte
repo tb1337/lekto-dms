@@ -5,18 +5,17 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
-	import type { Space, Lookup } from '#lib/masterdata.svelte.ts';
+	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { ACTION_LABELS, TRIGGER_LABELS } from '#lib/rules/describe.ts';
 	import {
+		ACTION_TYPES,
 		LIMITS,
 		TRIGGERS,
-		actionTypesFor,
 		move,
 		newAction,
 		type ActionType,
-		type RuleModel,
-		type Scope
+		type RuleModel
 	} from '#lib/rules/model.ts';
 
 	// The form of a rule: name, priority, when it runs, its conditions and actions. The page
@@ -24,11 +23,12 @@
 	// period's text cannot be read (`unreadable`, by key): the model then is not what is shown.
 	let {
 		model,
-		scope,
-		scopes = [],
-		onscope,
+		place = '',
+		places = [],
+		onplace,
+		placeHint,
 		lookup,
-		spaces,
+		targets,
 		errors,
 		general,
 		busy,
@@ -36,12 +36,16 @@
 		onsubmit
 	}: {
 		model: RuleModel;
-		scope: Scope;
-		/** The scopes to choose from (admins, new rule); none: the scope stays. */
-		scopes?: readonly Scope[];
-		onscope?: (scope: Scope) => void;
+		/** Where the rule belongs: `global` or a space; editing it may move it. */
+		place?: string;
+		/** The places to choose from; fewer than two: no choice. */
+		places?: readonly { value: string; label: string }[];
+		onplace?: (place: string) => void;
+		/** Said under the choice of the place besides what a place is (editing: who moves it). */
+		placeHint?: string;
 		lookup: Lookup;
-		spaces: readonly Space[];
+		/** Where the rule may file documents (spaces, hand-overs). */
+		targets: readonly { value: string; label: string }[];
 		errors: Record<string, string>;
 		general: string | null;
 		busy: boolean;
@@ -49,13 +53,9 @@
 		onsubmit: () => void;
 	} = $props();
 
-	const scopeLabels: Record<Scope, () => string> = {
-		user: m.rule_scope_user,
-		global: m.rule_scope_global
-	};
 	const addable = $derived([
 		{ value: '', label: m.rule_add_action() },
-		...actionTypesFor(scope).map((type) => ({ value: type, label: ACTION_LABELS[type]() }))
+		...ACTION_TYPES.map((type) => ({ value: type, label: ACTION_LABELS[type]() }))
 	]);
 	let adding = $state('');
 	let unreadable = $state<Record<string, boolean>>({});
@@ -113,15 +113,17 @@
 		</Field.Field>
 	</div>
 
-	{#if scopes.length > 1}
+	{#if places.length > 1}
 		<Field.Field>
 			<Field.Label for="rule-scope">{m.rule_scope()}</Field.Label>
 			<Select
 				id="rule-scope"
-				value={scope}
-				options={scopes.map((entry) => ({ value: entry, label: scopeLabels[entry]() }))}
-				onchange={(value) => onscope?.(value as Scope)}
+				value={place}
+				options={places}
+				onchange={(value) => onplace?.(value)}
 			/>
+			<Field.Description>{m.rule_scope_hint()}</Field.Description>
+			{#if placeHint}<Field.Description>{placeHint}</Field.Description>{/if}
 		</Field.Field>
 	{/if}
 
@@ -152,7 +154,7 @@
 			<ActionRow
 				{action}
 				{lookup}
-				{spaces}
+				{targets}
 				error={errors[action.key]}
 				onunreadable={(unreadable) => mark(action.key, unreadable)}
 				onremove={() => model.actions.splice(index, 1)}

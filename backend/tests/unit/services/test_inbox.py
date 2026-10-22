@@ -22,7 +22,7 @@ from lekto.core.domain.ids import ContactId, SpaceId, UserId
 from lekto.core.domain.inbox import Confirmation
 from lekto.core.domain.master_data import Assignment, Contact
 from lekto.core.domain.pipeline import PERSON, Lane, Node, NodeResult, Outcome, ProcessingStatus
-from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.services.inbox import OpenNode, decide, field_checks
 from lekto.core.services.pipeline import MetadataResult, PipelineService
@@ -100,6 +100,70 @@ async def scene(world: World) -> Scene:
     await world.drain(pipeline)
     stored = await world.documents.get(owner.id, document.id)
     return Scene(owner, contact, amount, pipeline, stored)
+
+
+async def test_confirming_into_another_users_personal_space_hands_it_over(
+    world: World,
+) -> None:
+    """The caller cannot read it any more (None, no error); once green it is new for the
+    receiver."""
+    s = await scene(world)
+    receiver = await world.user()
+    home = await world.personal_space(receiver)
+    view = await s.pipeline.confirm(
+        s.owner.id,
+        s.document.id,
+        DocumentChanges(document_date=date(2026, 3, 31)),
+        accept_suggestions=True,
+        space=home.id,
+    )
+    assert view is None
+    await world.drain(s.pipeline)
+    document = await world.documents.get(receiver.id, s.document.id)
+    assert (document.space_id, document.lane) == (home.id, Lane.GREEN)
+    assert [item.document.id for item in await world.inbox.items(receiver.id)] == [s.document.id]
+    with pytest.raises(NotFoundError):
+        await world.documents.get(s.owner.id, s.document.id)
+
+
+async def test_confirming_into_a_space_the_caller_only_reads(world: World) -> None:
+    """Handing over into a personal space the caller reads: out of their reach until it is
+    green; new for its editor, who could not read it before."""
+    s = await scene(world)
+    other = await world.user()
+    home = await world.personal_space(other)
+    await world.spaces.set_member(other.id, home.id, s.owner.id, SpaceRole.READ)
+    view = await s.pipeline.confirm(
+        s.owner.id,
+        s.document.id,
+        DocumentChanges(document_date=date(2026, 3, 31)),
+        accept_suggestions=True,
+        space=home.id,
+    )
+    assert view is None
+    await world.drain(s.pipeline)
+    document = await world.documents.get(s.owner.id, s.document.id)
+    assert (document.space_id, document.lane) == (home.id, Lane.GREEN)
+    assert [item.document.id for item in await world.inbox.items(other.id)] == [s.document.id]
+    assert await world.inbox.items(s.owner.id) == []
+
+
+async def test_confirming_into_a_space_of_the_same_editors_makes_nothing_new(
+    world: World,
+) -> None:
+    s = await scene(world)
+    archive = await world.spaces.create(s.owner.id, "Archive")
+    view = await s.pipeline.confirm(
+        s.owner.id,
+        s.document.id,
+        DocumentChanges(document_date=date(2026, 3, 31)),
+        accept_suggestions=True,
+        space=archive.id,
+    )
+    assert view is not None and view.access is SpaceRole.EDIT
+    await world.drain(s.pipeline)
+    document = await world.documents.get(s.owner.id, s.document.id)
+    assert (document.space_id, document.new_at) == (archive.id, None)
 
 
 async def test_a_person_confirms_the_metadata(world: World) -> None:
@@ -232,8 +296,9 @@ async def test_a_confirmed_document_is_filed(world: World) -> None:
         DocumentChanges(document_date=date(2026, 3, 31)),
         accept_suggestions=True,
     )
+    assert view is not None
     confirmed = view.document
-    assert view.access is ShareLevel.READ_WRITE
+    assert view.access is SpaceRole.EDIT
     assert confirmed.processing.status is ProcessingStatus.PROCESSING
     assert confirmed.processing.due() == (Node.APPLY_RULES,)
     assert confirmed.lane is None
@@ -439,10 +504,10 @@ async def test_the_inbox_is_the_owners(world: World) -> None:
     with pytest.raises(NotFoundError):
         await s.pipeline.confirm(stranger.id, s.document.id, DocumentChanges())
 
-    # A green document in a shared space: readable, but the review is the owner's.
+    # A green document in a shared space: readable, but the review is its editors'.
     reader = await world.user()
     space = await world.spaces.create(s.owner.id, "Shared")
-    await world.spaces.share(s.owner.id, space.id, reader.id, ShareLevel.READ_WRITE)
+    await world.spaces.set_member(s.owner.id, space.id, reader.id, SpaceRole.READ)
     pipeline = world.pipeline()
     green = await pipeline.receive(
         s.owner.id, incoming(b"%PDF-1.7 green\n"), filename="b.pdf", space=space.id
@@ -458,12 +523,12 @@ async def test_a_confirmed_document_becomes_visible_to_the_spaces_readers(world:
     s = await scene(world)
     reader = await world.user()
     space = await world.spaces.create(s.owner.id, "Shared")
-    await world.spaces.share(s.owner.id, space.id, reader.id, ShareLevel.READ)
+    await world.spaces.set_member(s.owner.id, space.id, reader.id, SpaceRole.READ)
     document = await s.pipeline.receive(
         s.owner.id, incoming(b"%PDF-1.7 shared\n"), filename="b.pdf", space=space.id
     )
     await world.drain(s.pipeline)
-    assert await world.documents.list_visible(reader.id) == []  # yellow: the owner's
+    assert await world.documents.list_visible(reader.id) == []  # yellow: the editors' only
     await s.pipeline.confirm(
         s.owner.id,
         document.id,

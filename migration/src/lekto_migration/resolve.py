@@ -1,4 +1,4 @@
-"""What a document becomes, in terms of Lekto's ids: the upload's owner, space and metadata,
+"""What a document becomes, in terms of Lekto's ids: who uploads it, its space and metadata,
 and the values to compare a migrated document with. Names that do not resolve mean `prepare`
 has not run since the plan changed."""
 
@@ -19,8 +19,8 @@ class Resolved:
     `document_type_id`, `topic_id`, `tag_ids` (sorted), `document_date`, `fields` (by id),
     `created_at`; `review` the reasons for the upload."""
 
-    owner_id: str
-    space_id: str | None  # None: the owner's default space
+    uploader_id: str
+    space_id: str | None  # None: the uploader's personal space
     values: dict[str, Any]
     review: list[dict[str, str | None]] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
@@ -46,15 +46,17 @@ def resolve(item: Expected, directory: Directory) -> Resolved:
             return None
         return str(found["id"])
 
-    owner = directory.find("user", item.owner) if item.owner is not None else directory.admin
-    if owner is None:
-        missing.append(f"user '{item.owner}'")
-        owner = directory.admin
+    uploader = (
+        directory.find("user", item.uploader) if item.uploader is not None else directory.admin
+    )
+    if uploader is None:
+        missing.append(f"user '{item.uploader}'")
+        uploader = directory.admin
     space_id = None
     if item.space is not None:
-        space = directory.space(owner["id"], item.space)
+        space = directory.space(item.space)
         if space is None:
-            missing.append(f"space '{item.space}' of {owner['username']}")
+            missing.append(f"space '{item.space}'")
         else:
             space_id = str(space["id"])
     fields: dict[str, Any] = {}
@@ -80,9 +82,18 @@ def resolve(item: Expected, directory: Directory) -> Resolved:
             field_id = id_of("field", field_name.removeprefix("field:"))
             check = None if field_id is None else f"field:{field_id}"
         review.append({"reason": reason[:MAX_REVIEW_REASON], "field": check})
-    resolved = Resolved(str(owner["id"]), space_id, values, review, missing)
+    resolved = Resolved(str(uploader["id"]), space_id, values, review, missing)
     _fit(resolved)
     return resolved
+
+
+def space_of(resolved: Resolved, directory: Directory) -> str | None:
+    """The id of the space the document goes to: its own, else the uploader's personal space
+    (None while Lekto has none)."""
+    if resolved.space_id is not None:
+        return resolved.space_id
+    personal = directory.personal_space(resolved.uploader_id)
+    return None if personal is None else str(personal["id"])
 
 
 def _fit(resolved: Resolved) -> None:

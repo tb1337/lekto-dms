@@ -22,7 +22,7 @@ from lekto.composition.container import Container, Services
 from lekto.core.domain.identity import TokenScope
 from lekto.core.domain.ids import DocumentId
 from lekto.core.domain.pipeline import Node
-from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.services.objects import archive_key, preview_key
 from tests import builders
@@ -198,9 +198,9 @@ async def build_scene(api: Api) -> Scene:
     retired = await api.admin("retired")
     spaces = api.services.spaces
     shared = await spaces.create(owner.id, "Shared")
-    for user, level in [(reader, ShareLevel.READ), (writer, ShareLevel.READ_WRITE)]:
-        await spaces.share(owner.id, shared.id, user.id, level)
-    await spaces.share(owner.id, shared.id, gone.id, ShareLevel.READ_WRITE)
+    for user, level in [(reader, SpaceRole.READ), (writer, SpaceRole.EDIT)]:
+        await spaces.set_member(owner.id, shared.id, user.id, level)
+    await spaces.set_member(owner.id, shared.id, gone.id, SpaceRole.EDIT)
     own_space = await spaces.create(owner.id, "Private")
 
     async def put(name: str, *, drain: bool = True) -> str:

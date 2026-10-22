@@ -10,6 +10,7 @@ import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
 import { choose, selectedValue } from '#lib/testing/select.ts';
+import { toast } from 'svelte-sonner';
 import DocumentForm from './DocumentForm.svelte';
 
 type Document = components['schemas']['DocumentDetails'];
@@ -52,7 +53,15 @@ const lookup = {
 			choices: []
 		}
 	],
-	spaces: [{ id: SPACE, name: 'Haushalt', owner_id: OWNER, access: 'read_write' }],
+	spaces: [
+		{
+			id: SPACE,
+			name: 'Haushalt',
+			personal_of: null,
+			role: 'edit',
+			members: [{ user_id: OWNER, role: 'edit' }]
+		}
+	],
 	users: []
 } as unknown as Lookup;
 
@@ -61,9 +70,9 @@ function documentOf(status: string, lane: string | null = 'yellow'): Document {
 		lane,
 		id: 'doc-1',
 		title: 'Stromrechnung März 2026',
-		owner_id: OWNER,
+		uploaded_by: OWNER,
 		space_id: SPACE,
-		access: 'read_write',
+		access: 'edit',
 		contact_id: null,
 		document_type_id: INVOICE,
 		tag_ids: [],
@@ -485,6 +494,54 @@ describe('DocumentForm', () => {
 		});
 	});
 
+	it('says whom the document went to when confirming hands it over', async () => {
+		const ANNA = '0199a6c4-0000-7000-8000-000000000002';
+		const ANNAS = '0199a6c4-0000-7000-8000-0000000000d2';
+		fetchMock.mockResolvedValue(
+			new Response(JSON.stringify({ id: 'doc-1', access: null }), {
+				status: 202,
+				headers: { 'content-type': 'application/json' }
+			})
+		);
+		const success = vi.spyOn(toast, 'success');
+		const onconfirmed = vi.fn();
+		const waiting = {
+			document: {},
+			open: [
+				{
+					node: 'file',
+					outcome: 'uncertain',
+					reason: 'space',
+					fields: [check('space', { outcome: 'uncertain', reason: 'no write access' })]
+				}
+			],
+			nodes: []
+		} as unknown as Review;
+		const withAnna = {
+			...lookup,
+			users: [{ id: ANNA, username: 'anna', role: 'user', personal_space_id: ANNAS }]
+		} as unknown as Lookup;
+		render(
+			DocumentForm,
+			props({
+				document: documentOf('completed'),
+				review: waiting,
+				next: null,
+				lookup: withAnna,
+				onconfirmed
+			})
+		);
+		await choose(
+			userEvent.setup({ pointerEventsCheck: 0 }),
+			screen.getByRole('combobox', { name: m.field_space() }),
+			ANNAS
+		);
+		await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
+		await waitFor(() => expect(onconfirmed).toHaveBeenCalledWith(null));
+		expect(await fetchMock.mock.calls[0][0].json()).toMatchObject({ space_id: ANNAS });
+		expect(success).toHaveBeenCalledWith(m.move_handed_over({ name: 'anna' }));
+	});
+
 	it('lets a failed document with nothing to decide be changed instead of confirmed', () => {
 		const failed = {
 			document: {},
@@ -497,7 +554,7 @@ describe('DocumentForm', () => {
 		expect(screen.getByRole('button', { name: m.edit_review() })).toBeTruthy();
 	});
 
-	it("after a corrected type sends no suggestion of the old type as the owner's value", async () => {
+	it("after a corrected type sends no suggestion of the old type as the person's value", async () => {
 		fetchMock.mockResolvedValue(
 			new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
 		);

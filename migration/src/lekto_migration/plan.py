@@ -63,6 +63,8 @@ TAG_SCOPES: Mapping[str, str] = {
     "contact_group": "contact",
     "type_group": "document_type",
 }
+# What Lekto and its web UI call a personal space; no shared space of the plan is named so.
+PERSONAL_NAMES = frozenset({"personal", "persönlich"})
 BY_VALUE = frozenset({"contact", "document_type", "topic", "tag", "contact_group", "type_group"})
 DATA_TYPES = frozenset({"text", "number", "amount", "date", "boolean", "choice", "link", "period"})
 _TARGET_KEYS = frozenset(
@@ -100,7 +102,8 @@ CRITERIA = frozenset(
     }
 )
 _TOP_KEYS = frozenset({"source", "target", "settings", "documents", ASN, *SECTIONS})
-SHARES = "{shares}"
+MEMBERS = "{members}"  # in `space_name`: every member of a shared space with their role
+SHARES = "{shares}"  # before 0.5, when a space had an owner; now an error
 
 
 def norm(name: str) -> str:
@@ -170,10 +173,12 @@ class Entry:
 @dataclass(frozen=True)
 class Settings:
     currency: str = "EUR"  # for amounts without a currency
-    fallback_owner: str | None = None  # Lekto user name; None: the executing admin
+    # Lekto user name who uploads documents without a (taken over) Paperless owner; None: the
+    # executing admin
+    fallback_owner: str | None = None
     deactivate_inactive_users: bool = True
     take_over_added: bool = True
-    space_name: str = "Geteilt: " + SHARES
+    space_name: str = "Geteilt: " + MEMBERS
     text_threshold: float = 0.8  # Lekto's words below this share of Paperless' are listed
 
 
@@ -281,8 +286,14 @@ def _settings(raw: Any, problems: list[str]) -> Settings:
         problems.append("settings.fallback_owner: a Lekto user name, or empty")
         owner = None
     space_name = raw.get("space_name", defaults.space_name)
-    if not isinstance(space_name, str) or SHARES not in space_name:
-        problems.append(f"settings.space_name: a name with {SHARES} for the users")
+    if isinstance(space_name, str) and SHARES in space_name:
+        problems.append(
+            f"settings.space_name: {SHARES} is now {MEMBERS}, which names every member of the "
+            "space, the uploader too"
+        )
+        space_name = defaults.space_name
+    elif not isinstance(space_name, str) or MEMBERS not in space_name:
+        problems.append(f"settings.space_name: a name with {MEMBERS} for the members")
         space_name = defaults.space_name
     threshold = raw.get("text_threshold", defaults.text_threshold)
     if (
@@ -429,6 +440,12 @@ def _target(section: str, where: str, raw: Mapping[str, Any], problems: list[str
         return None
     if name is None and to != "document_date" and not by_value:
         problems.append(f"{where}: 'name' says which Lekto object")
+        return None
+    if to == "space" and isinstance(name, str) and norm(name) in PERSONAL_NAMES:
+        problems.append(
+            f"{where}.name: '{name}' is what Lekto calls a personal space; a document without "
+            "a shared space goes to its uploader's personal space, so name a shared space here"
+        )
         return None
     if name is not None and (to == "document_date" or by_value):
         problems.append(f"{where}: no 'name' here")

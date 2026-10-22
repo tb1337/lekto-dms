@@ -54,10 +54,10 @@ async def list_webhooks(
     summary="Create a webhook",
     description=(
         "Lekto sends a signed request to the URL for each event of the chosen types on "
-        "documents within the owner's reach: their own, and green ones in spaces they own or "
-        "that are shared with them (an admin's webhooks too; the rights of an admin do not "
-        "widen them). The answer holds the secret, shown only once. A user has at most as "
-        "many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409)."
+        "documents within the reach of the webhook's owner: every document in the spaces they "
+        "edit, the green ones in the spaces they read (an admin's webhooks too; the rights of "
+        "an admin do not widen them). The answer holds the secret, shown only once. A user has "
+        "at most as many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409)."
     ),
     response_model=WebhookCreated,
     responses=problem_responses(401, 403, 409, 422),

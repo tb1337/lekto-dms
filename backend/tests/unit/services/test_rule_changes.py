@@ -20,7 +20,7 @@ from lekto.core.domain.rules import (
     SetTitle,
     Trigger,
 )
-from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.spaces import SpaceRole
 from lekto.core.services.documents import MetadataChange
 from tests.unit.services.rules_support import (
     Classifies,
@@ -52,7 +52,7 @@ async def test_a_change_rule_acts_when_it_starts_to_hold(world: World) -> None:
     owner = await world.user()
     acme, beta = await r.contact("ACME"), await r.contact("Beta")
     tag = await r.tag("acme")
-    rule = await r.user_rule(
+    rule = await r.personal_rule(
         owner,
         definition(
             "ACME", contact_is(acme.id), add_tags(tag.id), SetTitle("ACME bill"), triggers=CHANGE
@@ -110,7 +110,7 @@ async def test_a_change_rule_keeps_what_the_person_decided_earlier(world: World)
     r = await rule_world(world)
     owner = await world.user()
     acme = await r.contact("ACME")
-    await r.user_rule(
+    await r.personal_rule(
         owner, definition("ACME", contact_is(acme.id), SetTitle("ACME bill"), triggers=CHANGE)
     )
     document = await r.arrive(owner)
@@ -133,19 +133,19 @@ async def test_nothing_turns_yellow_on_a_change(world: World) -> None:
     acme = await r.contact("ACME")
     paid, seen = await r.tag("paid"), await r.tag("seen")
     shared = await world.spaces.create(owner.id, "Shared")
-    await world.spaces.share(owner.id, shared.id, reader.id, ShareLevel.READ)
+    await world.spaces.set_member(owner.id, shared.id, reader.id, SpaceRole.READ)
     # The model set the contact and no person confirmed it.
     document = await r.arrive(owner, classify=Classifies(contact=acme.id))
     assert (document.lane, document.contact_id) == (Lane.GREEN, acme.id)
     paid_now = has_tag(paid.id)
-    await r.user_rule(
+    await r.personal_rule(
         owner,
         definition(
             "Shared", all_of(contact_is(acme.id), paid_now), SetSpace(shared.id), triggers=CHANGE
         ),
     )
-    await r.user_rule(owner, definition("A", paid_now, SetTitle("A"), triggers=CHANGE))
-    await r.user_rule(owner, definition("B", paid_now, SetTitle("B"), triggers=CHANGE))
+    await r.personal_rule(owner, definition("A", paid_now, SetTitle("A"), triggers=CHANGE))
+    await r.personal_rule(owner, definition("B", paid_now, SetTitle("B"), triggers=CHANGE))
     await r.global_rule(
         definition("Audit", paid_now, ForceReview("audit"), add_tags(seen.id), triggers=CHANGE)
     )
@@ -164,7 +164,7 @@ async def test_nothing_turns_yellow_on_a_change(world: World) -> None:
     stored = await r.stored(document)
     assert stored.lane is Lane.GREEN
     assert stored.processing.status is ProcessingStatus.COMPLETED
-    assert stored.space_id == (await world.default_space(owner)).id
+    assert stored.space_id == (await world.personal_space(owner)).id
     assert (stored.title, stored.tag_ids) == ("scan", {paid.id, seen.id})
     assert await world.documents.list_visible(reader.id) == []
 
@@ -175,9 +175,9 @@ async def test_tags_the_person_sets_in_the_change_are_trusted(world: World) -> N
     acme = await r.contact("ACME")
     tax = await r.tag("tax")
     shared = await world.spaces.create(owner.id, "Shared")
-    await world.spaces.share(owner.id, shared.id, reader.id, ShareLevel.READ)
+    await world.spaces.set_member(owner.id, shared.id, reader.id, SpaceRole.READ)
     document = await r.arrive(owner, classify=Classifies(tags=[tax.id]))
-    await r.user_rule(
+    await r.personal_rule(
         owner,
         definition(
             "Shared",
@@ -203,8 +203,8 @@ async def test_change_rules_wait_until_processing_is_complete(world: World) -> N
     owner = await world.user()
     acme = await r.contact("ACME")
     tag = await r.tag("acme")
-    await r.user_rule(owner, definition("Check", channel_api(), ForceReview("check")))
-    await r.user_rule(
+    await r.personal_rule(owner, definition("Check", channel_api(), ForceReview("check")))
+    await r.personal_rule(
         owner, definition("ACME", contact_is(acme.id), add_tags(tag.id), triggers=CHANGE)
     )
     document = await r.arrive(owner)
@@ -228,10 +228,10 @@ async def test_rules_do_not_set_each_other_off(world: World) -> None:
     owner = await world.user()
     acme, beta = await r.contact("ACME"), await r.contact("Beta")
     flagged = await r.tag("flagged")
-    await r.user_rule(
+    await r.personal_rule(
         owner, definition("Flag", contact_is(acme.id), add_tags(flagged.id), triggers=CHANGE)
     )
-    await r.user_rule(
+    await r.personal_rule(
         owner, definition("Unflag", has_tag(flagged.id), SetContact(beta.id), triggers=CHANGE)
     )
     document = await r.arrive(owner)
@@ -247,17 +247,22 @@ async def test_rules_do_not_set_each_other_off(world: World) -> None:
     assert (stored.contact_id, stored.tag_ids, stored.title) == (acme.id, {flagged.id}, "X")
 
 
-async def test_an_editor_sets_off_the_owners_rules(world: World) -> None:
+async def test_an_editor_sets_off_the_rules_of_the_space(world: World) -> None:
     r = await rule_world(world)
     owner, editor = await world.user(), await world.user()
     acme = await r.contact("ACME")
     owners, editors, everyone = await r.tag("owner"), await r.tag("editor"), await r.tag("all")
     shared = await world.spaces.create(owner.id, "Shared")
-    await world.spaces.share(owner.id, shared.id, editor.id, ShareLevel.READ_WRITE)
-    mine = await r.user_rule(
-        owner, definition("Owner", contact_is(acme.id), add_tags(owners.id), triggers=CHANGE)
+    await world.spaces.set_member(owner.id, shared.id, editor.id, SpaceRole.EDIT)
+    mine = await r.space_rule(
+        owner,
+        shared.id,
+        definition("Owner", contact_is(acme.id), add_tags(owners.id), triggers=CHANGE),
     )
-    await r.user_rule(
+    await r.personal_rule(
+        owner, definition("Personal", contact_is(acme.id), add_tags(editors.id), triggers=CHANGE)
+    )
+    await r.personal_rule(
         editor, definition("Editor", contact_is(acme.id), add_tags(editors.id), triggers=CHANGE)
     )
     common = await r.global_rule(
@@ -269,8 +274,8 @@ async def test_an_editor_sets_off_the_owners_rules(world: World) -> None:
         editor.id, document.id, DocumentChanges(contact_id=acme.id)
     )
 
-    assert change.rules is None  # the rules' report is the owner's
-    assert change.access is ShareLevel.READ_WRITE
+    assert change.rules is not None  # the rules' report is for the editors
+    assert change.access is SpaceRole.EDIT
     assert (await r.stored(document)).tag_ids == {owners.id, everyone.id}
     (entry,) = await r.rule_entries(document, RULES_CHANGE)
     assert entry.result.input["actor"] == str(editor.id)
@@ -289,9 +294,10 @@ async def test_a_dry_run_stores_nothing_and_shows_the_caller_only_their_own(
     filed, editors = await r.tag("filed"), await r.tag("editor")
     shared = await world.spaces.create(owner.id, "Shared")
     private = await world.spaces.create(owner.id, "Private")
-    await world.spaces.share(owner.id, shared.id, editor.id, ShareLevel.READ_WRITE)
-    await r.user_rule(
+    await world.spaces.set_member(owner.id, shared.id, editor.id, SpaceRole.EDIT)
+    await r.space_rule(
         owner,
+        shared.id,
         definition(
             "Private",
             contact_is(acme.id),
@@ -300,11 +306,11 @@ async def test_a_dry_run_stores_nothing_and_shows_the_caller_only_their_own(
             triggers=CHANGE,
         ),
     )
-    await r.user_rule(
+    await r.personal_rule(
         editor, definition("Editor", contact_is(acme.id), add_tags(editors.id), triggers=CHANGE)
     )
     # A rule files it into the shared space (a space the owner chose would stay).
-    await r.user_rule(
+    await r.personal_rule(
         owner, definition("Shared", channel_api(), SetSpace(shared.id), triggers=(Trigger.INGEST,))
     )
     document = await r.arrive(owner)
@@ -312,15 +318,15 @@ async def test_a_dry_run_stores_nothing_and_shows_the_caller_only_their_own(
     log, events = await r.log(document), world.event_types()
     acme_now = DocumentChanges(contact_id=acme.id)
 
-    # The editor would lose sight of the document: no access, no report of the owner's rules.
+    # The editor would lose sight of the document: no access, no report of the rules.
     tried = await r.documents.change_metadata(editor.id, document.id, acme_now, dry_run=True)
     assert tried.access is None
     assert tried.rules is None
-    assert tried.document.tag_ids == {filed.id}  # the owner's rule, not the editor's
+    assert tried.document.tag_ids == {filed.id}  # the space's rule, not the editor's own
 
-    # The owner sees what their rules would do.
+    # The owner, who edits the private space too, sees what the rules would do.
     tried = await r.documents.change_metadata(owner.id, document.id, acme_now, dry_run=True)
-    assert tried.access is ShareLevel.READ_WRITE
+    assert tried.access is SpaceRole.EDIT
     assert tried.space.id == private.id
     assert tried.rules is not None
     assert [report.name for report in tried.rules.plan.reports] == ["Private"]
@@ -356,7 +362,7 @@ async def test_a_rule_on_a_contact_group_acts_for_a_contact_in_a_group_below(
         field=ConditionField.CONTACT_GROUP, op=Operator.CONTAINS, value=str(insurer.id)
     )
     title = SetTitle("{{ contact }} ({{ contact_groups | join }})")
-    await r.user_rule(
+    await r.personal_rule(
         owner, definition("Insurers", in_group, add_tags(tag.id), title, triggers=CHANGE)
     )
     document = await r.arrive(owner)
@@ -390,7 +396,7 @@ async def test_rules_take_tags_of_the_scope_their_place_asks_for(world: World) -
         definition("D", channel_api(), add_tags(kinds.id)),
     ):
         with pytest.raises(ValidationError, match=r"is a .*, not a "):
-            await r.user_rule(owner, wrong)
-    await r.user_rule(
+            await r.personal_rule(owner, wrong)
+    await r.personal_rule(
         owner, definition("E", on(ConditionField.DOCUMENT_TYPE_GROUP, kinds.id), add_tags(tag.id))
     )

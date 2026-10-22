@@ -12,7 +12,7 @@
 	import TypeIcon from '#lib/components/TypeIcon.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { formatDate } from '#lib/i18n.ts';
-	import type { Lookup } from '#lib/masterdata.svelte.ts';
+	import { foreignSpace, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
@@ -23,8 +23,8 @@
 	// (at most two thirds of its width) and the page count in the lower right, both as glass on
 	// the image; then the title, bold, and type (with its icon) and date, all of one size.
 	// "In the inbox" is a badge on the card's upper right corner while it stands open there. For
-	// admins the owner of another user's document; `children` adds a line; `fields`, the fields
-	// of a lens, stand below a line.
+	// admins the space of a document in a space they are no member of; `children` adds a line;
+	// `fields`, the fields of a lens, stand below a line.
 	let {
 		document,
 		lookup,
@@ -43,11 +43,8 @@
 	const kind = $derived(
 		lookup?.documentTypes.find((entry) => entry.id === document.document_type_id)
 	);
-	const owner = $derived(
-		session.isAdmin && document.owner_id !== session.user?.id
-			? (lookup?.users.find((user) => user.id === document.owner_id)?.username ?? null)
-			: null
-	);
+	// For admins, the space of a document in a space they are no member of.
+	const foreign = $derived(foreignSpace(document.space_id, lookup, session.user?.id));
 </script>
 
 <!-- The badge stands over the card's corner: outside the card, which cuts off what overflows. -->
@@ -105,7 +102,7 @@
 						{formatDate(document.document_date ?? document.created_at)}
 					</span>
 				</span>
-				{#if owner}<Badge variant="outline" class="w-fit">{owner}</Badge>{/if}
+				{#if foreign}<Badge variant="outline" class="w-fit">{foreign}</Badge>{/if}
 				{@render children?.()}
 			</div>
 			{#if fields.length > 0}

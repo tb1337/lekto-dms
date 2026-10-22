@@ -23,10 +23,8 @@ from lekto.core.domain.documents import (
 )
 from lekto.core.domain.errors import (
     ConflictError,
-    DuplicateDocumentError,
     InvalidTransitionError,
     NotFoundError,
-    OpenFieldsError,
     PermissionDeniedError,
     SpaceWriteDeniedError,
     UnprocessableDocumentError,
@@ -38,7 +36,12 @@ from lekto.core.domain.imports import IMPORTED, ImportedMetadata
 from lekto.core.domain.inbox import Confirmation
 from lekto.core.domain.jobs import Job, RetryPolicy
 from lekto.core.domain.json_value import JsonObject
-from lekto.core.domain.permissions import can_file_into
+from lekto.core.domain.permissions import (
+    can_file_into,
+    can_hand_over,
+    document_access,
+    space_role,
+)
 from lekto.core.domain.pipeline import (
     CHOSEN_SPACE,
     NODES,
@@ -59,6 +62,8 @@ from lekto.core.domain.reading import (
     vision_advice,
 )
 from lekto.core.domain.rule_planner import changed_fields
+from lekto.core.domain.spaces import Space
+from lekto.core.domain.users import User
 from lekto.core.domain.validation import require_name
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.object_store import ObjectStore
@@ -68,9 +73,9 @@ from lekto.core.services._access import (
     access_to,
     checked_changes,
     controllable_document,
+    duplicate_of,
     field_definitions,
     load_actor,
-    may_file,
     require_admin,
     visible_space,
 )
@@ -87,6 +92,7 @@ from lekto.core.services.inbox import (
     LEARNED_ALIAS,
     alias_to_learn,
     confirmation,
+    confirmed_into,
     decide,
     open_nodes,
 )
@@ -266,7 +272,7 @@ class PipelineService:
         filename: str,
         space: SpaceId | None = None,
         channel: Channel = Channel.API,
-        owner: UserId | None = None,
+        uploaded_by: UserId | None = None,
         imported: ImportedMetadata | None = None,
     ) -> Document:
         """Store the original, then create the document, its first events and the jobs of the
@@ -274,15 +280,16 @@ class PipelineService:
 
         The media type is recognised from the content; an unsupported type raises
         UnsupportedMediaTypeError and nothing is stored. Without `space` the document goes to
-        the owner's default space; otherwise the owner needs write access to it. A file the
-        owner already has is rejected with DuplicateDocumentError, also if the same file arrives
-        twice at the same moment. An
-        original that is stored already (another owner has the same file) is not stored again.
+        the uploader's personal space; otherwise the caller needs to edit `space`. Every file
+        exists once per installation: one that lies in Lekto already is rejected with
+        DuplicateDocumentError (naming the document if the caller may read it), also if the
+        same file arrives twice at the same moment. An original left in the store (its document
+        deleted, its files not removed yet) is not stored again.
         `channel`: how the document arrived (for rules).
 
-        `owner`: an active admin may receive the document on behalf of another active user, who
-        becomes its owner (the duplicate check, the default space and the write access to
-        `space` are the owner's). `imported`: metadata of a document taken over from another
+        `uploaded_by`: an active admin may receive the document on behalf of another active
+        user, who is named as its uploader (the document goes to their personal space unless
+        `space` says otherwise). `imported`: metadata of a document taken over from another
         system, for an active admin and the channel `migration` only; it is checked against the
         master data now and applied by the classification nodes instead of the language model.
         """
@@ -294,8 +301,8 @@ class PipelineService:
                 f"unsupported file type; supported: {', '.join(media_types.SUPPORTED)}"
             )
         async with self._uow() as uow:
-            owner = await self._owner(uow, actor, owner, channel, imported)
-            target = await self._target_space(uow, owner, space, sha256)
+            uploader = await self._uploader(uow, actor, uploaded_by, channel, imported)
+            target = await self._target_space(uow, actor, uploader, space, sha256)
             if imported is not None:
                 await _check_imported(uow, imported)
                 if imported.created_at is not None:
@@ -305,7 +312,7 @@ class PipelineService:
             await self._store.upload(key, file.path, content_type=media_type)
 
         output: JsonObject = {"sha256": sha256.hex, "size": file.size, "media_type": media_type}
-        if owner != actor:
+        if uploader != actor:
             output["uploaded_by"] = str(actor)
         if imported is not None:
             output[IMPORTED] = imported.to_json()
@@ -313,7 +320,7 @@ class PipelineService:
         try:
             return await self._create(
                 actor,
-                owner,
+                uploader,
                 target,
                 sha256,
                 file.path,
@@ -328,15 +335,15 @@ class PipelineService:
         except ConflictError:
             # The same file arrived twice at the same moment; the other upload won.
             async with self._uow() as uow:
-                existing = await uow.documents.find_by_sha256(owner, sha256)
-            if existing is None:
+                error = await duplicate_of(uow, await load_actor(uow, actor), sha256)
+            if error is None:
                 raise
-            raise DuplicateDocumentError(existing.id) from None
+            raise error from None
 
     async def _create(
         self,
         actor: UserId,
-        owner: UserId,
+        uploader: UserId,
         target: SpaceId,
         sha256: Sha256,
         path: Path,
@@ -360,9 +367,9 @@ class PipelineService:
             if not await self._store.exists(key):
                 await self._store.upload(key, path, content_type=media_type)
             # Check again: rights or a duplicate may have changed while the file was stored.
-            await self._target_space(uow, owner, target, sha256)
+            await self._target_space(uow, actor, uploader, target, sha256)
             document = Document.receive(
-                owner_id=owner,
+                uploaded_by=uploader,
                 space_id=target,
                 sha256=sha256,
                 original_filename=filename,
@@ -390,52 +397,61 @@ class PipelineService:
             await uow.commit()
         return document
 
-    async def _owner(
+    async def _uploader(
         self,
         uow: UnitOfWork,
         actor: UserId,
-        owner: UserId | None,
+        uploaded_by: UserId | None,
         channel: Channel,
         imported: ImportedMetadata | None,
     ) -> UserId:
-        """Who will own the document: the caller, or for an admin the user they name."""
-        uploader = await load_actor(uow, actor)
+        """Who is named as the document's uploader: the caller, or for an admin the user they
+        name."""
+        caller = await load_actor(uow, actor)
         if imported is not None:
             if channel is not Channel.MIGRATION:
                 raise ValidationError("metadata: only with the channel 'migration'")
-            if not uploader.is_active_admin:
+            if not caller.is_active_admin:
                 raise PermissionDeniedError("only admins can give metadata with an upload")
-        if owner is None or owner == actor:
+        if uploaded_by is None or uploaded_by == actor:
             return actor
-        if not uploader.is_active_admin:
+        if not caller.is_active_admin:
             raise PermissionDeniedError("only admins can upload on behalf of another user")
-        target = await uow.users.find(owner)
-        if target is None or not target.active:
-            raise NotFoundError("user", owner)
-        return owner
+        named = await uow.users.find(uploaded_by)
+        if named is None or not named.active:
+            raise NotFoundError("user", uploaded_by)
+        return uploaded_by
 
     async def _target_space(
-        self, uow: UnitOfWork, actor: UserId, space: SpaceId | None, sha256: Sha256
+        self,
+        uow: UnitOfWork,
+        actor: UserId,
+        uploader: UserId,
+        space: SpaceId | None,
+        sha256: Sha256,
     ) -> SpaceId:
-        """The space for a document of `actor` (its owner)."""
+        """The space for a document `actor` uploads in the name of `uploader`: `space`, which
+        the actor edits, or else the uploader's personal space. DuplicateDocumentError if the
+        file lies in Lekto already, wherever (every file exists once per installation); it
+        names the document if the actor may read it."""
         user = await load_actor(uow, actor)
-        existing = await uow.documents.find_by_sha256(actor, sha256)
-        if existing is not None:
-            raise DuplicateDocumentError(existing.id)
         if space is None:
-            return (await uow.spaces.get_default(actor)).id
-        target = await visible_space(uow, user, space)
-        if not can_file_into(user, target):
-            raise SpaceWriteDeniedError(target.id, target.name)
+            target = await uow.spaces.get_personal(uploader)
+        else:
+            target = await visible_space(uow, user, space)
+            if not can_file_into(user, target):
+                raise SpaceWriteDeniedError(target.id, target.name)
+        if (error := await duplicate_of(uow, user, sha256)) is not None:
+            raise error
         return target.id
 
     # --- retry and reprocess --------------------------------------------------------------------
 
     async def retry(self, actor: UserId, id: DocumentId) -> DocumentView:
-        """Owner or admin: repeat the failed nodes and continue from there."""
+        """Editors and admins: repeat the failed nodes and continue from there."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document = await controllable_document(
+            document, _ = await controllable_document(
                 uow, user, id, f"control the processing of document {id}"
             )
             access = await access_to(uow, user, document)
@@ -444,11 +460,11 @@ class PipelineService:
         return DocumentView(document, access)
 
     async def reprocess_from(self, actor: UserId, id: DocumentId, node: Node) -> DocumentView:
-        """Owner or admin: discard the results of `node` and the nodes after it and process
+        """Editors and admins: discard the results of `node` and the nodes after it and process
         them again."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document = await controllable_document(
+            document, _ = await controllable_document(
                 uow, user, id, f"control the processing of document {id}"
             )
             access = await access_to(uow, user, document)
@@ -457,7 +473,7 @@ class PipelineService:
         return DocumentView(document, access)
 
     async def read_with_vision(self, actor: UserId, id: DocumentId) -> DocumentView:
-        """Owner or admin: have the vision language model read every page, and process the
+        """Editors and admins: have the vision language model read every page, and process the
         document again from OCR (`Document.read_with_vision`). Sending the pages out is a
         person's decision; nothing else asks for it. InvalidTransitionError without a model,
         and where reprocessing from OCR is not possible."""
@@ -465,7 +481,7 @@ class PipelineService:
             raise InvalidTransitionError("no vision language model is configured")
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document = await controllable_document(
+            document, _ = await controllable_document(
                 uow, user, id, f"control the processing of document {id}"
             )
             access = await access_to(uow, user, document)
@@ -474,11 +490,11 @@ class PipelineService:
         return DocumentView(document, access)
 
     async def reading(self, actor: UserId, id: DocumentId) -> DocumentReading:
-        """Owner or admin, as the log: how the archive's text was read (its latest OCR that
+        """Editors and admins, as the log: how the archive's text was read (its latest OCR that
         made one), and whether reading it with the vision language model is advised: the
         document waits for a person because no text was found, or with a poorly read page."""
         async with self._uow() as uow:
-            document = await controllable_document(
+            document, _ = await controllable_document(
                 uow, await load_actor(uow, actor), id, f"control the processing of document {id}"
             )
             log = await uow.processing_log.list_for(id)
@@ -515,28 +531,31 @@ class PipelineService:
         accept_suggestions: bool = False,
         resume_at: Node = Node.APPLY_RULES,
         space: SpaceId | None = None,
-    ) -> DocumentView:
-        """Owner or admin, for a document in the inbox: decide its open fields, apply `changes`
-        (as a metadata change), move it into `space` (one the owner may write to; an admin
-        chooses any space, and filing accepts it) and let processing continue from `resume_at`,
-        up to filing.
+    ) -> DocumentView | None:
+        """Editors and admins, for a document in the inbox: decide its open fields, apply
+        `changes` (as a metadata change), move it into `space` (as `DocumentService.move`: one
+        the caller edits, or another user's personal space; an admin chooses any space) and let
+        processing continue from `resume_at`, up to filing.
 
         Each uncertain field of the nodes before `resume_at`, and of the rules when processing
         resumes with them, needs a decision (see `inbox.decide`). The nodes whose results the
-        owner overruled get a log entry; so do the rules, with what the owner decided and
+        person overruled get a log entry; so do the rules, with what the person decided and
         changed: the rules that run next leave it as it is.
 
         Choosing a contact for an open contact field teaches it the name the model read as an
         alias (`master_data.learn_alias`), so the next document with that name finds it.
 
-        The document leaves the inbox for everyone and is new for no one; who confirmed it, and
-        when, is kept for done (`domain.inbox`).
+        The document leaves the inbox for everyone and is new for no one, except for the
+        editors of `space` who could not read it before (`inbox.confirmed_into`); who confirmed
+        it, and when, is kept for done (`domain.inbox`). None: the caller cannot read the
+        document where it lies now (handed over, or moved into a space they only read, where
+        it is not green yet).
 
         If the fields node does not run again, the type's title pattern is rendered with the
         decided values, as long as the document has the machine's title (`titles`)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document = await controllable_document(
+            document, source = await controllable_document(
                 uow, user, id, f"control the processing of document {id}"
             )
             log = await uow.processing_log.list_for(id)
@@ -548,14 +567,7 @@ class PipelineService:
                 if item.node not in again
                 or (item.node is Node.APPLY_RULES and resume_at is Node.APPLY_RULES)
             ]
-            target = None if space is None else await visible_space(uow, user, space)
-            if target is not None and not (user.is_active_admin or can_file_into(user, target)):
-                raise SpaceWriteDeniedError(target.id, target.name)
-            if target is None and not await may_file(
-                uow, document, await uow.spaces.get(document.space_id)
-            ):
-                # Filing would stop again: someone has to choose another space.
-                raise OpenFieldsError((SPACE,))
+            target = None if space is None else await self._move_target(uow, user, source, space)
             now = self._clock.now()
             tags_before = frozenset(document.tag_ids)
             overruled = document.confirm(resume_at, now)
@@ -579,6 +591,7 @@ class PipelineService:
             corrected = corrected_fields(before, document, decided=decided)
             if target is not None:
                 document.move_to(target.id, now)
+                await confirmed_into(uow, document, source, target, now, user.id)
             run = document.processing.run
             for node in overruled:
                 result = confirmation(node, outcomes.get(node), decision, user.id)
@@ -601,9 +614,23 @@ class PipelineService:
                 chosen[LEARNED_ALIAS] = {"contact_id": str(learned[0]), "alias": learned[1]}
             result = replace(result, output={**result.output, **person, **chosen})
             await self._log(uow, id, Node.APPLY_RULES, run, result, now, now)
-            access = await access_to(uow, user, document)
+            access = document_access(user, document, source if target is None else target)
             await self._restart(uow, document)
-        return DocumentView(document, access)
+        return None if access is None else DocumentView(document, access)
+
+    async def _move_target(self, uow: UnitOfWork, user: User, source: Space, id: SpaceId) -> Space:
+        """The space `user` moves a document of `source` into on confirming it (as
+        `DocumentService.move`)."""
+        target = await uow.spaces.find(id)
+        if target is None or not (space_role(user, target) or can_hand_over(user, target)):
+            raise NotFoundError("space", id)
+        if not (can_file_into(user, target) or can_hand_over(user, target)):
+            raise SpaceWriteDeniedError(target.id, target.name)
+        if target.personal_of is not None and target.role_of(user.id) is None:
+            receiver = await uow.users.find(target.personal_of)
+            if receiver is None or not receiver.active:
+                raise NotFoundError("space", id)
+        return target
 
     async def _restart(self, uow: UnitOfWork, document: Document) -> None:
         await uow.documents.update(document)

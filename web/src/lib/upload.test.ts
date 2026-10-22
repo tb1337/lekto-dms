@@ -72,6 +72,7 @@ describe('uploads', () => {
 		const answers = [
 			json({ id: 'doc-new' }, 202),
 			problem(409, { existing_document_id: 'doc-old' }),
+			problem(409),
 			problem(413),
 			problem(415),
 			problem(500)
@@ -82,7 +83,7 @@ describe('uploads', () => {
 		);
 		const uploads = new Uploads();
 		uploads.add({
-			files: ['new', 'twin', 'huge', 'fake', 'broken'].map((name) => ({
+			files: ['new', 'twin', 'unseen', 'huge', 'fake', 'broken'].map((name) => ({
 				file: pdf(`${name}.pdf`),
 				name: `${name}.pdf`
 			})),
@@ -93,28 +94,28 @@ describe('uploads', () => {
 		expect(byName['notes.txt']).toMatchObject({ state: 'skipped', reason: 'type' });
 		expect(byName['new.pdf']).toMatchObject({ state: 'uploaded', documentId: 'doc-new' });
 		expect(byName['twin.pdf']).toMatchObject({ state: 'duplicate', documentId: 'doc-old' });
+		// Every file exists once: one in a space the caller cannot see comes without an id.
+		expect(byName['unseen.pdf']).toMatchObject({ state: 'duplicate', documentId: null });
 		expect(byName['huge.pdf']).toMatchObject({ state: 'skipped', reason: 'too_large' });
 		expect(byName['fake.pdf']).toMatchObject({ state: 'skipped', reason: 'type' });
 		expect(byName['broken.pdf']).toMatchObject({ state: 'failed', message: 'no' });
-		expect(uploads.counts).toMatchObject({ uploaded: 1, duplicates: 1, skipped: 3, failed: 1 });
+		expect(uploads.counts).toMatchObject({ uploaded: 1, duplicates: 2, skipped: 3, failed: 1 });
 	});
 
-	it('sends the space and the owner chosen', async () => {
+	it('sends only the file: the document lands in the personal space', async () => {
 		const api = held();
 		vi.stubGlobal('fetch', api.fetchMock);
 		// The forms as built (jsdom's files do not pass through the fetch of Node).
 		const append = vi.spyOn(FormData.prototype, 'append');
 		try {
 			const uploads = new Uploads();
-			uploads.add(intakeOf([pdf('a.pdf')]), { spaceId: 'space-2', owner: 'user-2' });
+			uploads.add(intakeOf([pdf('a.pdf')]));
 			uploads.add(intakeOf([pdf('b.pdf')]));
 			await vi.waitFor(() => expect(api.requests).toHaveLength(2));
 			expect(
 				append.mock.calls.map(([name, value]) => [name, value instanceof File ? value.name : value])
 			).toEqual([
 				['file', 'a.pdf'],
-				['space_id', 'space-2'],
-				['owner', 'user-2'],
 				['file', 'b.pdf']
 			]);
 		} finally {

@@ -4,7 +4,7 @@ import pytest
 
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.ids import UserId, new_id
-from lekto.core.domain.spaces import DEFAULT_SPACE_NAME, ShareLevel, Space
+from lekto.core.domain.spaces import PERSONAL_SPACE_NAME, Space, SpaceRole
 from lekto.core.domain.users import Role, User
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
@@ -25,54 +25,82 @@ def test_user_needs_a_name_and_utc_time() -> None:
         User.create(username="bob", role=Role.USER, now=datetime(2026, 1, 1))
 
 
-def test_default_space_is_private() -> None:
-    owner = UserId(new_id())
-    space = Space.create_default(owner_id=owner, now=NOW)
-    assert space.is_default
-    assert space.name == DEFAULT_SPACE_NAME
-    with pytest.raises(ValidationError, match="default space cannot be shared"):
-        space.share(UserId(new_id()), ShareLevel.READ)
+def test_a_personal_space_is_its_users_and_may_be_shared() -> None:
+    user, other = UserId(new_id()), UserId(new_id())
+    space = Space.create_personal(user=user, now=NOW)
+    assert space.is_personal and space.personal_of == user
+    assert (space.name, space.members) == (PERSONAL_SPACE_NAME, {user: SpaceRole.EDIT})
+    space.set_member(other, SpaceRole.READ)
+    assert space.members == {user: SpaceRole.EDIT, other: SpaceRole.READ}
+    with pytest.raises(ValidationError, match="always edits"):
+        space.set_member(user, SpaceRole.READ)
+    with pytest.raises(ValidationError, match="always edits"):
+        space.remove_member(user)
+    with pytest.raises(ValidationError, match="keeps its name"):
+        space.rename("Mine")
 
 
-def test_space_can_be_shared_and_unshared() -> None:
-    owner, other = UserId(new_id()), UserId(new_id())
-    space = Space.create(owner_id=owner, name="Household", now=NOW)
-    space.share(other, ShareLevel.READ)
-    space.share(other, ShareLevel.READ_WRITE)
-    assert space.shares == {other: ShareLevel.READ_WRITE}
-    space.unshare(other)
-    space.unshare(other)
-    assert space.shares == {}
+def test_members_are_added_changed_and_removed() -> None:
+    editor, other = UserId(new_id()), UserId(new_id())
+    space = Space.create(name="Household", members={editor: SpaceRole.EDIT}, now=NOW)
+    assert not space.is_personal and space.personal_of is None
+    space.set_member(other, SpaceRole.READ)
+    space.set_member(other, SpaceRole.EDIT)
+    assert space.members == {editor: SpaceRole.EDIT, other: SpaceRole.EDIT}
+    assert space.editors == {editor, other}
+    assert space.role_of(other) is SpaceRole.EDIT
+    space.remove_member(other)
+    space.remove_member(UserId(new_id()))  # no member: nothing to do
+    assert space.members == {editor: SpaceRole.EDIT}
+    assert space.role_of(other) is None
 
 
-def test_space_is_not_shared_with_its_owner() -> None:
-    owner = UserId(new_id())
-    space = Space.create(owner_id=owner, name="Household", now=NOW)
-    with pytest.raises(ValidationError, match="owner"):
-        space.share(owner, ShareLevel.READ)
+def test_a_shared_space_keeps_an_editor() -> None:
+    editor, reader = UserId(new_id()), UserId(new_id())
+    with pytest.raises(ValidationError, match="one editor"):
+        Space.create(name="Household", members={reader: SpaceRole.READ}, now=NOW)
+    space = Space.create(
+        name="Household", members={editor: SpaceRole.EDIT, reader: SpaceRole.READ}, now=NOW
+    )
+    with pytest.raises(ValidationError, match="one editor"):
+        space.remove_member(editor)
+    with pytest.raises(ValidationError, match="one editor"):
+        space.set_member(editor, SpaceRole.READ)
+    assert space.members == {editor: SpaceRole.EDIT, reader: SpaceRole.READ}
 
 
 def test_space_invariants_hold_on_construction() -> None:
-    owner, other = UserId(new_id()), UserId(new_id())
+    user, other = UserId(new_id()), UserId(new_id())
     with pytest.raises(ValidationError):
         Space(
-            id=Space.create(owner_id=owner, name="x", now=NOW).id,
-            owner_id=owner,
-            name="Default",
-            is_default=True,
-            shares={other: ShareLevel.READ},
+            id=Space.create_personal(user=user, now=NOW).id,
+            name="Personal",
+            personal_of=user,
+            members={other: SpaceRole.EDIT},
             created_at=NOW,
         )
 
 
+def test_moving_widens_when_the_target_has_someone_new() -> None:
+    a, b, c = UserId(new_id()), UserId(new_id()), UserId(new_id())
+    home = Space.create_personal(user=a, now=NOW)
+    household = Space.create(name="H", members={a: SpaceRole.EDIT, b: SpaceRole.READ}, now=NOW)
+    assert home.widens(household)
+    assert not household.widens(home)
+    assert not household.widens(
+        Space.create(name="I", members={a: SpaceRole.READ, b: SpaceRole.EDIT}, now=NOW)
+    )
+    assert household.widens(Space.create(name="J", members={c: SpaceRole.EDIT}, now=NOW))
+
+
 def test_space_rename_requires_a_name() -> None:
-    space = Space.create(owner_id=UserId(new_id()), name="Household", now=NOW)
+    space = Space.create(name="Household", members={UserId(new_id()): SpaceRole.EDIT}, now=NOW)
     space.rename(" Taxes ")
     assert space.name == "Taxes"
     with pytest.raises(ValidationError):
         space.rename("")
 
 
-def test_share_level_write() -> None:
-    assert ShareLevel.READ_WRITE.can_write
-    assert not ShareLevel.READ.can_write
+def test_space_role_edit() -> None:
+    assert SpaceRole.EDIT.can_edit
+    assert not SpaceRole.READ.can_edit

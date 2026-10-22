@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from lekto.adapters.outbound.memory import MemoryEventBus
+from lekto.adapters.outbound.memory.database import SeenMark
 from lekto.core.domain.errors import AuthenticationError
 from lekto.core.domain.ids import DocumentId, EventId, new_id
 from lekto.core.domain.inbox import DONE_PERIOD, Confirmation
@@ -114,33 +115,35 @@ async def test_cleanup_removes_ended_sessions_and_old_failures(world: World) -> 
 
 
 async def test_deleting_a_document_removes_its_files(world: World) -> None:
+    """Its derivatives and its original, unless the same file came in again meanwhile (every
+    file exists once, but a deleted one may be uploaded anew before its files are gone)."""
     service = maintenance(world)
     alice, bob = await world.user(), await world.user()
-    shared_file, own_file = b"%PDF-1.7 same", b"%PDF-1.7 alice only"
-    kept = await world.pipeline().receive(alice.id, incoming(shared_file), filename="a.pdf")
+    again_file, own_file = b"%PDF-1.7 same", b"%PDF-1.7 alice only"
+    first = await world.pipeline().receive(alice.id, incoming(again_file), filename="a.pdf")
     gone = await world.pipeline().receive(alice.id, incoming(own_file), filename="b.pdf")
-    other = await world.pipeline().receive(bob.id, incoming(shared_file), filename="c.pdf")
     await world.drain()
-    for document in (kept, gone):
+    for document in (first, gone):
         for key in derivative_keys(document.id, 2):
             await world.object_store.put(key, b"x", content_type="x")
     async with world.uow() as uow:
-        for document in (kept, gone):
+        for document in (first, gone):
             stored = await uow.documents.get(document.id)
             stored.set_page_count(2, world.clock.now())
             await uow.documents.update(stored)
         await uow.commit()
 
     await world.documents.delete(alice.id, gone.id)
-    await world.documents.delete(alice.id, kept.id)
+    await world.documents.delete(alice.id, first.id)
+    other = await world.pipeline().receive(bob.id, incoming(again_file), filename="c.pdf")
     assert await service.run_next_job() and await service.run_next_job()
     assert not await service.run_next_job()
 
-    for document in (kept, gone):
+    for document in (first, gone):
         for key in derivative_keys(document.id, 2):
             assert not await world.object_store.exists(key)
     assert not await world.object_store.exists(original_key(gone.sha256))
-    assert await world.object_store.exists(original_key(other.sha256))  # Bob still has it
+    assert await world.object_store.exists(original_key(other.sha256))  # Bob's upload has it
     assert [j.status for j in world.database.jobs.values() if j.kind == REMOVE_FILES_JOB] == [
         JobStatus.DONE,
         JobStatus.DONE,
@@ -228,7 +231,7 @@ async def test_cleanup_removes_what_only_done_needs_after_its_period(world: Worl
     it tells that the document is not new."""
     service = maintenance(world)
     owner = await world.user()
-    space = await world.default_space(owner)
+    space = await world.personal_space(owner)
     confirmed, seen = builders.processed(owner, space), builders.processed(owner, space)
     confirmed.new_at = None
     async with world.uow() as uow:
@@ -245,7 +248,7 @@ async def test_cleanup_removes_what_only_done_needs_after_its_period(world: Worl
     world.clock.advance(INTERVAL)
     assert await service.run_next_job()
     assert world.database.confirmations == {}
-    assert world.database.seen == {(owner.id, seen.id): builders.NOW}
+    assert world.database.seen == {(owner.id, seen.id): SeenMark(builders.NOW)}
 
 
 async def test_a_cancelled_cleanup_gives_its_job_back_at_once(world: World) -> None:

@@ -9,7 +9,7 @@ import { api } from '#lib/api/client.ts';
 import { unwrap } from '#lib/api/call.ts';
 import type { components } from '#lib/api/schema.ts';
 import { m } from '#lib/paraglide/messages.js';
-import type { ApiDefinition, Scope } from '#lib/rules/model.ts';
+import type { ApiDefinition } from '#lib/rules/model.ts';
 
 type Rule = components['schemas']['RuleOut'];
 
@@ -17,17 +17,33 @@ function setEnabled(id: string, enabled: boolean): Promise<Rule> {
 	return unwrap(api.PATCH('/api/v1/rules/{id}', { params: { path: { id } }, body: { enabled } }));
 }
 
-export async function createSwitchedOff(scope: Scope, definition: ApiDefinition): Promise<Rule> {
-	const created = await unwrap(api.POST('/api/v1/rules', { body: { scope, ...definition } }));
+/** Where a new rule belongs: `global`, or the id of its space. */
+export const GLOBAL = 'global';
+
+export async function createSwitchedOff(place: string, definition: ApiDefinition): Promise<Rule> {
+	const body =
+		place === GLOBAL
+			? { scope: 'global' as const, ...definition }
+			: { scope: 'space' as const, space_id: place, ...definition };
+	const created = await unwrap(api.POST('/api/v1/rules', { body }));
 	return setEnabled(created.id, false);
 }
 
-export async function changeSwitchedOff(rule: Rule, definition: ApiDefinition): Promise<Rule> {
+/** `place`: where the rule moves (`GLOBAL` or a space id); none: it stays where it is. */
+export async function changeSwitchedOff(
+	rule: Rule,
+	definition: ApiDefinition,
+	place?: string
+): Promise<Rule> {
+	const body =
+		place === undefined
+			? definition
+			: place === GLOBAL
+				? { ...definition, scope: 'global' as const }
+				: { ...definition, scope: 'space' as const, space_id: place };
 	if (rule.enabled) await setEnabled(rule.id, false);
 	try {
-		return await unwrap(
-			api.PUT('/api/v1/rules/{id}', { params: { path: { id: rule.id } }, body: definition })
-		);
+		return await unwrap(api.PUT('/api/v1/rules/{id}', { params: { path: { id: rule.id } }, body }));
 	} catch (error) {
 		if (rule.enabled) await setEnabled(rule.id, true).catch(() => toast.warning(m.rule_left_off()));
 		throw error;

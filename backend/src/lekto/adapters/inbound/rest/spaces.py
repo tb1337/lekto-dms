@@ -1,35 +1,45 @@
-"""`/spaces`: the caller's spaces and those shared with them (every space for admins);
-shares."""
+"""`/spaces`: the spaces the caller is a member of (with `all_users`, every space for admins),
+and their members."""
 
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
 from lekto.adapters.inbound.rest.auth import PROTECTED, Authenticated
 from lekto.adapters.inbound.rest.context import Context
+from lekto.adapters.inbound.rest.params import AllSpaces
 from lekto.adapters.inbound.rest.problems import problem_responses
 from lekto.adapters.inbound.rest.schemas.common import NameIn
-from lekto.adapters.inbound.rest.schemas.spaces import ShareIn, SpaceCreate, SpaceOut
+from lekto.adapters.inbound.rest.schemas.spaces import MemberIn, SpaceCreate, SpaceOut
 from lekto.core.domain.ids import SpaceId, UserId
+from lekto.core.domain.permissions import space_role
 from lekto.core.domain.sorting import sort_key
+from lekto.core.domain.spaces import Space
+from lekto.core.services.auth import Principal
 
 router = APIRouter(prefix="/spaces", tags=["spaces"], dependencies=PROTECTED)
 
-OWNER_ONLY = "The owner and admins."
+EDITORS = "Editors of the space and admins."
 
 
 @router.get(
     "",
     summary="List spaces",
     description=(
-        "The spaces the caller owns or that are shared with them; every space for admins."
+        "The spaces the caller is a member of, their personal space first among them by its "
+        "`personal_of`, admins too; with `all_users` every space (admins only). An admin's "
+        "rights reach every space either way."
     ),
     response_model=list[SpaceOut],
-    responses=problem_responses(401),
+    responses=problem_responses(401, 403, 422),
 )
-async def list_spaces(principal: Authenticated, context: Context) -> list[SpaceOut]:
-    spaces = await context.spaces.list_spaces(principal.id)
-    return [SpaceOut.of(d, principal.user) for d in sorted(spaces, key=lambda d: sort_key(d.name))]
+async def list_spaces(
+    principal: Authenticated, context: Context, all_users: AllSpaces = False
+) -> list[SpaceOut]:
+    found = await context.spaces.list_spaces(principal.id, all_users)
+    spaces = sorted(found, key=lambda d: sort_key(d.name))
+    people = await context.spaces.members(principal.id, spaces)
+    return [SpaceOut.of(space, principal.user, people) for space in spaces]
 
 
 @router.post(
@@ -37,17 +47,22 @@ async def list_spaces(principal: Authenticated, context: Context) -> list[SpaceO
     status_code=201,
     summary="Create a space",
     description=(
-        "Names are unique per owner regardless of case. The caller owns the space; admins may "
-        "give `owner_id` to create one for another active user (others: 403, an unknown or "
-        "deactivated user: 404)."
+        "Names of the spaces that are nobody's personal one are unique regardless of case "
+        "(409). The caller edits the space; `members` adds active users (an unknown or "
+        "deactivated user: 404). An admin may give the members alone, one of whom edits (422 "
+        "otherwise)."
     ),
     response_model=SpaceOut,
     responses=problem_responses(401, 403, 404, 409, 422),
 )
 async def create_space(body: SpaceCreate, principal: Authenticated, context: Context) -> SpaceOut:
-    owner = None if body.owner_id is None else UserId(body.owner_id)
-    space = await context.spaces.create(principal.id, body.name, owner=owner)
-    return SpaceOut.of(space, principal.user)
+    members = (
+        None
+        if body.members is None
+        else {UserId(member.user_id): member.role for member in body.members}
+    )
+    space = await context.spaces.create(principal.id, body.name, members=members)
+    return await _out(space, principal, context)
 
 
 @router.get(
@@ -57,29 +72,30 @@ async def create_space(body: SpaceCreate, principal: Authenticated, context: Con
     responses=problem_responses(401, 404, 422),
 )
 async def get_space(id: UUID, principal: Authenticated, context: Context) -> SpaceOut:
-    return SpaceOut.of(await context.spaces.get(principal.id, SpaceId(id)), principal.user)
+    return await _out(await context.spaces.get(principal.id, SpaceId(id)), principal, context)
 
 
 @router.patch(
     "/{id}",
     summary="Rename a space",
-    description=OWNER_ONLY,
+    description=EDITORS + " Not a personal space (422).",
     response_model=SpaceOut,
     responses=problem_responses(401, 403, 404, 409, 422),
 )
 async def rename_space(
     id: UUID, body: NameIn, principal: Authenticated, context: Context
 ) -> SpaceOut:
-    return SpaceOut.of(
-        await context.spaces.rename(principal.id, SpaceId(id), body.name), principal.user
-    )
+    space = await context.spaces.rename(principal.id, SpaceId(id), body.name)
+    return await _out(space, principal, context)
 
 
 @router.delete(
     "/{id}",
     status_code=204,
     summary="Delete a space",
-    description=OWNER_ONLY + " Not the default space, and only while it is empty (409).",
+    description=EDITORS
+    + " Not a personal space, and only while it is empty (409). Its rules go with it; other "
+    "rules that file into it are switched off.",
     responses=problem_responses(401, 403, 404, 409, 422),
 )
 async def delete_space(id: UUID, principal: Authenticated, context: Context) -> None:
@@ -87,33 +103,46 @@ async def delete_space(id: UUID, principal: Authenticated, context: Context) -> 
 
 
 @router.put(
-    "/{id}/shares/{user_id}",
-    summary="Share a space",
+    "/{id}/members/{user_id}",
+    summary="Add a member or change their role",
     description=(
-        OWNER_ONLY + " Sets the user's access: `read` or `read_write`. The default space "
-        "cannot be shared (422); an unknown or deactivated user is not found (404). Other "
-        "users see documents in it once they are green."
+        EDITORS + " The members of a personal space are chosen by its user and admins. The "
+        "user of a personal space always edits it, and a space keeps one editor (422); an "
+        "unknown or deactivated user is not found (404). Readers see the green documents, "
+        "editors every document."
     ),
     response_model=SpaceOut,
     responses=problem_responses(401, 403, 404, 422),
 )
-async def share_space(
-    id: UUID, user_id: UUID, body: ShareIn, principal: Authenticated, context: Context
+async def set_member(
+    id: UUID, user_id: UUID, body: MemberIn, principal: Authenticated, context: Context
 ) -> SpaceOut:
-    space = await context.spaces.share(principal.id, SpaceId(id), UserId(user_id), body.level)
-    return SpaceOut.of(space, principal.user)
+    space = await context.spaces.set_member(principal.id, SpaceId(id), UserId(user_id), body.role)
+    return await _out(space, principal, context)
 
 
 @router.delete(
-    "/{id}/shares/{user_id}",
-    summary="Stop sharing a space with a user",
-    description=OWNER_ONLY,
+    "/{id}/members/{user_id}",
+    summary="Remove a member",
+    description=(
+        EDITORS + " As adding one; and every member leaves a space themselves with their own "
+        "id, a reader too (204: the caller no longer sees the space). The user of a personal "
+        "space stays, and a space keeps one editor (422)."
+    ),
     response_model=SpaceOut,
-    responses=problem_responses(401, 403, 404, 422),
+    responses={
+        204: {"description": "The caller left the space."},
+        **problem_responses(401, 403, 404, 422),
+    },
 )
-async def unshare_space(
+async def remove_member(
     id: UUID, user_id: UUID, principal: Authenticated, context: Context
-) -> SpaceOut:
-    return SpaceOut.of(
-        await context.spaces.unshare(principal.id, SpaceId(id), UserId(user_id)), principal.user
-    )
+) -> SpaceOut | Response:
+    space = await context.spaces.remove_member(principal.id, SpaceId(id), UserId(user_id))
+    if space_role(principal.user, space) is None:
+        return Response(status_code=204)
+    return await _out(space, principal, context)
+
+
+async def _out(space: Space, principal: Principal, context: Context) -> SpaceOut:
+    return SpaceOut.of(space, principal.user, await context.spaces.members(principal.id, [space]))

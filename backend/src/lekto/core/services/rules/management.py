@@ -2,11 +2,15 @@
 
 Who may do what:
 
-- A user rule belongs to its owner, who changes it. Admins read and change every rule (Tobi,
-  08.10.2026); the references of a user rule are checked for its owner, also when an admin
-  changes it (it files only into spaces its owner may write to). Other users do not learn that
-  someone else's rule exists (NotFoundError).
-- Global rules are read by everyone and changed by admins only.
+- A space rule belongs to its space: its editors read and change it. Admins read and change
+  every rule (Tobi, 08.10.2026). Whoever saves a rule may let it file only into spaces they
+  may file into, or hand documents over into another user's personal space; that is checked
+  for the author of the current version whenever the rule runs. Users who do not edit a space
+  do not learn that its rules exist (NotFoundError).
+- Global rules are read by everyone and changed by admins only; they may do everything.
+- A change may move a rule into another space or between a space and global (Tobi,
+  22.10.2026): whoever moves it changes it where it is and edits where it goes (global:
+  admins). The new version names the space, so the history shows the move.
 """
 
 from collections.abc import Iterable, Mapping
@@ -22,8 +26,8 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.fields import FieldDefinition, FieldType
-from lekto.core.domain.ids import DocumentId, DocumentTypeId, RuleId, UserId
-from lekto.core.domain.permissions import space_access
+from lekto.core.domain.ids import DocumentId, DocumentTypeId, RuleId, SpaceId, UserId
+from lekto.core.domain.permissions import space_role
 from lekto.core.domain.rules import (
     ForceReview,
     Rule,
@@ -34,6 +38,7 @@ from lekto.core.domain.rules import (
     SetTitle,
     check_fields,
 )
+from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.templates import (
     FIELD,
     NAMES,
@@ -55,6 +60,7 @@ from lekto.core.services._access import (
     load_actor,
     load_lister,
     readable_document,
+    space_label,
 )
 from lekto.core.services._tags import tag_tree
 
@@ -91,16 +97,22 @@ class RuleService:
         actor: UserId,
         *,
         scope: RuleScope | None = None,
+        space: SpaceId | None = None,
         include_disabled: bool = True,
         all_users: bool = False,
     ) -> list[Rule]:
-        """The caller's rules and the global rules, in the order they are applied.
-        `all_users`: the rules of every user instead of the caller's (admins only)."""
+        """The global rules and the rules of the spaces the caller edits, in the order they
+        are applied; with `space`, only that space's (an admin's for any space). `all_users`:
+        the rules of every space instead of the caller's (admins only)."""
         async with self._uow() as uow:
             user = await load_lister(uow, actor, all_users, "list the rules of all users")
+            edited = None if all_users else await _edited_spaces(uow, user)
+            if space is not None:
+                anyone = edited is None or user.is_active_admin
+                edited = [space] if anyone or space in (edited or ()) else []
             rules = await uow.rules.list_for(
-                owners=None if all_users else (user.id,),
-                include_global=scope is not RuleScope.USER,
+                spaces=edited,
+                include_global=scope is not RuleScope.SPACE and space is None,
             )
         return sorted(
             (
@@ -130,20 +142,27 @@ class RuleService:
             await visible_rule(uow, await load_actor(uow, actor), id)
             return await uow.rules.get_version(id, number)
 
-    async def create(self, actor: UserId, scope: RuleScope, definition: RuleDefinition) -> Rule:
-        """A global rule needs an admin; a user rule belongs to the caller."""
+    async def create(
+        self,
+        actor: UserId,
+        scope: RuleScope,
+        definition: RuleDefinition,
+        *,
+        space: SpaceId | None = None,
+    ) -> Rule:
+        """A global rule needs an admin; a space rule belongs to `space`, which the caller
+        edits (None: the caller's personal space)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            if scope is RuleScope.GLOBAL:
-                admin_only(user, "create global rules")
+            space = await _place(uow, user, scope, space)
             rule = Rule.create(
                 scope=scope,
-                owner_id=None if scope is RuleScope.GLOBAL else user.id,
+                space_id=space,
                 definition=definition,
                 by=user.id,
                 now=self._clock.now(),
             )
-            await check_references(uow, rule.definition, owner=user if rule.owner_id else None)
+            await check_references(uow, rule.definition, author=user)
             check_patterns(self._patterns, rule.definition)
             await check_templates(uow, self._templates, rule.definition)
             await uow.rules.add(rule)
@@ -199,13 +218,30 @@ class RuleService:
                 continue
         return written
 
-    async def change(self, actor: UserId, id: RuleId, definition: RuleDefinition) -> Rule:
-        """A new version; the scope stays."""
+    async def change(
+        self,
+        actor: UserId,
+        id: RuleId,
+        definition: RuleDefinition,
+        *,
+        scope: RuleScope | None = None,
+        space: SpaceId | None = None,
+    ) -> Rule:
+        """A new version. With `scope` the rule moves (Tobi, 22.10.2026): into the space
+        `space`, which the caller edits (None: the caller's personal space), or, by an admin,
+        to global; whoever moves it may change it where it is, too. Without `scope` it stays
+        where it is."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             rule = await _managed_rule(uow, user, id)
-            rule.change(definition, user.id, self._clock.now())
-            await check_references(uow, definition, owner=await _owner(uow, rule))
+            if scope is None:
+                if space is not None:
+                    raise ValidationError("space_id: give the scope with it")
+                rule.change(definition, user.id, self._clock.now())
+            else:
+                place = await _place(uow, user, scope, space)
+                rule.change(definition, user.id, self._clock.now(), scope=scope, space_id=place)
+            await check_references(uow, definition, author=user)
             check_patterns(self._patterns, definition)
             await check_templates(uow, self._templates, definition)
             await uow.rules.update(rule)
@@ -218,7 +254,7 @@ class RuleService:
             user = await load_actor(uow, actor)
             rule = await _managed_rule(uow, user, id)
             if enabled:
-                await check_references(uow, rule.definition, owner=await _owner(uow, rule))
+                await check_references(uow, rule.definition, author=await _author(uow, rule))
                 await check_templates(uow, self._templates, rule.definition)
                 rule.enable(self._clock.now())
             else:
@@ -237,13 +273,14 @@ class RuleService:
 
 
 async def check_references(
-    uow: UnitOfWork, definition: RuleDefinition, *, owner: User | None
+    uow: UnitOfWork, definition: RuleDefinition, *, author: User | None
 ) -> None:
     """Everything the definition refers to exists (NotFoundError otherwise), field
     conditions and values fit their field, tags are of the scope their place asks for (groups
     in the conditions on groups, topics in those on the topic and in "set topic", document
-    tags elsewhere; ValidationError), and the `owner` of a user rule may file into its space
-    (PermissionDeniedError; checked again whenever it runs)."""
+    tags elsewhere; ValidationError), and the rule's `author` may file into the spaces it
+    files into, unless one is the personal space of another, active user (handing over;
+    PermissionDeniedError; checked again whenever it runs)."""
     references = definition.references()
     for contact in references.contacts:
         await uow.contacts.get(contact)
@@ -263,10 +300,18 @@ async def check_references(
         check_fields(definition, fields)
     for space_id in references.spaces:
         space = await uow.spaces.find(space_id)
-        access = None if space is None or owner is None else space_access(owner, space)
-        if space is None or access is None:
+        if (
+            space is not None
+            and space.personal_of is not None
+            and (author is None or author.active)
+        ):
+            receiver = await uow.users.find(space.personal_of)
+            if receiver is not None and receiver.active:
+                continue  # handing over: no membership needed
+        role = None if space is None or author is None else space_role(author, space)
+        if space is None or role is None:
             raise NotFoundError("space", space_id)
-        if not access.can_write:
+        if not role.can_edit:
             raise SpaceWriteDeniedError(space.id, space.name)
 
 
@@ -346,10 +391,11 @@ def renamed_field(
 
 
 async def visible_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
-    """Global rules and the caller's own; all rules for admins. Includes deleted rules."""
+    """Global rules and the rules of the spaces the caller edits; all rules for admins.
+    Includes deleted rules."""
     rule = await uow.rules.find(id)
     if rule is None or not (
-        rule.scope is RuleScope.GLOBAL or rule.owner_id == user.id or user.is_active_admin
+        rule.space_id is None or user.is_active_admin or await _edits(uow, user, rule.space_id)
     ):
         raise NotFoundError("rule", id)
     return rule
@@ -372,14 +418,56 @@ async def _managed_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
         return rule
     if rule.scope is RuleScope.GLOBAL:
         raise PermissionDeniedError("only admins change global rules")
-    if rule.owner_id != user.id:
-        raise PermissionDeniedError("only the owner and admins change a user rule")
-    return rule
+    return rule  # visible: the caller edits its space
 
 
-async def _owner(uow: UnitOfWork, rule: Rule) -> User | None:
-    """The owner of a user rule, for checking its references; None for a global rule."""
-    return None if rule.owner_id is None else await uow.users.get(rule.owner_id)
+async def _author(uow: UnitOfWork, rule: Rule) -> User | None:
+    """Who saved the rule's current version, for checking its references; None if their
+    account is gone."""
+    by = rule.current.created_by
+    return None if by is None else await uow.users.find(by)
+
+
+async def _place(
+    uow: UnitOfWork, user: User, scope: RuleScope, space: SpaceId | None
+) -> SpaceId | None:
+    """Where a rule of `scope` the user makes or moves belongs: global (admins only, no space)
+    or the space `space`, which they edit (None: their personal space)."""
+    if scope is RuleScope.GLOBAL:
+        admin_only(user, "make global rules")
+        if space is not None:
+            raise ValidationError("space_id: a global rule belongs to no space")
+        return None
+    if space is None:
+        return (await uow.spaces.get_personal(user.id)).id
+    await _edited_space(uow, user, space)
+    return space
+
+
+async def _edits(uow: UnitOfWork, user: User, space: SpaceId) -> bool:
+    found = await uow.spaces.find(space)
+    role = None if found is None else space_role(user, found)
+    return role is not None and role.can_edit
+
+
+async def _edited_space(uow: UnitOfWork, user: User, id: SpaceId) -> None:
+    """NotFoundError unless the user is a member of the space (or an admin),
+    PermissionDeniedError unless they edit it."""
+    space = await uow.spaces.find(id)
+    role = None if space is None else space_role(user, space)
+    if space is None or role is None:
+        raise NotFoundError("space", id)
+    if not role.can_edit:
+        raise PermissionDeniedError(f"only editors and admins make the rules of space {id}")
+
+
+async def _edited_spaces(uow: UnitOfWork, user: User) -> list[SpaceId]:
+    """The spaces the user edits (without the rights of an admin)."""
+    return [
+        space.id
+        for space in await uow.spaces.list_accessible(user.id)
+        if space.role_of(user.id) is SpaceRole.EDIT
+    ]
 
 
 async def document_values(
@@ -392,15 +480,16 @@ async def document_values(
     contact = None if document.contact_id is None else await uow.contacts.find(document.contact_id)
     kind = None if document_type is None else await uow.document_types.find(document_type)
     space = await uow.spaces.find(document.space_id)
-    owner = await uow.users.find(document.owner_id)
+    users = {user.id: user for user in await uow.users.list_all()}
+    uploader = None if document.uploaded_by is None else users.get(document.uploaded_by)
     names = {tag.id: tag.name for tag in await uow.tags.list_all()}
     tags = [names[id] for id in document.tag_ids if id in names]
     return template_values(
         document,
         contact=None if contact is None else contact.name,
         document_type=None if kind is None else kind.name,
-        space=None if space is None else space.name,
-        owner=None if owner is None else owner.username,
+        space=None if space is None else space_label(space, users),
+        uploaded_by=None if uploader is None else uploader.username,
         tags=tags,
         document_date=document.document_date,
         fields=[(item, document.fields.get(item.id)) for item in fields],

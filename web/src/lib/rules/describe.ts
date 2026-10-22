@@ -1,6 +1,6 @@
 /** Texts of the rule builder: fields, operators, actions, problems; a rule as sentences. */
 import { describeValue } from '#lib/describe.ts';
-import type { Lookup } from '#lib/masterdata.svelte.ts';
+import { spaceLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import type {
 	ActionNode,
@@ -15,6 +15,7 @@ import type {
 	Trigger
 } from '#lib/rules/model.ts';
 import { isTagField } from '#lib/rules/model.ts';
+import { session } from '#lib/session.svelte.ts';
 import { pathLabel } from '#lib/tags.ts';
 
 const CONDITION_FIELDS: Record<Exclude<ConditionField, 'field'>, () => string> = {
@@ -121,8 +122,7 @@ const PROBLEMS: Record<Problem['code'], (params: Record<string, string | number>
 	depth: (params) => m.rule_error_depth({ max: params.max }),
 	actions_none: () => m.rule_error_actions_none(),
 	actions_many: (params) => m.rule_error_actions_many({ max: params.max }),
-	twice: () => m.rule_error_twice(),
-	scope: () => m.rule_error_scope()
+	twice: () => m.rule_error_twice()
 };
 
 export function problemText(problem: Problem): string {
@@ -191,6 +191,15 @@ export function actionTemplate(
 	return null;
 }
 
+/** Where a rule files: a space the caller knows by its label; another user's personal space,
+ * which the caller need not be a member of, as a hand-over ("Hand over to Anna"). */
+function targetName(id: string, lookup: Lookup | null): string {
+	const space = lookup?.spaces.find((entry) => entry.id === id);
+	if (space) return spaceLabel(space, lookup?.users ?? [], session.user?.id);
+	const user = lookup?.users.find((entry) => entry.personal_space_id === id);
+	return user ? m.move_hand_over({ name: user.username }) : m.rule_unknown();
+}
+
 /** A tag by its path ("Insurance › Health"); unknown ones as such. */
 function tagName(id: string, lookup: Lookup | null): string {
 	const tag = lookup?.tags.find((entry) => entry.id === id);
@@ -202,7 +211,7 @@ export function describeAction(action: ActionNode | ApiAction, lookup: Lookup | 
 	const label = ACTION_LABELS[action.type]();
 	switch (action.type) {
 		case 'set_space':
-			return `${label}: ${nameOf(action.space_id, lookup?.spaces ?? [])}`;
+			return `${label}: ${targetName(action.space_id, lookup)}`;
 		case 'set_contact':
 			return `${label}: ${nameOf(action.contact_id, lookup?.contacts ?? [])}`;
 		case 'set_document_type':

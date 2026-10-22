@@ -1,14 +1,44 @@
-"""Spaces and their shares."""
+"""Spaces and their members."""
 
+from collections.abc import Mapping
 from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from lekto.adapters.inbound.rest.schemas.common import NameIn
-from lekto.core.domain.permissions import can_manage_space, space_access
-from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.ids import UserId
+from lekto.core.domain.permissions import space_role
+from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
+
+
+class MemberIn(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"examples": [{"role": "read"}]},
+    )
+
+    role: SpaceRole = Field(
+        description="`read`: the space's green documents; `edit`: every document in it in every "
+        "lane, changing, confirming, moving and deleting them, the space's rules, members and name."
+    )
+
+
+class MemberOut(BaseModel):
+    user_id: UUID
+    role: SpaceRole
+
+
+class SpaceMember(MemberOut):
+    model_config = ConfigDict(extra="forbid")
+
+
+class MemberDetails(MemberOut):
+    username: str
+    active: bool = Field(
+        description="A deactivated member keeps their place until an editor removes them."
+    )
 
 
 class SpaceCreate(NameIn):
@@ -17,55 +47,48 @@ class SpaceCreate(NameIn):
         json_schema_extra={"examples": [{"name": "Household"}]},
     )
 
-    owner_id: UUID | None = Field(
+    members: list[SpaceMember] | None = Field(
         default=None,
-        description="Admins only: the user who will own the space. Default: the caller.",
+        description=(
+            "Who else is a member, with their role. The caller always edits a space they "
+            "create; an admin may give the members alone (one of them must edit)."
+        ),
     )
-
-
-class ShareOut(BaseModel):
-    user_id: UUID
-    level: ShareLevel
-
-    @classmethod
-    def of_space(cls, space: Space, viewer: User) -> "list[ShareOut] | None":
-        """The space's shares, by user, if `viewer` owns the space or is an admin."""
-        if not can_manage_space(viewer, space):
-            return None
-        return [cls(user_id=user, level=level) for user, level in sorted(space.shares.items())]
 
 
 class SpaceOut(BaseModel):
     id: UUID
-    name: str = Field(examples=["Household"])
-    owner_id: UUID
-    is_default: bool
-    access: ShareLevel = Field(
-        description="The caller's access: owner and admins (read_write), or the share."
+    name: str = Field(
+        examples=["Household"],
+        description="A personal space has a fixed name; it is shown by its user's name.",
     )
-    shares: list[ShareOut] | None = Field(description="Only for the owner and admins.")
+    personal_of: UUID | None = Field(
+        description="The user whose personal space it is: what they upload lands there."
+    )
+    role: SpaceRole = Field(description="The caller's role; admins edit every space.")
+    members: list[MemberDetails]
     created_at: datetime
+    version: int
 
     @classmethod
-    def of(cls, space: Space, viewer: User) -> "SpaceOut":
-        """As `viewer` sees it, who owns it, has a share or is an admin."""
-        access = space_access(viewer, space)
-        assert access is not None  # the service returns visible spaces only
+    def of(cls, space: Space, viewer: User, people: Mapping[UserId, User]) -> "SpaceOut":
+        """As `viewer` sees it, who is a member or an admin; `people`: its members."""
+        role = space_role(viewer, space)
+        assert role is not None  # the service returns visible spaces only
         return cls(
             id=space.id,
             name=space.name,
-            owner_id=space.owner_id,
-            is_default=space.is_default,
-            access=access,
-            shares=ShareOut.of_space(space, viewer),
+            personal_of=space.personal_of,
+            role=role,
+            members=[
+                MemberDetails(
+                    user_id=user,
+                    role=member,
+                    username=people[user].username,
+                    active=people[user].active,
+                )
+                for user, member in sorted(space.members.items())
+            ],
             created_at=space.created_at,
+            version=space.version,
         )
-
-
-class ShareIn(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        json_schema_extra={"examples": [{"level": "read"}]},
-    )
-
-    level: ShareLevel

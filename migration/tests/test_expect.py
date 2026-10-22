@@ -1,5 +1,5 @@
 """What a Paperless document becomes by the plan: the defaults, reinterpretations and their
-conflicts, values, reviews, owners and spaces."""
+conflicts, values, reviews, uploaders, members and spaces."""
 
 from typing import Any
 
@@ -17,11 +17,11 @@ def world() -> World:
 
 def test_the_first_plan_takes_a_document_over_as_it_is(world: World) -> None:
     ten = world.expect(10)
-    assert (ten.owner, ten.owner_source, ten.skip) == ("tobias", "tobias", None)
+    assert (ten.uploader, ten.owner_source, ten.skip) == ("tobias", "tobias", None)
     assert (ten.contact, ten.document_type, ten.topic) == ("ACME Energy", "Invoice", None)
     assert ten.tags == {"tax", "tax/2024"}
     assert (ten.document_date, ten.created_at) == ("2024-05-01", "2024-04-02T09:30:00+02:00")
-    assert ten.space is None and ten.shares == ()
+    assert ten.space is None and ten.members == ()  # the uploader's personal space
     assert ten.fields == {
         "Text": "Hello",
         "Long": "Some long text",
@@ -46,28 +46,29 @@ def test_skipped_files_and_shared_documents(world: World) -> None:
     assert "message/rfc822" in (world.expect(17).skip or "")
     assert "trash" in (world.expect(18).skip or "")
     shared = world.expect(13)
-    assert shared.owner == "anna"
-    assert shared.shares == (("bob", "read"), ("tobias", "read_write"))
-    assert shared.space == "Geteilt: bob (lesen), tobias (schreiben)"
+    assert shared.uploader == "anna"
+    # One shared space for all of them: the uploader and the writers edit, the readers read.
+    assert shared.members == (("anna", "edit"), ("bob", "read"), ("tobias", "edit"))
+    assert shared.space == "Geteilt: anna (bearbeiten), bob (lesen), tobias (bearbeiten)"
     assert shared.sources["space"] == "the permissions in Paperless"
     # No owner, or one who is gone: the executing admin (None), or the fallback.
-    assert world.expect(14).owner is None
+    assert world.expect(14).uploader is None
     world.settings["fallback_owner"] = "tobi"
-    assert world.expect(15).owner == "tobi"
+    assert world.expect(15).uploader == "tobi"
 
 
 def test_users_are_mapped_and_dropped(world: World) -> None:
     world.set("users", "tobias", "{to: user, name: tobi}")
     world.set("users", "bob", "drop")
-    assert world.expect(10).owner == "tobi"
+    assert world.expect(10).uploader == "tobi"
     shared = world.expect(13)
-    assert shared.shares == (("tobi", "read_write"),)
-    assert shared.space == "Geteilt: tobi (schreiben)"
-    assert "shared with bob, who is not taken over: not shared" in shared.notes
+    assert shared.members == (("anna", "edit"), ("tobi", "edit"))
+    assert shared.space == "Geteilt: anna (bearbeiten), tobi (bearbeiten)"
+    assert "shared with bob, who is not taken over: not a member" in shared.notes
     world.set("users", "anna", "drop")
-    assert world.expect(12).owner is None
+    assert world.expect(12).uploader is None
     world.inactive = frozenset({"tobi"})
-    assert world.expect(10).owner is None
+    assert world.expect(10).uploader is None
     assert any("not an active user in Lekto" in note for note in world.expect(10).notes)
 
 
@@ -134,10 +135,10 @@ def test_permissions_win_over_a_space_of_the_plan_unless_it_overrides(world: Wor
     world.document(13)["tags"] = [1]
     world.set("tags", "tax", "{to: space, name: Taxes}")
     shared = world.expect(13)
-    assert shared.space.startswith("Geteilt") and shared.shares  # type: ignore[union-attr]
+    assert shared.space.startswith("Geteilt") and shared.members  # type: ignore[union-attr]
     world.set("tags", "tax", "{to: space, name: Taxes, override: true}")
     shared = world.expect(13)
-    assert (shared.space, shared.shares) == ("Taxes", ())
+    assert (shared.space, shared.members) == ("Taxes", ())
     assert any("the permissions are not taken over" in note for note in shared.notes)
 
 
@@ -265,4 +266,4 @@ def test_a_long_space_name_stays_in_bounds_and_apart(world: World) -> None:
     shorter = world.expect(13).space
     assert long is not None and shorter is not None
     assert len(long) <= 200 and len(shorter) <= 200 and long != shorter
-    assert long.startswith("Geteilt: user-000-")
+    assert long.startswith("Geteilt: anna (bearbeiten), user-000-")

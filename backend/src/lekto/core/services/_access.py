@@ -1,27 +1,29 @@
 """Loading entities, together with the caller's rights where they matter."""
 
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import replace
+from uuid import UUID
 
-from lekto.core.domain.documents import Document, DocumentChanges, Unset
+from lekto.core.domain.documents import Document, DocumentChanges, Sha256, Unset
 from lekto.core.domain.errors import (
     AuthenticationError,
+    DuplicateDocumentError,
     NotFoundError,
     PermissionDeniedError,
     ValidationError,
 )
 from lekto.core.domain.fields import FieldDefinition
 from lekto.core.domain.ids import ContactId, DocumentId, FieldId, SpaceId, UserId
+from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.master_data import TagScope
 from lekto.core.domain.permissions import (
-    can_control_document,
-    can_file_into,
+    can_edit_document,
     can_read_document,
-    can_write_document,
     document_access,
-    space_access,
+    space_role,
 )
-from lekto.core.domain.pipeline import ProcessingHistory
-from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.pipeline import Node, NodeRun
+from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
 from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services._tags import tag_tree
@@ -74,50 +76,59 @@ async def readable_document(uow: UnitOfWork, user: User, id: DocumentId) -> tupl
 
 
 async def writable_document(uow: UnitOfWork, user: User, id: DocumentId) -> tuple[Document, Space]:
+    """The document and its space, if `user` edits it (`can_edit_document`); NotFoundError if
+    they cannot read it, PermissionDeniedError if they only read it."""
     document, space = await readable_document(uow, user, id)
-    if not can_write_document(user, document, space):
+    if not can_edit_document(user, document, space):
         raise PermissionDeniedError(f"no write access to document {id}")
     return document, space
 
 
 async def controllable_document(
     uow: UnitOfWork, user: User, id: DocumentId, action: str
-) -> Document:
-    """The document, if `user` controls it (`can_control_document`: its owner or an admin);
-    NotFoundError if they cannot read it, PermissionDeniedError ("only the owner and admins
-    <action>") if they only read it."""
-    document, _ = await readable_document(uow, user, id)
-    if not can_control_document(user, document):
-        raise PermissionDeniedError(f"only the owner and admins {action}")
-    return document
+) -> tuple[Document, Space]:
+    """The document and its space, if `user` edits it (`can_edit_document`: an editor of its
+    space or an admin); NotFoundError if they cannot read it, PermissionDeniedError ("only
+    editors and admins <action>") if they only read it."""
+    document, space = await readable_document(uow, user, id)
+    if not can_edit_document(user, document, space):
+        raise PermissionDeniedError(f"only editors and admins {action}")
+    return document, space
 
 
-async def access_to(uow: UnitOfWork, user: User, document: Document) -> ShareLevel:
+async def access_to(uow: UnitOfWork, user: User, document: Document) -> SpaceRole:
     """The access of `user`, who may read `document`, to it in the space it lies in now."""
     access = document_access(user, document, await uow.spaces.get(document.space_id))
     assert access is not None  # readable
     return access
 
 
+def space_label(space: Space, users: Mapping[UserId, User]) -> str:
+    """How a person reads a space's name: a personal space by its user's name."""
+    if space.personal_of is not None and (user := users.get(space.personal_of)) is not None:
+        return user.username
+    return space.name
+
+
 async def visible_space(uow: UnitOfWork, user: User, id: SpaceId) -> Space:
+    """The space, if `user` is a member or an admin; NotFoundError otherwise."""
     space = await uow.spaces.find(id)
-    if space is None or space_access(user, space) is None:
+    if space is None or space_role(user, space) is None:
         raise NotFoundError("space", id)
     return space
 
 
-async def may_file(uow: UnitOfWork, document: Document, space: Space) -> bool:
-    """Whether filing may put the document into `space`: its owner may write to the space, or
-    an active admin put the document there by hand (admins file into any space)."""
-    owner = await uow.users.get(document.owner_id)
-    if can_file_into(owner, space):
-        return True
-    log = await uow.processing_log.list_for(document.id)
-    chooser = ProcessingHistory(log).space_chooser(space.id)
-    if chooser is None:
-        return False
-    user = await uow.users.find(UserId(chooser))
-    return user is not None and user.is_active_admin
+async def duplicate_of(
+    uow: UnitOfWork, user: User, sha256: Sha256
+) -> DuplicateDocumentError | None:
+    """The error for a file that lies in Lekto already (every file exists once per
+    installation): it names the document if `user` may read it; one in a space they cannot
+    see stays unnamed. None for a new file."""
+    existing = await uow.documents.find_by_sha256(sha256)
+    if existing is None:
+        return None
+    space = await uow.spaces.get(existing.space_id)
+    return DuplicateDocumentError(existing.id if can_read_document(user, existing, space) else None)
 
 
 def contact_topics_lock(contact: ContactId) -> str:
@@ -197,3 +208,59 @@ async def _fitted_topic(
         f"'{contact.name}' does not enable the topic '{topic.name}' (an admin enables it at "
         "the contact, or by choosing it)"
     )
+
+
+async def readable_log(uow: UnitOfWork, user: User, log: Sequence[NodeRun]) -> list[NodeRun]:
+    """`log` as `user` may see it. The similar documents a signal found are searched from the
+    uploader's reach, which an editor of the document's space need not share: they see a
+    similar document (with what it carries, and as the source of a candidate) only if they may
+    read it, and what the uploader's confirmed documents carry (`known`) not at all. Admins
+    see everything; the stored log keeps everything for reprocessing."""
+    if user.is_active_admin:
+        return list(log)
+    readable: dict[str, bool] = {}
+
+    async def may_read(id: JsonValue) -> bool:
+        if not isinstance(id, str):
+            return False
+        if id not in readable:
+            try:
+                document = await uow.documents.find(DocumentId(UUID(id)))
+            except ValueError:
+                document = None
+            readable[id] = document is not None and can_read_document(
+                user, document, await uow.spaces.get(document.space_id)
+            )
+        return readable[id]
+
+    result = []
+    for run in log:
+        neighbours = run.node is Node.SIGNAL_NEIGHBOURS
+        output = await _readable(run.result.output, may_read, neighbours=neighbours)
+        assert isinstance(output, dict)
+        result.append(replace(run, result=replace(run.result, output=output)))
+    return result
+
+
+async def _readable(
+    value: JsonValue, may_read: Callable[[JsonValue], Awaitable[bool]], *, neighbours: bool
+) -> JsonValue:
+    if isinstance(value, list):
+        return [await _readable(item, may_read, neighbours=False) for item in value]
+    if not isinstance(value, dict):
+        return value
+    result: dict[str, JsonValue] = {}
+    for key, item in value.items():
+        if neighbours and key == "known":
+            continue
+        if neighbours and key == "neighbours" and isinstance(item, list):
+            result[key] = [
+                found
+                for found in item
+                if isinstance(found, dict) and await may_read(found.get("document_id"))
+            ]
+        elif key == "documents" and "signal" in value and isinstance(item, list):
+            result[key] = [document for document in item if await may_read(document)]
+        else:
+            result[key] = await _readable(item, may_read, neighbours=False)
+    return result

@@ -1,6 +1,7 @@
 """Lekto's master data by kind and name, as the plan names it: users by user name, contacts,
-document types and fields by name, tags by scope and name (names are unique per scope), and
-the spaces by owner. Names are compared without case, as Lekto does."""
+document types and fields by name, tags by scope and name (names are unique per scope), shared
+spaces by name (unique among them) and personal spaces by their user. Names are compared
+without case, as Lekto does."""
 
 from dataclasses import dataclass, field
 from typing import Any
@@ -40,7 +41,8 @@ class Directory:
             directory.tags.setdefault(scope, {})[norm(tag["name"])] = tag
         for item in await lekto.items("/fields"):
             directory.fields[norm(item["name"])] = item
-        directory.spaces = await lekto.items("/spaces")
+        # Every space: the list follows the reach an admin asks for (`all_users`).
+        directory.spaces = await lekto.items("/spaces", params={"all_users": "true"})
         directory.users.setdefault(norm(directory.admin["username"]), directory.admin)
         return directory
 
@@ -69,13 +71,16 @@ class Directory:
         store = self._store(to)
         return None if store is None else next((i for i in store.values() if i["id"] == id), None)
 
-    def space(self, owner_id: str, name: str) -> dict[str, Any] | None:
+    def space(self, name: str) -> dict[str, Any] | None:
+        """The shared space of this name."""
         return next(
-            (s for s in self.spaces if s["owner_id"] == owner_id and norm(s["name"]) == norm(name)),
+            (
+                s
+                for s in self.spaces
+                if s.get("personal_of") is None and norm(s["name"]) == norm(name)
+            ),
             None,
         )
 
-    def default_space(self, owner_id: str) -> dict[str, Any] | None:
-        return next(
-            (s for s in self.spaces if s["owner_id"] == owner_id and s.get("is_default")), None
-        )
+    def personal_space(self, user_id: str) -> dict[str, Any] | None:
+        return next((s for s in self.spaces if s.get("personal_of") == user_id), None)

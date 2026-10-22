@@ -7,6 +7,7 @@ from uuid import UUID
 
 from lekto.adapters.inbound.rest import PREFIX
 from lekto.core.domain.ids import DocumentId, new_id
+from lekto.core.domain.users import Role
 from lekto.core.services.objects import archive_key
 from tests.api import auth
 from tests.builders import PASSWORD, SAMPLES
@@ -52,7 +53,7 @@ async def test_metadata_with_master_data_and_fields(api: Api) -> None:
     )
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["title"] == "Electricity" and body["access"] == "read_write"
+    assert body["title"] == "Electricity" and body["access"] == "edit"
     assert body["contact_id"] == contact["id"] and body["tag_ids"] == [tag["id"]]
     assert body["document_date"] == "2026-09-30"
     assert body["fields"] == {
@@ -387,8 +388,8 @@ async def test_moving_into_a_space_one_only_reads_names_it(api: Api) -> None:
     document = await upload(api, auth(friend))
     space = await post(api, "/spaces", {"name": "Household"}, auth(owner))
     await api.client.put(
-        f"{PREFIX}/spaces/{space['id']}/shares/{friend.id}",
-        json={"level": "read"},
+        f"{PREFIX}/spaces/{space['id']}/members/{friend.id}",
+        json={"role": "read"},
         headers=auth(owner),
     )
     refused = await api.client.post(
@@ -398,32 +399,96 @@ async def test_moving_into_a_space_one_only_reads_names_it(api: Api) -> None:
     assert refused.json()["space_id"] == space["id"]
 
 
-async def test_spaces_and_shares(api: Api) -> None:
+async def test_spaces_and_members(api: Api) -> None:
     owner, friend = await api.user(), await api.user("friend")
     space = await post(api, "/spaces", {"name": "Household"}, auth(owner))
-    assert space["access"] == "read_write" and space["shares"] == []
+    mine = [{"user_id": str(owner.id), "role": "edit", "username": owner.username, "active": True}]
+    assert (space["role"], space["members"], space["personal_of"]) == ("edit", mine, None)
     url = f"{PREFIX}/spaces/{space['id']}"
     shared = await api.client.put(
-        f"{url}/shares/{friend.id}", json={"level": "read"}, headers=auth(owner)
+        f"{url}/members/{friend.id}", json={"role": "read"}, headers=auth(owner)
     )
-    assert shared.json()["shares"] == [{"user_id": str(friend.id), "level": "read"}]
+    assert {(m["user_id"], m["role"]) for m in shared.json()["members"]} == {
+        (str(owner.id), "edit"),
+        (str(friend.id), "read"),
+    }
     seen = (await api.client.get(f"{PREFIX}/spaces", headers=auth(friend))).json()
-    assert {d["name"] for d in seen} == {"Default", "Household"}
+    assert {(d["name"], d["personal_of"]) for d in seen} == {
+        ("Personal", str(friend.id)),
+        ("Household", None),
+    }
+    # An admin lists their own spaces like everyone, every space only with `all_users`.
+    admin = await api.user("admin", role=Role.ADMIN)
+    own = (await api.client.get(f"{PREFIX}/spaces", headers=auth(admin))).json()
+    assert [d["personal_of"] for d in own] == [str(admin.id)]
+    every = await api.client.get(
+        f"{PREFIX}/spaces", params={"all_users": True}, headers=auth(admin)
+    )
+    assert "Household" in {d["name"] for d in every.json()}
+    refused = await api.client.get(
+        f"{PREFIX}/spaces", params={"all_users": True}, headers=auth(friend)
+    )
+    assert refused.status_code == 403
     duplicate = await api.client.post(
-        f"{PREFIX}/spaces", json={"name": "household"}, headers=auth(owner)
+        f"{PREFIX}/spaces", json={"name": "household"}, headers=auth(friend)
     )
     assert duplicate.status_code == 409
-    default = next(d for d in seen if d["is_default"])
-    cannot = await api.client.put(
-        f"{PREFIX}/spaces/{default['id']}/shares/{owner.id}",
-        json={"level": "read"},
+    personal = next(d for d in seen if d["personal_of"])
+    keeps = await api.client.put(
+        f"{PREFIX}/spaces/{personal['id']}/members/{friend.id}",
+        json={"role": "read"},
         headers=auth(friend),
     )
-    assert cannot.status_code == 422
-    unshared = await api.client.delete(f"{url}/shares/{friend.id}", headers=auth(owner))
-    assert unshared.json()["shares"] == []
+    assert keeps.status_code == 422  # its user always edits it
+    lent = await api.client.put(
+        f"{PREFIX}/spaces/{personal['id']}/members/{owner.id}",
+        json={"role": "read"},
+        headers=auth(friend),
+    )
+    assert lent.status_code == 200  # a personal space may be shared
+    unshared = await api.client.delete(f"{url}/members/{friend.id}", headers=auth(owner))
+    assert unshared.json()["members"] == mine
+    assert (await api.client.get(url, headers=auth(friend))).status_code == 404
+    # A deactivated member keeps their place, with their name for the others.
+    await api.client.put(f"{url}/members/{friend.id}", json={"role": "read"}, headers=auth(owner))
+    admin = await api.admin()
+    await api.services.users.update(admin.id, friend.id, active=False)
+    listed = (await api.client.get(url, headers=auth(owner))).json()["members"]
+    assert {(m["username"], m["active"]) for m in listed} == {
+        (owner.username, True),
+        ("friend", False),
+    }
+    await api.services.users.update(admin.id, friend.id, active=True)
+    # A reader leaves a space themselves.
+    await api.client.put(f"{url}/members/{friend.id}", json={"role": "read"}, headers=auth(owner))
+    left = await api.client.delete(f"{url}/members/{friend.id}", headers=auth(friend))
+    assert left.status_code == 204, left.text
     assert (await api.client.get(url, headers=auth(friend))).status_code == 404
     assert (await api.client.delete(url, headers=auth(owner))).status_code == 204
+
+
+async def test_everyone_finds_where_to_hand_a_document_over(api: Api) -> None:
+    """`GET /users` names every user's personal space, so a user can hand a document over to
+    someone whose space they are no member of."""
+    owner, friend = await api.user("owner"), await api.user("friend")
+    listed = await api.client.get(f"{PREFIX}/users", headers=auth(owner))
+    assert listed.status_code == 200
+    entry = next(item for item in listed.json() if item["username"] == "friend")
+    assert set(entry) == {"id", "username", "personal_space_id"}
+    single = await api.client.get(f"{PREFIX}/users/{friend.id}", headers=auth(owner))
+    assert single.json()["personal_space_id"] == entry["personal_space_id"]
+    document = await upload(api, auth(owner), content=unique_pdf("handed"), drain=False)
+    moved = await api.client.post(
+        f"{PREFIX}/documents/{document}/move",
+        json={"space_id": entry["personal_space_id"]},
+        headers=auth(owner),
+    )
+    assert moved.status_code == 204, moved.text
+    theirs = await api.client.get(f"{PREFIX}/documents/{document}", headers=auth(friend))
+    assert theirs.json()["space_id"] == entry["personal_space_id"]
+    assert (
+        await api.client.get(f"{PREFIX}/documents/{document}", headers=auth(owner))
+    ).status_code == 404
 
 
 async def test_user_management(api: Api) -> None:
@@ -475,6 +540,38 @@ async def test_the_last_admin_stays(api: Api) -> None:
             assert response.status_code == 409, response.text
     response = await api.client.delete(f"{PREFIX}/users/{admin.id}", headers=auth(admin))
     assert response.status_code == 409
+
+
+async def test_deleting_a_user_settles_the_spaces_that_stop_it(api: Api) -> None:
+    """Tobi, 22.10.2026: the API names the spaces, the admin decides in one request."""
+    admin, anna = await api.admin("root"), await api.user("anna")
+    document = await upload(api, auth(anna), content=unique_pdf("anna"))
+    url = f"{PREFIX}/users/{anna.id}"
+    removal = await api.client.get(f"{url}/removal", headers=auth(admin))
+    assert removal.status_code == 200, removal.text
+    (blocking,) = removal.json()["blocking_spaces"]
+    assert (blocking["personal"], blocking["documents"], blocking["choices"]) == (
+        True,
+        1,
+        ["move_to"],
+    )
+    assert (await api.client.get(f"{url}/removal", headers=auth(anna))).status_code == 403
+    refused = await api.client.delete(url, headers=auth(admin))
+    assert refused.status_code == 409
+    assert [item["space_id"] for item in refused.json()["blocking_spaces"]] == [
+        blocking["space_id"]
+    ]
+    target = (await api.client.get(f"{PREFIX}/users/{admin.id}", headers=auth(admin))).json()[
+        "personal_space_id"
+    ]
+    both = {"space_id": blocking["space_id"], "move_to": target, "remove": True}
+    unclear = await api.client.request("DELETE", url, json={"spaces": [both]}, headers=auth(admin))
+    assert unclear.status_code == 422
+    settle = {"spaces": [{"space_id": blocking["space_id"], "move_to": target}]}
+    deleted = await api.client.request("DELETE", url, json=settle, headers=auth(admin))
+    assert deleted.status_code == 204, deleted.text
+    moved = await api.client.get(f"{PREFIX}/documents/{document}", headers=auth(admin))
+    assert (moved.json()["space_id"], moved.json()["uploaded_by"]) == (target, None)
 
 
 async def test_secrets_do_not_come_back(api: Api) -> None:

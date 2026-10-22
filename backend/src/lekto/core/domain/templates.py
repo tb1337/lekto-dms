@@ -46,7 +46,7 @@ class _Given:
     contact_groups: TemplateValue | None
     document_type_groups: TemplateValue | None
     space: TemplateValue | None
-    owner: TemplateValue | None
+    uploaded_by: TemplateValue | None
     channel: TemplateValue | None
     pages: TemplateValue | None
     field: TemplateValue | None
@@ -62,7 +62,7 @@ def template_values(
     contact: str | None,
     document_type: str | None,
     space: str | None,
-    owner: str | None,
+    uploaded_by: str | None,
     tags: Iterable[str],
     document_date: date | None,
     fields: Iterable[tuple[FieldDefinition, FieldValue | None]],
@@ -91,7 +91,7 @@ def template_values(
         contact_groups=ordered(contact_groups),
         document_type_groups=ordered(document_type_groups),
         space=space,
-        owner=owner,
+        uploaded_by=uploaded_by,
         channel=document.channel.value,
         pages=document.page_count,
         field={definition.key: _field(value) for definition, value in fields if value is not None},

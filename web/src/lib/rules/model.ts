@@ -155,13 +155,6 @@ export const ACTION_TYPES: readonly ActionType[] = [
 	'set_field',
 	'force_review'
 ];
-/** What a global rule may do: nothing that changes who sees a document. */
-export const GLOBAL_ACTIONS: readonly ActionType[] = [
-	'add_tags',
-	'remove_tags',
-	'set_field',
-	'force_review'
-];
 
 let counter = 0;
 const nextKey = (): string => `n${++counter}`;
@@ -439,10 +432,6 @@ export function singleKey(action: ApiAction): string | null {
 	return action.type;
 }
 
-export function actionTypesFor(scope: Scope): readonly ActionType[] {
-	return scope === 'global' ? GLOBAL_ACTIONS : ACTION_TYPES;
-}
-
 /** The ids a condition or action refers to. */
 export function referencedIds(node: ConditionNode | ActionNode): string[] {
 	if ('kind' in node && node.kind === 'condition') {
@@ -501,8 +490,7 @@ export type ProblemCode =
 	| 'depth'
 	| 'actions_none'
 	| 'actions_many'
-	| 'twice'
-	| 'scope';
+	| 'twice';
 
 export interface Problem {
 	code: ProblemCode;
@@ -511,11 +499,7 @@ export interface Problem {
 
 /** Problems by key: `name`, `priority`, `triggers`, `actions`, or a group's, condition's or
  * action's key. Empty if the rule may be saved. */
-export function validate(
-	model: RuleModel,
-	scope: Scope,
-	fields: readonly FieldInfo[]
-): Record<string, Problem> {
+export function validate(model: RuleModel, fields: readonly FieldInfo[]): Record<string, Problem> {
 	const problems: Record<string, Problem> = {};
 	const name = model.name.trim();
 	if (name === '') problems.name = { code: 'name' };
@@ -545,7 +529,7 @@ export function validate(
 	}
 	const seen = new Set<string>();
 	for (const action of model.actions) {
-		const problem = checkAction(action, scope, fields);
+		const problem = checkAction(action, fields);
 		if (problem) problems[action.key] = problem;
 		const single = singleKey(action);
 		if (single !== null && seen.has(single)) problems[action.key] ??= { code: 'twice' };
@@ -661,12 +645,7 @@ function isDate(value: Value): boolean {
 	return typeof value === 'string' && /^\d{4}-?(\d{2}-?\d{2}|W\d{2}(-?\d)?)$/.test(value);
 }
 
-function checkAction(
-	action: ActionNode,
-	scope: Scope,
-	fields: readonly FieldInfo[]
-): Problem | null {
-	if (!actionTypesFor(scope).includes(action.type)) return { code: 'scope' };
+function checkAction(action: ActionNode, fields: readonly FieldInfo[]): Problem | null {
 	switch (action.type) {
 		case 'set_space':
 			return action.space_id ? null : { code: 'choose' };

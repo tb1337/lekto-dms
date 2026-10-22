@@ -15,8 +15,9 @@ from lekto.core.domain.events import DocumentDeleted, DocumentFiled, DocumentUpd
 from lekto.core.domain.exchanges import ModelCall, RunExchange, exchanges_to_json
 from lekto.core.domain.fields import FieldType
 from lekto.core.domain.ids import ContactId, DocumentId, SpaceId, TagId, UserId, new_id
+from lekto.core.domain.inbox import InboxTab
 from lekto.core.domain.pipeline import PERSON_SPACE, Lane, Node
-from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.ports.repository import DocumentFilter
 from lekto.core.services.documents import DocumentFile, FileInfo
@@ -32,7 +33,8 @@ from tests.unit.services.support import World
 
 
 class Scene:
-    """Owner with a shared space (reader: read, writer: read_write) and a green document."""
+    """A shared space (owner created it and edits it, writer edits it too, reader reads it)
+    with a green document the owner uploaded."""
 
     owner: User
     reader: User
@@ -48,10 +50,8 @@ async def scene(world: World) -> Scene:
     scene.owner, scene.reader = await world.user("owner"), await world.user("reader")
     scene.writer, scene.stranger = await world.user("writer"), await world.user("stranger")
     scene.shared = await world.spaces.create(scene.owner.id, "Household")
-    await world.spaces.share(scene.owner.id, scene.shared.id, scene.reader.id, ShareLevel.READ)
-    await world.spaces.share(
-        scene.owner.id, scene.shared.id, scene.writer.id, ShareLevel.READ_WRITE
-    )
+    await world.spaces.set_member(scene.owner.id, scene.shared.id, scene.reader.id, SpaceRole.READ)
+    await world.spaces.set_member(scene.owner.id, scene.shared.id, scene.writer.id, SpaceRole.EDIT)
     received = await world.pipeline().receive(
         scene.owner.id,
         incoming(b"%PDF-1.7 electricity"),
@@ -76,16 +76,16 @@ async def test_visibility(world: World, scene: Scene) -> None:
         await world.documents.get(scene.owner.id, DocumentId(new_id()))
 
 
-async def test_yellow_document_is_hidden_from_shares(world: World, scene: Scene) -> None:
+async def test_a_yellow_document_is_hidden_from_readers(world: World, scene: Scene) -> None:
     await world.pipeline().reprocess_from(scene.owner.id, scene.document.id, Node.JUDGE)
     with pytest.raises(NotFoundError):
         await world.documents.get(scene.reader.id, scene.document.id)  # in processing
     await world.drain(world.pipeline({Node.JUDGE: Returns(UNCERTAIN)}))
-    assert (await world.documents.get(scene.owner.id, scene.document.id)).lane is Lane.YELLOW
-    for user in (scene.reader, scene.writer):
-        with pytest.raises(NotFoundError):
-            await world.documents.get(user.id, scene.document.id)
-        assert await world.documents.list_visible(user.id) == []
+    for user in (scene.owner, scene.writer):  # editors see every lane
+        assert (await world.documents.get(user.id, scene.document.id)).lane is Lane.YELLOW
+    with pytest.raises(NotFoundError):
+        await world.documents.get(scene.reader.id, scene.document.id)
+    assert await world.documents.list_visible(scene.reader.id) == []
 
 
 async def test_writer_updates_metadata(world: World, scene: Scene) -> None:
@@ -143,42 +143,69 @@ async def test_field_values_are_checked(world: World, scene: Scene) -> None:
     assert world.events() == []
 
 
-async def test_owner_moves_into_spaces_with_write_access(world: World, scene: Scene) -> None:
-    owner_default = await world.default_space(scene.owner)
+async def test_editors_move_into_spaces_they_edit(world: World, scene: Scene) -> None:
+    owner_personal = await world.personal_space(scene.owner)
     read_only = await world.spaces.create(scene.stranger.id, "Archive")
-    await world.spaces.share(scene.stranger.id, read_only.id, scene.owner.id, ShareLevel.READ)
+    await world.spaces.set_member(scene.stranger.id, read_only.id, scene.owner.id, SpaceRole.READ)
     with pytest.raises(PermissionDeniedError):
         await world.documents.move(scene.owner.id, scene.document.id, read_only.id)
     with pytest.raises(NotFoundError):
-        await world.documents.move(
-            scene.owner.id, scene.document.id, (await world.default_space(scene.writer)).id
-        )
+        await world.documents.move(scene.owner.id, scene.document.id, SpaceId(new_id()))
 
-    await world.documents.move(scene.owner.id, scene.document.id, owner_default.id)
+    await world.documents.move(scene.owner.id, scene.document.id, owner_personal.id)
     moved = await world.documents.get(scene.owner.id, scene.document.id)
-    assert moved.space_id == owner_default.id
+    assert moved.space_id == owner_personal.id
     (event,) = world.events()
-    assert isinstance(event, DocumentFiled) and event.space_id == owner_default.id
+    assert isinstance(event, DocumentFiled) and event.space_id == owner_personal.id
+    for user in (scene.reader, scene.writer):
+        with pytest.raises(NotFoundError):
+            await world.documents.get(user.id, scene.document.id)
+
+
+async def test_an_editor_hands_a_document_over(world: World, scene: Scene) -> None:
+    """Into another user's personal space, without being a member: it is new for them there,
+    and gone for those who saw it in its space."""
+    theirs = await world.personal_space(scene.stranger)
+    await world.documents.move(scene.writer.id, scene.document.id, theirs.id)
+    handed = await world.documents.get(scene.stranger.id, scene.document.id)
+    assert handed.space_id == theirs.id
+    inbox = await world.inbox.items(scene.stranger.id)
+    assert [(item.document.id, item.state.tab) for item in inbox] == [
+        (scene.document.id, InboxTab.NEW)
+    ]
+    for user in (scene.owner, scene.writer, scene.reader):
+        with pytest.raises(NotFoundError):
+            await world.documents.get(user.id, scene.document.id)
+
+
+async def test_a_deactivated_user_takes_nothing_over(world: World, scene: Scene) -> None:
+    admin = await world.user(role=Role.ADMIN)
+    await world.users.update(admin.id, scene.stranger.id, active=False)
+    async with world.uow() as uow:
+        theirs = await uow.spaces.get_personal(scene.stranger.id)
     with pytest.raises(NotFoundError):
-        await world.documents.get(scene.reader.id, scene.document.id)
+        await world.documents.move(scene.owner.id, scene.document.id, theirs.id)
 
 
-async def test_shares_never_allow_moving(world: World, scene: Scene) -> None:
-    writer_default = await world.default_space(scene.writer)
+async def test_readers_never_move(world: World, scene: Scene) -> None:
+    reader_personal = await world.personal_space(scene.reader)
     with pytest.raises(PermissionDeniedError):
-        await world.documents.move(scene.writer.id, scene.document.id, writer_default.id)
-    with pytest.raises(PermissionDeniedError):
-        await world.documents.move(scene.writer.id, scene.document.id, scene.shared.id)
+        await world.documents.move(scene.reader.id, scene.document.id, reader_personal.id)
     with pytest.raises(NotFoundError):
         await world.documents.move(scene.stranger.id, scene.document.id, scene.shared.id)
     assert world.events() == []
+    writer_personal = await world.personal_space(scene.writer)
+    await world.documents.move(scene.writer.id, scene.document.id, writer_personal.id)
+    assert (await world.documents.get(scene.writer.id, scene.document.id)).space_id == (
+        writer_personal.id
+    )
 
 
 async def test_admin_moves_any_document_into_any_space(world: World, scene: Scene) -> None:
     admin = await world.user(role=Role.ADMIN)
-    stranger_default = await world.default_space(scene.stranger)
+    stranger_default = await world.personal_space(scene.stranger)
     await world.documents.move(admin.id, scene.document.id, stranger_default.id)
-    assert (await world.documents.get(scene.owner.id, scene.document.id)).space_id == (
+    assert (await world.documents.get(scene.stranger.id, scene.document.id)).space_id == (
         stranger_default.id
     )
     # Admins read every document anyway (Tobi, 08.10.2026).
@@ -189,10 +216,10 @@ async def test_admin_moves_any_document_into_any_space(world: World, scene: Scen
         await world.documents.move(admin.id, scene.document.id, SpaceId(new_id()))
 
 
-async def test_only_the_owner_deletes(world: World, scene: Scene) -> None:
+async def test_editors_delete(world: World, scene: Scene) -> None:
     with pytest.raises(PermissionDeniedError):
-        await world.documents.delete(scene.writer.id, scene.document.id)
-    await world.documents.delete(scene.owner.id, scene.document.id)
+        await world.documents.delete(scene.reader.id, scene.document.id)
+    await world.documents.delete(scene.writer.id, scene.document.id)
     with pytest.raises(NotFoundError):
         await world.documents.get(scene.owner.id, scene.document.id)
     (event,) = world.events()
@@ -229,16 +256,15 @@ async def test_a_deactivated_user_and_a_document_in_the_inbox_have_fewer_readers
     await world.documents.delete(scene.owner.id, yellow.id)
     (event,) = world.events()
     assert isinstance(event, DocumentDeleted)
-    assert event.readers == (scene.owner.id,)  # only the owner sees yellow documents
+    assert set(event.readers) == {scene.owner.id, scene.writer.id}  # editors see yellow ones
 
 
-async def test_only_the_owner_reads_the_processing_log(world: World, scene: Scene) -> None:
-    entries = await world.documents.processing_log(scene.owner.id, scene.document.id)
+async def test_editors_read_the_processing_log(world: World, scene: Scene) -> None:
+    entries = await world.documents.processing_log(scene.writer.id, scene.document.id)
     nodes = [entry.node for entry in entries if entry.result.model_version != PERSON_SPACE]
     assert sorted(nodes, key=list(Node).index) == list(Node)  # ocr and pages in either order
-    for user in (scene.reader, scene.writer):
-        with pytest.raises(PermissionDeniedError, match="only the owner"):
-            await world.documents.processing_log(user.id, scene.document.id)
+    with pytest.raises(PermissionDeniedError, match="only editors"):
+        await world.documents.processing_log(scene.reader.id, scene.document.id)
     with pytest.raises(NotFoundError):
         await world.documents.processing_log(scene.stranger.id, scene.document.id)
 
@@ -250,16 +276,17 @@ async def test_filter_readers_follows_the_visibility(world: World, scene: Scene)
     assert readers == {scene.owner.id, scene.reader.id, scene.writer.id}
 
     await world.pipeline().reprocess_from(scene.owner.id, scene.document.id, Node.JUDGE)
-    assert await world.documents.filter_readers(scene.document.id, everyone) == {scene.owner.id}
+    editors = {scene.owner.id, scene.writer.id}
+    assert await world.documents.filter_readers(scene.document.id, everyone) == editors
     assert await world.documents.filter_readers(DocumentId(new_id()), everyone) == set()
     assert await world.documents.filter_readers(scene.document.id, set()) == set()
 
 
 async def test_views_carry_the_access(world: World, scene: Scene) -> None:
     expected = [
-        (scene.owner, ShareLevel.READ_WRITE),
-        (scene.reader, ShareLevel.READ),
-        (scene.writer, ShareLevel.READ_WRITE),
+        (scene.owner, SpaceRole.EDIT),
+        (scene.reader, SpaceRole.READ),
+        (scene.writer, SpaceRole.EDIT),
     ]
     for user, access in expected:
         assert (await world.documents.view(user.id, scene.document.id)).access is access
@@ -363,7 +390,7 @@ async def test_the_structure_is_for_readers(world: World, scene: Scene) -> None:
         await world.documents.read_structure(scene.owner.id, scene.document.id)
 
 
-async def test_only_the_owner_reads_the_model_exchanges(world: World, scene: Scene) -> None:
+async def test_editors_read_the_model_exchanges(world: World, scene: Scene) -> None:
     id = scene.document.id
     assert await world.documents.exchanges(scene.owner.id, id, Node.SIGNAL_LLM) == []
     call = ModelCall(system="s", user="u", answer="{}", model="m", usage={"prompt_tokens": 3})
@@ -375,7 +402,8 @@ async def test_only_the_owner_reads_the_model_exchanges(world: World, scene: Sce
     )
     assert await world.documents.exchanges(scene.owner.id, id, Node.SIGNAL_LLM) == runs
     assert await world.documents.exchanges(scene.owner.id, id, Node.FIELDS) == []
-    for user in (scene.reader, scene.writer):
+    assert await world.documents.exchanges(scene.writer.id, id, Node.SIGNAL_LLM) == runs
+    for user in (scene.reader,):
         with pytest.raises(PermissionDeniedError):
             await world.documents.exchanges(user.id, id, Node.SIGNAL_LLM)
     with pytest.raises(NotFoundError):

@@ -1,8 +1,9 @@
 """The inbox: what stands in whose inbox, under which tab, and how it left it (Tobi,
 17./18.10.2026; `architektur.md`, Verarbeitung, "Posteingang").
 
-A document stands in its owner's inbox, and in the inbox of every user of an admin who includes
-all users (`all_users`); someone who reaches it through a shared space only never has it there.
+A document stands in the inbox of every editor of its space, and in the inbox of every user of
+an admin who includes all users (`all_users`); someone who only reads its space never has it
+there.
 It stands open while it is processed (no lane yet), yellow (to review), red (to intervene), or
 new (`Document.new_at`) and not seen by the viewer since it became new: seen is per viewer. It
 leaves when a person confirms it out of yellow or red, for everyone, or when the viewer sees
@@ -110,10 +111,13 @@ def departure(
     seen_at: datetime | None,
     confirmation: Confirmation | None,
     since: datetime,
+    silent: bool = False,
 ) -> Done | None:
     """How the green document left `viewer`'s inbox from `since` on (`left_at`), if it did:
-    the viewer saw it since it became new, or a person confirmed it."""
-    at = left_at(document, seen_at, confirmation)
+    the viewer saw it since it became new, or a person confirmed it. A `silent` mark (a move
+    set it for someone who knew the document, Tobi, 22.10.2026) keeps it from being new but
+    is no seeing: it does not make the document done."""
+    at = left_at(document, None if silent else seen_at, confirmation)
     if document.lane is not Lane.GREEN or at is None or at < since:
         return None
     if document.new_at is None and confirmation is not None:
@@ -128,14 +132,21 @@ def inbox_state(
     seen_at: datetime | None,
     confirmation: Confirmation | None,
     since: datetime,
+    silent: bool = False,
 ) -> InboxState | None:
     """Where the document stands in `viewer`'s inbox, who saw it last at `seen_at` (None:
-    never); done counts from `since`. None if it stands nowhere there."""
+    never; `silent`: the mark is a move's, see `departure`); done counts from `since`. None if
+    it stands nowhere there."""
     tab = open_tab(document, seen_at)
     if tab is not None:
         return InboxState(tab)
     done = departure(
-        document, viewer=viewer, seen_at=seen_at, confirmation=confirmation, since=since
+        document,
+        viewer=viewer,
+        seen_at=seen_at,
+        confirmation=confirmation,
+        since=since,
+        silent=silent,
     )
     return None if done is None else InboxState(InboxTab.DONE, done)
 

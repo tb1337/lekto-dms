@@ -1,5 +1,7 @@
-"""Spaces: the unit of filing and of permissions. Rights hang on spaces, not documents."""
+"""Spaces: where documents lie, and the unit of permissions. Rights hang on spaces, never on
+documents: the members of a space read (`read`) or edit (`edit`) what lies in it."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -9,66 +11,90 @@ from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.ids import SpaceId, UserId, new_id
 from lekto.core.domain.validation import require_name, require_utc
 
-DEFAULT_SPACE_NAME = "Default"
+PERSONAL_SPACE_NAME = "Personal"
+"""The stored name of every personal space; it is shown by its user (`Space.personal_of`)."""
 
 
-class ShareLevel(StrEnum):
-    READ = "read"
-    READ_WRITE = "read_write"
+class SpaceRole(StrEnum):
+    READ = "read"  # green documents
+    EDIT = "edit"  # every document in every lane; change, confirm, move, delete; the space
 
     @property
-    def can_write(self) -> bool:
-        return self is ShareLevel.READ_WRITE
+    def can_edit(self) -> bool:
+        return self is SpaceRole.EDIT
 
 
 @dataclass(kw_only=True)
 class Space:
-    """A space has one owner and may be shared with other users.
+    """A space with its members and their roles.
 
-    Every user has exactly one default space; it is private (never shared) and cannot be deleted.
-    Names are unique per owner regardless of case.
+    Every user has exactly one personal space (`personal_of`): what they upload lands there,
+    they are always an editor of it, and only they (or an admin) choose its other members; it
+    can be shared, but neither renamed nor deleted. Every other space keeps at least one
+    editor, and its name is unique regardless of case among them.
     """
 
     id: SpaceId
-    owner_id: UserId
     name: str
-    is_default: bool = False
-    shares: dict[UserId, ShareLevel] = field(default_factory=dict)
+    personal_of: UserId | None = None
+    members: dict[UserId, SpaceRole] = field(default_factory=dict)
     created_at: datetime
     version: int = 1
 
     def __post_init__(self) -> None:
         self.name = require_name(self.name, "space name")
         self.created_at = require_utc(self.created_at, "created_at")
-        for user_id in self.shares:
-            self._check_share(user_id)
+        self._check_members(self.members)
 
     @classmethod
-    def create(cls, *, owner_id: UserId, name: str, now: datetime) -> Self:
-        return cls(id=SpaceId(new_id()), owner_id=owner_id, name=name, created_at=now)
+    def create(cls, *, name: str, members: Mapping[UserId, SpaceRole], now: datetime) -> Self:
+        """A space shared by `members` (at least one editor)."""
+        return cls(id=SpaceId(new_id()), name=name, members=dict(members), created_at=now)
 
     @classmethod
-    def create_default(cls, *, owner_id: UserId, now: datetime) -> Self:
+    def create_personal(cls, *, user: UserId, now: datetime) -> Self:
         return cls(
             id=SpaceId(new_id()),
-            owner_id=owner_id,
-            name=DEFAULT_SPACE_NAME,
-            is_default=True,
+            name=PERSONAL_SPACE_NAME,
+            personal_of=user,
+            members={user: SpaceRole.EDIT},
             created_at=now,
         )
 
+    @property
+    def is_personal(self) -> bool:
+        return self.personal_of is not None
+
+    @property
+    def editors(self) -> frozenset[UserId]:
+        return frozenset(user for user, role in self.members.items() if role.can_edit)
+
+    def role_of(self, user: UserId) -> SpaceRole | None:
+        return self.members.get(user)
+
     def rename(self, name: str) -> None:
+        if self.is_personal:
+            raise ValidationError("a personal space keeps its name")
         self.name = require_name(name, "space name")
 
-    def share(self, user_id: UserId, level: ShareLevel) -> None:
-        self._check_share(user_id)
-        self.shares[user_id] = level
+    def set_member(self, user: UserId, role: SpaceRole) -> None:
+        members = {**self.members, user: role}
+        self._check_members(members)
+        self.members = members
 
-    def _check_share(self, user_id: UserId) -> None:
-        if self.is_default:
-            raise ValidationError("the default space cannot be shared")
-        if user_id == self.owner_id:
-            raise ValidationError("a space cannot be shared with its owner")
+    def remove_member(self, user: UserId) -> None:
+        members = {member: role for member, role in self.members.items() if member != user}
+        self._check_members(members)
+        self.members = members
 
-    def unshare(self, user_id: UserId) -> None:
-        self.shares.pop(user_id, None)
+    def widens(self, target: "Space") -> bool:
+        """Whether moving a document from this space into `target` shows it to someone who
+        cannot read it here: `target` has a member this space lacks."""
+        return any(user not in self.members for user in target.members)
+
+    def _check_members(self, members: Mapping[UserId, SpaceRole]) -> None:
+        if self.personal_of is not None:
+            if members.get(self.personal_of) is not SpaceRole.EDIT:
+                raise ValidationError("the user of a personal space always edits it")
+        elif not any(role.can_edit for role in members.values()):
+            raise ValidationError("a space keeps at least one editor")

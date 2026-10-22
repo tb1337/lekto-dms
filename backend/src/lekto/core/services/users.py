@@ -6,19 +6,36 @@ writes the other active admins (version check), so one of two such transactions 
 """
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
-from lekto.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
+from lekto.core.domain.documents import Document
+from lekto.core.domain.errors import (
+    ConflictError,
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from lekto.core.domain.identity import Credential, ExternalIdentity, check_new_password
-from lekto.core.domain.ids import UserId
+from lekto.core.domain.ids import SpaceId, UserId
 from lekto.core.domain.sorting import sort_key
-from lekto.core.domain.spaces import Space
-from lekto.core.domain.users import Role, User
+from lekto.core.domain.spaces import Space, SpaceRole
+from lekto.core.domain.users import (
+    BlockingSpace,
+    Role,
+    Settle,
+    Settlement,
+    User,
+    UserDeletionBlockedError,
+)
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.identity import PasswordHasher
+from lekto.core.ports.repository import DocumentFilter, DocumentPosition
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import load_actor, require_admin
+from lekto.core.services._moves import move_by_person
+from lekto.core.services.rules.changes import ChangeRules
 from lekto.core.services.rules.references import disable_rules, refers_to
 
 log = logging.getLogger(__name__)
@@ -36,11 +53,17 @@ class Account:
 
 class UserService:
     def __init__(
-        self, uow: UnitOfWorkFactory, clock: Clock, hasher: PasswordHasher | None = None
+        self,
+        uow: UnitOfWorkFactory,
+        clock: Clock,
+        hasher: PasswordHasher | None = None,
+        *,
+        rules: ChangeRules | None = None,
     ) -> None:
         self._uow = uow
         self._clock = clock
         self._hasher = hasher
+        self._rules = rules  # logs the moves of deleting a user, as `DocumentService.move`
 
     # --- reading --------------------------------------------------------------------------------
 
@@ -60,6 +83,13 @@ class UserService:
         if found is None or not (found.active or user.is_active_admin):
             raise NotFoundError("user", id)
         return found
+
+    async def personal_spaces(self, actor: UserId) -> dict[UserId, SpaceId]:
+        """The personal space of every user, by user: where a document is handed over to them
+        (`DocumentService.move`). Every signed-in user may know them."""
+        async with self._uow() as uow:
+            await load_actor(uow, actor)
+            return await uow.spaces.personal_ids()
 
     async def own_account(self, actor: UserId) -> Account:
         """The caller's own account."""
@@ -83,7 +113,7 @@ class UserService:
         *,
         session: bool = True,
     ) -> User:
-        """Admins only. Creates the user together with their private default space and, if
+        """Admins only. Creates the user together with their personal space and, if
         given, a password (which must meet the policy).
 
         `session`: whether the caller is signed in with a session. With an API token (as a
@@ -208,38 +238,88 @@ class UserService:
             await uow.commit()
         return removed
 
-    async def delete_user(self, actor: UserId, id: UserId) -> None:
-        """Admins only, and only for a user who owns no documents and whose spaces are empty.
-        Removes their spaces, the shares to them, their rules and webhooks, all their sign-in
-        data and what they saw in the inbox. Other users' rules that file into the removed spaces
-        are disabled."""
+    async def removal(self, actor: UserId, id: UserId) -> list[BlockingSpace]:
+        """Admins: the spaces that stop deleting the user until the deletion settles them
+        (`delete_user`); empty if nothing does."""
         async with self._uow() as uow:
             await require_admin(uow, actor, "manage users")
+            await uow.users.get(id)
+            return [blocking for blocking, _ in await _blocking(uow, id)]
+
+    async def delete_user(
+        self,
+        actor: UserId,
+        id: UserId,
+        settle: Mapping[SpaceId, Settlement] | None = None,
+    ) -> None:
+        """Admins only. A space that would stop it needs a decision in `settle` (Tobi,
+        22.10.2026; `removal` lists them, UserDeletionBlockedError names those left open): the
+        user's personal space while it holds documents moves them into another space
+        (`move_to`); a shared space the user alone edits goes with the user if it is empty
+        (`remove`), moves its documents (`move_to`) and goes, or gets another editor
+        (`editor`) and stays. Documents move as an admin moves them by hand. All at once:
+        nothing happens if one fails.
+
+        Removes the personal space with its rules, the user's memberships of other spaces,
+        their webhooks, lenses and applications of rules, all their sign-in data and what they
+        saw in the inbox; the documents they uploaded keep no uploader. Rules that file into a
+        space that goes are disabled."""
+        chosen = dict(settle or {})
+        async with self._uow() as uow:
+            admin = await require_admin(uow, actor, "manage users")
             user = await uow.users.get(id)
             if user.is_active_admin:
                 await _keep_an_admin(uow, user)
-            if await uow.documents.exists(owner=id):
-                raise ConflictError("the user owns documents; delete or move them first")
-            removed: list[Space] = []
-            for space in await uow.spaces.list_accessible(id):
-                if space.owner_id == id:
-                    if await uow.documents.exists(space=space.id):
-                        raise ConflictError(f"the user's space '{space.name}' is not empty")
-                    await uow.spaces.remove(space.id)
-                    removed.append(space)
-                else:
-                    space.unshare(id)
+            blocking = await _blocking(uow, id)
+            spaces = {space.id: space for _, space in blocking}
+            unknown = sorted(set(chosen) - set(spaces), key=str)
+            if unknown:
+                raise ValidationError(f"spaces: {unknown[0]} does not stop deleting the user")
+            if open_ := [item for item, _ in blocking if item.id not in chosen]:
+                raise UserDeletionBlockedError(tuple(open_))
+            leaving = {
+                space.id
+                for space in await uow.spaces.list_accessible(id)
+                if space.personal_of == id
+            }
+            leaving |= {key for key, item in chosen.items() if item.how is not Settle.EDITOR}
+            now = self._clock.now()
+            for item, space in blocking:
+                settlement = chosen[item.id]
+                if settlement.how not in item.choices:
+                    raise ValidationError(
+                        f"spaces: '{space.name}' cannot be settled by {settlement.how.value}"
+                    )
+                if settlement.move_to is not None:
+                    target = await _move_target(uow, settlement.move_to, leaving)
+                    for document in await _documents_in(uow, space.id):
+                        await move_by_person(
+                            uow, document, space, target, by=admin, now=now, rules=self._rules
+                        )
+                elif settlement.editor is not None:
+                    editor = await uow.users.find(settlement.editor)
+                    if editor is None or not editor.active or editor.id == id:
+                        raise NotFoundError("user", settlement.editor)
+                    space.set_member(editor.id, SpaceRole.EDIT)
                     await uow.spaces.update(space)
-            await uow.rules.remove_for_owner(id)
-            await uow.webhooks.remove_for_owner(id)
-            await uow.lenses.remove_for_owner(id)
-            for space in removed:
+            for space in await uow.spaces.list_accessible(id):
+                if space.id not in leaving:
+                    space.remove_member(id)
+                    await uow.spaces.update(space)
+            for space_id in sorted(leaving, key=str):
+                gone = await uow.spaces.get(space_id)
+                await uow.spaces.remove(space_id)
                 await disable_rules(
                     uow,
-                    self._clock.now(),
-                    f"space '{space.name}' was deleted",
-                    refers_to(lambda refs: refs.spaces, space.id),
+                    now,
+                    f"the personal space of '{user.username}' was deleted"
+                    if gone.personal_of == id
+                    else f"space '{gone.name}' was deleted",
+                    refers_to(lambda refs: refs.spaces, space_id),
                 )
+            await uow.rules.remove_applications_by(id)
+            await uow.webhooks.remove_for_owner(id)
+            await uow.lenses.remove_for_owner(id)
             await uow.sessions.remove_for_user(id)
             await uow.api_tokens.remove_for_user(id)
             await uow.external_identities.remove_for_user(id)
@@ -286,14 +366,65 @@ def _not_own(actor: UserId, id: UserId, what: str) -> None:
 
 
 async def add_user(uow: UnitOfWork, username: str, role: Role, now: datetime) -> User:
-    """Add a user with their default space; ConflictError if the name is taken (looked up for
+    """Add a user with their personal space; ConflictError if the name is taken (looked up for
     the message; the repository's rule catches two requests at once, `core.ports.repository`)."""
     user = User.create(username=username, role=role, now=now)
     if await uow.users.find_by_username(user.username) is not None:
         raise ConflictError(f"username '{user.username}' is taken")
     await uow.users.add(user)
-    await uow.spaces.add(Space.create_default(owner_id=user.id, now=user.created_at))
+    await uow.spaces.add(Space.create_personal(user=user.id, now=user.created_at))
     return user
+
+
+async def _blocking(uow: UnitOfWork, id: UserId) -> list[tuple[BlockingSpace, Space]]:
+    """The spaces that stop deleting the user (`UserService.delete_user`), by name."""
+    found: list[tuple[BlockingSpace, Space]] = []
+    for space in await uow.spaces.list_accessible(id):
+        personal = space.personal_of == id
+        if not personal and space.editors != {id}:
+            continue
+        documents = len(await _documents_in(uow, space.id))
+        if personal and not documents:
+            continue  # goes with the user
+        if personal:
+            choices: tuple[Settle, ...] = (Settle.MOVE_TO,)
+        elif documents:
+            choices = (Settle.MOVE_TO, Settle.EDITOR)
+        else:
+            choices = (Settle.REMOVE, Settle.EDITOR)
+        found.append((BlockingSpace(space.id, space.name, personal, documents, choices), space))
+    return sorted(found, key=lambda pair: (not pair[0].personal, sort_key(pair[0].name)))
+
+
+async def _documents_in(uow: UnitOfWork, space: SpaceId) -> list[Document]:
+    """Every document in the space, whoever may read it."""
+    found: list[Document] = []
+    within = DocumentFilter(spaces=frozenset({space}))
+    while True:
+        page = await uow.documents.query(
+            within,
+            after=DocumentPosition.after(found[-1].id if found else None),
+            limit=_PAGE,
+        )
+        found.extend(page)
+        if len(page) < _PAGE:
+            return found
+
+
+_PAGE = 500
+
+
+async def _move_target(uow: UnitOfWork, id: SpaceId, leaving: set[SpaceId]) -> Space:
+    """The space documents of a deleted user's space move into: one that stays, and no
+    deactivated user's personal space (as a move by hand)."""
+    target = await uow.spaces.find(id)
+    if target is None or target.id in leaving:
+        raise NotFoundError("space", id)
+    if target.personal_of is not None:
+        receiver = await uow.users.find(target.personal_of)
+        if receiver is None or not receiver.active:
+            raise NotFoundError("space", id)
+    return target
 
 
 async def _keep_an_admin(uow: UnitOfWork, leaving: User) -> None:

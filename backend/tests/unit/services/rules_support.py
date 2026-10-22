@@ -248,8 +248,12 @@ class RuleWorld:
     async def tag(self, name: str) -> Tag:
         return await self.world.master_data.create_tag(self.admin.id, name)
 
-    async def user_rule(self, owner: User, rule: RuleDefinition) -> Rule:
-        return await self.rules.create(owner.id, RuleScope.USER, rule)
+    async def personal_rule(self, owner: User, rule: RuleDefinition) -> Rule:
+        """A rule of `owner`'s personal space, where their uploads land."""
+        return await self.rules.create(owner.id, RuleScope.SPACE, rule)
+
+    async def space_rule(self, author: User, space: SpaceId, rule: RuleDefinition) -> Rule:
+        return await self.rules.create(author.id, RuleScope.SPACE, rule, space=space)
 
     async def global_rule(self, rule: RuleDefinition) -> Rule:
         return await self.rules.create(self.admin.id, RuleScope.GLOBAL, rule)

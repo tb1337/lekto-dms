@@ -10,12 +10,12 @@
 	import { BASE } from '#lib/base.ts';
 	import RuleBuilder from '#lib/components/rules/RuleBuilder.svelte';
 	import { describeError } from '#lib/errors.ts';
-	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { loadLookup, spaceOptions, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { spacesFor } from '#lib/permissions.ts';
 	import { problemText } from '#lib/rules/describe.ts';
 	import { saveErrors } from '#lib/rules/errors.ts';
 	import { fromApi, toApi, validate, type RuleModel } from '#lib/rules/model.ts';
+	import { placeOf, rulePlaces } from '#lib/rules/places.ts';
 	import { changeSwitchedOff } from '#lib/rules/save.ts';
 	import { session } from '#lib/session.svelte.ts';
 
@@ -29,15 +29,22 @@
 	let errors = $state<Record<string, string>>({});
 	let general = $state<string | null>(null);
 	let busy = $state(false);
+	// Where the rule moves to (empty: where it is); its space changes with its content.
+	let chosen = $state('');
+	const current = $derived(rule ? placeOf(rule) : '');
+	const place = $derived(chosen || current);
+	const places = $derived(
+		rulePlaces(
+			lookup?.spaces ?? [],
+			lookup?.users ?? [],
+			session.user?.id,
+			session.isAdmin,
+			current
+		)
+	);
 
-	// A user rule files only where its owner may write, also when an admin changes it.
-	const spaces = $derived.by(() => {
-		const owner =
-			rule?.owner_id === session.user?.id
-				? session.user
-				: (lookup?.users.find((user) => user.id === rule?.owner_id) ?? null);
-		return spacesFor(lookup?.spaces ?? [], owner, session.user);
-	});
+	// The rule files where whoever saves it may file (the API checks it for the caller).
+	const targets = $derived(spaceOptions(lookup?.spaces ?? [], lookup?.users ?? [], session.user));
 
 	$effect(() => {
 		const wanted = id;
@@ -57,7 +64,7 @@
 
 	async function save() {
 		if (!rule || !model || !lookup) return;
-		const problems = validate(model, rule.scope, lookup.fields);
+		const problems = validate(model, lookup.fields);
 		errors = Object.fromEntries(
 			Object.entries(problems).map(([key, entry]) => [key, problemText(entry)])
 		);
@@ -65,13 +72,14 @@
 		if (general) return;
 		const definition = toApi(model);
 		const before = toApi(fromApi(rule));
-		if (JSON.stringify(definition) === JSON.stringify(before)) {
+		const moved = place !== current;
+		if (!moved && JSON.stringify(definition) === JSON.stringify(before)) {
 			await goto(`${BASE}/rules/${rule.id}`);
 			return;
 		}
 		busy = true;
 		try {
-			const saved = await changeSwitchedOff(rule, definition);
+			const saved = await changeSwitchedOff(rule, definition, moved ? place : undefined);
 			toast.success(m.rule_saved());
 			await goto(`${BASE}/rules/${saved.id}/apply?saved=1`);
 		} catch (error) {
@@ -106,9 +114,12 @@
 	{:else}
 		<RuleBuilder
 			{model}
-			scope={rule.scope}
+			{place}
+			{places}
+			onplace={(next) => (chosen = next)}
+			placeHint={m.rule_scope_move_hint()}
 			{lookup}
-			{spaces}
+			{targets}
 			{errors}
 			{general}
 			{busy}

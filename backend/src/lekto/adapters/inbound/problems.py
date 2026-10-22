@@ -8,7 +8,34 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse
 
+from lekto.core.domain.users import BlockingSpace
+
 PROBLEM_JSON = "application/problem+json"
+
+
+class BlockingSpaceOut(BaseModel):
+    """A space that stops deleting a user until the deletion settles it."""
+
+    space_id: UUID
+    name: str = Field(description="The stored name; a personal space is presented by `personal`.")
+    personal: bool = Field(description="The user's personal space (it holds documents).")
+    documents: int = Field(description="How many documents lie in it.")
+    choices: list[str] = Field(
+        description="How it may be settled: `remove` (an empty space goes with the user), "
+        "`move_to` (its documents move into another space, then it goes), `editor` (another "
+        "user edits it, it stays).",
+        examples=[["move_to", "editor"]],
+    )
+
+
+def blocking_space_out(space: BlockingSpace) -> BlockingSpaceOut:
+    return BlockingSpaceOut(
+        space_id=space.id,
+        name=space.name,
+        personal=space.personal,
+        documents=space.documents,
+        choices=[choice.value for choice in space.choices],
+    )
 
 
 class Problem(BaseModel):
@@ -19,7 +46,12 @@ class Problem(BaseModel):
     status: int = Field(examples=[404])
     detail: str | None = Field(default=None, examples=["document 0199… not found"])
     existing_document_id: UUID | None = Field(
-        default=None, description="For a duplicate: the document that has the same file."
+        default=None,
+        description=(
+            "For a duplicate (every file exists once per installation): the document that has "
+            "the same file, if the caller may read it; missing if it lies in a space the caller "
+            "cannot see."
+        ),
     )
     space_id: UUID | None = Field(
         default=None,
@@ -27,6 +59,10 @@ class Problem(BaseModel):
     )
     open_fields: list[str] | None = Field(
         default=None, description="Confirming a document: the fields that need a decision."
+    )
+    blocking_spaces: list[BlockingSpaceOut] | None = Field(
+        default=None,
+        description="Deleting a user: the spaces that need a decision (`DELETE /users/{id}`).",
     )
     second_factor_required: bool | None = Field(
         default=None,
@@ -41,7 +77,7 @@ PROBLEMS: dict[int, tuple[str, str]] = {
     401: ("Unauthorized", "authentication is required"),
     429: ("Too Many Requests", "too many failed attempts; try again later"),
     502: ("Bad Gateway", "the identity provider cannot be reached"),
-    403: ("Forbidden", "only the owner and admins control the processing of this document"),
+    403: ("Forbidden", "only editors and admins control the processing of this document"),
     404: ("Not Found", "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"),
     405: ("Method Not Allowed", "the method is not allowed here"),
     409: ("Conflict", "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"),

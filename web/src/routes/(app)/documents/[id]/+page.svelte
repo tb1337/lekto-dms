@@ -50,7 +50,7 @@
 	import { inbox as inboxSummary } from '#lib/inbox.svelte.ts';
 	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
-	import { canEdit, canManage } from '#lib/permissions.ts';
+	import { canEdit } from '#lib/permissions.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
 	import { hasText, type GraphNode } from '#lib/pipeline.ts';
@@ -109,7 +109,6 @@
 
 	const user = $derived(session.user);
 	const editable = $derived(document !== null && canEdit(document, user));
-	const manageable = $derived(document !== null && canManage(document, user));
 	// The archive exists once the text is recognised; until then the page images stand in, or,
 	// before they are rendered, the original PDF.
 	const archive = $derived(
@@ -140,7 +139,7 @@
 				api.GET('/api/v1/documents/{id}', { params: { path: { id: wanted } } })
 			);
 			const params = { params: { path: { id: wanted } } };
-			const [reviewed, read] = canManage(loaded, session.user)
+			const [reviewed, read] = canEdit(loaded, session.user)
 				? await Promise.all([
 						unwrap(api.GET('/api/v1/documents/{id}/review', params)),
 						unwrap(api.GET('/api/v1/documents/{id}/reading', params))
@@ -279,6 +278,15 @@
 		});
 	});
 
+	// Again when an admin switches the reach: the spaces offered follow it.
+	let reachBefore = scope.allUsers;
+	$effect(() => {
+		const reach = scope.allUsers;
+		if (reach === reachBefore) return;
+		reachBefore = reach;
+		untrack(() => loadLookup().then((value) => (lookup = value), reportError));
+	});
+
 	onMount(() => {
 		loadLookup().then((value) => (lookup = value), reportError);
 		unwrap(api.GET('/api/v1/pipeline')).then((value) => {
@@ -376,7 +384,7 @@
 	// The text recognition made the document red or yellow: reading it with the vision model is
 	// advised, and offered right here.
 	const advice = $derived(
-		document && manageable && visionAvailable(vision, graph, document.processing)
+		document && editable && visionAvailable(vision, graph, document.processing)
 			? adviceText(reading)
 			: null
 	);
@@ -588,7 +596,7 @@
 				<DocumentLog
 					{document}
 					{graph}
-					{manageable}
+					manageable={editable}
 					{lookup}
 					onreprocess={() => header?.startReprocess()}
 				/>

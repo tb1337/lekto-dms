@@ -20,9 +20,10 @@
 	import { Switch } from '#lib/components/ui/switch/index.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
-	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { loadLookup, spaceLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { canApplyRule, canChangeRule } from '#lib/permissions.ts';
+	import { moves, placeLabel } from '#lib/rules/places.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 
@@ -39,6 +40,15 @@
 
 	const userName = (user: string | null) =>
 		lookup?.users.find((entry) => entry.id === user)?.username ?? m.rule_unknown();
+	const placeName = $derived.by(() => {
+		if (!rule || rule.scope === 'global') return m.rule_global();
+		const space = lookup?.spaces.find((entry) => entry.id === rule?.space_id);
+		return space ? spaceLabel(space, lookup?.users ?? [], session.user?.id) : m.rule_unknown();
+	});
+	const spaces = $derived(lookup?.spaces ?? []);
+	const moved = $derived(moves(versions));
+	const placed = (place: string) =>
+		placeLabel(place, spaces, lookup?.users ?? [], session.user?.id);
 
 	// Again after a master data dialog saved: a title pattern's rule follows its type.
 	$effect(() => {
@@ -103,11 +113,8 @@
 				<h1 class="text-[1.75rem] font-semibold tracking-tight break-words">{rule.name}</h1>
 				<span class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
 					<Badge variant={rule.scope === 'global' ? 'secondary' : 'outline'}>
-						{rule.scope === 'global' ? m.rule_global() : m.rule_personal()}
+						{placeName}
 					</Badge>
-					{#if rule.owner_id && rule.owner_id !== session.user?.id}
-						<Badge variant="outline">{userName(rule.owner_id)}</Badge>
-					{/if}
 					{#if rule.managed_by_document_type_id}
 						<TitlePatternBadge
 							documentTypeId={rule.managed_by_document_type_id}
@@ -132,7 +139,7 @@
 				{/if}
 			</div>
 			<div class="flex flex-wrap items-center gap-2">
-				{#if canChangeRule(rule, session.user)}
+				{#if canChangeRule(rule, session.user, spaces)}
 					<Switch
 						bind:checked={() => rule?.enabled ?? false, switchRule}
 						disabled={busy}
@@ -145,13 +152,13 @@
 						{m.rule_edit()}
 					</a>
 				{/if}
-				{#if canApplyRule(rule, session.user)}
+				{#if canApplyRule(rule, session.user, spaces)}
 					<a href="{BASE}/rules/{rule.id}/apply" class={cn(buttonVariants({ variant: 'outline' }))}>
 						<Play aria-hidden="true" />
 						{m.rule_apply()}
 					</a>
 				{/if}
-				{#if canChangeRule(rule, session.user)}
+				{#if canChangeRule(rule, session.user, spaces)}
 					<Button
 						variant="ghost"
 						size="icon"
@@ -188,6 +195,12 @@
 								user: userName(version.created_by)
 							})}
 						</span>
+						{#if moved.get(version.version)}
+							{@const [from, to] = moved.get(version.version) ?? ['', '']}
+							<span class="text-muted-foreground"
+								>· {m.rule_version_moved({ from: placed(from), to: placed(to) })}</span
+							>
+						{/if}
 					</li>
 				{/each}
 			</ul>

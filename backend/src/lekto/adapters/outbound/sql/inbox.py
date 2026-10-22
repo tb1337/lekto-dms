@@ -14,6 +14,7 @@ from sqlalchemy import (
     and_,
     case,
     delete,
+    false,
     func,
     or_,
     select,
@@ -22,10 +23,12 @@ from sqlalchemy import (
 from lekto.adapters.outbound.sql import tables as t
 from lekto.adapters.outbound.sql.documents import SqlDocumentRepository
 from lekto.adapters.outbound.sql.repositories import KEYS_PER_QUERY
+from lekto.adapters.outbound.sql.spaces import member_space_ids
 from lekto.adapters.outbound.sql.transaction import Transaction
 from lekto.core.domain.ids import DocumentId, UserId
 from lekto.core.domain.inbox import OPEN_TABS, Confirmation, InboxTab
 from lekto.core.domain.pipeline import Lane
+from lekto.core.domain.spaces import SpaceRole
 from lekto.core.ports.repository import InboxEntry, InboxPosition
 
 _documents, _seen, _confirmations = t.documents, t.inbox_seen, t.inbox_confirmations
@@ -40,7 +43,7 @@ class SqlInboxRepository:
         self,
         viewer: UserId,
         *,
-        owner: UserId | None,
+        editor: UserId | None,
         tab: InboxTab | None,
         since: datetime,
         after: InboxPosition | None = None,
@@ -48,7 +51,7 @@ class SqlInboxRepository:
     ) -> list[InboxEntry]:
         conditions = _conditions(since)
         wanted = or_(*(conditions[item] for item in OPEN_TABS)) if tab is None else conditions[tab]
-        criteria = [wanted, *_whose(owner)]
+        criteria = [wanted, *_whose(editor)]
         id_ = _documents.c.id
         order = [id_.desc()]
         if tab is InboxTab.DONE:  # by when they left, newest first, ties by id
@@ -80,12 +83,13 @@ class SqlInboxRepository:
                 None
                 if row.inbox_confirmed_by is None
                 else Confirmation(UserId(row.inbox_confirmed_by), row.inbox_confirmed_at),
+                bool(row.inbox_seen_silent),
             )
             for document, row in zip(documents, rows, strict=True)
         ]
 
     async def count(
-        self, viewer: UserId, *, owner: UserId | None, since: datetime
+        self, viewer: UserId, *, editor: UserId | None, since: datetime
     ) -> dict[InboxTab, int]:
         conditions = _conditions(since)
         statement = (
@@ -96,7 +100,7 @@ class SqlInboxRepository:
                 )
             )
             .select_from(_joined(viewer))
-            .where(or_(*conditions.values()), *_whose(owner))
+            .where(or_(*conditions.values()), *_whose(editor))
         )
         row = (await self._tx.read(statement)).one()
         return {tab: int(row._mapping[tab.value]) for tab in conditions}
@@ -116,12 +120,14 @@ class SqlInboxRepository:
             )
         return found
 
-    async def mark_seen(self, viewer: UserId, document: DocumentId, at: datetime) -> None:
-        await self._mark([document], viewer, at)
+    async def mark_seen(
+        self, viewer: UserId, document: DocumentId, at: datetime, *, silent: bool = False
+    ) -> None:
+        await self._mark([document], viewer, at, silent=silent)
 
-    async def mark_all_seen(self, viewer: UserId, *, owner: UserId | None, at: datetime) -> int:
+    async def mark_all_seen(self, viewer: UserId, *, editor: UserId | None, at: datetime) -> int:
         statement = (
-            select(_documents.c.id).select_from(_joined(viewer)).where(_new(), *_whose(owner))
+            select(_documents.c.id).select_from(_joined(viewer)).where(_new(), *_whose(editor))
         )
         new = [DocumentId(row.id) for row in await self._tx.read(statement)]
         for start in range(0, len(new), KEYS_PER_QUERY):
@@ -168,18 +174,23 @@ class SqlInboxRepository:
         result = await self._tx.write(delete(_seen).where(_seen.c.user_id == user))
         return int(result.rowcount)
 
-    async def _mark(self, documents: list[DocumentId], viewer: UserId, at: datetime) -> None:
+    async def _mark(
+        self, documents: list[DocumentId], viewer: UserId, at: datetime, *, silent: bool = False
+    ) -> None:
         """Upsert the marks of `viewer` on `documents` with `at`."""
         if not documents:
             return
         statement = self._tx.database.insert(_seen)
         statement = statement.on_conflict_do_update(
             index_elements=[_seen.c.user_id, _seen.c.document_id],
-            set_={"seen_at": statement.excluded.seen_at},
+            set_={"seen_at": statement.excluded.seen_at, "silent": statement.excluded.silent},
         )
         await self._tx.write(
             statement,
-            [{"user_id": viewer, "document_id": id, "seen_at": at} for id in documents],
+            [
+                {"user_id": viewer, "document_id": id, "seen_at": at, "silent": silent}
+                for id in documents
+            ],
         )
 
 
@@ -190,8 +201,11 @@ def _joined(viewer: UserId) -> FromClause:
     ).outerjoin(_confirmations, _confirmations.c.document_id == _documents.c.id)
 
 
-def _whose(owner: UserId | None) -> list[ColumnElement[bool]]:
-    return [] if owner is None else [_documents.c.owner_id == owner]
+def _whose(editor: UserId | None) -> list[ColumnElement[bool]]:
+    """The documents in the spaces `editor` edits (None: every one)."""
+    if editor is None:
+        return []
+    return [_documents.c.space_id.in_(member_space_ids(editor, SpaceRole.EDIT))]
 
 
 def _entry_rows(viewer: UserId) -> Select[Any]:
@@ -199,6 +213,7 @@ def _entry_rows(viewer: UserId) -> Select[Any]:
     return select(
         _documents,
         _seen.c.seen_at.label("inbox_seen_at"),
+        _seen.c.silent.label("inbox_seen_silent"),
         _confirmations.c.confirmed_by.label("inbox_confirmed_by"),
         _confirmations.c.confirmed_at.label("inbox_confirmed_at"),
     ).select_from(_joined(viewer))
@@ -206,7 +221,7 @@ def _entry_rows(viewer: UserId) -> Select[Any]:
 
 def _left_at() -> ColumnElement[Any]:
     """When a document under done left the inbox, on `_joined` (`domain.inbox.left_at`): the
-    viewer's seen while it is new, else its confirmation."""
+    viewer's seen while it is new (under done, never a silent one), else its confirmation."""
     return case(
         (_documents.c.new_at.is_not(None), _seen.c.seen_at),
         else_=_confirmations.c.confirmed_at,
@@ -227,7 +242,9 @@ def _new() -> ColumnElement[bool]:
 def _conditions(since: datetime) -> dict[InboxTab, ColumnElement[bool]]:
     """Each tab as a condition on `_joined` (`domain.inbox.inbox_state`); done from `since`."""
     lane, new_at, seen_at = _documents.c.lane, _documents.c.new_at, _seen.c.seen_at
-    seen_since_new = and_(new_at.is_not(None), seen_at >= new_at, seen_at >= since)
+    seen_since_new = and_(
+        new_at.is_not(None), seen_at >= new_at, seen_at >= since, _seen.c.silent == false()
+    )
     confirmed = and_(new_at.is_(None), _confirmations.c.confirmed_at >= since)
     return {
         InboxTab.NEW: _new(),

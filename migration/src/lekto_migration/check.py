@@ -12,13 +12,13 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from lekto_migration.align import Alignment, align, current, uploaded
+from lekto_migration.align import Alignment, align, current, foreign, uploaded
 from lekto_migration.config import Config
 from lekto_migration.expect import Expected
 from lekto_migration.lekto import ApiError, Lekto
-from lekto_migration.masterdata import MISSING
+from lekto_migration.masterdata import MISSING, visible_to
 from lekto_migration.paperless import Paperless, PaperlessError, checksum
-from lekto_migration.resolve import resolve
+from lekto_migration.resolve import resolve, space_of
 from lekto_migration.session import Loaded, Progress, unmanaged
 from lekto_migration.state import DocumentRow, State
 
@@ -126,10 +126,12 @@ class _Checker:
         }
         self._types = {str(f["id"]): str(f.get("data_type")) for f in directory.fields.values()}
         self._unmanaged = unmanaged(state)
+        self._state = state
 
     def new(self, item: Expected, row: DocumentRow | None) -> dict[str, Any]:
         entry = _entry(item.id, item.title, "new", row, item=item)
-        entry["becomes"] = _becomes(item)
+        members, beyond = visible_to(item, self._loaded.actions, self._loaded.directory)
+        entry["becomes"] = _becomes(item, members, beyond)
         missing = resolve(item, self._loaded.directory).missing
         if missing:
             entry["prepare"] = missing  # what `prepare` creates first
@@ -143,6 +145,12 @@ class _Checker:
         if details.get("channel") != "migration":
             reason = "the document in Lekto was not taken over by the migration"
             return _entry(item.id, item.title, "not aligned", row, item=item, reason=reason)
+        space = space_of(resolved, self._loaded.directory)
+        if row.status == "duplicate":
+            claimant = self._state.claimant(row.lekto_id, item.id)
+            why = foreign(claimant, details.get("space_id"), space)
+            if why is not None:
+                return _entry(item.id, item.title, "not aligned", row, item=item, reason=why)
         base = row.applied
         if base is None and self._target is not None:
             try:
@@ -150,10 +158,6 @@ class _Checker:
             except ApiError:
                 log = []
             base = uploaded(log, details.get("space_id"))
-        space = resolved.space_id
-        if space is None:
-            default = self._loaded.directory.default_space(resolved.owner_id)
-            space = None if default is None else str(default["id"])
         alignment = align(
             base or current(details),
             current(details),
@@ -218,12 +222,14 @@ def _entry(
     }
 
 
-def _becomes(item: Expected) -> dict[str, Any]:
-    """What a new document becomes, by Lekto's names, and where each value comes from."""
+def _becomes(item: Expected, members: list[tuple[str, str]], beyond: list[str]) -> dict[str, Any]:
+    """What a new document becomes, by Lekto's names, and where each value comes from: who
+    sees it once `prepare` has run, and who of them Paperless kept it from (`beyond`)."""
     return {
-        "owner": item.owner or "(you)",
-        "space": item.space or "default",
-        "shares": [f"{name}: {level}" for name, level in item.shares],
+        "uploaded_by": item.uploader or "(you)",
+        "space": item.space or "personal",
+        "members": [f"{name}: {role}" for name, role in members],
+        "beyond": beyond,
         "contact": item.contact,
         "document_type": item.document_type,
         "topic": item.topic,
@@ -302,10 +308,11 @@ async def _files(
     progress: Progress,
 ) -> list[dict[str, Any]]:
     """Download every original the plan takes over: its checksum, its type by content, and
-    whether Lekto would see it as a duplicate (the same file for the same owner)."""
-    directory = loaded.directory
-    held = {(d.get("owner_id"), d.get("sha256")): d["id"] for d in in_lekto.values()}
-    seen: dict[tuple[str, str], int] = {}
+    whether Lekto would see it as a duplicate (every file exists once per installation: one
+    that lies in Lekto already, wherever)."""
+    held = {str(document.get("sha256")): str(document["id"]) for document in in_lekto.values()}
+    taken = [item for item in loaded.expected.values() if item.skip is None]
+    seen: dict[str, int] = {}  # sha256 -> the first selected Paperless document with it
     gate = asyncio.Semaphore(config.concurrency)
     found: list[dict[str, Any]] = []
     documents = {int(d["id"]): d for d in loaded.selected}
@@ -330,18 +337,16 @@ async def _files(
             entry["problem"] = "Lekto would not take the file (not a PDF, JPEG, PNG or TIFF)"
         elif kind != item.media_type:
             entry["note"] = f"the file is {kind}, Paperless says {item.media_type}"
-        owner = directory.find("user", item.owner) if item.owner else directory.admin
-        key = (str(owner["id"]) if owner else "", digest)
         row = rows.get(item.id)
-        existing = held.get(key)
+        existing = held.get(digest)
         if existing is not None and (row is None or row.lekto_id != existing):
-            entry["note"] = f"Lekto has the file already for this owner ({existing})"
-        elif key in seen:
-            entry["note"] = f"the same file as document {seen[key]}, for the same owner"
+            entry["note"] = f"Lekto has the file already ({existing})"
+        elif digest in seen:
+            entry["note"] = f"the same file as document {seen[digest]}"
         else:
-            seen[key] = item.id
+            seen[digest] = item.id
         found.append(entry)
 
-    await asyncio.gather(*(one(item) for item in loaded.expected.values() if item.skip is None))
+    await asyncio.gather(*(one(item) for item in taken))
     progress(f"{len(found)} originals downloaded and checked")
     return sorted((f for f in found if f.get("problem") or f.get("note")), key=lambda f: f["id"])

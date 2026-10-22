@@ -7,7 +7,7 @@ from uuid import UUID, uuid5
 from lekto.adapters.outbound.memory.database import RULE_APPLICATIONS, RULE_VERSIONS, Table
 from lekto.adapters.outbound.memory.rows import _REMOVED, MemoryRepository, _copy
 from lekto.core.domain.errors import NotFoundError
-from lekto.core.domain.ids import RuleApplicationId, RuleId, UserId
+from lekto.core.domain.ids import RuleApplicationId, RuleId, SpaceId, UserId
 from lekto.core.domain.rules import Rule, RuleApplication, RuleScope, RuleVersion
 
 if TYPE_CHECKING:
@@ -46,16 +46,16 @@ class MemoryRuleRepository(MemoryRepository[RuleId, Rule]):
         await self._store_version(rule.current)
 
     async def list_for(
-        self, *, owners: "Collection[UserId] | None", include_global: bool
+        self, *, spaces: "Collection[SpaceId] | None", include_global: bool
     ) -> list[Rule]:
-        wanted = None if owners is None else set(owners)
+        wanted = None if spaces is None else set(spaces)
         return [
             _copy(row)
             for row in self._all()
             if row.deleted_at is None
             and (
                 (row.scope is RuleScope.GLOBAL and include_global)
-                or (row.scope is RuleScope.USER and (wanted is None or row.owner_id in wanted))
+                or (row.scope is RuleScope.SPACE and (wanted is None or row.space_id in wanted))
             )
         ]
 
@@ -71,16 +71,21 @@ class MemoryRuleRepository(MemoryRepository[RuleId, Rule]):
             raise NotFoundError(f"version {number} of rule", id)
         return row.item
 
-    async def remove_for_owner(self, owner: UserId) -> int:
-        rules = [row for row in self._all() if row.owner_id == owner]
+    async def remove_for_space(self, space: SpaceId) -> int:
+        rules = [row for row in self._all() if row.space_id == space]
         ids = {row.id for row in rules}
         self._versions._remove_rows(
             [row for row in self._versions._all() if row.item.rule_id in ids]
         )
         self._applications._remove_rows(
-            [row for row in self._applications._all() if row.rule_id in ids or row.user_id == owner]
+            [row for row in self._applications._all() if row.rule_id in ids]
         )
         return self._remove_rows(rules)
+
+    async def remove_applications_by(self, user: UserId) -> int:
+        return self._applications._remove_rows(
+            [row for row in self._applications._all() if row.user_id == user]
+        )
 
     async def _store_version(self, version: RuleVersion) -> None:
         id = version_row_id(version.rule_id, version.number)

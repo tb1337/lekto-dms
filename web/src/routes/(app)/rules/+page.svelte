@@ -15,7 +15,7 @@
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import { Switch } from '#lib/components/ui/switch/index.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
-	import type { UserName } from '#lib/masterdata.svelte.ts';
+	import { spaceLabel, type Space, type UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
 	import { canChangeRule } from '#lib/permissions.ts';
@@ -27,28 +27,34 @@
 
 	let rules = $state<Rule[] | null>(null);
 	let users = $state<UserName[]>([]);
+	let spaces = $state<Space[]>([]);
 	let problem = $state<string | null>(null);
 	let removing = $state<Rule | null>(null);
 	let busy = $state<string | null>(null);
 
-	const ownerName = (id: string) => users.find((user) => user.id === id)?.username ?? id;
+	const placeName = (rule: Rule) => {
+		if (rule.scope === 'global') return m.rule_global();
+		const space = spaces.find((entry) => entry.id === rule.space_id);
+		return space ? spaceLabel(space, users, session.user?.id) : m.rule_unknown();
+	};
 
 	let loads = 0;
 
 	async function load() {
 		const current = ++loads;
 		try {
-			const [found, names] = await Promise.all([
+			const [found, names, known] = await Promise.all([
 				unwrap(
 					api.GET('/api/v1/rules', {
 						params: { query: { include_disabled: true, all_users: scope.query } }
 					})
 				),
-				users.length > 0 ? users : unwrap(api.GET('/api/v1/users'))
+				users.length > 0 ? users : unwrap(api.GET('/api/v1/users')),
+				unwrap(api.GET('/api/v1/spaces', { params: { query: { all_users: scope.query } } }))
 			]);
 			// An earlier answer arriving late (the toggle switched twice) is dropped.
 			if (current !== loads) return;
-			[rules, users, problem] = [found, names, null];
+			[rules, users, spaces, problem] = [found, names, known, null];
 		} catch (error) {
 			if (current === loads) problem = describeError(error);
 		}
@@ -121,11 +127,8 @@
 								aria-label={m.rule_open({ name: rule.name })}>{rule.name}</a
 							>
 							<Badge variant={rule.scope === 'global' ? 'secondary' : 'outline'}>
-								{rule.scope === 'global' ? m.rule_global() : m.rule_personal()}
+								{placeName(rule)}
 							</Badge>
-							{#if rule.owner_id && rule.owner_id !== session.user?.id}
-								<Badge variant="outline">{ownerName(rule.owner_id)}</Badge>
-							{/if}
 							{#if rule.managed_by_document_type_id}
 								<TitlePatternBadge
 									documentTypeId={rule.managed_by_document_type_id}
@@ -145,7 +148,7 @@
 							</span>
 						{/if}
 					</div>
-					{#if canChangeRule(rule, session.user)}
+					{#if canChangeRule(rule, session.user, spaces)}
 						<div class="flex items-center gap-2">
 							<Switch
 								bind:checked={() => rule.enabled, (enabled) => switchRule(rule, enabled)}

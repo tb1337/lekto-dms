@@ -13,7 +13,7 @@ from lekto.core.domain.errors import (
 )
 from lekto.core.domain.pipeline import Lane, Node
 from lekto.core.domain.rules import RuleScope, SetSpace
-from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.ports.repository import DocumentFilter
 from tests.builders import UNCERTAIN, Returns, incoming
@@ -30,21 +30,28 @@ async def test_admins_list_spaces_of_everyone_and_manage_them(world: World) -> N
     admin, boss = await _second_admin(world)
     owner, friend, stranger = await world.user(), await world.user(), await world.user()
     office = await world.spaces.create(owner.id, "Office")
-    await world.spaces.share(owner.id, office.id, friend.id, ShareLevel.READ)
+    await world.spaces.set_member(owner.id, office.id, friend.id, SpaceRole.READ)
 
-    assert office.id in {space.id for space in await world.spaces.list_spaces(admin.id)}
+    # The list follows the reach the admin chose; the rights reach every space either way.
+    assert office.id not in {space.id for space in await world.spaces.list_spaces(admin.id)}
+    everyone = await world.spaces.list_spaces(admin.id, all_users=True)
+    assert office.id in {space.id for space in everyone}
     assert office.id not in {space.id for space in await world.spaces.list_spaces(stranger.id)}
+    with pytest.raises(PermissionDeniedError):
+        await world.spaces.list_spaces(stranger.id, all_users=True)
     assert (await world.spaces.get(admin.id, office.id)).id == office.id
 
     renamed = await world.spaces.rename(admin.id, office.id, "Büro")
-    assert (renamed.name, renamed.owner_id) == ("Büro", owner.id)
-    shared = await world.spaces.share(admin.id, office.id, stranger.id, ShareLevel.READ_WRITE)
-    assert shared.shares[stranger.id] is ShareLevel.READ_WRITE
-    await world.spaces.unshare(admin.id, office.id, stranger.id)
-    # The default space stays private and cannot be deleted, by admins neither.
-    default = await world.default_space(owner)
+    assert renamed.name == "Büro"
+    assert renamed.members == {owner.id: SpaceRole.EDIT, friend.id: SpaceRole.READ}
+    shared = await world.spaces.set_member(admin.id, office.id, stranger.id, SpaceRole.EDIT)
+    assert shared.members[stranger.id] is SpaceRole.EDIT
+    await world.spaces.remove_member(admin.id, office.id, stranger.id)
+    # Admins choose the members of a personal space too, but never delete it.
+    personal = await world.personal_space(owner)
+    await world.spaces.set_member(admin.id, personal.id, friend.id, SpaceRole.READ)
     with pytest.raises(ConflictError):
-        await world.spaces.delete(admin.id, default.id)
+        await world.spaces.delete(admin.id, personal.id)
 
     # Nobody else gains anything.
     for user in (friend, stranger):
@@ -69,7 +76,7 @@ async def test_admins_control_other_users_documents_in_every_lane(world: World) 
     owner, stranger = await world.user(), await world.user()
     pipeline = world.pipeline()
     received = await pipeline.receive(owner.id, incoming(b"%PDF-1.7 a"), filename="a.pdf")
-    # In processing: readable and controllable by the admin only (besides the owner).
+    # In processing: readable and controllable by the admin (besides its space's editors).
     assert (await world.documents.get(admin.id, received.id)).lane is None
     with pytest.raises(NotFoundError):
         await world.documents.get(stranger.id, received.id)
@@ -84,7 +91,7 @@ async def test_admins_control_other_users_documents_in_every_lane(world: World) 
     )
     assert changed.title == "By the admin"
 
-    # The owner's inbox holds it; the admin's own inbox not, unless they ask for all users.
+    # Its space's editor has it in the inbox; the admin not, unless they ask for all users.
     assert [item.document.id for item in await world.inbox.items(owner.id)] == [yellow.id]
     assert await world.inbox.items(admin.id) == []
     every = await world.inbox.items(admin.id, all_users=True)
@@ -108,8 +115,9 @@ async def test_admins_control_other_users_documents_in_every_lane(world: World) 
         accept_suggestions=True,
         space=owners_space.id,
     )
+    assert confirmed is not None
     assert confirmed.document.space_id == owners_space.id
-    assert confirmed.access is ShareLevel.READ_WRITE
+    assert confirmed.access is SpaceRole.EDIT
     await world.drain()
     assert (await world.documents.get(owner.id, yellow.id)).lane is Lane.GREEN
 
@@ -140,7 +148,7 @@ async def test_admins_file_into_any_space(world: World) -> None:
     await world.drain()
     document = await world.documents.get(admin.id, received.id)
     assert (document.space_id, document.lane) == (office.id, Lane.GREEN)
-    # The space's owner sees it, as any green document in their space.
+    # The space's editor sees it, as any document in their space.
     assert (await world.documents.get(owner.id, received.id)).id == received.id
     user = await world.user()
     with pytest.raises(NotFoundError):
@@ -164,46 +172,46 @@ async def test_admins_confirm_into_any_space(world: World) -> None:
         admin.id, received.id, DocumentChanges(), accept_suggestions=True, space=foreign.id
     )
     await world.drain(pipeline)
-    filed = await world.documents.get(owner.id, received.id)
+    filed = await world.documents.get(stranger.id, received.id)
     assert (filed.space_id, filed.lane) == (foreign.id, Lane.GREEN)
-    assert (await world.documents.get(stranger.id, received.id)).id == received.id
+    # Who uploaded it is no member of the space it lies in now.
+    with pytest.raises(NotFoundError):
+        await world.documents.get(owner.id, received.id)
 
-    # The admin's choice holds while they are an admin; then filing asks the owner again.
-    await pipeline.reprocess_from(owner.id, received.id, Node.APPLY_RULES)
-    await world.drain(pipeline)
-    assert (await world.documents.get(owner.id, received.id)).lane is Lane.GREEN
+    # Rights hang on the space: filing holds, also once the admin is gone.
     await world.users.update(boss.id, admin.id, active=False)
-    await pipeline.reprocess_from(owner.id, received.id, Node.APPLY_RULES)
+    await pipeline.reprocess_from(stranger.id, received.id, Node.APPLY_RULES)
     await world.drain(pipeline)
-    assert (await world.documents.get(owner.id, received.id)).lane is Lane.YELLOW
+    assert (await world.documents.get(stranger.id, received.id)).lane is Lane.GREEN
 
 
-async def test_admins_change_user_rules_for_their_owner(world: World) -> None:
+async def test_admins_change_the_rules_of_every_space(world: World) -> None:
     r = await rule_world(world)
     owner, stranger = await world.user(), await world.user()
     tag = await r.tag("t")
-    rule = await r.user_rule(owner, definition("Title", channel_api(), add_tags(tag.id)))
-    owners = await world.spaces.create(owner.id, "Owner's")
+    rule = await r.personal_rule(owner, definition("Title", channel_api(), add_tags(tag.id)))
     foreign = await world.spaces.create(stranger.id, "Stranger's")
 
-    # References are checked for the rule's owner, not for the admin (who may write anywhere).
-    with pytest.raises(NotFoundError):
-        await r.rules.change(
-            r.admin.id, rule.id, definition("File", channel_api(), SetSpace(foreign.id))
-        )
+    # References are checked for whoever saves the rule: an admin may file anywhere.
     changed = await r.rules.change(
-        r.admin.id, rule.id, definition("File", channel_api(), SetSpace(owners.id))
+        r.admin.id, rule.id, definition("File", channel_api(), SetSpace(foreign.id))
     )
-    assert (changed.scope, changed.owner_id, changed.current.created_by) == (
-        RuleScope.USER,
-        owner.id,
+    personal = await world.personal_space(owner)
+    assert (changed.scope, changed.space_id, changed.current.created_by) == (
+        RuleScope.SPACE,
+        personal.id,
         r.admin.id,
     )
+    # The owner cannot file there: their change is refused.
+    with pytest.raises(NotFoundError):
+        await r.rules.change(
+            owner.id, rule.id, definition("File", channel_api(), SetSpace(foreign.id))
+        )
     await r.rules.delete(r.admin.id, rule.id)
     with pytest.raises(NotFoundError):
         await r.rules.get(owner.id, rule.id)
-    # Nobody else changes it.
-    other = await r.user_rule(owner, definition("Other", channel_api(), add_tags(tag.id)))
+    # Nobody else changes the rules of a space they do not edit.
+    other = await r.personal_rule(owner, definition("Other", channel_api(), add_tags(tag.id)))
     with pytest.raises(NotFoundError):
         await r.rules.change(
             stranger.id, other.id, definition("X", channel_api(), add_tags(tag.id))
@@ -219,7 +227,7 @@ async def test_admins_apply_a_global_rule_to_every_document(world: World) -> Non
 
     preview = await r.applications.preview(r.admin.id, rule.id)
     assert {item.document.id for item in preview.items} == {d.id for d in theirs}
-    # A user applies it to what they may write to only.
+    # A user applies it to what they may edit only.
     assert [
         item.document.id for item in (await r.applications.preview(alice.id, rule.id)).items
     ] == [theirs[0].id]

@@ -1,9 +1,10 @@
 /** Texts for values in a change: ids become names, the rest is shown plainly. */
 import { isMoney, isPeriod } from '#lib/fields.ts';
 import { formatDate, formatMoney } from '#lib/i18n.ts';
-import type { Lookup } from '#lib/masterdata.svelte.ts';
+import { spaceLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { writePeriod } from '#lib/periods.ts';
+import { session } from '#lib/session.svelte.ts';
 
 const FIELD_LABELS: Record<string, () => string> = {
 	title: m.field_title,
@@ -35,13 +36,12 @@ export function describeValue(value: unknown, lookup: Lookup | null): string {
 	if (typeof value === 'object') return JSON.stringify(value);
 	const text = String(value);
 	if (lookup) {
-		const named = [
-			...lookup.contacts,
-			...lookup.documentTypes,
-			...lookup.tags,
-			...lookup.spaces
-		].find((entry) => entry.id === text);
+		const named = [...lookup.contacts, ...lookup.documentTypes, ...lookup.tags].find(
+			(entry) => entry.id === text
+		);
 		if (named) return named.name;
+		const space = lookup.spaces.find((entry) => entry.id === text);
+		if (space) return spaceLabel(space, lookup.users, session.user?.id);
 		const user = lookup.users.find((entry) => entry.id === text);
 		if (user) return user.username;
 	}

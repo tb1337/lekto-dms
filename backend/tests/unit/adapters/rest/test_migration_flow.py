@@ -131,21 +131,31 @@ async def test_the_whole_migration_runs_against_the_api(api: Api, tmp_path: Path
         assert {"tobias", "anna", "bob", "gone"} <= set(users)
         assert users["gone"]["active"] is False and users["anna"]["role"] == "user"
         by_title = {d["title"]: d for d in documents}
-        assert by_title["Document 10"]["owner_id"] == users["tobias"]["id"]
-        assert by_title["Document 14"]["owner_id"] == str(m.admin.id)  # no owner in Paperless
-        assert by_title["Document 15"]["owner_id"] == str(m.admin.id)  # an owner who is gone
+        assert by_title["Document 10"]["uploaded_by"] == users["tobias"]["id"]
+        assert by_title["Document 14"]["uploaded_by"] == str(m.admin.id)  # no owner in Paperless
+        assert by_title["Document 15"]["uploaded_by"] == str(m.admin.id)  # an owner who is gone
         assert by_title["Document 10"]["document_date"] == "2024-05-01"
         assert len(by_title["Document 10"]["fields"]) == 11  # notes are no longer taken over
 
-        spaces = (await api.client.get(f"{PREFIX}/spaces", headers=helpers.auth(m.admin))).json()
+        spaces = (
+            await api.client.get(
+                f"{PREFIX}/spaces", params={"all_users": True}, headers=helpers.auth(m.admin)
+            )
+        ).json()
+        personal = {s["personal_of"]: s for s in spaces if s["personal_of"] is not None}
+        # Without further permissions a document goes to its uploader's personal space.
+        assert by_title["Document 10"]["space_id"] == personal[users["tobias"]["id"]]["id"]
         shared = next(d for d in spaces if d["name"].startswith("Geteilt"))
-        assert shared["owner_id"] == users["anna"]["id"]
-        assert {(s["user_id"], s["level"]) for s in shared["shares"]} == {
+        assert shared["personal_of"] is None
+        # The uploader and the writers edit, the readers read; the admin is no member.
+        assert {(s["user_id"], s["role"]) for s in shared["members"]} == {
+            (users["anna"]["id"], "edit"),
             (users["bob"]["id"], "read"),
-            (users["tobias"]["id"], "read_write"),
+            (users["tobias"]["id"], "edit"),
         }
+        assert by_title["Document 13"]["uploaded_by"] == users["anna"]["id"]
         assert by_title["Document 13"]["space_id"] == shared["id"]
-        # The owner sees it; bob reads it once it is green; a stranger does not.
+        # Its members see it; a stranger does not.
         bob = await api.user("bob-session")
         assert (
             await api.client.get(

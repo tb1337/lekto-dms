@@ -7,18 +7,19 @@
 	import ValueInput from '#lib/components/rules/ValueInput.svelte';
 	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
-	import type { Space, Lookup } from '#lib/masterdata.svelte.ts';
+	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { ACTION_LABELS } from '#lib/rules/describe.ts';
 	import { defaultValue, type ActionNode } from '#lib/rules/model.ts';
 	import { tagOptions } from '#lib/tags.ts';
 
-	// One action. `spaces` are the ones the rule's owner may file into. `onunreadable` says
-	// while the value's text cannot be read (see `ValueInput`).
+	// One action. `targets` are where the rule may file: the spaces whoever saves it edits, and
+	// other users' personal spaces (handing the document over). `onunreadable` says while the
+	// value's text cannot be read (see `ValueInput`).
 	let {
 		action,
 		lookup,
-		spaces,
+		targets,
 		error,
 		onremove,
 		onup,
@@ -27,7 +28,7 @@
 	}: {
 		action: ActionNode;
 		lookup: Lookup;
-		spaces: readonly Space[];
+		targets: readonly { value: string; label: string }[];
 		error?: string;
 		onunreadable?: (unreadable: boolean) => void;
 		onremove: () => void;
@@ -56,6 +57,22 @@
 		];
 	}
 
+	// A space the rule files into that the caller may not file into (another editor saved it,
+	// into a space the caller is no member of): kept, but saving needs another choice.
+	const unreachable = $derived(
+		action.type === 'set_space' &&
+			action.space_id !== '' &&
+			!targets.some((entry) => entry.value === action.space_id)
+	);
+
+	function spaceTargets(list: readonly { value: string; label: string }[], value: string) {
+		return [
+			{ value: '', label: m.rule_choose() },
+			...list,
+			...(unreachable ? [{ value, label: m.rule_space_unreachable() }] : [])
+		];
+	}
+
 	const field = $derived(
 		action.type === 'set_field'
 			? (lookup.fields.find((entry) => entry.id === action.field_id) ?? null)
@@ -72,9 +89,12 @@
 					aria-label={label}
 					aria-invalid={invalid || undefined}
 					bind:value={action.space_id}
-					options={options(spaces, action.space_id)}
+					options={spaceTargets(targets, action.space_id)}
 					class="h-10"
 				/>
+				{#if unreachable}
+					<p class="text-sm text-muted-foreground">{m.rule_space_unreachable_hint()}</p>
+				{/if}
 			{:else if action.type === 'set_contact'}
 				<Select
 					aria-label={label}

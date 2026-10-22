@@ -14,7 +14,7 @@ from lekto.adapters.inbound.rest import PREFIX
 from lekto.adapters.outbound.ocrmypdf import OcrmypdfEngine
 from lekto.adapters.outbound.pdfium import LayoutParser, PdfiumPageRenderer
 from lekto.adapters.outbound.sql import Database
-from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.users import User
 from lekto.core.ports.object_store import ObjectStore
 from lekto.core.ports.ocr import OcrResult, VisionModel
@@ -82,7 +82,7 @@ async def test_documents_go_through_the_api(
     owner, reader, stranger = await system.user(), await system.user(), await system.user()
     async with system.container.unit_of_work() as uow:
         shared = builders.space(owner, "Household")
-        shared.share(reader.id, ShareLevel.READ)
+        shared.set_member(reader.id, SpaceRole.READ)
         await uow.spaces.add(shared)
         await uow.commit()
 
@@ -129,7 +129,7 @@ async def test_documents_go_through_the_api(
     ocr.broken = True
     born_digital = await system.upload_sample(owner, "text.pdf")
     url, id = born_digital.json()["status_url"], born_digital.json()["id"]
-    failed = await system.settled(owner, id)
+    failed = await system.settled(owner, id, idle=True)
     outcomes = {n["node"]: n["outcome"] for n in failed["processing"]["nodes"]}
     assert (failed["lane"], outcomes["ocr"]) == ("red", "failed")
     ocr.broken = False

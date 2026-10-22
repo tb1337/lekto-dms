@@ -24,7 +24,6 @@ from lekto.core.domain.rule_planner import (
     reviewing_rules,
 )
 from lekto.core.domain.rules import (
-    Action,
     AddTags,
     ConditionField,
     ForceReview,
@@ -33,7 +32,6 @@ from lekto.core.domain.rules import (
     Rule,
     RuleDefinition,
     RuleScope,
-    RuleVersion,
     SetContact,
     SetDocumentType,
     SetField,
@@ -65,6 +63,7 @@ from tests.unit.domain.rules_support import (
     SPACES,
     SPAN,
     STRANGER,
+    THEIRS,
     URGENT,
     all_,
     check,
@@ -185,7 +184,7 @@ def test_reasons_name_values_not_ids() -> None:
     assert check(tags, "tags").reason == "tag 'Paid' is added and removed by rules"
     refused = run([rule(SetSpace(READ_ONLY))], situation(doc()))
     assert check(refused, "space").reason.endswith(
-        f"no write access to space '{SPACES[READ_ONLY].name}' (any more)"
+        f"no right to file into space '{SPACES[READ_ONLY].name}' (any more)"
     )
 
 
@@ -388,11 +387,46 @@ def test_no_write_access_to_the_space() -> None:
     assert not change.uncertain
 
 
-def test_space_of_a_rule_of_another_user_is_refused() -> None:
-    result = run([rule(SetSpace(OWN), owner=STRANGER)], situation(doc()))
+def test_a_rule_of_another_space_does_not_move_the_document() -> None:
+    result = run([rule(SetSpace(OWN), space=SHARED)], situation(doc()))
 
     assert result.space is None
     assert notes(result) == [("space", "refused")]
+    assert result.reports[0].notes[0].reason == "the rule belongs to another space"
+
+
+def test_whoever_saved_the_rule_must_be_allowed_to_file() -> None:
+    """The space is checked for the author of the rule's current version, not the rule's
+    space: a rule a stranger saved does not file into OWNER's space."""
+    result = run([rule(SetSpace(OWN), by=STRANGER)], situation(doc()))
+
+    assert result.space is None
+    assert notes(result) == [("space", "refused")]
+    assert check(result, "space").outcome is Outcome.UNCERTAIN
+
+
+def test_applied_to_existing_documents_a_rule_files_only_where_the_applier_may() -> None:
+    """Whoever saved the rule, the person applying it moves nothing where they could not move
+    it by hand; handing over stays open to them."""
+    rules = [rule(SetSpace(OWN))]
+    refused = run(rules, situation(doc(), Mode.RETROACTIVE, applier=STRANGER))
+    assert refused.space is None
+    assert notes(refused) == [("space", "refused")]
+    handed = run([rule(SetSpace(THEIRS))], situation(doc(), Mode.RETROACTIVE, applier=OWNER))
+    assert handed.space == THEIRS
+
+
+def test_a_rule_hands_a_document_over_into_another_users_personal_space() -> None:
+    """Handing over needs no membership; it shows the document to someone new, so only with
+    confirmed values."""
+    trusted = run([rule(SetSpace(THEIRS))], situation(doc()))
+    assert trusted.space == THEIRS
+    document = doc(contact_id=ACME)
+    distrusting = run(
+        [rule(SetSpace(THEIRS), when=FROM_ACME)], situation(document), facts=distrusted(document)
+    )
+    assert distrusting.space is None
+    assert notes(distrusting) == [("space", "refused")]
 
 
 def test_deleted_space_is_skipped() -> None:
@@ -413,42 +447,29 @@ def test_rules_filing_into_different_spaces_conflict() -> None:
 # --- global rules -----------------------------------------------------------------------------
 
 
-def global_rule_storing(*actions: Action) -> Rule:
-    """A global rule whose stored version has actions the scope check forbids (defence in
-    depth: the engine refuses them too)."""
-    found = rule(AddTags(frozenset({PAID})), scope=RuleScope.GLOBAL)
-    found.current = RuleVersion(
-        rule_id=found.id,
-        number=2,
-        definition=RuleDefinition(name="global", conditions=ALWAYS, actions=actions),
-        created_at=NOW,
-        created_by=None,
-    )
-    return found
-
-
-def test_global_rule_cannot_change_space_or_visibility() -> None:
+def test_a_global_rule_may_set_every_value_and_the_space() -> None:
+    """Tobi, 21.10.2026: no limits for global rules; filing into a space follows the same
+    checks as any rule (the admin who saved it may file anywhere)."""
     result = run(
         [
-            global_rule_storing(
+            rule(
                 SetSpace(OWN),
                 SetContact(ACME),
                 SetDocumentType(INVOICE),
-                SetTitle("{contact}"),
+                SetTitle("{{ contact }}"),
                 AddTags(frozenset({PAID})),
+                scope=RuleScope.GLOBAL,
             )
         ],
-        situation(doc(contact_id=ACME)),
+        situation(doc(), names=NAMES),
     )
 
-    assert result.space is None
-    assert result.changes == DocumentChanges(tag_ids=frozenset({PAID}))
-    assert sorted(notes(result)) == [
-        ("contact", "refused"),
-        ("document_type", "refused"),
-        ("space", "refused"),
-        ("title", "refused"),
-    ]
+    assert result.space == OWN
+    assert result.changes.contact_id == ACME
+    assert result.changes.document_type_id == INVOICE
+    assert result.changes.title == "ACME GmbH"
+    assert result.changes.tag_ids == frozenset({PAID})
+    assert notes(result) == []
 
 
 def test_global_rule_tags_sets_fields_and_forces_reviews() -> None:
@@ -559,12 +580,16 @@ def test_retroactive_conflict_with_an_existing_value() -> None:
     assert not refused.uncertain and refused.checks == []
 
 
-def test_retroactive_default_space_and_file_name_title_count_as_empty() -> None:
+def test_retroactive_personal_space_and_file_name_title_count_as_empty() -> None:
     actions = (SetSpace(OWN), SetTitle("{{ contact }} invoice"))
     fresh = run([rule(*actions)], situation(doc(contact_id=ACME), Mode.RETROACTIVE))
     filed = run(
-        [rule(*actions)],
-        situation(doc(contact_id=ACME, space_id=SHARED, title="Mine"), Mode.RETROACTIVE),
+        [rule(*actions, space=SHARED)],
+        situation(
+            doc(contact_id=ACME, space_id=SHARED, title="Mine"),
+            Mode.RETROACTIVE,
+            in_personal_space=False,
+        ),
     )
 
     assert fresh.space == OWN
@@ -630,13 +655,13 @@ def test_empty_title_is_skipped() -> None:
     assert notes(result) == [("title", "skipped")]
 
 
-def test_the_title_sees_fields_tags_space_and_owner() -> None:
-    template = "{{ field.amount }} {{ tags | join: '+' }} {{ space }} {{ owner }}"
+def test_the_title_sees_fields_tags_space_and_uploader() -> None:
+    template = "{{ field.amount }} {{ tags | join: '+' }} {{ space }} {{ uploaded_by }}"
     document = doc(fields={AMOUNT.id: Money(Decimal("99.90"), "EUR")}, tag_ids={PAID})
     names = {**NAMES, PAID: "paid", URGENT: "urgent", DEFAULT: "Inbox"}
     result = run(
         [rule(AddTags(frozenset({URGENT})), SetTitle(template))],
-        situation(document, definitions=DEFINITIONS, names=names, owner_name="tobi"),
+        situation(document, definitions=DEFINITIONS, names=names, uploader_name="tobi"),
     )
 
     assert result.changes.title == "99,90 EUR paid+urgent Inbox tobi"
@@ -668,7 +693,7 @@ def title_pattern(template: str) -> Rule:
     """The rule of the title pattern of INVOICE."""
     return Rule.create(
         scope=RuleScope.GLOBAL,
-        owner_id=None,
+        space_id=None,
         definition=RuleDefinition(name="Invoice", conditions=ALWAYS, actions=(SetTitle(template),)),
         by=OWNER,
         now=NOW,
@@ -683,9 +708,6 @@ def test_a_type_s_title_pattern_sets_the_title_as_a_global_rule() -> None:
     )
 
     assert result.changes.title == "Invoice Rechnung 2026"
-    # Any other global rule still cannot.
-    other = run([global_rule_storing(SetTitle("x"))], situation(doc()))
-    assert notes(other) == [("title", "refused")]
 
 
 def test_the_pattern_gives_way_to_another_rule_and_to_a_person() -> None:
@@ -701,21 +723,12 @@ def test_the_pattern_gives_way_to_another_rule_and_to_a_person() -> None:
     assert notes(person) == [("title", "overruled")]
 
 
-def test_a_title_pattern_rule_is_global_and_may_only_title() -> None:
+def test_a_title_pattern_rule_is_global() -> None:
     with pytest.raises(ValidationError, match="global"):
         Rule.create(
-            scope=RuleScope.USER,
-            owner_id=OWNER,
+            scope=RuleScope.SPACE,
+            space_id=DEFAULT,
             definition=RuleDefinition(name="x", conditions=ALWAYS, actions=(SetTitle("x"),)),
-            by=OWNER,
-            now=NOW,
-            managed_by=INVOICE,
-        )
-    with pytest.raises(ValidationError, match="cannot set_contact"):
-        Rule.create(
-            scope=RuleScope.GLOBAL,
-            owner_id=None,
-            definition=RuleDefinition(name="x", conditions=ALWAYS, actions=(SetContact(ACME),)),
             by=OWNER,
             now=NOW,
             managed_by=INVOICE,
@@ -795,7 +808,7 @@ def test_plan_to_json() -> None:
         {
             "rule_id": str(contact_rule.id),
             "version": 1,
-            "scope": "user",
+            "scope": "space",
             "applied": [{"field": "contact", "old": None, "new": str(ACME)}],
             "notes": [],
             "name": "ACME",
@@ -861,9 +874,9 @@ def test_a_rule_sets_a_topic_the_contact_enables() -> None:
     assert skipped.reports[0].notes[0].reason == (
         "its contact does not enable the topic 'Insurance'"
     )
-    # Global rules cannot set it.
-    with pytest.raises(ValidationError, match="set_topic"):
-        rule(SetTopic(work), scope=RuleScope.GLOBAL)
+    # Global rules set it too.
+    globally = run([rule(SetTopic(work), scope=RuleScope.GLOBAL)], where(doc(contact_id=ACME)))
+    assert globally.changes.topic_id == work
     # The contact a rule sets decides; two rules with different topics conflict.
     result = run([rule(SetContact(BETA), SetTopic(work))], where(doc(contact_id=ACME)))
     assert (result.changes.contact_id, result.changes.topic_id) == (BETA, work)
@@ -912,10 +925,10 @@ def test_the_rules_that_forced_a_review_read_back_from_the_log() -> None:
             reviewing,
             1,
             "Check",
-            RuleScope.USER,
+            RuleScope.SPACE,
             notes=[Note("review", NoteKind.REVIEW, "look at it")],
         ),
-        RuleReport(quiet, 1, "Tag", RuleScope.USER, notes=[Note("tags", NoteKind.SKIPPED, "x")]),
+        RuleReport(quiet, 1, "Tag", RuleScope.SPACE, notes=[Note("tags", NoteKind.SKIPPED, "x")]),
     ]
     written = RulePlan(DocumentChanges(), None, reports, [], []).to_json()
     assert reviewing_rules(written) == {reviewing}

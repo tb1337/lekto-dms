@@ -46,7 +46,7 @@ def output(result: NodeResult | FactsResult) -> Any:
 
 
 async def stored(world: World, owner: User, text: str, contact: Contact | None = None) -> Document:
-    space = await world.default_space(owner)
+    space = await world.personal_space(owner)
     document = builders.processed(owner, space, content=f"{text} {next(_numbers)}")
     if contact is not None:
         document.apply_changes(DocumentChanges(contact_id=contact.id), {}, builders.NOW)
@@ -95,7 +95,7 @@ async def test_facts_are_names_and_identifiers_in_the_text(world: World) -> None
 
 async def test_without_text_facts_abstain(world: World) -> None:
     owner = await world.user()
-    document = builders.processed(owner, await world.default_space(owner))
+    document = builders.processed(owner, await world.personal_space(owner))
     result = await FactsSignal(world.uow, world.object_store).run(document)
     assert ABSTAINED in result.output
 
@@ -163,7 +163,6 @@ async def test_neighbours_are_the_confirmed_documents_the_owner_may_read(world: 
                 IndexDocument(
                     id=document.id,
                     version=1,
-                    owner_id=document.owner_id,
                     space_id=document.space_id,
                     lane=document.lane,
                     title=document.title,

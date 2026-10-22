@@ -12,8 +12,14 @@ from lekto.core.domain.errors import (
 )
 from lekto.core.domain.identity import ExternalIdentity, TokenScope
 from lekto.core.domain.ids import UserId, new_id
-from lekto.core.domain.spaces import ShareLevel
-from lekto.core.domain.users import Role
+from lekto.core.domain.spaces import SpaceRole
+from lekto.core.domain.users import (
+    BlockingSpace,
+    Role,
+    Settle,
+    Settlement,
+    UserDeletionBlockedError,
+)
 from tests import builders
 from tests.builders import NOW, PASSWORD
 from tests.unit.services.support import World
@@ -26,7 +32,7 @@ async def test_admins_create_users_with_password(world: World) -> None:
     user = await world.users.create_user(admin.id, "alice", Role.USER, PASSWORD)
     signed_in = await world.auth.login("alice", PASSWORD)
     assert signed_in.user == user
-    assert (await world.default_space(user)).is_default
+    assert (await world.personal_space(user)).personal_of == user.id
     for weak in ("short", "alice"):
         with pytest.raises(ValidationError):
             await world.users.create_user(admin.id, "bob", Role.USER, weak)
@@ -181,18 +187,26 @@ async def test_deleting_a_user_without_documents(world: World) -> None:
     admin = await world.account("root", Role.ADMIN)
     user = await world.account("alice")
     friend = await world.account("bob")
+    personal = await world.personal_space(user)
     own = await world.spaces.create(user.id, "Mine")
+    await world.spaces.set_member(user.id, own.id, friend.id, SpaceRole.EDIT)
     shared = await world.spaces.create(friend.id, "Shared")
-    await world.spaces.share(friend.id, shared.id, user.id, ShareLevel.READ)
+    await world.spaces.set_member(friend.id, shared.id, user.id, SpaceRole.READ)
     await world.auth.create_api_token(user.id, "cli", TokenScope.READ)
     await world.auth.login("alice", PASSWORD)
+    async with world.uow() as uow:
+        uploaded = builders.processed(user, shared)
+        await uow.documents.add(uploaded)
+        await uow.commit()
 
     await world.users.delete_user(admin.id, user.id)
 
     async with world.uow() as uow:
         assert await uow.users.find(user.id) is None
-        assert await uow.spaces.find(own.id) is None
-        assert (await uow.spaces.get(shared.id)).shares == {}
+        assert await uow.spaces.find(personal.id) is None
+        assert (await uow.spaces.get(own.id)).members == {friend.id: SpaceRole.EDIT}
+        assert (await uow.spaces.get(shared.id)).members == {friend.id: SpaceRole.EDIT}
+        assert (await uow.documents.get(uploaded.id)).uploaded_by is None
         assert await uow.credentials.find(user.id) is None
         assert await uow.api_tokens.list_for(user.id) == []
     with pytest.raises(AuthenticationError):
@@ -201,18 +215,124 @@ async def test_deleting_a_user_without_documents(world: World) -> None:
         await world.users.delete_user(admin.id, UserId(new_id()))
 
 
-async def test_users_with_documents_are_not_deleted(world: World) -> None:
+async def test_spaces_that_stop_deleting_a_user_need_a_decision(world: World) -> None:
+    """Tobi, 22.10.2026: the personal space with documents and each space the user alone
+    edits stop it until the deletion settles them; an empty personal space goes along."""
     admin = await world.account("root", Role.ADMIN)
-    owner, guest = await world.account("alice"), await world.account("bob")
-    space = await world.spaces.create(owner.id, "Household")
-    await world.spaces.share(owner.id, space.id, guest.id, ShareLevel.READ_WRITE)
+    alice, bob = await world.account("alice"), await world.account("bob")
+    household = await world.spaces.create(alice.id, "Household")
+    await world.spaces.set_member(alice.id, household.id, bob.id, SpaceRole.READ)
     async with world.uow() as uow:
-        await uow.documents.add(builders.processed(guest, space))  # guest's file, owner's space
+        await uow.documents.add(builders.processed(alice, await uow.spaces.get_personal(bob.id)))
         await uow.commit()
-    with pytest.raises(ConflictError, match="owns documents"):
-        await world.users.delete_user(admin.id, guest.id)
-    with pytest.raises(ConflictError, match="not empty"):
-        await world.users.delete_user(admin.id, owner.id)
+    bobs = await world.personal_space(bob)
+
+    assert await world.users.removal(admin.id, bob.id) == [
+        BlockingSpace(bobs.id, bobs.name, True, 1, (Settle.MOVE_TO,))
+    ]
+    assert await world.users.removal(admin.id, alice.id) == [
+        BlockingSpace(household.id, "Household", False, 0, (Settle.REMOVE, Settle.EDITOR))
+    ]
+    with pytest.raises(UserDeletionBlockedError) as blocked:
+        await world.users.delete_user(admin.id, bob.id)
+    assert [space.id for space in blocked.value.spaces] == [bobs.id]
+    with pytest.raises(UserDeletionBlockedError, match="'Household'"):
+        await world.users.delete_user(admin.id, alice.id)
+    with pytest.raises(PermissionDeniedError):
+        await world.users.removal(alice.id, bob.id)
+
+
+async def test_deleting_a_user_settles_their_spaces(world: World) -> None:
+    admin = await world.account("root", Role.ADMIN)
+    anna, tobi = await world.account("anna"), await world.account("tobi")
+    annas, tobis = await world.personal_space(anna), await world.personal_space(tobi)
+    household = await world.spaces.create(anna.id, "Household")
+    await world.spaces.set_member(anna.id, household.id, tobi.id, SpaceRole.READ)
+    empty = await world.spaces.create(anna.id, "Empty")
+    archive = await world.spaces.create(anna.id, "Archive")
+    target = await world.spaces.create(admin.id, "Target")
+    async with world.uow() as uow:
+        letters = [builders.processed(anna, annas) for _ in range(2)]
+        bill, kept = builders.processed(anna, household), builders.processed(anna, archive)
+        for document in [*letters, bill, kept]:
+            await uow.documents.add(document)
+        await uow.commit()
+
+    await world.users.delete_user(
+        admin.id,
+        anna.id,
+        {
+            annas.id: Settlement(Settle.MOVE_TO, move_to=tobis.id),
+            household.id: Settlement(Settle.MOVE_TO, move_to=target.id),
+            empty.id: Settlement(Settle.REMOVE),
+            archive.id: Settlement(Settle.EDITOR, editor=tobi.id),
+        },
+    )
+
+    async with world.uow() as uow:
+        assert await uow.users.find(anna.id) is None
+        for gone in (annas, household, empty):
+            assert await uow.spaces.find(gone.id) is None
+        assert (await uow.spaces.get(archive.id)).members == {tobi.id: SpaceRole.EDIT}
+        for letter in letters:
+            moved = await uow.documents.get(letter.id)
+            assert moved.space_id == tobis.id and moved.uploaded_by is None
+            assert moved.new_at is not None  # new for tobi, who could not read it before
+        assert (await uow.documents.get(bill.id)).space_id == target.id
+        assert (await uow.documents.get(kept.id)).space_id == archive.id
+
+
+async def test_a_deletion_that_cannot_settle_changes_nothing(world: World) -> None:
+    admin = await world.account("root", Role.ADMIN)
+    anna, tobi = await world.account("anna"), await world.account("tobi")
+    annas = await world.personal_space(anna)
+    full = await world.spaces.create(anna.id, "Full")
+    async with world.uow() as uow:
+        for space in (annas, full):
+            await uow.documents.add(builders.processed(anna, space))
+        await uow.commit()
+    elsewhere = await world.spaces.create(tobi.id, "Elsewhere")
+    settle = {annas.id: Settlement(Settle.MOVE_TO, move_to=full.id)}
+    # Into a space that goes as well, or: removing a space that holds documents.
+    with pytest.raises(NotFoundError):
+        await world.users.delete_user(
+            admin.id, anna.id, {**settle, full.id: Settlement(Settle.MOVE_TO, move_to=annas.id)}
+        )
+    with pytest.raises(ValidationError, match="cannot be settled by remove"):
+        await world.users.delete_user(
+            admin.id,
+            anna.id,
+            {
+                annas.id: Settlement(Settle.MOVE_TO, move_to=elsewhere.id),
+                full.id: Settlement(Settle.REMOVE),
+            },
+        )
+    with pytest.raises(ValidationError, match="does not stop deleting the user"):
+        await world.users.delete_user(
+            admin.id,
+            anna.id,
+            {
+                annas.id: Settlement(Settle.MOVE_TO, move_to=elsewhere.id),
+                full.id: Settlement(Settle.EDITOR, editor=tobi.id),
+                elsewhere.id: Settlement(Settle.REMOVE),
+            },
+        )
+    with pytest.raises(NotFoundError):
+        await world.users.delete_user(
+            admin.id,
+            anna.id,
+            {
+                annas.id: Settlement(Settle.MOVE_TO, move_to=elsewhere.id),
+                full.id: Settlement(Settle.EDITOR, editor=anna.id),
+            },
+        )
+    async with world.uow() as uow:
+        assert await uow.users.find(anna.id) is not None
+        assert {space.id for space in await uow.spaces.list_accessible(anna.id)} >= {
+            annas.id,
+            full.id,
+        }
+        assert await uow.documents.exists(space=annas.id)
 
 
 # --- first admin --------------------------------------------------------------------------------
@@ -222,7 +342,7 @@ async def test_the_first_admin_is_created_once(world: World) -> None:
     created = await world.users.bootstrap_admin("root", PASSWORD)
     assert created is not None and created.is_admin
     await world.auth.login("root", PASSWORD)
-    assert (await world.default_space(created)).is_default
+    assert (await world.personal_space(created)).personal_of == created.id
     # Later starts change nothing, also not the password.
     assert await world.users.bootstrap_admin("root", NEW_PASSWORD) is None
     assert await world.users.bootstrap_admin("other", NEW_PASSWORD) is None

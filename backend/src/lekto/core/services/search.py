@@ -16,9 +16,9 @@ from datetime import timedelta
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import EmbeddingsError, ValidationError
 from lekto.core.domain.ids import SpaceId, UserId
-from lekto.core.domain.permissions import document_access, reach_access
+from lekto.core.domain.permissions import Reach, document_access, reach_access
 from lekto.core.domain.search import Segment, Visibility
-from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.ports.embeddings import Embeddings
 from lekto.core.ports.repository import DocumentFilter, DocumentOrder, SortKey
 from lekto.core.ports.search_index import (
@@ -54,7 +54,7 @@ class SearchPolicy:
 @dataclass(frozen=True)
 class SearchItem:
     document: Document
-    access: ShareLevel  # of the caller
+    access: SpaceRole  # of the caller
     score: float | None
     snippet: tuple[Segment, ...]
     in_inbox: bool = False  # it stands open in the caller's inbox (`inbox.in_inbox`)
@@ -119,9 +119,7 @@ class SearchService:
         result = await self._index.search(
             SearchQuery(
                 text=text,
-                visibility=Visibility(
-                    actor, frozenset(space.id for space in spaces), everything=all_users
-                ),
+                visibility=replace(Visibility.of(Reach.of(actor, spaces)), everything=all_users),
                 filter=filter,
                 vector=vector,
                 semantic_ratio=ratio,
@@ -145,7 +143,7 @@ class SearchService:
                 allowed = all_users or reach_access(user, document, space) is not None
                 access = document_access(user, document, space)
                 if not allowed or access is None or not matches(document, filter, contacts, types):
-                    continue  # the index is behind: a share or a lane has changed
+                    continue  # the index is behind: a membership or a lane has changed
                 items.append(SearchItem(document, access, hit.score, hit.snippet))
             waiting = await in_inbox(
                 uow, actor, [item.document for item in items], all_users=all_users

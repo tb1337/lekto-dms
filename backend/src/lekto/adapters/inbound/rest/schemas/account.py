@@ -13,6 +13,7 @@ from lekto.core.domain.identity import (
     LoginMethod,
     TokenScope,
 )
+from lekto.core.domain.ids import SpaceId
 from lekto.core.domain.users import MAX_USERNAME, Role, User
 
 Password = Annotated[SecretStr, Field(min_length=1, max_length=1024)]
@@ -40,21 +41,31 @@ class LoginRequest(BaseModel):
 
 
 class UserOut(BaseModel):
-    """A user. Others than admins see only `id` and `username`."""
+    """A user. Others than admins see only `id`, `username` and `personal_space_id`."""
 
     id: UUID
     username: str = Field(examples=["alice"])
+    personal_space_id: UUID | None = Field(
+        default=None,
+        description=(
+            "The user's personal space, where a document is handed over to them "
+            "(`POST /documents/{id}/move`); in `GET /users` and `GET /users/{id}`."
+        ),
+    )
     role: Role | None = None
     active: bool | None = None
     created_at: datetime | None = None
 
     @classmethod
-    def of(cls, user: User, *, full: bool = True) -> "UserOut":
+    def of(
+        cls, user: User, *, full: bool = True, personal_space: SpaceId | None = None
+    ) -> "UserOut":
         if not full:
-            return cls(id=user.id, username=user.username)
+            return cls(id=user.id, username=user.username, personal_space_id=personal_space)
         return cls(
             id=user.id,
             username=user.username,
+            personal_space_id=personal_space,
             role=user.role,
             active=user.active,
             created_at=user.created_at,

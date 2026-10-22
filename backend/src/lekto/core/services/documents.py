@@ -37,14 +37,15 @@ from lekto.core.domain.ids import (
 from lekto.core.domain.locations import Box, Location
 from lekto.core.domain.master_data import Assignment
 from lekto.core.domain.permissions import (
-    can_control_document,
+    can_hand_over,
     can_move_document,
     can_read_document,
     document_access,
     in_reach,
+    space_role,
 )
 from lekto.core.domain.pipeline import Node, NodeRun
-from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.text_places import TextPlaces
 from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
@@ -72,9 +73,10 @@ from lekto.core.services._access import (
     load_actor,
     load_lister,
     readable_document,
-    visible_space,
+    readable_log,
     writable_document,
 )
+from lekto.core.services._moves import move_by_person
 from lekto.core.services._tags import expand, expanded, tag_counts, tag_tree
 from lekto.core.services.inbox import Review, in_inbox, node_reviews, open_nodes
 from lekto.core.services.maintenance import REMOVE_FILES_JOB, RemoveFiles
@@ -100,11 +102,11 @@ log = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class MetadataChange:
     """A changed document; the caller's access afterwards (None if the rules filed it where
-    the caller cannot see it); its space; the rules' run, for the owner and admins; the state
+    the caller cannot see it); its space; the rules' run, for its editors and admins; the state
     before the change."""
 
     document: Document
-    access: ShareLevel | None
+    access: SpaceRole | None
     space: Space
     rules: RuleRun | None = None
     before: Document | None = None
@@ -115,7 +117,7 @@ class DocumentView:
     """A document with the caller's access to it."""
 
     document: Document
-    access: ShareLevel
+    access: SpaceRole
 
 
 @dataclass(frozen=True)
@@ -141,7 +143,7 @@ class ListedDocument:
     caller's inbox (`inbox.in_inbox`)."""
 
     document: Document
-    access: ShareLevel
+    access: SpaceRole
     in_inbox: bool
 
 
@@ -611,14 +613,15 @@ class DocumentService:
             return admins
 
     async def processing_log(self, actor: UserId, id: DocumentId) -> list[NodeRun]:
-        """Owner or admin: the log may hold technical details of failed runs."""
+        """Editors and admins: the log may hold technical details of failed runs. Similar
+        documents the caller may not read are left out (`_access.readable_log`)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             await controllable_document(uow, user, id, f"read the processing log of {id}")
-            return await uow.processing_log.list_for(id)
+            return await readable_log(uow, user, await uow.processing_log.list_for(id))
 
     async def exchanges(self, actor: UserId, id: DocumentId, node: Node) -> list[RunExchange]:
-        """Owner or admin, as the log: what `node` sent to the language model and got back,
+        """Editors and admins, as the log: what `node` sent to the language model and got back,
         every run, oldest first; none if it never asked one. ValidationError for a node that
         does not ask the model."""
         if node not in EXCHANGE_NODES:
@@ -638,12 +641,13 @@ class DocumentService:
         return []
 
     async def review(self, actor: UserId, id: DocumentId) -> Review:
-        """Owner or admin: what is open, and what the model proposed and how it was checked."""
+        """Editors and admins: what is open, and what the model proposed and how it was
+        checked."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document = await controllable_document(uow, user, id, f"review document {id}")
+            document, _ = await controllable_document(uow, user, id, f"review document {id}")
             access = await access_to(uow, user, document)
-            log = await uow.processing_log.list_for(id)
+            log = await readable_log(uow, user, await uow.processing_log.list_for(id))
         return Review(document, access, open_nodes(document, log), node_reviews(log))
 
     async def update_metadata(
@@ -664,8 +668,8 @@ class DocumentService:
         dry_run: bool = False,
         confirm: bool = True,
     ) -> MetadataChange:
-        """As `update_metadata`, and the change rules of the document's owner and the global
-        ones run (see `rules.changes`). The rules' report is for the owner and admins. With
+        """As `update_metadata`, and the change rules of the document's space and the global
+        ones run (see `rules.changes`). The rules' report is for its editors and admins. With
         `dry_run`, nothing is stored: what would happen. Without `confirm` (an admin, on a
         document taken over from another system: the migration aligns it with its source), the
         change neither confirms the document nor counts as a person's decision; the checks and
@@ -722,33 +726,40 @@ class DocumentService:
             if not dry_run:
                 await _save(uow, document)
                 await uow.commit()
-        report = can_control_document(user, document)
+        report = access is not None and access.can_edit
         return MetadataChange(document, access, space, run if report else None, before)
 
     async def move(self, actor: UserId, id: DocumentId, space: SpaceId) -> None:
-        """The owner moves into a space they may write to; an admin moves any document into
-        any space."""
+        """The editors of the document's space move it into a space they edit, or hand it over
+        into another, active user's personal space; an admin moves any document into any space,
+        but, as everyone, hands nothing over to a deactivated user (unless a member of their
+        personal space). A green document becomes new for the editors of the target who could
+        not read it before (`inbox.arrived`)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document = await controllable_document(uow, user, id, f"move document {id}")
-            target = await visible_space(uow, user, space)
-            if not can_move_document(user, document, target):
+            document, source = await controllable_document(uow, user, id, f"move document {id}")
+            target = await uow.spaces.find(space)
+            if target is None or not (space_role(user, target) or can_hand_over(user, target)):
+                raise NotFoundError("space", space)
+            if not can_move_document(user, document, source, target):
                 raise SpaceWriteDeniedError(target.id, target.name)
-            now = self._clock.now()
-            document.move_to(target.id, now)
-            if self._rules is not None:
-                await uow.processing_log.append(
-                    self._rules.space_chosen(document, actor=user, now=now)
-                )
-            await _save(uow, document)
+            if target.id == source.id:
+                return
+            if target.personal_of is not None and target.role_of(user.id) is None:
+                receiver = await uow.users.find(target.personal_of)
+                if receiver is None or not receiver.active:
+                    raise NotFoundError("space", space)
+            await move_by_person(
+                uow, document, source, target, by=user, now=self._clock.now(), rules=self._rules
+            )
             await uow.commit()
 
     async def delete(self, actor: UserId, id: DocumentId) -> None:
-        """Owner or admin. Removes the metadata and queues the removal of its files
+        """Editors and admins. Removes the metadata and queues the removal of its files
         (derivatives, and the original unless another document has the same file)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document = await controllable_document(uow, user, id, f"delete document {id}")
+            document, _ = await controllable_document(uow, user, id, f"delete document {id}")
             document.delete(self._clock.now(), await _readers(uow, document))
             await uow.documents.remove(id)
             await uow.outbox.add(document.pull_events())
@@ -761,11 +772,11 @@ class DocumentService:
 
 
 async def _readers(uow: UnitOfWork, document: Document) -> list[UserId]:
-    """The users who have the document within their reach now (`in_reach`): its owner, and
-    while it is green the owner of its space and the users the space is shared with (if their
-    accounts are active). Admins hear of the deletion through their rights, not this list."""
+    """The users who have the document within their reach now (`in_reach`): the editors of its
+    space, and while it is green its readers (if their accounts are active). Admins hear of
+    the deletion through their rights, not this list."""
     space = await uow.spaces.get(document.space_id)
-    candidates = {document.owner_id, space.owner_id, *space.shares}
+    candidates = set(space.members)
     readers = []
     for candidate in candidates:
         user = await uow.users.find(candidate)

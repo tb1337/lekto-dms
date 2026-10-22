@@ -6,24 +6,33 @@
 	import { BASE } from '#lib/base.ts';
 	import RuleBuilder from '#lib/components/rules/RuleBuilder.svelte';
 	import { describeError } from '#lib/errors.ts';
-	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { loadLookup, spaceOptions, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { spacesFor } from '#lib/permissions.ts';
 	import { problemText } from '#lib/rules/describe.ts';
 	import { saveErrors } from '#lib/rules/errors.ts';
-	import { newModel, toApi, validate, type Scope } from '#lib/rules/model.ts';
+	import { newModel, toApi, validate } from '#lib/rules/model.ts';
+	import { rulePlaces } from '#lib/rules/places.ts';
 	import { createSwitchedOff } from '#lib/rules/save.ts';
 	import { session } from '#lib/session.svelte.ts';
 
 	const model = $state(newModel());
-	let scope = $state<Scope>('user');
+	// Empty: the caller's personal space, once the spaces are known.
+	let chosen = $state('');
 	let lookup = $state<Lookup | null>(null);
 	let problem = $state<string | null>(null);
 	let errors = $state<Record<string, string>>({});
 	let general = $state<string | null>(null);
 	let busy = $state(false);
 
-	const spaces = $derived(spacesFor(lookup?.spaces ?? [], session.user, session.user));
+	// A rule belongs to a space the caller edits; admins also make global ones.
+	const places = $derived(
+		rulePlaces(lookup?.spaces ?? [], lookup?.users ?? [], session.user?.id, session.isAdmin)
+	);
+	const personal = $derived(
+		lookup?.spaces.find((space) => space.personal_of === session.user?.id)?.id ?? ''
+	);
+	const place = $derived(chosen || personal);
+	const targets = $derived(spaceOptions(lookup?.spaces ?? [], lookup?.users ?? [], session.user));
 
 	onMount(() => {
 		loadLookup().then(
@@ -34,7 +43,7 @@
 
 	async function save() {
 		if (!lookup) return;
-		const problems = validate(model, scope, lookup.fields);
+		const problems = validate(model, lookup.fields);
 		errors = Object.fromEntries(
 			Object.entries(problems).map(([key, entry]) => [key, problemText(entry)])
 		);
@@ -42,7 +51,7 @@
 		if (general) return;
 		busy = true;
 		try {
-			const rule = await createSwitchedOff(scope, toApi(model));
+			const rule = await createSwitchedOff(place, toApi(model));
 			toast.success(m.rule_saved());
 			await goto(`${BASE}/rules/${rule.id}/apply?saved=1`);
 		} catch (error) {
@@ -73,11 +82,11 @@
 	{:else}
 		<RuleBuilder
 			{model}
-			{scope}
-			scopes={session.isAdmin ? ['user', 'global'] : []}
-			onscope={(next) => (scope = next)}
+			{place}
+			{places}
+			onplace={(next) => (chosen = next)}
 			{lookup}
-			{spaces}
+			{targets}
 			{errors}
 			{general}
 			{busy}

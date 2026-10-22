@@ -2,10 +2,10 @@
 
 A rule has a scope, triggers, a tree of conditions and actions:
 
-- Scope: a global rule is made by an admin and acts on every document, but only on tags,
-  fields and reviews (nothing that changes who sees a document). A user rule is made by any
-  user and acts on that user's own documents with all actions; it files only into spaces its
-  owner may write to.
+- Scope: a global rule is made by an admin and acts on every document. A space rule belongs
+  to a space, is made by its editors and acts on the documents in that space. Both have all
+  actions; a rule files only into spaces whoever saved it last may file into, or hands a
+  document over into another user's personal space (`rule_planner`).
 - Triggers: a document arriving (`ingest`, the pipeline node `apply_rules`) and a document being
   changed by a person (`change`).
 - Conditions: groups of `all` (and) or `any` (or), each may be negated; a condition is field,
@@ -63,7 +63,7 @@ MAX_LIST = 100
 
 class RuleScope(StrEnum):
     GLOBAL = "global"
-    USER = "user"
+    SPACE = "space"
 
 
 class Trigger(StrEnum):
@@ -360,10 +360,6 @@ type Action = (
     | ForceReview
 )
 
-GLOBAL_ACTIONS: tuple[type, ...] = (AddTags, RemoveTags, SetField, ForceReview)
-"""What a global rule may do: nothing that changes who sees a document."""
-
-
 # --- definition -------------------------------------------------------------------------------
 
 
@@ -383,7 +379,7 @@ class References:
 @dataclass(frozen=True, kw_only=True)
 class RuleDefinition:
     """The versioned content of a rule. Checked here for everything that needs no stored
-    data; `check_scope` and `check_fields` do the rest."""
+    data; `check_fields` does the rest."""
 
     name: str
     conditions: Group
@@ -501,19 +497,6 @@ def _single_key(action: Action) -> str | None:
     return action.type
 
 
-def check_scope(definition: RuleDefinition, scope: RuleScope, *, managed: bool = False) -> None:
-    """A global rule may only tag, set fields and force a review; the rule of a document
-    type's title pattern (`managed`) sets the title as well."""
-    allowed = (*GLOBAL_ACTIONS, SetTitle) if managed else GLOBAL_ACTIONS
-    if scope is RuleScope.GLOBAL:
-        for index, action in enumerate(definition.actions):
-            if not isinstance(action, allowed):
-                raise ValidationError(
-                    f"actions[{index}]: a global rule cannot {action.type}: global rules only "
-                    "add or remove tags, set fields and force a review"
-                )
-
-
 def title_rule(document_type: DocumentType) -> RuleDefinition:
     """The rule of a type's title pattern (`Rule.managed_by`): "document type is X → set the
     title", on arrival and on a change."""
@@ -596,11 +579,15 @@ def _field(definitions: Mapping[FieldId, FieldDefinition], id: FieldId) -> Field
 
 @dataclass(frozen=True, kw_only=True)
 class RuleVersion:
+    """A saved state of a rule. `space_id`: the space the rule belonged to with it (None:
+    global), so its history shows who moved it from where to where."""
+
     rule_id: RuleId
     number: int
     definition: RuleDefinition
     created_at: datetime
     created_by: UserId | None
+    space_id: SpaceId | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "created_at", require_utc(self.created_at, "created_at"))
@@ -610,7 +597,7 @@ class RuleVersion:
 
 @dataclass(kw_only=True)
 class Rule:
-    """A rule with its current version. `owner_id` is None exactly for global rules.
+    """A rule with its current version. `space_id` is None exactly for global rules.
 
     `disabled_reason` says why the rule was disabled automatically (e.g. a contact it refers to
     was deleted); None if a person disabled it or it is enabled. A deleted rule stays stored
@@ -621,7 +608,7 @@ class Rule:
 
     id: RuleId
     scope: RuleScope
-    owner_id: UserId | None
+    space_id: SpaceId | None
     current: RuleVersion
     created_at: datetime
     updated_at: datetime
@@ -632,14 +619,14 @@ class Rule:
     version: int = 1
 
     def __post_init__(self) -> None:
-        if (self.scope is RuleScope.GLOBAL) != (self.owner_id is None):
-            raise ValidationError("global rules have no owner, user rules have one")
+        if (self.scope is RuleScope.GLOBAL) != (self.space_id is None):
+            raise ValidationError("global rules belong to no space, space rules to one")
         if self.managed_by is not None and self.scope is not RuleScope.GLOBAL:
             raise ValidationError("the rule of a title pattern is global")
         if self.current.rule_id != self.id:
             raise ValidationError("the current version belongs to another rule")
-        if self.deleted_at is None:  # a deleted rule never runs, and is no type's rule any more
-            check_scope(self.current.definition, self.scope, managed=self.managed_by is not None)
+        if self.current.space_id != self.space_id:
+            raise ValidationError("the current version names another space")
         self.created_at = require_utc(self.created_at, "created_at")
         self.updated_at = require_utc(self.updated_at, "updated_at")
 
@@ -648,7 +635,7 @@ class Rule:
         cls,
         *,
         scope: RuleScope,
-        owner_id: UserId | None,
+        space_id: SpaceId | None,
         definition: RuleDefinition,
         by: UserId,
         now: datetime,
@@ -658,9 +645,14 @@ class Rule:
         return cls(
             id=id,
             scope=scope,
-            owner_id=owner_id,
+            space_id=space_id,
             current=RuleVersion(
-                rule_id=id, number=1, definition=definition, created_at=now, created_by=by
+                rule_id=id,
+                number=1,
+                definition=definition,
+                created_at=now,
+                created_by=by,
+                space_id=space_id,
             ),
             created_at=now,
             updated_at=now,
@@ -675,16 +667,31 @@ class Rule:
     def is_active(self) -> bool:
         return self.enabled and self.deleted_at is None
 
-    def change(self, definition: RuleDefinition, by: UserId, now: datetime) -> RuleVersion:
-        """A new version with `definition`."""
+    def change(
+        self,
+        definition: RuleDefinition,
+        by: UserId,
+        now: datetime,
+        *,
+        scope: RuleScope | None = None,
+        space_id: SpaceId | None = None,
+    ) -> RuleVersion:
+        """A new version with `definition`; with `scope`, the rule moves: into the space
+        `space_id` or, global, into none (the rule of a title pattern stays global)."""
         self._check_not_deleted()
-        check_scope(definition, self.scope, managed=self.managed_by is not None)
+        if scope is not None:
+            if (scope is RuleScope.GLOBAL) != (space_id is None):
+                raise ValidationError("global rules belong to no space, space rules to one")
+            if self.managed_by is not None and scope is not RuleScope.GLOBAL:
+                raise ValidationError("the rule of a title pattern is global")
+            self.scope, self.space_id = scope, space_id
         self.current = RuleVersion(
             rule_id=self.id,
             number=self.current.number + 1,
             definition=definition,
             created_at=now,
             created_by=by,
+            space_id=self.space_id,
         )
         self.updated_at = require_utc(now, "updated_at")
         return self.current
@@ -712,7 +719,7 @@ class Rule:
 
     @property
     def order(self) -> tuple[int, int, datetime, RuleId]:
-        """Sort key: higher priority first, then global before user rules, then older first."""
+        """Sort key: higher priority first, then global before space rules, then older first."""
         return (
             -self.definition.priority,
             0 if self.scope is RuleScope.GLOBAL else 1,

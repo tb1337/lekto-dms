@@ -206,7 +206,9 @@ class Document:
     """
 
     id: DocumentId
-    owner_id: UserId
+    # Who put it into Lekto: information only, no rights come with it (`permissions`); None
+    # once their account is deleted.
+    uploaded_by: UserId | None
     space_id: SpaceId
     sha256: Sha256
     title: str
@@ -267,7 +269,7 @@ class Document:
     def receive(
         cls,
         *,
-        owner_id: UserId,
+        uploaded_by: UserId | None,
         space_id: SpaceId,
         sha256: Sha256,
         original_filename: str,
@@ -285,7 +287,7 @@ class Document:
         filename = require_name(original_filename, "original filename", max_length=None)
         document = cls(
             id=DocumentId(new_id()),
-            owner_id=owner_id,
+            uploaded_by=uploaded_by,
             space_id=space_id,
             sha256=sha256,
             title=file_title(filename),
@@ -374,7 +376,7 @@ class Document:
                 self.new_at = now
             return ()
         if Node.FILE in due and self._uncertain_before(Node.FILE):
-            # Filed only once the owner has confirmed what is uncertain.
+            # Filed only once an editor has confirmed what is uncertain.
             processing.status = ProcessingStatus.REVIEW
             self._set_lane(Lane.YELLOW, now)
             return ()
@@ -425,12 +427,12 @@ class Document:
         return due
 
     def confirm(self, resume_at: Node, now: datetime) -> tuple[Node, ...]:
-        """The owner has decided what was uncertain or failed (the inbox): the results of the
+        """A person has decided what was uncertain or failed (the inbox): the results of the
         nodes that are not run again count as OK from now on, processing runs again from
         `resume_at` (applying rules, or extracting fields after a type correction) up to filing.
         Nodes that never ran and are not needed to resume (the pages after a failed OCR) run
         now. The metadata counts as confirmed, and the document is new for no one: the run a
-        person decided in never makes it new. Returns the nodes whose results the owner
+        person decided in never makes it new. Returns the nodes whose results the person
         overruled.
 
         Only for documents in the inbox (yellow or red, not being processed, no node still
@@ -443,7 +445,7 @@ class Document:
         ):
             raise InvalidTransitionError(f"document {self.id} is not waiting for confirmation")
         if running := processing.running():
-            # Its result would overwrite what the owner decided; it ends soon.
+            # Its result would overwrite what the person decided; it ends soon.
             raise InvalidTransitionError(
                 f"document {self.id}: {', '.join(running)} is still running; confirm afterwards"
             )
@@ -656,6 +658,12 @@ class Document:
         """The pipeline derived contact, type, topic or tags anew: they are no longer a
         person's."""
         self.confirmed_at = None
+
+    def mark_new(self, now: datetime) -> None:
+        """It became new for the inbox outside processing: moved into a space whose editors
+        could not read it before (who could keeps their seen, `services.inbox.arrived`)."""
+        self.new_at = require_utc(now, "new_at")
+        self._touch(now)
 
     def move_to(self, space_id: SpaceId, now: datetime) -> None:
         """File the document into another space. Permissions are checked by the caller."""

@@ -1,14 +1,14 @@
 """The rights matrix over HTTP: every actor against every endpoint that touches a document,
 a space or master data. Each case runs on a fresh scene.
 
-Actors: the owner; a share `read`; a share `read_write`; a stranger; an admin (no share); the
-owner's `read` token; an expired token; a revoked token; a deactivated user who had a share; a
-deactivated admin.
+Actors: the owner (who made the shared space and edits it); a reader of it (`read`); a second
+editor of it (`writer`, `edit`); a stranger; an admin (no member); the owner's `read` token; an
+expired token; a revoked token; a deactivated user who was an editor; a deactivated admin.
 
-Documents in the shared space: green (others may see it), yellow and in processing (owner
-and admins only). Admins have every right and see everything (Tobi, 08.10.2026); lists show
-their reach unless they ask for all users. Hidden documents and spaces are "not found" (404),
-exactly as missing ones.
+Documents in the shared space: green (its readers see it), yellow and in processing (its
+editors and admins only). Who uploaded a document has no rights for it. Admins have every
+right and see everything (Tobi, 08.10.2026); lists show their reach unless they ask for all
+users. Hidden documents and spaces are "not found" (404), exactly as missing ones.
 """
 
 from collections.abc import Awaitable, Callable, Mapping
@@ -93,7 +93,7 @@ GREEN: dict[str, tuple[Call, Mapping[str, int]]] = {
         {
             "owner": 204,
             "reader": 403,
-            "writer": 403,
+            "writer": 404,  # the owner's private space is none of theirs
             "stranger": 404,
             "admin": 204,  # admins move any document into any space
             "read_token": 403,
@@ -105,7 +105,7 @@ GREEN: dict[str, tuple[Call, Mapping[str, int]]] = {
         {
             "owner": 204,
             "reader": 403,
-            "writer": 403,
+            "writer": 204,
             "read_token": 403,
             "admin": 204,
             **HIDDEN,
@@ -117,7 +117,7 @@ GREEN: dict[str, tuple[Call, Mapping[str, int]]] = {
         {
             "owner": 200,
             "reader": 403,
-            "writer": 403,
+            "writer": 200,
             "read_token": 200,
             "admin": 200,
             **HIDDEN,
@@ -129,7 +129,7 @@ GREEN: dict[str, tuple[Call, Mapping[str, int]]] = {
         {
             "owner": 200,
             "reader": 403,
-            "writer": 403,
+            "writer": 200,
             "read_token": 200,
             "admin": 200,
             **HIDDEN,
@@ -141,7 +141,7 @@ GREEN: dict[str, tuple[Call, Mapping[str, int]]] = {
         {
             "owner": 409,
             "reader": 403,
-            "writer": 403,
+            "writer": 409,
             "read_token": 403,
             "admin": 409,
             **HIDDEN,
@@ -153,7 +153,7 @@ GREEN: dict[str, tuple[Call, Mapping[str, int]]] = {
         {
             "owner": 202,
             "reader": 403,
-            "writer": 403,
+            "writer": 202,
             "read_token": 403,
             "admin": 202,
             **HIDDEN,
@@ -165,7 +165,7 @@ GREEN: dict[str, tuple[Call, Mapping[str, int]]] = {
         {
             "owner": 200,
             "reader": 403,
-            "writer": 403,
+            "writer": 200,
             "read_token": 200,
             "admin": 200,
             **HIDDEN,
@@ -177,7 +177,7 @@ GREEN: dict[str, tuple[Call, Mapping[str, int]]] = {
         {
             "owner": 409,
             "reader": 403,
-            "writer": 403,
+            "writer": 409,
             "read_token": 403,
             "admin": 409,
             **HIDDEN,
@@ -199,11 +199,11 @@ async def test_green_document(api: Api, operation: str, actor: str, expected: in
     call, _ = GREEN[operation]
     response = await call(scene, api.client, scene.headers[actor], "green")
     assert response.status_code == expected, response.text
-    if expected == 404:
+    if actor in HIDDEN:
         assert response.json()["detail"] == f"document {scene.green} not found"
 
 
-HIDDEN_FROM_SHARES = [
+HIDDEN_FROM_READERS = [
     "read",
     "original",
     "archive",
@@ -222,17 +222,17 @@ HIDDEN_FROM_SHARES = [
 
 
 @pytest.mark.parametrize("which", ["yellow", "processing"])
-@pytest.mark.parametrize("operation", HIDDEN_FROM_SHARES)
-async def test_yellow_and_processing_documents_are_the_owners_and_admins(
+@pytest.mark.parametrize("operation", HIDDEN_FROM_READERS)
+async def test_yellow_and_processing_documents_are_the_editors_and_admins(
     api: Api, which: str, operation: str
 ) -> None:
     scene = await build_scene(api)
     call, _ = GREEN[operation]
-    for actor in ("reader", "writer", "stranger"):
+    for actor in ("reader", "stranger"):
         response = await call(scene, api.client, scene.headers[actor], which)
         assert response.status_code == 404, (actor, response.text)
         assert response.json()["detail"] == f"document {scene.document(which)} not found"
-    for actor in ("owner", "admin"):
+    for actor in ("owner", "writer", "admin"):
         response = await call(scene, api.client, scene.headers[actor], which)
         if which == "processing" and operation in {"archive", "preview", "page"}:
             assert response.status_code == 404  # not made yet
@@ -244,13 +244,14 @@ async def test_yellow_and_processing_documents_are_the_owners_and_admins(
             break  # gone for the admin as well
 
 
-async def test_the_inbox_is_the_owners_and_all_of_them_for_admins(api: Api) -> None:
-    """The owner's documents in processing, yellow and new (green by itself, the green one); a
-    share never brings one in; admins have every user's with `all_users`."""
+async def test_the_inbox_is_the_editors_and_all_of_them_for_admins(api: Api) -> None:
+    """The documents in processing, yellow and new (green by itself, the green one) in the
+    spaces a user edits; reading a space never brings one in; admins have every user's with
+    `all_users`."""
     scene = await build_scene(api)
     open = [scene.processing, scene.yellow, scene.green]  # newest first
-    for actor, expected in [("owner", open), ("read_token", open)] + [
-        (actor, []) for actor in ("reader", "writer", "stranger", "admin")
+    for actor, expected in [("owner", open), ("read_token", open), ("writer", open)] + [
+        (actor, []) for actor in ("reader", "stranger", "admin")
     ]:
         response = await api.client.get(f"{PREFIX}/inbox", headers=scene.headers[actor])
         assert response.status_code == 200, response.text
@@ -271,13 +272,13 @@ async def test_the_inbox_is_the_owners_and_all_of_them_for_admins(api: Api) -> N
             response = await api.client.request(method, path, headers=scene.headers[actor])
             assert response.status_code == 401, (path, actor)
     confirm = doc("POST", "/confirm", {})
-    for actor in ("reader", "writer", "stranger"):
+    for actor in ("reader", "stranger"):
         response = await confirm(scene, api.client, scene.headers[actor], "yellow")
         assert response.status_code == 404, actor
     denied = await confirm(scene, api.client, scene.headers["read_token"], "yellow")
     assert denied.status_code == 403
-    by_admin = await confirm(scene, api.client, scene.headers["admin"], "yellow")
-    assert by_admin.status_code == 202, by_admin.text
+    by_editor = await confirm(scene, api.client, scene.headers["writer"], "yellow")
+    assert by_editor.status_code == 202, by_editor.text
 
 
 INBOX_LISTS = [
@@ -308,7 +309,7 @@ async def test_seen_is_marked_by_whoever_reads_the_document(
     hidden = which != "green"
     for actor in ACTORS:
         expected = SEEN[actor]
-        if hidden and actor in ("reader", "writer"):
+        if hidden and actor == "reader":
             expected = 404
         response = await call(scene, api.client, scene.headers[actor], which)
         assert response.status_code == expected, (actor, response.text)
@@ -352,11 +353,11 @@ async def test_lists_show_only_readable_documents(api: Api) -> None:
     everything = {scene.green, scene.yellow, scene.processing}
     assert await listed(scene, "owner") == everything
     assert await listed(scene, "read_token") == everything
-    for actor in ("reader", "writer"):
-        assert await listed(scene, actor) == {scene.green}
-        assert await listed(scene, actor, lane="yellow") == set()
-        assert await listed(scene, actor, lane="processing") == set()
-        assert await listed(scene, actor, space_id=str(scene.shared.id)) == {scene.green}
+    assert await listed(scene, "writer") == everything  # editors see every lane
+    assert await listed(scene, "reader") == {scene.green}
+    assert await listed(scene, "reader", lane="yellow") == set()
+    assert await listed(scene, "reader", lane="processing") == set()
+    assert await listed(scene, "reader", space_id=str(scene.shared.id)) == {scene.green}
     for actor in ("stranger", "admin"):
         assert await listed(scene, actor) == set()
         assert await listed(scene, actor, space_id=str(scene.shared.id)) == set()
@@ -434,35 +435,40 @@ async def test_spaces(api: Api) -> None:
     url = f"{PREFIX}/spaces/{scene.shared.id}"
     owner_view = await api.client.get(url, headers=scene.headers["owner"])
     assert owner_view.status_code == 200
-    assert {s["level"] for s in owner_view.json()["shares"]} == {"read", "read_write"}
+    assert {m["role"] for m in owner_view.json()["members"]} == {"read", "edit"}
     reader_view = (await api.client.get(url, headers=scene.headers["reader"])).json()
-    assert reader_view["access"] == "read" and reader_view["shares"] is None
+    assert reader_view["role"] == "read" and len(reader_view["members"]) == 4
     assert (await api.client.get(url, headers=scene.headers["stranger"])).status_code == 404
     listed = (await api.client.get(f"{PREFIX}/spaces", headers=scene.headers["stranger"])).json()
     assert str(scene.shared.id) not in str(listed)
     # Admins see and manage every space (Tobi, 08.10.2026).
     admin_view = (await api.client.get(url, headers=scene.headers["admin"])).json()
-    assert admin_view["access"] == "read_write"
-    assert {s["level"] for s in admin_view["shares"]} == {"read", "read_write"}
-    every = (await api.client.get(f"{PREFIX}/spaces", headers=scene.headers["admin"])).json()
+    assert admin_view["role"] == "edit"
+    own = (await api.client.get(f"{PREFIX}/spaces", headers=scene.headers["admin"])).json()
+    assert str(scene.shared.id) not in {d["id"] for d in own}  # the list follows the reach
+    every = (
+        await api.client.get(
+            f"{PREFIX}/spaces", params={"all_users": True}, headers=scene.headers["admin"]
+        )
+    ).json()
     assert {str(scene.shared.id), str(scene.own_space.id)} <= {d["id"] for d in every}
     changes = [
         ("PATCH", url, {"name": "Renamed"}),
-        ("PUT", f"{url}/shares/{UUID(int=1)}", {"level": "read"}),
-        ("DELETE", f"{url}/shares/{UUID(int=1)}", None),
+        ("PUT", f"{url}/members/{UUID(int=1)}", {"role": "read"}),
+        ("DELETE", f"{url}/members/{UUID(int=1)}", None),
         ("DELETE", url, None),
     ]
-    expected = {"reader": 403, "writer": 403, "stranger": 404, "read_token": 403}
+    expected = {"reader": 403, "stranger": 404, "read_token": 403}
     for method, target, body in changes:
         for actor, status in {**expected, **DENIED}.items():
             response = await api.client.request(
                 method, target, json=body, headers=scene.headers[actor]
             )
             assert response.status_code == status, (method, target, actor)
-    renamed = await api.client.patch(url, json={"name": "Renamed"}, headers=scene.headers["owner"])
+    renamed = await api.client.patch(url, json={"name": "Renamed"}, headers=scene.headers["writer"])
     assert renamed.status_code == 200
     by_admin = await api.client.patch(url, json={"name": "Again"}, headers=scene.headers["admin"])
-    assert by_admin.status_code == 200 and by_admin.json()["owner_id"] == str(scene.owner.id)
+    assert by_admin.status_code == 200 and by_admin.json()["name"] == "Again"
     not_empty = await api.client.delete(url, headers=scene.headers["admin"])
     assert not_empty.status_code == 409
 
@@ -543,7 +549,7 @@ async def test_a_contacts_logo_is_read_by_all_and_changed_by_admins(api: Api) ->
 async def test_users_are_managed_by_admins(api: Api) -> None:
     scene = await build_scene(api)
     owner_list = (await api.client.get(f"{PREFIX}/users", headers=scene.headers["owner"])).json()
-    assert all(set(user) == {"id", "username"} for user in owner_list)
+    assert all(set(user) == {"id", "username", "personal_space_id"} for user in owner_list)
     assert "deactivated" not in {user["username"] for user in owner_list}
     admin_list = (await api.client.get(f"{PREFIX}/users", headers=scene.headers["admin"])).json()
     assert {"role", "active"} <= set(admin_list[0])
@@ -566,4 +572,4 @@ async def test_users_are_managed_by_admins(api: Api) -> None:
     account = (await api.client.get(target, headers=scene.headers["admin"])).json()
     assert account["has_password"] is True and account["totp_enabled"] is False
     summary = (await api.client.get(target, headers=scene.headers["reader"])).json()
-    assert set(summary) == {"id", "username"}
+    assert set(summary) == {"id", "username", "personal_space_id"}

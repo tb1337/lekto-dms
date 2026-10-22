@@ -42,9 +42,8 @@ describe('RuleBuilder', () => {
 		];
 		render(RuleBuilder, {
 			model,
-			scope: 'user',
 			lookup,
-			spaces: [],
+			targets: [],
 			errors: {},
 			general: null,
 			busy: false,

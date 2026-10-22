@@ -7,7 +7,7 @@ from lekto.core.domain.errors import NotFoundError, ValidationError
 from lekto.core.domain.ids import DocumentId, new_id
 from lekto.core.domain.pipeline import RULES_APPLY, Lane
 from lekto.core.domain.rules import ApplicationStatus, ForceReview, SetSpace, SetTitle
-from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.spaces import SpaceRole
 from lekto.core.services.rules.retroactive import BATCH
 from tests import builders
 from tests.unit.services.rules_support import (
@@ -42,7 +42,7 @@ async def test_the_preview_lists_changes_and_the_job_applies_the_pinned_version(
         await r.documents.change_metadata(owner.id, document.id, DocumentChanges(title=title))
     await r.arrive(other)
     await r.pipeline().receive(owner.id, incoming_pdf(), filename="Busy.pdf")  # processing
-    rule = await r.user_rule(
+    rule = await r.personal_rule(
         owner,
         definition(
             "Tax",
@@ -106,8 +106,8 @@ async def test_the_job_checks_the_rights_again_and_a_global_rule_moves_nothing(
     seen = await r.tag("seen")
     shared = await world.spaces.create(owner.id, "Shared")
     readable = await world.spaces.create(owner.id, "Readable")
-    await world.spaces.share(owner.id, shared.id, editor.id, ShareLevel.READ_WRITE)
-    await world.spaces.share(owner.id, readable.id, editor.id, ShareLevel.READ)
+    await world.spaces.set_member(owner.id, shared.id, editor.id, SpaceRole.EDIT)
+    await world.spaces.set_member(owner.id, readable.id, editor.id, SpaceRole.READ)
     in_shared = await r.arrive(owner, space=shared.id)
     await r.arrive(owner, space=readable.id)
     private = await r.arrive(owner)
@@ -123,7 +123,7 @@ async def test_the_job_checks_the_rights_again_and_a_global_rule_moves_nothing(
     application = await r.applications.start(
         editor.id, rule.id, version=1, documents=[in_shared.id, own.id, private.id]
     )
-    await world.spaces.share(owner.id, shared.id, editor.id, ShareLevel.READ)
+    await world.spaces.set_member(owner.id, shared.id, editor.id, SpaceRole.READ)
     await run_jobs(r)
 
     done = await r.applications.get(editor.id, application.id)
@@ -144,10 +144,10 @@ async def test_a_user_rule_is_applied_by_its_owner_to_their_own_documents(world:
     owner, colleague = await world.user(), await world.user()
     tax = await r.tag("tax")
     office = await world.spaces.create(colleague.id, "Office")
-    await world.spaces.share(colleague.id, office.id, owner.id, ShareLevel.READ_WRITE)
+    await world.spaces.set_member(colleague.id, office.id, owner.id, SpaceRole.EDIT)
     theirs = await r.arrive(colleague, space=office.id)
     mine = await r.arrive(owner)
-    rule = await r.user_rule(owner, definition("Tax", channel_api(), add_tags(tax.id)))
+    rule = await r.personal_rule(owner, definition("Tax", channel_api(), add_tags(tax.id)))
 
     preview = await r.applications.preview(owner.id, rule.id)
     assert [item.document.id for item in preview.items] == [mine.id]
@@ -189,7 +189,7 @@ async def test_a_long_application_continues_in_a_new_job(world: World) -> None:
     owner = await world.user()
     tax = await r.tag("tax")
     documents = [await r.arrive(owner) for _ in range(BATCH + 1)]
-    rule = await r.user_rule(owner, definition("Tax", channel_api(), add_tags(tax.id)))
+    rule = await r.personal_rule(owner, definition("Tax", channel_api(), add_tags(tax.id)))
     application = await r.applications.start(
         owner.id, rule.id, version=1, documents=[document.id for document in documents]
     )
@@ -214,7 +214,7 @@ async def test_an_application_ends_when_its_rule_is_deleted(world: World) -> Non
     owner = await world.user()
     tax = await r.tag("tax")
     document = await r.arrive(owner)
-    rule = await r.user_rule(owner, definition("Tax", channel_api(), add_tags(tax.id)))
+    rule = await r.personal_rule(owner, definition("Tax", channel_api(), add_tags(tax.id)))
     application = await r.applications.start(owner.id, rule.id, version=1, documents=[document.id])
     await r.rules.delete(owner.id, rule.id)
 
@@ -234,10 +234,12 @@ async def test_filing_on_an_unconfirmed_contact_is_a_conflict_until_accepted(
     owner, reader = await world.user(), await world.user()
     acme = await r.contact("ACME")
     shared = await world.spaces.create(owner.id, "Shared")
-    await world.spaces.share(owner.id, shared.id, reader.id, ShareLevel.READ)
+    await world.spaces.set_member(owner.id, shared.id, reader.id, SpaceRole.READ)
     # The model set the contact; no person confirmed it.
     document = await r.arrive(owner, classify=Classifies(contact=acme.id))
-    rule = await r.user_rule(owner, definition("ACME", contact_is(acme.id), SetSpace(shared.id)))
+    rule = await r.personal_rule(
+        owner, definition("ACME", contact_is(acme.id), SetSpace(shared.id))
+    )
 
     (item,) = (await r.applications.preview(owner.id, rule.id)).items
     assert item.effects == ()
@@ -259,7 +261,7 @@ async def test_an_unexpected_error_ends_the_application(world: World) -> None:
     owner = await world.user()
     tax = await r.tag("tax")
     document = await r.arrive(owner, text="# Rechnung")
-    rule = await r.user_rule(owner, definition("Tax", text_matches("Rech"), add_tags(tax.id)))
+    rule = await r.personal_rule(owner, definition("Tax", text_matches("Rech"), add_tags(tax.id)))
 
     async def broken(pattern: str, text: str, *, case_sensitive: bool) -> bool:
         raise RuntimeError("broken")
@@ -272,3 +274,37 @@ async def test_an_unexpected_error_ends_the_application(world: World) -> None:
     done = await r.applications.get(owner.id, application.id)
     assert (done.status, done.error) == (ApplicationStatus.FAILED, "stopped by an internal error")
     assert (await r.stored(document)).tag_ids == set()
+
+
+async def test_applying_a_rule_moves_nothing_where_the_person_could_not_move_it(
+    world: World,
+) -> None:
+    """An admin's global rule or a co-editor's rule files, applied by an editor, only into a
+    space the editor may file into, accepted or not."""
+    r = await rule_world(world)
+    editor, colleague, outsider = await world.user(), await world.user(), await world.user()
+    home = await world.personal_space(editor)
+    await world.spaces.set_member(editor.id, home.id, colleague.id, SpaceRole.EDIT)
+    closed = await world.spaces.create(colleague.id, "Closed")
+    elsewhere = await world.spaces.create(r.admin.id, "Elsewhere")
+    await world.spaces.set_member(r.admin.id, elsewhere.id, outsider.id, SpaceRole.READ)
+    document = await r.arrive(editor)
+    rules = [
+        await r.global_rule(definition("Global", channel_api(), SetSpace(elsewhere.id))),
+        await r.space_rule(
+            colleague, home.id, definition("Colleague", channel_api(), SetSpace(closed.id))
+        ),
+    ]
+    for rule in rules:
+        assert (await r.applications.preview(editor.id, rule.id)).items == ()
+        await r.applications.start(
+            editor.id, rule.id, version=1, documents=[document.id], accept_conflicts=[document.id]
+        )
+        await run_jobs(r)
+        assert (await r.stored(document)).space_id == home.id
+    # The colleague, who edits both, applies their own rule.
+    (item,) = (await r.applications.preview(colleague.id, rules[1].id)).items
+    assert [effect.field for effect in item.effects] == ["space"]
+    await r.applications.start(colleague.id, rules[1].id, version=1, documents=[document.id])
+    await run_jobs(r)
+    assert (await r.stored(document)).space_id == closed.id

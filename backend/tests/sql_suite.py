@@ -11,6 +11,7 @@ from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 import pytest
 import sqlalchemy as sa
@@ -28,9 +29,11 @@ from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.errors import ConflictError, DuplicateDocumentError
 from lekto.core.domain.events import DomainEvent
 from lekto.core.domain.fields import FieldDefinition, FieldType, Money
-from lekto.core.domain.ids import new_id
+from lekto.core.domain.ids import DocumentTypeId, RuleId, UserId, new_id
 from lekto.core.domain.jobs import Job
 from lekto.core.domain.pipeline import NODES, Node
+from lekto.core.domain.rules import ForceReview, RuleScope
+from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.templates import TemplateValue
 from lekto.core.domain.users import User
 from lekto.core.ports.event_bus import EventBus
@@ -147,7 +150,7 @@ class SqlAdapterSuite(ServicesOverPersistence):
         async def add() -> Document:
             document = builders.document(owner, space, content="same")
             async with uow_factory() as uow:
-                assert await uow.documents.find_by_sha256(owner.id, document.sha256) is None
+                assert await uow.documents.find_by_sha256(document.sha256) is None
                 async with asyncio.timeout(10):
                     await both_checked.wait()
                 await uow.documents.add(document)
@@ -643,7 +646,7 @@ class MigrationSuite:
             "documents",
             *(
                 sa.column(c.name, c.type)
-                for c in t.documents.c
+                for c in _before_0033(t.documents).c
                 if c.name not in {"confirmed_at", "space_id", "topic_id"}
             ),
             sa.column("drawer_id", sa.Uuid()),
@@ -855,14 +858,17 @@ class MigrationSuite:
             {"type": "set_field", "field_id": str(day), "value": "2026-01-01"},
             {"type": "add_tags", "tag_ids": []},
         ]
-        rows: list[tuple[sa.Table, dict[str, Any]]] = [
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
             (t.users, {"id": user, "username": "a", "username_key": "a", "role": "admin"}),
             (
                 t.field_definitions,
                 {"id": text, "name": "Nr", "name_key": "nr", "data_type": "text"},
             ),
             (t.field_definitions, {"id": day, "name": "Tag", "name_key": "tag"}),
-            (t.rules, {"id": rule, "scope": "user", "owner_id": user, "current_version": 1}),
+            (
+                _before_0033(t.rules),
+                {"id": rule, "scope": "user", "owner_id": user, "current_version": 1},
+            ),
             (
                 t.rule_versions,
                 {"rule_id": rule, "number": 1, "conditions": {"all": []}, "actions": old_actions},
@@ -925,13 +931,15 @@ class MigrationSuite:
                 ).all()
             )
             (link,) = (await connection.execute(select(t.title_pattern_rules))).all()
-            (version,) = (await connection.execute(select(t.rule_versions))).mappings().all()
+            (version,) = (
+                (await connection.execute(select(_before_0033(t.rule_versions)))).mappings().all()
+            )
             (rule,) = (await connection.execute(select(t.rules))).mappings().all()
         new = "Lohn {{ contact }} {{ document_date | date: '%Y-%m' }} {{ field.la_brutto }}"
         assert patterns == {payslip: new, letter: None}
         assert link.document_type_id == payslip and link.rule_id == rule["id"]
         assert rule["id"].version == 7  # time-ordered, as every id
-        assert (rule["scope"], rule["owner_id"], rule["enabled"]) == ("global", None, True)
+        assert (rule["scope"], rule["space_id"], rule["enabled"]) == ("global", None, True)
         assert version["name"] == "Lohn" and version["actions"] == [
             {"type": "set_title", "template": new}
         ]
@@ -1102,7 +1110,7 @@ class MigrationSuite:
                 {"id": ids["type"], "name": "L", "name_key": "l", "title_pattern": template},
             ),
             (
-                t.rules,
+                _before_0033(t.rules),
                 {"id": ids["rule"], "scope": "user", "owner_id": ids["user"], "current_version": 1},
             ),
             (
@@ -1134,8 +1142,8 @@ class MigrationSuite:
         await _insert(empty_database, rows)
 
         async def stored(old: bool) -> dict[str, Any]:
-            spaces = _OLD["drawers"] if old else t.spaces
-            shares = _OLD["shares"] if old else t.space_shares
+            spaces = _OLD["drawers"] if old else _before_0033(t.spaces)
+            shares = _OLD["shares"] if old else _SHARES
             documents = _drawer(_before_0021(t.documents)) if old else t.documents
             space_column = documents.c.drawer_id if old else documents.c.space_id
             async with empty_database.reading() as connection:
@@ -1159,7 +1167,7 @@ class MigrationSuite:
                 }
 
         before = await stored(old=True)
-        await migrate(empty_database)
+        await migrate(empty_database, "0024")
         after = await stored(old=False)
         assert after["spaces"] == before["spaces"]
         assert after["shares"] == [(ids["shared"], ids["other"], "read")]
@@ -1237,7 +1245,10 @@ class MigrationSuite:
         ids |= {name: new_id() for name in ("contact", "type", "group", "type_group", "child")}
         rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
             (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
-            (t.spaces, {"id": ids["space"], "owner_id": ids["user"], "name_key": "d"}),
+            (
+                _before_0033(t.spaces),
+                {"id": ids["space"], "owner_id": ids["user"], "name_key": "d"},
+            ),
             (t.tags, {"id": ids["tax"], "name": "Tax", "name_key": "tax"}),
             (t.tags, {"id": ids["paid"], "name": "Paid", "name_key": "paid"}),
             (t.contacts, {"id": ids["contact"], "name": "Nord", "name_key": "nord"}),
@@ -1245,7 +1256,7 @@ class MigrationSuite:
         ]
         for number, document in enumerate(("first", "second")):
             values = {"id": ids[document], "owner_id": ids["user"], "space_id": ids["space"]}
-            rows.append((t.documents, values | {"sha256": str(number) * 64}))
+            rows.append((_before_0033(t.documents), values | {"sha256": str(number) * 64}))
         rows += [
             (t.document_tags, {"document_id": ids["first"], "tag_id": ids["tax"]}),
             (t.document_tags, {"document_id": ids["first"], "tag_id": ids["paid"]}),
@@ -1317,7 +1328,10 @@ class MigrationSuite:
         ids |= {name: new_id() for name in ("insurance", "health", "type")}
         rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
             (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
-            (t.spaces, {"id": ids["space"], "owner_id": ids["user"], "name_key": "d"}),
+            (
+                _before_0033(t.spaces),
+                {"id": ids["space"], "owner_id": ids["user"], "name_key": "d"},
+            ),
             (t.tags, {"id": ids["tax"], "name": "Tax", "name_key": "tax"}),
             (t.contacts, {"id": ids["contact"], "name": "Nord", "name_key": "nord"}),
             (t.document_types, {"id": ids["type"], "name": "Invoice", "name_key": "invoice"}),
@@ -1325,7 +1339,12 @@ class MigrationSuite:
         for number, document in enumerate(("first", "second")):
             values = {"id": ids[document], "owner_id": ids["user"], "space_id": ids["space"]}
             values |= {"contact_id": ids["contact"], "document_type_id": ids["type"]}
-            rows.append((t.documents, values | {"sha256": str(number) * 64, "title": document}))
+            rows.append(
+                (
+                    _before_0033(t.documents),
+                    values | {"sha256": str(number) * 64, "title": document},
+                )
+            )
         rows += [
             (t.document_tags, {"document_id": ids["first"], "tag_id": ids["tax"]}),
             (t.document_identifiers, {"document_id": ids["first"], "kind": "iban", "value": "X"}),
@@ -1365,7 +1384,7 @@ class MigrationSuite:
                 }
 
         before = await stored()
-        await migrate(empty_database)
+        await migrate(empty_database, "0032")  # 0033 takes the owner away
         assert await stored() == before
         async with empty_database.reading() as connection:
             topics = await connection.execute(select(t.documents.c.topic_id))
@@ -1508,7 +1527,10 @@ class MigrationSuite:
         ids = {name: new_id() for name in ("user", "space", "green", "yellow")}
         rows: list[tuple[sa.TableClause, dict[str, Any]]] = [
             (t.users, {"id": ids["user"], "username": "u", "username_key": "u", "role": "user"}),
-            (t.spaces, {"id": ids["space"], "owner_id": ids["user"], "name_key": "n"}),
+            (
+                _before_0033(t.spaces),
+                {"id": ids["space"], "owner_id": ids["user"], "name_key": "n"},
+            ),
             *(
                 (
                     _before_0030(t.documents),
@@ -1532,14 +1554,14 @@ class MigrationSuite:
                 return sorted(await _read_all(connection, select(old)))
 
         before = await stored()
-        await migrate(empty_database)
+        await migrate(empty_database, "0032")  # 0033 takes the owner away
         assert await stored() == before
         inbox = (t.documents.c.new_at, t.documents.c.processing_baseline)
         async with empty_database.reading() as connection:
             assert set(await _read_all(connection, select(*inbox))) == {(None, None)}
             decided = select(t.documents.c.processing_decided)
             assert set(await _read_all(connection, decided)) == {(False,)}
-            assert await _read_all(connection, select(t.inbox_seen)) == []
+            assert await _read_all(connection, select(_before_0033(t.inbox_seen))) == []
             assert await _read_all(connection, select(t.inbox_confirmations)) == []
         async with empty_database.writing() as connection:
             await connection.execute(
@@ -1562,6 +1584,392 @@ class MigrationSuite:
         assert await stored() == before
         async with empty_database.reading() as connection:
             assert await connection.run_sync(_schema) == schema
+
+    async def test_spaces_get_members_and_back(self, empty_database: Database) -> None:
+        """Revision 0033: default spaces become personal ones (a user without one gets one),
+        owners and shares become members, names collide no more, the owner of a document is
+        who uploaded it, user rules belong to their owner's personal space, and `owner` in templates
+        is `uploaded_by`. The downgrade restores owners, shares and names."""
+        await migrate(empty_database, "0032")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        names = ("alice", "bob", "carol", "alice_home", "bob_home", "taxes", "bobs_taxes")
+        ids = {name: new_id() for name in names}
+        ids |= {name: new_id() for name in ("kept", "rule", "global", "type")}
+        ids |= {name: new_id() for name in ("bobs", "alices")}
+        spaces = _before_0033(t.spaces)
+        documents = _before_0033(t.documents)
+        rules = _before_0033(t.rules)
+        user = {"role": "user"}
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
+            *(
+                (
+                    t.users,
+                    {"id": ids[name], "username": name, "username_key": name, "created_at": at}
+                    | user,
+                )
+                for name, at in (
+                    ("alice", NOW),
+                    ("bob", NOW + timedelta(seconds=1)),
+                    ("carol", NOW + timedelta(seconds=2)),
+                )
+            ),
+            (spaces, {"id": ids["alice_home"], "owner_id": ids["alice"], "name_key": "default"}),
+            (spaces, {"id": ids["bob_home"], "owner_id": ids["bob"], "name_key": "default"}),
+            (
+                spaces,
+                {
+                    "id": ids["taxes"],
+                    "owner_id": ids["alice"],
+                    "name": "Taxes",
+                    "name_key": "taxes",
+                    "is_default": False,
+                },
+            ),
+            (
+                spaces,
+                {
+                    "id": ids["bobs_taxes"],
+                    "owner_id": ids["bob"],
+                    "name": "taxes",
+                    "name_key": "taxes",
+                    "is_default": False,
+                    "created_at": NOW + timedelta(hours=1),
+                },
+            ),
+            (_SHARES, {"space_id": ids["taxes"], "user_id": ids["bob"], "level": "read"}),
+            (_SHARES, {"space_id": ids["taxes"], "user_id": ids["carol"], "level": "read_write"}),
+            (
+                documents,
+                {"id": ids["kept"], "owner_id": ids["alice"], "space_id": ids["alice_home"]},
+            ),
+            (
+                documents,
+                {
+                    "id": ids["bobs"],
+                    "owner_id": ids["bob"],
+                    "space_id": ids["taxes"],
+                    "sha256": "e" * 64,
+                },
+            ),
+            (
+                documents,
+                {
+                    "id": ids["alices"],
+                    "owner_id": ids["alice"],
+                    "space_id": ids["taxes"],
+                    "sha256": "f" * 64,
+                },
+            ),
+            (
+                t.document_types,
+                {
+                    "id": ids["type"],
+                    "name": "L",
+                    "name_key": "l",
+                    "title_pattern": "{{ owner }}: {{ title }}",
+                },
+            ),
+            (rules, {"id": ids["rule"], "scope": "user", "owner_id": ids["bob"]}),
+            (rules, {"id": ids["global"], "scope": "global"}),
+            *(
+                (
+                    t.rule_versions,
+                    {
+                        "rule_id": ids[rule],
+                        "number": 1,
+                        "conditions": {"all": [{"field": "channel", "op": "is", "value": "api"}]},
+                        "actions": [{"type": "force_review", "reason": "From {{ owner }}"}],
+                    },
+                )
+                for rule in ("rule", "global")
+            ),
+            (
+                t.processing_log,
+                {
+                    "document_id": ids["kept"],
+                    "node": "apply_rules",
+                    "model_version": "rules",
+                    "input": {},
+                    "output": {"rules": [{"rule_id": str(ids["rule"]), "scope": "user"}]},
+                },
+            ),
+        ]
+        await _insert(
+            empty_database,
+            [
+                (table, {"current_version": 1} | values) if table is rules else (table, values)
+                for table, values in rows
+            ],
+        )
+
+        await migrate(empty_database)
+        uow = SqlUnitOfWorkFactory(empty_database)
+        async with uow() as unit:
+            stored: dict[UUID, Space] = {space.id: space for space in await unit.spaces.list_all()}
+            carol_home = await unit.spaces.get_personal(UserId(ids["carol"]))
+            rule = await unit.rules.get(RuleId(ids["rule"]))
+            everyone = await unit.rules.get(RuleId(ids["global"]))
+            kind = await unit.document_types.get(DocumentTypeId(ids["type"]))
+        async with empty_database.reading() as connection:
+            placed = await _read_all(
+                connection,
+                select(t.documents.c.id, t.documents.c.space_id, t.documents.c.uploaded_by),
+            )
+        located = {id: space for id, space, _ in placed}
+        uploaders = {id: uploader for id, _, uploader in placed}
+        edit, read = SpaceRole.EDIT, SpaceRole.READ
+        assert {space.id: (space.name, space.personal_of) for space in stored.values()} == {
+            ids["alice_home"]: ("Personal", ids["alice"]),
+            ids["bob_home"]: ("Personal", ids["bob"]),
+            carol_home.id: ("Personal", ids["carol"]),
+            ids["taxes"]: ("Taxes", None),
+            ids["bobs_taxes"]: ("taxes (bob)", None),
+        }
+        assert stored[ids["taxes"]].members == {
+            ids["alice"]: edit,
+            ids["bob"]: read,
+            ids["carol"]: edit,
+        }
+        assert stored[ids["bobs_taxes"]].members == {ids["bob"]: edit}
+        assert carol_home.members == {ids["carol"]: edit}
+        assert located == {
+            ids["kept"]: ids["alice_home"],
+            ids["bobs"]: ids["taxes"],
+            ids["alices"]: ids["taxes"],
+        }
+        assert uploaders == {
+            ids["kept"]: ids["alice"],
+            ids["bobs"]: ids["bob"],
+            ids["alices"]: ids["alice"],
+        }
+        assert (rule.scope, rule.space_id) == (RuleScope.SPACE, ids["bob_home"])
+        assert (everyone.scope, everyone.space_id) == (RuleScope.GLOBAL, None)
+        # Every version names the space its rule belongs to (a rule may move since 0.5).
+        assert (rule.current.space_id, everyone.current.space_id) == (ids["bob_home"], None)
+        assert rule.definition.actions == (ForceReview("From {{ uploaded_by }}"),)
+        assert kind.title_pattern == "{{ uploaded_by }}: {{ title }}"
+        async with empty_database.reading() as connection:
+            (output,) = (await connection.execute(select(t.processing_log.c.output))).scalars()
+        assert output["rules"][0]["scope"] == "space"
+
+        await downgrade(empty_database, "0032")
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+            owned = {
+                row.id: (row.owner_id, row.name, row.is_default)
+                for row in await connection.execute(select(spaces))
+            }
+            shares = set(await _read_all(connection, select(_SHARES)))
+            owners = dict(await _read_all(connection, select(documents.c.id, documents.c.owner_id)))
+            rule_owner, rule_scope = (
+                await connection.execute(
+                    select(rules.c.owner_id, rules.c.scope).where(rules.c.id == ids["rule"])
+                )
+            ).one()
+            pattern = (
+                await connection.execute(
+                    select(t.document_types.c.title_pattern).where(
+                        t.document_types.c.id == ids["type"]
+                    )
+                )
+            ).scalar_one()
+            (output,) = (await connection.execute(select(t.processing_log.c.output))).scalars()
+        assert owned == {
+            ids["alice_home"]: (ids["alice"], "Default", True),
+            ids["bob_home"]: (ids["bob"], "Default", True),
+            carol_home.id: (ids["carol"], "Default", True),
+            ids["taxes"]: (ids["alice"], "Taxes", False),
+            ids["bobs_taxes"]: (ids["bob"], "taxes (bob)", False),
+        }
+        assert shares == {
+            (ids["taxes"], ids["bob"], "read"),
+            (ids["taxes"], ids["carol"], "read_write"),
+        }
+        assert owners == {
+            ids["kept"]: ids["alice"],
+            ids["bobs"]: ids["bob"],
+            ids["alices"]: ids["alice"],
+        }
+        assert (rule_owner, rule_scope) == (ids["bob"], "user")
+        assert pattern == "{{ owner }}: {{ title }}"
+        assert output["rules"][0]["scope"] == "user"
+
+    async def test_a_document_without_uploader_belongs_to_its_space_s_owner_on_the_way_back(
+        self, empty_database: Database
+    ) -> None:
+        """Going back, a document whose uploader is gone is owned by its space's owner."""
+        await migrate(empty_database)
+        uow = SqlUnitOfWorkFactory(empty_database)
+        editor = await builders.seed_user(uow)
+        shared = builders.space(editor, "Shared")
+        orphan = builders.document(None, shared, content="orphan")
+        async with uow() as unit:
+            await unit.spaces.add(shared)
+            await unit.documents.add(orphan)
+            await unit.commit()
+        await downgrade(empty_database, "0032")
+        documents = _before_0033(t.documents)
+        async with empty_database.reading() as connection:
+            owner = (
+                await connection.execute(
+                    select(documents.c.owner_id).where(documents.c.id == orphan.id)
+                )
+            ).scalar_one()
+        assert owner == editor.id
+
+    async def test_chosen_names_stay_and_nothing_old_turns_new(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0033 in place and built anew: names that collide get the owner's username,
+        shortened to fit, never taking a name another space keeps; a space of one's own named
+        "Personal" or "Default" is no obstacle. A document new for its owner is seen by the
+        other editors of its space. Going back, a document is owned by its uploader only while
+        they are a member of its space."""
+        await migrate(empty_database, "0032")
+        names: tuple[str, ...] = ("alice", "bob", "dave", "alice_home", "bob_home", "taxes")
+        names += ("alice_personal", "bobs_taxes", "bobs_own", "long", "bobs_long")
+        names += ("daves_default", "shared", "solo")
+        ids = {name: new_id() for name in names}
+        ids |= {name: new_id() for name in ("new", "old", "read_only", "foreign")}
+        spaces = _before_0033(t.spaces)
+        documents = _before_0033(t.documents)
+        user = {"role": "user"}
+        later = {"is_default": False, "created_at": NOW + timedelta(hours=1)}
+        latest = {"is_default": False, "created_at": NOW + timedelta(hours=2)}
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
+            *(
+                (
+                    t.users,
+                    {"id": ids[name], "username": name, "username_key": name, "created_at": at}
+                    | user,
+                )
+                for name, at in (
+                    ("alice", NOW),
+                    ("bob", NOW + timedelta(seconds=1)),
+                    ("dave", NOW + timedelta(seconds=2)),
+                )
+            ),
+            (spaces, {"id": ids["alice_home"], "owner_id": ids["alice"], "name_key": "default"}),
+            (spaces, {"id": ids["bob_home"], "owner_id": ids["bob"], "name_key": "default"}),
+            *(
+                (spaces, {"id": ids[key], "owner_id": ids[owner], "name": name} | extra)
+                for key, owner, name, extra in (
+                    ("alice_personal", "alice", "Personal", later),
+                    ("taxes", "alice", "Taxes", later),
+                    ("bobs_taxes", "bob", "taxes", latest),
+                    ("bobs_own", "bob", "Taxes (bob)", latest | {"created_at": NOW}),
+                    ("long", "alice", "L" * 200, later),
+                    ("bobs_long", "bob", "l" * 200, latest),
+                    ("daves_default", "dave", "Default", later),
+                    ("shared", "alice", "Shared", later),
+                    ("solo", "alice", "Solo", later),
+                )
+            ),
+            (_SHARES, {"space_id": ids["taxes"], "user_id": ids["bob"], "level": "read_write"}),
+            (_SHARES, {"space_id": ids["shared"], "user_id": ids["bob"], "level": "read"}),
+            *(
+                (
+                    documents,
+                    {"id": ids[key], "owner_id": ids[owner], "space_id": ids[space]}
+                    | {"sha256": sha * 64, "new_at": new_at},
+                )
+                for key, owner, space, sha, new_at in (
+                    ("new", "alice", "taxes", "a", NOW),
+                    ("old", "alice", "taxes", "b", None),
+                    ("read_only", "bob", "shared", "c", None),
+                    ("foreign", "bob", "solo", "d", None),
+                )
+            ),
+        ]
+        await _insert(
+            empty_database,
+            [
+                (table, values | {"name_key": values["name"].casefold()})
+                if table is spaces and "name" in values
+                else (table, values)
+                for table, values in rows
+            ],
+        )
+
+        await migrate(empty_database)
+        uow = SqlUnitOfWorkFactory(empty_database)
+        async with uow() as unit:
+            stored: dict[UUID, Space] = {space.id: space for space in await unit.spaces.list_all()}
+            daves_home = await unit.spaces.get_personal(UserId(ids["dave"]))
+        async with empty_database.reading() as connection:
+            seen = set(
+                await _read_all(
+                    connection,
+                    select(
+                        t.inbox_seen.c.user_id, t.inbox_seen.c.document_id, t.inbox_seen.c.silent
+                    ),
+                )
+            )
+        named = {key: stored[ids[key]].name for key in names if ids[key] in stored}
+        assert named == {
+            "alice_home": "Personal",
+            "bob_home": "Personal",
+            "alice_personal": "Personal",
+            "taxes": "Taxes",
+            "bobs_taxes": "taxes (bob 2)",
+            "bobs_own": "Taxes (bob)",
+            "long": "L" * 200,
+            "bobs_long": "l" * 194 + " (bob)",
+            "daves_default": "Default",
+            "shared": "Shared",
+            "solo": "Solo",
+        }
+        assert (daves_home.name, daves_home.personal_of) == ("Personal", ids["dave"])
+        assert stored[ids["alice_personal"]].personal_of is None
+        assert seen == {(ids["bob"], ids["new"], True)}  # silently: not done for him either
+
+        await downgrade(empty_database, "0032")
+        async with empty_database.reading() as connection:
+            owners = dict(await _read_all(connection, select(documents.c.id, documents.c.owner_id)))
+        assert owners == {
+            ids["new"]: ids["alice"],
+            ids["old"]: ids["alice"],
+            ids["read_only"]: ids["bob"],
+            ids["foreign"]: ids["alice"],
+        }
+
+    async def test_the_way_back_stops_where_0_4_could_not_load_it(
+        self, empty_database: Database
+    ) -> None:
+        """A shared personal space and a global rule that files into a space stop the
+        downgrade, with what to change first."""
+        await migrate(empty_database)
+        uow = SqlUnitOfWorkFactory(empty_database)
+        owner = await builders.seed_user(uow)
+        other = await builders.seed_user(uow)
+        rule = new_id()
+        async with uow() as unit:
+            home = await unit.spaces.get_personal(owner.id)
+            home.set_member(other.id, SpaceRole.READ)
+            await unit.spaces.update(home)
+            await unit.commit()
+        await _insert(
+            empty_database,
+            [
+                (t.rules, {"id": rule, "scope": "global", "current_version": 1}),
+                (
+                    t.rule_versions,
+                    {
+                        "rule_id": rule,
+                        "number": 1,
+                        "name": "Away",
+                        "conditions": {"all": [{"field": "channel", "op": "is", "value": "api"}]},
+                        "actions": [{"type": "set_space", "space_id": str(home.id)}],
+                    },
+                ),
+            ],
+        )
+        with pytest.raises(RuntimeError) as stopped:
+            await downgrade(empty_database, "0032")
+        assert f"personal space of {owner.username} is shared" in str(stopped.value)
+        assert "global rule 'Away'" in str(stopped.value)
+        assert "set_space" in str(stopped.value)
 
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
@@ -1698,12 +2106,14 @@ async def _stored(database: Database, *, old: bool) -> dict[str, Any]:
         sa.column("kind", sa.Text()),
         sa.column("value_text", sa.Text()),
     )
-    documents = _before_0009(t.documents) if old else _before_0021(t.documents)
+    documents = _before_0009(t.documents) if old else _lasting(_before_0021(t.documents))
     log_table = _before_0009(t.processing_log) if old else t.processing_log
     async with database.reading() as connection:
         definition, scope, value = await _only_rows(connection, definitions, types, values)
         document, log = await _only_rows(connection, documents, log_table)
-        rule, job, event = await _only_rows(connection, t.rule_versions, t.jobs, t.outbox)
+        rule, job, event = await _only_rows(
+            connection, _before_0033(t.rule_versions), t.jobs, t.outbox
+        )
     return {
         "definition": tuple(definition),
         "scope": tuple(scope),
@@ -1722,7 +2132,7 @@ async def _stored(database: Database, *, old: bool) -> dict[str, Any]:
 
 async def _node_names(database: Database, *, old: bool) -> dict[str, Any]:
     """The rows of `test_steps_become_nodes_and_back`, under the old or new names."""
-    documents = _before_0009(t.documents) if old else _before_0021(t.documents)
+    documents = _before_0009(t.documents) if old else _lasting(_before_0021(t.documents))
     log_table = _before_0009(t.processing_log) if old else t.processing_log
     async with database.reading() as connection:
         document, log = await _only_rows(connection, documents, log_table)
@@ -1751,7 +2161,7 @@ async def _node_states(database: Database, ids: dict[str, Any]) -> dict[str, dic
 
 
 async def _document_rows(database: Database, *, old: bool = False) -> list[Any]:
-    table = _before_0010(t.documents) if old else _before_0021(t.documents)
+    table = _before_0010(t.documents) if old else _lasting(_before_0021(t.documents))
     async with database.reading() as connection:
         return list((await connection.execute(select(table).order_by(table.c.sha256))).all())
 
@@ -1767,10 +2177,47 @@ def _drawer(table: sa.TableClause) -> sa.TableClause:
 _INBOX_COLUMNS = frozenset({"new_at", "processing_baseline", "processing_decided"})
 
 
+def _before_0033(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0033 had it: a space with an owner (one of theirs their
+    default space), a document and a user rule with an owner."""
+    columns = [sa.column(c.name, c.type) for c in table.c]
+    if table.name == "spaces":
+        columns = [c for c in columns if c.name != "personal_of"]
+        columns += [sa.column("owner_id", sa.Uuid()), sa.column("is_default", sa.Boolean())]
+    elif table.name == "documents":
+        columns = [
+            sa.column("owner_id", sa.Uuid()) if c.name == "uploaded_by" else c for c in columns
+        ]
+    elif table.name == "rules":
+        columns = [sa.column("owner_id", sa.Uuid()) if c.name == "space_id" else c for c in columns]
+    elif table.name == "rule_versions":
+        columns = [c for c in columns if c.name != "space_id"]
+    elif table.name == "inbox_seen":
+        columns = [c for c in columns if c.name != "silent"]
+    return sa.table(table.name, *columns)
+
+
+def _lasting(table: sa.TableClause) -> sa.TableClause:
+    """`table` without the owner, which revision 0033 takes away: what is read after it."""
+    return sa.table(
+        table.name, *(sa.column(c.name, c.type) for c in table.c if c.name != "owner_id")
+    )
+
+
+_SHARES = sa.table(
+    "space_shares",
+    sa.column("space_id", sa.Uuid()),
+    sa.column("user_id", sa.Uuid()),
+    sa.column("level", sa.Text()),
+)
+"""The shares of a space before revision 0033."""
+
+
 def _before_0030(table: sa.Table) -> sa.TableClause:
     """`table` (documents) as the revisions before 0030 had it: nothing for the inbox."""
     return sa.table(
-        table.name, *(sa.column(c.name, c.type) for c in table.c if c.name not in _INBOX_COLUMNS)
+        table.name,
+        *(sa.column(c.name, c.type) for c in _before_0033(table).c if c.name not in _INBOX_COLUMNS),
     )
 
 
@@ -1780,7 +2227,8 @@ def _before_0021(table: sa.Table) -> sa.TableClause:
     column (see `_drawer`)."""
     later = {"processing_vision", "title_key", "space_id", "topic_id", *_INBOX_COLUMNS}
     return sa.table(
-        table.name, *(sa.column(c.name, c.type) for c in table.c if c.name not in later)
+        table.name,
+        *(sa.column(c.name, c.type) for c in _before_0033(table).c if c.name not in later),
     )
 
 
@@ -1799,7 +2247,7 @@ def _before_0010(table: sa.Table) -> sa.TableClause:
         "topic_id",
         *_INBOX_COLUMNS,
     }
-    columns = [sa.column(c.name, c.type) for c in table.c if c.name not in later]
+    columns = [sa.column(c.name, c.type) for c in _before_0033(table).c if c.name not in later]
     if table.name == "documents":
         columns.append(sa.column("processing_node", sa.Text()))
         columns.append(sa.column("processing_outcomes", json_type()))

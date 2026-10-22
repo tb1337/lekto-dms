@@ -18,7 +18,9 @@ HEADER = """\
 Lekto migration plan: what is taken over from Paperless-ngx, and how (migration/README.md).
 Every Paperless object has an entry under its name: {to: <target>, name: <Lekto name>}, a list
 of such targets, or drop. Targets: user, contact, document_type, topic, tag, contact_group,
-type_group, field (with value: from a name alone), space, document_date.
+type_group, field (with value: from a name alone), space (a shared space by name, which
+every uploader of its documents edits; the documents of a user without further permissions go
+to their personal space), document_date.
 create: true lets `prepare` create what Lekto lacks (without it, a missing target is an error);
 review: true, or a reason, has a person look at every document with it in Lekto;
 override: true lets a reinterpretation win over what the document has anyway.
@@ -27,10 +29,10 @@ is the name). `plan` adds what is new in Paperless and marks what is gone; it as
 
 SETTINGS: tuple[tuple[str, Any, str], ...] = (
     ("currency", "EUR", "for amounts without a currency"),
-    ("fallback_owner", None, "Lekto user name for documents without an owner; empty: you"),
+    ("fallback_owner", None, "Lekto user name who uploads documents without an owner; empty: you"),
     ("deactivate_inactive_users", True, "users inactive in Paperless, at the end of a run"),
     ("take_over_added", True, "when a document came in at Paperless becomes its receipt"),
-    ("space_name", "Geteilt: {shares}", "the space of shared documents; {shares}: the users"),
+    ("space_name", "Geteilt: {members}", "the space of shared documents; {members}: its members"),
     ("text_threshold", 0.8, "check lists documents Lekto read fewer words of than this share"),
 )
 COMMENTS = {

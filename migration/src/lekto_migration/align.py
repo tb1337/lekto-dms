@@ -48,6 +48,17 @@ def current(details: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def foreign(claimant: int | None, space_id: str | None, target: str | None) -> str | None:
+    """Why the migration leaves a document it met as a duplicate as it is (None: it aligns
+    it like its own): it stands for another Paperless document (`claimant`), or lies in
+    another space than the one planned (`target`)."""
+    if claimant is not None:
+        return f"the file is Paperless document {claimant} in Lekto: not aligned"
+    if target is not None and space_id != target:
+        return "the file lies in another space than planned: not aligned"
+    return None
+
+
 def uploaded(log: list[dict[str, Any]], space_id: str | None) -> dict[str, Any] | None:
     """What the migration set at the upload, from the `receive` entry of the log (documents
     migrated before the state file recorded it); None if it holds no metadata. A receipt it

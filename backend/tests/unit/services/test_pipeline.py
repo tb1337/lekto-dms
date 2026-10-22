@@ -38,7 +38,7 @@ from lekto.core.domain.pipeline import (
     Outcome,
     ProcessingStatus,
 )
-from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.services.objects import original_key
 from lekto.core.services.pipeline import (
@@ -85,7 +85,7 @@ async def test_receive_stores_original_document_events_and_job(world: World) -> 
     document = await world.pipeline().receive(owner.id, incoming(PDF), filename="invoice.pdf")
     assert document.sha256 == Sha256.of(PDF)
     assert await world.object_store.get(original_key(document.sha256)) == PDF
-    assert document.space_id == (await world.default_space(owner)).id
+    assert document.space_id == (await world.personal_space(owner)).id
     assert document.processing.due() == (Node.OCR, Node.PAGES)
     assert document.lane is None
 
@@ -419,17 +419,19 @@ async def test_reprocess_from_a_step(world: World) -> None:
     assert lanes == [(Lane.GREEN, None), (None, Lane.YELLOW)]
 
 
-async def test_retry_and_reprocess_are_for_the_owner(world: World) -> None:
-    owner = await world.user()
-    writer = await world.user()
+async def test_retry_and_reprocess_are_for_the_editors(world: World) -> None:
+    owner, reader, editor = await world.user(), await world.user(), await world.user()
     shared = await world.spaces.create(owner.id, "Shared")
-    await world.spaces.share(owner.id, shared.id, writer.id, ShareLevel.READ_WRITE)
+    await world.spaces.set_member(owner.id, shared.id, reader.id, SpaceRole.READ)
+    await world.spaces.set_member(owner.id, shared.id, editor.id, SpaceRole.EDIT)
     document = await world.pipeline().receive(
         owner.id, incoming(PDF), filename="a.pdf", space=shared.id
     )
     await world.drain()
     with pytest.raises(PermissionDeniedError):
-        await world.pipeline().reprocess_from(writer.id, document.id, Node.OCR)
+        await world.pipeline().reprocess_from(reader.id, document.id, Node.OCR)
+    await world.pipeline().reprocess_from(editor.id, document.id, Node.OCR)
+    await world.drain()
     stranger = await world.user()
     with pytest.raises(NotFoundError):
         await world.pipeline().reprocess_from(stranger.id, document.id, Node.OCR)
@@ -437,26 +439,75 @@ async def test_retry_and_reprocess_are_for_the_owner(world: World) -> None:
         await world.pipeline().retry(owner.id, document.id)
 
 
-async def test_duplicates_are_rejected_per_owner(world: World) -> None:
+async def test_a_file_exists_once_per_installation(world: World) -> None:
+    """Every file exists once (Tobi, 22.10.2026): a second upload is a duplicate wherever the
+    first lies; it names the document to who may read it, and to no one else."""
     owner, document = await receive(world)
     with pytest.raises(DuplicateDocumentError) as info:
         await world.pipeline().receive(owner.id, incoming(PDF), filename="again.pdf")
     assert info.value.existing == document.id
     other = await world.user()
-    copy = await world.pipeline().receive(other.id, incoming(PDF), filename="mine.pdf")
-    assert copy.sha256 == document.sha256
-    assert copy.owner_id == other.id
+    with pytest.raises(DuplicateDocumentError) as info:
+        await world.pipeline().receive(other.id, incoming(PDF), filename="mine.pdf")
+    assert info.value.existing is None
+    assert str(info.value) == "the file lies in Lekto already, in a space you cannot see"
+    personal = await world.personal_space(owner)
+    await world.spaces.set_member(owner.id, personal.id, other.id, SpaceRole.READ)
+    with pytest.raises(DuplicateDocumentError) as info:
+        await world.pipeline().receive(other.id, incoming(PDF), filename="mine.pdf")
+    assert info.value.existing is None  # not green yet: a reader does not see it
 
 
-async def test_receive_into_a_space_needs_write_access(world: World) -> None:
+async def test_a_reader_learns_which_green_document_holds_the_file(world: World) -> None:
+    owner, reader = await world.user(), await world.user()
+    personal = await world.personal_space(owner)
+    green = builders.processed(owner, personal)
+    green.sha256 = Sha256.of(b"%PDF-1.7 green")
+    async with world.uow() as uow:
+        await uow.documents.add(green)
+        await uow.commit()
+    await world.spaces.set_member(owner.id, personal.id, reader.id, SpaceRole.READ)
+    with pytest.raises(DuplicateDocumentError) as info:
+        await world.pipeline().receive(reader.id, incoming(b"%PDF-1.7 green"), filename="g.pdf")
+    assert info.value.existing == green.id
+
+
+async def test_a_duplicate_in_the_target_is_named_only_to_who_reads_it(world: World) -> None:
+    """The target space holds a file once; the caller learns which document holds it only if
+    they may read it."""
+    owner, editor = await world.user(), await world.user()
+    shared = await world.spaces.create(owner.id, "Shared")
+    await world.spaces.set_member(owner.id, shared.id, editor.id, SpaceRole.EDIT)
+    held = builders.document(owner, shared)
+    held.sha256 = Sha256.of(PDF)
+    async with world.uow() as uow:
+        await uow.documents.add(held)
+        await uow.commit()
+    admin = await world.user(role=Role.ADMIN)
+    with pytest.raises(DuplicateDocumentError) as info:
+        await world.pipeline().receive(
+            admin.id, incoming(PDF), filename="a.pdf", space=shared.id, uploaded_by=editor.id
+        )
+    assert info.value.existing == held.id
+    await world.spaces.set_member(owner.id, shared.id, editor.id, SpaceRole.READ)
+    with pytest.raises(DuplicateDocumentError) as info:
+        await world.pipeline().receive(
+            admin.id, incoming(PDF), filename="a.pdf", space=shared.id, uploaded_by=editor.id
+        )
+    assert info.value.existing == held.id  # the admin reads it
+
+
+async def test_receive_into_a_space_needs_edit_rights(world: World) -> None:
     owner, writer, reader = await world.user(), await world.user(), await world.user()
     shared = await world.spaces.create(owner.id, "Shared")
-    await world.spaces.share(owner.id, shared.id, writer.id, ShareLevel.READ_WRITE)
-    await world.spaces.share(owner.id, shared.id, reader.id, ShareLevel.READ)
+    await world.spaces.set_member(owner.id, shared.id, writer.id, SpaceRole.EDIT)
+    await world.spaces.set_member(owner.id, shared.id, reader.id, SpaceRole.READ)
     document = await world.pipeline().receive(
         writer.id, incoming(PDF), filename="a.pdf", space=shared.id
     )
-    assert (document.owner_id, document.space_id) == (writer.id, shared.id)
+    assert (document.uploaded_by, document.space_id) == (writer.id, shared.id)
+    plain = await world.pipeline().receive(writer.id, incoming(b"%PDF-1.7 own"), filename="o.pdf")
+    assert plain.space_id == (await world.personal_space(writer)).id
     with pytest.raises(PermissionDeniedError):
         await world.pipeline().receive(
             reader.id, incoming(b"%PDF-1.7 other"), filename="b.pdf", space=shared.id
@@ -466,7 +517,7 @@ async def test_receive_into_a_space_needs_write_access(world: World) -> None:
             reader.id,
             incoming(b"%PDF-1.7 other"),
             filename="b.pdf",
-            space=(await world.default_space(owner)).id,
+            space=(await world.personal_space(owner)).id,
         )
 
 
@@ -647,11 +698,12 @@ async def test_an_unsupported_file_is_rejected_and_not_stored(world: World) -> N
 
 
 async def test_a_stored_original_is_not_uploaded_again(world: World) -> None:
-    first, second = await world.user(), await world.user()
-    document = await world.pipeline().receive(first.id, incoming(PDF), filename="a.pdf")
-    key = original_key(document.sha256)
+    """An original left in the store (its document deleted, the files not removed yet) is used
+    as it is."""
+    owner = await world.user()
+    key = original_key(Sha256.of(PDF))
     await world.object_store.put(key, b"%PDF-1.7 marker", content_type="application/pdf")
-    await world.pipeline().receive(second.id, incoming(PDF), filename="b.pdf")
+    await world.pipeline().receive(owner.id, incoming(PDF), filename="b.pdf")
     assert await world.object_store.get(key) == b"%PDF-1.7 marker"
 
 

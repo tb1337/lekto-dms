@@ -51,10 +51,16 @@ class ConflictError(DomainError):
 
 
 class DuplicateDocumentError(ConflictError):
-    """The owner already has a document with the same content."""
+    """The same file lies in Lekto already: every file exists once per installation. `existing`
+    names the document if the caller may read it, else None (it lies in a space they cannot
+    see)."""
 
-    def __init__(self, existing: UUID) -> None:
-        super().__init__(f"duplicate of document {existing}")
+    def __init__(self, existing: UUID | None) -> None:
+        super().__init__(
+            "the file lies in Lekto already, in a space you cannot see"
+            if existing is None
+            else f"duplicate of document {existing}"
+        )
         self.existing = existing
 
 

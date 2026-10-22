@@ -5,7 +5,7 @@
  * edits the space from then on.
  */
 import type { components } from '#lib/api/schema.ts';
-import { spaceLabel } from '#lib/masterdata.svelte.ts';
+import { spaceLabel, userChoice } from '#lib/masterdata.svelte.ts';
 
 type Space = components['schemas']['SpaceOut'];
 type User = components['schemas']['UserOut'];
@@ -84,12 +84,13 @@ export function moveTargets(
 		.toSorted((a, b) => a.label.localeCompare(b.label));
 }
 
-/** Who may edit a space of `leaving` from then on: the other active users. */
+/** Who may edit a space of `leaving` from then on: the other active users, with the username
+ * beside a display name that differs (`userChoice`). */
 export function editorOptions(
 	users: readonly User[],
 	leaving: string
 ): { value: string; label: string }[] {
 	return users
 		.filter((user) => user.id !== leaving && user.active !== false)
-		.map((user) => ({ value: user.id, label: user.username }));
+		.map((user) => ({ value: user.id, label: userChoice(user) }));
 }

@@ -16,7 +16,7 @@ const TOBI = 'tobi-id';
 const GONE = 'gone-id';
 const users = [
 	{ id: ANNA, username: 'anna', active: true },
-	{ id: TOBI, username: 'tobi', active: true },
+	{ id: TOBI, username: 'tobi', display_name: 'Tobi Busch', active: true },
 	{ id: GONE, username: 'gone', active: false }
 ];
 
@@ -88,6 +88,6 @@ describe('deleting a user who leaves spaces behind', () => {
 		];
 		const targets = moveTargets(spaces, users, ANNA, [personal, household], 'admin-id');
 		expect(targets.map((target) => target.value)).toEqual(['archive', 'tobis']);
-		expect(editorOptions(users, ANNA)).toEqual([{ value: TOBI, label: 'tobi' }]);
+		expect(editorOptions(users, ANNA)).toEqual([{ value: TOBI, label: 'Tobi Busch (tobi)' }]);
 	});
 });

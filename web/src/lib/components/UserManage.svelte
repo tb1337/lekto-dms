@@ -233,7 +233,7 @@
 	<UserDeleteDialog
 		bind:open={deleting}
 		{userId}
-		username={account.username}
+		username={userLabel(account)}
 		ondeleted={() => {
 			open = false;
 			onchanged();

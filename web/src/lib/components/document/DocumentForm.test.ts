@@ -145,6 +145,21 @@ const review = {
 
 const fetchMock = vi.fn<(request: Request) => Promise<Response>>();
 
+// A popover moves the focus into itself a moment after it opened (in jsdom onto its frame, as
+// jsdom lays nothing out), and one that closed leaves a moment later, its focus trap holding the
+// focus until then. Keys typed before either happened are lost: a test starts once the popovers
+// of the test before are gone, and types into a picker's search once its popover is the only one
+// and has taken the focus.
+const popovers = () => globalThis.document.querySelectorAll('[data-slot="popover-content"]');
+
+async function typeInSearch(label: string, text: string) {
+	await waitFor(() => {
+		expect(popovers()).toHaveLength(1);
+		expect(popovers()[0].contains(globalThis.document.activeElement)).toBe(true);
+	});
+	await userEvent.type(await screen.findByLabelText(label), text);
+}
+
 function props(overrides: Record<string, unknown> = {}) {
 	return {
 		document: documentOf('review'),
@@ -160,7 +175,8 @@ function props(overrides: Record<string, unknown> = {}) {
 	};
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+	await waitFor(() => expect(popovers()).toHaveLength(0));
 	session.start({
 		user: { id: OWNER, username: 'tobi', role: 'user' },
 		method: 'password',
@@ -989,8 +1005,8 @@ describe('the topic', () => {
 		const bank = { ...filed, contact_id: BANK, topic_id: null } as Document;
 		render(DocumentForm, props({ document: bank, lookup: topics, review: null }));
 		await userEvent.click(topicField());
-		await userEvent.type(await screen.findByLabelText(m.picker_search_create()), 'Zahnzusatz');
-		await userEvent.click(screen.getByText(m.create_named({ name: 'Zahnzusatz' })));
+		await typeInSearch(m.picker_search_create(), 'Zahnzusatz');
+		await userEvent.click(await screen.findByText(m.create_named({ name: 'Zahnzusatz' })));
 		// The topic dialog takes over (the layout hosts it), the name filled in.
 		expect(masterDataDialogs.nested).toMatchObject([{ kind: 'topics', name: 'Zahnzusatz' }]);
 		masterDataDialogs.finish(topic(DENTAL, 'Zahnzusatz') as unknown as Item);
@@ -1016,9 +1032,11 @@ describe('the topic', () => {
 			[m.field_contact(), 'contacts', 'Bäckerei Korn', BAKERY],
 			[m.field_document_type(), 'document-types', 'Mahnung', REMINDER]
 		] as const) {
+			// The popover of the field before closes as the dialog takes over: it must be gone.
+			await waitFor(() => expect(popovers()).toHaveLength(0));
 			await userEvent.click(select(label));
-			await userEvent.type(await screen.findByLabelText(m.picker_search_create()), name);
-			await userEvent.click(screen.getByText(m.create_named({ name })));
+			await typeInSearch(m.picker_search_create(), name);
+			await userEvent.click(await screen.findByText(m.create_named({ name })));
 			expect(masterDataDialogs.nested).toMatchObject([{ kind, name }]);
 			masterDataDialogs.finish({ id, name } as Item);
 			await waitFor(() => expect(selectedValue(select(label))).toBe(id));
@@ -1031,7 +1049,7 @@ describe('the topic', () => {
 	it('offers others no topic to create', async () => {
 		render(DocumentForm, props({ document: filed, lookup: topics, review: null }));
 		await userEvent.click(topicField());
-		await userEvent.type(await screen.findByLabelText(m.assignment_search()), 'Zahnzusatz');
+		await typeInSearch(m.assignment_search(), 'Zahnzusatz');
 		expect(screen.queryByText(m.create_named({ name: 'Zahnzusatz' }))).toBeNull();
 	});
 

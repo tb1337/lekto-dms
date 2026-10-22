@@ -6,7 +6,8 @@ Create Date: 2026-10-22 04:00:00.000000
 
 A user gets a display name (`users.display_name`, unique regardless of case through
 `display_name_key`) and a private profile: birth date and e-mail (`user_profiles`), other names
-(`user_aliases`) and their own identifiers (`user_identifiers`). A contact's customer or
+(`user_aliases`, unique per user only: an alias is private) and their own identifiers
+(`user_identifiers`). A contact's customer or
 personnel number may name the user it belongs to (`contact_identifiers.user_id`). Nothing is
 filled in: until a user or an admin enters it, a user is shown by their username
 (Tobi, 21.10.2026).
@@ -60,9 +61,8 @@ def upgrade() -> None:
             name=op.f("fk_user_aliases_user_id_users"),
             ondelete="CASCADE",
         ),
-        sa.PrimaryKeyConstraint("name_key", name=op.f("pk_user_aliases")),
+        sa.PrimaryKeyConstraint("user_id", "name_key", name=op.f("pk_user_aliases")),
     )
-    op.create_index(op.f("ix_user_aliases_user_id"), "user_aliases", ["user_id"])
     op.create_table(
         "user_identifiers",
         sa.Column("user_id", sa.Uuid(), nullable=False),

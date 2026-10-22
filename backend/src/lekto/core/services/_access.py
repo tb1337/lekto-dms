@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import replace
 from uuid import UUID
 
+from lekto.core.domain.classification import CHECKS
 from lekto.core.domain.documents import Document, DocumentChanges, Sha256, Unset
 from lekto.core.domain.errors import (
     AuthenticationError,
@@ -104,9 +105,10 @@ async def access_to(uow: UnitOfWork, user: User, document: Document) -> SpaceRol
 
 
 def space_label(space: Space, users: Mapping[UserId, User]) -> str:
-    """How a person reads a space's name: a personal space by its user's name."""
+    """How a person reads a space's name: a personal space by its user's name (`User.label`:
+    the display name, else the username)."""
     if space.personal_of is not None and (user := users.get(space.personal_of)) is not None:
-        return user.username
+        return user.label
     return space.name
 
 
@@ -214,8 +216,11 @@ async def readable_log(uow: UnitOfWork, user: User, log: Sequence[NodeRun]) -> l
     """`log` as `user` may see it. The similar documents a signal found are searched from the
     uploader's reach, which an editor of the document's space need not share: they see a
     similar document (with what it carries, and as the source of a candidate) only if they may
-    read it, and what the uploader's confirmed documents carry (`known`) not at all. Admins
-    see everything; the stored log keeps everything for reprocessing."""
+    read it, and what the uploader's confirmed documents carry (`known`) not at all. Of the
+    persons the facts and the judge found (`persons`, and the space check's `unseen_by`) they
+    see themselves, and another user only as far as the text names them by their display name
+    (`_persons_seen`): what is private about a person found them for admins and that person
+    alone. Admins see everything; the stored log keeps everything for reprocessing."""
     if user.is_active_admin:
         return list(log)
     readable: dict[str, bool] = {}
@@ -238,8 +243,55 @@ async def readable_log(uow: UnitOfWork, user: User, log: Sequence[NodeRun]) -> l
         neighbours = run.node is Node.SIGNAL_NEIGHBOURS
         output = await _readable(run.result.output, may_read, neighbours=neighbours)
         assert isinstance(output, dict)
+        if run.node in (Node.SIGNAL_FACTS, Node.JUDGE) and "persons" in output:
+            output = _persons_seen(output, str(user.id))
         result.append(replace(run, result=replace(run.result, output=output)))
     return result
+
+
+_NAME = "name"
+_WEAK, _MEDIUM = "weak", "medium"
+
+
+def _persons_seen(output: dict[str, JsonValue], viewer: str) -> dict[str, JsonValue]:
+    """`output` of the facts or the judge with the persons `viewer` may see: themselves as
+    found, another user only by the evidence anyone may know (the facts: their display name in
+    the text, a weak one; the judge: `public`, the strength of that evidence) and otherwise
+    not at all; the space check's `unseen_by` names another user only for medium public
+    evidence (it lists those named with medium or hard evidence)."""
+    public: dict[str, str] = {}
+    persons: list[JsonValue] = []
+    for value in output["persons"] if isinstance(output["persons"], list) else []:
+        if not isinstance(value, dict) or not isinstance(value.get("user_id"), str):
+            continue
+        user = value["user_id"]
+        assert isinstance(user, str)
+        evidence = value.get("evidence")
+        if user == viewer:
+            persons.append(value)
+        elif isinstance(evidence, list):  # the facts
+            if _NAME in evidence:
+                public[user] = _WEAK
+                persons.append({"user_id": user, "strength": _WEAK, "evidence": [_NAME]})
+        elif isinstance(value.get("public"), str):  # the judge
+            public[user] = str(value["public"])
+            persons.append({"user_id": user, "strength": public[user]})
+    seen = {**output, "persons": persons}
+    checks = output.get(CHECKS)
+    if isinstance(checks, list):
+        seen[CHECKS] = [_unseen_seen(check, viewer, public) for check in checks]
+    return seen
+
+
+def _unseen_seen(check: JsonValue, viewer: str, public: Mapping[str, str]) -> JsonValue:
+    if not isinstance(check, dict) or not isinstance(check.get("unseen_by"), list):
+        return check
+    unseen = check["unseen_by"]
+    assert isinstance(unseen, list)
+    kept = [user for user in unseen if user == viewer or public.get(str(user)) == _MEDIUM]
+    if kept:
+        return {**check, "unseen_by": kept}
+    return {key: item for key, item in check.items() if key != "unseen_by"}
 
 
 async def _readable(

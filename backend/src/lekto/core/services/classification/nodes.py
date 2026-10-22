@@ -482,11 +482,12 @@ class JudgeNode:
             tags = await uow.tags.list_all()
             candidates = await space_candidates(uow, document.uploaded_by)
             current = await uow.spaces.find(document.space_id)
-            people = (
-                [(person.user_id, person.names) for person in await matching_persons(uow)]
-                if candidates is not None
-                else []
-            )
+            matched = await matching_persons(uow) if candidates is not None else []
+        people = [(person.user_id, person.names) for person in matched]
+        # By display name alone: whom the recipient names by what anyone may know.
+        shown = [
+            (person.user_id, (person.display_name,)) for person in matched if person.display_name
+        ]
         entries = ProcessingHistory(log).signals()
         signals = signals_of(entries)
         proposal = model_proposal(entries)
@@ -513,13 +514,19 @@ class JudgeNode:
         tagged = judge_tags(signals, tags, self._thresholds)
         # The persons the document names: the facts' and the model's recipient (only names
         # are matched here; the facts matched the rest of the profiles).
+        recipient = signals.model.recipient if signals.model is not None else None
+        active = {person.user_id for person in matched}
         persons = named_persons(
-            signals.facts.persons if signals.facts is not None else {},
-            recipient_persons(
-                signals.model.recipient if signals.model is not None else None,
-                people,
-                self._thresholds,
-            ),
+            {  # facts of an earlier run may name a user deactivated since
+                user: strength
+                for user, strength in (signals.facts.persons if signals.facts else {}).items()
+                if user in active
+            },
+            recipient_persons(recipient, people, self._thresholds),
+        )
+        public = named_persons(
+            {user: Strength.WEAK for user in (signals.facts.public if signals.facts else ())},
+            recipient_persons(recipient, shown, self._thresholds),
         )
         space = (
             None
@@ -577,7 +584,7 @@ class JudgeNode:
         uncertain = [check for check in checks if not check.ok]
         output: JsonObject = {CHECKS: checks_to_json(checks)}
         if space is not None and persons:
-            output[PERSONS] = _persons_json(persons)
+            output[PERSONS] = _persons_json(persons, public)
         result = NodeResult(
             outcome=Outcome.UNCERTAIN if uncertain else Outcome.OK,
             reason="; ".join(_reason(check) for check in uncertain) or None,
@@ -597,11 +604,19 @@ class JudgeNode:
 PERSONS = "persons"
 
 
-def _persons_json(persons: Mapping[UserId, Strength]) -> JsonValue:
+def _persons_json(
+    persons: Mapping[UserId, Strength], public: Mapping[UserId, Strength]
+) -> JsonValue:
     """The persons the judge weighed for the space, by id with the strength of the evidence
-    (ids only, as the facts keep them)."""
+    (ids only, as the facts keep them), and `public` the strength of the evidence anyone may
+    know (their display name in the text or as the recipient): the log shows another user
+    only by that (`_access.readable_log`)."""
     return [
-        {"user_id": str(user), "strength": strength.value}
+        {
+            "user_id": str(user),
+            "strength": strength.value,
+            **({"public": public[user].value} if user in public else {}),
+        }
         for user, strength in sorted(
             persons.items(), key=lambda item: (-item[1].rank, str(item[0]))
         )

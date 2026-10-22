@@ -188,3 +188,23 @@ def test_facts_view_persons_reach_the_judge_through_signals() -> None:
     persons = named_persons(signals.facts.persons if signals.facts else {})
     check = judge_space(signals, choice(), persons=persons)
     assert check.suggestion == str(ANNAS)
+
+
+def test_it_stays_where_everyone_named_sees_it() -> None:
+    """In Haushalt, the signals sure of Tobi's own space, Anna's number in it: staying keeps it
+    with both, no hand-over, no narrowing that leaves her out."""
+    check = judge_space(sure_of(OWN), choice(current=HOUSEHOLD), persons={ANNA: Strength.HARD})
+    assert check.outcome is Outcome.OK
+    assert check.value is None and check.suggestion is None
+    assert "suggests" not in str(check.reason)
+
+
+def test_the_joint_account_in_the_household_stays() -> None:
+    both = {ANNA: Strength.HARD, TOBI: Strength.HARD}
+    check = judge_space(sure_of(OWN), choice(current=HOUSEHOLD), persons=both)
+    assert (check.outcome, check.value, check.suggestion) == (Outcome.OK, None, None)
+
+
+def test_a_recipient_two_users_match_alike_names_neither() -> None:
+    people = [(ANNA, ("Anna Busch",)), (BOB, ("Hanna Busch",))]
+    assert recipient_persons("Ana Busch", people, builders.THRESHOLDS) == {}

@@ -202,7 +202,10 @@ class FactsOut(BaseModel):
         default=None,
         description=(
             "The users the document names, the surest first: for the editors of its space and "
-            "admins; null for readers (that a number is Anna's tax ID is Anna's)."
+            "admins; null for readers. What is private about a person (aliases, birth date, "
+            "identifiers, a contact's number that names them) finds them only for admins and "
+            "that person: anyone else sees another user only where the text has their display "
+            "name (that a number is Anna's tax ID is Anna's)."
         ),
     )
 

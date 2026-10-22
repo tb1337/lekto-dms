@@ -133,7 +133,7 @@ export interface paths {
 		};
 		/**
 		 * The own profile
-		 * @description The caller's display name and private profile. Only the user and admins see the profile; others see the display name. None of it goes to the language model, the search index or the processing log.
+		 * @description The caller's display name and private profile. Only the user and admins see the profile; others see the display name. Of the profile nothing goes to the language model or the search index (the display name does: it labels the user's personal space in the prompt); the processing log keeps only which users a document names and the kinds of evidence, never the values, and shows them to admins and to the user named. Needs a session; API tokens are refused (403).
 		 */
 		get: operations['own_profile_api_v1_auth_me_profile_get'];
 		put?: never;
@@ -143,7 +143,7 @@ export interface paths {
 		head?: never;
 		/**
 		 * Change the own profile
-		 * @description Display name, aliases, birth date, e-mail and identifiers; what is given changes. Only the user and admins see the profile; others see the display name. None of it goes to the language model, the search index or the processing log.
+		 * @description Display name, aliases, birth date, e-mail and identifiers; what is given changes. Only the user and admins see the profile; others see the display name. Of the profile nothing goes to the language model or the search index (the display name does: it labels the user's personal space in the prompt); the processing log keeps only which users a document names and the kinds of evidence, never the values, and shows them to admins and to the user named. Needs a session; API tokens are refused (403).
 		 */
 		patch: operations['change_own_profile_api_v1_auth_me_profile_patch'];
 		trace?: never;
@@ -397,7 +397,7 @@ export interface paths {
 		};
 		/**
 		 * A user's profile
-		 * @description Admins and the user themself (`GET /auth/me/profile`). Only the user and admins see the profile; others see the display name. None of it goes to the language model, the search index or the processing log.
+		 * @description Admins and the user themself (`GET /auth/me/profile`), with a session. An admin's API token reads the display name and e-mail address alone (the rest comes empty); a user's own token is refused (403). Only the user and admins see the profile; others see the display name. Of the profile nothing goes to the language model or the search index (the display name does: it labels the user's personal space in the prompt); the processing log keeps only which users a document names and the kinds of evidence, never the values, and shows them to admins and to the user named.
 		 */
 		get: operations['get_profile_api_v1_users__id__profile_get'];
 		put?: never;
@@ -407,7 +407,7 @@ export interface paths {
 		head?: never;
 		/**
 		 * Change a user's profile
-		 * @description Admins and the user themself (`PATCH /auth/me/profile`). What is given changes; a migration fills display names and e-mail addresses with an admin's API token. Only the user and admins see the profile; others see the display name. None of it goes to the language model, the search index or the processing log.
+		 * @description Admins and the user themself (`PATCH /auth/me/profile`), with a session. What is given changes. An admin's API token (a migration) sets only the display name and the e-mail address (403 for the rest); a user's own token is refused. Only the user and admins see the profile; others see the display name. Of the profile nothing goes to the language model or the search index (the display name does: it labels the user's personal space in the prompt); the processing log keeps only which users a document names and the kinds of evidence, never the values, and shows them to admins and to the user named.
 		 */
 		patch: operations['change_profile_api_v1_users__id__profile_patch'];
 		trace?: never;
@@ -3417,7 +3417,7 @@ export interface components {
 			codes: components['schemas']['CodeOut'][] | null;
 			/**
 			 * Persons
-			 * @description The users the document names, the surest first: for the editors of its space and admins; null for readers (that a number is Anna's tax ID is Anna's).
+			 * @description The users the document names, the surest first: for the editors of its space and admins; null for readers. What is private about a person (aliases, birth date, identifiers, a contact's number that names them) finds them only for admins and that person: anyone else sees another user only where the text has their display name (that a number is Anna's tax ID is Anna's).
 			 */
 			persons?: components['schemas']['FoundPersonOut'][] | null;
 		};
@@ -7122,6 +7122,23 @@ export interface operations {
 					 *       "title": "Unauthorized",
 					 *       "status": 401,
 					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

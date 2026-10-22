@@ -2087,7 +2087,7 @@ class MigrationSuite:
         await migrate(empty_database, "0034")
         async with empty_database.reading() as connection:
             schema = await connection.run_sync(_schema)
-        ids = {name: new_id() for name in ("anna", "bob", "contact")}
+        ids = {name: new_id() for name in ("anna", "bob", "contact", "topic")}
         await _insert(
             empty_database,
             [
@@ -2100,12 +2100,17 @@ class MigrationSuite:
                 ),
                 (t.contacts, {"id": ids["contact"], "name": "Insurer", "name_key": "insurer"}),
                 (
+                    t.tags,
+                    {"id": ids["topic"], "name": "Health", "name_key": "health", "scope": "topic"},
+                ),
+                (
                     _before_0035(t.contact_identifiers),
                     {
                         "contact_id": ids["contact"],
                         "kind": "customer_number",
                         "value": "K4711",
                         "source": "manual",
+                        "topic_id": ids["topic"],
                     },
                 ),
             ],
@@ -2116,9 +2121,12 @@ class MigrationSuite:
             empty_database,
             [
                 (t.user_profiles, {"user_id": ids["anna"], "email": "a@b.example", "version": 1}),
-                (
-                    t.user_aliases,
-                    {"user_id": ids["anna"], "name": "Ann", "name_key": "ann", "position": 0},
+                *(  # an alias is private: two users may have the same
+                    (
+                        t.user_aliases,
+                        {"user_id": ids[name], "name": "Ann", "name_key": "ann", "position": 0},
+                    )
+                    for name in ("anna", "bob")
                 ),
                 *(
                     (
@@ -2146,15 +2154,20 @@ class MigrationSuite:
         async with empty_database.reading() as connection:
             identifiers = await _read_all(
                 connection,
-                select(t.contact_identifiers.c.value, t.contact_identifiers.c.user_id),
+                select(
+                    t.contact_identifiers.c.value,
+                    t.contact_identifiers.c.topic_id,
+                    t.contact_identifiers.c.user_id,
+                ),
             )
-        assert identifiers == [("K4711", ids["anna"])]
+        assert identifiers == [("K4711", ids["topic"], ids["anna"])]
 
         await downgrade(empty_database, "0034")
         async with empty_database.reading() as connection:
             assert await connection.run_sync(_schema) == schema
-            kept = await _read_all(connection, select(_before_0035(t.contact_identifiers).c.value))
-        assert kept == [("K4711",)]
+            before = _before_0035(t.contact_identifiers)
+            kept = await _read_all(connection, select(before.c.value, before.c.topic_id))
+        assert kept == [("K4711", ids["topic"])]
 
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database

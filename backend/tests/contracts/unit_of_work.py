@@ -1785,7 +1785,7 @@ class UnitOfWorkContract:
             assert (await uow.contacts.get(contact.id)).identifiers[0].user_id is None
             assert [item.id for item in await uow.profiles.list_all()] == [bob.id]
 
-    async def test_display_names_and_aliases_are_unique(
+    async def test_display_names_are_unique_and_aliases_need_not_be(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
         anna, bob = builders.user(), builders.user()
@@ -1796,13 +1796,13 @@ class UnitOfWorkContract:
             with pytest.raises(ConflictError):
                 await uow.users.update(bob)
                 await uow.commit()
+        # Aliases are private: two users may have the same (a conflict would tell whose it is).
         async with uow_factory() as uow:
             await uow.profiles.add(Profile(id=anna.id, aliases=["Ann"], version=1))
+            await uow.profiles.add(Profile(id=bob.id, aliases=["ann"], version=1))
             await uow.commit()
         async with uow_factory() as uow:
-            with pytest.raises(ConflictError):
-                await uow.profiles.add(Profile(id=bob.id, aliases=["ann"], version=1))
-                await uow.commit()
+            assert (await uow.profiles.get(bob.id)).aliases == ["ann"]
 
     async def test_a_lock_makes_other_units_wait(self, uow_factory: UnitOfWorkFactory) -> None:
         order: list[str] = []

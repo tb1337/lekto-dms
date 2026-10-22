@@ -55,8 +55,10 @@ class Transaction:
         except DBAPIError as error:
             self._failed = True
             if isinstance(error, IntegrityError):
-                # The database's message names tables and constraints: logs only.
-                log.info("constraint violated", extra={"error": str(error.orig)})
+                # The database's message names tables and constraints: logs only, and its first
+                # line alone (Postgres details the values, which may be private: an alias).
+                message = str(error.orig).strip().splitlines()
+                log.info("constraint violated", extra={"error": message[0] if message else ""})
                 raise ConflictError("the change conflicts with existing data") from error
             if getattr(error.orig, "sqlstate", None) in _CONCURRENCY_SQLSTATES:
                 log.info("concurrent transaction", extra={"error": str(error.orig)})

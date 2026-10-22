@@ -347,7 +347,10 @@ class DocumentService:
     async def facts(self, actor: UserId, id: DocumentId) -> DocumentFacts:
         """The facts of the document's text and codes, as the facts signal finds them now:
         a contact named or an identifier attached since counts at once; the persons it names
-        only for the editors of its space and admins. NotFoundError if the caller may not read
+        only for the editors of its space and admins, and what is private about a person
+        (aliases, birth date, identifiers, a contact's number that names them) only for admins
+        and that person: anyone else sees another user named by their display name alone, and
+        their numbers as unknown (`matching_persons`). NotFoundError if the caller may not read
         the document; ConflictError while it has no text yet."""
         store = self._object_store
         async with self._uow() as uow:
@@ -356,7 +359,7 @@ class DocumentService:
             contacts = await uow.contacts.list_all()
             definitions = await field_definitions(uow)
             editor = document_access(user, document, space) is SpaceRole.EDIT
-            persons = await matching_persons(uow) if editor else []
+            persons = await matching_persons(uow, user)
             labels = {item.id: item.label for item in await uow.users.list_all()}
         try:
             text = (await load_text(store, id)).decode("utf-8", errors="replace")

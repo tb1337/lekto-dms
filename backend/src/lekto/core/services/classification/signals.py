@@ -37,7 +37,7 @@ from lekto.core.domain.errors import (
     SearchError,
     ValidationError,
 )
-from lekto.core.domain.facts import Strength, facts_in
+from lekto.core.domain.facts import NAME, Strength, facts_in
 from lekto.core.domain.identifiers import IdentifierKind, identifiers_in
 from lekto.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId, UserId
 from lekto.core.domain.json_value import (
@@ -628,16 +628,20 @@ def _facts_view(output: JsonObject | None) -> FactsView | None:
         for value in as_list(output.get("named"))
     )
     persons: dict[UserId, Strength] = {}
+    public: set[UserId] = set()
     for value in as_list(output.get("persons")):
         item = as_object(value) or {}
         user, strength = _id_of(UserId, item.get("user_id")), as_text(item.get("strength"))
         if user is not None and strength in set(Strength):
             persons[user] = Strength(strength)
+            if NAME in as_list(item.get("evidence")):
+                public.add(user)
     return FactsView(
         named=frozenset(contact for contact in named if contact is not None),
         identifiers=identifiers,
         topics=topics,
         persons=persons,
+        public=frozenset(public),
     )
 
 

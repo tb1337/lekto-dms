@@ -155,11 +155,11 @@ async def me(principal: Authenticated, request: Request, context: Context) -> Me
 @router.get(
     "/me/profile",
     summary="The own profile",
-    description="The caller's display name and private profile." + PERSON_NOTE,
+    description="The caller's display name and private profile." + PERSON_NOTE + SESSION_ONLY_NOTE,
     response_model=ProfileOut,
-    responses=problem_responses(401),
+    responses=problem_responses(401, 403),
 )
-async def own_profile(principal: Authenticated, context: Context) -> ProfileOut:
+async def own_profile(principal: SessionPrincipal, context: Context) -> ProfileOut:
     return ProfileOut.of(await context.profiles.get(principal.id, principal.id))
 
 
@@ -169,12 +169,13 @@ async def own_profile(principal: Authenticated, context: Context) -> ProfileOut:
     description=(
         "Display name, aliases, birth date, e-mail and identifiers; what is given changes."
         + PERSON_NOTE
+        + SESSION_ONLY_NOTE
     ),
     response_model=ProfileOut,
     responses=problem_responses(401, 403, 409, 422),
 )
 async def change_own_profile(
-    body: ProfilePatch, principal: Authenticated, context: Context
+    body: ProfilePatch, principal: SessionPrincipal, context: Context
 ) -> ProfileOut:
     changed = await context.profiles.update(principal.id, principal.id, body.changes())
     return ProfileOut.of(changed)

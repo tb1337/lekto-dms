@@ -105,21 +105,26 @@ async def get_user(id: UUID, principal: Authenticated, context: Context) -> Acco
 @router.get(
     "/{id}/profile",
     summary="A user's profile",
-    description="Admins and the user themself (`GET /auth/me/profile`)." + PERSON_NOTE,
+    description=(
+        "Admins and the user themself (`GET /auth/me/profile`), with a session. An admin's API "
+        "token reads the display name and e-mail address alone (the rest comes empty); a "
+        "user's own token is refused (403)." + PERSON_NOTE
+    ),
     response_model=ProfileOut,
     responses=problem_responses(401, 403, 404, 422),
 )
 async def get_profile(id: UUID, principal: Authenticated, context: Context) -> ProfileOut:
-    return ProfileOut.of(await context.profiles.get(principal.id, UserId(id)))
+    session = principal.session is not None
+    return ProfileOut.of(await context.profiles.get(principal.id, UserId(id), session=session))
 
 
 @router.patch(
     "/{id}/profile",
     summary="Change a user's profile",
     description=(
-        "Admins and the user themself (`PATCH /auth/me/profile`). What is given changes; a "
-        "migration fills display names and e-mail addresses with an admin's API token."
-        + PERSON_NOTE
+        "Admins and the user themself (`PATCH /auth/me/profile`), with a session. What is "
+        "given changes. An admin's API token (a migration) sets only the display name and the "
+        "e-mail address (403 for the rest); a user's own token is refused." + PERSON_NOTE
     ),
     response_model=ProfileOut,
     responses=problem_responses(401, 403, 404, 409, 422),
@@ -127,7 +132,10 @@ async def get_profile(id: UUID, principal: Authenticated, context: Context) -> P
 async def change_profile(
     id: UUID, body: ProfilePatch, principal: Authenticated, context: Context
 ) -> ProfileOut:
-    return ProfileOut.of(await context.profiles.update(principal.id, UserId(id), body.changes()))
+    changed = await context.profiles.update(
+        principal.id, UserId(id), body.changes(), session=principal.session is not None
+    )
+    return ProfileOut.of(changed)
 
 
 @router.patch(

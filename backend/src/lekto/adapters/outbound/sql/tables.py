@@ -77,12 +77,12 @@ user_profiles = Table(
     Column("version", Integer, nullable=False),
 )
 
-# Other names of a user (a maiden name); unique across users. That no alias is another user's
-# display name is checked by the service.
+# Other names of a user (a maiden name); unique per user only: an alias is private, a conflict
+# would tell whose it is.
 user_aliases = Table(
     "user_aliases",
     metadata,
-    Column("user_id", Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("user_id", Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
     Column("name", Text, nullable=False),
     Column("name_key", Text, primary_key=True),
     Column("position", Integer, nullable=False),

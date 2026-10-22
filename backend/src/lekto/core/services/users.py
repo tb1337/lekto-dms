@@ -37,7 +37,7 @@ from lekto.core.ports.repository import DocumentFilter, DocumentPosition
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import load_actor, require_admin
 from lekto.core.services._moves import move_by_person
-from lekto.core.services.profiles import check_person_names
+from lekto.core.services.profiles import USER_NAMES_LOCK, check_display_name, check_username
 from lekto.core.services.rules.changes import ChangeRules
 from lekto.core.services.rules.references import disable_rules, refers_to
 from lekto.core.services.rules.running import Prepared
@@ -407,12 +407,15 @@ async def add_user(
 ) -> User:
     """Add a user with their personal space; ConflictError if the name is taken (looked up for
     the message; the repository's rule catches two requests at once, `core.ports.repository`),
-    or the display name is another user's name."""
+    is another user's display name, or the display name is another user's name. Takes
+    `USER_NAMES_LOCK`: the unit must not have written yet."""
     user = User.create(username=username, role=role, now=now)
     user.display_name = display_name_of(display_name)
+    await uow.lock(USER_NAMES_LOCK)
     if await uow.users.find_by_username(user.username) is not None:
         raise ConflictError(f"username '{user.username}' is taken")
-    await check_person_names(uow, user.id, user.display_name, ())
+    await check_username(uow, user.username)
+    await check_display_name(uow, user.id, user.display_name)
     await uow.users.add(user)
     await uow.spaces.add(Space.create_personal(user=user.id, now=user.created_at))
     return user

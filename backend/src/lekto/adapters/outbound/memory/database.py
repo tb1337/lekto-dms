@@ -19,7 +19,6 @@ from lekto.core.domain.jobs import Job
 from lekto.core.domain.lenses import Lens
 from lekto.core.domain.master_data import Contact, DocumentType, MasterData, Tag
 from lekto.core.domain.pipeline import NodeRun
-from lekto.core.domain.profiles import Profile
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import User
 from lekto.core.domain.validation import name_key
@@ -47,10 +46,6 @@ def _user_keys(user: User) -> Iterable[Hashable]:
     if user.display_name is not None:
         keys.append(("display name", name_key(user.display_name)))
     return keys
-
-
-def _profile_keys(profile: Profile) -> Iterable[Hashable]:
-    return [("alias", name_key(alias)) for alias in profile.aliases]
 
 
 def _space_keys(space: Space) -> Iterable[Hashable]:
@@ -104,7 +99,7 @@ def _classifier_model_keys(model: ClassifierModel) -> Iterable[Hashable]:
 
 
 USERS = Table("user", _user_keys)
-PROFILES = Table("profile", _profile_keys)
+PROFILES = Table("profile", _no_keys)
 SPACES = Table("space", _space_keys)
 CONTACTS = Table("contact", _contact_keys)
 DOCUMENT_TYPES = Table[DocumentType]("document type", _name_keys)

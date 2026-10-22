@@ -13,8 +13,11 @@ from lekto.core.domain.users import MAX_DISPLAY_NAME
 from lekto.core.services.profiles import ProfileChanges, UserProfile
 
 PERSON_NOTE = (
-    " Only the user and admins see the profile; others see the display name. None of it goes "
-    "to the language model, the search index or the processing log."
+    " Only the user and admins see the profile; others see the display name. Of the profile "
+    "nothing goes to the language model or the search index (the display name does: it labels "
+    "the user's personal space in the prompt); the processing log keeps only which users a "
+    "document names and the kinds of evidence, never the values, and shows them to admins and "
+    "to the user named."
 )
 
 

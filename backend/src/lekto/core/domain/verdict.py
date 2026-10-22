@@ -148,12 +148,14 @@ class Neighbour:
 class FactsView:
     """Contacts named in the text, the kinds of their identifiers found in it, and the topics
     those identifiers point to (each with the kinds that point to it): the pairs of contact and
-    topic the text shows. `persons`: the users it names, each with the strongest evidence."""
+    topic the text shows. `persons`: the users it names, each with the strongest evidence;
+    `public` those of them it names by their display name (what anyone may know)."""
 
     named: frozenset[ContactId] = frozenset()
     identifiers: Mapping[ContactId, tuple[str, ...]] = field(default_factory=dict)
     topics: Mapping[ContactId, Mapping[TagId, tuple[str, ...]]] = field(default_factory=dict)
     persons: Mapping[UserId, Strength] = field(default_factory=dict)
+    public: frozenset[UserId] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -800,6 +802,7 @@ class SpaceChoice:
 
 
 _NAMED_UNSEEN = "names someone who would not see it there"
+_STAYS_FOR_NAMED = "stays: the space the signals name leaves out someone it names"
 
 
 def recipient_persons(
@@ -809,8 +812,10 @@ def recipient_persons(
 ) -> dict[UserId, Strength]:
     """The users the model's recipient names, as medium evidence: every one whose display name
     or an alias stands whole in it ("Tobias und Anna Busch" names both), else the one whose
-    name matches it at least `accept`. `people`: the users with their display name and aliases
-    (never the username: what the user called themselves)."""
+    name matches it at least `accept`, unless another user's name matches it nearly as well
+    (within `ambiguity`, as for contacts: "Anna Busch" and "Hanna Busch" name neither).
+    `people`: the users with their display name and aliases (never the username: what the user
+    called themselves)."""
     if recipient is None or not recipient.strip():
         return {}
     named = [(user, tuple(name for name in names if match_key(name))) for user, names in people]
@@ -823,7 +828,8 @@ def recipient_persons(
     if found:
         return found
     match = best_match(recipient, [(user, name) for user, names in named for name in names])
-    if match.best is not None and match.score >= thresholds.accept:
+    ambiguous = match.runner_up >= match.score - thresholds.ambiguity
+    if match.best is not None and match.score >= thresholds.accept and not ambiguous:
         return {match.best: Strength.MEDIUM}
     return {}
 
@@ -921,9 +927,18 @@ def judge_space(
         )
 
     # Hard evidence against the space the signals are sure of (or, unsure, the one it lies
-    # in): someone it names would not see the document there.
+    # in): someone it names would not see the document there. Where it lies everyone it names
+    # sees it: it stays (no hand-over, no narrowing that would leave them out).
     landing = chosen if chosen is not None else current
     if landing in names and named.lack(names[landing], hard=True):
+        if landing != current and here is not None and not named.lack(here, hard=True):
+            return FieldCheck(
+                field=SPACE,
+                outcome=Outcome.OK,
+                confidence=1.0,
+                reason=_STAYS_FOR_NAMED,
+                candidates=listed,
+            )
         if backed is not None and backed != landing:
             target, why = backed, _moving_why(names[backed], seeing, choice.uploader)
             return suggested(target, f"{_NAMED_UNSEEN}; {why or 'suggests another space'}", 1.0)

@@ -10,7 +10,13 @@ from pathlib import Path
 import pytest
 
 from lekto.adapters.outbound.ocrmypdf import engine as module
-from lekto.adapters.outbound.ocrmypdf.engine import SIGNATURE_NOTE, OcrmypdfEngine, pdfa_reasons
+from lekto.adapters.outbound.ocrmypdf.engine import (
+    COLOUR_NOTE,
+    COLOUR_OPTIONS,
+    SIGNATURE_NOTE,
+    OcrmypdfEngine,
+    pdfa_reasons,
+)
 from lekto.adapters.outbound.ocrmypdf.vision import CONFIG_ENV, VisionSettings, write_error
 from lekto.adapters.outbound.system import Completed
 from lekto.core.domain import media_types
@@ -210,14 +216,70 @@ async def test_a_signed_pdf_is_processed_again_without_its_signature(
     assert [options(call) for call in runs.calls] == [("pdfa", False), ("pdfa", True)]
 
 
-async def test_a_failed_pdfa_conversion_falls_back_to_a_plain_pdf(
+def converts_colours(call: list[str]) -> bool:
+    joined = " ".join(call)
+    return " ".join(COLOUR_OPTIONS) in joined
+
+
+async def test_a_colour_space_pdfa_cannot_hold_is_converted_to_rgb(
     runs: Runs, tmp_path: Path
 ) -> None:
     runs.outcomes = [(1, COLOUR), (0, "")]
     result, _ = await convert(runs, tmp_path)
+    assert (result.pdfa, result.note) == (True, COLOUR_NOTE)
+    assert [options(call) for call in runs.calls] == [("pdfa", False), ("pdfa", False)]
+    assert [converts_colours(call) for call in runs.calls] == [False, True]
+
+
+async def test_ocrmypdfs_own_fallback_for_a_colour_space_is_converted_too(
+    runs: Runs, tmp_path: Path
+) -> None:
+    issue = (
+        "Output file is a valid PDF, but conversion to PDF/A did not succeed (issue: color space)"
+    )
+    runs.outcomes = [(10, f"{issue}\n"), (0, "")]
+    result, _ = await convert(runs, tmp_path)
+    assert (result.pdfa, result.note) == (True, COLOUR_NOTE)
+    assert [converts_colours(call) for call in runs.calls] == [False, True]
+
+
+async def test_a_colour_space_that_converting_cannot_fix_falls_back_to_a_plain_pdf(
+    runs: Runs, tmp_path: Path
+) -> None:
+    runs.outcomes = [(1, COLOUR), (1, COLOUR), (0, "")]
+    result, _ = await convert(runs, tmp_path)
     assert result.pdfa is False
     assert result.note == "not PDF/A: the colour space of the file cannot be represented in PDF/A"
+    assert [options(call) for call in runs.calls] == [
+        ("pdfa", False),
+        ("pdfa", False),
+        ("pdf", False),
+    ]
+    assert [converts_colours(call) for call in runs.calls] == [False, True, False]
+
+
+async def test_a_signed_pdf_with_such_colours_is_converted_without_its_signature(
+    runs: Runs, tmp_path: Path
+) -> None:
+    runs.outcomes = [(2, SIGNATURE), (1, COLOUR), (0, "")]
+    result, _ = await convert(runs, tmp_path)
+    assert (result.pdfa, result.note) == (True, f"{SIGNATURE_NOTE}; {COLOUR_NOTE}")
+    assert [options(call) for call in runs.calls] == [
+        ("pdfa", False),
+        ("pdfa", True),
+        ("pdfa", True),
+    ]
+
+
+async def test_a_failed_pdfa_conversion_falls_back_to_a_plain_pdf(
+    runs: Runs, tmp_path: Path
+) -> None:
+    runs.outcomes = [(1, "SomethingElseError: odd file\n"), (0, "")]
+    result, _ = await convert(runs, tmp_path)
+    assert result.pdfa is False
+    assert result.note == "not PDF/A: SomethingElseError: odd file"
     assert [options(call) for call in runs.calls] == [("pdfa", False), ("pdf", False)]
+    assert not any(converts_colours(call) for call in runs.calls)
 
 
 async def test_a_signed_pdf_whose_pdfa_conversion_fails_gets_both(
@@ -261,7 +323,7 @@ async def test_other_input_errors_are_unprocessable_at_once(runs: Runs, tmp_path
 
 
 async def test_a_second_failure_is_an_error(runs: Runs, tmp_path: Path) -> None:
-    runs.outcomes = [(1, COLOUR), (1, "BadArgsError: still no\n")]
+    runs.outcomes = [(1, "SomethingElseError: odd file\n"), (1, "BadArgsError: still no\n")]
     with pytest.raises(RuntimeError, match="exit code 1"):
         await convert(runs, tmp_path)
     assert len(runs.calls) == 2

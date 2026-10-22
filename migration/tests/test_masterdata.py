@@ -11,6 +11,7 @@ from lekto_migration.masterdata import (
     CREATED,
     EXISTS,
     FAILED,
+    FILL,
     MISSING,
     UPDATE,
     UPDATED,
@@ -339,3 +340,39 @@ async def test_an_existing_user_keeps_what_they_have() -> None:
     assert lekto.users["u-anna"]["display_name"] == "Anna Example"
     assert lekto.profiles["u-anna"]["email"] == "own@mail.example"  # never overwritten
     assert "display name 'Bob' is taken: left out" in users["bob"].notes
+
+
+async def test_filling_a_profile_is_no_open_need_and_is_planned_once() -> None:
+    """An existing user without a display name gets what Paperless knows (`FILL`), which `run`
+    does not wait for; once an earlier `prepare` filled it (the state's `profiled`), nothing."""
+    lekto = FakeLekto()
+    lekto.users["u-anna"] = {"id": "u-anna", "username": "anna", "role": "user", "active": True}
+    lekto.spaces["personal:u-anna"] = fake_lekto._personal("u-anna")
+    client = Lekto("http://lekto", fake_lekto.TOKEN, transport=lekto.transport(), delays=())
+    try:
+        directory = await Directory.of(client)
+    finally:
+        await client.close()
+    world = World()
+    world.directory = directory
+    plan, snapshot = world.plan(), world.snapshot()
+    infos = field_infos(plan, directory, snapshot)
+    anna = by(needs(plan, directory, snapshot, world.all(), infos), "user")["anna"]
+    assert anna.status == FILL and not is_open([anna])
+    again = needs(plan, directory, snapshot, world.all(), infos, profiled=frozenset({"u-anna"}))
+    assert by(again, "user")["anna"].status == EXISTS
+
+
+async def test_an_address_lekto_refuses_is_left_out_and_the_name_still_set() -> None:
+    world = World()
+    for user in world.archive.users:
+        if user["username"] == "anna":
+            user["email"] = "anna@localhost"
+    lekto = FakeLekto()
+    actions, directory = await prepared(world, lekto)
+    anna = by(actions, "user")["anna"]
+    assert anna.status == CREATED and anna.data.get("profiled") is True
+    assert "e-mail address 'anna@localhost' refused by Lekto: left out" in anna.notes
+    found = directory.find("user", "anna")
+    assert found is not None and lekto.users[str(found["id"])]["display_name"] == "Anna Example"
+    assert not lekto.profiles[str(found["id"])]["email"]

@@ -175,6 +175,50 @@ async def test_prepare_asks_and_creates_the_master_data(setup: Setup) -> None:
     assert len(lekto.writes()) == writes
 
 
+async def test_profiles_are_filled_once_and_never_hold_the_run_back(setup: Setup) -> None:
+    """An existing user without a name gets an e-mail alone; a name another user has and an
+    address Lekto refuses are left out. None of it is an open need for `run`, and a second
+    `prepare` does not ask Lekto again."""
+    lekto = setup.lekto
+    lekto.users["u-tobias"] = {
+        "id": "u-tobias",
+        "username": "tobias",
+        "role": "user",
+        "active": True,
+    }
+    lekto.spaces["personal:u-tobias"] = fake_lekto._personal("u-tobias")
+    lekto.users["u-carla"] = {
+        "id": "u-carla",
+        "username": "carla",
+        "display_name": "Bob",
+        "role": "user",
+        "active": True,
+    }
+    lekto.spaces["personal:u-carla"] = fake_lekto._personal("u-carla")
+    for user in setup.archive.users:
+        if user["username"] == "tobias":
+            user["email"] = "tobias@mail.example"
+        elif user["username"] == "anna":
+            user["email"] = "anna@localhost"
+    assert await setup.run("plan") == 0
+    assert await setup.run("prepare") == 0
+    assert lekto.profiles["u-tobias"]["email"] == "tobias@mail.example"
+    anna = named(lekto.users, "anna")
+    assert anna["display_name"] == "Anna Example"
+    assert not lekto.profiles[anna["id"]]["email"]
+    assert not named(lekto.users, "bob").get("display_name")
+    notes = {a["name"]: a["notes"] for a in setup.report("prepare")["actions"]}
+    assert any("refused by Lekto" in note for note in notes["anna"])
+    assert any("is taken" in note for note in notes["bob"])
+    assert await setup.run("check") == 0
+    users = [a for a in setup.report("check")["actions"] if a["kind"] == "user"]
+    assert {a["status"] for a in users} == {"exists"}
+    writes = len(lekto.writes())
+    assert await setup.run("prepare") == 0  # asked once
+    assert len(lekto.writes()) == writes
+    assert await setup.run("run") == 0
+
+
 # --- the migration ----------------------------------------------------------------------------
 
 

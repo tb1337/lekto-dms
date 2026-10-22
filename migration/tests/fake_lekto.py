@@ -136,19 +136,26 @@ class FakeLekto:
         return _problem(404, f"unknown {method} {path}")
 
     def _profile(self, user: str, method: str, body: dict[str, Any]) -> httpx2.Response:
-        """A user's profile: display name (on the user) and e-mail; a name another user has is
-        a conflict, as in Lekto."""
+        """A user's profile: display name (on the user) and e-mail; a name another user has
+        (display name or username) is a conflict, an address without a domain is invalid, as
+        in Lekto."""
         if user not in self.users:
             return _problem(404, "user not found")
         profile = self.profiles.setdefault(user, {"email": None})
         if method == "PATCH":
             wanted = body.get("display_name")
             if wanted and any(
-                str(other.get("display_name") or "").lower() == wanted.lower()
+                wanted.lower()
+                in (str(other.get("display_name") or "").lower(), str(other["username"]).lower())
                 for id, other in self.users.items()
                 if id != user
             ):
                 return _problem(409, f"'{wanted}' is the name of another user")
+            email = body.get("email")
+            if email and not re.fullmatch(
+                r"[a-z0-9._%+-]+@(?:[a-z0-9-]+\.)+[a-z]{2,63}", str(email).lower()
+            ):
+                return _problem(422, "not an e-mail address")
             if "display_name" in body:
                 self.users[user]["display_name"] = wanted
             if "email" in body:

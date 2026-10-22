@@ -113,6 +113,16 @@ describe('the suggested space', () => {
 		expect(handedTo('house', 'mine', lookup)).toBeNull();
 	});
 
+	it('says the hand-over in the words of the move dialog, in both languages', () => {
+		for (const locale of ['de', 'en'] as const) {
+			const options = { locale };
+			expect(m.space_suggestion_hand_over({ name: 'Anna' }, options)).toContain(
+				m.move_hand_over({ name: 'Anna' }, options)
+			);
+			expect(m.move_handed_over({ name: 'Anna' }, options)).not.toMatch(/^An Anna/);
+		}
+	});
+
 	it('names those the document names who would not see it there', () => {
 		const open = [node([{ field: 'space', suggestion: null, unseen_by: ['u2', 'u9'] }])];
 		expect(unseenBy(open)).toEqual(['u2', 'u9']);

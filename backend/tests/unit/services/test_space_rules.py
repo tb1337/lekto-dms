@@ -1,8 +1,17 @@
 """The rules of the spaces a document enters: on arrival in the pipeline, after a person's
 move, after a rule applied to existing documents; each space at most once in a chain."""
 
+from lekto.core.domain.documents import DocumentChanges
 from lekto.core.domain.pipeline import RULES, RULES_CHANGE, Lane, Node
-from lekto.core.domain.rules import RuleDefinition, SetSpace, Trigger
+from lekto.core.domain.rules import (
+    Condition,
+    ConditionField,
+    Operator,
+    RuleDefinition,
+    SetDocumentType,
+    SetSpace,
+    Trigger,
+)
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
 from lekto.core.services.rules.changes import ChangeRules
@@ -11,9 +20,11 @@ from tests import builders
 from tests.builders import TEMPLATES
 from tests.unit.services.rules_support import (
     MAX_TEXT,
+    Classifies,
     RuleWorld,
     add_tags,
     channel_api,
+    contact_is,
     definition,
     reports,
     rule_world,
@@ -138,3 +149,102 @@ async def test_a_move_by_rules_outside_processing_chains_and_stops_going_back(
         "rules move it back and forth: tobi → Haushalt → anna → Haushalt"
     )
     assert all(entry.node is Node.APPLY_RULES for entry in (first, second))
+
+
+async def test_a_chain_keeps_values_set_on_unconfirmed_values_unconfirmed(world: World) -> None:
+    """Tobi's rule sets the type on the model's unconfirmed contact and files into his archive
+    (no one new sees it there); the archive's rule files on that type into Haushalt. The type
+    rests on the unconfirmed contact, so the move that shows it to Anna waits for a click."""
+    rules = await rule_world(world)
+    tobi, anna, shared = await household(rules)
+    archive = await world.spaces.create(tobi.id, "Archiv")
+    utility = await rules.contact("Stadtwerke")
+    bill = await world.master_data.create_document_type(rules.admin.id, "Rechnung")
+    await rules.personal_rule(
+        tobi,
+        definition(
+            "Utility to archive",
+            contact_is(utility.id),
+            SetSpace(archive.id),
+            SetDocumentType(bill.id),
+            triggers=(Trigger.INGEST,),
+        ),
+    )
+    is_bill = Condition(field=ConditionField.DOCUMENT_TYPE, op=Operator.IS, value=str(bill.id))
+    await rules.space_rule(
+        tobi,
+        archive.id,
+        definition("Bills to household", is_bill, SetSpace(shared.id), triggers=(Trigger.INGEST,)),
+    )
+    document = await rules.arrive(tobi, classify=Classifies(contact=utility.id))
+    assert document.space_id == archive.id
+    assert document.lane is Lane.YELLOW
+    assert document.document_type_id == bill.id
+    del anna
+
+
+async def test_the_loop_guard_remembers_the_chain_across_a_click(world: World) -> None:
+    """Personal → Archiv by itself, Archiv → Haushalt waits for a click (an unconfirmed
+    contact), Haushalt → Personal: after the click the chain still stops at going back."""
+    rules = await rule_world(world)
+    tobi, _, shared = await household(rules)
+    archive = await world.spaces.create(tobi.id, "Archiv")
+    home = await world.personal_space(tobi)
+    utility = await rules.contact("Stadtwerke")
+    await rules.personal_rule(tobi, files_into(archive, "To archive"))
+    await rules.space_rule(
+        tobi,
+        archive.id,
+        definition(
+            "To household", contact_is(utility.id), SetSpace(shared.id), triggers=(Trigger.INGEST,)
+        ),
+    )
+    await rules.space_rule(tobi, shared.id, files_into(home, "Back home"))
+    document = await rules.arrive(tobi, classify=Classifies(contact=utility.id))
+    assert document.space_id == archive.id
+    assert document.lane is Lane.YELLOW
+
+    pipeline = rules.pipeline()
+    await pipeline.confirm(tobi.id, document.id, DocumentChanges())
+    await world.drain(pipeline)
+    after = await rules.stored(document)
+    assert after.space_id == shared.id  # not back home: it was there in this chain
+    entries = await rules.rule_entries(document, RULES)
+    assert entries[-1].result.input["chain"] == [str(home.id)]  # before the archive
+    assert "rules move it back and forth: tobi → Archiv → Haushalt → tobi" in (
+        entries[-1].result.reason or ""
+    )
+
+
+async def test_change_rules_that_file_it_run_the_target_s_rules(world: World) -> None:
+    """A person sets the contact; a change rule files the document into Haushalt, whose own
+    rules run on it there."""
+    rules = await rule_world(world)
+    tobi, anna, shared = await household(rules)
+    tag = await rules.tag("Haushalt")
+    utility = await rules.contact("Stadtwerke")
+    await rules.personal_rule(
+        tobi,
+        definition(
+            "Utility to household",
+            contact_is(utility.id),
+            SetSpace(shared.id),
+            triggers=(Trigger.CHANGE,),
+        ),
+    )
+    await rules.space_rule(
+        anna,
+        shared.id,
+        definition("Tag", channel_api(), add_tags(tag.id), triggers=(Trigger.INGEST,)),
+    )
+    document = await rules.arrive(tobi)
+    assert document.lane is Lane.GREEN
+    await rules.documents.update_metadata(
+        tobi.id, document.id, DocumentChanges(contact_id=utility.id)
+    )
+    changed = await rules.stored(document)
+    assert changed.space_id == shared.id
+    assert tag.id in changed.tag_ids
+    first, second = await rules.rule_entries(document, RULES_CHANGE)
+    assert first.result.input["trigger"] == Trigger.CHANGE.value
+    assert second.result.input["space_id"] == str(shared.id)

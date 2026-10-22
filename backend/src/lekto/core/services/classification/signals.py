@@ -277,13 +277,17 @@ def _candidate_spaces(
     predicted: Sequence[tuple[str, float]], candidates: SpaceCandidates
 ) -> tuple[list[tuple[SpaceId, float]], frozenset[SpaceId]]:
     """The classifier's spaces among the candidates, best first (see `ClassifierSignal`), and
-    the candidates it knows."""
-    found = [(space, share) for label, share in predicted if (space := candidates.resolve(label))]
-    mass = sum(share for _, share in found)
+    the candidates it knows. Labels that stand for the same space (`OWN_SPACE` and the id of
+    the uploader's personal space, handed over to them) add up."""
+    shares: dict[SpaceId, float] = {}
+    for label, share in predicted:
+        if (space := candidates.resolve(label)) is not None:
+            shares[space] = shares.get(space, 0.0) + share
+    mass = sum(shares.values())
     if mass >= _CANDIDATES_MASS:
-        found = [(space, share / mass) for space, share in found]
-    ranked = sorted(found, key=lambda item: (-item[1], str(item[0])))
-    return ranked, frozenset(space for space, _ in found)
+        shares = {space: share / mass for space, share in shares.items()}
+    ranked = sorted(shares.items(), key=lambda item: (-item[1], str(item[0])))
+    return ranked, frozenset(shares)
 
 
 @dataclass(frozen=True, kw_only=True)

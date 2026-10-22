@@ -13,9 +13,10 @@
   entry also records what the person changed, for later rule runs.
 
 A completed document that enters a space outside processing (a person moves or hands it over,
-a rule applied to existing documents files it) runs that space's own rules with trigger
-`ingest` the same way (`after_arrival`): as on arrival, but nothing turns yellow. Each space at
-most once in the chain; a person's move fixes the space (the rules leave it).
+change rules or a rule applied to existing documents file it) runs that space's own rules with
+trigger `ingest` the same way (`after_arrival`): as on arrival, but nothing turns yellow. Each
+space at most once in the chain; a person's move fixes the space (the rules leave it). Values
+rules set on unconfirmed values stay unconfirmed along the chain (`running.Chain`).
 """
 
 from collections.abc import Mapping, Sequence
@@ -37,7 +38,7 @@ from lekto.core.domain.pipeline import (
     ProcessingStatus,
 )
 from lekto.core.domain.rule_planner import Mode, changed_fields
-from lekto.core.domain.rules import Rule, Trigger
+from lekto.core.domain.rules import Rule, SetSpace, Trigger
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import User
 from lekto.core.ports.object_store import ObjectStore
@@ -46,6 +47,7 @@ from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services._access import space_label
 from lekto.core.services.rules.running import (
+    Chain,
     Prepared,
     RuleRun,
     active_rules,
@@ -89,6 +91,20 @@ class ChangeRules:
             return []
         return await active_rules(uow, document.space_id, Trigger.CHANGE)
 
+    async def followers(self, uow: UnitOfWork, rules: Sequence[Rule]) -> list[Rule]:
+        """The rules of the spaces `rules` may file a document into, and of the spaces those
+        file it into (trigger `ingest`, `after_arrival`): prepared together with them."""
+        found: dict[object, Rule] = {}
+        for target in {
+            action.space_id
+            for rule in rules
+            for action in rule.definition.actions
+            if isinstance(action, SetSpace)
+        }:
+            for rule in await reachable_rules(uow, target, Trigger.INGEST, include_global=False):
+                found.setdefault(rule.id, rule)
+        return list(found.values())
+
     async def prepare(self, rules: Sequence[Rule], document: Document) -> Prepared:
         """Outside a transaction: the text and its patterns, if a rule needs them."""
         return await prepare(self._store, self._matcher, rules, document, max_text=self._max_text)
@@ -111,21 +127,26 @@ class ChangeRules:
         now: datetime,
         by_person: bool,
         applier: User | None = None,
+        chain: Chain | None = None,
     ) -> None:
         """After `document` was moved out of `source` into the space it lies in now: run the
         rules of that space (its own, trigger `ingest`) in the manner of change rules, and of
         every space they file it into, each at most once; one log entry per space. `by_person`:
-        a person chose the space, the rules leave it."""
+        a person chose the space, the rules leave it. `chain`: what the rules that moved it
+        carry on (`running.Chain`)."""
         if document.processing.status is not ProcessingStatus.COMPLETED:
             return
         visited = [source.id]
+        chain = Chain() if chain is None else chain
         while True:
             here = document.space_id
             visited.append(here)
             rules = await space_rules(uow, here, Trigger.INGEST)
             if not rules:
                 return
-            origin = provenance(await uow.processing_log.list_for(document.id), document)
+            origin = chain.origin(
+                provenance(await uow.processing_log.list_for(document.id), document)
+            )
             locked = origin.person | ({SPACE} if by_person else set())
             run = await run_rules(
                 uow,
@@ -145,6 +166,7 @@ class ChangeRules:
             looping = target is not None and target != here and target in visited
             plan = replace(run.plan, space=None) if looping else run.plan
             problem = await apply_plan(uow, document, plan, definitions, now)
+            chain.record(plan, document)
             if looping:
                 assert target is not None
                 problem = back_and_forth(await self._names(uow, [*visited, target]))
@@ -268,5 +290,19 @@ class ChangeRules:
                     version=self._version,
                     now=now,
                 )
+            )
+        if run is not None and document.space_id != before.space_id:
+            # The change rules filed it into another space: that space's rules run on it.
+            chain = Chain()
+            chain.record(run.plan, document)
+            await self.after_arrival(
+                uow,
+                document=document,
+                source=await uow.spaces.get(before.space_id),
+                prepared=prepared,
+                definitions=definitions,
+                now=now,
+                by_person=False,
+                chain=chain,
             )
         return run

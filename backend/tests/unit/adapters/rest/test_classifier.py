@@ -28,7 +28,7 @@ async def test_status_and_training(api: Api) -> None:
     assert (await api.client.post(train, headers=auth(user))).status_code == 403
     too_few = await api.client.post(train, headers=auth(admin))
     assert too_few.status_code == 409
-    assert too_few.json()["detail"] == "0 confirmed documents; training needs 20"
+    assert too_few.json()["detail"] == "0 confirmed documents or decided spaces; training needs 20"
 
 
 async def test_without_a_classifier_the_endpoints_answer_503(api: Api) -> None:

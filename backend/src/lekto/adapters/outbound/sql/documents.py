@@ -281,7 +281,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             await self._tx.read(
                 select(documents.c.space_id, spaces.c.personal_of, documents.c.uploaded_by)
                 .select_from(placed)
-                .where(documents.c.space_confirmed_at.is_not(None), readable)
+                .where(confirmed, documents.c.space_confirmed_at.is_not(None), readable)
                 .distinct()
             )
         ).all()

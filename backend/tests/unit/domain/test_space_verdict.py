@@ -23,19 +23,19 @@ TOBI, ANNA = UserId(new_id()), UserId(new_id())
 OWN, HOUSEHOLD, ANNAS = SpaceId(new_id()), SpaceId(new_id()), SpaceId(new_id())
 SHARED_OWN = SpaceId(new_id())  # Tobi's personal space, shared with Anna
 OPTIONS = {
-    OWN: SpaceOption("own personal space", frozenset({TOBI})),
-    HOUSEHOLD: SpaceOption("Haushalt", frozenset({TOBI, ANNA})),
-    ANNAS: SpaceOption("personal space of anna", frozenset({ANNA})),
+    OWN: SpaceOption("the uploader's personal space", frozenset({TOBI}), personal_of=TOBI),
+    HOUSEHOLD: SpaceOption("a shared space", frozenset({TOBI, ANNA})),
+    ANNAS: SpaceOption("another user's personal space", frozenset({ANNA}), personal_of=ANNA),
 }
 
 
 def choice(current: SpaceId = OWN, *, locked: bool = False) -> SpaceChoice:
     options = dict(OPTIONS)
     if current == SHARED_OWN:
-        options[SHARED_OWN] = SpaceOption("own personal space", frozenset({TOBI, ANNA}))
-    return SpaceChoice(
-        current=current, options=options, locked=locked, people={TOBI: "tobi", ANNA: "anna"}
-    )
+        options[SHARED_OWN] = SpaceOption(
+            "the uploader's personal space", frozenset({TOBI, ANNA}), personal_of=TOBI
+        )
+    return SpaceChoice(current=current, options=options, locked=locked, uploader=TOBI)
 
 
 def neighbours(*spaces: SpaceId | None) -> tuple[Neighbour, ...]:
@@ -45,7 +45,7 @@ def neighbours(*spaces: SpaceId | None) -> tuple[Neighbour, ...]:
     )
 
 
-def test_two_signals_that_name_a_wider_space_suggest_it_and_name_its_new_readers() -> None:
+def test_two_signals_that_name_a_wider_space_suggest_it_without_naming_anyone() -> None:
     signals = Signals(
         model=ModelProposal(space=HOUSEHOLD),
         classifier=ClassifierView(spaces=[(HOUSEHOLD, 0.9)], known_spaces=frozenset(OPTIONS)),
@@ -55,7 +55,9 @@ def test_two_signals_that_name_a_wider_space_suggest_it_and_name_its_new_readers
     assert check.outcome is Outcome.UNCERTAIN
     assert check.value is None
     assert check.suggestion == str(HOUSEHOLD)
-    assert check.reason == "suggests the space 'Haushalt', which shows it to anna"
+    # Who reads the check may not see the space or its members: the web names them.
+    assert check.reason == "suggests another space, which shows it to more people"
+    assert all("Haushalt" not in c.label and "anna" not in c.label for c in check.candidates)
     assert check.confidence < 0.9
 
 
@@ -71,15 +73,20 @@ def test_a_space_that_shows_it_to_no_one_new_is_moved_to() -> None:
     assert check.value == str(HOUSEHOLD)
 
 
-def test_sure_of_the_space_it_lies_in_changes_nothing() -> None:
-    signals = Signals(
-        model=ModelProposal(space=OWN),
-        classifier=ClassifierView(spaces=[(OWN, 0.95)], known_spaces=frozenset(OPTIONS)),
-    )
-    check = judge_space(signals, choice())
-    assert check.outcome is Outcome.OK
-    assert check.value == str(OWN)
-    assert check.confidence == 1.0
+def test_sure_of_the_space_it_lies_in_changes_nothing_and_is_no_model_value() -> None:
+    """No value: rules that file the document elsewhere do not contradict the model."""
+    for signals in (
+        Signals(
+            model=ModelProposal(space=OWN),
+            classifier=ClassifierView(spaces=[(OWN, 0.95)], known_spaces=frozenset(OPTIONS)),
+        ),
+        Signals(model=ModelProposal(space=OWN)),  # the model alone, nothing else knows it
+    ):
+        check = judge_space(signals, choice())
+        assert check.outcome is Outcome.OK
+        assert check.value is None
+        assert check.suggestion is None
+        assert check.confidence == 1.0
 
 
 def test_unsure_it_stays_and_is_never_uncertain() -> None:
@@ -99,7 +106,7 @@ def test_unsure_it_stays_and_is_never_uncertain() -> None:
     disagreeing = judge_space(
         Signals(model=ModelProposal(space=ANNAS), classifier=alone.classifier), choice()
     )
-    assert disagreeing.reason is not None and "disagree" in disagreeing.reason
+    assert disagreeing.reason == "the signals name different spaces"
     assert judge_space(alone, choice()).suggestion == str(HOUSEHOLD)
 
 
@@ -154,4 +161,30 @@ def test_handing_over_is_a_wider_space_too() -> None:
     check = judge_space(signals, choice())
     assert check.outcome is Outcome.UNCERTAIN
     assert check.suggestion == str(ANNAS)
-    assert check.reason == "suggests the space 'personal space of anna', which shows it to anna"
+    assert check.reason == "suggests another space, which shows it to more people"
+
+
+def test_a_hand_over_that_narrows_is_still_only_suggested() -> None:
+    """Tobi's personal space, which Anna reads; the model alone names Anna's personal space:
+    no one new sees it, but Tobi would lose his upload. Lekto suggests the hand-over, it
+    never hands over by itself."""
+    check = judge_space(Signals(model=ModelProposal(space=ANNAS)), choice(SHARED_OWN))
+    assert check.outcome is Outcome.UNCERTAIN
+    assert check.value is None
+    assert check.suggestion == str(ANNAS)
+    assert check.reason == "suggests handing it over into another user's personal space"
+
+
+def test_a_space_without_the_uploader_is_only_suggested() -> None:
+    """From Haushalt into a space only Anna edits (not her personal one): Tobi, the uploader,
+    would not see his document there."""
+    annas_archive = SpaceId(new_id())
+    options = {
+        **OPTIONS,
+        annas_archive: SpaceOption("a shared space", frozenset({ANNA})),
+    }
+    signals = Signals(model=ModelProposal(space=annas_archive))
+    check = judge_space(signals, SpaceChoice(current=HOUSEHOLD, options=options, uploader=TOBI))
+    assert check.outcome is Outcome.UNCERTAIN
+    assert check.suggestion == str(annas_archive)
+    assert check.reason == "suggests a space its uploader does not see"

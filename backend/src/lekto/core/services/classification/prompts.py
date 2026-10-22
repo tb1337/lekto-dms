@@ -230,11 +230,6 @@ def _listed(items: Sequence[Listed]) -> str:
     return "\n".join(lines) if lines else "(none)"
 
 
-def _spaces(spaces: Sequence[tuple[str, str]]) -> str:
-    lines = "\n".join(f"- {key}: {one_line(label)}" for key, label in spaces)
-    return f"{SPACES_HEADING}\n{lines}"
-
-
 def _items(names: Sequence[str]) -> str:
     return "\n".join(f"- {name}" for name in names) if names else "(none)"
 

@@ -7,23 +7,30 @@ import pytest
 
 from lekto.adapters.outbound.memory import FakeLanguageModel
 from lekto.core.domain.classification import SPACE, checks_from_json
+from lekto.core.domain.classifier import OWN_SPACE
 from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.errors import NotFoundError
 from lekto.core.domain.inbox import InboxTab
 from lekto.core.domain.pipeline import Lane, Node, Outcome, ProcessingStatus
+from lekto.core.domain.rules import RuleScope
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
+from lekto.core.services._spaces import SpaceCandidates
 from lekto.core.services.classification.nodes import JudgeNode
 from lekto.core.services.classification.prompts import SPACES_HEADING
 from lekto.core.services.classification.signals import (
     ClassifierSignal,
     FactsSignal,
     NeighboursSignal,
+    _candidate_spaces,
 )
+from lekto.core.services.inbox import open_nodes
 from lekto.core.services.objects import text_key
 from lekto.core.services.pipeline import MetadataResult, NodeExecutor
+from lekto.core.services.rules import RuleService
 from tests import builders
 from tests.builders import incoming
+from tests.unit.services.rules_support import FakeMatcher
 from tests.unit.services.support import World
 from tests.unit.services.test_classification import (
     INVOICE,
@@ -37,6 +44,7 @@ from tests.unit.services.test_classification import (
     seed,
     signal_step,
 )
+from tests.unit.services.test_space_rules import files_into
 
 
 async def household(world: World, *, anna_reads_tobi: bool = False) -> tuple[User, User, Space]:
@@ -147,7 +155,7 @@ async def test_a_wider_space_is_suggested_and_the_document_stays(world: World) -
     check = space_check(result)
     assert check.outcome is Outcome.UNCERTAIN
     assert check.suggestion == str(shared.id)
-    assert check.reason == "suggests the space 'Haushalt', which shows it to anna"
+    assert check.reason == "suggests another space, which shows it to more people"
     assert result.space is None
     assert result.result.outcome is Outcome.UNCERTAIN
 
@@ -255,3 +263,73 @@ async def test_keeping_the_space_is_a_decision(world: World) -> None:
         kept = await uow.documents.get(document.id)
     assert kept.space_id == home.id
     assert kept.space_confirmed_at is not None  # the judge leaves it from now on
+
+
+async def test_sure_it_stays_does_not_hold_back_a_rule_that_files_it(world: World) -> None:
+    """The model names the uploader's own space (alone, nothing else knows it): no model
+    value, so a trusted rule files it into Haushalt as it would without an answer."""
+    await seed(world)
+    tobi, _, shared = await household(world)
+    rules = RuleService(world.uow, world.clock, builders.TEMPLATES, FakeMatcher())
+    await rules.create(tobi.id, RuleScope.SPACE, files_into(shared))
+    document = await arrive(world, tobi, proposal(space="s1"))
+    assert document.space_id == shared.id
+    assert document.lane is Lane.GREEN
+
+
+async def test_rules_that_file_it_into_the_suggested_space_settle_the_suggestion(
+    world: World,
+) -> None:
+    await seed(world)
+    tobi, _, shared = await household(world)
+    rules = RuleService(world.uow, world.clock, builders.TEMPLATES, FakeMatcher())
+    await rules.create(tobi.id, RuleScope.SPACE, files_into(shared))
+    document = await arrive(world, tobi, proposal(space="s2"))
+    assert document.space_id == shared.id
+    assert document.lane is Lane.GREEN
+    async with world.uow() as uow:
+        log = await uow.processing_log.list_for(document.id)
+    assert open_nodes(document, log) == ()
+
+
+async def test_a_suggestion_the_confirming_editor_cannot_take_keeps_the_space(
+    world: World,
+) -> None:
+    """Bob edits Tobi's personal space, not Haushalt: confirming with the suggestions decides
+    the rest and keeps the space, instead of refusing the whole confirmation."""
+    await seed(world)
+    tobi, _, _ = await household(world)
+    bob = await world.user("bob")
+    home = await world.personal_space(tobi)
+    async with world.uow() as uow:
+        stored = await uow.spaces.get(home.id)
+        stored.set_member(bob.id, SpaceRole.EDIT)
+        await uow.spaces.update(stored)
+        await uow.commit()
+    document = await arrive(world, tobi, proposal(space="s2"))
+    assert document.lane is Lane.YELLOW
+    await world.pipeline({Node.APPLY_RULES: rules_step(world)}).confirm(
+        bob.id, document.id, DocumentChanges(), accept_suggestions=True
+    )
+    async with world.uow() as uow:
+        kept = await uow.documents.get(document.id)
+    assert kept.space_id == home.id
+    assert kept.space_confirmed_at is not None
+
+
+def test_own_and_the_id_of_the_uploader_s_personal_space_add_up() -> None:
+    """Documents handed over to Anna are labelled with her space's id, her own uploads "own":
+    for her, both are her personal space."""
+    anna = builders.user("anna")
+    annas = builders.personal_space(anna)
+    house = builders.space(anna, "Haushalt")
+    candidates = SpaceCandidates(
+        uploader=anna, personal=annas.id, spaces={annas.id: annas, house.id: house}, people={}
+    )
+    ranked, known = _candidate_spaces(
+        [(OWN_SPACE, 0.4), (str(house.id), 0.35), (str(annas.id), 0.25)], candidates
+    )
+    assert ranked[0][0] == annas.id
+    assert ranked[0][1] == pytest.approx(0.65)
+    assert [space for space, _ in ranked] == [annas.id, house.id]
+    assert known == {annas.id, house.id}

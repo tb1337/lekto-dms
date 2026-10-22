@@ -32,7 +32,8 @@ async def status(user: CurrentUser, classifier: Classifier) -> ClassifierStatusO
     description=(
         ADMINS_ONLY + " Trains a new model in the background (it also happens on its own after "
         "enough confirmations); one that is queued or running is not queued twice. 409 with "
-        "fewer confirmed documents than the first model needs, 503 without a classifier."
+        "fewer confirmed documents or decided spaces than the first model needs, 503 without a "
+        "classifier."
     ),
     response_class=Response,
     responses={202: {"description": "Queued."}, **problem_responses(401, 403, 409, 503)},

@@ -483,7 +483,7 @@ sources. The judge's rule:
 | Document type | two signals name it, or only the model and no other signal covers it (the classifier was not trained on it, no confirmed document carries it) | yellow; a type outside the list is proposed as new |
 | Tags (automatic document tags; one set by hand is never proposed) | set as a type is green, without the parent of a tag set | a suggestion (ids); tags never make a document yellow |
 | Document date | a valid date that appears in the text, in a quoted passage that shows it (`31.03.2026`, `31.3.26`, `2026-03-31`, `31. März 2026`, `March 31, 2026`, ...) | suggested |
-| Space (among the uploader's candidates; only with two or more) | sure as a type: two signals name it, or only the model and no other signal covers it. The space it lies in: nothing changes. One that shows the document to no one new (no member the current space lacks): it moves there. One with new readers: yellow with the space as suggestion, naming them ("suggests the space 'Haushalt', which shows it to anna"): more visibility only with a person's click. A space a person decided is left | it stays where it is, never yellow (the best candidate is kept in the log) |
+| Space (among the uploader's candidates; only with two or more) | sure as a type: two signals name it, or only the model and no other signal covers it. The space it lies in: nothing changes (no model value, so rules file it as they would). One that shows the document to no one new, keeps it with its uploader and is no one else's personal space: it moves there. One with new readers, one its uploader would not see, or another user's personal space (a hand-over): yellow with the space as suggestion ("suggests another space, which shows it to more people", "suggests handing it over into another user's personal space"); more visibility and a hand-over only with a person's click. Reasons and candidates name no space and no person (the editors of the document may not see them; the web names what its viewer sees). A space a person decided is left | it stays where it is, never yellow (the best candidate is kept in the log) |
 
 Without the model's proposal the judge is uncertain; it fails (red) only if the model answered
 and no signal recognised anything.
@@ -782,13 +782,21 @@ where it is and edits where it goes (global: admins); every version names its sp
   (trigger `ingest`) run next, and so on. Each space at most once in such a chain: rules that
   would file it back into a space it was in stop the chain, the move is not made and the
   document waits in the inbox ("rules move it back and forth: tobi → Haushalt → tobi"; the
-  node's output lists the `spaces`). The patterns of every rule the chain may meet run before
-  the transaction. A completed document that a person moves or hands over, or that a rule
-  applied to existing documents files elsewhere, runs the target's rules the same way, but as
-  change rules: nothing turns yellow, what cannot be applied is reported in a `rules_change`
-  log entry per space (`trigger` `ingest`, `space_id`); after a person's move the rules leave
-  the space they chose. Confirming a document into another space continues processing at
-  `apply_rules`, where the target's rules run on arrival.
+  node's output lists the `spaces`). The chain goes on across a person's click: after a
+  confirmation the spaces of the runs that waited for it count (the input's `chain`). A value
+  a rule set only through unconfirmed model values stays unconfirmed for the next space's
+  rules, so a later rule cannot file on it into a wider space without the click, and a later
+  rule setting another value there is a conflict. The patterns of every rule the chain may
+  meet run before the transaction. A completed document that a person moves or hands over,
+  that change rules file elsewhere, or that a rule applied to existing documents files
+  elsewhere, runs the target's rules the same way, but as change rules: nothing turns yellow,
+  what cannot be applied is reported in a `rules:change` log entry per space (`trigger`
+  `ingest`, `space_id`); after a person's move the rules leave the space they chose.
+  Confirming a document into another space continues processing at `apply_rules`, where the
+  target's rules run on arrival. If the rules file a document into the space the judge
+  suggested, the judge's open space is settled. When the judge itself moves a document (one
+  that shows it to no one new), the rules of the space it came from do not run: the document
+  arrives in the judge's space.
 - **Filing.** `set_space` files into a space whoever saved the rule's current version may file
   into (an editor of it, or an admin), or hands the document over into another user's
   personal space (no membership needed; a deactivated user receives nothing). If that right is

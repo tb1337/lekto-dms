@@ -67,7 +67,7 @@ class ClassifierPolicy:
     status shows it. `text_limit`: characters of a document's text it learns from and predicts
     on (`shorten`)."""
 
-    min_examples: int  # confirmed documents before the first model
+    min_examples: int  # confirmed documents or decided spaces before the first model
     retrain_after: int  # confirmations since the last model before another
     threshold: float  # a prediction this sure names its class
     check_interval: timedelta = timedelta(minutes=10)
@@ -156,13 +156,14 @@ class ClassifierService:
 
     async def request_training(self, actor: UserId) -> None:
         """Admins only: queue a training, unless one is queued or running. ConflictError with
-        fewer confirmed documents than a first model needs."""
+        fewer decisions (confirmed documents, decided spaces) than a first model needs."""
         async with self._uow() as uow:
             await require_admin(uow, actor, "train the classifier")
             confirmed = await uow.documents.count_confirmed()
             if confirmed < self.policy.min_examples:
                 raise ConflictError(
-                    f"{confirmed} confirmed documents; training needs {self.policy.min_examples}"
+                    f"{confirmed} confirmed documents or decided spaces; training needs "
+                    f"{self.policy.min_examples}"
                 )
             await uow.jobs.enqueue(TRAIN_JOB, {}, run_at=self._clock.now(), dedup_key=TRAIN_JOB)
             await uow.commit()
@@ -183,11 +184,14 @@ class ClassifierService:
     # --- training ---------------------------------------------------------------------------------
 
     async def train(self) -> ClassifierModel:
-        """A new model from the confirmed documents, and the identifiers learned from them.
-        ClassifierError if there is nothing to learn from."""
+        """A new model from the documents a person confirmed or decided the space of, and the
+        identifiers learned from the confirmed ones. ClassifierError if there is nothing to
+        learn from."""
         examples = await self._examples()
         if len(examples) < 2:
-            raise ClassifierError(f"{len(examples)} confirmed documents with text: too few")
+            raise ClassifierError(
+                f"{len(examples)} confirmed documents or decided spaces with text: too few"
+            )
         accuracy = await self._accuracy(examples)
         trained = await self._classifier.train([item.example for item in examples])
         until = max(
@@ -199,7 +203,9 @@ class ClassifierService:
             ),
             default=None,
         )
-        found = await asyncio.to_thread(_identifiers_of, examples)
+        # Identifiers are learned from confirmed contacts only, never from the machine's.
+        confirmed = [item for item in examples if item.example.labelled]
+        found = await asyncio.to_thread(_identifiers_of, confirmed)
         model, learned, old = await retrying(
             lambda: self._store_model(trained, found, accuracy, len(examples), until),
             attempts=_COMMIT_ATTEMPTS,
@@ -304,8 +310,8 @@ class ClassifierService:
         return examples
 
     async def _accuracy(self, examples: Sequence[_Example]) -> JsonObject | None:
-        """The share of held-out examples whose contact and type the model trained on the rest
-        names first; None with too few examples to tell."""
+        """The share of held-out confirmed examples whose contact and type the model trained on
+        the rest names first; None with too few examples to tell."""
         if len(examples) < _HOLDOUT_FROM:
             return None
         ordered = sorted(examples, key=lambda item: item.document.id)
@@ -322,9 +328,17 @@ class ClassifierService:
         examples_held = [item.example for item in held]
         return {
             "tested": len(held),
-            "contact": _hits(examples_held, predictions, lambda e: e.contact, _first_contact),
+            "contact": _hits(
+                examples_held,
+                predictions,
+                lambda e: e.contact if e.labelled else None,
+                _first_contact,
+            ),
             "document_type": _hits(
-                examples_held, predictions, lambda e: e.document_type, _first_type
+                examples_held,
+                predictions,
+                lambda e: e.document_type if e.labelled else None,
+                _first_type,
             ),
         }
 

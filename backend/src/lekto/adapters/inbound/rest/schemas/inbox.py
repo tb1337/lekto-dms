@@ -453,7 +453,9 @@ class ConfirmRequest(BaseModel):
         default=False,
         description=(
             "Take the suggestion of every open field that is neither in `changes` nor set on "
-            "the document."
+            "the document; for an open `space` with a suggestion, that space: the document "
+            "moves there (which may show it to more people, as the suggestion says), unless "
+            "`space_id` chooses another."
         ),
     )
     resume_at: ResumeNode = Field(

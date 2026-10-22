@@ -1037,14 +1037,17 @@ class UnitOfWorkContract:
 
     async def test_decided_spaces(self, uow_factory: UnitOfWorkFactory) -> None:
         """When a person decided a document's space is kept; such documents are labelled (the
-        classifier's examples) and count as decisions; the decided spaces a reader may read are
-        known, one in its uploader's personal space as the reader's own."""
+        classifier's examples) and count as decisions; the decided spaces of the confirmed
+        documents a reader may read (those that vote as neighbours) are known, one in its
+        uploader's personal space as the reader's own."""
         owner, home = await owner_with_space(uow_factory)
         other, theirs = await owner_with_space(uow_factory)
         shared = builders.space(owner, "Haushalt", readers=[other])
         placed, kept, confirmed, plain = (builders.processed(owner, home) for _ in range(4))
         placed.move_to(shared.id, NOW + timedelta(hours=2), by_person=True)
+        placed.mark_confirmed(NOW)
         kept.confirm_space(NOW)
+        kept.mark_confirmed(NOW)
         confirmed.mark_confirmed(NOW - timedelta(hours=1))
         foreign = builders.processed(other, theirs)
         foreign.confirm_space(NOW)
@@ -1064,9 +1067,10 @@ class UnitOfWorkContract:
             assert await uow.documents.count_confirmed() == 4
             assert await uow.documents.count_confirmed(after=NOW - timedelta(minutes=1)) == 3
             # The other user reads the shared space (green documents) and their own: Tobi's
-            # document in his personal space is not theirs to read; theirs counts as their own.
+            # document in his personal space is not theirs to read; theirs has a decided space
+            # but no confirmed metadata, so it votes nowhere and is not known.
             known = await uow.documents.confirmed_labels(other.id)
-            assert known.spaces == {shared.id, theirs.id}
+            assert known.spaces == {shared.id}
             assert (await uow.documents.confirmed_labels(owner.id)).spaces == {shared.id, home.id}
 
     async def test_a_space_s_description(self, uow_factory: UnitOfWorkFactory) -> None:

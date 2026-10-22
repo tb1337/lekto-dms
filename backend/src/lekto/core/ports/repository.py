@@ -412,8 +412,9 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
     async def confirmed_labels(self, reader: UserId) -> KnownLabels:
         """The contacts, document types, topics and tags the confirmed documents `reader` may
         read carry: what a document similar to one of theirs can name. `spaces`: the decided
-        spaces of the documents the reader may read, as the reader's candidates: one in its
-        uploader's personal space counts as the reader's personal space."""
+        spaces of those confirmed documents (the ones that vote, `NeighboursSignal`), as the
+        reader's candidates: one in its uploader's personal space counts as the reader's
+        personal space."""
         ...
 
     async def exists(

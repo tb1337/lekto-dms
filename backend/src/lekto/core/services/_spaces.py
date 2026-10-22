@@ -43,18 +43,27 @@ class SpaceCandidates:
 
     def choice(self, current: Space, *, locked: bool) -> SpaceChoice:
         """What the judge weighs for a document lying in `current`."""
+        spaces = {**self.spaces, current.id: current}
         options = {
-            id: SpaceOption(name=self.label(id), members=frozenset(space.members))
-            for id, space in self.spaces.items()
+            id: SpaceOption(
+                name=self._kind(space),
+                members=frozenset(space.members),
+                personal_of=space.personal_of,
+            )
+            for id, space in spaces.items()
         }
-        if current.id not in options:
-            options[current.id] = SpaceOption(name=current.name, members=frozenset(current.members))
         return SpaceChoice(
-            current=current.id,
-            options=options,
-            locked=locked,
-            people={id: user.username for id, user in self.people.items()},
+            current=current.id, options=options, locked=locked, uploader=self.uploader.id
         )
+
+    def _kind(self, space: Space) -> str:
+        """How the judge's candidates name a space: by its kind, not its name (those who read
+        the check may not see it; the web names what its viewer sees)."""
+        if space.personal_of is None:
+            return "a shared space"
+        if space.personal_of == self.uploader.id:
+            return "the uploader's personal space"
+        return "another user's personal space"
 
 
 async def space_candidates(uow: UnitOfWork, uploader: UserId | None) -> SpaceCandidates | None:

@@ -1048,7 +1048,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Train the classifier
-		 * @description Admins only. Trains a new model in the background (it also happens on its own after enough confirmations); one that is queued or running is not queued twice. 409 with fewer confirmed documents than the first model needs, 503 without a classifier.
+		 * @description Admins only. Trains a new model in the background (it also happens on its own after enough confirmations); one that is queued or running is not queued twice. 409 with fewer confirmed documents or decided spaces than the first model needs, 503 without a classifier.
 		 */
 		post: operations['train_api_v1_classifier_train_post'];
 		delete?: never;
@@ -1504,7 +1504,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Confirm a document from the inbox
-		 * @description Editors of the document's space and admins, for yellow and red documents that are not being processed. `space_id` moves the document as `POST /documents/{id}/move` does: into a space the caller edits, or another user's personal space; an admin chooses any space. Every open field of the nodes before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The rules' fields `space`, `title` and `review` always have a value: confirming keeps it, `space_id` moves the document. The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the person decided or changed as it is. From `fields` on, the fields read again replace the ones the document has; otherwise the type's title pattern is rendered with the decided values (while the title is the machine's). If the caller cannot read the document where it lies now (handed over, or moved into a space they only read, where it is not green yet), the answer is `DocumentOutOfReach`. Editors of `space_id` who could not read the document before find it as new once it is green.
+		 * @description Editors of the document's space and admins, for yellow and red documents that are not being processed. `space_id` moves the document as `POST /documents/{id}/move` does: into a space the caller edits, or another user's personal space; an admin chooses any space. Every open field of the nodes before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The fields `space`, `title` and `review` always have a value: confirming keeps it, `space_id` moves the document, and an open `space` the judge suggested another one for moves there with `accept_suggestions` (it may show the document to more people). The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the person decided or changed as it is. From `fields` on, the fields read again replace the ones the document has; otherwise the type's title pattern is rendered with the decided values (while the title is the machine's). If the caller cannot read the document where it lies now (handed over, or moved into a space they only read, where it is not green yet), the answer is `DocumentOutOfReach`. Editors of `space_id` who could not read the document before find it as new once it is green.
 		 */
 		post: operations['confirm_api_v1_documents__id__confirm_post'];
 		delete?: never;
@@ -2454,7 +2454,7 @@ export interface components {
 			changes?: components['schemas']['DocumentPatch'];
 			/**
 			 * Accept Suggestions
-			 * @description Take the suggestion of every open field that is neither in `changes` nor set on the document.
+			 * @description Take the suggestion of every open field that is neither in `changes` nor set on the document; for an open `space` with a suggestion, that space: the document moves there (which may show it to more people, as the suggestion says), unless `space_id` chooses another.
 			 * @default false
 			 */
 			accept_suggestions: boolean;

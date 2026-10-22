@@ -447,8 +447,9 @@ class JudgeNode:
     text. What is green is applied; tags are added. A document the model answered for, but no
     signal recognised anything in, fails (red); without the model's proposal the judge is
     uncertain. With two spaces or more to choose from (`SpaceCandidates`) it judges the space
-    too (`judge_space`): a space that shows the document to no one new it moves it to, one
-    that shows it to others it suggests (uncertain)."""
+    too (`judge_space`): a space that shows the document to no one new and keeps it with its
+    uploader it moves it to; one that shows it to others, one its uploader would not see and
+    another user's personal space (a hand-over) it suggests (uncertain)."""
 
     def __init__(
         self,

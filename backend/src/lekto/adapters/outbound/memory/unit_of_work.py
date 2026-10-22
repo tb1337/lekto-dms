@@ -505,7 +505,7 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
             own
             if own is not None and spaces[row.space_id].personal_of == row.uploaded_by
             else row.space_id
-            for row in readable
+            for row in confirmed
             if row.space_confirmed_at is not None and row.space_id in spaces
         )
         return KnownLabels(

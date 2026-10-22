@@ -766,27 +766,35 @@ def judge_topic(
 
 @dataclass(frozen=True)
 class SpaceOption:
-    """A space as the judge weighs it: how reasons name it and who may see what lies in it."""
+    """A space as the judge weighs it: how the check's candidates name it (`name`: what kind of
+    space it is, never its name: those who read the check may not see it), who may see what
+    lies in it, and whose personal space it is."""
 
     name: str
     members: frozenset[UserId]
+    personal_of: UserId | None = None
 
 
 @dataclass(frozen=True)
 class SpaceChoice:
-    """Where a document may go: the spaces its uploader may file into (`options`, with the
-    space it lies in, `current`), whether a person decided its space (`locked`), and the names
-    of the members (for the reason)."""
+    """Where a document may go: the spaces its uploader (`uploader`) may file into
+    (`options`, with the space it lies in, `current`), and whether a person decided its space
+    (`locked`)."""
 
     current: SpaceId
     options: Mapping[SpaceId, SpaceOption]
     locked: bool = False
-    people: Mapping[UserId, str] = field(default_factory=dict)
+    uploader: UserId | None = None
 
 
 def judge_space(signals: Signals, choice: SpaceChoice, thresholds: Thresholds) -> FieldCheck:
-    """The space for the document (see the module): the check's `value` is the space it gets
-    (None: it stays where it is)."""
+    """The space for the document (see the module): the check's `value` is the space the judge
+    moves it to (None: it stays where it is). A move is the judge's own only if it shows the
+    document to no one new and keeps it with its uploader in a space that is no one else's
+    personal space; any other one it suggests (uncertain, a person decides): one that shows it
+    to others, one its uploader would not see, a hand-over. Reasons and candidates name no
+    space and no person (the editors of the document may not see them): the suggestion is the
+    space's id."""
     current = choice.current
     names = choice.options
     if choice.locked:
@@ -823,14 +831,14 @@ def judge_space(signals: Signals, choice: SpaceChoice, thresholds: Thresholds) -
     ranked = ranking.candidates()
     listed = tuple(ranking.listed(ranked, contradicted))
     chosen = next((id for id in ranked if sure(id)), None)
-    if chosen is None:
+    if chosen is None or chosen == current:
         top = next((id for id in ranked if id != current), None)
-        return FieldCheck(  # it stays: nothing to doubt (as an unsure topic)
+        return FieldCheck(  # it stays: nothing to doubt (as an unsure topic), no model value
             field=SPACE,
             outcome=Outcome.OK,
             confidence=1.0,
-            reason=_disagreeing(names[id].name for id in namers) if len(namers) > 1 else None,
-            suggestion=None if top is None else str(top),
+            reason="the signals name different spaces" if len(namers) > 1 else None,
+            suggestion=None if chosen is not None or top is None else str(top),
             candidates=listed,
         )
     confidence = (
@@ -841,23 +849,26 @@ def judge_space(signals: Signals, choice: SpaceChoice, thresholds: Thresholds) -
     here = names.get(current)
     target = names[chosen]
     seeing = here.members if here is not None else frozenset()
-    gaining = sorted(
-        (choice.people.get(user, str(user)) for user in target.members - seeing), key=sort_key
-    )
-    if chosen != current and gaining:
+    if target.members - seeing:
+        why = "suggests another space, which shows it to more people"
+    elif target.personal_of is not None and target.personal_of != choice.uploader:
+        why = "suggests handing it over into another user's personal space"
+    elif choice.uploader is not None and choice.uploader not in target.members:
+        why = "suggests a space its uploader does not see"
+    else:
         return FieldCheck(
             field=SPACE,
-            outcome=Outcome.UNCERTAIN,
-            confidence=min(confidence, _UNSURE),
-            reason=f"suggests the space '{target.name}', which shows it to {', '.join(gaining)}",
-            suggestion=str(chosen),
+            outcome=Outcome.OK,
+            confidence=confidence,
+            value=str(chosen),
             candidates=listed,
         )
     return FieldCheck(
         field=SPACE,
-        outcome=Outcome.OK,
-        confidence=confidence,
-        value=str(chosen),
+        outcome=Outcome.UNCERTAIN,
+        confidence=min(confidence, _UNSURE),
+        reason=why,
+        suggestion=str(chosen),
         candidates=listed,
     )
 

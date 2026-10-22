@@ -424,6 +424,16 @@ async def test_a_space_describes_what_belongs_in_it(api: Api) -> None:
         f"{PREFIX}/spaces/{personal['id']}", json={"name": "Mine"}, headers=auth(friend)
     )
     assert refused.status_code == 422
+    # An editor of the friend's personal space does not write its description: its user does.
+    await api.client.put(
+        f"{PREFIX}/spaces/{personal['id']}/members/{owner.id}",
+        json={"role": "edit"},
+        headers=auth(friend),
+    )
+    foreign = await api.client.patch(
+        f"{PREFIX}/spaces/{personal['id']}", json={"description": "Mein"}, headers=auth(owner)
+    )
+    assert foreign.status_code == 403
 
 
 async def test_spaces_and_members(api: Api) -> None:

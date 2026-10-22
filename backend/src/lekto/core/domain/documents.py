@@ -488,6 +488,19 @@ class Document:
         self.new_at = None
         return tuple(overruled)
 
+    def settle(self, node: Node, now: datetime) -> None:
+        """A later node of the run answered what `node` left uncertain (the rules filed the
+        document into the space the judge suggested): its result counts as OK."""
+        state = self.processing.nodes[node]
+        if state.status is NodeStatus.DONE and state.outcome is Outcome.UNCERTAIN:
+            self.processing.nodes[node] = NodeState(
+                status=NodeStatus.DONE,
+                outcome=Outcome.OK,
+                started_at=state.started_at,
+                finished_at=state.finished_at,
+            )
+            self._touch(now)
+
     def set_page_count(self, count: int, now: datetime) -> None:
         """The pages node rendered `count` page images."""
         if count < 1:

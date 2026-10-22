@@ -682,6 +682,7 @@ class DocumentService:
             async with self._uow() as uow:
                 document, _ = await writable_document(uow, await load_actor(uow, actor), id)
                 candidates = await rules.rules(uow, document)
+                candidates += await rules.followers(uow, candidates)
             prepared = await rules.prepare(candidates, document)
         async with self._uow() as uow:
             user = await load_actor(uow, actor)

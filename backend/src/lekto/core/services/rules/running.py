@@ -9,7 +9,7 @@ values (short) run inside it, on the state that is stored.
 import logging
 import time
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from uuid import UUID
 
@@ -251,6 +251,8 @@ class Provenance:
     - `person`: fields a person decided (confirming in the inbox, or changing the document)
       since the model's latest run; `tags_added` and `tags_removed` by a person likewise.
     - `reviewed`: rules whose forced review a person confirmed in the current processing run.
+    - `chained`: values in `model_values` that a rule of an earlier space in a chain set on
+      unconfirmed values (`Chain`), not the model.
     """
 
     model_values: Mapping[str, JsonValue]
@@ -260,6 +262,7 @@ class Provenance:
     tags_added: frozenset[TagId] = frozenset()
     tags_removed: frozenset[TagId] = frozenset()
     machine_title: str | None = None
+    chained: frozenset[str] = frozenset()
 
     @property
     def unverified(self) -> frozenset[str]:
@@ -556,6 +559,7 @@ async def situation(
         existing=frozenset(existing),
         names=names,
         model_values=origin.model_values,
+        chained=origin.chained,
         machine_title=origin.machine_title,
         locked=frozenset(locked),
         person_added_tags=person_added_tags,
@@ -570,6 +574,41 @@ async def situation(
 def checked_rules(rules: Iterable[Rule]) -> list[JsonValue]:
     """The rules a run looked at, for the log's input."""
     return [{"id": str(rule.id), "version": rule.current.number} for rule in rules]
+
+
+# --- chains -----------------------------------------------------------------------------------
+
+
+@dataclass
+class Chain:
+    """What a chain of rule runs (each space a document enters runs its rules) carries from one
+    space to the next: values its rules set only through unconfirmed model values stay
+    unconfirmed for the next space's rules, as the model's own would. So a rule cannot launder
+    an unconfirmed contact into a type a later rule files on into a wider space; and a later
+    rule that sets another value there disagrees (a conflict, not a silent overwrite)."""
+
+    values: dict[str, JsonValue] = field(default_factory=dict)
+    tags: set[TagId] = field(default_factory=set)
+
+    def origin(self, origin: Provenance) -> Provenance:
+        """`origin` with what the chain carries so far."""
+        if not self.values and not self.tags:
+            return origin
+        values = {name: value for name, value in self.values.items() if name not in origin.person}
+        return replace(
+            origin,
+            model_values={**origin.model_values, **values},
+            model_tags=origin.model_tags | frozenset(self.tags),
+            chained=origin.chained | frozenset(values),
+        )
+
+    def record(self, plan: RulePlan, document: Document) -> None:
+        """After `plan` was applied to `document`: carry what it set on unconfirmed values."""
+        current = _current_values(document)
+        for name in plan.distrusted:
+            if name in current and current[name] is not None:
+                self.values[name] = current[name]
+        self.tags |= plan.distrusted_tags & set(document.tag_ids)
 
 
 # --- one run ----------------------------------------------------------------------------------

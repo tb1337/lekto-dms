@@ -224,14 +224,15 @@ def decide(
     accept_suggestions: bool,
     definitions: Mapping[FieldId, FieldDefinition],
     given: Collection[str] = (),
+    movable: Collection[SpaceId] | None = None,
 ) -> Decision:
     """Every open field needs a decision: a value (or None) in `changes` (or named in `given`,
     such as the space), a value the document has (a person set it meanwhile; it is kept), or,
     with `accept_suggestions`, a suggestion that can be taken as it is. Suggestions never
     replace a value. OpenFieldsError lists the fields without a decision. Fields whose definition
     no longer exists need none. The rules' space, title and review always have a value:
-    confirming keeps them; a suggested space is accepted with the suggestions (`space`), or
-    kept where the document lies."""
+    confirming keeps them; a suggested space is accepted with the suggestions (`space`) if the
+    person may move the document there (`movable`; None: any), or kept where it lies."""
     accepted: dict[Node, list[str]] = {}
     space: SpaceId | None = None
     entered: dict[Node, list[str]] = {}
@@ -249,7 +250,12 @@ def decide(
                 undecided.append(_label(check.field, field_id, definitions))
             elif check.field in given or _given(changes, check.field, field_id):
                 entered.setdefault(item.node, []).append(check.field)
-            elif check.field == SPACE and check.suggestion is not None and accept_suggestions:
+            elif (
+                check.field == SPACE
+                and check.suggestion is not None
+                and accept_suggestions
+                and (movable is None or _suggested_space(check) in movable)
+            ):
                 space = space or _suggested_space(check)
                 accepted.setdefault(item.node, []).append(check.field)
             elif _has_value(document, check.field, field_id):
@@ -277,6 +283,16 @@ def decide(
         kept={node: tuple(fields) for node, fields in kept.items()},
         space=space,
     )
+
+
+def suggested_spaces(open: Sequence[OpenNode]) -> list[SpaceId]:
+    """The spaces the open `space` checks suggest."""
+    return [
+        _suggested_space(check)
+        for item in open
+        for check in item.fields
+        if check.field == SPACE and check.suggestion is not None
+    ]
 
 
 def _suggested_space(check: FieldCheck) -> SpaceId:

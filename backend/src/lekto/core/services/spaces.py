@@ -98,10 +98,20 @@ class SpaceService:
         name: str | None = None,
         description: str | Unset | None = UNSET,
     ) -> Space:
-        """Rename (not a personal space) or describe a space: editors and admins. None (name)
-        or UNSET (description) leaves it; None or empty removes the description."""
+        """Rename (not a personal space) or describe a space: editors and admins; a personal
+        space's description its user (and admins), as its members. None (name) or UNSET
+        (description) leaves it; None or empty removes the description."""
         async with self._uow() as uow:
-            space = await _managed_space(uow, await load_actor(uow, actor), id)
+            user = await load_actor(uow, actor)
+            space = await _managed_space(uow, user, id)
+            if (
+                space.is_personal
+                and not isinstance(description, Unset)
+                and not can_choose_members(user, space)
+            ):
+                raise PermissionDeniedError(
+                    f"only its user and admins describe the personal space {id}"
+                )
             if name is not None:
                 space.rename(name)
                 await _check_name_free(uow, space)

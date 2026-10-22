@@ -327,7 +327,7 @@
 				{/if}
 				<ProcessingProgress
 					processing={document.processing}
-					href={tabHref(page.url, 'log')}
+					href={tabHref(page.url, 'processing')}
 					compact={visionRunning}
 					class="max-w-md"
 				/>

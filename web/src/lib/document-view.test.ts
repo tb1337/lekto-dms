@@ -41,19 +41,27 @@ const place = { page: 2, boxes: [{ x: 0.1, y: 0.5, width: 0.2, height: 0.02 }] }
 describe('tabs', () => {
 	it('come from the URL, the document without one', () => {
 		expect(tabOf(new URL('http://lekto/ui/documents/1'))).toBe('document');
-		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=log'))).toBe('log');
+		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=processing'))).toBe('processing');
+		// The tabs of before 0.6 by their names of now.
+		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=log'))).toBe('processing');
+		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=metadata'))).toBe('properties');
 		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=nonsense'))).toBe('document');
+		// Names an object has by itself are no tabs.
+		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=toString'))).toBe('document');
+		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=constructor'))).toBe('document');
 		// The tabs of before are the document's.
 		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=content'))).toBe('document');
 	});
 
 	it('keep the other parameters', () => {
-		const url = new URL('http://lekto/ui/documents/1?from=inbox&tab=log&left=text&right=form');
-		expect(tabHref(url, 'metadata')).toBe(
-			'/ui/documents/1?from=inbox&tab=metadata&left=text&right=form'
+		const url = new URL(
+			'http://lekto/ui/documents/1?from=inbox&tab=processing&left=text&right=form'
+		);
+		expect(tabHref(url, 'properties')).toBe(
+			'/ui/documents/1?from=inbox&tab=properties&left=text&right=form'
 		);
 		expect(tabHref(url, 'document')).toBe('/ui/documents/1?from=inbox&left=text&right=form');
-		expect(tabHref(new URL('http://lekto/ui/documents/1?tab=log'), 'document')).toBe(
+		expect(tabHref(new URL('http://lekto/ui/documents/1?tab=processing'), 'document')).toBe(
 			'/ui/documents/1'
 		);
 	});

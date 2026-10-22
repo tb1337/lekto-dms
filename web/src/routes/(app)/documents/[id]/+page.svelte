@@ -69,8 +69,8 @@
 	type Document = components['schemas']['DocumentDetails'];
 
 	// One view for every document, from the inbox and from the list: the document (on the left
-	// its pages or its text, on the right its details or its facts), its files (metadata) and
-	// the processing (log). The view of the document tab is in the link; without one, the pages
+	// its pages or its text, on the right its details or its facts), its properties (the file
+	// passport) and its processing. The view of the document tab is in the link; without one, the pages
 	// and the details: the browser remembers none (Tobi, 21.10.2026).
 	const id = $derived(page.params.id ?? '');
 	const tab = $derived(tabOf(page.url));
@@ -372,8 +372,8 @@
 
 	const tabs: { tab: Tab; label: () => string }[] = [
 		{ tab: 'document', label: m.tab_document },
-		{ tab: 'metadata', label: m.tab_metadata },
-		{ tab: 'log', label: m.tab_log }
+		{ tab: 'properties', label: m.tab_properties },
+		{ tab: 'processing', label: m.tab_processing }
 	];
 	const attention = $derived(
 		document?.processing.nodes.some(
@@ -438,7 +438,7 @@
 				key: entry.tab,
 				href: tabHref(page.url, entry.tab),
 				label: entry.label(),
-				marker: entry.tab === 'log' && attention ? m.tab_log_attention() : undefined
+				marker: entry.tab === 'processing' && attention ? m.tab_processing_attention() : undefined
 			}))}
 			current={tab}
 		/>
@@ -590,9 +590,9 @@
 					{/if}
 				</div>
 			</div>
-		{:else if tab === 'metadata'}
+		{:else if tab === 'properties'}
 			<DocumentFiles documentId={id} document={document ?? undefined} {editable} onchanged={load} />
-		{:else if tab === 'log'}
+		{:else if tab === 'processing'}
 			<div class="lg:min-h-0 lg:flex-1">
 				<DocumentLog
 					{document}

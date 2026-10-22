@@ -11,16 +11,20 @@ export type Review = components['schemas']['ReviewOut'];
 export type Place = components['schemas']['LocationOut'];
 export type Box = components['schemas']['BoxOut'];
 
-export const TABS = ['document', 'metadata', 'log'] as const;
+export const TABS = ['document', 'properties', 'processing'] as const;
 export type Tab = (typeof TABS)[number];
 
 /** What the tabs read of a URL (SvelteKit's `page.url` is a read-only one). */
 type Address = { pathname: string; search: string; searchParams: Pick<URLSearchParams, 'get'> };
 
+/** The tabs of before 0.6 by the names they have now. */
+const RENAMED: Record<string, Tab> = { metadata: 'properties', log: 'processing' };
+
 /** The tab a URL names (`?tab=`); the document without one, and for the links of before
  * (`?tab=details`, `?tab=content`). */
 export function tabOf(url: Address): Tab {
 	const tab = url.searchParams.get('tab') ?? '';
+	if (Object.hasOwn(RENAMED, tab)) return RENAMED[tab];
 	return (TABS as readonly string[]).includes(tab) ? (tab as Tab) : 'document';
 }
 

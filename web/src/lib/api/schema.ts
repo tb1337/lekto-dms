@@ -908,7 +908,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Preview applying a rule to existing documents
-		 * @description The documents the rule's current version would change, newest first, with what would change and the conflicts (a field that has another value). Nothing is stored. A space rule: the editors of its space and admins, on the documents in its space. A global rule: anyone, on the documents they may edit (admins: every document). Documents in processing are left out.
+		 * @description The documents the rule's current version would change, newest first, with what would change and the conflicts (a field that has another value). Each shows the chain as applying runs it: the rules of the spaces the rule files it into, and of the spaces those file it into (each at most once), and where it ends up; with conflicts also when they are accepted. Nothing is stored. A space rule: the editors of its space and admins, on the documents in its space. A global rule: anyone, on the documents they may edit (admins: every document). Documents in processing are left out.
 		 */
 		post: operations['preview_apply_api_v1_rules__id__apply_preview_post'];
 		delete?: never;
@@ -1972,6 +1972,23 @@ export interface components {
 		 * @enum {string}
 		 */
 		ApplicationStatus: 'queued' | 'running' | 'done' | 'failed';
+		/**
+		 * ApplyOutcomeOut
+		 * @description Where applying the rule leaves the document.
+		 */
+		ApplyOutcomeOut: {
+			/**
+			 * Space Id
+			 * Format: uuid
+			 * @description The space the document ends up in.
+			 */
+			space_id: string;
+			/**
+			 * Chain
+			 * @description The rules of the spaces the document enters on the way, in order, as applying runs them; empty if it stays where it is (or no rule there holds).
+			 */
+			chain: components['schemas']['ArrivalStepOut'][];
+		};
 		/** ApplyPreviewItemOut */
 		ApplyPreviewItemOut: {
 			/**
@@ -1996,6 +2013,10 @@ export interface components {
 			 * @description Other actions that would not act, and why.
 			 */
 			notes: components['schemas']['RuleNoteOut'][];
+			/** @description Applied as shown: the steps of the spaces it enters, and where it ends up. */
+			outcome: components['schemas']['ApplyOutcomeOut'];
+			/** @description With its conflicts accepted (only for documents with conflicts). */
+			accepted: components['schemas']['ApplyOutcomeOut'] | null;
 		};
 		/** ApplyPreviewOut */
 		ApplyPreviewOut: {
@@ -2058,6 +2079,38 @@ export interface components {
 			 * @description Selected documents where the rule's value replaces a different one.
 			 */
 			accept_conflicts?: string[];
+		};
+		/**
+		 * ArrivalStepOut
+		 * @description What the rules of one space did to the document when it entered the space.
+		 */
+		ArrivalStepOut: {
+			/**
+			 * Space Id
+			 * Format: uuid
+			 * @description The space the document entered; its own rules ran.
+			 */
+			space_id: string;
+			/**
+			 * Rules
+			 * @description Its rules that hold, and what each did.
+			 */
+			rules: components['schemas']['RuleReportOut'][];
+			/**
+			 * Moved To
+			 * @description The space its rules filed the document into.
+			 */
+			moved_to: string | null;
+			/**
+			 * Looped To
+			 * @description A space its rules would file the document into again: the chain stops here (each space at most once).
+			 */
+			looped_to: string | null;
+			/**
+			 * Problem
+			 * @description Why the chain stopped, or why a change did not fit.
+			 */
+			problem: string | null;
 		};
 		/**
 		 * Assignment

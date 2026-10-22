@@ -5,7 +5,10 @@
   Tobi, 08.10.2026). Documents the caller may not edit appear neither one by one nor as a
   count; documents in processing are left out.
 - The preview evaluates the rule's current version on each document (its state, not a change)
-  and lists the documents it would change, with conflicts: a field that has another value.
+  and lists the documents it would change, with conflicts: a field that has another value. It
+  plays the rule as applying does, with the chain of the spaces it files the document into
+  (`ChangeRules.after_arrival`), in a unit of work it never commits: each document shows the
+  steps and where it ends up; with conflicts also how that goes when they are accepted.
 - The application pins one version. A background job works through the selected documents, one
   transaction each, checks the rights again, takes the rule's value where the person accepted
   the conflict, skips other conflicts, and logs every document. A forced review does not act
@@ -13,6 +16,7 @@
   and continues in a new job, so processing and indexing do not wait.
 """
 
+import copy
 import logging
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass, replace
@@ -26,7 +30,7 @@ from lekto.core.domain.errors import (
     PermissionDeniedError,
     ValidationError,
 )
-from lekto.core.domain.ids import DocumentId, RuleApplicationId, RuleId, UserId
+from lekto.core.domain.ids import DocumentId, RuleApplicationId, RuleId, SpaceId, UserId
 from lekto.core.domain.jobs import Job
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.permissions import can_edit_document, space_role
@@ -49,7 +53,7 @@ from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import field_definitions, load_actor
 from lekto.core.services._jobs import LEASE, JobRunner, lost
-from lekto.core.services.rules.changes import ChangeRules
+from lekto.core.services.rules.changes import ArrivalStep, ChangeRules
 from lekto.core.services.rules.management import visible_rule
 from lekto.core.services.rules.running import (
     PatternBudget,
@@ -78,14 +82,36 @@ _WITH_LANE = DocumentFilter(lanes=frozenset({Lane.GREEN, Lane.YELLOW, Lane.RED})
 
 
 @dataclass(frozen=True)
+class Outcome:
+    """Where applying the rule leaves a document: the steps of the spaces it enters on the way
+    (`ChangeRules.after_arrival`) and the space it ends up in."""
+
+    space_id: SpaceId
+    chain: tuple[ArrivalStep, ...]
+
+
+@dataclass(frozen=True)
 class PreviewItem:
     """A document the rule would change: the changes, and conflicts (not applied unless
-    accepted) and other actions that would not act."""
+    accepted) and other actions that would not act; the outcome of applying it, and with
+    conflicts the outcome when they are accepted."""
 
     document: Document
     effects: tuple[Effect, ...]
     conflicts: tuple[Note, ...]
     notes: tuple[Note, ...]
+    outcome: Outcome
+    accepted: Outcome | None = None
+
+
+@dataclass(frozen=True)
+class _Played:
+    """The rule played on a document (`RuleApplicationService._play`): its run, why its change
+    did not apply, and the chain after it."""
+
+    run: RuleRun
+    problem: str | None
+    chain: tuple[ArrivalStep, ...]
 
 
 @dataclass(frozen=True)
@@ -138,6 +164,7 @@ class RuleApplicationService:
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             rule = await _applicable_rule(uow, user, id)
+            following = await _following(uow, rule)
             if user.is_active_admin:
                 documents = await uow.documents.query(
                     _WITH_LANE, after=_position(before), limit=SCAN
@@ -162,21 +189,45 @@ class RuleApplicationService:
                 if not await _candidate(uow, user, rule, document):
                     continue
             prepared = await prepare(
-                self._store, self._matcher, [rule], document, max_text=self._max_text, budget=budget
+                self._store,
+                self._matcher,
+                [rule, *following],
+                document,
+                max_text=self._max_text,
+                budget=budget,
             )
-            async with self._uow() as uow:
-                current = await uow.documents.find(document.id)
-                if current is None or not await _candidate(uow, user, rule, current):
-                    continue
-                run = await self._evaluate(uow, user, rule, current, prepared, accept=False)
-            if run is None:
-                continue
-            report = run.plan.reports[0]
-            conflicts = tuple(note for note in report.notes if note.kind is NoteKind.CONFLICT)
-            others = tuple(note for note in report.notes if note.kind is not NoteKind.CONFLICT)
-            if report.applied or conflicts:
-                items.append(PreviewItem(current, tuple(report.applied), conflicts, others))
+            item = await self._preview_one(user, rule, document.id, prepared)
+            if item is not None:
+                items.append(item)
         return ApplyPreview(rule, tuple(items), next_cursor)
+
+    async def _preview_one(
+        self, user: User, rule: Rule, id: DocumentId, prepared: Prepared
+    ) -> PreviewItem | None:
+        """The rule played on the document as applying plays it, in a unit of work that is
+        never committed; None if it would change nothing."""
+        async with self._uow() as uow:
+            current = await uow.documents.find(id)
+            if current is None or not await _candidate(uow, user, rule, current):
+                return None
+            shown = copy.deepcopy(current)
+            played = await self._play(uow, user, rule, current, prepared, accept=False)
+            outcome = Outcome(current.space_id, () if played is None else played.chain)
+        if played is None:
+            return None
+        report = played.run.plan.reports[0]
+        conflicts = tuple(note for note in report.notes if note.kind is NoteKind.CONFLICT)
+        others = tuple(note for note in report.notes if note.kind is not NoteKind.CONFLICT)
+        if not (report.applied or conflicts):
+            return None
+        accepted: Outcome | None = None
+        if conflicts:
+            async with self._uow() as uow:
+                current = await uow.documents.find(id)
+                if current is not None:
+                    other = await self._play(uow, user, rule, current, prepared, accept=True)
+                    accepted = Outcome(current.space_id, () if other is None else other.chain)
+        return PreviewItem(shown, tuple(report.applied), conflicts, others, outcome, accepted)
 
     # --- applying --------------------------------------------------------------------------------
 
@@ -288,15 +339,7 @@ class RuleApplicationService:
             rule = replace(
                 rule, current=await uow.rules.get_version(rule.id, application.rule_version)
             )
-            # The rules of the spaces the rule may file the document into run after it.
-            following = [
-                found
-                for action in rule.definition.actions
-                if isinstance(action, SetSpace) and document is not None
-                for found in await reachable_rules(
-                    uow, action.space_id, Trigger.INGEST, include_global=False
-                )
-            ]
+            following = await _following(uow, rule)
         prepared = Prepared()
         if document is not None:
             prepared = await prepare(
@@ -334,37 +377,71 @@ class RuleApplicationService:
         if document is None or not await _candidate(uow, user, rule, document):
             application.record_skipped(id, "not available")
             return
-        run = await self._evaluate(
-            uow, user, rule, document, prepared, accept=id in application.accept_conflicts
+        played = await self._play(
+            uow,
+            user,
+            rule,
+            document,
+            prepared,
+            accept=id in application.accept_conflicts,
+            application=application.id,
         )
-        if run is None or not run.plan.effects:
+        if played is None or not played.run.plan.effects:
             application.record_unchanged()
             return
+        if played.problem is not None:
+            application.record_skipped(id, played.problem)
+            return
+        await uow.documents.update(document)
+        await uow.outbox.add(document.pull_events())
+        application.record_applied()
+
+    async def _play(
+        self,
+        uow: UnitOfWork,
+        user: User,
+        rule: Rule,
+        document: Document,
+        prepared: Prepared,
+        *,
+        accept: bool,
+        application: RuleApplicationId | None = None,
+    ) -> _Played | None:
+        """Apply the rule to `document` in `uow`, with its log entry and the chain of the
+        spaces it files the document into: what applying does and the preview plays (in a unit
+        it does not commit). None if the rule does not hold."""
+        run = await self._evaluate(uow, user, rule, document, prepared, accept=accept)
+        if run is None:
+            return None
+        if not run.plan.effects:
+            return _Played(run, None, ())
         now = self._clock.now()
         definitions = await field_definitions(uow)
         source = await uow.spaces.get(document.space_id)
         problem = await apply_plan(uow, document, run.plan, definitions, now)
         if problem is not None:
-            application.record_skipped(id, problem)
-            return
+            return _Played(run, problem, ())
+        input: dict[str, JsonValue] = {
+            TRIGGER: TRIGGER_APPLY,
+            ACTOR: str(user.id),
+            "rules": checked_rules([rule]),
+        }
+        if application is not None:
+            input["application_id"] = str(application)
         await uow.processing_log.append(
             entry_beside(
                 document,
                 node=Node.APPLY_RULES,
                 model_version=RULES_APPLY,
-                input={
-                    TRIGGER: TRIGGER_APPLY,
-                    ACTOR: str(user.id),
-                    "application_id": str(application.id),
-                    "rules": checked_rules([rule]),
-                },
+                input=input,
                 output=run.output(),
                 version=self._version,
                 now=now,
             )
         )
+        chain: list[ArrivalStep] = []
         if document.space_id != source.id:
-            await self._arrival.after_arrival(
+            chain = await self._arrival.after_arrival(
                 uow,
                 document=document,
                 source=source,
@@ -374,9 +451,7 @@ class RuleApplicationService:
                 by_person=False,
                 applier=user,
             )
-        await uow.documents.update(document)
-        await uow.outbox.add(document.pull_events())
-        application.record_applied()
+        return _Played(run, None, tuple(chain))
 
     async def _evaluate(
         self,
@@ -418,6 +493,20 @@ async def _applicable_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
         if role is None or not role.can_edit:
             raise PermissionDeniedError("only the space's editors and admins apply a space rule")
     return rule
+
+
+async def _following(uow: UnitOfWork, rule: Rule) -> list[Rule]:
+    """The rules of the spaces the rule may file a document into, and of the spaces those file
+    it into: they run after it (`ChangeRules.after_arrival`), so their patterns are prepared
+    with it."""
+    found: dict[RuleId, Rule] = {}
+    for action in rule.definition.actions:
+        if isinstance(action, SetSpace):
+            for item in await reachable_rules(
+                uow, action.space_id, Trigger.INGEST, include_global=False
+            ):
+                found.setdefault(item.id, item)
+    return list(found.values())
 
 
 async def _candidate(uow: UnitOfWork, user: User, rule: Rule, document: Document) -> bool:

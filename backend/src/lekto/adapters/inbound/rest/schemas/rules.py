@@ -16,6 +16,7 @@ from lekto.adapters.inbound.schemas import (
     PeriodValue,
     RuleEffectOut,
     RuleNoteOut,
+    RuleReportOut,
 )
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.rules import (
@@ -39,6 +40,8 @@ from lekto.core.domain.rules import (
 from lekto.core.domain.rules_json import definition_to_json
 from lekto.core.domain.validation import MAX_NAME
 from lekto.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
+from lekto.core.services.rules.changes import ArrivalStep
+from lekto.core.services.rules.retroactive import Outcome
 
 
 class ConditionSchema(BaseModel):
@@ -441,6 +444,49 @@ class ApplyPreviewRequest(BaseModel):
     limit: int = Field(default=PAGE_SIZE, ge=1, le=PAGE_LIMIT)
 
 
+class ArrivalStepOut(BaseModel):
+    """What the rules of one space did to the document when it entered the space."""
+
+    space_id: UUID = Field(description="The space the document entered; its own rules ran.")
+    rules: list[RuleReportOut] = Field(description="Its rules that hold, and what each did.")
+    moved_to: UUID | None = Field(description="The space its rules filed the document into.")
+    looped_to: UUID | None = Field(
+        description=(
+            "A space its rules would file the document into again: the chain stops here (each "
+            "space at most once)."
+        )
+    )
+    problem: str | None = Field(description="Why the chain stopped, or why a change did not fit.")
+
+    @classmethod
+    def of(cls, step: ArrivalStep) -> "ArrivalStepOut":
+        return cls(
+            space_id=step.space_id,
+            rules=[RuleReportOut.of(report) for report in step.reports],
+            moved_to=step.moved_to,
+            looped_to=step.looped_to,
+            problem=step.problem,
+        )
+
+
+class ApplyOutcomeOut(BaseModel):
+    """Where applying the rule leaves the document."""
+
+    space_id: UUID = Field(description="The space the document ends up in.")
+    chain: list[ArrivalStepOut] = Field(
+        description=(
+            "The rules of the spaces the document enters on the way, in order, as applying runs "
+            "them; empty if it stays where it is (or no rule there holds)."
+        )
+    )
+
+    @classmethod
+    def of(cls, outcome: Outcome) -> "ApplyOutcomeOut":
+        return cls(
+            space_id=outcome.space_id, chain=[ArrivalStepOut.of(step) for step in outcome.chain]
+        )
+
+
 class ApplyPreviewItemOut(BaseModel):
     document_id: UUID
     title: str
@@ -451,6 +497,12 @@ class ApplyPreviewItemOut(BaseModel):
         )
     )
     notes: list[RuleNoteOut] = Field(description="Other actions that would not act, and why.")
+    outcome: ApplyOutcomeOut = Field(
+        description="Applied as shown: the steps of the spaces it enters, and where it ends up."
+    )
+    accepted: ApplyOutcomeOut | None = Field(
+        description="With its conflicts accepted (only for documents with conflicts)."
+    )
 
 
 class ApplyPreviewOut(BaseModel):

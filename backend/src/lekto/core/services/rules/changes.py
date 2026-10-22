@@ -16,11 +16,12 @@ A completed document that enters a space outside processing (a person moves or h
 change rules or a rule applied to existing documents file it) runs that space's own rules with
 trigger `ingest` the same way (`after_arrival`): as on arrival, but nothing turns yellow. Each
 space at most once in the chain; a person's move fixes the space (the rules leave it). Values
-rules set on unconfirmed values stay unconfirmed along the chain (`running.Chain`).
+rules set on unconfirmed values stay unconfirmed along the chain (`running.Chain`). It returns
+the steps (`ArrivalStep`), which the preview of applying a rule shows.
 """
 
 from collections.abc import Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 from lekto.core.domain.classification import SPACE, TAGS, TITLE
@@ -37,7 +38,7 @@ from lekto.core.domain.pipeline import (
     NodeRun,
     ProcessingStatus,
 )
-from lekto.core.domain.rule_planner import Mode, changed_fields
+from lekto.core.domain.rule_planner import Mode, RuleReport, changed_fields
 from lekto.core.domain.rules import Rule, SetSpace, Trigger
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import User
@@ -65,6 +66,20 @@ from lekto.core.services.rules.running import (
     space_choice,
     space_rules,
 )
+
+
+@dataclass(frozen=True)
+class ArrivalStep:
+    """What the rules of one space did to a document that entered it (`after_arrival`): each
+    rule that holds (`reports`), the space they filed it into (`moved_to`), a space they would
+    file it into again (`looped_to`: the chain stops there), and why their change did not
+    apply (`problem`)."""
+
+    space_id: SpaceId
+    reports: tuple[RuleReport, ...]
+    moved_to: SpaceId | None
+    looped_to: SpaceId | None
+    problem: str | None
 
 
 class ChangeRules:
@@ -128,14 +143,16 @@ class ChangeRules:
         by_person: bool,
         applier: User | None = None,
         chain: Chain | None = None,
-    ) -> None:
+    ) -> list[ArrivalStep]:
         """After `document` was moved out of `source` into the space it lies in now: run the
         rules of that space (its own, trigger `ingest`) in the manner of change rules, and of
         every space they file it into, each at most once; one log entry per space. `by_person`:
         a person chose the space, the rules leave it. `chain`: what the rules that moved it
-        carry on (`running.Chain`)."""
+        carry on (`running.Chain`). Returns what the rules of each space did, in order (spaces
+        where no rule holds are left out)."""
+        steps: list[ArrivalStep] = []
         if document.processing.status is not ProcessingStatus.COMPLETED:
-            return
+            return steps
         visited = [source.id]
         chain = Chain() if chain is None else chain
         while True:
@@ -143,7 +160,7 @@ class ChangeRules:
             visited.append(here)
             rules = await space_rules(uow, here, Trigger.INGEST)
             if not rules:
-                return
+                return steps
             origin = chain.origin(
                 provenance(await uow.processing_log.list_for(document.id), document)
             )
@@ -188,8 +205,19 @@ class ChangeRules:
                     now=now,
                 )
             )
-            if looping or document.space_id == here:
-                return
+            moved_to = None if document.space_id == here else document.space_id
+            if run.plan.reports or problem is not None or moved_to is not None:
+                steps.append(
+                    ArrivalStep(
+                        space_id=here,
+                        reports=tuple(run.plan.reports),
+                        moved_to=moved_to,
+                        looped_to=target if looping else None,
+                        problem=problem,
+                    )
+                )
+            if looping or moved_to is None:
+                return steps
 
     async def _names(self, uow: UnitOfWork, spaces: Sequence[SpaceId]) -> list[str]:
         users = {user.id: user for user in await uow.users.list_all()}

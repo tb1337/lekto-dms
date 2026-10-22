@@ -883,7 +883,10 @@ where it is and edits where it goes (global: admins); every version names its sp
   `POST /documents/{id}/dry-run` shows the same without storing anything.
 - **Retroactively.** `POST /rules/{id}/apply/preview` lists the documents the current version
   would change, newest first, with changes and conflicts (a page looks at 200 documents at
-  most). `POST /rules/{id}/apply` pins a version and applies it to the selected documents (at
+  most). It plays the rule as applying does, in a unit of work it never commits: `outcome` holds
+  the chain (the rules of each space the rule files the document into, and of the spaces those
+  file it into, each at most once: what they do, `moved_to`, `looped_to` where the chain stops)
+  and the space it ends up in; `accepted` the same with the conflicts accepted. `POST /rules/{id}/apply` pins a version and applies it to the selected documents (at
   most `LEKTO_RULES_APPLY_MAX_DOCUMENTS`) in the background, job `rules.apply`, 25 documents per
   job; conflicts only where accepted (`accept_conflicts`), forced reviews do not act. A space
   rule is applied by the editors of its space to the documents in it, a global rule by anyone to

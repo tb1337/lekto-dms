@@ -4,6 +4,9 @@
  * becomes `accept_conflicts`), and how often the progress is asked for.
  */
 import type { components } from '#lib/api/schema.ts';
+import { describeValue, fieldLabel } from '#lib/describe.ts';
+import { spaceLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+import { m } from '#lib/paraglide/messages.js';
 
 export type PreviewItem = components['schemas']['ApplyPreviewItemOut'];
 export type Application = components['schemas']['RuleApplicationOut'];
@@ -67,4 +70,69 @@ export async function follow(
 		update(current);
 	}
 	return current;
+}
+
+export type Outcome = components['schemas']['ApplyOutcomeOut'];
+
+/** A space as the reader names it; one they cannot see stays unnamed. */
+function spaceName(id: string, lookup: Lookup | null, me: string | undefined): string {
+	const space = lookup?.spaces.find((entry) => entry.id === id);
+	if (space) return spaceLabel(space, lookup?.users ?? [], me);
+	// Another user's personal space the reader is no member of: named by its user.
+	const holder = lookup?.users.find((entry) => entry.personal_space_id === id);
+	if (holder) return holder.id === me ? m.space_personal() : holder.username;
+	return m.space_unseen();
+}
+
+/** The notes of a chain step that tell why it stopped or what did not act. */
+const CHAIN_NOTES = new Set(['refused', 'conflict']);
+
+/**
+ * Where applying the rule takes a document, step by step: into the space `rule` files it into,
+ * then what the rules of each space it enters do ("then tags Haushaltskosten (rule “Rechnungen”
+ * of Haushalt)"), where the chain stops and why, and where it ends up.
+ */
+export function chainLines(
+	outcome: Outcome,
+	rule: string,
+	lookup: Lookup | null,
+	me: string | undefined
+): string[] {
+	const name = (id: string) => spaceName(id, lookup, me);
+	const first = outcome.chain[0]?.space_id ?? outcome.space_id;
+	const lines = [m.rule_chain_into({ space: name(first), rule })];
+	const visited = [first];
+	for (const step of outcome.chain) {
+		const here = name(step.space_id);
+		for (const report of step.rules) {
+			for (const effect of report.applied) {
+				if (effect.field === 'space') continue; // the move, below
+				const change = `${fieldLabel(effect.field, lookup)} ${describeValue(effect.new, lookup)}`;
+				lines.push(m.rule_chain_then({ change, rule: report.name, space: here }));
+			}
+			for (const note of report.notes.filter((entry) => CHAIN_NOTES.has(entry.kind))) {
+				const field = fieldLabel(note.field, lookup);
+				lines.push(
+					m.rule_chain_note({ field, reason: note.reason, rule: report.name, space: here })
+				);
+			}
+		}
+		if (step.moved_to !== null) {
+			const mover = step.rules.find((report) =>
+				report.applied.some((effect) => effect.field === 'space')
+			);
+			lines.push(
+				m.rule_chain_moved({ space: name(step.moved_to), rule: mover?.name ?? '', from: here })
+			);
+			visited.push(step.moved_to);
+		}
+		if (step.looped_to !== null) {
+			const spaces = [...visited, step.looped_to].map(name).join(' → ');
+			lines.push(m.rule_chain_loop({ spaces }));
+		} else if (step.problem !== null) {
+			lines.push(m.rule_chain_problem({ problem: step.problem }));
+		}
+	}
+	if (outcome.chain.length > 0) lines.push(m.rule_chain_end({ space: name(outcome.space_id) }));
+	return lines;
 }

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import type { Lookup } from '#lib/masterdata.svelte.ts';
+import { m } from '#lib/paraglide/messages.js';
 import {
 	applyRequest,
+	chainLines,
 	follow,
 	pollDelay,
 	preselected,
@@ -15,7 +18,9 @@ const item = (id: string, conflict = false): PreviewItem => ({
 	conflicts: conflict
 		? [{ field: 'contact', kind: 'conflict', reason: 'has another contact' }]
 		: [],
-	notes: []
+	notes: [],
+	outcome: { space_id: 's0', chain: [] },
+	accepted: null
 });
 
 const application = (status: Application['status'], done: number): Application => ({
@@ -74,5 +79,104 @@ describe('applying a rule', () => {
 			async () => undefined
 		);
 		expect(last.done).toBe(2);
+	});
+});
+
+const lookup = {
+	contacts: [],
+	documentTypes: [],
+	tags: [{ id: 't1', name: 'Haushaltskosten' }],
+	spaces: [
+		{ id: 'mine', name: 'Personal', personal_of: 'u1', role: 'edit', members: [] },
+		{ id: 'house', name: 'Haushalt', personal_of: null, role: 'edit', members: [] }
+	],
+	users: [
+		{ id: 'u1', username: 'tobi', role: 'user', personal_space_id: 'mine' },
+		{ id: 'u2', username: 'anna', role: 'user', personal_space_id: 'annas' }
+	]
+} as unknown as Lookup;
+
+const report = (
+	name: string,
+	applied: { field: string; old: unknown; new: unknown }[],
+	notes: { field: string; kind: 'refused' | 'skipped'; reason: string }[] = []
+) => ({ rule_id: name, version: 1, name, scope: 'space' as const, applied, notes });
+
+describe('the chain of a rule applied to a document', () => {
+	it('names each space it enters and what its rules do there', () => {
+		const lines = chainLines(
+			{
+				space_id: 'house',
+				chain: [
+					{
+						space_id: 'house',
+						rules: [report('Rechnungen', [{ field: 'tags', old: [], new: 't1' }])],
+						moved_to: null,
+						looped_to: null,
+						problem: null
+					}
+				]
+			},
+			'Versorger',
+			lookup,
+			'u1'
+		);
+		expect(lines).toEqual([
+			m.rule_chain_into({ space: 'Haushalt', rule: 'Versorger' }),
+			m.rule_chain_then({
+				change: `${m.field_tags()} Haushaltskosten`,
+				rule: 'Rechnungen',
+				space: 'Haushalt'
+			}),
+			m.rule_chain_end({ space: 'Haushalt' })
+		]);
+	});
+
+	it('shows a hand-over, a loop and a space the reader cannot see', () => {
+		const lines = chainLines(
+			{
+				space_id: 'annas',
+				chain: [
+					{
+						space_id: 'house',
+						rules: [report('An Anna', [{ field: 'space', old: 'house', new: 'annas' }])],
+						moved_to: 'annas',
+						looped_to: null,
+						problem: null
+					},
+					{
+						space_id: 'annas',
+						rules: [
+							report(
+								'Weiter',
+								[],
+								[{ field: 'space', kind: 'refused', reason: 'no write access' }]
+							),
+							report('Zurück', [{ field: 'space', old: 'annas', new: 'house' }])
+						],
+						moved_to: null,
+						looped_to: 'house',
+						problem: 'rules move it back and forth'
+					}
+				]
+			},
+			'Versorger',
+			lookup,
+			'u1'
+		);
+		expect(lines).toEqual([
+			m.rule_chain_into({ space: 'Haushalt', rule: 'Versorger' }),
+			m.rule_chain_moved({ space: 'anna', rule: 'An Anna', from: 'Haushalt' }),
+			m.rule_chain_note({
+				field: m.field_space(),
+				reason: 'no write access',
+				rule: 'Weiter',
+				space: 'anna'
+			}),
+			m.rule_chain_loop({ spaces: 'Haushalt → anna → Haushalt' }),
+			m.rule_chain_end({ space: 'anna' })
+		]);
+		const hidden = chainLines({ space_id: 'elsewhere', chain: [] }, 'Versorger', lookup, 'u1');
+		expect(hidden).toEqual([m.rule_chain_into({ space: m.space_unseen(), rule: 'Versorger' })]);
 	});
 });

@@ -272,3 +272,89 @@ async def test_deleting_a_user_runs_the_rules_of_the_space_their_documents_move_
     assert (moved.space_id, moved.lane) == (shared.id, Lane.GREEN)
     assert tag.id in moved.tag_ids
     assert moved.space_confirmed_at is not None
+
+
+async def test_the_preview_of_applying_a_rule_shows_the_chain_and_stores_nothing(
+    world: World,
+) -> None:
+    """The preview plays the rule as applying does: the rules of the space it files into run
+    next, and the item shows their steps and where the document ends up."""
+    rules = await rule_world(world)
+    tobi, anna, shared = await household(rules)
+    tag = await rules.tag("Haushaltskosten")
+    home = await world.personal_space(tobi)
+    document = await rules.arrive(tobi)
+    rule = await rules.personal_rule(tobi, files_into(shared, "Versorger"))
+    tagging = await rules.space_rule(
+        anna,
+        shared.id,
+        definition("Rechnungen", channel_api(), add_tags(tag.id), triggers=(Trigger.INGEST,)),
+    )
+
+    (item,) = (await rules.applications.preview(tobi.id, rule.id)).items
+
+    assert [effect.field for effect in item.effects] == ["space"]
+    assert item.outcome.space_id == shared.id
+    (step,) = item.outcome.chain
+    assert (step.space_id, step.moved_to, step.looped_to, step.problem) == (
+        shared.id,
+        None,
+        None,
+        None,
+    )
+    (report,) = step.reports
+    assert report.rule_id == tagging.id
+    assert [(effect.field, effect.new) for effect in report.applied] == [("tags", str(tag.id))]
+    assert item.accepted is None
+    stored = await rules.stored(document)  # the preview stores nothing
+    assert (stored.space_id, stored.tag_ids) == (home.id, set())
+    assert await rules.rule_entries(document, RULES_CHANGE) == []
+
+
+async def test_the_preview_shows_where_a_chain_stops_going_back(world: World) -> None:
+    rules = await rule_world(world)
+    tobi, anna, shared = await household(rules)
+    annas = await world.personal_space(anna)
+    home = await world.personal_space(tobi)
+    await rules.arrive(tobi)
+    rule = await rules.personal_rule(tobi, files_into(shared))
+    await rules.space_rule(anna, shared.id, files_into(annas, "To Anna"))
+    await rules.space_rule(anna, annas.id, files_into(shared, "Back"))
+
+    (item,) = (await rules.applications.preview(tobi.id, rule.id)).items
+
+    first, second = item.outcome.chain
+    assert (first.space_id, first.moved_to) == (shared.id, annas.id)
+    assert (second.space_id, second.moved_to, second.looped_to) == (annas.id, None, shared.id)
+    assert second.problem == "rules move it back and forth: tobi → Haushalt → anna → Haushalt"
+    assert item.outcome.space_id == annas.id
+    del home
+
+
+async def test_the_preview_shows_the_chain_of_an_accepted_conflict(world: World) -> None:
+    """Filing on the model's unconfirmed contact is a conflict: applied as it is, the document
+    stays; accepted, it goes into Haushalt, whose rules run next."""
+    rules = await rule_world(world)
+    tobi, anna, shared = await household(rules)
+    tag = await rules.tag("Haushaltskosten")
+    acme = await rules.contact("ACME")
+    home = await world.personal_space(tobi)
+    await rules.arrive(tobi, classify=Classifies(contact=acme.id))
+    rule = await rules.personal_rule(
+        tobi, definition("ACME", contact_is(acme.id), SetSpace(shared.id))
+    )
+    await rules.space_rule(
+        anna,
+        shared.id,
+        definition("Rechnungen", channel_api(), add_tags(tag.id), triggers=(Trigger.INGEST,)),
+    )
+
+    (item,) = (await rules.applications.preview(tobi.id, rule.id)).items
+
+    assert [(note.field, note.kind) for note in item.conflicts] == [("space", "conflict")]
+    assert (item.outcome.space_id, item.outcome.chain) == (home.id, ())
+    assert item.accepted is not None
+    assert item.accepted.space_id == shared.id
+    (step,) = item.accepted.chain
+    assert step.space_id == shared.id
+    assert [effect.field for report in step.reports for effect in report.applied] == ["tags"]

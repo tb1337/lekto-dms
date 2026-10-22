@@ -14,10 +14,12 @@ Facts in the text name nothing on their own; they are evidence: an identifier of
 or its name (or alias) standing whole in the text, is *hard* evidence. An identifier of a
 contact alone makes it a candidate, never green.
 
-A signal *contradicts* a value when it names another one; for a contact also when the model's
-recipient is that contact, when an identifier of another contact stands in the text, and when
-the model's sender is none of the contacts and unrelated to this one. A contradiction is
-always uncertain, also against a value the other signal could not have named.
+A signal *contradicts* a value when it names another one; for a contact the classifier and the
+similar documents only when a proof of the other contact stands in the text (its name, an
+alias, an identifier), and also when the model's recipient is that contact, when an
+identifier of another contact stands in the text, and when the model's sender is none of the
+contacts and unrelated to this one. A contradiction is always uncertain, also against a value
+the other signal could not have named.
 
 A signal *covers* a value when it could have named it: the classifier if it was trained on
 the value, the similar documents if any was found and a confirmed document carries the
@@ -351,11 +353,18 @@ class _ContactView:
             )
         )
         return (
-            any(other != id for other in self.ranking.namers)
+            any(other != id and self.opposes(other) for other in self.ranking.namers)
             or self.recipient == id
             or any(other != id for other in self.facts.identifiers)
             or unrelated
         )
+
+    def opposes(self, other: ContactId) -> bool:
+        """Whether the signals naming `other` speak against another contact: the model always;
+        the classifier and the similar documents only with a proof of `other` in the text, its
+        name, an alias or an identifier (Tobi, 22.10.2026: similar payslips name Tobi's
+        employer, the text shows Anna's; hard evidence rules the employer out)."""
+        return LLM in self.ranking.namers.get(other, ()) or self.hard(other)
 
     def green(self, id: ContactId) -> bool:
         if self.contradicted(id):
@@ -483,7 +492,7 @@ def _disagreeing(names: Iterable[str]) -> str:
 
 def _contact_reason(view: _ContactView, top: ContactId | None, no_model: bool) -> str:
     names, namers = view.names, view.ranking.namers
-    if len(namers) > 1:
+    if len(namers) > 1 and (top is None or view.contradicted(top)):
         return _disagreeing(names[id].name for id in namers)
     if top is not None and view.recipient == top:
         return f"'{names[top].name}' is the recipient, not the sender"

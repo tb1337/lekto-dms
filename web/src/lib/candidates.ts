@@ -105,6 +105,15 @@ export function chosen(check: Check): Candidate[] {
 		: candidates.filter((item) => item.value === value);
 }
 
+/**
+ * Whether to mark a candidate as contradicted: a signal names it, and another signal named
+ * another value against it. A candidate no signal names (a classifier's 29 %) is only listed:
+ * nothing it says stands against anything.
+ */
+export function disputed(candidate: Candidate): boolean {
+	return candidate.contradicted && (candidate.sources ?? []).some((source) => source.names);
+}
+
 export function documentHref(id: string): string {
 	return `${BASE}/documents/${id}`;
 }

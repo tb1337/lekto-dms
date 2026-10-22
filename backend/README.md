@@ -519,7 +519,11 @@ close, or a type or tag of the lists; the classifier, its best class from
 carry, a contact only if no other contact is carried by two of them as well (neighbours split
 between senders are alike by their form, a pay slip's employee for one, and name no sender). A
 signal naming another value contradicts: always yellow, with every candidate and its
-sources. The judge's rule:
+sources. For a contact the classifier and the neighbours contradict only when a proof of their
+contact stands in the text (its name, an alias or an identifier): similar pay slips from the
+uploader's employer do not stand against the new employer whose personnel number and name the
+text shows. The model always contradicts. The web UI marks a candidate as contradicted only if
+a signal names it. The judge's rule:
 
 | Field | Green (no contradiction) | Otherwise |
 | --- | --- | --- |

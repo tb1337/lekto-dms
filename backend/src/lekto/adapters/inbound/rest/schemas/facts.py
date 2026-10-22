@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from lekto.adapters.inbound.rest.schemas.inbox import BoxOut, LocationOut
 from lekto.adapters.inbound.schemas import MoneyValue
-from lekto.core.domain.facts import Span
+from lekto.core.domain.facts import Span, Strength
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.services.documents import CodeFacts, DocumentFacts
 
@@ -65,6 +65,23 @@ class FoundIdentifierOut(BaseModel):
             "null for others."
         ),
     )
+
+
+class FoundPersonOut(BaseModel):
+    """A user the document names, with the kinds of evidence (never the values)."""
+
+    user_id: UUID
+    name: str = Field(description="Their display name, else the username.")
+    strength: Strength = Field(
+        description=(
+            "`hard`: one of their identifiers (or a contact's number that names them); "
+            "`medium`: their birth date; `weak`: their display name or an alias."
+        )
+    )
+    evidence: list[str] = Field(
+        description="`name`, `alias`, `birth_date` and the kinds of identifiers found."
+    )
+    spans: list[SpanOut] = Field(description="Where their names and identifiers stand.")
 
 
 class IdentifierFoundOut(BaseModel):
@@ -181,6 +198,13 @@ class FactsOut(BaseModel):
     codes: list[CodeOut] | None = Field(
         description="The codes on the pages; null while they are not read (`read-codes`)."
     )
+    persons: list[FoundPersonOut] | None = Field(
+        default=None,
+        description=(
+            "The users the document names, the surest first: for the editors of its space and "
+            "admins; null for readers (that a number is Anna's tax ID is Anna's)."
+        ),
+    )
 
     @classmethod
     def of(cls, report: DocumentFacts) -> "FactsOut":
@@ -215,4 +239,18 @@ class FactsOut(BaseModel):
                 for item in report.facts.identifiers
             ],
             codes=None if report.codes is None else [CodeOut.of(item) for item in report.codes],
+            persons=(
+                None
+                if report.person_names is None
+                else [
+                    FoundPersonOut(
+                        user_id=item.user_id,
+                        name=report.person_names.get(item.user_id, str(item.user_id)),
+                        strength=item.strength,
+                        evidence=list(item.evidence),
+                        spans=[SpanOut.of(span) for span in item.spans],
+                    )
+                    for item in report.facts.persons
+                ]
+            ),
         )

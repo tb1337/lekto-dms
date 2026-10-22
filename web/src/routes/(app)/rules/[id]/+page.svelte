@@ -20,7 +20,7 @@
 	import { Switch } from '#lib/components/ui/switch/index.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
-	import { loadLookup, spaceLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { loadLookup, spaceLabel, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { canApplyRule, canChangeRule } from '#lib/permissions.ts';
 	import { moves, placeLabel } from '#lib/rules/places.ts';
@@ -38,8 +38,10 @@
 	let removing = $state(false);
 	let busy = $state(false);
 
-	const userName = (user: string | null) =>
-		lookup?.users.find((entry) => entry.id === user)?.username ?? m.rule_unknown();
+	const userName = (user: string | null) => {
+		const found = lookup?.users.find((entry) => entry.id === user);
+		return found ? userLabel(found) : m.rule_unknown();
+	};
 	const placeName = $derived.by(() => {
 		if (!rule || rule.scope === 'global') return m.rule_global();
 		const space = lookup?.spaces.find((entry) => entry.id === rule?.space_id);

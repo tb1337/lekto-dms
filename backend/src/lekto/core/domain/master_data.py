@@ -23,7 +23,9 @@ from lekto.core.domain.appearance import (
 )
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.identifiers import (
+    CONTACT_KINDS,
     MAX_IDENTIFIERS,
+    NAMING_KINDS,
     Identifier,
     IdentifierKind,
     IdentifierSource,
@@ -229,7 +231,10 @@ class Contact(MasterData):
         otherwise); `rejected`, if given, the rejected ones (a learned one rejected no longer
         counts, and training does not learn it again)."""
         manual = {
-            item.key: Identifier(item.kind, item.value, topic_id=item.topic_id) for item in entered
+            item.key: Identifier(
+                item.kind, item.value, topic_id=item.topic_id, user_id=item.user_id
+            )
+            for item in entered
         }
         if rejected is None:
             blocked = {item.key for item in self.identifiers if not item.counts}
@@ -492,10 +497,19 @@ _KIND_ORDER = {kind: order for order, kind in enumerate(IdentifierKind)}
 
 def _identifiers(identifiers: Iterable[Identifier]) -> list[Identifier]:
     """Without duplicates (the first of a value wins), entered first, then learned, then
-    rejected; at most `MAX_IDENTIFIERS` that count."""
+    rejected; at most `MAX_IDENTIFIERS` that count. Only the kinds of contacts
+    (`CONTACT_KINDS`); a user named only by a customer or personnel number entered by hand."""
     seen: set[tuple[IdentifierKind, str]] = set()
     result: list[Identifier] = []
     for item in identifiers:
+        if item.kind not in CONTACT_KINDS:
+            raise ValidationError(f"a contact has no identifier of the kind '{item.kind.value}'")
+        if item.user_id is not None and (
+            item.kind not in NAMING_KINDS or item.source is not IdentifierSource.MANUAL
+        ):
+            raise ValidationError(
+                "only a customer or personnel number entered by hand names the user it belongs to"
+            )
         if item.key not in seen:
             seen.add(item.key)
             result.append(item)

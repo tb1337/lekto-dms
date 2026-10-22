@@ -75,7 +75,13 @@ export function spaceLabel(
 
 /** A user's name by id; the id while unknown. */
 export function userName(users: readonly UserName[], id: string): string {
-	return users.find((user) => user.id === id)?.username ?? id;
+	const user = users.find((entry) => entry.id === id);
+	return user ? userLabel(user) : id;
+}
+
+/** How a user is shown: their display name, else their username. */
+export function userLabel(user: { username: string; display_name?: string | null }): string {
+	return user.display_name ?? user.username;
 }
 
 /** The name of a space the caller is no member of (an admin sees every space), for a badge on a

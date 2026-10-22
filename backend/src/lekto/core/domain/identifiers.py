@@ -1,6 +1,10 @@
-"""Identifiers of contacts: values a document of the contact carries and no other contact's does
-(an IBAN, a VAT number, the customer number, the personnel number at an employer, the domain of
-its e-mail addresses). Found in the text, they are hard evidence for the contact.
+"""Identifiers of contacts and of persons. A contact's are values a document of the contact
+carries and no other contact's does (an IBAN, a VAT number, the customer number, the personnel
+number at an employer, the domain of its e-mail addresses); found in the text, they are hard
+evidence for the contact. A person's (a user's profile) are their own numbers: an IBAN, the tax
+ID, the social security and the health insurance number, e-mail addresses; found in the text,
+they are hard evidence for whose document it is. A value is never both a contact's and a
+person's; a customer or personnel number of a contact may name the user it belongs to.
 
 Admins enter identifiers by hand. Training learns more from confirmed documents (see
 `mine_identifiers`): a value that stands in at least two of them, all of one contact. A value
@@ -13,7 +17,7 @@ topic. A learned one gets a topic only if all the confirmed documents it stands 
 """
 
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
@@ -21,7 +25,7 @@ from enum import StrEnum
 
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.evidence import normalise
-from lekto.core.domain.ids import ContactId, TagId
+from lekto.core.domain.ids import ContactId, TagId, UserId
 
 MAX_IDENTIFIERS = 100
 """Identifiers of one contact, entered and learned."""
@@ -35,6 +39,35 @@ class IdentifierKind(StrEnum):
     CUSTOMER_NUMBER = "customer_number"  # also contract, policy and membership numbers
     PERSONNEL_NUMBER = "personnel_number"  # an employee's number at the employer
     EMAIL_DOMAIN = "email_domain"  # of e-mail addresses and web addresses
+    TAX_ID = "tax_id"  # the German tax ID of a person (steuerliche Identifikationsnummer)
+    SOCIAL_SECURITY_NUMBER = "social_security_number"  # Renten-/Sozialversicherungsnummer
+    HEALTH_INSURANCE_NUMBER = "health_insurance_number"  # Krankenversichertennummer
+    EMAIL_ADDRESS = "email_address"  # a whole address, a person's
+
+
+CONTACT_KINDS = frozenset(
+    {
+        IdentifierKind.IBAN,
+        IdentifierKind.VAT_ID,
+        IdentifierKind.CUSTOMER_NUMBER,
+        IdentifierKind.PERSONNEL_NUMBER,
+        IdentifierKind.EMAIL_DOMAIN,
+    }
+)
+"""The kinds a contact's identifiers have; training learns only these."""
+PERSON_KINDS = frozenset(
+    {
+        IdentifierKind.IBAN,
+        IdentifierKind.TAX_ID,
+        IdentifierKind.SOCIAL_SECURITY_NUMBER,
+        IdentifierKind.HEALTH_INSURANCE_NUMBER,
+        IdentifierKind.EMAIL_ADDRESS,
+    }
+)
+"""The kinds a person's identifiers have."""
+NAMING_KINDS = frozenset({IdentifierKind.CUSTOMER_NUMBER, IdentifierKind.PERSONNEL_NUMBER})
+"""The kinds of a contact's identifiers that may name the user they belong to (a contract, a
+policy, a personnel number)."""
 
 
 class IdentifierSource(StrEnum):
@@ -47,12 +80,15 @@ class IdentifierSource(StrEnum):
 class Identifier:
     """`value` is normalised (see `normalise_identifier`); kind and value are unique across
     all contacts. `topic_id`: the topic of its contact it points to, if any (the contact checks
-    that it enables it)."""
+    that it enables it). `user_id`: the user a contact's customer or personnel number belongs
+    to, if one does (entered by hand only); found in a document, it is evidence for them too.
+    A person's identifier has neither."""
 
     kind: IdentifierKind
     value: str
     source: IdentifierSource = IdentifierSource.MANUAL
     topic_id: TagId | None = None
+    user_id: UserId | None = None
 
     @classmethod
     def parse(
@@ -61,8 +97,9 @@ class Identifier:
         raw: str,
         source: IdentifierSource = IdentifierSource.MANUAL,
         topic_id: TagId | None = None,
+        user_id: UserId | None = None,
     ) -> "Identifier":
-        return cls(kind, normalise_identifier(kind, raw), source, topic_id)
+        return cls(kind, normalise_identifier(kind, raw), source, topic_id, user_id)
 
     @property
     def key(self) -> tuple[IdentifierKind, str]:
@@ -81,6 +118,10 @@ _VAT_ID = re.compile(r"[A-Z]{2,3}(?=[A-Z0-9]*\d{6})[A-Z0-9]{8,12}")
 _CUSTOMER_NUMBER = re.compile(r"(?=[A-Z0-9]*\d)[A-Z0-9]{4,30}")
 _PERSONNEL_NUMBER = re.compile(r"(?=[A-Z0-9]*\d)[A-Z0-9]{3,30}")
 _DOMAIN = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
+_ADDRESS = re.compile(r"[a-z0-9._%+-]+@(?:[a-z0-9-]+\.)+[a-z]{2,63}")
+_TAX_ID = re.compile(r"[1-9]\d{10}")
+_SOCIAL_SECURITY_NUMBER = re.compile(r"\d{4}(?:0[1-9]|1[0-2])\d{2}[A-Z]\d{3}")
+_HEALTH_INSURANCE_NUMBER = re.compile(r"[A-Z]\d{9}")
 _SEPARATORS = re.compile(r"[\s./-]+")
 
 FREE_MAIL = frozenset(
@@ -131,6 +172,26 @@ def normalise_identifier(kind: IdentifierKind, raw: str) -> str:
                 raise ValidationError(f"'{raw}' is not a domain")
             if value in FREE_MAIL:
                 raise ValidationError(f"'{value}' is a free mail provider, not one contact's")
+        case IdentifierKind.TAX_ID:
+            value = _SEPARATORS.sub("", text)
+            if not tax_id_valid(value):
+                raise ValidationError(f"'{raw}' is not a valid tax ID (11 digits, check digit)")
+        case IdentifierKind.SOCIAL_SECURITY_NUMBER:
+            value = _SEPARATORS.sub("", text).upper()
+            if not social_security_number_valid(value):
+                raise ValidationError(
+                    f"'{raw}' is not a valid social security number (12 characters, check digit)"
+                )
+        case IdentifierKind.HEALTH_INSURANCE_NUMBER:
+            value = _SEPARATORS.sub("", text).upper()
+            if not health_insurance_number_valid(value):
+                raise ValidationError(
+                    f"'{raw}' is not a valid health insurance number (a letter, 9 digits)"
+                )
+        case IdentifierKind.EMAIL_ADDRESS:
+            value = text.lower().removeprefix("mailto:")
+            if not _ADDRESS.fullmatch(value):
+                raise ValidationError(f"'{raw}' is not an e-mail address")
     return value
 
 
@@ -139,6 +200,57 @@ def iban_valid(iban: str) -> bool:
     rearranged = iban[4:] + iban[:4]
     digits = "".join(str(int(char, 36)) for char in rearranged)
     return int(digits) % 97 == 1
+
+
+def tax_id_valid(value: str) -> bool:
+    """A German tax ID: 11 digits, the first not 0; among the first ten, exactly one digit
+    stands twice or three times (three not in a row), the others at most once; the last is the
+    check digit (ISO 7064, MOD 11,10)."""
+    if not _TAX_ID.fullmatch(value):
+        return False
+    first = value[:10]
+    counts = Counter(first)
+    repeated = [digit for digit, count in counts.items() if count > 1]
+    if len(repeated) != 1 or counts[repeated[0]] > 3:
+        return False
+    if counts[repeated[0]] == 3 and repeated[0] * 3 in first:
+        return False
+    product = 10
+    for digit in first:
+        total = (int(digit) + product) % 10 or 10
+        product = total * 2 % 11
+    return (11 - product) % 10 == int(value[10])
+
+
+def social_security_number_valid(value: str) -> bool:
+    """A German social security (pension insurance) number in compact form: area (2 digits),
+    birth date (DDMMYY), the initial of the birth name, a serial number (2 digits) and the
+    check digit: the letter as its position in the alphabet (two digits), the 12 digits
+    weighted 2, 1, 2, 5, 7, 1, 2, 1, 2, 1, 2, 1, the digit sums of the products added, modulo
+    10."""
+    if not _SOCIAL_SECURITY_NUMBER.fullmatch(value):
+        return False
+    digits = f"{value[:8]}{ord(value[8]) - ord('A') + 1:02d}{value[9:11]}"
+    weights = (2, 1, 2, 5, 7, 1, 2, 1, 2, 1, 2, 1)
+    total = sum(
+        sum(divmod(int(digit) * weight, 10)) for digit, weight in zip(digits, weights, strict=True)
+    )
+    return total % 10 == int(value[11])
+
+
+def health_insurance_number_valid(value: str) -> bool:
+    """A German health insurance number (Krankenversichertennummer): a letter and nine digits,
+    the last the check digit: the letter as its position in the alphabet (two digits) and the
+    first eight digits, weighted 1, 2, 1, 2, …, the digit sums of the products added, modulo
+    10."""
+    if not _HEALTH_INSURANCE_NUMBER.fullmatch(value):
+        return False
+    digits = f"{ord(value[0]) - ord('A') + 1:02d}{value[1:9]}"
+    total = sum(
+        sum(divmod(int(digit) * (2 if position % 2 else 1), 10))
+        for position, digit in enumerate(digits)
+    )
+    return total % 10 == int(value[9])
 
 
 # --- finding in a text ------------------------------------------------------------------------
@@ -157,9 +269,12 @@ _VAT_LABEL = re.compile(
     r"(?:nummer|nr)|vat[-\s]*(?:id|no|number|reg(?:istration)?(?:[-\s]*no)?)?"
     r"|uid[-\s]*(?:nr|nummer)?)" + _VALUE
 )
+# Not the social security number ("Sozialversicherungsnummer", "Rentenversicherungsnummer"):
+# that is a person's.
 _CUSTOMER_LABEL = re.compile(
     r"(?:kunden[-\s]*(?:nummer|nr|konto)|kd[-.\s]*nr|kundennr|vertrags[-\s]*(?:nummer|nr|konto)"
-    r"|versicherungs[-\s]*(?:nummer|nr|schein[-\s]*(?:nummer|nr))|mitglieds[-\s]*(?:nummer|nr)"
+    r"|(?<!sozial)(?<!sozial-)(?<!renten)(?<!renten-)"
+    r"versicherungs[-\s]*(?:nummer|nr|schein[-\s]*(?:nummer|nr))|mitglieds[-\s]*(?:nummer|nr)"
     r"|customer[-\s]*(?:no|number|id)|account[-\s]*(?:no|number))" + _VALUE
 )
 _PERSONNEL_LABEL = re.compile(
@@ -167,6 +282,20 @@ _PERSONNEL_LABEL = re.compile(
     r"|employee[-\s]*(?:no|number|id)|personnel[-\s]*(?:no|number))" + _VALUE
 )
 _EMAIL = re.compile(r"[a-z0-9._%+-]+@((?:[a-z0-9-]+\.)+[a-z]{2,63})")
+_TAX_ID_LABEL = re.compile(
+    r"(?<![a-z])(?:steuer[-\s]*id(?:entifikations)?(?:[-\s]*(?:nummer|nr))?"
+    r"|steuerliche[-\s]*identifikations[-\s]*(?:nummer|nr)|identifikations[-\s]*(?:nummer|nr)"
+    r"|id[-.\s]*nr|tin)\.?\s*[:.]?\s*(\d{2} ?\d{3} ?\d{3} ?\d{3}|\d{11})(?!\d)"
+)
+_GROUPED_TAX_ID = re.compile(r"(?<![\d.,/-])\d{2} \d{3} \d{3} \d{3}(?![\d.,/-]?\d)")
+_SOCIAL_SECURITY_IN_TEXT = re.compile(
+    r"(?<![a-z0-9])\d{2} ?\d{2} ?\d{2} ?\d{2} ?[a-z] ?\d{2} ?\d(?![a-z0-9])"
+)
+_HEALTH_INSURANCE_LABEL = re.compile(
+    r"(?<![a-z])(?:(?:kranken)?versicherten[-\s]*(?:nummer|nr|id)|kvnr)\.?\s*[:.]?\s*"
+    r"([a-z] ?\d(?: ?\d){8})(?![a-z0-9])"
+)
+_PERSONAL_KINDS = frozenset(PERSON_KINDS - CONTACT_KINDS)
 _WEB = re.compile(r"(?<![a-z0-9@.-])(?:https?://(?:www\.)?|www\.)((?:[a-z0-9-]+\.)+[a-z]{2,63})")
 
 
@@ -174,7 +303,11 @@ def identifiers_in(text: str) -> set[tuple[IdentifierKind, str]]:
     """The identifiers `text` shows, normalised: IBANs and German VAT numbers anywhere, other
     VAT numbers, customer and personnel numbers after their label ("USt-IdNr.", "Kundennummer",
     "Vertragsnummer", "Personalnummer", ...), the domains of e-mail and web addresses (free
-    mail aside)."""
+    mail aside) and the addresses themselves; a person's numbers with a valid check digit: the
+    tax ID after its label ("Steuer-ID", "IdNr.") or in its groups (`12 345 678 901`), the social
+    security number anywhere, the health insurance number after its label
+    ("Versichertennummer"). A customer number that is one of the person's numbers is theirs
+    only (a pension fund writes "Versicherungsnummer" before the social security number)."""
     normalised = normalise(text)
     found: set[tuple[IdentifierKind, str]] = set()
 
@@ -201,7 +334,22 @@ def identifiers_in(text: str) -> set[tuple[IdentifierKind, str]]:
     for pattern in (_EMAIL, _WEB):
         for match in pattern.finditer(normalised):
             add(IdentifierKind.EMAIL_DOMAIN, match.group(1))
-    return found
+    for match in _EMAIL.finditer(normalised):
+        add(IdentifierKind.EMAIL_ADDRESS, match.group())
+    for match in _TAX_ID_LABEL.finditer(normalised):
+        add(IdentifierKind.TAX_ID, match.group(1))
+    for match in _GROUPED_TAX_ID.finditer(normalised):
+        add(IdentifierKind.TAX_ID, match.group())
+    for match in _SOCIAL_SECURITY_IN_TEXT.finditer(normalised):
+        add(IdentifierKind.SOCIAL_SECURITY_NUMBER, match.group())
+    for match in _HEALTH_INSURANCE_LABEL.finditer(normalised):
+        add(IdentifierKind.HEALTH_INSURANCE_NUMBER, match.group(1))
+    personal = {value for kind, value in found if kind in _PERSONAL_KINDS}
+    return {
+        (kind, value)
+        for kind, value in found
+        if not (kind is IdentifierKind.CUSTOMER_NUMBER and value in personal)
+    }
 
 
 def matches(identifier: Identifier, found: tuple[IdentifierKind, str]) -> bool:
@@ -228,7 +376,8 @@ def mine_identifiers(
     identifiers in its text): a value that stands in at least `LEARN_FROM` documents, all with
     the same contact. A document without a contact counts as another contact. `taken` (entered
     by hand or rejected anywhere) is never learned. A learned value points to a topic if all
-    its documents carry that one; otherwise to none."""
+    its documents carry that one; otherwise to none. Only the kinds of contacts are learned
+    (`CONTACT_KINDS`): a person's numbers never become a contact's."""
     holders: dict[tuple[IdentifierKind, str], list[tuple[ContactId | None, TagId | None]]] = (
         defaultdict(list)
     )
@@ -239,7 +388,12 @@ def mine_identifiers(
     learned: dict[ContactId, list[Identifier]] = defaultdict(list)
     for (kind, value), pairs in sorted(holders.items()):
         owners = {contact for contact, _ in pairs}
-        if (kind, value) in skip or len(pairs) < LEARN_FROM or len(owners) != 1:
+        if (
+            kind not in CONTACT_KINDS
+            or (kind, value) in skip
+            or len(pairs) < LEARN_FROM
+            or len(owners) != 1
+        ):
             continue
         (owner,) = owners
         topics = {topic for _, topic in pairs}

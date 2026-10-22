@@ -17,7 +17,7 @@
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
-	import type { UserName } from '#lib/masterdata.svelte.ts';
+	import { userName, type UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { canManageWebhook } from '#lib/permissions.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -34,7 +34,7 @@
 	let secret = $state<{ webhook: string; value: string } | null>(null);
 	let busy = $state(false);
 
-	const ownerName = (id: string) => users.find((user) => user.id === id)?.username ?? id;
+	const ownerName = (id: string) => userName(users, id);
 
 	async function load() {
 		try {

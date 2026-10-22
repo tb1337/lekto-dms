@@ -6,6 +6,7 @@
  */
 import type { components } from '#lib/api/schema.ts';
 import type { Mark } from '#lib/document-view.ts';
+import { type IdentifierKind, kindLabel } from '#lib/identifiers.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 export type Facts = components['schemas']['FactsOut'];
@@ -14,6 +15,34 @@ export type NamedContact = components['schemas']['NamedContactOut'];
 export type CodeFacts = components['schemas']['CodeOut'];
 export type CodePlace = components['schemas']['CodePlaceOut'];
 export type Span = components['schemas']['SpanOut'];
+export type FoundPerson = components['schemas']['FoundPersonOut'];
+export type Strength = FoundPerson['strength'];
+
+/** How surely the document names a person, in words. */
+export function strengthLabel(strength: Strength): string {
+	switch (strength) {
+		case 'hard':
+			return m.facts_person_hard();
+		case 'medium':
+			return m.facts_person_medium();
+		case 'weak':
+			return m.facts_person_weak();
+	}
+}
+
+/** A kind of evidence for a person, in words: a name, the birth date, a kind of identifier. */
+export function evidenceLabel(kind: string): string {
+	switch (kind) {
+		case 'name':
+			return m.facts_person_name();
+		case 'alias':
+			return m.facts_person_alias();
+		case 'birth_date':
+			return m.facts_person_birth_date();
+		default:
+			return kindLabel(kind as IdentifierKind);
+	}
+}
 
 /** Characters `start` to `end` (exclusive) of the text, to mark there. */
 export interface Stretch {

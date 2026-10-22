@@ -554,7 +554,7 @@ async def situation(
         definitions=definitions,
         render=templates.render,
         in_personal_space=current.is_personal,
-        uploader_name=None if uploader is None else uploader.username,
+        uploader_name=None if uploader is None else uploader.label,
         spaces=spaces,
         existing=frozenset(existing),
         names=names,

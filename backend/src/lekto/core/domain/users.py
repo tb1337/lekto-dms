@@ -1,5 +1,6 @@
 """Users and roles. Passwords, TOTP and tokens belong to identity (`identity.py`), not to the
-user."""
+user; what is private about a person (aliases, birth date, e-mail, identifiers) to their
+profile (`profiles.py`)."""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -12,6 +13,8 @@ from lekto.core.domain.validation import require_name, require_utc
 
 MAX_USERNAME = 150
 """Characters of a username; the REST schemas take their limit from here."""
+MAX_DISPLAY_NAME = 150
+"""Characters of a display name (and of an alias in the profile)."""
 
 
 class Role(StrEnum):
@@ -26,11 +29,19 @@ class User:
     role: Role
     created_at: datetime
     active: bool = True  # a deactivated user cannot sign in and reads nothing
+    # How others see them ("Anna Busch"); public, unique regardless of case. None: the username.
+    display_name: str | None = None
     version: int = 1
 
     def __post_init__(self) -> None:
         self.username = require_name(self.username, "username", max_length=MAX_USERNAME)
         self.created_at = require_utc(self.created_at, "created_at")
+        self.display_name = display_name_of(self.display_name)
+
+    @property
+    def label(self) -> str:
+        """What others read: the display name, else the username."""
+        return self.display_name or self.username
 
     @classmethod
     def create(cls, *, username: str, role: Role, now: datetime) -> Self:
@@ -43,6 +54,14 @@ class User:
     @property
     def is_active_admin(self) -> bool:
         return self.active and self.is_admin
+
+
+def display_name_of(value: str | None) -> str | None:
+    """A display name as stored: trimmed, at most `MAX_DISPLAY_NAME` characters; None for none
+    (an empty one is none)."""
+    if value is None or not value.strip():
+        return None
+    return require_name(value, "display name", max_length=MAX_DISPLAY_NAME)
 
 
 # --- deleting a user ----------------------------------------------------------------------------

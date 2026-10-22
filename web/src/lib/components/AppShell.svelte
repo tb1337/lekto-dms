@@ -22,6 +22,7 @@
 	import { searchPlaces } from '#lib/header-search.ts';
 	import { home, loginHref } from '#lib/navigation.ts';
 	import { BADGE_TONES, badgeLabel, badgeText, badgeTone, inbox } from '#lib/inbox.svelte.ts';
+	import { userLabel } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { canListAllUsers } from '#lib/permissions.ts';
 	import { phone } from '#lib/phone.svelte.ts';
@@ -35,7 +36,7 @@
 	const sections = $derived(visibleSections(session.isAdmin));
 	const userSections = $derived(sections.filter((section) => !section.admin));
 	const adminSections = $derived(sections.filter((section) => section.admin));
-	const username = $derived(session.user?.username ?? '');
+	const username = $derived(session.user ? userLabel(session.user) : '');
 	let menuOpen = $state(false);
 	// A document opened from the inbox belongs to the inbox.
 	const currentPath = $derived(

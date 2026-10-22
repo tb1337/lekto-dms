@@ -149,6 +149,17 @@ test keeps equal to `curated.ts`); the map of all 1,866 (about 43 KB gzip) loads
 icon picker's panel (`IconPickerPanel`, with the search and its words) or for an icon beyond
 those (`lib/icons/load.ts`).
 
+## Profiles
+
+Users are shown by their display name, else their username (`userLabel`, `userName` in
+`lib/masterdata.svelte.ts`; members of a space carry theirs). `ProfileForm` edits a profile:
+the own one in the settings (`/auth/me/profile`), another user's for admins in the user
+dialog (`/users/{id}/profile`): display name, other names, birth date, e-mail and the person's
+own numbers in `IdentifiersEditor` with `kinds={PERSON_KINDS}`. In the contact dialog
+(`withUsers`) a customer or personnel number names the user it belongs to. The facts beside a
+document list the persons it names for its editors (strength and kinds of evidence; a click
+marks their names and numbers).
+
 ## Spaces
 
 Rights hang on the space a document lies in, as the caller's role there (`SpaceOut.role`:

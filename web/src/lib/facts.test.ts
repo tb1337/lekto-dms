@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	codeSpans,
+	evidenceLabel,
 	factCounts,
 	grouped,
 	inUnits,
@@ -9,8 +10,10 @@ import {
 	segmentsOf,
 	shown,
 	spanMarks,
+	strengthLabel,
 	type Facts
 } from './facts.ts';
+import { m } from '#lib/paraglide/messages.js';
 
 const CONTACT = 'contact-1';
 
@@ -165,6 +168,19 @@ describe('facts', () => {
 		expect(spanMarks(spans, 'IBAN')).toEqual([
 			{ key: 'fact:0', label: 'IBAN', page: 1, boxes: [box], derived: false, pinned: false },
 			{ key: 'fact:0', label: 'IBAN', page: 2, boxes: [box, box], derived: false, pinned: false }
+		]);
+	});
+});
+
+describe('the persons a document names', () => {
+	it('says how surely and by what', () => {
+		expect(strengthLabel('hard')).toBe(m.facts_person_hard());
+		expect(strengthLabel('weak')).toBe(m.facts_person_weak());
+		expect(['tax_id', 'birth_date', 'alias', 'name'].map(evidenceLabel)).toEqual([
+			m.identifier_kind_tax_id(),
+			m.facts_person_birth_date(),
+			m.facts_person_alias(),
+			m.facts_person_name()
 		]);
 	});
 });

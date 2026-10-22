@@ -16,6 +16,7 @@ from lekto.core.domain.events import ClassifierTrained
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from lekto.core.domain.ids import ContactId
 from lekto.core.domain.master_data import Assignment, Contact, Tag, TagScope
+from lekto.core.domain.profiles import Profile
 from lekto.core.domain.users import Role, User
 from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services.classifier import (
@@ -94,6 +95,25 @@ async def test_training_learns_from_the_confirmed_documents(world: World) -> Non
     predicted = await classifier.predict("Stadtwerke Zählerstand Stromrechnung")
     assert predicted is not None
     assert predicted[1].contacts[0][0] == utility.id
+
+
+async def test_a_persons_own_number_is_never_a_contacts(world: World) -> None:
+    """The utility's IBAN in its documents is the account of a user (their profile): training
+    does not learn it as the utility's."""
+    owner, utility, _ = await corpus(world)
+    async with world.uow() as uow:
+        await uow.profiles.add(
+            Profile(
+                id=owner.id,
+                identifiers=[Identifier.parse(IdentifierKind.IBAN, THEIR_IBAN)],
+                version=1,
+            )
+        )
+        await uow.commit()
+    model = await service(world).train()
+    assert model.summary["learned_identifiers"] == 0
+    async with world.uow() as uow:
+        assert (await uow.contacts.get(utility.id)).identifiers == []
 
 
 async def test_only_the_tags_the_classification_sets_are_learned(world: World) -> None:

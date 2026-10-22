@@ -45,7 +45,8 @@
 		fieldsFor,
 		spaceOptions,
 		type FieldDefinition,
-		type Lookup
+		type Lookup,
+		userLabel
 	} from '#lib/masterdata.svelte.ts';
 	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
@@ -416,7 +417,7 @@
 					(other) => other.personal_space_id === target && other.id !== session.user?.id
 				);
 				toast.success(
-					receiver ? m.move_handed_over({ name: receiver.username }) : m.document_moved_away()
+					receiver ? m.move_handed_over({ name: userLabel(receiver) }) : m.document_moved_away()
 				);
 			}
 			onconfirmed(openNext ? next : null);

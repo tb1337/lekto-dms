@@ -47,6 +47,7 @@ from lekto.core.services._tags import tag_tree
 # A rename queues the indexing service's refresh job; the worker runs it through that service.
 from lekto.core.services.indexing import REFRESH_JOB, RefreshKind, refresh_payload
 from lekto.core.services.logos import drop_logo, queue_logo_fetch
+from lekto.core.services.profiles import person_identifiers
 from lekto.core.services.rules.management import renamed_field, uses_field
 from lekto.core.services.rules.references import disable_rules, misfits, refers_to
 
@@ -230,7 +231,9 @@ class MasterDataService:
         others stay as they are. One the contact learned or rejected is then entered; one
         another contact learned or rejected moves here; one another contact has entered is a
         conflict."""
-        entered = Identifier(identifier.kind, identifier.value, MANUAL, identifier.topic_id)
+        entered = Identifier(
+            identifier.kind, identifier.value, MANUAL, identifier.topic_id, identifier.user_id
+        )
         known: list[str] = []
 
         def change(item: Contact) -> None:
@@ -1088,9 +1091,17 @@ async def _check_contact(uow: UnitOfWork, contact: Contact) -> None:
 
 
 async def _check_contact_identifiers(uow: UnitOfWork, contact: Contact) -> None:
-    """No identifier of the contact is one another contact entered by hand. Another contact's
-    learned or rejected one gives way, in `uow`: a person's choice is the newer word."""
+    """No identifier of the contact is one another contact entered by hand, or a person's (a
+    user's profile). Another contact's learned or rejected one gives way, in `uow`: a person's
+    choice is the newer word. A user an identifier names exists."""
     mine = {item.key for item in contact.identifiers}
+    personal = mine & await person_identifiers(uow)
+    if personal:
+        _, value = sorted(personal)[0]
+        raise ConflictError(f"'{value}' is an identifier of a person")
+    for item in contact.identifiers:
+        if item.user_id is not None:
+            await uow.users.get(item.user_id)
     for other in await uow.contacts.list_all():
         if other.id == contact.id:
             continue

@@ -70,6 +70,12 @@ class IdentifierIn(BaseModel):
         "found in a document, it is evidence for the contact and the topic. Not for a rejected "
         "one.",
     )
+    user_id: UUID | None = Field(
+        default=None,
+        description="The user a customer or personnel number belongs to (Anna's contract): "
+        "found in a document, it is hard evidence for whose it is. Not for other kinds, not "
+        "for a rejected one.",
+    )
 
 
 class IdentifierOut(BaseModel):
@@ -83,6 +89,9 @@ class IdentifierOut(BaseModel):
     topic_id: UUID | None = Field(
         description="The topic of the contact it points to; a learned one points to a topic "
         "only if all the confirmed documents it stands in carry it."
+    )
+    user_id: UUID | None = Field(
+        default=None, description="The user it belongs to; only one entered by hand has one."
     )
 
 
@@ -286,6 +295,7 @@ class ContactOut(MasterDataOut):
                     value=entry.value,
                     source=entry.source,
                     topic_id=entry.topic_id,
+                    user_id=entry.user_id,
                 )
                 for entry in item.identifiers
             ],

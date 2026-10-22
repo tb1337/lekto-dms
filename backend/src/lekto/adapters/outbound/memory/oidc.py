@@ -41,13 +41,23 @@ class FakeOidcProvider:
         }
         return f"{self._issuer}/authorize?{urlencode(query)}"
 
-    def consent(self, url: str, subject: str, *, username: str | None = None) -> str:
+    def consent(
+        self,
+        url: str,
+        subject: str,
+        *,
+        username: str | None = None,
+        name: str | None = None,
+        email: str | None = None,
+    ) -> str:
         query = query_parameters(url)
         code = secrets.token_urlsafe(16)
         self._grants[code] = _Grant(
             challenge=query["code_challenge"],
             nonce=query["nonce"],
-            identity=OidcIdentity(issuer=self._issuer, subject=subject, username=username),
+            identity=OidcIdentity(
+                issuer=self._issuer, subject=subject, username=username, email=email, name=name
+            ),
         )
         return code
 

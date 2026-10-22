@@ -16,6 +16,7 @@ from lekto.adapters.inbound.rest.context import Context
 from lekto.adapters.inbound.rest.params import ADMINS_ONLY, SESSION_ONLY_NOTE
 from lekto.adapters.inbound.rest.problems import problem_responses
 from lekto.adapters.inbound.rest.schemas.account import LinkOut, Removed, UserOut
+from lekto.adapters.inbound.rest.schemas.profiles import PERSON_NOTE, ProfileOut, ProfilePatch
 from lekto.adapters.inbound.rest.schemas.users import (
     AccountOut,
     PasswordReset,
@@ -72,7 +73,12 @@ async def list_users(principal: Authenticated, context: Context) -> list[UserOut
 async def create_user(body: UserCreate, admin: Authenticated, context: Context) -> UserOut:
     password = None if body.password is None else body.password.get_secret_value()
     created = await context.users.create_user(
-        admin.id, body.username, body.role, password, session=admin.session is not None
+        admin.id,
+        body.username,
+        body.role,
+        password,
+        session=admin.session is not None,
+        display_name=body.display_name,
     )
     return UserOut.of(created)
 
@@ -94,6 +100,34 @@ async def get_user(id: UUID, principal: Authenticated, context: Context) -> Acco
         return _account(await context.users.account(principal.id, UserId(id)), personal)
     found = await context.users.get(principal.id, UserId(id))
     return UserOut.of(found, full=False, personal_space=personal)
+
+
+@router.get(
+    "/{id}/profile",
+    summary="A user's profile",
+    description="Admins and the user themself (`GET /auth/me/profile`)." + PERSON_NOTE,
+    response_model=ProfileOut,
+    responses=problem_responses(401, 403, 404, 422),
+)
+async def get_profile(id: UUID, principal: Authenticated, context: Context) -> ProfileOut:
+    return ProfileOut.of(await context.profiles.get(principal.id, UserId(id)))
+
+
+@router.patch(
+    "/{id}/profile",
+    summary="Change a user's profile",
+    description=(
+        "Admins and the user themself (`PATCH /auth/me/profile`). What is given changes; a "
+        "migration fills display names and e-mail addresses with an admin's API token."
+        + PERSON_NOTE
+    ),
+    response_model=ProfileOut,
+    responses=problem_responses(401, 403, 404, 409, 422),
+)
+async def change_profile(
+    id: UUID, body: ProfilePatch, principal: Authenticated, context: Context
+) -> ProfileOut:
+    return ProfileOut.of(await context.profiles.update(principal.id, UserId(id), body.changes()))
 
 
 @router.patch(

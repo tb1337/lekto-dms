@@ -545,6 +545,7 @@
 			topics={enabledTopics}
 			errors={identifierErrors}
 			hint={m.master_identifiers_hint()}
+			withUsers
 		/>
 	{:else if part === 'fields'}
 		{#if fields}

@@ -16,6 +16,7 @@
 	import * as Table from '#lib/components/ui/table/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
+	import { userLabel } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 
@@ -27,6 +28,7 @@
 	let managing = $state<string | null>(null);
 	let creating = $state(false);
 	let username = $state('');
+	let displayName = $state('');
 	let role = $state<Role>('user');
 	let password = $state('');
 	let error = $state<string | null>(null);
@@ -46,6 +48,7 @@
 
 	function openCreate() {
 		username = '';
+		displayName = '';
 		role = 'user';
 		password = '';
 		error = null;
@@ -60,7 +63,12 @@
 		try {
 			await unwrap(
 				api.POST('/api/v1/users', {
-					body: { username: username.trim(), role, ...(password ? { password } : {}) }
+					body: {
+						username: username.trim(),
+						role,
+						...(displayName.trim() ? { display_name: displayName.trim() } : {}),
+						...(password ? { password } : {})
+					}
 				})
 			);
 			toast.success(m.user_created());
@@ -110,7 +118,12 @@
 			<Table.Body>
 				{#each users as user (user.id)}
 					<Table.Row>
-						<Table.Cell class="font-medium">{user.username}</Table.Cell>
+						<Table.Cell>
+							<span class="font-medium">{user.username}</span>
+							{#if user.display_name}
+								<span class="block text-xs text-muted-foreground">{user.display_name}</span>
+							{/if}
+						</Table.Cell>
 						<Table.Cell>{user.role === 'admin' ? m.role_admin() : m.role_user()}</Table.Cell>
 						<Table.Cell>
 							<Badge variant={user.active ? 'secondary' : 'outline'}>
@@ -120,7 +133,7 @@
 						<Table.Cell>{user.created_at ? formatDate(user.created_at) : '–'}</Table.Cell>
 						<Table.Cell class="w-px py-1">
 							<EditButton
-								label={m.user_manage_named({ name: user.username })}
+								label={m.user_manage_named({ name: userLabel(user) })}
 								onclick={() => (managing = user.id)}
 							/>
 						</Table.Cell>
@@ -144,6 +157,11 @@
 					autocomplete="off"
 					required
 				/>
+			</Field.Field>
+			<Field.Field>
+				<Field.Label for="new-display-name">{m.profile_display_name()}</Field.Label>
+				<Input id="new-display-name" bind:value={displayName} maxlength={150} autocomplete="off" />
+				<Field.Description>{m.profile_display_name_hint()}</Field.Description>
 			</Field.Field>
 			<Field.Field>
 				<Field.Label for="new-role">{m.user_role()}</Field.Label>

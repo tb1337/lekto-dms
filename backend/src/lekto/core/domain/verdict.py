@@ -62,6 +62,7 @@ from lekto.core.domain.classification import (
     CandidateSource,
     FieldCheck,
 )
+from lekto.core.domain.facts import Strength
 from lekto.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId, UserId
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.master_data import Contact, DocumentType, Tag
@@ -137,11 +138,12 @@ class Neighbour:
 class FactsView:
     """Contacts named in the text, the kinds of their identifiers found in it, and the topics
     those identifiers point to (each with the kinds that point to it): the pairs of contact and
-    topic the text shows."""
+    topic the text shows. `persons`: the users it names, each with the strongest evidence."""
 
     named: frozenset[ContactId] = frozenset()
     identifiers: Mapping[ContactId, tuple[str, ...]] = field(default_factory=dict)
     topics: Mapping[ContactId, Mapping[TagId, tuple[str, ...]]] = field(default_factory=dict)
+    persons: Mapping[UserId, Strength] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

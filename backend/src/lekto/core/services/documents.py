@@ -93,6 +93,7 @@ from lekto.core.services.objects import (
     preview_key,
     structure_key,
 )
+from lekto.core.services.profiles import matching_persons
 from lekto.core.services.rules.changes import ChangeRules
 from lekto.core.services.rules.running import Prepared, RuleRun
 
@@ -172,6 +173,9 @@ class DocumentFacts:
     facts: Facts
     codes: tuple[CodeFacts, ...] | None
     other_contacts: dict[tuple[IdentifierKind, str], frozenset[ContactId]] | None
+    # The names of the persons found, for the editors of the document's space and admins; None
+    # for readers, whose facts then hold no persons.
+    person_names: dict[UserId, str] | None = None
 
 
 async def _check_sortable(uow: UnitOfWork, order: DocumentOrder) -> None:
@@ -342,14 +346,18 @@ class DocumentService:
 
     async def facts(self, actor: UserId, id: DocumentId) -> DocumentFacts:
         """The facts of the document's text and codes, as the facts signal finds them now:
-        a contact named or an identifier attached since counts at once. NotFoundError if the
-        caller may not read the document; ConflictError while it has no text yet."""
+        a contact named or an identifier attached since counts at once; the persons it names
+        only for the editors of its space and admins. NotFoundError if the caller may not read
+        the document; ConflictError while it has no text yet."""
         store = self._object_store
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, _ = await readable_document(uow, user, id)
+            document, space = await readable_document(uow, user, id)
             contacts = await uow.contacts.list_all()
             definitions = await field_definitions(uow)
+            editor = document_access(user, document, space) is SpaceRole.EDIT
+            persons = await matching_persons(uow) if editor else []
+            labels = {item.id: item.label for item in await uow.users.list_all()}
         try:
             text = (await load_text(store, id)).decode("utf-8", errors="replace")
         except NotFoundError:
@@ -358,7 +366,7 @@ class DocumentService:
         pages = await load_layout(store, id)
 
         def found() -> Facts:
-            facts = facts_in(text, contacts, codes or (), places=True)
+            facts = facts_in(text, contacts, codes or (), persons=persons, places=True)
             return on_pages(facts, TextPlaces(text, pages)) if pages else facts
 
         # Matching every contact's names against a long text takes a while: not in the loop.
@@ -379,7 +387,18 @@ class DocumentService:
                 )
             others = {key: contacts_ - {document.contact_id} for key, contacts_ in carrying.items()}
         return DocumentFacts(
-            contact_id=document.contact_id, facts=facts, codes=views, other_contacts=others
+            contact_id=document.contact_id,
+            facts=facts,
+            codes=views,
+            other_contacts=others,
+            person_names=(
+                {
+                    item.user_id: labels.get(item.user_id, str(item.user_id))
+                    for item in facts.persons
+                }
+                if editor
+                else None
+            ),
         )
 
     async def _codes(self, id: DocumentId) -> tuple[Code, ...] | None:

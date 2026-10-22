@@ -527,6 +527,202 @@
         ]
       }
     },
+    "/api/v1/auth/me/profile": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "The own profile",
+        "description": "The caller's display name and private profile. Only the user and admins see the profile; others see the display name. None of it goes to the language model, the search index or the processing log.",
+        "operationId": "own_profile_api_v1_auth_me_profile_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Change the own profile",
+        "description": "Display name, aliases, birth date, e-mail and identifiers; what is given changes. Only the user and admins see the profile; others see the display name. None of it goes to the language model, the search index or the processing log.",
+        "operationId": "change_own_profile_api_v1_auth_me_profile_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfilePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "the request body is larger than 1048576 bytes"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/auth/password": {
       "post": {
         "tags": [
@@ -2319,6 +2515,290 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "the request body is larger than 1048576 bytes"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/users/{id}/profile": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "A user's profile",
+        "description": "Admins and the user themself (`GET /auth/me/profile`). Only the user and admins see the profile; others see the display name. None of it goes to the language model, the search index or the processing log.",
+        "operationId": "get_profile_api_v1_users__id__profile_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Change a user's profile",
+        "description": "Admins and the user themself (`PATCH /auth/me/profile`). What is given changes; a migration fills display names and e-mail addresses with an admin's API token. Only the user and admins see the profile; others see the display name. None of it goes to the language model, the search index or the processing log.",
+        "operationId": "change_profile_api_v1_users__id__profile_patch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfilePatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOut"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized",
@@ -16180,6 +16660,18 @@
               "alice"
             ]
           },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name",
+            "description": "How others see the user (\"Alice Example\"); null or missing: the username."
+          },
           "personal_space_id": {
             "anyOf": [
               {
@@ -19197,6 +19689,21 @@
             ],
             "title": "Codes",
             "description": "The codes on the pages; null while they are not read (`read-codes`)."
+          },
+          "persons": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FoundPersonOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Persons",
+            "description": "The users the document names, the surest first: for the editors of its space and admins; null for readers (that a number is Anna's tax ID is Anna's)."
           }
         },
         "type": "object",
@@ -20006,6 +20513,50 @@
         ],
         "title": "FoundIdentifierOut"
       },
+      "FoundPersonOut": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Their display name, else the username."
+          },
+          "strength": {
+            "$ref": "#/components/schemas/Strength",
+            "description": "`hard`: one of their identifiers (or a contact's number that names them); `medium`: their birth date; `weak`: their display name or an alias."
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence",
+            "description": "`name`, `alias`, `birth_date` and the kinds of identifiers found."
+          },
+          "spans": {
+            "items": {
+              "$ref": "#/components/schemas/SpanOut"
+            },
+            "type": "array",
+            "title": "Spans",
+            "description": "Where their names and identifiers stand."
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "name",
+          "strength",
+          "evidence",
+          "spans"
+        ],
+        "title": "FoundPersonOut",
+        "description": "A user the document names, with the kinds of evidence (never the values)."
+      },
       "GiroCodeOut": {
         "properties": {
           "name": {
@@ -20174,6 +20725,19 @@
             ],
             "title": "Topic Id",
             "description": "One of the contact's topics it points to (a personnel number to work): found in a document, it is evidence for the contact and the topic. Not for a rejected one."
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id",
+            "description": "The user a customer or personnel number belongs to (Anna's contract): found in a document, it is hard evidence for whose it is. Not for other kinds, not for a rejected one."
           }
         },
         "additionalProperties": false,
@@ -20198,7 +20762,11 @@
           "vat_id",
           "customer_number",
           "personnel_number",
-          "email_domain"
+          "email_domain",
+          "tax_id",
+          "social_security_number",
+          "health_insurance_number",
+          "email_address"
         ],
         "title": "IdentifierKind"
       },
@@ -20230,6 +20798,19 @@
             ],
             "title": "Topic Id",
             "description": "The topic of the contact it points to; a learned one points to a topic only if all the confirmed documents it stands in carry it."
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id",
+            "description": "The user it belongs to; only one entered by hand has one."
           }
         },
         "type": "object",
@@ -21665,6 +22246,18 @@
             "type": "string",
             "title": "Username"
           },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name",
+            "description": "How others see the member; null: the username."
+          },
           "active": {
             "type": "boolean",
             "title": "Active",
@@ -22321,6 +22914,52 @@
         ],
         "title": "PeriodValue"
       },
+      "PersonIdentifierIn": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind",
+            "description": "`iban`, `tax_id` (11 digits with check digit), `social_security_number`, `health_insurance_number` (a letter and nine digits) or `email_address`; other kinds are a contact's (422)."
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "value"
+        ],
+        "title": "PersonIdentifierIn",
+        "description": "Written as in documents; Lekto stores it normalised.",
+        "examples": [
+          {
+            "kind": "tax_id",
+            "value": "..."
+          }
+        ]
+      },
+      "PersonIdentifierOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "Normalised."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value"
+        ],
+        "title": "PersonIdentifierOut"
+      },
       "PipelineOut": {
         "properties": {
           "nodes": {
@@ -22439,6 +23078,149 @@
           "review"
         ],
         "title": "ProcessingStatus"
+      },
+      "ProfileOut": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name",
+            "description": "Public; null: the username is shown."
+          },
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Aliases",
+            "description": "Other names (a maiden name), to find the person."
+          },
+          "birth_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth Date"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email",
+            "description": "Also counts as an identifier."
+          },
+          "identifiers": {
+            "items": {
+              "$ref": "#/components/schemas/PersonIdentifierOut"
+            },
+            "type": "array",
+            "title": "Identifiers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "display_name",
+          "aliases",
+          "birth_date",
+          "email",
+          "identifiers"
+        ],
+        "title": "ProfileOut"
+      },
+      "ProfilePatch": {
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 150
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name",
+            "description": "Unique across users regardless of case, also against their aliases (409)."
+          },
+          "aliases": {
+            "items": {
+              "type": "string",
+              "maxLength": 150,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Aliases"
+          },
+          "birth_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth Date"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 254
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "identifiers": {
+            "items": {
+              "$ref": "#/components/schemas/PersonIdentifierIn"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Identifiers",
+            "description": "The person's own numbers; found in a document, they tell whose it is. Several users may share one (a joint account), a contact may not have it (409 if a contact entered it by hand; a learned one gives way)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ProfilePatch",
+        "description": "What is given changes; null removes the display name, birth date or e-mail; `aliases`\nand `identifiers` replace all of them.",
+        "examples": [
+          {
+            "aliases": [
+              "Anna Sample"
+            ],
+            "birth_date": "1980-06-15",
+            "display_name": "Anna Example"
+          }
+        ]
       },
       "ReadingOut": {
         "properties": {
@@ -24142,6 +24924,16 @@
         ],
         "title": "StoredFileOut"
       },
+      "Strength": {
+        "type": "string",
+        "enum": [
+          "weak",
+          "medium",
+          "hard"
+        ],
+        "title": "Strength",
+        "description": "How surely a document names a person."
+      },
       "TagCreate": {
         "properties": {
           "name": {
@@ -24855,6 +25647,19 @@
             "minLength": 1,
             "title": "Username"
           },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 150
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name",
+            "description": "How others see the user; unique regardless of case (409)."
+          },
           "role": {
             "$ref": "#/components/schemas/Role",
             "default": "user"
@@ -24903,6 +25708,18 @@
             "examples": [
               "alice"
             ]
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name",
+            "description": "How others see the user (\"Alice Example\"); null or missing: the username."
           },
           "personal_space_id": {
             "anyOf": [
@@ -24957,7 +25774,7 @@
           "username"
         ],
         "title": "UserOut",
-        "description": "A user. Others than admins see only `id`, `username` and `personal_space_id`."
+        "description": "A user. Others than admins see only `id`, `username`, `display_name` and\n`personal_space_id`."
       },
       "UserPatch": {
         "properties": {

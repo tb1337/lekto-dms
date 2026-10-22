@@ -66,6 +66,7 @@ def api_context(container: Container, settings: Settings, services: Services) ->
     return ApiContext(
         auth=services.auth,
         users=services.users,
+        profiles=services.profiles,
         spaces=services.spaces,
         master_data=services.master_data,
         logos=services.logos,

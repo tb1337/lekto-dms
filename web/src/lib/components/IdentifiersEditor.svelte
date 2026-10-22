@@ -10,14 +10,17 @@
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
+	import { api } from '#lib/api/client.ts';
 	import {
 		IDENTIFIER_KINDS,
+		type IdentifierKind,
 		type IdentifierRow,
 		type IdentifierSource,
 		kindLabel,
+		NAMING_KINDS,
 		row
 	} from '#lib/identifiers.ts';
-	import type { Tag } from '#lib/masterdata.svelte.ts';
+	import { type Tag, userLabel, userName, type UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { pathLabel } from '#lib/tags.ts';
@@ -28,13 +31,17 @@
 	// with the editor); a learned one can be taken over (then it is entered by hand) or
 	// rejected (training does not learn it again); a rejected one can be allowed again. Enter
 	// in the value closes the line. A search finds them by value, kind and topic; a new one
-	// opens empty. `errors` (by row key) show in their open line.
+	// opens empty. `errors` (by row key) show in their open line. `kinds`: those offered (a
+	// person's in the profile); `withUsers`: a customer or personnel number may name the user it
+	// belongs to (the contact dialog).
 	let {
 		rows = $bindable(),
 		topics = [],
 		opened = $bindable(null),
 		errors = {},
-		hint
+		hint,
+		kinds: offered = IDENTIFIER_KINDS,
+		withUsers = false
 	}: {
 		rows: IdentifierRow[];
 		topics?: readonly Tag[];
@@ -42,11 +49,29 @@
 		errors?: Record<number, string>;
 		/** The help of the identifiers, behind an info button beside the search. */
 		hint?: string;
+		kinds?: readonly IdentifierKind[];
+		withUsers?: boolean;
 	} = $props();
 
 	const uid = $props.id();
 	let query = $state('');
-	const kinds = IDENTIFIER_KINDS.map((kind) => ({ value: kind, label: kindLabel(kind) }));
+	let users = $state<UserName[]>([]);
+	const kinds = $derived(offered.map((kind) => ({ value: kind, label: kindLabel(kind) })));
+	const userOptions = $derived([
+		{ value: '', label: m.identifier_user_none() },
+		...users.map((user) => ({ value: user.id, label: userLabel(user) }))
+	]);
+
+	$effect(() => {
+		if (!withUsers) return;
+		// Without the list, a number still shows whose it is by id; it only cannot be chosen.
+		void api
+			.GET('/api/v1/users')
+			.then(({ data }) => {
+				if (Array.isArray(data)) users = data;
+			})
+			.catch(() => {});
+	});
 	const topicOptions = $derived([
 		{ value: '', label: m.topic_none() },
 		...topics.map((topic) => ({ value: topic.id, label: pathLabel(topic) }))
@@ -62,10 +87,12 @@
 		);
 	});
 	const groups = $derived(
-		IDENTIFIER_KINDS.map((kind) => ({
-			kind,
-			rows: shown.filter((item) => item.kind === kind)
-		})).filter((group) => group.rows.length > 0)
+		offered
+			.map((kind) => ({
+				kind,
+				rows: shown.filter((item) => item.kind === kind)
+			}))
+			.filter((group) => group.rows.length > 0)
 	);
 
 	function topicOf(id: string): Tag | null {
@@ -186,6 +213,9 @@
 								</Badge>
 							{/if}
 							{#if topic}<TagChip tag={topic} topic size="sm" />{/if}
+							{#if withUsers && item.user_id}
+								<Badge variant="outline">{userName(users, item.user_id)}</Badge>
+							{/if}
 							{#if errors[item.key]}
 								<span class="size-[7px] shrink-0 rounded-full bg-destructive" aria-hidden="true"
 								></span>
@@ -243,6 +273,17 @@
 										/>
 									{/if}
 								</div>
+								{#if withUsers && NAMING_KINDS.includes(item.kind)}
+									<div class="mt-2 grid items-center gap-2 sm:grid-cols-[12.5rem_minmax(0,1fr)]">
+										<span class="text-sm text-muted-foreground">{m.identifier_user()}</span>
+										<Select
+											bind:value={rows[index].user_id}
+											options={userOptions}
+											aria-label={m.identifier_user()}
+											class="h-10"
+										/>
+									</div>
+								{/if}
 								{#if errors[item.key]}
 									<p class="mt-2 text-sm text-destructive" role="alert">{errors[item.key]}</p>
 								{/if}

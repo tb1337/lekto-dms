@@ -1,4 +1,5 @@
-/** Identifiers of contacts as the contact dialog edits them. */
+/** Identifiers of contacts as the contact dialog edits them, and of persons as the profile
+ * does. */
 import type { components } from '#lib/api/schema.ts';
 import { m } from '#lib/paraglide/messages.js';
 
@@ -15,6 +16,18 @@ export const IDENTIFIER_KINDS: readonly IdentifierKind[] = [
 	'email_domain'
 ];
 
+/** The kinds of a person's own identifiers (a user's profile). */
+export const PERSON_KINDS: readonly IdentifierKind[] = [
+	'iban',
+	'tax_id',
+	'social_security_number',
+	'health_insurance_number',
+	'email_address'
+];
+
+/** The kinds of a contact's identifiers that may name the user they belong to. */
+export const NAMING_KINDS: readonly IdentifierKind[] = ['customer_number', 'personnel_number'];
+
 export function kindLabel(kind: IdentifierKind): string {
 	switch (kind) {
 		case 'iban':
@@ -27,17 +40,27 @@ export function kindLabel(kind: IdentifierKind): string {
 			return m.identifier_kind_personnel_number();
 		case 'email_domain':
 			return m.identifier_kind_email_domain();
+		case 'tax_id':
+			return m.identifier_kind_tax_id();
+		case 'social_security_number':
+			return m.identifier_kind_social_security_number();
+		case 'health_insurance_number':
+			return m.identifier_kind_health_insurance_number();
+		case 'email_address':
+			return m.identifier_kind_email_address();
 	}
 }
 
 /** One row of the editor; `key` keeps a row apart while its value is typed. `topic_id`: the
- * contact's topic it points to (empty: none). */
+ * contact's topic it points to (empty: none); `user_id`: the user a customer or personnel number
+ * belongs to (empty: none). */
 export interface IdentifierRow {
 	key: number;
 	kind: IdentifierKind;
 	value: string;
 	source: IdentifierSource;
 	topic_id: string;
+	user_id: string;
 }
 
 let next = 0;
@@ -46,13 +69,19 @@ export function row(
 	kind: IdentifierKind = 'iban',
 	value = '',
 	source: IdentifierSource = 'manual',
-	topic_id: string | null = null
+	topic_id: string | null = null,
+	user_id: string | null = null
 ): IdentifierRow {
-	return { key: next++, kind, value, source, topic_id: topic_id ?? '' };
+	return { key: next++, kind, value, source, topic_id: topic_id ?? '', user_id: user_id ?? '' };
 }
 
-export function rowsOf(identifiers: readonly IdentifierOut[] | undefined): IdentifierRow[] {
-	return (identifiers ?? []).map((item) => row(item.kind, item.value, item.source, item.topic_id));
+export function rowsOf(
+	identifiers:
+		readonly (Pick<IdentifierOut, 'kind' | 'value'> & Partial<IdentifierOut>)[] | undefined
+): IdentifierRow[] {
+	return (identifiers ?? []).map((item) =>
+		row(item.kind, item.value, item.source ?? 'manual', item.topic_id, item.user_id)
+	);
 }
 
 /** What a change sends: the identifiers entered by hand (a learned one taken over among them),
@@ -70,10 +99,17 @@ export function changesOf(
 		item.topic_id !== '' && (topics === undefined || topics.includes(item.topic_id))
 			? { topic_id: item.topic_id }
 			: {};
+	const userOf = (item: IdentifierRow) =>
+		item.user_id !== '' && NAMING_KINDS.includes(item.kind) ? { user_id: item.user_id } : {};
 	return {
 		identifiers: filled
 			.filter((item) => item.source === 'manual')
-			.map((item) => ({ kind: item.kind, value: item.value.trim(), ...topicOf(item) })),
+			.map((item) => ({
+				kind: item.kind,
+				value: item.value.trim(),
+				...topicOf(item),
+				...userOf(item)
+			})),
 		rejected_identifiers: filled
 			.filter((item) => item.source === 'rejected')
 			.map((item) => ({ kind: item.kind, value: item.value.trim() }))

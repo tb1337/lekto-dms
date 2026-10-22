@@ -439,7 +439,15 @@ async def test_a_space_describes_what_belongs_in_it(api: Api) -> None:
 async def test_spaces_and_members(api: Api) -> None:
     owner, friend = await api.user(), await api.user("friend")
     space = await post(api, "/spaces", {"name": "Household"}, auth(owner))
-    mine = [{"user_id": str(owner.id), "role": "edit", "username": owner.username, "active": True}]
+    mine = [
+        {
+            "user_id": str(owner.id),
+            "role": "edit",
+            "username": owner.username,
+            "display_name": None,
+            "active": True,
+        }
+    ]
     assert (space["role"], space["members"], space["personal_of"]) == ("edit", mine, None)
     url = f"{PREFIX}/spaces/{space['id']}"
     shared = await api.client.put(
@@ -695,7 +703,13 @@ async def test_contact_identifiers(api: Api) -> None:
     iban = {"kind": "iban", "value": "de89 3704 0044 0532 0130 00"}
     contact = await post(api, "/contacts", {"name": "Stadtwerke", "identifiers": [iban]}, a)
     assert contact["identifiers"] == [
-        {"kind": "iban", "value": "DE89370400440532013000", "source": "manual", "topic_id": None}
+        {
+            "kind": "iban",
+            "value": "DE89370400440532013000",
+            "source": "manual",
+            "topic_id": None,
+            "user_id": None,
+        }
     ]
     path = f"{PREFIX}/contacts/{contact['id']}"
     domain = {"kind": "email_domain", "value": "www.stadtwerke.example"}
@@ -1060,7 +1074,13 @@ async def test_topics_at_contacts_identifiers_and_documents(api: Api) -> None:
     )
     assert contact["topic_ids"] == sorted([work["id"], health["id"]])
     assert contact["identifiers"] == [
-        {"kind": "personnel_number", "value": "4711", "source": "manual", "topic_id": work["id"]}
+        {
+            "kind": "personnel_number",
+            "value": "4711",
+            "source": "manual",
+            "topic_id": work["id"],
+            "user_id": None,
+        }
     ]
     path = f"{PREFIX}/contacts/{contact['id']}"
     attach = {"kind": "customer_number", "value": "KV-2026-1", "topic_id": insurance["id"]}

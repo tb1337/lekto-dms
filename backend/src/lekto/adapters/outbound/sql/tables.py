@@ -61,6 +61,42 @@ users = Table(
     Column("created_at", UtcDateTime, nullable=False),
     Column("active", Boolean, nullable=False, server_default=true()),
     Column("version", Integer, nullable=False),
+    # How others see the user; unique regardless of case, also against the aliases of others
+    # (checked by the service).
+    Column("display_name", Text, nullable=True),
+    Column("display_name_key", Text, nullable=True, unique=True, index=True),
+)
+
+# The private part of a user: birth date and e-mail, with their aliases and identifiers.
+user_profiles = Table(
+    "user_profiles",
+    metadata,
+    Column("user_id", Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("birth_date", Date, nullable=True),
+    Column("email", Text, nullable=True),
+    Column("version", Integer, nullable=False),
+)
+
+# Other names of a user (a maiden name); unique across users. That no alias is another user's
+# display name is checked by the service.
+user_aliases = Table(
+    "user_aliases",
+    metadata,
+    Column("user_id", Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("name", Text, nullable=False),
+    Column("name_key", Text, primary_key=True),
+    Column("position", Integer, nullable=False),
+)
+
+# A person's own numbers (IBAN, tax ID, ...). Several users may hold one (a joint account); a
+# contact never (checked by the services).
+user_identifiers = Table(
+    "user_identifiers",
+    metadata,
+    Column("user_id", Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("kind", Text, primary_key=True),
+    Column("value", Text, primary_key=True),
+    Index("ix_user_identifiers_kind_value", "kind", "value"),
 )
 
 spaces = Table(
@@ -210,7 +246,8 @@ classifier_models = Table(
 
 # Values a contact's documents carry (IBAN, VAT number, ...); kind and value are unique across
 # contacts. `source`: entered by hand, learned by training, or learned and rejected. `topic_id`:
-# the contact's topic it points to (one the contact enables, checked by the domain).
+# the contact's topic it points to (one the contact enables, checked by the domain); `user_id`:
+# the user it names.
 contact_identifiers = Table(
     "contact_identifiers",
     metadata,
@@ -225,6 +262,8 @@ contact_identifiers = Table(
     Column("value", Text, primary_key=True),
     Column("source", Text, nullable=False),
     Column("topic_id", Uuid, ForeignKey("tags.id"), nullable=True),
+    # The user a customer or personnel number belongs to, if one does.
+    Column("user_id", Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
 )
 
 field_definitions = Table(

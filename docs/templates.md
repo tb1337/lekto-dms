@@ -40,7 +40,7 @@ attributes of objects, no `include` or `render`.
 | `contact_groups` | the groups the contact is in, a list | as `tags` |
 | `document_type_groups` | the groups the type is in, a list | as `tags` |
 | `space` | the space's name; a personal space by its user's name | `Haushalt` |
-| `uploaded_by` | the user name of who uploaded it (no rights come with it; until 0.5 `owner`) | `tobi` |
+| `uploaded_by` | who uploaded it, by display name (else user name; no rights come with it; until 0.5 `owner`) | `Tobias Example` |
 | `channel` | how the document came: `web` (uploaded in the web UI), `api` (with an API token), `migration` (taken over from Paperless-ngx) | `web` |
 | `pages` | the number of pages | `2` |
 | `field.<key>` | the value of a field, see below | |

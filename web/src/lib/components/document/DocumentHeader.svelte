@@ -30,7 +30,13 @@
 	import { inboxDocument, tabHref, type Neighbours } from '#lib/document-view.ts';
 	import { reportError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
-	import { spaceLabel, spaceOptions, userName, type Lookup } from '#lib/masterdata.svelte.ts';
+	import {
+		spaceLabel,
+		spaceOptions,
+		userLabel,
+		userName,
+		type Lookup
+	} from '#lib/masterdata.svelte.ts';
 	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import { canEdit } from '#lib/permissions.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -103,7 +109,7 @@
 			? null
 			: others
 					.filter((member) => member.role === 'edit' || green)
-					.map((member) => member.username)
+					.map((member) => userLabel(member))
 					.join(', ')
 	);
 	const readersLater = $derived(
@@ -111,7 +117,7 @@
 			? ''
 			: others
 					.filter((member) => member.role === 'read')
-					.map((member) => member.username)
+					.map((member) => userLabel(member))
 					.join(', ')
 	);
 	const uploader = $derived(
@@ -222,7 +228,7 @@
 						body: { space_id: target }
 					})
 				);
-				toast.success(receiver ? m.move_handed_over({ name: receiver.username }) : m.move_done());
+				toast.success(receiver ? m.move_handed_over({ name: userLabel(receiver) }) : m.move_done());
 				moveOpen = false;
 				await goto(inbox ? `${BASE}/inbox` : `${BASE}/documents`);
 			} catch (error) {

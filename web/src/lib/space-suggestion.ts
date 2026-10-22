@@ -4,7 +4,7 @@
  */
 import type { components } from '#lib/api/schema.ts';
 import { describeValue } from '#lib/describe.ts';
-import type { Lookup } from '#lib/masterdata.svelte.ts';
+import { userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 type OpenNode = components['schemas']['OpenNodeOut'];
@@ -45,10 +45,10 @@ export function newReaders(target: string, current: string, lookup: Lookup | nul
 	if (there) {
 		return there.members
 			.filter((member) => !already.has(member.user_id))
-			.map((member) => member.username);
+			.map((member) => userLabel(member));
 	}
 	const holder = lookup.users.find((user) => user.personal_space_id === target);
-	return holder && !already.has(holder.id) ? [holder.username] : [];
+	return holder && !already.has(holder.id) ? [userLabel(holder)] : [];
 }
 
 /** "Vorschlag: Haushalt (sichtbar für anna)": the suggested space and who sees it there anew;

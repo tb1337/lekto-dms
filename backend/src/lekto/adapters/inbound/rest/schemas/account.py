@@ -41,10 +41,15 @@ class LoginRequest(BaseModel):
 
 
 class UserOut(BaseModel):
-    """A user. Others than admins see only `id`, `username` and `personal_space_id`."""
+    """A user. Others than admins see only `id`, `username`, `display_name` and
+    `personal_space_id`."""
 
     id: UUID
     username: str = Field(examples=["alice"])
+    display_name: str | None = Field(
+        default=None,
+        description='How others see the user ("Alice Example"); null or missing: the username.',
+    )
     personal_space_id: UUID | None = Field(
         default=None,
         description=(
@@ -61,10 +66,16 @@ class UserOut(BaseModel):
         cls, user: User, *, full: bool = True, personal_space: SpaceId | None = None
     ) -> "UserOut":
         if not full:
-            return cls(id=user.id, username=user.username, personal_space_id=personal_space)
+            return cls(
+                id=user.id,
+                username=user.username,
+                display_name=user.display_name,
+                personal_space_id=personal_space,
+            )
         return cls(
             id=user.id,
             username=user.username,
+            display_name=user.display_name,
             personal_space_id=personal_space,
             role=user.role,
             active=user.active,

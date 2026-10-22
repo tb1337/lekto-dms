@@ -35,6 +35,7 @@ from lekto.core.services._access import load_actor
 
 # Signing in through a provider composes the sign-in and the account use cases.
 from lekto.core.services.auth import AuthService, SignedIn
+from lekto.core.services.profiles import new_profile_hints
 from lekto.core.services.users import add_user
 
 log = logging.getLogger(__name__)
@@ -151,6 +152,7 @@ class OidcService:
                 user_id = link.user_id
             elif self.auto_create and identity.username:
                 user = await add_user(uow, identity.username, Role.USER, now)
+                await new_profile_hints(uow, user, identity.name, identity.email)
                 await uow.external_identities.add(
                     ExternalIdentity.link(
                         issuer=identity.issuer, subject=identity.subject, user_id=user.id, now=now

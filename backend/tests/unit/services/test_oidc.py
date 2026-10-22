@@ -84,6 +84,27 @@ async def test_accounts_can_be_created_at_first_sign_in(world: World) -> None:
         await round_trip(service, world, await service.begin(), "sub-nameless")
 
 
+async def test_a_new_account_takes_the_name_and_e_mail_given(world: World) -> None:
+    """Only at creation, and only what is free and valid."""
+    service = world.oidc(auto_create=True)
+    start = await service.begin()
+    code = world.idp.consent(
+        start.url, "sub-bob", username="bob", name="Bob Example", email="Bob@Mail.Example"
+    )
+    outcome = await service.complete(start.flow, state=state_of(start), code=code, caller=None)
+    assert outcome.signed_in is not None
+    bob = outcome.signed_in.user
+    start = await service.begin()
+    code = world.idp.consent(start.url, "sub-rob", username="rob", name="bob example", email="x")
+    other = await service.complete(start.flow, state=state_of(start), code=code, caller=None)
+    assert other.signed_in is not None
+    async with world.uow() as uow:
+        assert (await uow.users.get(bob.id)).display_name == "Bob Example"
+        assert (await uow.profiles.get(bob.id)).email == "bob@mail.example"
+        assert (await uow.users.get(other.signed_in.user.id)).display_name is None  # taken
+        assert await uow.profiles.find(other.signed_in.user.id) is None  # no address
+
+
 async def test_the_flow_must_match_and_be_fresh(world: World) -> None:
     user = await world.user("alice")
     await link(world, user, "sub-alice")

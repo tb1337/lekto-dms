@@ -42,6 +42,7 @@ from lekto.core.services._jobs import LEASE, JobRunner, Step, retrying
 from lekto.core.services._pages import document_pages
 from lekto.core.services.master_data import replace_learned_identifiers
 from lekto.core.services.objects import classifier_key, load_text
+from lekto.core.services.profiles import person_identifiers
 
 log = logging.getLogger(__name__)
 
@@ -245,6 +246,7 @@ class ClassifierService:
                 for item in contact.identifiers
                 if item.source is not IdentifierSource.LEARNED
             ]
+            taken += await person_identifiers(uow)
             learned = await replace_learned_identifiers(
                 uow,
                 mine_identifiers(found, taken),

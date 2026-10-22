@@ -21,6 +21,7 @@ from lekto.core.ports.repository import (
     InboxRepository,
     LensRepository,
     ProcessingLog,
+    ProfileRepository,
     RuleApplicationRepository,
     RuleRepository,
     SpaceRepository,
@@ -50,6 +51,8 @@ class UnitOfWork(Protocol):
 
     @property
     def users(self) -> UserRepository: ...
+    @property
+    def profiles(self) -> ProfileRepository: ...
     @property
     def spaces(self) -> SpaceRepository: ...
     @property

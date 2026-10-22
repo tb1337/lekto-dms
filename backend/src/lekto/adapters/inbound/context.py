@@ -22,6 +22,7 @@ from lekto.core.services.logos import LogoService
 from lekto.core.services.master_data import MasterDataService
 from lekto.core.services.oidc import OidcService
 from lekto.core.services.pipeline import PipelineService
+from lekto.core.services.profiles import ProfileService
 from lekto.core.services.rules import RuleService
 from lekto.core.services.rules.retroactive import RuleApplicationService
 from lekto.core.services.search import SearchService
@@ -39,6 +40,7 @@ class ApiContext:
 
     auth: AuthService
     users: UserService
+    profiles: ProfileService
     spaces: SpaceService
     master_data: MasterDataService
     logos: LogoService

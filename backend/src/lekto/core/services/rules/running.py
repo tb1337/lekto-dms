@@ -447,6 +447,7 @@ async def situation(
     person_removed_tags: frozenset[TagId] = frozenset(),
     accept_conflicts: bool = False,
     loaded: Loaded,
+    applier: UserId | None = None,
 ) -> Situation:
     """Everything `plan` needs to know besides the matching rules. `loaded`: the master data
     of the run (`taxonomy`, for the document and at least `rules`); beyond it, only the
@@ -486,10 +487,11 @@ async def situation(
                 space = await uow.spaces.find(action.space_id)
                 if space is not None:
                     editors = {id for id in space.editors if id in users and users[id].active}
+                    receiver = None if space.personal_of is None else users.get(space.personal_of)
                     spaces[space.id] = SpaceTarget(
                         name=space_label(space, users),
                         filers=admins | editors,
-                        personal=space.is_personal,
+                        personal=receiver is not None and receiver.active,
                         widens=current.widens(space),
                     )
                     names[space.id] = spaces[space.id].name
@@ -512,6 +514,7 @@ async def situation(
         reviewed=origin.reviewed,
         accept_conflicts=accept_conflicts,
         taxonomy=loaded.taxonomy,
+        applier=applier,
     )
 
 
@@ -551,10 +554,11 @@ async def run_rules(
     before: tuple[Document, Mapping[PatternKey, bool]] | None = None,
     locked: Collection[str] = (),
     accept_conflicts: bool = False,
+    applier: UserId | None = None,
 ) -> RuleRun:
     """Evaluate `rules` on the document and plan their change (nothing is applied). `before`:
     for a change, the state before it and its field pattern results; only rules that become
-    true with the change act."""
+    true with the change act. `applier`: who applies the rules to existing documents."""
     patterns, problems = await field_patterns(matcher, rules, document)
     loaded = await taxonomy(uow, [document, *([] if before is None else [before[0]])], rules)
     now_facts = facts(document, prepared, patterns, origin, loaded.taxonomy)
@@ -575,6 +579,7 @@ async def run_rules(
         person_removed_tags=origin.tags_removed,
         accept_conflicts=accept_conflicts,
         loaded=loaded,
+        applier=applier,
     )
     return RuleRun(plan(matched, context), prepared.problems + problems)
 

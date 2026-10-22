@@ -74,6 +74,7 @@ from lekto.core.services._access import (
     load_actor,
     load_lister,
     readable_document,
+    readable_log,
     writable_document,
 )
 from lekto.core.services._tags import expand, expanded, tag_counts, tag_tree
@@ -612,11 +613,12 @@ class DocumentService:
             return admins
 
     async def processing_log(self, actor: UserId, id: DocumentId) -> list[NodeRun]:
-        """Editors and admins: the log may hold technical details of failed runs."""
+        """Editors and admins: the log may hold technical details of failed runs. Similar
+        documents the caller may not read are left out (`_access.readable_log`)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             await controllable_document(uow, user, id, f"read the processing log of {id}")
-            return await uow.processing_log.list_for(id)
+            return await readable_log(uow, user, await uow.processing_log.list_for(id))
 
     async def exchanges(self, actor: UserId, id: DocumentId, node: Node) -> list[RunExchange]:
         """Editors and admins, as the log: what `node` sent to the language model and got back,
@@ -645,7 +647,7 @@ class DocumentService:
             user = await load_actor(uow, actor)
             document, _ = await controllable_document(uow, user, id, f"review document {id}")
             access = await access_to(uow, user, document)
-            log = await uow.processing_log.list_for(id)
+            log = await readable_log(uow, user, await uow.processing_log.list_for(id))
         return Review(document, access, open_nodes(document, log), node_reviews(log))
 
     async def update_metadata(
@@ -729,9 +731,11 @@ class DocumentService:
 
     async def move(self, actor: UserId, id: DocumentId, space: SpaceId) -> None:
         """The editors of the document's space move it into a space they edit, or hand it over
-        into another (active) user's personal space; an admin moves any document anywhere.
-        DuplicateDocumentError if the target holds the same file. A green document becomes new
-        for the editors of the target who could not read it before (`inbox.arrived`)."""
+        into another, active user's personal space; an admin moves any document into any space,
+        but, as everyone, hands nothing over to a deactivated user (unless a member of their
+        personal space). DuplicateDocumentError if the target holds the same file. A green
+        document becomes new for the editors of the target who could not read it before
+        (`inbox.arrived`)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             document, source = await controllable_document(uow, user, id, f"move document {id}")

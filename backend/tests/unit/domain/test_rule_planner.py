@@ -405,6 +405,17 @@ def test_whoever_saved_the_rule_must_be_allowed_to_file() -> None:
     assert check(result, "space").outcome is Outcome.UNCERTAIN
 
 
+def test_applied_to_existing_documents_a_rule_files_only_where_the_applier_may() -> None:
+    """Whoever saved the rule, the person applying it moves nothing where they could not move
+    it by hand; handing over stays open to them."""
+    rules = [rule(SetSpace(OWN))]
+    refused = run(rules, situation(doc(), Mode.RETROACTIVE, applier=STRANGER))
+    assert refused.space is None
+    assert notes(refused) == [("space", "refused")]
+    handed = run([rule(SetSpace(THEIRS))], situation(doc(), Mode.RETROACTIVE, applier=OWNER))
+    assert handed.space == THEIRS
+
+
 def test_a_rule_hands_a_document_over_into_another_users_personal_space() -> None:
     """Handing over needs no membership; it shows the document to someone new, so only with
     confirmed values."""

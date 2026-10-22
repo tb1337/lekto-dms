@@ -101,7 +101,8 @@ async def test_confirm_from_the_inbox(api: Api) -> None:
         "Stadtwerk",
     )
     assert (neighbours["votes"], neighbours["found"], neighbours["score"]) == (2, 3, 0.6667)
-    assert neighbours["documents"] == [str(NEIGHBOUR)] * 2
+    # A similar document the caller cannot read (here: one that does not exist) is left out.
+    assert neighbours["documents"] == []
     assert (facts["identifiers"], facts["named_in_text"]) == (["iban"], True)
     assert open["fields"][1]["candidates"] == []
 
@@ -141,6 +142,36 @@ async def test_confirm_from_the_inbox(api: Api) -> None:
 
     again = await api.client.post(f"{url}/confirm", json={}, headers=auth(owner))
     assert again.status_code == 409
+
+
+async def test_confirming_a_hand_over_answers_that_the_document_is_out_of_reach(
+    api: Api,
+) -> None:
+    owner, friend = await api.user(), await api.user()
+    contact = Contact.create(name="Stadtwerke", now=NOW)
+    async with api.container.unit_of_work() as uow:
+        await uow.contacts.add(contact)
+        await uow.commit()
+    api.services.pipeline.replace_executor(Node.JUDGE, Returns(uncertain(contact)))
+    response = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
+    url = response.json()["status_url"]
+    await api.drain()
+    theirs = (await api.client.get(f"{PREFIX}/users/{friend.id}", headers=auth(owner))).json()
+    confirmed = await api.client.post(
+        f"{url}/confirm",
+        json={
+            "changes": {"document_date": "2026-03-31"},
+            "accept_suggestions": True,
+            "space_id": theirs["personal_space_id"],
+        },
+        headers=auth(owner),
+    )
+    assert confirmed.status_code == 202, confirmed.text
+    assert confirmed.json() == {"id": url.rsplit("/", 1)[-1], "access": None}
+    await api.drain()
+    received = (await api.client.get(f"{PREFIX}/inbox", headers=auth(friend))).json()
+    assert [item["document"]["id"] for item in received["items"]] == [url.rsplit("/", 1)[-1]]
+    assert received["items"][0]["tab"] == "new"
 
 
 async def test_the_tabs_the_summary_and_seen(api: Api) -> None:

@@ -1,7 +1,8 @@
 """Loading entities, together with the caller's rights where they matter."""
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import replace
+from uuid import UUID
 
 from lekto.core.domain.documents import Document, DocumentChanges, Unset
 from lekto.core.domain.errors import (
@@ -13,6 +14,7 @@ from lekto.core.domain.errors import (
 )
 from lekto.core.domain.fields import FieldDefinition
 from lekto.core.domain.ids import ContactId, DocumentId, FieldId, SpaceId, UserId
+from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.master_data import TagScope
 from lekto.core.domain.permissions import (
     can_edit_document,
@@ -20,6 +22,7 @@ from lekto.core.domain.permissions import (
     document_access,
     space_role,
 )
+from lekto.core.domain.pipeline import Node, NodeRun
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
 from lekto.core.ports.unit_of_work import UnitOfWork
@@ -207,3 +210,59 @@ async def _fitted_topic(
         f"'{contact.name}' does not enable the topic '{topic.name}' (an admin enables it at "
         "the contact, or by choosing it)"
     )
+
+
+async def readable_log(uow: UnitOfWork, user: User, log: Sequence[NodeRun]) -> list[NodeRun]:
+    """`log` as `user` may see it. The similar documents a signal found are searched from the
+    uploader's reach, which an editor of the document's space need not share: they see a
+    similar document (with what it carries, and as the source of a candidate) only if they may
+    read it, and what the uploader's confirmed documents carry (`known`) not at all. Admins
+    see everything; the stored log keeps everything for reprocessing."""
+    if user.is_active_admin:
+        return list(log)
+    readable: dict[str, bool] = {}
+
+    async def may_read(id: JsonValue) -> bool:
+        if not isinstance(id, str):
+            return False
+        if id not in readable:
+            try:
+                document = await uow.documents.find(DocumentId(UUID(id)))
+            except ValueError:
+                document = None
+            readable[id] = document is not None and can_read_document(
+                user, document, await uow.spaces.get(document.space_id)
+            )
+        return readable[id]
+
+    result = []
+    for run in log:
+        neighbours = run.node is Node.SIGNAL_NEIGHBOURS
+        output = await _readable(run.result.output, may_read, neighbours=neighbours)
+        assert isinstance(output, dict)
+        result.append(replace(run, result=replace(run.result, output=output)))
+    return result
+
+
+async def _readable(
+    value: JsonValue, may_read: Callable[[JsonValue], Awaitable[bool]], *, neighbours: bool
+) -> JsonValue:
+    if isinstance(value, list):
+        return [await _readable(item, may_read, neighbours=False) for item in value]
+    if not isinstance(value, dict):
+        return value
+    result: dict[str, JsonValue] = {}
+    for key, item in value.items():
+        if neighbours and key == "known":
+            continue
+        if neighbours and key == "neighbours" and isinstance(item, list):
+            result[key] = [
+                found
+                for found in item
+                if isinstance(found, dict) and await may_read(found.get("document_id"))
+            ]
+        elif key == "documents" and "signal" in value and isinstance(item, list):
+            result[key] = [document for document in item if await may_read(document)]
+        else:
+            result[key] = await _readable(item, may_read, neighbours=False)
+    return result

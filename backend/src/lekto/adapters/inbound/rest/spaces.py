@@ -3,7 +3,7 @@ members."""
 
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
 from lekto.adapters.inbound.rest.auth import PROTECTED, Authenticated
 from lekto.adapters.inbound.rest.context import Context
@@ -11,7 +11,10 @@ from lekto.adapters.inbound.rest.problems import problem_responses
 from lekto.adapters.inbound.rest.schemas.common import NameIn
 from lekto.adapters.inbound.rest.schemas.spaces import MemberIn, SpaceCreate, SpaceOut
 from lekto.core.domain.ids import SpaceId, UserId
+from lekto.core.domain.permissions import space_role
 from lekto.core.domain.sorting import sort_key
+from lekto.core.domain.spaces import Space
+from lekto.core.services.auth import Principal
 
 router = APIRouter(prefix="/spaces", tags=["spaces"], dependencies=PROTECTED)
 
@@ -29,8 +32,9 @@ EDITORS = "Editors of the space and admins."
     responses=problem_responses(401),
 )
 async def list_spaces(principal: Authenticated, context: Context) -> list[SpaceOut]:
-    spaces = await context.spaces.list_spaces(principal.id)
-    return [SpaceOut.of(d, principal.user) for d in sorted(spaces, key=lambda d: sort_key(d.name))]
+    spaces = sorted(await context.spaces.list_spaces(principal.id), key=lambda d: sort_key(d.name))
+    people = await context.spaces.members(principal.id, spaces)
+    return [SpaceOut.of(space, principal.user, people) for space in spaces]
 
 
 @router.post(
@@ -53,7 +57,7 @@ async def create_space(body: SpaceCreate, principal: Authenticated, context: Con
         else {UserId(member.user_id): member.role for member in body.members}
     )
     space = await context.spaces.create(principal.id, body.name, members=members)
-    return SpaceOut.of(space, principal.user)
+    return await _out(space, principal, context)
 
 
 @router.get(
@@ -63,7 +67,7 @@ async def create_space(body: SpaceCreate, principal: Authenticated, context: Con
     responses=problem_responses(401, 404, 422),
 )
 async def get_space(id: UUID, principal: Authenticated, context: Context) -> SpaceOut:
-    return SpaceOut.of(await context.spaces.get(principal.id, SpaceId(id)), principal.user)
+    return await _out(await context.spaces.get(principal.id, SpaceId(id)), principal, context)
 
 
 @router.patch(
@@ -76,9 +80,8 @@ async def get_space(id: UUID, principal: Authenticated, context: Context) -> Spa
 async def rename_space(
     id: UUID, body: NameIn, principal: Authenticated, context: Context
 ) -> SpaceOut:
-    return SpaceOut.of(
-        await context.spaces.rename(principal.id, SpaceId(id), body.name), principal.user
-    )
+    space = await context.spaces.rename(principal.id, SpaceId(id), body.name)
+    return await _out(space, principal, context)
 
 
 @router.delete(
@@ -110,23 +113,31 @@ async def set_member(
     id: UUID, user_id: UUID, body: MemberIn, principal: Authenticated, context: Context
 ) -> SpaceOut:
     space = await context.spaces.set_member(principal.id, SpaceId(id), UserId(user_id), body.role)
-    return SpaceOut.of(space, principal.user)
+    return await _out(space, principal, context)
 
 
 @router.delete(
     "/{id}/members/{user_id}",
     summary="Remove a member",
     description=(
-        EDITORS + " As adding one. The user of a personal space stays, and a space keeps one "
-        "editor (422)."
+        EDITORS + " As adding one; and every member leaves a space themselves with their own "
+        "id, a reader too (204: the caller no longer sees the space). The user of a personal "
+        "space stays, and a space keeps one editor (422)."
     ),
     response_model=SpaceOut,
-    responses=problem_responses(401, 403, 404, 422),
+    responses={
+        204: {"description": "The caller left the space."},
+        **problem_responses(401, 403, 404, 422),
+    },
 )
 async def remove_member(
     id: UUID, user_id: UUID, principal: Authenticated, context: Context
-) -> SpaceOut:
-    return SpaceOut.of(
-        await context.spaces.remove_member(principal.id, SpaceId(id), UserId(user_id)),
-        principal.user,
-    )
+) -> SpaceOut | Response:
+    space = await context.spaces.remove_member(principal.id, SpaceId(id), UserId(user_id))
+    if space_role(principal.user, space) is None:
+        return Response(status_code=204)
+    return await _out(space, principal, context)
+
+
+async def _out(space: Space, principal: Principal, context: Context) -> SpaceOut:
+    return SpaceOut.of(space, principal.user, await context.spaces.members(principal.id, [space]))

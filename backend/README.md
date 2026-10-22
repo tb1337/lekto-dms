@@ -433,9 +433,12 @@ the fields node reads the fields of the decided type and the title
   (contact, topic, type, each automatic document tag), trained on the confirmed documents
   (`LEKTO_CLASSIFIER`, see Classifier). It abstains without a trained model.
 - **`signal_neighbours`**: the `LEKTO_NEIGHBOURS` most similar confirmed documents the uploader
-  may read (it abstains when the uploader's account is gone or deactivated), by the vector of the start of the text against the search index; their contact, topic,
-  type and automatic document tags come from the database. It abstains without embeddings or
-  index.
+  may read (it abstains when the uploader's account is gone or deactivated), by the vector of
+  the start of the text against the search index; their contact, topic, type and automatic
+  document tags come from the database. It abstains without embeddings or index. The log, the
+  review and the inbox show an editor of the document's space (or who received it) only the
+  similar documents they may read themselves, and what the uploader's documents carry
+  (`known`) only to admins.
 - **`signal_facts`**: names and aliases of contacts standing whole in the text, identifiers of
   contacts (IBAN, VAT ID, customer number, personnel number, mail domain) with the topic they
   point to, unknown IBANs and VAT IDs. A personnel number stands after its label
@@ -687,7 +690,9 @@ Rights hang on spaces alone (a break of the API). Revision 0033 runs at start:
    "Personal"; a user without one gets one). The owner of every other space becomes an
    editor of it, a share `read` a reader, a share `read_write` an editor
    (`PUT/DELETE /spaces/{id}/members/{user_id}` replace the shares). Spaces of several owners
-   with the same name keep the oldest's; the others get " (username)".
+   with the same name keep the oldest's; the others get " (username)", shortened to fit and
+   never a name another space keeps. Former sharers with `read_write`, editors now, find no
+   old document new in their inbox.
 2. A document's owner becomes who uploaded it (`uploaded_by`), information only. Two equal
    files of two owners in one space are kept: the newer goes back to its owner's personal
    space (the original is unique per space now; if that space holds the file too, the
@@ -701,8 +706,10 @@ Rights hang on spaces alone (a break of the API). Revision 0033 runs at start:
    hidden from that owner.
 
 The downgrade restores owners and shares where the data allow (a personal space becomes the
-default space, any other space belongs to its oldest editor; it stops if an owner would get
-the same file twice).
+default space, any other space belongs to its oldest editor, a document to who uploaded it
+while they are a member of its space, a space rule is a user rule again). It stops if an owner
+would get the same file twice, and where 0.4 could not load the data: a shared personal space,
+a global rule that does more than tag, set fields and force a review.
 
 **Evaluation.** `lekto evaluate [--fake]` runs the synthetic documents in
 `evaluation/` cold and trained and writes a report; see [evaluation/README.md](evaluation/README.md).
@@ -742,9 +749,11 @@ disabling make no version; deleting is a soft delete.
   unless the upload named another).
 - **Filing.** `set_space` files into a space whoever saved the rule's current version may file
   into (an editor of it, or an admin), or hands the document over into another user's
-  personal space (no membership needed). If that right is gone, the action is refused and the
-  document waits in the inbox (`no right to file into space 'X' (any more)`). A space rule never
-  moves a document that lies in another space.
+  personal space (no membership needed; a deactivated user receives nothing). If that right is
+  gone, the action is refused and the document waits in the inbox (`no right to file into space
+  'X' (any more)`). A space rule never moves a document that lies in another space. Applied to
+  existing documents, a rule also files only where the person applying it may file (or hand
+  over), whoever saved it.
 - **Triggers.** `ingest`: the pipeline node `apply_rules`, when a document arrives. `change`:
   a person changed the metadata of a document whose processing is complete.
 - **Conditions.** Groups `all` or `any`, each may be negated with `"not": true`; at most 5 deep
@@ -1001,7 +1010,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /contacts/{id}/logo/fetch` | Fetch the logo from the contact's website (admins, `202`); `503` without `LEKTO_LOGO_FETCH`, `409` with an uploaded logo, `422` without a domain |
 | `PUT /document-types/{id}/fields` | The fields of a document type, each required or optional, set from the type in one transaction (admins); answers its fields. A global field is `422`; taking off a field that has values on its documents or that the type's title pattern uses is `409` |
 | `POST /contacts/{id}/identifiers` | Attach one identifier to a contact, entered by hand (admins), optionally with a `topic_id` the contact enables; the others stay; `409` if another contact has it by hand. `PATCH` replaces the whole list |
-| `GET/POST /spaces`, `GET/PATCH/DELETE /spaces/{id}`, `PUT/DELETE /spaces/{id}/members/{user_id}` | Spaces the caller is a member of (admins: all), with `personal_of`, the caller's `role` and the `members`; create (`members`; the caller edits it, an admin may give the members alone), rename, delete (empty, never a personal space), members with `role` `read` or `edit` (editors; of a personal space its user) |
+| `GET/POST /spaces`, `GET/PATCH/DELETE /spaces/{id}`, `PUT/DELETE /spaces/{id}/members/{user_id}` | Spaces the caller is a member of (admins: all), with `personal_of`, the caller's `role` and the `members`; create (`members`; the caller edits it, an admin may give the members alone), rename, delete (empty, never a personal space), members with `role` `read` or `edit` and their `username` and `active` (editors; of a personal space its user); every member leaves a space themselves (`204`) |
 | `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `sort` (`relevance`, the default, or a key of `GET /documents`; relevance breaks ties), `limit`, `offset`, `semantic_ratio`; hits with snippet (the document with `in_inbox`, as in `GET /documents`), `estimated_total`, `next_offset`, `semantic` |
 | `POST /search/reindex` | Rebuild the search index in the background (admins); `202` |
 | `GET /documents` | Readable documents, each with `in_inbox` (it stands open in the caller's inbox); `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), `field`, `-field` (the value of the field `sort_field_id`: a date, a period by its first day, a number, an amount by its value; `422` for other types), documents without a date or value last either way; filters `contact_id`, `document_type_id`, `space_id` (each repeats, one of them must match), `tag_id` (with the tags below it; repeats, all must match), `contact_group_id` and `document_type_group_id` (the document's contact or type in the group or one below it; each repeats, one of them must match), `topic_id` (the topic or one below it; repeats, one of them must match), `document_date_from` and `document_date_to` (the document date lies between them, both days included, either end open; a document without a date does not match; `422` if the end lies before the start), `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (`next_cursor` of the page before, an opaque value naming its last document; its sort value is looked up, `422` if that document is gone) |
@@ -1025,7 +1034,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /inbox/summary` | The count of each tab, `open` (all but done) and the worst lane among the open documents; `all_users` (admins) |
 | `PUT/DELETE /documents/{id}/seen`, `POST /inbox/seen` | Seen per user: the caller saw a document (read access; the web UI, when its view opens), it is new again (read access), everything new in the inbox as seen (`marked`; `all_users` for admins) |
 | `GET /documents/{id}/review` | What the model proposed and how each field was checked (editors and admins) |
-| `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `space_id`), then continue from `resume_at` (`apply_rules`, or `fields` after a type change) up to filing (editors and admins); undecided fields: `422` with `open_fields` |
+| `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `space_id`), then continue from `resume_at` (`apply_rules`, or `fields` after a type change) up to filing (editors and admins); undecided fields: `422` with `open_fields`; handed over or out of the caller's reach: `{id, access: null}` |
 | `GET/POST /rules`, `GET/PUT/PATCH/DELETE /rules/{id}`, `GET /rules/{id}/versions`, `/versions/{number}` | Rules: list (`scope`, `space_id`, `include_disabled`, `all_users` for admins), create (`scope`, `space_id`), change (new version), enable or disable, delete; see Rules |
 | `POST /rules/{id}/apply/preview`, `POST /rules/{id}/apply`, `GET /rule-applications/{id}` | Apply a rule to existing documents: preview, start (`202`), progress |
 | `GET /events` | Server-sent events of the documents the caller may read, for admins also `classifier.trained`; `?document_id=` |

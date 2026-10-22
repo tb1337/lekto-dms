@@ -99,13 +99,14 @@ class RuleService:
         all_users: bool = False,
     ) -> list[Rule]:
         """The global rules and the rules of the spaces the caller edits, in the order they
-        are applied; with `space`, only that space's. `all_users`: the rules of every space
-        instead of the caller's (admins only)."""
+        are applied; with `space`, only that space's (an admin's for any space). `all_users`:
+        the rules of every space instead of the caller's (admins only)."""
         async with self._uow() as uow:
             user = await load_lister(uow, actor, all_users, "list the rules of all users")
             edited = None if all_users else await _edited_spaces(uow, user)
             if space is not None:
-                edited = [space] if edited is None or space in edited else []
+                anyone = edited is None or user.is_active_admin
+                edited = [space] if anyone or space in (edited or ()) else []
             rules = await uow.rules.list_for(
                 spaces=edited,
                 include_global=scope is not RuleScope.SPACE and space is None,
@@ -265,8 +266,8 @@ async def check_references(
     conditions and values fit their field, tags are of the scope their place asks for (groups
     in the conditions on groups, topics in those on the topic and in "set topic", document
     tags elsewhere; ValidationError), and the rule's `author` may file into the spaces it
-    files into, unless one is another user's personal space (PermissionDeniedError; checked
-    again whenever it runs)."""
+    files into, unless one is the personal space of another, active user (handing over;
+    PermissionDeniedError; checked again whenever it runs)."""
     references = definition.references()
     for contact in references.contacts:
         await uow.contacts.get(contact)
@@ -286,8 +287,14 @@ async def check_references(
         check_fields(definition, fields)
     for space_id in references.spaces:
         space = await uow.spaces.find(space_id)
-        if space is not None and space.is_personal and (author is None or author.active):
-            continue  # handing over: no membership needed
+        if (
+            space is not None
+            and space.personal_of is not None
+            and (author is None or author.active)
+        ):
+            receiver = await uow.users.find(space.personal_of)
+            if receiver is not None and receiver.active:
+                continue  # handing over: no membership needed
         role = None if space is None or author is None else space_role(author, space)
         if space is None or role is None:
             raise NotFoundError("space", space_id)

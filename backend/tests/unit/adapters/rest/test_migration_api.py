@@ -210,7 +210,7 @@ async def test_an_admin_files_into_any_space_in_another_users_name(api: Api) -> 
     assert refused.status_code == 404
     members = [{"user_id": str(owner.id), "role": "edit"}]
     mine = await post(api, "/spaces", {"name": "Mine", "members": members}, auth(admin))
-    assert mine["members"] == members
+    assert _roles(mine["members"]) == members
     response = await upload(
         api, auth(admin), uploaded_by=str(owner.id), space_id=mine["id"], name="photo.jpg"
     )
@@ -534,7 +534,7 @@ async def test_spaces_with_members(api: Api) -> None:
         f"{PREFIX}/spaces", json={"name": "Shared", "members": members}, headers=auth(admin)
     )
     assert created.status_code == 201, created.text
-    assert created.json()["members"] == members  # the admin alone gives the members
+    assert _roles(created.json()["members"]) == members  # the admin alone gives the members
     assert created.json()["personal_of"] is None
     # Names of spaces are unique.
     again = await api.client.post(f"{PREFIX}/spaces", json={"name": "shared"}, headers=auth(admin))
@@ -568,7 +568,12 @@ async def test_spaces_with_members(api: Api) -> None:
         f"{PREFIX}/spaces/{created.json()['id']}/members/{other.id}", headers=auth(owner)
     )
     assert removed.status_code == 200
-    assert removed.json()["members"] == members
+    assert _roles(removed.json()["members"]) == members
+
+
+def _roles(members: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The members by id and role (without their names)."""
+    return [{"user_id": member["user_id"], "role": member["role"]} for member in members]
 
 
 async def test_an_admin_token_creates_users_without_password(api: Api) -> None:

@@ -102,9 +102,10 @@ class Mode(StrEnum):
 @dataclass(frozen=True)
 class SpaceTarget:
     """What the rules need to know about a space they file into. `filers`: who may file into
-    it (its active editors and the active admins); `personal`: someone's personal space, into
-    which a document may be handed over by anyone; `widens`: moving the document there shows
-    it to someone who cannot read it where it lies (`Space.widens`)."""
+    it (its active editors and the active admins); `personal`: the personal space of an active
+    user, into which a document may be handed over by anyone (a deactivated user receives
+    nothing); `widens`: moving the document there shows it to someone who cannot read it where
+    it lies (`Space.widens`)."""
 
     name: str
     filers: frozenset[UserId]
@@ -135,6 +136,8 @@ class Situation:
       likewise for tags.
     - `reviewed`: rules whose forced review a person confirmed in this processing run.
     - `accept_conflicts` (retroactive): the person accepted the rule's values over others.
+    - `applier` (retroactive): who applies the rules; they file only where they may file
+      themselves (or hand over), whoever saved the rule.
     - `taxonomy`: the tag trees (tags added are document tags, the result is normalised) and
       the groups of the contacts and types the rules may leave (for templates).
     """
@@ -156,6 +159,7 @@ class Situation:
     reviewed: frozenset[RuleId] = frozenset()
     accept_conflicts: bool = False
     taxonomy: Taxonomy = field(default_factory=Taxonomy)
+    applier: UserId | None = None
 
 
 @dataclass(frozen=True)
@@ -428,6 +432,10 @@ class _Planner:
             report.notes.append(Note(SPACE, NoteKind.REFUSED, reason))
             if s.mode is Mode.INGEST and SPACE not in s.locked:
                 self._uncertain(SPACE, f"rule '{report.name}': {reason}", suggestion=None)
+        elif s.mode is Mode.RETROACTIVE and not target.open_to(s.applier):
+            # Applying a rule moves no document where the person could not move it by hand.
+            reason = f"you have no right to file into space '{target.name}'"
+            report.notes.append(Note(SPACE, NoteKind.REFUSED, reason))
         elif target.widens and not match.trusted and s.mode is Mode.RETROACTIVE:
             # The person sees the move in the preview and may accept it, as any conflict.
             fields = ", ".join(match.distrusted)

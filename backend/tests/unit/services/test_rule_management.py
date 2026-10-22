@@ -12,6 +12,7 @@ from lekto.core.domain.errors import (
 )
 from lekto.core.domain.fields import FieldType
 from lekto.core.domain.ids import ContactId, SpaceId, new_id
+from lekto.core.domain.pipeline import Lane
 from lekto.core.domain.rules import (
     AddTags,
     ForceReview,
@@ -288,6 +289,22 @@ async def test_rules_hand_documents_over_into_another_users_personal_space(
     assert document.space_id == theirs.id  # the channel is no guess: nothing to confirm
 
 
+async def test_rules_hand_nothing_over_to_a_deactivated_user(world: World) -> None:
+    """Saving refuses it; a rule saved before the user was deactivated leaves the document
+    where it is and asks a person."""
+    r = await rule_world(world)
+    owner, partner = await world.user(), await world.user()
+    theirs = await world.personal_space(partner)
+    rule = await r.personal_rule(owner, definition("To them", channel_api(), SetSpace(theirs.id)))
+    await world.users.update(r.admin.id, partner.id, active=False)
+    document = await r.arrive(owner)
+    assert document.space_id == (await world.personal_space(owner)).id
+    assert document.lane is Lane.YELLOW
+    again = definition("Again", channel_api(), SetSpace(theirs.id))
+    with pytest.raises(NotFoundError):
+        await r.rules.change(owner.id, rule.id, again)
+
+
 @pytest.mark.parametrize(
     ("action", "message"),
     [
@@ -382,3 +399,15 @@ async def test_a_pattern_is_checked_by_the_matcher_that_runs_it(world: World) ->
     with pytest.raises(ValidationError, match="invalid pattern"):
         broken = definition("Broken", text_matches("[a-"), AddTags(frozenset({street.id})))
         await rules.change(admin, rule.id, broken)
+
+
+async def test_an_admin_lists_the_rules_of_any_space(world: World) -> None:
+    r = await rule_world(world)
+    editor = await world.user()
+    household = await world.spaces.create(editor.id, "Household")
+    rule = await r.space_rule(
+        editor, household.id, definition("Tag", channel_api(), ForceReview("x"))
+    )
+    listed = await r.rules.list_rules(r.admin.id, space=household.id)
+    assert [item.id for item in listed] == [rule.id]
+    assert await r.rules.list_rules((await world.user()).id, space=household.id) == []

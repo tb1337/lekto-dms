@@ -162,7 +162,7 @@ class RuleApplicationService:
                 current = await uow.documents.find(document.id)
                 if current is None or not await _candidate(uow, user, rule, current):
                     continue
-                run = await self._evaluate(uow, rule, current, prepared, accept=False)
+                run = await self._evaluate(uow, user, rule, current, prepared, accept=False)
             if run is None:
                 continue
             report = run.plan.reports[0]
@@ -320,7 +320,7 @@ class RuleApplicationService:
             application.record_skipped(id, "not available")
             return
         run = await self._evaluate(
-            uow, rule, document, prepared, accept=id in application.accept_conflicts
+            uow, user, rule, document, prepared, accept=id in application.accept_conflicts
         )
         if run is None or not run.plan.effects:
             application.record_unchanged()
@@ -354,6 +354,7 @@ class RuleApplicationService:
     async def _evaluate(
         self,
         uow: UnitOfWork,
+        user: User,
         rule: Rule,
         document: Document,
         prepared: Prepared,
@@ -373,6 +374,7 @@ class RuleApplicationService:
             origin=provenance(await uow.processing_log.list_for(document.id), document),
             definitions=definitions,
             accept_conflicts=accept,
+            applier=user.id,
         )
         return run if run.plan.reports else None
 

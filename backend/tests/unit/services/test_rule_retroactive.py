@@ -274,3 +274,37 @@ async def test_an_unexpected_error_ends_the_application(world: World) -> None:
     done = await r.applications.get(owner.id, application.id)
     assert (done.status, done.error) == (ApplicationStatus.FAILED, "stopped by an internal error")
     assert (await r.stored(document)).tag_ids == set()
+
+
+async def test_applying_a_rule_moves_nothing_where_the_person_could_not_move_it(
+    world: World,
+) -> None:
+    """An admin's global rule or a co-editor's rule files, applied by an editor, only into a
+    space the editor may file into, accepted or not."""
+    r = await rule_world(world)
+    editor, colleague, outsider = await world.user(), await world.user(), await world.user()
+    home = await world.personal_space(editor)
+    await world.spaces.set_member(editor.id, home.id, colleague.id, SpaceRole.EDIT)
+    closed = await world.spaces.create(colleague.id, "Closed")
+    elsewhere = await world.spaces.create(r.admin.id, "Elsewhere")
+    await world.spaces.set_member(r.admin.id, elsewhere.id, outsider.id, SpaceRole.READ)
+    document = await r.arrive(editor)
+    rules = [
+        await r.global_rule(definition("Global", channel_api(), SetSpace(elsewhere.id))),
+        await r.space_rule(
+            colleague, home.id, definition("Colleague", channel_api(), SetSpace(closed.id))
+        ),
+    ]
+    for rule in rules:
+        assert (await r.applications.preview(editor.id, rule.id)).items == ()
+        await r.applications.start(
+            editor.id, rule.id, version=1, documents=[document.id], accept_conflicts=[document.id]
+        )
+        await run_jobs(r)
+        assert (await r.stored(document)).space_id == home.id
+    # The colleague, who edits both, applies their own rule.
+    (item,) = (await r.applications.preview(colleague.id, rules[1].id)).items
+    assert [effect.field for effect in item.effects] == ["space"]
+    await r.applications.start(colleague.id, rules[1].id, version=1, documents=[document.id])
+    await run_jobs(r)
+    assert (await r.stored(document)).space_id == closed.id

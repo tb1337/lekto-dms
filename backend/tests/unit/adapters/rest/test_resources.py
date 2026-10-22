@@ -401,7 +401,7 @@ async def test_moving_into_a_space_one_only_reads_names_it(api: Api) -> None:
 async def test_spaces_and_members(api: Api) -> None:
     owner, friend = await api.user(), await api.user("friend")
     space = await post(api, "/spaces", {"name": "Household"}, auth(owner))
-    mine = [{"user_id": str(owner.id), "role": "edit"}]
+    mine = [{"user_id": str(owner.id), "role": "edit", "username": owner.username, "active": True}]
     assert (space["role"], space["members"], space["personal_of"]) == ("edit", mine, None)
     url = f"{PREFIX}/spaces/{space['id']}"
     shared = await api.client.put(
@@ -435,6 +435,21 @@ async def test_spaces_and_members(api: Api) -> None:
     assert lent.status_code == 200  # a personal space may be shared
     unshared = await api.client.delete(f"{url}/members/{friend.id}", headers=auth(owner))
     assert unshared.json()["members"] == mine
+    assert (await api.client.get(url, headers=auth(friend))).status_code == 404
+    # A deactivated member keeps their place, with their name for the others.
+    await api.client.put(f"{url}/members/{friend.id}", json={"role": "read"}, headers=auth(owner))
+    admin = await api.admin()
+    await api.services.users.update(admin.id, friend.id, active=False)
+    listed = (await api.client.get(url, headers=auth(owner))).json()["members"]
+    assert {(m["username"], m["active"]) for m in listed} == {
+        (owner.username, True),
+        ("friend", False),
+    }
+    await api.services.users.update(admin.id, friend.id, active=True)
+    # A reader leaves a space themselves.
+    await api.client.put(f"{url}/members/{friend.id}", json={"role": "read"}, headers=auth(owner))
+    left = await api.client.delete(f"{url}/members/{friend.id}", headers=auth(friend))
+    assert left.status_code == 204, left.text
     assert (await api.client.get(url, headers=auth(friend))).status_code == 404
     assert (await api.client.delete(url, headers=auth(owner))).status_code == 204
 

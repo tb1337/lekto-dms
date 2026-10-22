@@ -124,6 +124,8 @@ def situation(document: Document, mode: Mode = Mode.INGEST, **fields: Any) -> Si
         "names": NAMES,
         "render": builders.TEMPLATES.render,
     }
+    if mode is Mode.RETROACTIVE:
+        values["applier"] = OWNER  # who applies the rules to existing documents
     values.update(fields)
     return Situation(mode=mode, document=document, **values)
 

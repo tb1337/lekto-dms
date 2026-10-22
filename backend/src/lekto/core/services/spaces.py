@@ -1,4 +1,4 @@
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 
 from lekto.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
 from lekto.core.domain.ids import SpaceId, UserId
@@ -23,6 +23,16 @@ class SpaceService:
             if user.is_active_admin:
                 return await uow.spaces.list_all()
             return await uow.spaces.list_accessible(actor)
+
+    async def members(self, actor: UserId, spaces: Iterable[Space]) -> dict[UserId, User]:
+        """The members of `spaces`, which the service gave the caller, by id: their names,
+        and whether they are active, which the users list does not show others than admins
+        (a deactivated member keeps their place until an editor removes them)."""
+        wanted = {member for space in spaces for member in space.members}
+        async with self._uow() as uow:
+            await load_actor(uow, actor)
+            users = await uow.users.list_all()
+        return {user.id: user for user in users if user.id in wanted}
 
     async def get(self, actor: UserId, id: SpaceId) -> Space:
         """A space the user is a member of, any space for admins; NotFoundError otherwise."""
@@ -89,9 +99,16 @@ class SpaceService:
         return space
 
     async def remove_member(self, actor: UserId, id: SpaceId, member: UserId) -> Space:
-        """As `set_member`. A space keeps one editor; the user of a personal space stays."""
+        """As `set_member`; and every member leaves a space themselves, a reader too. A space
+        keeps one editor; the user of a personal space stays."""
         async with self._uow() as uow:
-            space = await _members_space(uow, await load_actor(uow, actor), id)
+            user = await load_actor(uow, actor)
+            if member == user.id and (found := await uow.spaces.find(id)) is not None:
+                space = found if found.role_of(user.id) is not None else None
+            else:
+                space = None
+            if space is None:
+                space = await _members_space(uow, user, id)
             space.remove_member(member)
             await uow.spaces.update(space)
             await uow.commit()

@@ -717,14 +717,17 @@ async def review(id: UUID, user: CurrentUser, context: Context) -> ReviewOut:
         "filing, and the rules leave what the person decided or changed as it is. From "
         "`fields` on, the fields read again replace the ones the document has; otherwise the "
         "type's title pattern is rendered with the decided values (while the title is the "
-        "machine's)."
+        "machine's). If the caller cannot read the document where it lies now (handed over, or "
+        "moved into a space they only read, where it is not green yet), the answer is "
+        "`DocumentOutOfReach`. Editors of `space_id` who could not read the document before "
+        "find it as new once it is green."
     ),
-    response_model=DocumentDetails,
+    response_model=DocumentDetails | DocumentOutOfReach,
     responses=problem_responses(401, 403, 404, 409, 422),
 )
 async def confirm(
     id: UUID, body: ConfirmRequest, user: CurrentUser, context: Context
-) -> DocumentDetails:
+) -> DocumentDetails | DocumentOutOfReach:
     changes = await _changes(body.changes, user, context)
     view = await context.pipeline.confirm(
         user,
@@ -734,7 +737,7 @@ async def confirm(
         resume_at=Node(body.resume_at.value),
         space=None if body.space_id is None else SpaceId(body.space_id),
     )
-    return _details(view)
+    return DocumentOutOfReach(id=id) if view is None else _details(view)
 
 
 @inbox.get(

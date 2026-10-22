@@ -170,3 +170,25 @@ async def test_deactivated_users_become_no_members(world: World) -> None:
         await world.spaces.set_member(owner.id, space.id, gone.id, SpaceRole.READ)
     with pytest.raises(NotFoundError):
         await world.spaces.set_member(owner.id, space.id, UserId(new_id()), SpaceRole.READ)
+
+
+async def test_members_leave_a_space_themselves(world: World) -> None:
+    """A reader too; the user of a personal space and the last editor stay; nobody removes
+    another member without the right to choose them."""
+    owner, reader, other = await world.user(), await world.user(), await world.user()
+    space = await world.spaces.create(owner.id, "Household")
+    await world.spaces.set_member(owner.id, space.id, reader.id, SpaceRole.READ)
+    await world.spaces.set_member(owner.id, space.id, other.id, SpaceRole.READ)
+    with pytest.raises(PermissionDeniedError):
+        await world.spaces.remove_member(reader.id, space.id, other.id)
+    left = await world.spaces.remove_member(reader.id, space.id, reader.id)
+    assert reader.id not in left.members
+    with pytest.raises(NotFoundError):
+        await world.spaces.get(reader.id, space.id)
+    with pytest.raises(ValidationError):
+        await world.spaces.remove_member(owner.id, space.id, owner.id)
+    home = await world.personal_space(owner)
+    await world.spaces.set_member(owner.id, home.id, other.id, SpaceRole.EDIT)
+    with pytest.raises(ValidationError):
+        await world.spaces.remove_member(owner.id, home.id, owner.id)
+    assert other.id not in (await world.spaces.remove_member(other.id, home.id, other.id)).members

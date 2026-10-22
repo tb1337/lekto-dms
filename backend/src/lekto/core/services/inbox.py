@@ -67,10 +67,16 @@ from lekto.core.domain.pipeline import (
     ProcessingHistory,
 )
 from lekto.core.domain.spaces import Space, SpaceRole
+from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.repository import PAGE_LIMIT, PAGE_SIZE, InboxPosition
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
-from lekto.core.services._access import load_actor, load_lister, readable_document
+from lekto.core.services._access import (
+    load_actor,
+    load_lister,
+    readable_document,
+    readable_log,
+)
 
 log = logging.getLogger(__name__)
 
@@ -434,7 +440,7 @@ class InboxService:
                     spaces[document.space_id] = await uow.spaces.get(document.space_id)
                 access = document_access(user, document, spaces[document.space_id])
                 assert access is not None  # an editor's, or any to an admin
-                items.append(InboxItem(document, access, await _open(uow, document), state))
+                items.append(InboxItem(document, access, await _open(uow, user, document), state))
         return items
 
     async def summary(self, actor: UserId, *, all_users: bool = False) -> InboxSummary:
@@ -525,6 +531,21 @@ async def arrived(
         await uow.inbox.mark_seen(user, document.id, now)
 
 
+async def confirmed_into(
+    uow: UnitOfWork, document: Document, source: Space, target: Space, now: datetime, by: UserId
+) -> None:
+    """`document`, decided in the inbox by `by`, was moved out of `source` into `target`: once
+    processing ends green it is new for the editors of `target` who could not read it in
+    `source`, where it waited for a decision (a hand-over arrives as new for the receiver).
+    The editors of `source` and `by` saw it there; confirming makes it new for no one else."""
+    newcomers = target.editors - source.editors - {by}
+    if not newcomers:
+        return
+    document.mark_new(now)
+    for user in sorted(source.editors | {by}, key=str):
+        await uow.inbox.mark_seen(user, document.id, now)
+
+
 async def _position(
     uow: UnitOfWork, viewer: UserId, tab: InboxTab | None, after: DocumentId | None
 ) -> InboxPosition | None:
@@ -542,9 +563,11 @@ async def _position(
     return InboxPosition(after, left)
 
 
-async def _open(uow: UnitOfWork, document: Document) -> tuple[OpenNode, ...]:
-    """What is open in the document; its log is read only if a node is uncertain or failed."""
+async def _open(uow: UnitOfWork, user: User, document: Document) -> tuple[OpenNode, ...]:
+    """What is open in the document, as `user` may see it (`_access.readable_log`); its log is
+    read only if a node is uncertain or failed."""
     outcomes = document.processing.outcomes.values()
     if not any(outcome in (Outcome.UNCERTAIN, Outcome.FAILED) for outcome in outcomes):
         return ()
-    return open_nodes(document, await uow.processing_log.list_for(document.id))
+    entries = await readable_log(uow, user, await uow.processing_log.list_for(document.id))
+    return open_nodes(document, entries)

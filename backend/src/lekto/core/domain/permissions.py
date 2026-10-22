@@ -154,5 +154,5 @@ def can_manage_space(user: User, space: Space) -> bool:
 def can_choose_members(user: User, space: Space) -> bool:
     """Add, change and remove members: the space's editors; of a personal space, its user."""
     if space.personal_of is not None:
-        return user.active and (space.personal_of == user.id or user.is_admin)
+        return (user.active and space.personal_of == user.id) or user.is_active_admin
     return can_manage_space(user, space)

@@ -7136,7 +7136,7 @@
           "spaces"
         ],
         "summary": "Remove a member",
-        "description": "Editors of the space and admins. As adding one. The user of a personal space stays, and a space keeps one editor (422).",
+        "description": "Editors of the space and admins. As adding one; and every member leaves a space themselves with their own id, a reader too (204: the caller no longer sees the space). The user of a personal space stays, and a space keeps one editor (422).",
         "operationId": "remove_member_api_v1_spaces__id__members__user_id__delete",
         "parameters": [
           {
@@ -7170,6 +7170,9 @@
                 }
               }
             }
+          },
+          "204": {
+            "description": "The caller left the space."
           },
           "401": {
             "description": "Unauthorized",
@@ -13366,7 +13369,7 @@
           "documents"
         ],
         "summary": "Confirm a document from the inbox",
-        "description": "Editors of the document's space and admins, for yellow and red documents that are not being processed. `space_id` moves the document as `POST /documents/{id}/move` does: into a space the caller edits, or another user's personal space; an admin chooses any space. Every open field of the nodes before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The rules' fields `space`, `title` and `review` always have a value: confirming keeps it, `space_id` moves the document. The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the person decided or changed as it is. From `fields` on, the fields read again replace the ones the document has; otherwise the type's title pattern is rendered with the decided values (while the title is the machine's).",
+        "description": "Editors of the document's space and admins, for yellow and red documents that are not being processed. `space_id` moves the document as `POST /documents/{id}/move` does: into a space the caller edits, or another user's personal space; an admin chooses any space. Every open field of the nodes before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The rules' fields `space`, `title` and `review` always have a value: confirming keeps it, `space_id` moves the document. The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the person decided or changed as it is. From `fields` on, the fields read again replace the ones the document has; otherwise the type's title pattern is rendered with the decided values (while the title is the machine's). If the caller cannot read the document where it lies now (handed over, or moved into a space they only read, where it is not green yet), the answer is `DocumentOutOfReach`. Editors of `space_id` who could not read the document before find it as new once it is green.",
         "operationId": "confirm_api_v1_documents__id__confirm_post",
         "parameters": [
           {
@@ -13396,7 +13399,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DocumentDetails"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/DocumentDetails"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DocumentOutOfReach"
+                    }
+                  ],
+                  "title": "Response Confirm Api V1 Documents  Id  Confirm Post"
                 }
               }
             }
@@ -21271,6 +21282,35 @@
           }
         ]
       },
+      "MemberDetails": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "role": {
+            "$ref": "#/components/schemas/SpaceRole"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active",
+            "description": "A deactivated member keeps their place until an editor removes them."
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "role",
+          "username",
+          "active"
+        ],
+        "title": "MemberDetails"
+      },
       "MemberIn": {
         "properties": {
           "role": {
@@ -23486,7 +23526,7 @@
           },
           "members": {
             "items": {
-              "$ref": "#/components/schemas/MemberOut"
+              "$ref": "#/components/schemas/MemberDetails"
             },
             "type": "array",
             "title": "Members"

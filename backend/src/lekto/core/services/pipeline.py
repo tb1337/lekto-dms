@@ -36,7 +36,13 @@ from lekto.core.domain.imports import IMPORTED, ImportedMetadata
 from lekto.core.domain.inbox import Confirmation
 from lekto.core.domain.jobs import Job, RetryPolicy
 from lekto.core.domain.json_value import JsonObject
-from lekto.core.domain.permissions import Reach, can_file_into, can_hand_over, space_role
+from lekto.core.domain.permissions import (
+    Reach,
+    can_file_into,
+    can_hand_over,
+    document_access,
+    space_role,
+)
 from lekto.core.domain.pipeline import (
     CHOSEN_SPACE,
     NODES,
@@ -87,6 +93,7 @@ from lekto.core.services.inbox import (
     LEARNED_ALIAS,
     alias_to_learn,
     confirmation,
+    confirmed_into,
     decide,
     open_nodes,
 )
@@ -532,7 +539,7 @@ class PipelineService:
         accept_suggestions: bool = False,
         resume_at: Node = Node.APPLY_RULES,
         space: SpaceId | None = None,
-    ) -> DocumentView:
+    ) -> DocumentView | None:
         """Editors and admins, for a document in the inbox: decide its open fields, apply
         `changes` (as a metadata change), move it into `space` (as `DocumentService.move`: one
         the caller edits, or another user's personal space; an admin chooses any space) and let
@@ -546,8 +553,11 @@ class PipelineService:
         Choosing a contact for an open contact field teaches it the name the model read as an
         alias (`master_data.learn_alias`), so the next document with that name finds it.
 
-        The document leaves the inbox for everyone and is new for no one; who confirmed it, and
-        when, is kept for done (`domain.inbox`).
+        The document leaves the inbox for everyone and is new for no one, except for the
+        editors of `space` who could not read it before (`inbox.confirmed_into`); who confirmed
+        it, and when, is kept for done (`domain.inbox`). None: the caller cannot read the
+        document where it lies now (handed over, or moved into a space they only read, where
+        it is not green yet).
 
         If the fields node does not run again, the type's title pattern is rendered with the
         decided values, as long as the document has the machine's title (`titles`)."""
@@ -594,6 +604,7 @@ class PipelineService:
             corrected = corrected_fields(before, document, decided=decided)
             if target is not None:
                 document.move_to(target.id, now)
+                await confirmed_into(uow, document, source, target, now, user.id)
             run = document.processing.run
             for node in overruled:
                 result = confirmation(node, outcomes.get(node), decision, user.id)
@@ -616,9 +627,9 @@ class PipelineService:
                 chosen[LEARNED_ALIAS] = {"contact_id": str(learned[0]), "alias": learned[1]}
             result = replace(result, output={**result.output, **person, **chosen})
             await self._log(uow, id, Node.APPLY_RULES, run, result, now, now)
-            access = await access_to(uow, user, document)
+            access = document_access(user, document, source if target is None else target)
             await self._restart(uow, document)
-        return DocumentView(document, access)
+        return None if access is None else DocumentView(document, access)
 
     async def _move_target(self, uow: UnitOfWork, user: User, source: Space, id: SpaceId) -> Space:
         """The space `user` moves a document of `source` into on confirming it (as

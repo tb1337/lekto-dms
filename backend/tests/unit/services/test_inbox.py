@@ -102,6 +102,70 @@ async def scene(world: World) -> Scene:
     return Scene(owner, contact, amount, pipeline, stored)
 
 
+async def test_confirming_into_another_users_personal_space_hands_it_over(
+    world: World,
+) -> None:
+    """The caller cannot read it any more (None, no error); once green it is new for the
+    receiver."""
+    s = await scene(world)
+    receiver = await world.user()
+    home = await world.personal_space(receiver)
+    view = await s.pipeline.confirm(
+        s.owner.id,
+        s.document.id,
+        DocumentChanges(document_date=date(2026, 3, 31)),
+        accept_suggestions=True,
+        space=home.id,
+    )
+    assert view is None
+    await world.drain(s.pipeline)
+    document = await world.documents.get(receiver.id, s.document.id)
+    assert (document.space_id, document.lane) == (home.id, Lane.GREEN)
+    assert [item.document.id for item in await world.inbox.items(receiver.id)] == [s.document.id]
+    with pytest.raises(NotFoundError):
+        await world.documents.get(s.owner.id, s.document.id)
+
+
+async def test_confirming_into_a_space_the_caller_only_reads(world: World) -> None:
+    """Handing over into a personal space the caller reads: out of their reach until it is
+    green; new for its editor, who could not read it before."""
+    s = await scene(world)
+    other = await world.user()
+    home = await world.personal_space(other)
+    await world.spaces.set_member(other.id, home.id, s.owner.id, SpaceRole.READ)
+    view = await s.pipeline.confirm(
+        s.owner.id,
+        s.document.id,
+        DocumentChanges(document_date=date(2026, 3, 31)),
+        accept_suggestions=True,
+        space=home.id,
+    )
+    assert view is None
+    await world.drain(s.pipeline)
+    document = await world.documents.get(s.owner.id, s.document.id)
+    assert (document.space_id, document.lane) == (home.id, Lane.GREEN)
+    assert [item.document.id for item in await world.inbox.items(other.id)] == [s.document.id]
+    assert await world.inbox.items(s.owner.id) == []
+
+
+async def test_confirming_into_a_space_of_the_same_editors_makes_nothing_new(
+    world: World,
+) -> None:
+    s = await scene(world)
+    archive = await world.spaces.create(s.owner.id, "Archive")
+    view = await s.pipeline.confirm(
+        s.owner.id,
+        s.document.id,
+        DocumentChanges(document_date=date(2026, 3, 31)),
+        accept_suggestions=True,
+        space=archive.id,
+    )
+    assert view is not None and view.access is SpaceRole.EDIT
+    await world.drain(s.pipeline)
+    document = await world.documents.get(s.owner.id, s.document.id)
+    assert (document.space_id, document.new_at) == (archive.id, None)
+
+
 async def test_a_person_confirms_the_metadata(world: World) -> None:
     """In the inbox, or by changing contact, type, tags, date or fields; a new title alone, or
     the pipeline deriving the metadata, confirms nothing."""
@@ -232,6 +296,7 @@ async def test_a_confirmed_document_is_filed(world: World) -> None:
         DocumentChanges(document_date=date(2026, 3, 31)),
         accept_suggestions=True,
     )
+    assert view is not None
     confirmed = view.document
     assert view.access is SpaceRole.EDIT
     assert confirmed.processing.status is ProcessingStatus.PROCESSING

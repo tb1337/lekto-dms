@@ -866,6 +866,14 @@ class UnitOfWorkContract:
         confirmed.pull_events()
         assert confirmed.processing.decided
         documents = (failed, received, in_review, read_again, confirmed)
+        # The lane each first run ended in stays, whatever came after it.
+        assert [document.first_lane for document in documents] == [
+            Lane.RED,
+            None,
+            Lane.YELLOW,
+            Lane.GREEN,
+            Lane.YELLOW,
+        ]
         async with uow_factory() as uow:
             for document in documents:
                 await uow.documents.add(document)

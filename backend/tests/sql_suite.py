@@ -2169,6 +2169,114 @@ class MigrationSuite:
             kept = await _read_all(connection, select(before.c.value, before.c.topic_id))
         assert kept == [("K4711", ids["topic"])]
 
+    async def test_documents_keep_the_lane_of_their_first_run(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0036: a document whose first run stopped has its lane as the first lane,
+        one still in it none; for one that ran again the log of its first run tells (failed,
+        uncertain, filed), without what a person or a change set off and without a text read
+        again; where it tells nothing, the first lane stays unknown. The downgrade drops it."""
+        await migrate(empty_database, "0035")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        states = {
+            "running": (1, "processing", None),
+            "green": (1, "completed", "green"),
+            "yellow": (1, "review", "yellow"),
+            "red": (1, "failed", "red"),
+            "confirmed": (2, "completed", "green"),
+            "retried": (2, "completed", "green"),
+            "reprocessed": (2, "review", "yellow"),
+            "changed": (2, "completed", "green"),
+            "reparsed": (2, "completed", "green"),
+            "unknown": (3, "completed", "green"),
+        }
+        ids = {name: new_id() for name in (*states, "user", "home")}
+        entries = [
+            ("confirmed", 1, "judge", "uncertain", None, {}),
+            ("confirmed", 2, "apply_rules", "ok", "person", {}),
+            ("confirmed", 2, "file", "ok", None, {}),
+            ("retried", 1, "ocr", "failed", None, {}),
+            ("retried", 2, "file", "ok", None, {}),
+            ("reprocessed", 1, "judge", "ok", None, {}),
+            ("reprocessed", 1, "file", "ok", None, {}),
+            ("reprocessed", 2, "judge", "uncertain", None, {}),
+            ("changed", 1, "apply_rules", "uncertain", "rules:change", {}),
+            ("changed", 1, "file", "ok", None, {}),
+            ("reparsed", 1, "file", "ok", None, {}),
+            ("reparsed", 1, "parse", "failed", None, {"reparse": True}),
+            ("unknown", 1, "receive", "ok", None, {}),
+        ]
+        await _insert(
+            empty_database,
+            [
+                (
+                    t.users,
+                    {"id": ids["user"], "username": "u", "username_key": "u", "role": "user"},
+                ),
+                (
+                    t.spaces,
+                    {
+                        "id": ids["home"],
+                        "name": "Personal",
+                        "name_key": "personal",
+                        "personal_of": ids["user"],
+                    },
+                ),
+                *(
+                    (
+                        _before_0036(t.documents),
+                        {
+                            "id": ids[name],
+                            "space_id": ids["home"],
+                            "sha256": format(number, "064x"),
+                            "processing_run": run,
+                            "processing_status": status,
+                            "lane": lane,
+                        },
+                    )
+                    for number, (name, (run, status, lane)) in enumerate(states.items())
+                ),
+                *(
+                    (
+                        t.processing_log,
+                        {
+                            "document_id": ids[name],
+                            "run": run,
+                            "node": node,
+                            "outcome": outcome,
+                            "model_version": version,
+                            "input": input,
+                            "output": {},
+                        },
+                    )
+                    for name, run, node, outcome, version, input in entries
+                ),
+            ],
+        )
+
+        await migrate(empty_database)
+        async with empty_database.reading() as connection:
+            first = dict(
+                (await connection.execute(select(t.documents.c.id, t.documents.c.first_lane))).all()
+            )
+        assert first == {
+            ids["running"]: None,
+            ids["green"]: "green",
+            ids["yellow"]: "yellow",
+            ids["red"]: "red",
+            ids["confirmed"]: "yellow",
+            ids["retried"]: "red",
+            ids["reprocessed"]: "green",
+            ids["changed"]: "green",
+            ids["reparsed"]: "green",
+            ids["unknown"]: None,
+        }
+
+        await downgrade(empty_database, "0035")
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -2375,6 +2483,15 @@ def _drawer(table: sa.TableClause) -> sa.TableClause:
 _INBOX_COLUMNS = frozenset({"new_at", "processing_baseline", "processing_decided"})
 
 
+def _before_0036(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0036 had it: no first lane of a document."""
+    added = {"documents": {"first_lane"}}
+    return sa.table(
+        table.name,
+        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+    )
+
+
 def _before_0035(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0035 had it: no display name of a user, no user named by
     a contact's identifier."""
@@ -2391,7 +2508,11 @@ def _before_0034(table: sa.Table) -> sa.TableClause:
     added = {"spaces": {"description"}, "documents": {"space_confirmed_at"}}
     return sa.table(
         table.name,
-        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+        *(
+            sa.column(c.name, c.type)
+            for c in _before_0036(table).c
+            if c.name not in added.get(table.name, ())
+        ),
     )
 
 

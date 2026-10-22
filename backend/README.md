@@ -196,7 +196,10 @@ next one) and `document.node_completed` follow it. A node that fails stops the
 document (red): nodes still running finish, nothing new starts. A retry repeats the failed
 nodes, a reprocessing from node X repeats X and every node after it (from the judge also the
 signals that ask no model, so new aliases, identifiers or a new model count); both start a new run, so
-jobs of the old run are recognised as stale.
+jobs of the old run are recognised as stale. A document keeps the lane its first run ended in
+(`first_lane`: green went through without a person, yellow needed a review, red failed); neither
+a confirmation nor a later run changes it, so reports can tell how many documents went straight
+through.
 
 | Node | Input | Derivatives (object store) | Outcome |
 | --- | --- | --- | --- |
@@ -799,6 +802,12 @@ user). Nothing is filled in: users are shown by their username until they or an 
 display name (settings, user management), a migration fills them from Paperless. Once a user has
 one, `{{ uploaded_by }}` in titles and paths renders it instead of the username: titles and
 paths rendered anew change.
+
+Revision 0036 adds the lane of a document's first run (`documents.first_lane`). It reads it back
+for the documents already there: a document whose first run stopped has its lane, one that ran
+again what the log of its first run tells (a failed node red, an uncertain result yellow,
+filing green; entries of a person or a change and a text read again aside); where the log tells
+nothing, and for a document still in its first run, it stays null.
 
 **Evaluation.** `lekto evaluate [--fake]` runs the synthetic documents in
 `evaluation/` cold and trained and writes a report; see [evaluation/README.md](evaluation/README.md).

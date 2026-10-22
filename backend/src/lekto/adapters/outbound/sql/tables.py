@@ -324,6 +324,9 @@ documents = Table(
     # Intake channel (`Channel`); documents from before M7 count as `api`.
     Column("channel", Text, nullable=False, server_default=Channel.API.value),
     Column("lane", Text, nullable=True, index=True),
+    # The lane the first processing run ended in (`Document.first_lane`), for reports; unknown
+    # for documents from before revision 0036 whose log does not tell.
+    Column("first_lane", Text, nullable=True),
     Column("processing_status", Text, nullable=False),
     Column("processing_run", Integer, nullable=False),
     # State of every node in the current run: {node: {status, outcome, started_at, finished_at}}.

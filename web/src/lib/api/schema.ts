@@ -2781,6 +2781,7 @@ export interface components {
 		 *           "currency": "EUR"
 		 *         }
 		 *       },
+		 *       "first_lane": "green",
 		 *       "id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "lane": "green",
 		 *       "media_type": "application/pdf",
@@ -2877,6 +2878,8 @@ export interface components {
 			};
 			/** @description None while processing runs. */
 			lane: components['schemas']['Lane'] | null;
+			/** @description The lane the document's first processing run ended in by itself, before any person decided: `green` went through without a person, `yellow` needed a review, `red` failed. It never changes afterwards, neither by a confirmation nor by a later run. Null while the first run is still processing, and for older documents whose processing log does not tell. */
+			first_lane?: components['schemas']['Lane'] | null;
 			/**
 			 * Page Count
 			 * @description Pages of the document, once its page images are rendered (`pages` node).
@@ -2925,6 +2928,7 @@ export interface components {
 		 *           "currency": "EUR"
 		 *         }
 		 *       },
+		 *       "first_lane": "green",
 		 *       "id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "lane": "green",
 		 *       "media_type": "application/pdf",
@@ -3021,6 +3025,8 @@ export interface components {
 			};
 			/** @description None while processing runs. */
 			lane: components['schemas']['Lane'] | null;
+			/** @description The lane the document's first processing run ended in by itself, before any person decided: `green` went through without a person, `yellow` needed a review, `red` failed. It never changes afterwards, neither by a confirmation nor by a later run. Null while the first run is still processing, and for older documents whose processing log does not tell. */
+			first_lane?: components['schemas']['Lane'] | null;
 			/**
 			 * Page Count
 			 * @description Pages of the document, once its page images are rendered (`pages` node).
@@ -4283,6 +4289,7 @@ export interface components {
 		 *           "currency": "EUR"
 		 *         }
 		 *       },
+		 *       "first_lane": "green",
 		 *       "id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "in_inbox": true,
 		 *       "lane": "green",
@@ -4380,6 +4387,8 @@ export interface components {
 			};
 			/** @description None while processing runs. */
 			lane: components['schemas']['Lane'] | null;
+			/** @description The lane the document's first processing run ended in by itself, before any person decided: `green` went through without a person, `yellow` needed a review, `red` failed. It never changes afterwards, neither by a confirmation nor by a later run. Null while the first run is still processing, and for older documents whose processing log does not tell. */
+			first_lane?: components['schemas']['Lane'] | null;
 			/**
 			 * Page Count
 			 * @description Pages of the document, once its page images are rendered (`pages` node).

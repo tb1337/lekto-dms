@@ -1759,9 +1759,11 @@ class MigrationSuite:
             }
             shares = set(await _read_all(connection, select(_SHARES)))
             owners = dict(await _read_all(connection, select(documents.c.id, documents.c.owner_id)))
-            rule_owner = (
-                await connection.execute(select(rules.c.owner_id).where(rules.c.id == ids["rule"]))
-            ).scalar_one()
+            rule_owner, rule_scope = (
+                await connection.execute(
+                    select(rules.c.owner_id, rules.c.scope).where(rules.c.id == ids["rule"])
+                )
+            ).one()
             pattern = (
                 await connection.execute(
                     select(t.document_types.c.title_pattern).where(
@@ -1786,7 +1788,7 @@ class MigrationSuite:
             ids["equal"]: ids["bob"],
             ids["moved"]: ids["alice"],
         }
-        assert rule_owner == ids["bob"]
+        assert (rule_owner, rule_scope) == (ids["bob"], "user")
         assert pattern == "{{ owner }}: {{ title }}"
         assert output["rules"][0]["scope"] == "user"
 
@@ -1807,6 +1809,156 @@ class MigrationSuite:
             await unit.commit()
         with pytest.raises(RuntimeError, match="would both be owned"):
             await downgrade(empty_database, "0032")
+
+    async def test_chosen_names_stay_and_nothing_old_turns_new(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0033 in place and built anew: names that collide get the owner's username,
+        shortened to fit, never taking a name another space keeps; a space of one's own named
+        "Personal" or "Default" is no obstacle. A document new for its owner is seen by the
+        other editors of its space. Going back, a document is owned by its uploader only while
+        they are a member of its space."""
+        await migrate(empty_database, "0032")
+        names: tuple[str, ...] = ("alice", "bob", "dave", "alice_home", "bob_home", "taxes")
+        names += ("alice_personal", "bobs_taxes", "bobs_own", "long", "bobs_long")
+        names += ("daves_default", "shared", "solo")
+        ids = {name: new_id() for name in names}
+        ids |= {name: new_id() for name in ("new", "old", "read_only", "foreign")}
+        spaces = _before_0033(t.spaces)
+        documents = _before_0033(t.documents)
+        user = {"role": "user"}
+        later = {"is_default": False, "created_at": NOW + timedelta(hours=1)}
+        latest = {"is_default": False, "created_at": NOW + timedelta(hours=2)}
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
+            *(
+                (
+                    t.users,
+                    {"id": ids[name], "username": name, "username_key": name, "created_at": at}
+                    | user,
+                )
+                for name, at in (
+                    ("alice", NOW),
+                    ("bob", NOW + timedelta(seconds=1)),
+                    ("dave", NOW + timedelta(seconds=2)),
+                )
+            ),
+            (spaces, {"id": ids["alice_home"], "owner_id": ids["alice"], "name_key": "default"}),
+            (spaces, {"id": ids["bob_home"], "owner_id": ids["bob"], "name_key": "default"}),
+            *(
+                (spaces, {"id": ids[key], "owner_id": ids[owner], "name": name} | extra)
+                for key, owner, name, extra in (
+                    ("alice_personal", "alice", "Personal", later),
+                    ("taxes", "alice", "Taxes", later),
+                    ("bobs_taxes", "bob", "taxes", latest),
+                    ("bobs_own", "bob", "Taxes (bob)", latest | {"created_at": NOW}),
+                    ("long", "alice", "L" * 200, later),
+                    ("bobs_long", "bob", "l" * 200, latest),
+                    ("daves_default", "dave", "Default", later),
+                    ("shared", "alice", "Shared", later),
+                    ("solo", "alice", "Solo", later),
+                )
+            ),
+            (_SHARES, {"space_id": ids["taxes"], "user_id": ids["bob"], "level": "read_write"}),
+            (_SHARES, {"space_id": ids["shared"], "user_id": ids["bob"], "level": "read"}),
+            *(
+                (
+                    documents,
+                    {"id": ids[key], "owner_id": ids[owner], "space_id": ids[space]}
+                    | {"sha256": sha * 64, "new_at": new_at},
+                )
+                for key, owner, space, sha, new_at in (
+                    ("new", "alice", "taxes", "a", NOW),
+                    ("old", "alice", "taxes", "b", None),
+                    ("read_only", "bob", "shared", "c", None),
+                    ("foreign", "bob", "solo", "d", None),
+                )
+            ),
+        ]
+        await _insert(
+            empty_database,
+            [
+                (table, values | {"name_key": values["name"].casefold()})
+                if table is spaces and "name" in values
+                else (table, values)
+                for table, values in rows
+            ],
+        )
+
+        await migrate(empty_database)
+        uow = SqlUnitOfWorkFactory(empty_database)
+        async with uow() as unit:
+            stored: dict[UUID, Space] = {space.id: space for space in await unit.spaces.list_all()}
+            daves_home = await unit.spaces.get_personal(UserId(ids["dave"]))
+        async with empty_database.reading() as connection:
+            seen = set(
+                await _read_all(
+                    connection, select(t.inbox_seen.c.user_id, t.inbox_seen.c.document_id)
+                )
+            )
+        named = {key: stored[ids[key]].name for key in names if ids[key] in stored}
+        assert named == {
+            "alice_home": "Personal",
+            "bob_home": "Personal",
+            "alice_personal": "Personal",
+            "taxes": "Taxes",
+            "bobs_taxes": "taxes (bob 2)",
+            "bobs_own": "Taxes (bob)",
+            "long": "L" * 200,
+            "bobs_long": "l" * 194 + " (bob)",
+            "daves_default": "Default",
+            "shared": "Shared",
+            "solo": "Solo",
+        }
+        assert (daves_home.name, daves_home.personal_of) == ("Personal", ids["dave"])
+        assert stored[ids["alice_personal"]].personal_of is None
+        assert seen == {(ids["bob"], ids["new"])}
+
+        await downgrade(empty_database, "0032")
+        async with empty_database.reading() as connection:
+            owners = dict(await _read_all(connection, select(documents.c.id, documents.c.owner_id)))
+        assert owners == {
+            ids["new"]: ids["alice"],
+            ids["old"]: ids["alice"],
+            ids["read_only"]: ids["bob"],
+            ids["foreign"]: ids["alice"],
+        }
+
+    async def test_the_way_back_stops_where_0_4_could_not_load_it(
+        self, empty_database: Database
+    ) -> None:
+        """A shared personal space and a global rule that files into a space stop the
+        downgrade, with what to change first."""
+        await migrate(empty_database)
+        uow = SqlUnitOfWorkFactory(empty_database)
+        owner = await builders.seed_user(uow)
+        other = await builders.seed_user(uow)
+        rule = new_id()
+        async with uow() as unit:
+            home = await unit.spaces.get_personal(owner.id)
+            home.set_member(other.id, SpaceRole.READ)
+            await unit.spaces.update(home)
+            await unit.commit()
+        await _insert(
+            empty_database,
+            [
+                (t.rules, {"id": rule, "scope": "global", "current_version": 1}),
+                (
+                    t.rule_versions,
+                    {
+                        "rule_id": rule,
+                        "number": 1,
+                        "name": "Away",
+                        "conditions": {"all": [{"field": "channel", "op": "is", "value": "api"}]},
+                        "actions": [{"type": "set_space", "space_id": str(home.id)}],
+                    },
+                ),
+            ],
+        )
+        with pytest.raises(RuntimeError) as stopped:
+            await downgrade(empty_database, "0032")
+        assert f"personal space of {owner.username} is shared" in str(stopped.value)
+        assert "global rule 'Away'" in str(stopped.value)
+        assert "set_space" in str(stopped.value)
 
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database

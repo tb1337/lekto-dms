@@ -12,12 +12,15 @@ document has no owner any more, only who uploaded it.
   of it, a share `read` a reader, a share `read_write` an editor (`space_members` replaces
   `space_shares`). Names were
   unique per owner and are unique among the spaces that are nobody's personal one now: of
-  spaces with the same name, the oldest keeps it, the others get " (<owner's username>)".
+  spaces with the same name, the oldest keeps it, the others get " (<owner's username>)"
+  (shortened to fit, never a name another space keeps).
 - `documents.owner_id` becomes `uploaded_by` (cleared with the user's account). The original
   is unique per space instead of per owner. Two documents with the same file in one space (of
   two owners) are kept: the newer goes back to its owner's personal space, where only they
   had it; if that holds the file too, the revision stops and names the documents.
 - A user rule becomes a rule of its owner's personal space (`rules.space_id`, scope `space`).
+- A document that is new stays new for who uploaded it; the other editors of its space, in
+  whose inbox it stands now, have seen it.
 - The variable `owner` in templates becomes `uploaded_by` (rules and title patterns), as 0024
   renamed `drawer`; a template that uses `uploaded_by` otherwise stops the revision. The scope
   of rule reports in the processing log becomes `space`.
@@ -27,8 +30,10 @@ anew without a rename (as 0024 and 0027 did): `migrate` turns foreign keys off m
 
 The downgrade goes back as far as the data allow: a personal space becomes the default space
 of its user, any other space is owned by its oldest editor and shared with the rest (edit as
-`read_write`); a document without uploader is owned by its space's owner, a space rule by its
-space's owner. It stops if that gives an owner the same file twice.
+`read_write`); a document is owned by who uploaded it while they are a member of its space,
+otherwise by its space's owner; a space rule is a user rule of its space's owner. It stops if
+that gives an owner the same file twice, and where 0.4 could not load the data: a shared
+personal space, a global rule that does more than tag, set fields and force a review.
 """
 
 import os
@@ -55,6 +60,7 @@ depends_on: str | Sequence[str] | None = None
 
 _PERSONAL = "Personal"
 _DEFAULT = "Default"
+_MAX_NAME = 200  # as `domain.validation.MAX_NAME`
 
 
 def name_key(name: str) -> str:
@@ -149,6 +155,7 @@ def upgrade() -> None:
         _rebuild_up(spaces, moves, rule_owners, defaults)
     else:
         _alter_up(spaces, moves, rule_owners, defaults)
+    _keep_new_as_it_was(connection, spaces)
     _rename_stored("owner", "uploaded_by")
     _rename_scopes("user", "space")
 
@@ -163,11 +170,16 @@ def downgrade() -> None:
         )
     users = {row.id: row for row in connection.execute(sa.select(_users))}
     spaces = _spaces_down(connection, users)
+    _check_way_back(connection, spaces, users)
     owners = {space.id: space.owner for space in spaces}
+    members = {space.id: space.members or {} for space in spaces}
     document_owners: dict[UUID, UUID] = {}
     seen: dict[tuple[UUID, str], UUID] = {}
     for row in connection.execute(sa.select(_new_documents).order_by(_new_documents.c.id)):
-        owner = row.uploaded_by if row.uploaded_by is not None else owners[row.space_id]
+        # Who uploaded it owns it again while they are a member of its space; one who left
+        # it, or handed the document over, does not get it back: its space's owner does.
+        member = row.uploaded_by in members[row.space_id]
+        owner = row.uploaded_by if member else owners[row.space_id]
         assert owner is not None
         key = (owner, row.sha256)
         if key in seen:
@@ -222,23 +234,37 @@ def _spaces_up(connection: sa.Connection, usernames: dict[UUID, str]) -> list[_S
                     created=True,
                 )
             )
+    ordered = sorted(spaces, key=lambda item: (item.created_at, str(item.id)))
     taken: set[str] = set()
-    for space in sorted(spaces, key=lambda item: (item.created_at, str(item.id))):
+    renamed: list[_Space] = []
+    for space in ordered:
         assert space.owner is not None
         space.members = {**shares[space.id], space.owner: "edit"}
         if space.default:
             space.personal_of, space.name = space.owner, _PERSONAL
-            continue
-        name = space.name
-        if name_key(name) in taken:
-            name = f"{space.name} ({usernames.get(space.owner, space.owner)})"
-            number = 2
-            while name_key(name) in taken:
-                name = f"{space.name} ({usernames.get(space.owner, space.owner)} {number})"
-                number += 1
-        space.name = name
-        taken.add(name_key(name))
+        elif name_key(space.name) in taken:
+            renamed.append(space)
+        else:
+            taken.add(name_key(space.name))
+    # The oldest space of a name keeps it, and no name a person chose gives way to one the
+    # revision makes up.
+    for space in renamed:
+        assert space.owner is not None
+        space.name = _free_name(space.name, str(usernames.get(space.owner, space.owner)), taken)
+        taken.add(name_key(space.name))
     return spaces
+
+
+def _free_name(name: str, username: str, taken: set[str]) -> str:
+    """`name` with " (<username>)" (and a number) that no other space has, within the length
+    of a name (the name is shortened to make room)."""
+    number = 1
+    while True:
+        suffix = f" ({username})" if number == 1 else f" ({username} {number})"
+        candidate = f"{name[: max(1, _MAX_NAME - len(suffix))].rstrip()}{suffix}"[:_MAX_NAME]
+        if name_key(candidate) not in taken:
+            return candidate
+        number += 1
 
 
 def _add_missing_defaults(
@@ -252,8 +278,8 @@ def _add_missing_defaults(
                 _old_spaces.insert().values(
                     id=space.id,
                     owner_id=space.owner,
-                    name=_DEFAULT,
-                    name_key=name_key(_DEFAULT),
+                    name=f"{_PERSONAL} {space.id}",  # renamed below; no name of theirs
+                    name_key=name_key(f"{_PERSONAL} {space.id}"),
                     is_default=True,
                     created_at=space.created_at,
                     version=space.version,
@@ -298,6 +324,46 @@ def _duplicates(connection: sa.Connection, defaults: dict[UUID | None, UUID]) ->
     return moves
 
 
+_seen = sa.table(
+    "inbox_seen",
+    sa.column("user_id", sa.Uuid()),
+    sa.column("document_id", sa.Uuid()),
+    sa.column("seen_at", types.UtcDateTime()),
+)
+_new_documents_at = sa.table(
+    "documents",
+    sa.column("id", sa.Uuid()),
+    sa.column("space_id", sa.Uuid()),
+    sa.column("uploaded_by", sa.Uuid()),
+    sa.column("new_at", types.UtcDateTime()),
+)
+
+
+def _keep_new_as_it_was(connection: sa.Connection, spaces: Iterable[_Space]) -> None:
+    """Until 0.5 a document stood in its owner's inbox only; now in the inbox of every editor
+    of its space. What was new for its owner stays new for them; for the other editors (a
+    space's owner, a sharer with `read_write`) nothing old turns up as new: they have seen it."""
+    editors = {
+        space.id: {user for user, role in (space.members or {}).items() if role == "edit"}
+        for space in spaces
+    }
+    marked = {
+        (row.user_id, row.document_id)
+        for row in connection.execute(sa.select(_seen.c.user_id, _seen.c.document_id))
+    }
+    now = datetime.now(UTC)
+    rows = [
+        {"user_id": user, "document_id": row.id, "seen_at": now}
+        for row in connection.execute(
+            sa.select(_new_documents_at).where(_new_documents_at.c.new_at.is_not(None))
+        )
+        for user in sorted(editors.get(row.space_id, ()), key=str)
+        if user != row.uploaded_by and (user, row.id) not in marked
+    ]
+    if rows:
+        connection.execute(_seen.insert(), rows)
+
+
 def _spaces_down(connection: sa.Connection, users: dict[UUID, Any]) -> list[_Space]:
     spaces = [
         _Space(
@@ -328,6 +394,59 @@ def _spaces_down(connection: sa.Connection, users: dict[UUID, Any]) -> list[_Spa
             space.name = name
         names[space.owner].add(name_key(space.name))
     return spaces
+
+
+# What a global rule could do before 0.5 (`check_scope` of 0.4), and the rule of a title
+# pattern besides.
+_GLOBAL_ACTIONS = frozenset({"add_tags", "remove_tags", "set_field", "force_review"})
+_rule_versions = sa.table(
+    "rule_versions",
+    sa.column("rule_id", sa.Uuid()),
+    sa.column("number", sa.Integer()),
+    sa.column("name", sa.Text()),
+    sa.column("actions", types.json_type()),
+)
+_scoped_rules = sa.table(
+    "rules",
+    sa.column("id", sa.Uuid()),
+    sa.column("scope", sa.Text()),
+    sa.column("current_version", sa.Integer()),
+)
+_title_rules = sa.table("title_pattern_rules", sa.column("rule_id", sa.Uuid()))
+
+
+def _check_way_back(
+    connection: sa.Connection, spaces: list[_Space], users: dict[UUID, Any]
+) -> None:
+    """Stop the downgrade where 0.4 could not load what 0.5 stored: a shared personal space (a
+    default space was never shared) and a global rule that does more than tag, set fields and
+    force a review."""
+    problems = [
+        f"the personal space of {users[space.personal_of].username} is shared; remove its "
+        "other members first"
+        for space in spaces
+        if space.personal_of is not None and set(space.members or {}) - {space.personal_of}
+    ]
+    managed = {row.rule_id for row in connection.execute(sa.select(_title_rules))}
+    current = (
+        sa.select(_scoped_rules.c.id, _rule_versions.c.name, _rule_versions.c.actions)
+        .join(
+            _rule_versions,
+            (_rule_versions.c.rule_id == _scoped_rules.c.id)
+            & (_rule_versions.c.number == _scoped_rules.c.current_version),
+        )
+        .where(_scoped_rules.c.scope == "global")
+    )
+    for row in connection.execute(current):
+        allowed = _GLOBAL_ACTIONS | ({"set_title"} if row.id in managed else set())
+        beyond = sorted({action["type"] for action in row.actions} - allowed)
+        if beyond:
+            problems.append(
+                f"the global rule '{row.name}' ({row.id}) does {', '.join(beyond)}, which a "
+                "global rule could not before 0.5; change or delete it first"
+            )
+    if problems:
+        raise RuntimeError("revision 0033 cannot go back: " + "; ".join(problems))
 
 
 def _shares_down(spaces: Iterable[_Space]) -> list[dict[str, Any]]:
@@ -368,14 +487,15 @@ def _alter_up(
         sa.column("name_key", sa.Text()),
         sa.column("personal_of", sa.Uuid()),
     )
+    # The names are unique per owner until here; the new names may not be.
+    op.drop_index("uq_spaces_default_owner_id", table_name="spaces")
+    op.drop_index("ix_spaces_owner_id_name_key", table_name="spaces")
     for space in spaces:
         connection.execute(
             spaces_table.update()
             .where(spaces_table.c.id == space.id)
             .values(name=space.name, name_key=name_key(space.name), personal_of=space.personal_of)
         )
-    op.drop_index("uq_spaces_default_owner_id", table_name="spaces")
-    op.drop_index("ix_spaces_owner_id_name_key", table_name="spaces")
     op.drop_constraint("fk_spaces_owner_id_users", "spaces", type_="foreignkey")
     op.drop_column("spaces", "owner_id")
     op.drop_column("spaces", "is_default")
@@ -432,6 +552,8 @@ def _alter_down(
     connection = op.get_bind()
     op.add_column("spaces", sa.Column("owner_id", sa.Uuid(), nullable=True))
     op.add_column("spaces", sa.Column("is_default", sa.Boolean(), nullable=True))
+    # The names are unique among shared spaces until here; per owner they may not be.
+    op.drop_index("uq_spaces_name_key", table_name="spaces")
     for space in spaces:
         connection.execute(
             _old_spaces.update()
@@ -445,7 +567,6 @@ def _alter_down(
         )
     op.alter_column("spaces", "owner_id", nullable=False)
     op.alter_column("spaces", "is_default", nullable=False)
-    op.drop_index("uq_spaces_name_key", table_name="spaces")
     op.drop_constraint("uq_spaces_personal_of", "spaces", type_="unique")
     op.drop_constraint("fk_spaces_personal_of_users", "spaces", type_="foreignkey")
     op.drop_column("spaces", "personal_of")
@@ -471,10 +592,17 @@ def _alter_down(
     )
 
     op.add_column("rules", sa.Column("owner_id", sa.Uuid(), nullable=True))
-    rules = sa.table("rules", sa.column("id", sa.Uuid()), sa.column("owner_id", sa.Uuid()))
+    rules = sa.table(
+        "rules",
+        sa.column("id", sa.Uuid()),
+        sa.column("owner_id", sa.Uuid()),
+        sa.column("scope", sa.Text()),
+    )
     for rule, owner in rule_owners.items():
         if owner is not None:
-            connection.execute(rules.update().where(rules.c.id == rule).values(owner_id=owner))
+            connection.execute(
+                rules.update().where(rules.c.id == rule).values(owner_id=owner, scope="user")
+            )
     op.drop_index("ix_rules_space_id", table_name="rules")
     op.drop_constraint("fk_rules_space_id_spaces", "rules", type_="foreignkey")
     op.drop_column("rules", "space_id")
@@ -632,7 +760,10 @@ def _rebuild_down(
     op.drop_table("rules")
     _create_rules(space=False)
     columns = ", ".join(_RULE_COLUMNS)
-    op.execute(f"INSERT INTO rules ({columns}, scope) SELECT {columns}, scope FROM _rules_0033")
+    op.execute(
+        f"INSERT INTO rules ({columns}, scope) "
+        f"SELECT {columns}, CASE scope WHEN 'space' THEN 'user' ELSE scope END FROM _rules_0033"
+    )
     _put_back("rules", count)
     rules = sa.table("rules", sa.column("id", sa.Uuid()), sa.column("owner_id", sa.Uuid()))
     for rule, rule_owner in rule_owners.items():

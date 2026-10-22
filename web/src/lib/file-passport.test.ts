@@ -135,6 +135,7 @@ describe('the passport of a file', () => {
 			}) as Reviewed['processing'];
 		const document = (changes: Partial<Reviewed>): Reviewed => ({
 			lane: 'green',
+			first_lane: null,
 			confirmed_at: null,
 			channel: 'web',
 			processing: processing('completed'),

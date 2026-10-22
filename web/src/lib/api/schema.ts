@@ -2878,8 +2878,8 @@ export interface components {
 			};
 			/** @description None while processing runs. */
 			lane: components['schemas']['Lane'] | null;
-			/** @description The lane the document's first processing run ended in by itself, before any person decided: `green` went through without a person, `yellow` needed a review, `red` failed. It never changes afterwards, neither by a confirmation nor by a later run. Null while the first run is still processing, and for older documents whose processing log does not tell. */
-			first_lane?: components['schemas']['Lane'] | null;
+			/** @description The lane the document's first processing run ended in by itself, where it first stopped: `green` went through without a review, `yellow` needed one, `red` failed. It never changes afterwards, neither by a confirmation nor by a later run. Null while the first run is still processing, and for older documents whose processing log does not tell. */
+			first_lane: components['schemas']['Lane'] | null;
 			/**
 			 * Page Count
 			 * @description Pages of the document, once its page images are rendered (`pages` node).
@@ -3025,8 +3025,8 @@ export interface components {
 			};
 			/** @description None while processing runs. */
 			lane: components['schemas']['Lane'] | null;
-			/** @description The lane the document's first processing run ended in by itself, before any person decided: `green` went through without a person, `yellow` needed a review, `red` failed. It never changes afterwards, neither by a confirmation nor by a later run. Null while the first run is still processing, and for older documents whose processing log does not tell. */
-			first_lane?: components['schemas']['Lane'] | null;
+			/** @description The lane the document's first processing run ended in by itself, where it first stopped: `green` went through without a review, `yellow` needed one, `red` failed. It never changes afterwards, neither by a confirmation nor by a later run. Null while the first run is still processing, and for older documents whose processing log does not tell. */
+			first_lane: components['schemas']['Lane'] | null;
 			/**
 			 * Page Count
 			 * @description Pages of the document, once its page images are rendered (`pages` node).
@@ -4387,8 +4387,8 @@ export interface components {
 			};
 			/** @description None while processing runs. */
 			lane: components['schemas']['Lane'] | null;
-			/** @description The lane the document's first processing run ended in by itself, before any person decided: `green` went through without a person, `yellow` needed a review, `red` failed. It never changes afterwards, neither by a confirmation nor by a later run. Null while the first run is still processing, and for older documents whose processing log does not tell. */
-			first_lane?: components['schemas']['Lane'] | null;
+			/** @description The lane the document's first processing run ended in by itself, where it first stopped: `green` went through without a review, `yellow` needed one, `red` failed. It never changes afterwards, neither by a confirmation nor by a later run. Null while the first run is still processing, and for older documents whose processing log does not tell. */
+			first_lane: components['schemas']['Lane'] | null;
 			/**
 			 * Page Count
 			 * @description Pages of the document, once its page images are rendered (`pages` node).

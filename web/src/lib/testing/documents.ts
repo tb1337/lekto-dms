@@ -51,6 +51,7 @@ export function documentOf(changes: Partial<Document> = {}): Document {
 		document_date: null,
 		fields: {},
 		lane: 'green',
+		first_lane: null,
 		page_count: 1,
 		confirmed_at: null,
 		processing: processingOf(changes.lane === null),

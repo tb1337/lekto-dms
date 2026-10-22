@@ -182,13 +182,12 @@ class DocumentDetails(BaseModel):
     fields: dict[UUID, FieldJson] = Field(description="Values by field id.")
     lane: Lane | None = Field(description="None while processing runs.")
     first_lane: Lane | None = Field(
-        default=None,
         description=(
-            "The lane the document's first processing run ended in by itself, before any "
-            "person decided: `green` went through without a person, `yellow` needed a review, "
-            "`red` failed. It never changes afterwards, neither by a confirmation nor by a "
-            "later run. Null while the first run is still processing, and for older documents "
-            "whose processing log does not tell."
+            "The lane the document's first processing run ended in by itself, where it first "
+            "stopped: `green` went through without a review, `yellow` needed one, `red` failed. "
+            "It never changes afterwards, neither by a confirmation nor by a later run. Null "
+            "while the first run is still processing, and for older documents whose processing "
+            "log does not tell."
         ),
     )
     page_count: int | None = Field(

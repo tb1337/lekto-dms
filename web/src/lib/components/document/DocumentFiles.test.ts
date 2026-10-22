@@ -103,6 +103,7 @@ describe('DocumentFiles', () => {
 			documentId: 'doc-1',
 			document: {
 				lane: 'yellow',
+				first_lane: 'yellow',
 				confirmed_at: null,
 				channel: 'web',
 				processing: { status: 'review', run: 1, vision: false, nodes: [] }

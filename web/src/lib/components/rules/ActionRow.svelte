@@ -13,7 +13,8 @@
 	import { defaultValue, type ActionNode } from '#lib/rules/model.ts';
 	import { tagOptions } from '#lib/tags.ts';
 
-	// One action. `spaces` are the ones the rule's owner may file into.
+	// One action. `spaces` are the ones the rule's owner may file into. `onunreadable` says
+	// while the value's text cannot be read (see `ValueInput`).
 	let {
 		action,
 		lookup,
@@ -21,12 +22,14 @@
 		error,
 		onremove,
 		onup,
-		ondown
+		ondown,
+		onunreadable
 	}: {
 		action: ActionNode;
 		lookup: Lookup;
 		spaces: readonly Space[];
 		error?: string;
+		onunreadable?: (unreadable: boolean) => void;
 		onremove: () => void;
 		onup?: () => void;
 		ondown?: () => void;
@@ -133,6 +136,7 @@
 						onchange={(next) => {
 							if (action.type === 'set_field') action.value = next as typeof action.value;
 						}}
+						{onunreadable}
 					/>
 				{/if}
 			{:else if action.type === 'force_review'}

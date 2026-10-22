@@ -10,18 +10,98 @@ function notationField(): HTMLInputElement {
 }
 
 describe('PeriodInput', () => {
-	it('sets from and to from a period as it is written, and then writes it in ISO', async () => {
+	it('sets from and to from a period as it is written when the field is left', async () => {
 		const onchange = vi.fn();
 		render(PeriodInput, { value: { start: '', end: '' }, label: NAME, onchange });
 		const field = notationField();
 		await fireEvent.input(field, { target: { value: 'KW 17/2026' } });
-		expect(onchange).toHaveBeenLastCalledWith({ start: '2026-04-20', end: '2026-04-26' });
-		// What is typed stays until the field is left.
+		expect(onchange).not.toHaveBeenCalled();
+		// What is typed stays until the field is left; then it is written in ISO.
 		expect(field.value).toBe('KW 17/2026');
 		await fireEvent.blur(field);
+		expect(onchange).toHaveBeenCalledExactlyOnceWith({ start: '2026-04-20', end: '2026-04-26' });
 		expect(field.value).toBe('2026-W17');
 		await fireEvent.input(field, { target: { value: 'Februar 2028' } });
+		await fireEvent.blur(field);
 		expect(onchange).toHaveBeenLastCalledWith({ start: '2028-02-01', end: '2028-02-29' });
+		expect(field.value).toBe('2028-02');
+	});
+
+	it('takes the period on Enter, without submitting, and keeps the text', async () => {
+		const onchange = vi.fn();
+		render(PeriodInput, { value: { start: '', end: '' }, label: NAME, onchange });
+		const field = notationField();
+		await fireEvent.input(field, { target: { value: 'Q2 2026' } });
+		const enter = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true, bubbles: true });
+		await fireEvent(field, enter);
+		expect(enter.defaultPrevented).toBe(true);
+		expect(onchange).toHaveBeenCalledExactlyOnceWith({ start: '2026-04-01', end: '2026-06-30' });
+		expect(field.value).toBe('Q2 2026');
+		expect(
+			(screen.getByLabelText(m.field_period_from_of({ name: NAME })) as HTMLInputElement).value
+		).toBe('2026-04-01');
+	});
+
+	it('does not walk through the readable prefixes of what is typed', async () => {
+		const onchange = vi.fn();
+		const onunreadable = vi.fn();
+		render(PeriodInput, { value: { start: '', end: '' }, label: NAME, onchange, onunreadable });
+		const field = notationField();
+		for (const text of ['2', '2026', '2026-', '2026-W', '2026-W1', '2026-W17']) {
+			await fireEvent.input(field, { target: { value: text } });
+		}
+		expect(onchange).not.toHaveBeenCalled();
+		// Unreadable on the way (`2026-`), readable at the end.
+		expect(onunreadable).toHaveBeenLastCalledWith(false);
+		expect(onunreadable).toHaveBeenCalledWith(true);
+		await fireEvent.blur(field);
+		expect(onchange).toHaveBeenCalledExactlyOnceWith({ start: '2026-04-20', end: '2026-04-26' });
+	});
+
+	it('keeps the value while a typed continuation cannot be read, and says so', async () => {
+		const onchange = vi.fn();
+		const onunreadable = vi.fn();
+		render(PeriodInput, {
+			value: { start: '2026-09-01', end: '2026-09-30' },
+			label: NAME,
+			onchange,
+			onunreadable
+		});
+		const field = notationField();
+		await fireEvent.input(field, { target: { value: '2026' } });
+		await fireEvent.input(field, { target: { value: '2026-1' } });
+		await fireEvent.blur(field);
+		expect(onchange).not.toHaveBeenCalled();
+		expect(field.value).toBe('2026-1');
+		expect(onunreadable).toHaveBeenLastCalledWith(true);
+		expect(screen.getByText(m.field_period_unreadable())).toBeTruthy();
+		await fireEvent.input(field, { target: { value: '2026-11' } });
+		expect(onunreadable).toHaveBeenLastCalledWith(false);
+		await fireEvent.blur(field);
+		expect(onchange).toHaveBeenCalledExactlyOnceWith({ start: '2026-11-01', end: '2026-11-30' });
+	});
+
+	it('takes a span as a whole, not its first day', async () => {
+		const onchange = vi.fn();
+		render(PeriodInput, { value: { start: '', end: '' }, label: NAME, onchange });
+		const field = notationField();
+		await fireEvent.input(field, { target: { value: '1.3.2026' } });
+		await fireEvent.input(field, { target: { value: '1.3.2026 bis 14.3.2026' } });
+		await fireEvent.blur(field);
+		expect(onchange).toHaveBeenCalledExactlyOnceWith({ start: '2026-03-01', end: '2026-03-14' });
+	});
+
+	it('reports readable again when it is removed', async () => {
+		const onunreadable = vi.fn();
+		const { unmount } = render(PeriodInput, {
+			value: { start: '', end: '' },
+			label: NAME,
+			onunreadable
+		});
+		await fireEvent.input(notationField(), { target: { value: 'nächsten Monat' } });
+		expect(onunreadable).toHaveBeenLastCalledWith(true);
+		unmount();
+		expect(onunreadable).toHaveBeenLastCalledWith(false);
 	});
 
 	it('shows a changed end in the period, and a span with both ends', async () => {
@@ -67,6 +147,7 @@ describe('PeriodInput', () => {
 			onchange
 		});
 		await fireEvent.input(notationField(), { target: { value: '' } });
+		await fireEvent.blur(notationField());
 		expect(onchange).toHaveBeenLastCalledWith({ start: '', end: '' });
 	});
 });

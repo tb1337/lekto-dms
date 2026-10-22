@@ -408,6 +408,57 @@ describe('DocumentForm', () => {
 		expect((button as HTMLButtonElement).disabled).toBe(false);
 	});
 
+	it('does not save while a period is written in a way it cannot read', async () => {
+		fetchMock.mockResolvedValue(
+			new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+		);
+		const PERIOD = '0199a6c4-0000-7000-8000-0000000000f3';
+		const withPeriod = {
+			...lookup,
+			fields: [
+				...lookup.fields,
+				{
+					id: PERIOD,
+					name: 'Bezugszeitraum',
+					data_type: 'period',
+					document_type_ids: null,
+					required: false,
+					required_document_type_ids: [],
+					choices: []
+				}
+			]
+		} as unknown as Lookup;
+		render(
+			DocumentForm,
+			props({
+				document: documentOf('completed', 'green'),
+				review: null,
+				next: null,
+				lookup: withPeriod
+			})
+		);
+		const button = screen.getByRole('button', { name: m.edit_review() }) as HTMLButtonElement;
+		await userEvent.type(screen.getByLabelText('Notiz', { selector: 'input' }), 'bezahlt');
+		expect(button.disabled).toBe(false);
+		const notation = screen.getByLabelText(m.field_period_notation());
+		await fireEvent.input(notation, { target: { value: '2026-1' } });
+		await fireEvent.blur(notation);
+		expect(screen.getByText(m.field_period_unreadable())).toBeTruthy();
+		expect(button.disabled).toBe(true);
+		await fireEvent.submit(button.form as HTMLFormElement);
+		expect(fetchMock).not.toHaveBeenCalled();
+
+		await fireEvent.input(notation, { target: { value: '2026-11' } });
+		await fireEvent.blur(notation);
+		expect(button.disabled).toBe(false);
+		await userEvent.click(button);
+		expect(fetchMock.mock.calls[0][0].url).toMatch(/\/dry-run$/);
+		const sent = await fetchMock.mock.calls[0][0].json();
+		expect(sent.fields).toMatchObject({
+			[PERIOD]: { start: '2026-11-01', end: '2026-11-30' }
+		});
+	});
+
 	it('confirms a filed document that waits for its space, with the space to file into', async () => {
 		fetchMock.mockResolvedValue(
 			new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })

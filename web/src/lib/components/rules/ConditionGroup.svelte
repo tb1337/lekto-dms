@@ -22,6 +22,7 @@
 	import { cn } from '#lib/utils.ts';
 
 	// A group of conditions: and/or, turned around or not, with conditions and subgroups.
+	// `onunreadable` says, by the condition's key, while a value's text cannot be read.
 	let {
 		group,
 		model,
@@ -29,12 +30,14 @@
 		errors,
 		onremove,
 		onup,
-		ondown
+		ondown,
+		onunreadable
 	}: {
 		group: GroupNode;
 		model: RuleModel;
 		lookup: Lookup;
 		errors: Record<string, string>;
+		onunreadable?: (key: string, unreadable: boolean) => void;
 		onremove?: () => void;
 		onup?: () => void;
 		ondown?: () => void;
@@ -112,6 +115,7 @@
 				onremove={() => remove(index)}
 				onup={up(index)}
 				ondown={down(index)}
+				{onunreadable}
 			/>
 		{:else}
 			<ConditionRow
@@ -121,6 +125,7 @@
 				onremove={() => remove(index)}
 				onup={up(index)}
 				ondown={down(index)}
+				onunreadable={(unreadable) => onunreadable?.(item.key, unreadable)}
 			/>
 		{/if}
 	{/each}

@@ -27,17 +27,20 @@
 	} from '#lib/rules/model.ts';
 
 	// One condition: condition field (and the field), comparison and the value it needs.
+	// `onunreadable` says while the value's text cannot be read (see `ValueInput`).
 	let {
 		condition,
 		lookup,
 		error,
 		onremove,
 		onup,
-		ondown
+		ondown,
+		onunreadable
 	}: {
 		condition: ConditionNode;
 		lookup: Lookup;
 		error?: string;
+		onunreadable?: (unreadable: boolean) => void;
 		onremove: () => void;
 		onup?: () => void;
 		ondown?: () => void;
@@ -195,6 +198,7 @@
 					label={valueLabel}
 					value={condition.value}
 					onchange={(next) => (condition.value = next)}
+					{onunreadable}
 				/>
 			{:else}
 				<Input

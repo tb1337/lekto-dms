@@ -2887,6 +2887,11 @@ export interface components {
 			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, topic, tags, date or fields; adding or removing tags set by hand alone does not count), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
 			 */
 			confirmed_at: string | null;
+			/**
+			 * Space Confirmed At
+			 * @description When a person last decided the space: confirming in the inbox (also keeping it), moving or handing the document over, choosing it on upload, or a migration; null while the pipeline or rules placed it. Such documents teach the classifier the space.
+			 */
+			space_confirmed_at?: string | null;
 			processing: components['schemas']['Processing'];
 			/**
 			 * Created At
@@ -3026,6 +3031,11 @@ export interface components {
 			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, topic, tags, date or fields; adding or removing tags set by hand alone does not count), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
 			 */
 			confirmed_at: string | null;
+			/**
+			 * Space Confirmed At
+			 * @description When a person last decided the space: confirming in the inbox (also keeping it), moving or handing the document over, choosing it on upload, or a migration; null while the pipeline or rules placed it. Such documents teach the classifier the space.
+			 */
+			space_confirmed_at?: string | null;
 			processing: components['schemas']['Processing'];
 			/**
 			 * Created At
@@ -4380,6 +4390,11 @@ export interface components {
 			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, topic, tags, date or fields; adding or removing tags set by hand alone does not count), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
 			 */
 			confirmed_at: string | null;
+			/**
+			 * Space Confirmed At
+			 * @description When a person last decided the space: confirming in the inbox (also keeping it), moving or handing the document over, choosing it on upload, or a migration; null while the pipeline or rules placed it. Such documents teach the classifier the space.
+			 */
+			space_confirmed_at?: string | null;
 			processing: components['schemas']['Processing'];
 			/**
 			 * Created At

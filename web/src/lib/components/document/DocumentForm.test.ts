@@ -484,83 +484,10 @@ describe('DocumentForm', () => {
 		});
 	});
 
-	it('confirms a filed document that waits for its space, with the space to file into', async () => {
-		fetchMock.mockResolvedValue(
-			new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
-		);
-		const waiting = {
-			document: {},
-			open: [
-				{
-					node: 'file',
-					outcome: 'uncertain',
-					reason: 'space',
-					fields: [check('space', { outcome: 'uncertain', reason: 'no write access' })]
-				}
-			],
-			nodes: []
-		} as unknown as Review;
-		render(DocumentForm, props({ document: documentOf('completed'), review: waiting, next: null }));
-		expect(screen.getByRole('combobox', { name: m.field_space() })).toBeTruthy();
-		await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
-		expect(await fetchMock.mock.calls[0][0].json()).toEqual({
-			changes: {},
-			accept_suggestions: false,
-			resume_at: 'apply_rules'
-		});
-	});
-
-	it('says whom the document went to when confirming hands it over', async () => {
-		const ANNA = '0199a6c4-0000-7000-8000-000000000002';
-		const ANNAS = '0199a6c4-0000-7000-8000-0000000000d2';
-		fetchMock.mockResolvedValue(
-			new Response(JSON.stringify({ id: 'doc-1', access: null }), {
-				status: 202,
-				headers: { 'content-type': 'application/json' }
-			})
-		);
-		const success = vi.spyOn(toast, 'success');
-		const onconfirmed = vi.fn();
-		const waiting = {
-			document: {},
-			open: [
-				{
-					node: 'file',
-					outcome: 'uncertain',
-					reason: 'space',
-					fields: [check('space', { outcome: 'uncertain', reason: 'no write access' })]
-				}
-			],
-			nodes: []
-		} as unknown as Review;
-		const withAnna = {
-			...lookup,
-			users: [{ id: ANNA, username: 'anna', role: 'user', personal_space_id: ANNAS }]
-		} as unknown as Lookup;
-		render(
-			DocumentForm,
-			props({
-				document: documentOf('completed'),
-				review: waiting,
-				next: null,
-				lookup: withAnna,
-				onconfirmed
-			})
-		);
-		await choose(
-			userEvent.setup({ pointerEventsCheck: 0 }),
-			screen.getByRole('combobox', { name: m.field_space() }),
-			ANNAS
-		);
-		await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
-		await waitFor(() => expect(onconfirmed).toHaveBeenCalledWith(null));
-		expect(await fetchMock.mock.calls[0][0].json()).toMatchObject({ space_id: ANNAS });
-		expect(success).toHaveBeenCalledWith(m.move_handed_over({ name: 'anna' }));
-	});
-
-	describe('a space Lekto suggests', () => {
+	describe('the filing box', () => {
 		const ANNA = '0199a6c4-0000-7000-8000-000000000002';
 		const MINE = '0199a6c4-0000-7000-8000-0000000000d3';
+		const ANNAS = '0199a6c4-0000-7000-8000-0000000000d2';
 		const household = {
 			...lookup,
 			spaces: [
@@ -584,44 +511,114 @@ describe('DocumentForm', () => {
 			],
 			users: [
 				{ id: OWNER, username: 'tobi', role: 'user', personal_space_id: MINE },
-				{ id: ANNA, username: 'anna', role: 'user', personal_space_id: null }
+				{ id: ANNA, username: 'anna', role: 'user', personal_space_id: ANNAS }
 			]
 		} as unknown as Lookup;
-		const suggesting = {
-			document: {},
-			open: [
+		const waitingOn = (fields: Record<string, unknown>) =>
+			({
+				document: {},
+				open: [
+					{
+						node: 'judge',
+						outcome: 'uncertain',
+						reason: 'space',
+						fields: [check('space', { outcome: 'uncertain', confidence: 0.89, ...fields })]
+					}
+				],
+				nodes: []
+			}) as unknown as Review;
+		const suggesting = waitingOn({
+			reason: 'suggests another space, which shows it to more people',
+			suggestion: SPACE,
+			candidates: [
 				{
-					node: 'judge',
-					outcome: 'uncertain',
-					reason: 'space: suggests another space, which shows it to more people',
-					fields: [
-						check('space', {
-							outcome: 'uncertain',
-							confidence: 0.89,
-							reason: 'suggests another space, which shows it to more people',
-							suggestion: SPACE
-						})
+					value: SPACE,
+					label: 'a shared space',
+					contradicted: false,
+					sources: [{ signal: 'signal_llm', names: true, recipient: false }]
+				}
+			]
+		});
+		const handingOver = waitingOn({
+			reason: 'suggests another space, which shows it to more people',
+			suggestion: ANNAS,
+			candidates: [
+				{
+					value: ANNAS,
+					label: "another user's personal space",
+					contradicted: true,
+					sources: [{ signal: 'signal_llm', names: true, recipient: true }]
+				},
+				{
+					value: MINE,
+					label: "the uploader's personal space",
+					contradicted: true,
+					sources: [{ signal: 'signal_neighbours', names: true, votes: 5, found: 5 }]
+				}
+			]
+		});
+		const disagreeing = waitingOn({
+			reason: 'the signals name different spaces',
+			unseen_by: [ANNA],
+			candidates: [
+				{
+					value: SPACE,
+					label: 'a shared space',
+					contradicted: true,
+					sources: [{ signal: 'signal_llm', names: true, recipient: false }]
+				},
+				{
+					value: MINE,
+					label: "the uploader's personal space",
+					contradicted: true,
+					sources: [
+						{ signal: 'signal_neighbours', names: true, votes: 4, found: 5 },
+						{ signal: 'signal_classifier', names: false, score: 0.61 }
 					]
 				}
-			],
-			nodes: []
-		} as unknown as Review;
-		const mine = () => ({ ...documentOf('review'), space_id: MINE }) as unknown as Document;
-
-		it('starts at the suggestion, says who sees it there, and accepts it', async () => {
+			]
+		});
+		const mine = (lane: string | null = 'yellow') =>
+			({ ...documentOf('review', lane), space_id: MINE }) as unknown as Document;
+		const ok = () =>
 			fetchMock.mockResolvedValue(
 				new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
 			);
+		const radio = (name: string) => screen.getByRole('radio', { name: new RegExp(name) });
+		const confirmButton = () =>
+			screen.getByRole('button', { name: m.review_confirm() }) as HTMLButtonElement;
+
+		it('stands above the basics while it waits for a decision, below the fields when not', () => {
+			const { unmount } = render(
+				DocumentForm,
+				props({ document: mine(), review: suggesting, lookup: household })
+			);
+			const open = screen.getByTestId('filing-open');
+			const basics = screen.getByRole('region', { name: m.group_basics() });
+			expect(open.compareDocumentPosition(basics) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+			expect(screen.queryByTestId('filing-calm')).toBeNull();
+			unmount();
+			render(DocumentForm, props({ document: mine('green'), review: null, lookup: household }));
+			const calm = screen.getByTestId('filing-calm');
+			const global = screen.getByRole('region', { name: m.group_global() });
+			expect(global.compareDocumentPosition(calm) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+			expect(screen.queryByTestId('filing-open')).toBeNull();
+		});
+
+		it('chooses the suggestion, says who sees it there, and accepts it', async () => {
+			ok();
 			render(
 				DocumentForm,
 				props({ document: mine(), review: suggesting, lookup: household, next: null })
 			);
-			const select = screen.getByRole('combobox', { name: m.field_space() });
-			expect(selectedValue(select)).toBe(SPACE);
-			expect(
-				screen.getByText(m.space_suggestion_for({ space: 'Haushalt', names: 'anna' }))
-			).toBeTruthy();
-			await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
+			expect(screen.getByText(m.filing_lead_move({ space: 'Haushalt' }))).toBeTruthy();
+			const option = radio(m.filing_move({ space: 'Haushalt' })) as HTMLInputElement;
+			expect(option.checked).toBe(true);
+			expect(screen.getByText(m.filing_new_readers({ names: 'anna' }))).toBeTruthy();
+			expect(screen.getByTestId('filing-hint').textContent).toContain(
+				m.filing_hint_move_readers({ space: 'Haushalt', names: 'anna' })
+			);
+			await userEvent.click(confirmButton());
 			expect(await fetchMock.mock.calls[0][0].json()).toEqual({
 				changes: {},
 				accept_suggestions: true,
@@ -629,25 +626,163 @@ describe('DocumentForm', () => {
 			});
 		});
 
-		it('keeps the space when the person chooses where it lies', async () => {
-			fetchMock.mockResolvedValue(
-				new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
-			);
+		it('keeps the space when the person chooses to leave it where it lies', async () => {
+			ok();
 			render(
 				DocumentForm,
 				props({ document: mine(), review: suggesting, lookup: household, next: null })
 			);
-			await choose(
-				userEvent.setup({ pointerEventsCheck: 0 }),
-				screen.getByRole('combobox', { name: m.field_space() }),
-				MINE
-			);
-			await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
+			await userEvent.click(radio(m.filing_stay({ space: m.space_personal() })));
+			expect(screen.queryByTestId('filing-hint')).toBeNull();
+			await userEvent.click(confirmButton());
 			expect(await fetchMock.mock.calls[0][0].json()).toEqual({
 				changes: {},
 				accept_suggestions: false,
 				resume_at: 'apply_rules'
 			});
+		});
+
+		it('suggests the hand-over with what speaks for it, and warns above "Confirm"', async () => {
+			fetchMock.mockResolvedValue(
+				new Response(JSON.stringify({ id: 'doc-1', access: null }), {
+					status: 202,
+					headers: { 'content-type': 'application/json' }
+				})
+			);
+			const success = vi.spyOn(toast, 'success');
+			render(
+				DocumentForm,
+				props({ document: mine(), review: handingOver, lookup: household, next: null })
+			);
+			expect(screen.getByText(m.filing_lead_hand_over({ name: 'anna' }))).toBeTruthy();
+			expect((radio(m.move_hand_over({ name: 'anna' })) as HTMLInputElement).checked).toBe(true);
+			expect(screen.getByText(m.filing_chip_recipient({ name: 'anna' }))).toBeTruthy();
+			expect(screen.getByText(m.filing_chip_neighbours({ votes: 5, found: 5 }))).toBeTruthy();
+			expect(screen.getByText(m.filing_hand_over_consequence({ name: 'anna' }))).toBeTruthy();
+			expect(screen.getByTestId('filing-hint').textContent).toContain(
+				m.filing_hint_hand_over({ name: 'anna' })
+			);
+			await userEvent.click(confirmButton());
+			expect(await fetchMock.mock.calls[0][0].json()).toMatchObject({ accept_suggestions: true });
+			await waitFor(() =>
+				expect(success).toHaveBeenCalledWith(m.move_handed_over({ name: 'anna' }))
+			);
+		});
+
+		it('chooses nothing when the signals disagree, warns of whom it names, and waits for a choice', async () => {
+			ok();
+			render(
+				DocumentForm,
+				props({ document: mine(), review: disagreeing, lookup: household, next: null })
+			);
+			expect(screen.getByText(m.filing_status_disagree())).toBeTruthy();
+			expect(screen.getByText(m.filing_lead_disagree())).toBeTruthy();
+			expect(
+				screen.getAllByRole('radio').every((input) => !(input as HTMLInputElement).checked)
+			).toBe(true);
+			expect(screen.getByText(m.filing_chip_neighbours({ votes: 4, found: 5 }))).toBeTruthy();
+			expect(screen.getByTestId('filing-unseen').textContent).toContain(
+				m.space_named_unseen({ names: 'anna' })
+			);
+			expect(screen.getByTestId('filing-hint').textContent).toContain(m.filing_choose_first());
+			expect(confirmButton().disabled).toBe(true);
+			await userEvent.click(radio(m.filing_move({ space: 'Haushalt' })));
+			expect(confirmButton().disabled).toBe(false);
+			await userEvent.click(confirmButton());
+			expect(await fetchMock.mock.calls[0][0].json()).toEqual({
+				changes: {},
+				accept_suggestions: false,
+				resume_at: 'apply_rules',
+				space_id: SPACE
+			});
+		});
+
+		it('confirms a document whose rules could not file it, once the person chose', async () => {
+			ok();
+			const waiting = {
+				document: {},
+				open: [
+					{
+						node: 'file',
+						outcome: 'uncertain',
+						reason: 'space',
+						fields: [check('space', { outcome: 'uncertain', reason: 'no write access' })]
+					}
+				],
+				nodes: []
+			} as unknown as Review;
+			render(
+				DocumentForm,
+				props({ document: documentOf('completed'), review: waiting, next: null })
+			);
+			expect(confirmButton().disabled).toBe(true);
+			await userEvent.click(radio(m.filing_stay({ space: 'Haushalt' })));
+			await userEvent.click(confirmButton());
+			expect(await fetchMock.mock.calls[0][0].json()).toEqual({
+				changes: {},
+				accept_suggestions: false,
+				resume_at: 'apply_rules'
+			});
+		});
+
+		it('hands over through "Another space" and says whom it went to', async () => {
+			fetchMock.mockResolvedValue(
+				new Response(JSON.stringify({ id: 'doc-1', access: null }), {
+					status: 202,
+					headers: { 'content-type': 'application/json' }
+				})
+			);
+			const success = vi.spyOn(toast, 'success');
+			const onconfirmed = vi.fn();
+			render(
+				DocumentForm,
+				props({ document: mine(), review: suggesting, lookup: household, next: null, onconfirmed })
+			);
+			await choose(
+				userEvent.setup({ pointerEventsCheck: 0 }),
+				screen.getByRole('combobox', { name: m.filing_other() }),
+				ANNAS
+			);
+			expect((radio(m.filing_other()) as HTMLInputElement).checked).toBe(true);
+			expect(screen.getByTestId('filing-hint').textContent).toContain(
+				m.filing_hint_hand_over({ name: 'anna' })
+			);
+			await userEvent.click(confirmButton());
+			await waitFor(() => expect(onconfirmed).toHaveBeenCalledWith(null));
+			expect(await fetchMock.mock.calls[0][0].json()).toMatchObject({ space_id: ANNAS });
+			expect(success).toHaveBeenCalledWith(m.move_handed_over({ name: 'anna' }));
+		});
+
+		it('shows where a settled document lies, who sees it, and moves it on request', async () => {
+			const onmove = vi.fn();
+			const decided = {
+				...documentOf('completed', 'green'),
+				space_id: SPACE,
+				space_confirmed_at: '2026-10-22T09:50:00Z'
+			} as unknown as Document;
+			render(DocumentForm, props({ document: decided, review: null, lookup: household, onmove }));
+			const calm = screen.getByTestId('filing-calm');
+			expect(within(calm).getByText('Haushalt')).toBeTruthy();
+			expect(within(calm).getByText(m.filing_you_edit())).toBeTruthy();
+			expect(within(calm).getByText(m.filing_member_read({ name: 'anna' }))).toBeTruthy();
+			expect(within(calm).getByText(m.filing_uploader_you({ name: 'tobi' }))).toBeTruthy();
+			expect(within(calm).queryByText(m.filing_decided_lekto())).toBeNull();
+			await userEvent.click(within(calm).getByRole('button', { name: m.filing_move_action() }));
+			expect(onmove).toHaveBeenCalled();
+		});
+
+		it('names readers of a document that is not green yet as reading it once it is', () => {
+			render(
+				DocumentForm,
+				props({
+					document: { ...documentOf('processing', null), space_id: SPACE } as unknown as Document,
+					review: null,
+					lookup: household
+				})
+			);
+			const calm = screen.getByTestId('filing-calm');
+			expect(within(calm).getByText(m.filing_member_read_later({ name: 'anna' }))).toBeTruthy();
+			expect(within(calm).getByText(m.filing_decided_lekto())).toBeTruthy();
 		});
 
 		it('warns on a green document that someone it names does not see it where it lies', () => {
@@ -667,8 +802,8 @@ describe('DocumentForm', () => {
 					}
 				]
 			} as unknown as Review;
-			render(DocumentForm, props({ document: mine(), review: settled, lookup: household }));
-			expect(screen.getByTestId('space-unseen').textContent).toContain(
+			render(DocumentForm, props({ document: mine('green'), review: settled, lookup: household }));
+			expect(screen.getByTestId('filing-unseen').textContent).toContain(
 				m.space_named_unseen({ names: 'anna' })
 			);
 		});

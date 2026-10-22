@@ -147,6 +147,13 @@
 		if (readable) visionOpen = true;
 	}
 
+	/** Open the move dialog (also from the filing box of the form). */
+	export function startMove() {
+		if (!manageable || targets.length === 0) return;
+		target = targets[0].value;
+		moveOpen = true;
+	}
+
 	/** Open the reprocessing dialog (also from the log). */
 	export function startReprocess() {
 		if (nodes.length === 0) return;
@@ -354,10 +361,7 @@
 					variant="outline"
 					class="max-sm:px-3"
 					title={m.move_title()}
-					onclick={() => {
-						target = targets[0]?.value ?? '';
-						moveOpen = true;
-					}}
+					onclick={startMove}
 					disabled={targets.length === 0}
 				>
 					<FolderInput aria-hidden="true" />

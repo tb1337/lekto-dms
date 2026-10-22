@@ -578,6 +578,7 @@
 										onquotes={(next) => (fieldQuotes = next)}
 										factCounts={facts ? factCounts(facts) : null}
 										factsHref={viewHref(page.url, { ...view, right: 'facts' })}
+										onmove={() => header?.startMove()}
 										onreveal={reveal}
 										end={paneSwitch(rightSwitch)}
 									/>

@@ -227,6 +227,20 @@ processing (`nextDecision`); without one, back to the inbox.
   Pages are scaled while the zoom moves and drawn anew once it rests. A field with a quote
   marks it on the page while hovered or focused (the places come from `/review`, the space's
   editors and admins), a click on its page jumps there; so does a code from the content tab.
+- **Filing** (`FilingBox`, `lib/filing.ts`): where the document lies and who sees it. While
+  the judge's space check waits for a person, a yellow box at the top of the form, above the
+  basics: where it lies, a lead sentence ("Lekto schlägt vor, das Dokument an Anna Leider zu
+  übergeben." or, when the signals disagree, "Wähle, wohin es gehört."), the choices as radio
+  cards built from the check's candidates (the suggestion first, the other spaces named,
+  leaving it where it lies), each with what speaks for it (the model, the recipient it read,
+  "5 von 5 ähnlichen Dokumenten liegen dort", the classifier's probability) and what it changes,
+  plus "Another space" with the caller's other targets; a suggestion is chosen from the start,
+  a disagreement chooses nothing. Named people who would not see it there stand in a blue note
+  (`unseen_by`). Above "Confirm" a line says what the choice does: "Erst wählen, dann
+  bestätigen." (the button waits), a hand-over as a warning, a move with its new readers;
+  staying says nothing. With nothing to decide, a calm box below the fields: space, members
+  with their roles (readers once the document is green), who uploaded it, when a person decided
+  the space (`space_confirmed_at`), and "Move" (the head's move dialog).
 - **Content:** the text as it is set, page by page, and beside it the facts and codes
   (`FactsPanel`, from `/facts`). Text and facts are asked for once the document has its text
   (`hasText`: `parse` done in the first run; a later run keeps the text of the one before), not

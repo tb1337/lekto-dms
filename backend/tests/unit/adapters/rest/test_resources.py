@@ -370,6 +370,8 @@ async def test_downloads(api: Api) -> None:
 async def test_moving_and_deleting(api: Api) -> None:
     owner = await api.user()
     document = await upload(api, auth(owner))
+    before = await api.client.get(f"{PREFIX}/documents/{document}", headers=auth(owner))
+    assert before.json()["space_confirmed_at"] is None
     target = await post(api, "/spaces", {"name": "Archive"}, auth(owner))
     moved = await api.client.post(
         f"{PREFIX}/documents/{document}/move", json={"space_id": target["id"]}, headers=auth(owner)
@@ -377,6 +379,8 @@ async def test_moving_and_deleting(api: Api) -> None:
     assert moved.status_code == 204
     details = await api.client.get(f"{PREFIX}/documents/{document}", headers=auth(owner))
     assert details.json()["space_id"] == target["id"]
+    # A person's move decides the space: the filing box says when.
+    assert details.json()["space_confirmed_at"] is not None
     deleted = await api.client.delete(f"{PREFIX}/documents/{document}", headers=auth(owner))
     assert deleted.status_code == 204
     gone = await api.client.get(f"{PREFIX}/documents/{document}", headers=auth(owner))

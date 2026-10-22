@@ -17,12 +17,12 @@
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
 	import FieldGroup from '#lib/components/document/FieldGroup.svelte';
 	import FieldShell from '#lib/components/document/FieldShell.svelte';
+	import FilingBox from '#lib/components/document/FilingBox.svelte';
 	import PaneHead from '#lib/components/document/PaneHead.svelte';
 	import TopicInput from '#lib/components/document/TopicInput.svelte';
 	import SearchSelect, { type SearchOption } from '#lib/components/SearchSelect.svelte';
 	import GroupChips from '#lib/components/GroupChips.svelte';
 	import FieldValueInput from '#lib/components/FieldValueInput.svelte';
-	import Select from '#lib/components/Select.svelte';
 	import RuleEffects from '#lib/components/rules/RuleEffects.svelte';
 	import TagPicker from '#lib/components/TagPicker.svelte';
 	import TypeIcon from '#lib/components/TypeIcon.svelte';
@@ -40,6 +40,14 @@
 	} from '#lib/document-view.ts';
 	import { describeError, fieldErrors as fieldMessages } from '#lib/errors.ts';
 	import { factsSummary } from '#lib/facts.ts';
+	import {
+		confirmHint,
+		initialChoice,
+		openFiling,
+		openSpaceCheck,
+		type Filing,
+		type Viewer
+	} from '#lib/filing.ts';
 	import { sameValue, toApi, toInput, type ApiValue, type InputValue } from '#lib/fields.ts';
 	import {
 		fieldsFor,
@@ -54,13 +62,8 @@
 	import { phone } from '#lib/phone.svelte.ts';
 	import { fieldId, initialValue, isRuleField, type ReviewValue } from '#lib/review.ts';
 	import { session } from '#lib/session.svelte.ts';
-	import {
-		suggestedSpace,
-		suggestionText,
-		unseenBy,
-		unseenHere,
-		unseenText
-	} from '#lib/space-suggestion.ts';
+	import { suggestedSpace, unseenBy, unseenHere } from '#lib/space-suggestion.ts';
+	import { cn } from '#lib/utils.ts';
 	import { above, normalise, ofScope } from '#lib/tags.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
@@ -87,6 +90,7 @@
 		onenabled,
 		factCounts = null,
 		factsHref = '',
+		onmove,
 		end
 	}: {
 		document: Document;
@@ -110,6 +114,8 @@
 		factCounts?: { evidence: number; unknown: number; codes: number } | null;
 		/** Where the facts are: the other pane of the document tab. */
 		factsHref?: string;
+		/** "Move" in the filing box: the move dialog of the document's head. */
+		onmove?: () => void;
 		/** At the end of the head: the pane's switch. */
 		end?: Snippet;
 	} = $props();
@@ -124,7 +130,10 @@
 	let documentType = $state('');
 	let tags = $state<string[]>([]);
 	let values = $state<Record<string, InputValue>>({});
-	let spaceId = $state('');
+	// The filing chosen while the space check waits: a space, `other` for "Another space"
+	// (then `otherSpace`), or empty for none yet.
+	let spaceChoice = $state('');
+	let otherSpace = $state('');
 	let openNext = $state(true);
 	let busy = $state(false);
 	let preview = $state<Preview | null>(null);
@@ -161,7 +170,7 @@
 	// Something to confirm. A failed node alone is repeated, not confirmed; its document can
 	// still be changed (dry run and save).
 	const confirming = $derived(reviewing && (!failedNode || decisions.length > 0 || hasSpace));
-	// The space Lekto suggests (the judge's open check): the select starts there, marked.
+	// The space Lekto suggests (the judge's open check): chosen from the start.
 	const spaceSuggestion = $derived(hasSpace ? suggestedSpace(review?.open ?? []) : null);
 	// Whom the document names who would not see it where the check leads (a warning).
 	const spaceUnseen = $derived(hasSpace ? unseenBy(review?.open ?? []) : []);
@@ -169,18 +178,41 @@
 	const settledUnseen = $derived(
 		hasSpace ? [] : unseenHere(review?.nodes ?? [], document.space_id, lookup)
 	);
+	const viewer: Viewer = $derived({ id: session.user?.id, admin: session.isAdmin });
 	// Confirmed into a space the caller edits (an admin: any), or handed over into another user's
 	// personal space.
-	const spaceChoices = $derived(
-		spaceOptions(lookup.spaces, lookup.users, session.user).map((option) =>
-			option.value === spaceSuggestion
-				? { ...option, label: m.space_suggestion({ space: option.label }) }
-				: option
+	const spaceChoices = $derived(spaceOptions(lookup.spaces, lookup.users, session.user));
+	// The filing box while the space check waits: the choices the signals offer.
+	const filing: Filing | null = $derived.by(() => {
+		const check = hasSpace ? openSpaceCheck(review?.open ?? []) : null;
+		return check ? openFiling(check, document.space_id, lookup, viewer, spaceChoices) : null;
+	});
+	// "Another space": the caller's other choices.
+	const otherChoices = $derived(
+		spaceChoices.filter(
+			(option) =>
+				option.value !== document.space_id &&
+				!filing?.options.some((offered) => offered.value === option.value)
 		)
+	);
+	// Where the document goes on confirming: empty while nothing is chosen.
+	const spaceTarget = $derived(spaceChoice === 'other' ? otherSpace : spaceChoice);
+	const filingHint = $derived(
+		filing ? confirmHint(spaceTarget, document.space_id, lookup, viewer) : null
 	);
 
 	const snapshot = () =>
-		JSON.stringify([title, date, contact, topic, documentType, tags, values, spaceId]);
+		JSON.stringify([
+			title,
+			date,
+			contact,
+			topic,
+			documentType,
+			tags,
+			values,
+			spaceChoice,
+			otherSpace
+		]);
 	let baseline: { id: string; form: string; reviewing: boolean } | null = null;
 
 	function assign(key: string, value: ReviewValue) {
@@ -206,12 +238,12 @@
 		values = Object.fromEntries(
 			lookup.fields.map((field) => [field.id, toInput(field.data_type, document.fields[field.id])])
 		);
-		spaceId = document.space_id;
+		spaceChoice = '';
+		otherSpace = '';
 		if (reviewing) {
 			for (const check of decisions)
 				assign(check.field, initialValue(check, document, lookup.fields));
-			if (spaceSuggestion && spaceChoices.some((option) => option.value === spaceSuggestion))
-				spaceId = spaceSuggestion;
+			if (filing) spaceChoice = initialChoice(filing);
 		}
 		baseline = { id: document.id, form: snapshot(), reviewing };
 	}
@@ -266,8 +298,7 @@
 		void lookup.fields;
 		void reviewing;
 		void decisions;
-		void spaceSuggestion;
-		void spaceChoices;
+		void filing;
 		untrack(() => {
 			const edited = baseline?.id === document.id && snapshot() !== baseline.form;
 			if (!edited) fromDocument();
@@ -279,6 +310,7 @@
 						assign(check.field, initialValue(check, document, lookup.fields));
 					}
 				}
+				if (spaceChoice === '' && filing) spaceChoice = initialChoice(filing);
 				baseline = { ...baseline, reviewing: true };
 			}
 		});
@@ -370,16 +402,16 @@
 		}
 		if (Object.keys(fields).length > 0) changes.fields = fields;
 		else delete changes.fields;
-		const moving = hasSpace && spaceId !== '' && spaceId !== document.space_id;
+		const moving = hasSpace && spaceTarget !== '' && spaceTarget !== document.space_id;
 		// The suggested space is accepted as the suggestion; every other field has its decision
 		// in `changes` then. After a corrected type the fields are extracted again and have none:
 		// the space goes by name.
-		const accepting = moving && spaceId === spaceSuggestion && !typeChanged;
+		const accepting = moving && spaceTarget === spaceSuggestion && !typeChanged;
 		return {
 			changes,
 			accept_suggestions: accepting,
 			resume_at: typeChanged ? 'fields' : 'apply_rules',
-			...(moving && !accepting ? { space_id: spaceId } : {})
+			...(moving && !accepting ? { space_id: spaceTarget } : {})
 		};
 	}
 
@@ -651,6 +683,22 @@
 			{/each}
 		{/if}
 
+		<!-- What is to decide about the filing comes first (Tobi, 22.10.2026); else it waits below
+		     the fields. -->
+		{#if filing}
+			<FilingBox
+				{document}
+				{lookup}
+				{viewer}
+				{filing}
+				bind:choice={spaceChoice}
+				bind:other={otherSpace}
+				otherOptions={otherChoices}
+				unseen={spaceUnseen}
+				{editable}
+			/>
+		{/if}
+
 		<FieldGroup
 			id="group-basics"
 			icon={FileText}
@@ -832,34 +880,6 @@
 					disabled={!editable}
 				/>
 			</FieldShell>
-			{#if hasSpace}
-				<FieldShell
-					key="space"
-					label={m.field_space()}
-					inputId="doc-space"
-					{lookup}
-					active={focused === 'space'}
-					onfocus={focus}
-					onjump={jump}
-				>
-					<Select id="doc-space" bind:value={spaceId} disabled={!editable} options={spaceChoices} />
-					{#if spaceSuggestion}
-						<p class="text-sm text-muted-foreground">
-							{suggestionText(spaceSuggestion, document.space_id, lookup)}
-						</p>
-						{#if !spaceChoices.some((option) => option.value === spaceSuggestion)}
-							<p class="text-sm text-muted-foreground">{m.space_suggestion_unavailable()}</p>
-						{/if}
-					{/if}
-					{#if spaceUnseen.length > 0}
-						<p class="text-sm text-muted-foreground">{unseenText(spaceUnseen, lookup)}</p>
-					{/if}
-				</FieldShell>
-			{:else if settledUnseen.length > 0}
-				<p class="text-sm text-muted-foreground" data-testid="space-unseen">
-					{unseenText(settledUnseen, lookup)}
-				</p>
-			{/if}
 		</FieldGroup>
 
 		{#snippet fieldShell(field: FieldDefinition)}
@@ -921,6 +941,10 @@
 			</FieldGroup>
 		{/if}
 
+		{#if !filing}
+			<FilingBox {document} {lookup} {viewer} unseen={settledUnseen} {editable} {onmove} />
+		{/if}
+
 		{#if reviewing && decisions.length === 0 && !failedNode && ruleNotes.length === 0 && nodeNotes.length === 0 && !hasSpace}
 			<p class="px-1 text-sm text-muted-foreground">{m.review_nothing_open()}</p>
 		{/if}
@@ -937,8 +961,26 @@
 					{m.review_next_document()}
 				</label>
 			{/if}
+			{#if filingHint}
+				<p
+					class={cn(
+						'flex items-start gap-2 text-sm',
+						filingHint.tone === 'warning'
+							? 'font-medium text-lane-yellow-foreground'
+							: 'text-muted-foreground'
+					)}
+					data-testid="filing-hint"
+				>
+					{#if filingHint.tone === 'warning'}
+						<TriangleAlert class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+					{/if}
+					<span>{filingHint.text}</span>
+				</p>
+			{/if}
 			<div class="flex gap-2">
-				<Button type="submit" disabled={busy || blocked}>{m.review_confirm()}</Button>
+				<Button type="submit" disabled={busy || blocked || (filing !== null && spaceTarget === '')}
+					>{m.review_confirm()}</Button
+				>
 				<Button type="button" variant="ghost" disabled={busy} onclick={reset}>
 					{m.review_reset()}
 				</Button>

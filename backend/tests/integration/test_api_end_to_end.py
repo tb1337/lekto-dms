@@ -129,7 +129,7 @@ async def test_documents_go_through_the_api(
     ocr.broken = True
     born_digital = await system.upload_sample(owner, "text.pdf")
     url, id = born_digital.json()["status_url"], born_digital.json()["id"]
-    failed = await system.settled(owner, id)
+    failed = await system.settled(owner, id, idle=True)
     outcomes = {n["node"]: n["outcome"] for n in failed["processing"]["nodes"]}
     assert (failed["lane"], outcomes["ocr"]) == ("red", "failed")
     ocr.broken = False

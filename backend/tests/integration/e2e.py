@@ -101,13 +101,17 @@ class System:
         document: dict[str, Any] = response.json()
         return document
 
-    async def settled(self, user: User, id: str) -> dict[str, Any]:
-        """The document once processing has ended (it has a lane)."""
+    async def settled(self, user: User, id: str, *, idle: bool = False) -> dict[str, Any]:
+        """The document once processing has ended (it has a lane); with `idle`, also once no
+        node is running any more: a node that fails ends the run red while the nodes beside
+        it (the page images beside OCR) still finish, and a retry meanwhile races their
+        result."""
         document: dict[str, Any] = {}
 
         async def ended() -> bool:
             document.update(await self.document(user, id))
-            return document["lane"] is not None
+            running = any(node["status"] == "running" for node in document["processing"]["nodes"])
+            return document["lane"] is not None and not (idle and running)
 
         await until(ended, self.processing, every=0.2, what=f"the processing of {id}")
         return document

@@ -1052,7 +1052,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Upload a document
-		 * @description Stores the file and starts processing in the background, in the uploader's personal space unless `space_id` names another. The file is hashed while it is received; a file the uploader can read (in a space they edit, or green in a space they read), or one in the target space, is rejected with 409, naming the document if the caller may read it. Follow the progress at `status_url` or with `GET /events`.
+		 * @description Stores the file and starts processing in the background, in the uploader's personal space unless `space_id` names another. The file is hashed while it is received; every file exists once per installation, so one that lies in Lekto already is rejected with 409, naming the document if the caller may read it (otherwise it lies in a space they cannot see). Follow the progress at `status_url` or with `GET /events`.
 		 */
 		post: operations['upload_api_v1_documents_post'];
 		delete?: never;
@@ -1140,7 +1140,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Move a document to another space
-		 * @description Editors of the document's space move it into a space they edit, or hand it over into another active user's personal space (they need not be a member there); an admin moves any document anywhere. Readers do not move. 409 if the target holds the same file (naming it if the caller may read it). A green document becomes new for the target's editors who could not read it before.
+		 * @description Editors of the document's space move it into a space they edit, or hand it over into another active user's personal space (they need not be a member there); an admin moves any document anywhere. Readers do not move. A green document becomes new for the target's editors who could not read it before.
 		 */
 		post: operations['move_document_api_v1_documents__id__move_post'];
 		delete?: never;
@@ -6182,7 +6182,7 @@ export interface components {
 			detail: string | null;
 			/**
 			 * Existing Document Id
-			 * @description For a duplicate: the document that has the same file, if the caller may read it.
+			 * @description For a duplicate (every file exists once per installation): the document that has the same file, if the caller may read it; missing if it lies in a space the caller cannot see.
 			 * @default null
 			 */
 			existing_document_id: string | null;
@@ -14627,7 +14627,7 @@ export interface operations {
 					channel?: 'migration';
 					/**
 					 * Format: uuid
-					 * @description Admins only: the active user named as the document's uploader. Default: the caller. Without `space_id` the document goes to their personal space; the duplicate check covers what they can read.
+					 * @description Admins only: the active user named as the document's uploader. Default: the caller. Without `space_id` the document goes to their personal space.
 					 */
 					uploaded_by?: string;
 					/** @description Admins only, with `channel=migration`: JSON of the metadata the document comes with (up to 48 KiB), as `ImportedMetadataIn`. Classification and field extraction apply it instead of asking the language model; the other nodes and the rules run as usual. */

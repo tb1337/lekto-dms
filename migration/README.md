@@ -162,8 +162,8 @@ Options (all commands): `--plan` (default `migration-plan.yaml`), `--state` (SQL
 default `migration-state.sqlite`), `--report-dir` (default `migration-reports`), `--limit N`
 (the first N selected documents), `--concurrency` (documents at a time, default 4); `--yes`
 (`plan`, `prepare`, `run`: write without asking); `check --download` (download the originals:
-checksum, type by content, duplicates: the same file in the space a document goes to or in one
-its uploader sees, as Lekto counts them); `run --pipeline-timeout`, `run --reupload`. A
+checksum, type by content, duplicates: a file that lies in Lekto already, wherever, since
+every file exists once per installation); `run --pipeline-timeout`, `run --reupload`. A
 duplicate stands for the Paperless document; the migration aligns it like its own only if it is
 no other Paperless document's and lies in the planned space, else it leaves it as it is and
 says why. API keys

@@ -114,33 +114,35 @@ async def test_cleanup_removes_ended_sessions_and_old_failures(world: World) -> 
 
 
 async def test_deleting_a_document_removes_its_files(world: World) -> None:
+    """Its derivatives and its original, unless the same file came in again meanwhile (every
+    file exists once, but a deleted one may be uploaded anew before its files are gone)."""
     service = maintenance(world)
     alice, bob = await world.user(), await world.user()
-    shared_file, own_file = b"%PDF-1.7 same", b"%PDF-1.7 alice only"
-    kept = await world.pipeline().receive(alice.id, incoming(shared_file), filename="a.pdf")
+    again_file, own_file = b"%PDF-1.7 same", b"%PDF-1.7 alice only"
+    first = await world.pipeline().receive(alice.id, incoming(again_file), filename="a.pdf")
     gone = await world.pipeline().receive(alice.id, incoming(own_file), filename="b.pdf")
-    other = await world.pipeline().receive(bob.id, incoming(shared_file), filename="c.pdf")
     await world.drain()
-    for document in (kept, gone):
+    for document in (first, gone):
         for key in derivative_keys(document.id, 2):
             await world.object_store.put(key, b"x", content_type="x")
     async with world.uow() as uow:
-        for document in (kept, gone):
+        for document in (first, gone):
             stored = await uow.documents.get(document.id)
             stored.set_page_count(2, world.clock.now())
             await uow.documents.update(stored)
         await uow.commit()
 
     await world.documents.delete(alice.id, gone.id)
-    await world.documents.delete(alice.id, kept.id)
+    await world.documents.delete(alice.id, first.id)
+    other = await world.pipeline().receive(bob.id, incoming(again_file), filename="c.pdf")
     assert await service.run_next_job() and await service.run_next_job()
     assert not await service.run_next_job()
 
-    for document in (kept, gone):
+    for document in (first, gone):
         for key in derivative_keys(document.id, 2):
             assert not await world.object_store.exists(key)
     assert not await world.object_store.exists(original_key(gone.sha256))
-    assert await world.object_store.exists(original_key(other.sha256))  # Bob still has it
+    assert await world.object_store.exists(original_key(other.sha256))  # Bob's upload has it
     assert [j.status for j in world.database.jobs.values() if j.kind == REMOVE_FILES_JOB] == [
         JobStatus.DONE,
         JobStatus.DONE,

@@ -74,12 +74,16 @@
 								<Copy class="size-3.5 shrink-0" aria-hidden="true" />
 								{m.upload_duplicate()}
 							</span>
-							<a
-								href="{BASE}/documents/{item.documentId}"
-								class="text-primary underline-offset-4 hover:underline"
-							>
-								{m.upload_existing()}
-							</a>
+							{#if item.documentId}
+								<a
+									href="{BASE}/documents/{item.documentId}"
+									class="text-primary underline-offset-4 hover:underline"
+								>
+									{m.upload_existing()}
+								</a>
+							{:else}
+								<span class="text-muted-foreground">{m.upload_duplicate_unseen()}</span>
+							{/if}
 						{:else if item.state === 'skipped' && item.reason}
 							<span class="text-muted-foreground">{REASONS[item.reason]()}</span>
 						{:else}

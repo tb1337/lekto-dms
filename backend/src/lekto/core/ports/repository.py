@@ -9,7 +9,7 @@ Common rules for every adapter:
   commit).
 - Uniqueness (raises ConflictError at the latest on commit): usernames; names of the spaces
   that are nobody's personal one; one personal space per user; names of contacts, document
-  types and field definitions, and of tags per scope; the original (SHA-256) per space.
+  types and field definitions, and of tags per scope; the original (SHA-256).
   Names compare regardless of case. The services look a name up before they write, for a
   message that names it ("'X' already exists"); the adapter's rule is the net for two
   requests at once, which the look-up cannot see.
@@ -327,8 +327,8 @@ class DocumentPosition:
 
 
 class DocumentRepository(Repository[DocumentId, Document], Protocol):
-    async def list_by_sha256(self, sha256: Sha256, spaces: Collection[SpaceId]) -> list[Document]:
-        """The documents with that original in `spaces` (at most one per space)."""
+    async def find_by_sha256(self, sha256: Sha256) -> Document | None:
+        """The document with that original: every file exists once per installation."""
         ...
 
     async def list_visible_to(self, user: UserId) -> list[Document]:

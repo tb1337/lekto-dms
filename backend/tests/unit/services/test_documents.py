@@ -7,7 +7,6 @@ import pytest
 from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.errors import (
     ConflictError,
-    DuplicateDocumentError,
     NotFoundError,
     PermissionDeniedError,
     ValidationError,
@@ -29,7 +28,6 @@ from lekto.core.services.objects import (
     structure_key,
     text_key,
 )
-from tests import builders
 from tests.builders import UNCERTAIN, Returns, incoming
 from tests.unit.services.support import World
 
@@ -187,35 +185,6 @@ async def test_a_deactivated_user_takes_nothing_over(world: World, scene: Scene)
         theirs = await uow.spaces.get_personal(scene.stranger.id)
     with pytest.raises(NotFoundError):
         await world.documents.move(scene.owner.id, scene.document.id, theirs.id)
-
-
-async def test_a_space_holds_a_file_once(world: World, scene: Scene) -> None:
-    owner_personal = await world.personal_space(scene.owner)
-    async with world.uow() as uow:
-        copy = builders.processed(scene.owner, owner_personal, content="other")
-        copy.sha256 = scene.document.sha256
-        await uow.documents.add(copy)
-        await uow.commit()
-    with pytest.raises(DuplicateDocumentError) as raised:
-        await world.documents.move(scene.owner.id, scene.document.id, owner_personal.id)
-    assert raised.value.existing == copy.id
-
-
-async def test_a_duplicate_in_a_space_handed_over_to_stays_unnamed(
-    world: World, scene: Scene
-) -> None:
-    """Handing over into a personal space that holds the same file fails without naming the
-    document there: the mover may not read it."""
-    theirs = await world.personal_space(scene.stranger)
-    async with world.uow() as uow:
-        copy = builders.processed(scene.stranger, theirs, content="theirs")
-        copy.sha256 = scene.document.sha256
-        await uow.documents.add(copy)
-        await uow.commit()
-    with pytest.raises(DuplicateDocumentError) as raised:
-        await world.documents.move(scene.writer.id, scene.document.id, theirs.id)
-    assert raised.value.existing is None
-    assert str(raised.value) == "the space holds the same file already"
 
 
 async def test_readers_never_move(world: World, scene: Scene) -> None:

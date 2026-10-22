@@ -464,9 +464,9 @@ async def test_a_duplicate_is_mapped_not_counted_as_an_error(setup: Setup) -> No
     assert len(setup.lekto.documents) == 8
 
 
-async def test_the_same_file_is_a_duplicate_only_where_its_uploader_sees_it(
-    setup: Setup,
-) -> None:
+async def test_the_same_file_is_a_duplicate_wherever_it_lies(setup: Setup) -> None:
+    """Every file exists once per installation: a copy is a duplicate also for a user who
+    cannot see the document that holds it."""
     assert await setup.migrate() == 0
     twelve = setup.archive.documents[2]  # anna's, in her personal space
     setup.archive.documents += [
@@ -477,10 +477,10 @@ async def test_the_same_file_is_a_duplicate_only_where_its_uploader_sees_it(
     assert await setup.run("check", download=True) == 0
     files = {f["id"]: f for f in setup.report("check")["files"]}
     assert "Lekto has the file already" in files[30]["note"]
-    assert 31 not in files  # bob is no member of anna's personal space
+    assert "Lekto has the file already" in files[31]["note"]
     assert await setup.run("run") == 0
     results = {d["id"]: d["status"] for d in setup.report("run")["documents"]}
-    assert (results[30], results[31]) == ("duplicate", "done")
+    assert (results[30], results[31]) == ("duplicate", "duplicate")
 
 
 async def test_a_copy_of_another_users_document_leaves_it_as_it_is(setup: Setup) -> None:
@@ -506,28 +506,6 @@ async def test_a_copy_of_another_users_document_leaves_it_as_it_is(setup: Setup)
     assert await setup.run("check") == 0
     checked = row(setup.report("check"), 30)
     assert checked["status"] == "not aligned" and "Paperless document 13" in checked["reason"]
-
-
-async def test_a_reader_meets_only_green_duplicates(setup: Setup) -> None:
-    """Bob reads anna's personal space: a copy of her red document is not in his way, as Lekto
-    shows a reader only green documents."""
-    setup.lekto.lanes["scan-12.pdf"] = "red"
-    assert await setup.migrate() == 0
-    users = {user["username"]: user for user in setup.lekto.users.values()}
-    personal = next(
-        space
-        for space in setup.lekto.spaces.values()
-        if space.get("personal_of") == users["anna"]["id"]
-    )
-    personal["members"].append({"user_id": users["bob"]["id"], "role": "read"})
-    twelve = setup.archive.documents[2]
-    setup.archive.documents.append({**twelve, "id": 31, "title": "Bob's copy", "owner": 3})
-    setup.archive.files[31] = setup.archive.files[12]
-    assert await setup.run("check", download=True) == 0
-    files = {f["id"]: f for f in setup.report("check")["files"]}
-    assert 31 not in files
-    assert await setup.run("run") == 0
-    assert row(setup.report("run"), 31)["status"] == "done"
 
 
 async def test_a_new_state_file_finds_what_is_there(setup: Setup) -> None:

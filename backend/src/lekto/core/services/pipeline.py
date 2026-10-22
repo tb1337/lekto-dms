@@ -37,7 +37,6 @@ from lekto.core.domain.inbox import Confirmation
 from lekto.core.domain.jobs import Job, RetryPolicy
 from lekto.core.domain.json_value import JsonObject
 from lekto.core.domain.permissions import (
-    Reach,
     can_file_into,
     can_hand_over,
     document_access,
@@ -74,7 +73,7 @@ from lekto.core.services._access import (
     access_to,
     checked_changes,
     controllable_document,
-    duplicate_error,
+    duplicate_of,
     field_definitions,
     load_actor,
     require_admin,
@@ -336,9 +335,7 @@ class PipelineService:
         except ConflictError:
             # The same file arrived twice at the same moment; the other upload won.
             async with self._uow() as uow:
-                existing = await uow.documents.list_by_sha256(sha256, [target])
-                caller = await load_actor(uow, actor)
-                error = duplicate_error(caller, existing, {target: await uow.spaces.get(target)})
+                error = await duplicate_of(uow, await load_actor(uow, actor), sha256)
             if error is None:
                 raise
             raise error from None
@@ -435,8 +432,8 @@ class PipelineService:
     ) -> SpaceId:
         """The space for a document `actor` uploads in the name of `uploader`: `space`, which
         the actor edits, or else the uploader's personal space. DuplicateDocumentError if the
-        same file lies in the target or in what the uploader reads (`Reach`); it names the
-        document if the actor may read it."""
+        file lies in Lekto already, wherever (every file exists once per installation); it
+        names the document if the actor may read it."""
         user = await load_actor(uow, actor)
         if space is None:
             target = await uow.spaces.get_personal(uploader)
@@ -444,12 +441,7 @@ class PipelineService:
             target = await visible_space(uow, user, space)
             if not can_file_into(user, target):
                 raise SpaceWriteDeniedError(target.id, target.name)
-        spaces = {item.id: item for item in await uow.spaces.list_accessible(uploader)}
-        spaces[target.id] = target
-        reach = Reach.of(uploader, spaces.values())
-        found = await uow.documents.list_by_sha256(sha256, spaces)
-        blocking = [item for item in found if item.space_id == target.id or reach.allows(item)]
-        if (error := duplicate_error(user, blocking, spaces)) is not None:
+        if (error := await duplicate_of(uow, user, sha256)) is not None:
             raise error
         return target.id
 
@@ -576,11 +568,6 @@ class PipelineService:
                 or (item.node is Node.APPLY_RULES and resume_at is Node.APPLY_RULES)
             ]
             target = None if space is None else await self._move_target(uow, user, source, space)
-            if target is not None:
-                found = await uow.documents.list_by_sha256(document.sha256, [target.id])
-                others = [item for item in found if item.id != document.id]
-                if (error := duplicate_error(user, others, {target.id: target})) is not None:
-                    raise error
             now = self._clock.now()
             tags_before = frozenset(document.tag_ids)
             overruled = document.confirm(resume_at, now)

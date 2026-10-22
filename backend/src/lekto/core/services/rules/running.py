@@ -592,15 +592,12 @@ async def apply_plan(
     now: datetime,
 ) -> str | None:
     """Apply the planned change and space; the reason if the change no longer fits (nothing
-    is applied then), or if the space holds the same file already (the space is left)."""
+    is applied then)."""
     try:
         document.apply_changes(rule_plan.changes, definitions, now)
     except ValidationError as error:
         return f"the rules' change does not fit: {error}"
     if rule_plan.space is not None and rule_plan.space != document.space_id:
-        if await uow.documents.list_by_sha256(document.sha256, [rule_plan.space]):
-            # Not named: the editors of the document may not read the other one.
-            return "the space the rules file into holds the same file already"
         source = await uow.spaces.get(document.space_id)
         document.move_to(rule_plan.space, now)
         await arrived(uow, document, source, now)

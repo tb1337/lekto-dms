@@ -295,7 +295,7 @@ class Run:
         return str(accepted["id"]), download.sha256, False
 
     async def _duplicate(self, item: Expected, lekto_id: str, resolved: Resolved) -> None:
-        """Lekto has the file already (in the target or a space the uploader sees): that
+        """Lekto has the file already (every file exists once per installation): that
         document stands for this one. A migrated one is aligned like one, unless it is
         another Paperless document's or lies outside the planned space (`foreign`)."""
         details = await self._target.document(lekto_id)
@@ -409,7 +409,7 @@ class Run:
         lane = details.get("lane")
         reasons = []
         if status == "duplicate":
-            reasons.append("Lekto has the file already, in a space the uploader sees")
+            reasons.append("Lekto has the file already")
         if reason is not None:
             reasons.append(reason)
         if lane != "green":

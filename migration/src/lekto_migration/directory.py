@@ -83,14 +83,3 @@ class Directory:
 
     def personal_space(self, user_id: str) -> dict[str, Any] | None:
         return next((s for s in self.spaces if s.get("personal_of") == user_id), None)
-
-    def member_spaces(self, user_id: str, role: str | None = None) -> set[str]:
-        """The ids of the spaces `user_id` is a member of, with `role` if given (else any)."""
-        return {
-            str(s["id"])
-            for s in self.spaces
-            if any(
-                m["user_id"] == user_id and (role is None or m["role"] == role)
-                for m in s.get("members") or []
-            )
-        }

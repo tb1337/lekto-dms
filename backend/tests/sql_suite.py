@@ -150,7 +150,7 @@ class SqlAdapterSuite(ServicesOverPersistence):
         async def add() -> Document:
             document = builders.document(owner, space, content="same")
             async with uow_factory() as uow:
-                assert await uow.documents.list_by_sha256(document.sha256, [space.id]) == []
+                assert await uow.documents.find_by_sha256(document.sha256) is None
                 async with asyncio.timeout(10):
                     await both_checked.wait()
                 await uow.documents.add(document)
@@ -1586,8 +1586,7 @@ class MigrationSuite:
     async def test_spaces_get_members_and_back(self, empty_database: Database) -> None:
         """Revision 0033: default spaces become personal ones (a user without one gets one),
         owners and shares become members, names collide no more, the owner of a document is
-        who uploaded it (the newer of two equal files in one space goes back to its owner's
-        space), user rules belong to their owner's personal space, and `owner` in templates
+        who uploaded it, user rules belong to their owner's personal space, and `owner` in templates
         is `uploaded_by`. The downgrade restores owners, shares and names."""
         await migrate(empty_database, "0032")
         async with empty_database.reading() as connection:
@@ -1595,7 +1594,7 @@ class MigrationSuite:
         names = ("alice", "bob", "carol", "alice_home", "bob_home", "taxes", "bobs_taxes")
         ids = {name: new_id() for name in names}
         ids |= {name: new_id() for name in ("kept", "rule", "global", "type")}
-        ids["equal"], ids["moved"] = sorted((new_id(), new_id()))  # the newer one moves
+        ids |= {name: new_id() for name in ("bobs", "alices")}
         spaces = _before_0033(t.spaces)
         documents = _before_0033(t.documents)
         rules = _before_0033(t.rules)
@@ -1645,7 +1644,7 @@ class MigrationSuite:
             (
                 documents,
                 {
-                    "id": ids["equal"],
+                    "id": ids["bobs"],
                     "owner_id": ids["bob"],
                     "space_id": ids["taxes"],
                     "sha256": "e" * 64,
@@ -1654,10 +1653,10 @@ class MigrationSuite:
             (
                 documents,
                 {
-                    "id": ids["moved"],
+                    "id": ids["alices"],
                     "owner_id": ids["alice"],
                     "space_id": ids["taxes"],
-                    "sha256": "e" * 64,
+                    "sha256": "f" * 64,
                 },
             ),
             (
@@ -1734,13 +1733,13 @@ class MigrationSuite:
         assert carol_home.members == {ids["carol"]: edit}
         assert located == {
             ids["kept"]: ids["alice_home"],
-            ids["equal"]: ids["taxes"],
-            ids["moved"]: ids["alice_home"],
+            ids["bobs"]: ids["taxes"],
+            ids["alices"]: ids["taxes"],
         }
         assert uploaders == {
             ids["kept"]: ids["alice"],
-            ids["equal"]: ids["bob"],
-            ids["moved"]: ids["alice"],
+            ids["bobs"]: ids["bob"],
+            ids["alices"]: ids["alice"],
         }
         assert (rule.scope, rule.space_id) == (RuleScope.SPACE, ids["bob_home"])
         assert (everyone.scope, everyone.space_id) == (RuleScope.GLOBAL, None)
@@ -1785,8 +1784,8 @@ class MigrationSuite:
         }
         assert owners == {
             ids["kept"]: ids["alice"],
-            ids["equal"]: ids["bob"],
-            ids["moved"]: ids["alice"],
+            ids["bobs"]: ids["bob"],
+            ids["alices"]: ids["alice"],
         }
         assert (rule_owner, rule_scope) == (ids["bob"], "user")
         assert pattern == "{{ owner }}: {{ title }}"
@@ -1795,20 +1794,25 @@ class MigrationSuite:
     async def test_a_document_without_uploader_belongs_to_its_space_s_owner_on_the_way_back(
         self, empty_database: Database
     ) -> None:
-        """Going back, a document whose uploader is gone is owned by its space's owner; if
-        that gives an owner the same file twice, the downgrade stops."""
+        """Going back, a document whose uploader is gone is owned by its space's owner."""
         await migrate(empty_database)
         uow = SqlUnitOfWorkFactory(empty_database)
         editor = await builders.seed_user(uow)
         shared = builders.space(editor, "Shared")
+        orphan = builders.document(None, shared, content="orphan")
         async with uow() as unit:
             await unit.spaces.add(shared)
-            home = await unit.spaces.get_personal(editor.id)
-            await unit.documents.add(builders.document(None, shared, content="same"))
-            await unit.documents.add(builders.document(editor, home, content="same"))
+            await unit.documents.add(orphan)
             await unit.commit()
-        with pytest.raises(RuntimeError, match="would both be owned"):
-            await downgrade(empty_database, "0032")
+        await downgrade(empty_database, "0032")
+        documents = _before_0033(t.documents)
+        async with empty_database.reading() as connection:
+            owner = (
+                await connection.execute(
+                    select(documents.c.owner_id).where(documents.c.id == orphan.id)
+                )
+            ).scalar_one()
+        assert owner == editor.id
 
     async def test_chosen_names_stay_and_nothing_old_turns_new(
         self, empty_database: Database

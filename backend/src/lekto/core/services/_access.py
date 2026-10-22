@@ -1,10 +1,10 @@
 """Loading entities, together with the caller's rights where they matter."""
 
-from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import replace
 from uuid import UUID
 
-from lekto.core.domain.documents import Document, DocumentChanges, Unset
+from lekto.core.domain.documents import Document, DocumentChanges, Sha256, Unset
 from lekto.core.domain.errors import (
     AuthenticationError,
     DuplicateDocumentError,
@@ -118,19 +118,17 @@ async def visible_space(uow: UnitOfWork, user: User, id: SpaceId) -> Space:
     return space
 
 
-def duplicate_error(
-    user: User, duplicates: Iterable[Document], spaces: Mapping[SpaceId, Space]
+async def duplicate_of(
+    uow: UnitOfWork, user: User, sha256: Sha256
 ) -> DuplicateDocumentError | None:
-    """The error for `duplicates`, documents with the same file in the way of another one (they
-    lie in `spaces`): it names one that `user` may read; one they may not read stays unnamed.
-    None without duplicates."""
-    found = list(duplicates)
-    if not found:
+    """The error for a file that lies in Lekto already (every file exists once per
+    installation): it names the document if `user` may read it; one in a space they cannot
+    see stays unnamed. None for a new file."""
+    existing = await uow.documents.find_by_sha256(sha256)
+    if existing is None:
         return None
-    readable = next(
-        (item for item in found if can_read_document(user, item, spaces[item.space_id])), None
-    )
-    return DuplicateDocumentError(None if readable is None else readable.id)
+    space = await uow.spaces.get(existing.space_id)
+    return DuplicateDocumentError(existing.id if can_read_document(user, existing, space) else None)
 
 
 def contact_topics_lock(contact: ContactId) -> str:

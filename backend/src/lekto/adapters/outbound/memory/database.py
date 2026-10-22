@@ -68,7 +68,7 @@ def _tag_keys(tag: Tag) -> Iterable[Hashable]:
 
 
 def _document_keys(document: Document) -> Iterable[Hashable]:
-    return [("sha256", document.space_id, document.sha256)]
+    return [("sha256", document.sha256)]
 
 
 def _lens_keys(lens: Lens) -> Iterable[Hashable]:

@@ -210,20 +210,9 @@ class FakeLekto:
             return _problem(404, "user not found")
         space = fields.get("space_id", f"personal:{uploader}")
         sha256 = hashlib.sha256(content).hexdigest()
-        roles = {
-            id: member["role"]
-            for id, item in self.spaces.items()
-            for member in item["members"]
-            if member["user_id"] == uploader
-        }
-
-        def readable(existing: dict[str, Any]) -> bool:
-            role = roles.get(existing["space_id"])
-            return role == "edit" or (role == "read" and existing["lane"] == "green")
-
+        # Every file exists once per installation; the migration's admin reads every document.
         for existing in self.documents.values():
-            blocks = existing["space_id"] == space or readable(existing)
-            if existing["sha256"] == sha256 and blocks:
+            if existing["sha256"] == sha256:
                 response = _problem(409, "Lekto has this file already")
                 body = json.loads(response.content)
                 body["existing_document_id"] = existing["id"]
@@ -286,12 +275,6 @@ class FakeLekto:
             advice = self.advice.get(document["original_filename"])
             return httpx2.Response(200, json={"vision": False, "pages": [], "advice": advice})
         if sub == "/move" and method == "POST":
-            if any(
-                other["space_id"] == body["space_id"] and other["sha256"] == document["sha256"]
-                for other in self.documents.values()
-                if other is not document
-            ):
-                return _problem(409, "the space holds this file already")
             document["space_id"] = body["space_id"]
             return httpx2.Response(204)
         if sub in ("", "/dry-run") and method in ("PATCH", "POST"):

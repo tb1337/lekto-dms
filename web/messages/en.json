@@ -300,6 +300,7 @@
 	"upload_running": "Uploading: {done} of {total}",
 	"upload_dismiss": "Dismiss the result",
 	"upload_duplicate": "Duplicate",
+	"upload_duplicate_unseen": "This file is already in Lekto, in a space you cannot see.",
 	"upload_existing": "Open the document already there",
 	"upload_skipped_type": "Not a PDF, JPEG, PNG or TIFF",
 	"upload_skipped_hidden": "Hidden",

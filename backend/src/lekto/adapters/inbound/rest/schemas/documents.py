@@ -458,8 +458,7 @@ class UploadFields(BaseModel):
         default=None,
         description=(
             "Admins only: the active user named as the document's uploader. Default: the "
-            "caller. Without `space_id` the document goes to their personal space; the "
-            "duplicate check covers what they can read."
+            "caller. Without `space_id` the document goes to their personal space."
         ),
         json_schema_extra={"format": "uuid"},
     )

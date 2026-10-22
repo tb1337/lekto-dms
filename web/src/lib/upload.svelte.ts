@@ -113,10 +113,11 @@ export class Uploads {
 			upload.documentId = data.id;
 			upload.state = 'uploaded';
 		} catch (error) {
-			const existing = error instanceof ApiError ? error.problem?.existing_document_id : null;
-			if (error instanceof ApiError && error.status === 409 && existing) {
+			if (error instanceof ApiError && error.status === 409) {
+				// Every file exists once per installation; without an id it lies in a space the
+				// caller cannot see.
 				upload.state = 'duplicate';
-				upload.documentId = existing;
+				upload.documentId = error.problem?.existing_document_id ?? null;
 			} else if (error instanceof ApiError && (error.status === 413 || error.status === 415)) {
 				upload.state = 'skipped';
 				upload.reason = error.status === 413 ? 'too_large' : 'type';

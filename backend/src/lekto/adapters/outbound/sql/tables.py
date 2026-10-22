@@ -268,7 +268,7 @@ documents = Table(
     Column(
         "uploaded_by", Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     ),
-    Column("space_id", Uuid, ForeignKey("spaces.id"), nullable=False),
+    Column("space_id", Uuid, ForeignKey("spaces.id"), nullable=False, index=True),
     Column("sha256", String(64), nullable=False),
     Column("title", Text, nullable=False),
     # The title as lists sort it (`sort_key`): case and accents aside.
@@ -305,9 +305,8 @@ documents = Table(
     Column("created_at", UtcDateTime, nullable=False),
     Column("updated_at", UtcDateTime, nullable=False),
     Column("version", Integer, nullable=False),
-    # The original is unique per space, also against concurrent uploads; the index serves the
-    # space's documents as well.
-    Index(None, "space_id", "sha256", unique=True),
+    # Every file exists once per installation, also against concurrent uploads.
+    Index(None, "sha256", unique=True),
     # Lists sorted by date, title or when documents came in page by these and the id.
     Index(None, "document_date", "id"),
     Index(None, "title_key", "id"),

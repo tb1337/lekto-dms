@@ -381,11 +381,8 @@ class MemorySpaceRepository(MemoryRepository[SpaceId, Space]):
 
 
 class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
-    async def list_by_sha256(self, sha256: Sha256, spaces: Collection[SpaceId]) -> list[Document]:
-        wanted = set(spaces)
-        return [
-            _copy(row) for row in self._all() if row.space_id in wanted and row.sha256 == sha256
-        ]
+    async def find_by_sha256(self, sha256: Sha256) -> Document | None:
+        return next((_copy(row) for row in self._all() if row.sha256 == sha256), None)
 
     async def list_visible_to(self, user: UserId) -> list[Document]:
         reach = Reach.of(user, await self._uow.spaces.list_accessible(user))

@@ -219,15 +219,14 @@ async def test_an_admin_files_into_any_space_in_another_users_name(api: Api) -> 
     assert document["space_id"] == mine["id"]
 
 
-async def test_the_duplicate_check_covers_the_uploaders_spaces(api: Api) -> None:
+async def test_a_file_uploaded_for_anyone_exists_once(api: Api) -> None:
     admin, one, two = await api.admin(), await api.user(), await api.user()
     first = await upload(api, auth(admin), uploaded_by=str(one.id))
     assert first.status_code == 202
-    again = await upload(api, auth(admin), uploaded_by=str(one.id))
-    assert again.status_code == 409
-    assert again.json()["existing_document_id"] == first.json()["id"]
-    assert (await upload(api, auth(admin), uploaded_by=str(two.id))).status_code == 202
-    assert (await upload(api, auth(admin))).status_code == 202  # the admin's own copy
+    for fields in ({"uploaded_by": str(one.id)}, {"uploaded_by": str(two.id)}, {}):
+        again = await upload(api, auth(admin), **fields)
+        assert again.status_code == 409
+        assert again.json()["existing_document_id"] == first.json()["id"]  # admins read it
 
 
 async def test_only_admins_name_the_uploader_or_give_metadata(api: Api) -> None:

@@ -14,10 +14,10 @@ document has no owner any more, only who uploaded it.
   unique per owner and are unique among the spaces that are nobody's personal one now: of
   spaces with the same name, the oldest keeps it, the others get " (<owner's username>)"
   (shortened to fit, never a name another space keeps).
-- `documents.owner_id` becomes `uploaded_by` (cleared with the user's account). The original
-  is unique per space instead of per owner. Two documents with the same file in one space (of
-  two owners) are kept: the newer goes back to its owner's personal space, where only they
-  had it; if that holds the file too, the revision stops and names the documents.
+- `documents.owner_id` becomes `uploaded_by` (cleared with the user's account). Every file
+  exists once per installation (Tobi, 22.10.2026): the original is unique, no longer per
+  owner. Two documents of two owners with the same file stop the revision at the index; it
+  does not sort them out.
 - A user rule becomes a rule of its owner's personal space (`rules.space_id`, scope `space`).
 - A document that is new stays new for who uploaded it; the other editors of its space, in
   whose inbox it stands now, have seen it.
@@ -149,12 +149,11 @@ def upgrade() -> None:
     if not sqlite:
         _add_missing_defaults(connection, spaces, usernames)
     defaults = {space.owner: space.id for space in spaces if space.default}
-    moves = _duplicates(connection, defaults)
     rule_owners = {row.id: row.owner_id for row in connection.execute(sa.select(_old_rules))}
     if sqlite:
-        _rebuild_up(spaces, moves, rule_owners, defaults)
+        _rebuild_up(spaces, rule_owners, defaults)
     else:
-        _alter_up(spaces, moves, rule_owners, defaults)
+        _alter_up(spaces, rule_owners, defaults)
     _keep_new_as_it_was(connection, spaces)
     _rename_stored("owner", "uploaded_by")
     _rename_scopes("user", "space")
@@ -174,20 +173,12 @@ def downgrade() -> None:
     owners = {space.id: space.owner for space in spaces}
     members = {space.id: space.members or {} for space in spaces}
     document_owners: dict[UUID, UUID] = {}
-    seen: dict[tuple[UUID, str], UUID] = {}
     for row in connection.execute(sa.select(_new_documents).order_by(_new_documents.c.id)):
         # Who uploaded it owns it again while they are a member of its space; one who left
         # it, or handed the document over, does not get it back: its space's owner does.
         member = row.uploaded_by in members[row.space_id]
         owner = row.uploaded_by if member else owners[row.space_id]
         assert owner is not None
-        key = (owner, row.sha256)
-        if key in seen:
-            raise RuntimeError(
-                f"revision 0033 cannot go back: documents {seen[key]} and {row.id} would both "
-                f"be owned by user {owner}; delete one of them first"
-            )
-        seen[key] = row.id
         document_owners[row.id] = owner
     rule_spaces = {row.id: row.space_id for row in connection.execute(sa.select(_new_rules))}
     rule_owners = {
@@ -296,32 +287,6 @@ def _new_id() -> uuid.UUID:
     value = value & ~(0xF << 76) | 0x7 << 76  # version 7
     value = value & ~(0x3 << 62) | 0x2 << 62  # variant RFC 9562
     return uuid.UUID(int=value)
-
-
-def _duplicates(connection: sa.Connection, defaults: dict[UUID | None, UUID]) -> dict[UUID, UUID]:
-    """Documents to move so that every space holds a file once: the newer of two with the same
-    file in one space goes to its owner's personal (default) space."""
-    rows = connection.execute(sa.select(_old_documents).order_by(_old_documents.c.id))
-    held: dict[tuple[UUID, str], UUID] = {}
-    later: list[tuple[UUID, UUID, str]] = []
-    for row in rows:
-        key = (row.space_id, row.sha256)
-        if key in held:
-            later.append((row.id, row.owner_id, row.sha256))
-        else:
-            held[key] = row.id
-    moves: dict[UUID, UUID] = {}
-    for document, owner, sha256 in later:
-        target = defaults[owner]
-        if (target, sha256) in held:
-            raise RuntimeError(
-                f"revision 0033 cannot keep document {document}: its space and its owner's "
-                f"default space hold the same file (document {held[(target, sha256)]}); delete "
-                "one of them first"
-            )
-        held[(target, sha256)] = document
-        moves[document] = target
-    return moves
 
 
 _seen = sa.table(
@@ -471,7 +436,6 @@ def _members_up(spaces: Iterable[_Space]) -> list[dict[str, Any]]:
 
 def _alter_up(
     spaces: list[_Space],
-    moves: dict[UUID, UUID],
     rule_owners: dict[UUID, UUID | None],
     defaults: dict[UUID | None, UUID],
 ) -> None:
@@ -506,13 +470,7 @@ def _alter_up(
     _create_name_index()
     op.drop_table("space_shares")
 
-    documents = sa.table("documents", sa.column("id", sa.Uuid()), sa.column("space_id", sa.Uuid()))
-    for document, target in moves.items():
-        connection.execute(
-            documents.update().where(documents.c.id == document).values(space_id=target)
-        )
     op.drop_index("ix_documents_owner_id_sha256", table_name="documents")
-    op.drop_index("ix_documents_space_id", table_name="documents")
     op.drop_constraint("fk_documents_owner_id_users", "documents", type_="foreignkey")
     op.alter_column("documents", "owner_id", new_column_name="uploaded_by", nullable=True)
     op.create_foreign_key(
@@ -524,9 +482,7 @@ def _alter_up(
         ondelete="SET NULL",
     )
     op.create_index(op.f("ix_documents_uploaded_by"), "documents", ["uploaded_by"])
-    op.create_index(
-        op.f("ix_documents_space_id_sha256"), "documents", ["space_id", "sha256"], unique=True
-    )
+    op.create_index(op.f("ix_documents_sha256"), "documents", ["sha256"], unique=True)
 
     op.add_column("rules", sa.Column("space_id", sa.Uuid(), nullable=True))
     _fill_rule_spaces(rule_owners, defaults)
@@ -577,7 +533,7 @@ def _alter_down(
         connection.execute(_shares.insert(), shares)
     op.drop_table("space_members")
 
-    op.drop_index("ix_documents_space_id_sha256", table_name="documents")
+    op.drop_index("ix_documents_sha256", table_name="documents")
     op.drop_index("ix_documents_uploaded_by", table_name="documents")
     op.drop_constraint("fk_documents_uploaded_by_users", "documents", type_="foreignkey")
     op.alter_column("documents", "uploaded_by", new_column_name="owner_id")
@@ -586,7 +542,6 @@ def _alter_down(
     op.create_foreign_key(
         op.f("fk_documents_owner_id_users"), "documents", "users", ["owner_id"], ["id"]
     )
-    op.create_index(op.f("ix_documents_space_id"), "documents", ["space_id"])
     op.create_index(
         op.f("ix_documents_owner_id_sha256"), "documents", ["owner_id", "sha256"], unique=True
     )
@@ -654,7 +609,6 @@ _RULE_COLUMNS = (
 
 def _rebuild_up(
     spaces: list[_Space],
-    moves: dict[UUID, UUID],
     rule_owners: dict[UUID, UUID | None],
     defaults: dict[UUID | None, UUID],
 ) -> None:
@@ -682,13 +636,6 @@ def _rebuild_up(
         connection.execute(_members.insert(), members)
 
     count = _copy_aside("documents")
-    temporary = sa.table(
-        "_documents_0033", sa.column("id", sa.Uuid()), sa.column("space_id", sa.Uuid())
-    )
-    for document, target in moves.items():
-        connection.execute(
-            temporary.update().where(temporary.c.id == document).values(space_id=target)
-        )
     op.drop_table("documents")
     _create_documents(uploaded=True)
     columns = ", ".join(_DOCUMENT_COLUMNS)
@@ -976,13 +923,11 @@ def _create_documents(*, uploaded: bool) -> None:
         sa.ForeignKeyConstraint(["topic_id"], ["tags.id"], name=op.f("fk_documents_topic_id_tags")),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_documents")),
     )
+    op.create_index(op.f("ix_documents_space_id"), "documents", ["space_id"])
     if uploaded:
         op.create_index(op.f("ix_documents_uploaded_by"), "documents", ["uploaded_by"])
-        op.create_index(
-            op.f("ix_documents_space_id_sha256"), "documents", ["space_id", "sha256"], unique=True
-        )
+        op.create_index(op.f("ix_documents_sha256"), "documents", ["sha256"], unique=True)
     else:
-        op.create_index(op.f("ix_documents_space_id"), "documents", ["space_id"])
         op.create_index(
             op.f("ix_documents_owner_id_sha256"), "documents", ["owner_id", "sha256"], unique=True
         )

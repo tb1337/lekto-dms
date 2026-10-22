@@ -693,10 +693,9 @@ Rights hang on spaces alone (a break of the API). Revision 0033 runs at start:
    with the same name keep the oldest's; the others get " (username)", shortened to fit and
    never a name another space keeps. Former sharers with `read_write`, editors now, find no
    old document new in their inbox.
-2. A document's owner becomes who uploaded it (`uploaded_by`), information only. Two equal
-   files of two owners in one space are kept: the newer goes back to its owner's personal
-   space (the original is unique per space now; if that space holds the file too, the
-   revision stops and names both documents: delete one first).
+2. A document's owner becomes who uploaded it (`uploaded_by`), information only. Every file
+   exists once per installation now: the original is unique, no longer per owner. If two
+   owners hold the same file, the revision stops at the new index; delete one of them first.
 3. A user rule becomes a rule of its owner's personal space (`scope` `space`, `space_id`);
    `{{ owner }}` in rule templates and title patterns becomes `{{ uploaded_by }}` (a template
    that uses `uploaded_by` otherwise stops the revision). Global rules may do everything now.
@@ -707,9 +706,9 @@ Rights hang on spaces alone (a break of the API). Revision 0033 runs at start:
 
 The downgrade restores owners and shares where the data allow (a personal space becomes the
 default space, any other space belongs to its oldest editor, a document to who uploaded it
-while they are a member of its space, a space rule is a user rule again). It stops if an owner
-would get the same file twice, and where 0.4 could not load the data: a shared personal space,
-a global rule that does more than tag, set fields and force a review.
+while they are a member of its space, a space rule is a user rule again). It stops where 0.4
+could not load the data: a shared personal space, a global rule that does more than tag, set
+fields and force a review.
 
 **Evaluation.** `lekto evaluate [--fake]` runs the synthetic documents in
 `evaluation/` cold and trained and writes a report; see [evaluation/README.md](evaluation/README.md).
@@ -1018,7 +1017,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /documents` | Upload (multipart: `file`, optional `space_id` (a space the caller edits; default: the uploader's personal space), optional `channel=migration`, `uploaded_by` and `metadata` for admins; otherwise the channel is `web` with a session, `api` with a token); `202` with `id`, `status_url` |
 | `GET/PATCH/DELETE /documents/{id}` | Metadata and state with the caller's access, `channel`, `topic_id` (see Topics); change (editors; the answer has the change rules' `rules` report); delete (editors and admins); `uploaded_by` names who uploaded it, `access` is `read` or `edit` |
 | `POST /documents/{id}/dry-run` | A change as with `PATCH`, with the change rules, nothing stored: the result, the differences and who would see it (`visibility`: the space and its `members`) |
-| `POST /documents/{id}/move` | Into a space the caller edits, or into another user's personal space (hand over; `personal_space_id` in `GET /users`); editors of the document's space, admins anywhere; `409` if the target holds the same file |
+| `POST /documents/{id}/move` | Into a space the caller edits, or into another user's personal space (hand over; `personal_space_id` in `GET /users`); editors of the document's space, admins anywhere |
 | `GET /documents/{id}/original`, `/archive`, `/preview`, `/pages/{number}` | Files (read access); pages from 1 to `page_count` |
 | `GET /documents/{id}/text` | The text as it is set (plain text, pages apart by form feeds) in pieces: `offset`, `limit` (at most `LEKTO_MCP_TEXT_MAX`, the default); `409` while not parsed |
 | `GET /documents/{id}/files` | The files as stored (read access): when the document was added and changed, its original's name and type, and for the original and the archive (null while there is none) size, SHA-256 and metadata: a PDF's version, PDF/A level, pages, document information and XMP; an image's format, size, resolution and EXIF |
@@ -1045,12 +1044,10 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 
 - Uploads are streamed into a temporary file and hashed on the way; the limit
   `LEKTO_UPLOAD_MAX_SIZE` applies while receiving (`413`). The type is recognised from the
-  content (PDF, JPEG, PNG, TIFF; otherwise `415`). A file the uploader can read (in a space
-  they edit, or green in a space they read) or that lies in the target space: `409`, with
-  `existing_document_id` if the caller may read that document; a copy they cannot read
-  elsewhere does not count (the original is unique per space). Moving and confirming into a
-  space that holds the same file is `409` likewise; a rule that would file there leaves the
-  document where it is.
+  content (PDF, JPEG, PNG, TIFF; otherwise `415`). Every file exists once per installation: a
+  file that lies in Lekto already is `409`, with `existing_document_id` if the caller may read
+  that document; without it, the file lies in a space the caller cannot see. Moving,
+  confirming and rules never meet a duplicate.
 - Errors are problem details (RFC 9457, `application/problem+json`) and documented per endpoint.
   Filing into a space without edit rights (upload, move, confirm, a rule that sets the space)
   is `403` with `space_id`, the space that was refused.

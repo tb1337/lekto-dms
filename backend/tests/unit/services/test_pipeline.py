@@ -439,47 +439,34 @@ async def test_retry_and_reprocess_are_for_the_editors(world: World) -> None:
         await world.pipeline().retry(owner.id, document.id)
 
 
-async def test_duplicates_are_rejected_in_the_spaces_of_the_uploader(world: World) -> None:
-    """A file in a space the uploader is a member of, or in the target space, is a duplicate;
-    one only in spaces they cannot see is not (variant a, Tobi to confirm)."""
+async def test_a_file_exists_once_per_installation(world: World) -> None:
+    """Every file exists once (Tobi, 22.10.2026): a second upload is a duplicate wherever the
+    first lies; it names the document to who may read it, and to no one else."""
     owner, document = await receive(world)
     with pytest.raises(DuplicateDocumentError) as info:
         await world.pipeline().receive(owner.id, incoming(PDF), filename="again.pdf")
     assert info.value.existing == document.id
     other = await world.user()
-    copy = await world.pipeline().receive(other.id, incoming(PDF), filename="mine.pdf")
-    assert copy.sha256 == document.sha256
-    assert copy.uploaded_by == other.id
-    # Once the other may read the owner's personal space, the file is theirs to see there.
+    with pytest.raises(DuplicateDocumentError) as info:
+        await world.pipeline().receive(other.id, incoming(PDF), filename="mine.pdf")
+    assert info.value.existing is None
+    assert str(info.value) == "the file lies in Lekto already, in a space you cannot see"
     personal = await world.personal_space(owner)
     await world.spaces.set_member(owner.id, personal.id, other.id, SpaceRole.READ)
-    third = await world.user()
-    household = await world.spaces.create(third.id, "Household")
-    await world.spaces.set_member(third.id, household.id, other.id, SpaceRole.EDIT)
-    with pytest.raises(DuplicateDocumentError):
-        await world.pipeline().receive(
-            other.id, incoming(PDF), filename="again.pdf", space=household.id
-        )
+    with pytest.raises(DuplicateDocumentError) as info:
+        await world.pipeline().receive(other.id, incoming(PDF), filename="mine.pdf")
+    assert info.value.existing is None  # not green yet: a reader does not see it
 
 
-async def test_only_duplicates_the_uploader_can_read_count(world: World) -> None:
-    """A reader sees only green documents: a copy not green yet in a space they read neither
-    blocks their upload nor tells them its id; a green one does."""
+async def test_a_reader_learns_which_green_document_holds_the_file(world: World) -> None:
     owner, reader = await world.user(), await world.user()
     personal = await world.personal_space(owner)
     green = builders.processed(owner, personal)
     green.sha256 = Sha256.of(b"%PDF-1.7 green")
-    waiting = builders.document(owner, personal)
-    waiting.sha256 = Sha256.of(b"%PDF-1.7 waiting")
     async with world.uow() as uow:
         await uow.documents.add(green)
-        await uow.documents.add(waiting)
         await uow.commit()
     await world.spaces.set_member(owner.id, personal.id, reader.id, SpaceRole.READ)
-    copy = await world.pipeline().receive(
-        reader.id, incoming(b"%PDF-1.7 waiting"), filename="waiting.pdf"
-    )
-    assert copy.space_id == (await world.personal_space(reader)).id
     with pytest.raises(DuplicateDocumentError) as info:
         await world.pipeline().receive(reader.id, incoming(b"%PDF-1.7 green"), filename="g.pdf")
     assert info.value.existing == green.id
@@ -711,11 +698,12 @@ async def test_an_unsupported_file_is_rejected_and_not_stored(world: World) -> N
 
 
 async def test_a_stored_original_is_not_uploaded_again(world: World) -> None:
-    first, second = await world.user(), await world.user()
-    document = await world.pipeline().receive(first.id, incoming(PDF), filename="a.pdf")
-    key = original_key(document.sha256)
+    """An original left in the store (its document deleted, the files not removed yet) is used
+    as it is."""
+    owner = await world.user()
+    key = original_key(Sha256.of(PDF))
     await world.object_store.put(key, b"%PDF-1.7 marker", content_type="application/pdf")
-    await world.pipeline().receive(second.id, incoming(PDF), filename="b.pdf")
+    await world.pipeline().receive(owner.id, incoming(PDF), filename="b.pdf")
     assert await world.object_store.get(key) == b"%PDF-1.7 marker"
 
 

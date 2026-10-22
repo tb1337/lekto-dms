@@ -135,10 +135,10 @@ _UPLOAD_BODY = upload_body(
     summary="Upload a document",
     description=(
         "Stores the file and starts processing in the background, in the uploader's personal "
-        "space unless `space_id` names another. The file is hashed while it is received; a "
-        "file the uploader can read (in a space they edit, or green in a space they read), or "
-        "one in the target space, is rejected with 409, naming the document if the caller may "
-        "read it. Follow the progress at `status_url` or with `GET /events`."
+        "space unless `space_id` names another. The file is hashed while it is received; every "
+        "file exists once per installation, so one that lies in Lekto already is rejected with "
+        "409, naming the document if the caller may read it (otherwise it lies in a space they "
+        "cannot see). Follow the progress at `status_url` or with `GET /events`."
     ),
     response_model=DocumentAccepted,
     responses={
@@ -371,8 +371,7 @@ async def preview_change(
     description=(
         "Editors of the document's space move it into a space they edit, or hand it over into "
         "another active user's personal space (they need not be a member there); an admin "
-        "moves any document anywhere. Readers do not move. 409 if the target holds the same "
-        "file (naming it if the caller may read it). A green document becomes new for the "
+        "moves any document anywhere. Readers do not move. A green document becomes new for the "
         "target's editors who could not read it before."
     ),
     responses=problem_responses(401, 403, 404, 409, 422),

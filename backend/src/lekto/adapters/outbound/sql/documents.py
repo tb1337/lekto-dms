@@ -71,12 +71,9 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
     kind = "document"
     table = t.documents
 
-    async def list_by_sha256(self, sha256: Sha256, spaces: Collection[SpaceId]) -> list[Document]:
-        if not spaces:
-            return []
-        return await self._load(
-            and_(t.documents.c.sha256 == sha256.hex, t.documents.c.space_id.in_(list(spaces)))
-        )
+    async def find_by_sha256(self, sha256: Sha256) -> Document | None:
+        found = await self._load(t.documents.c.sha256 == sha256.hex)
+        return found[0] if found else None
 
     async def list_visible_to(self, user: UserId) -> list[Document]:
         return await self._load(visible_to(user))

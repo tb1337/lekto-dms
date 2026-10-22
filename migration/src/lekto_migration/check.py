@@ -14,13 +14,10 @@ from typing import Any
 
 from lekto_migration.align import Alignment, align, current, foreign, uploaded
 from lekto_migration.config import Config
-from lekto_migration.directory import Directory
 from lekto_migration.expect import Expected
 from lekto_migration.lekto import ApiError, Lekto
-from lekto_migration.mapping import EDIT, READ
-from lekto_migration.masterdata import MISSING, Action, visible_to
+from lekto_migration.masterdata import MISSING, visible_to
 from lekto_migration.paperless import Paperless, PaperlessError, checksum
-from lekto_migration.plan import norm
 from lekto_migration.resolve import resolve, space_of
 from lekto_migration.session import Loaded, Progress, unmanaged
 from lekto_migration.state import DocumentRow, State
@@ -311,17 +308,11 @@ async def _files(
     progress: Progress,
 ) -> list[dict[str, Any]]:
     """Download every original the plan takes over: its checksum, its type by content, and
-    whether Lekto would see it as a duplicate (the same file in the space it goes to, or one
-    its uploader can read: in a space they edit, or green in a space they read)."""
-    directory = loaded.directory
-    held: dict[str, dict[str, tuple[str, str | None]]] = {}  # sha256 -> space id -> (id, lane)
-    for document in in_lekto.values():
-        spaces = held.setdefault(str(document.get("sha256")), {})
-        spaces[str(document.get("space_id"))] = (str(document["id"]), document.get("lane"))
+    whether Lekto would see it as a duplicate (every file exists once per installation: one
+    that lies in Lekto already, wherever)."""
+    held = {str(document.get("sha256")): str(document["id"]) for document in in_lekto.values()}
     taken = [item for item in loaded.expected.values() if item.skip is None]
-    planned = _planned_members(loaded.actions, directory)
-    # sha256 -> (space key, Paperless id, green: True, or False if in Lekto and not green)
-    seen: dict[str, list[tuple[str, int, bool]]] = {}
+    seen: dict[str, int] = {}  # sha256 -> the first selected Paperless document with it
     gate = asyncio.Semaphore(config.concurrency)
     found: list[dict[str, Any]] = []
     documents = {int(d["id"]): d for d in loaded.selected}
@@ -346,90 +337,16 @@ async def _files(
             entry["problem"] = "Lekto would not take the file (not a PDF, JPEG, PNG or TIFF)"
         elif kind != item.media_type:
             entry["note"] = f"the file is {kind}, Paperless says {item.media_type}"
-        edits, reads = _reach(item, directory, planned)
         row = rows.get(item.id)
-        existing = next(
-            (
-                lekto_id
-                for space, (lekto_id, lane) in held.get(digest, {}).items()
-                if (space in edits or (space in reads and lane == "green"))
-                and (row is None or row.lekto_id != lekto_id)
-            ),
-            None,
-        )
-        earlier = next(
-            (
-                id
-                for key, id, green in seen.get(digest, [])
-                if key in edits or (key in reads and green)
-            ),
-            None,
-        )
-        if existing is not None:
-            entry["note"] = f"Lekto has the file already, in a space its uploader sees ({existing})"
-        elif earlier is not None:
-            entry["note"] = f"the same file as document {earlier}, in a space its uploader sees"
+        existing = held.get(digest)
+        if existing is not None and (row is None or row.lekto_id != existing):
+            entry["note"] = f"Lekto has the file already ({existing})"
+        elif digest in seen:
+            entry["note"] = f"the same file as document {seen[digest]}"
         else:
-            # One not in Lekto yet counts as green: taken-over metadata usually make it so.
-            details = in_lekto.get(row.lekto_id) if row is not None and row.lekto_id else None
-            green = details is None or details.get("lane") == "green"
-            seen.setdefault(digest, []).append((_space_key(item, directory), item.id, green))
+            seen[digest] = item.id
         found.append(entry)
 
     await asyncio.gather(*(one(item) for item in taken))
     progress(f"{len(found)} originals downloaded and checked")
     return sorted((f for f in found if f.get("problem") or f.get("note")), key=lambda f: f["id"])
-
-
-def _uploader_of(item: Expected, directory: Directory) -> str:
-    return item.uploader or str(directory.admin["username"])
-
-
-def _personal_key(uploader: str, directory: Directory) -> str:
-    """The personal space of a user: its id, or a key while Lekto has none (a new user)."""
-    user = directory.find("user", uploader)
-    personal = directory.personal_space(str(user["id"])) if user is not None else None
-    return str(personal["id"]) if personal is not None else f"personal:{norm(uploader)}"
-
-
-def _space_key(item: Expected, directory: Directory) -> str:
-    """The space a document goes to: its id, or a key while `prepare` has not created it."""
-    if item.space is None:
-        return _personal_key(_uploader_of(item, directory), directory)
-    found = directory.space(item.space)
-    return str(found["id"]) if found is not None else f"space:{norm(item.space)}"
-
-
-def _planned_members(actions: list[Action], directory: Directory) -> dict[str, dict[str, str]]:
-    """The members (norm(name) -> role) the shared spaces have once `prepare` has run, by the
-    key of `_space_key`."""
-    planned: dict[str, dict[str, str]] = {}
-    for action in actions:
-        if action.kind != "space":
-            continue
-        found = directory.space(action.name)
-        key = str(found["id"]) if found is not None else f"space:{norm(action.name)}"
-        planned[key] = {norm(name): role for name, role in action.data.get("after", ())}
-    return planned
-
-
-def _reach(
-    item: Expected, directory: Directory, planned: dict[str, dict[str, str]]
-) -> tuple[set[str], set[str]]:
-    """The spaces Lekto compares a document's file with, now or after `prepare`: those where
-    every file counts (the one it goes to and those its uploader edits), and those where only
-    green documents count (those its uploader reads)."""
-    uploader = _uploader_of(item, directory)
-    edits = {_space_key(item, directory), _personal_key(uploader, directory)}
-    reads: set[str] = set()
-    user = directory.find("user", uploader)
-    if user is not None:
-        edits |= directory.member_spaces(str(user["id"]), EDIT)
-        reads |= directory.member_spaces(str(user["id"]), READ)
-    for key, members in planned.items():
-        role = members.get(norm(uploader))
-        if role == EDIT:
-            edits.add(key)
-        elif role == READ:
-            reads.add(key)
-    return edits, reads - edits

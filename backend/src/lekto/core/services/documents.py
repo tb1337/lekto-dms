@@ -69,7 +69,6 @@ from lekto.core.services._access import (
     admin_only,
     checked_changes,
     controllable_document,
-    duplicate_error,
     field_definitions,
     load_actor,
     load_lister,
@@ -733,9 +732,8 @@ class DocumentService:
         """The editors of the document's space move it into a space they edit, or hand it over
         into another, active user's personal space; an admin moves any document into any space,
         but, as everyone, hands nothing over to a deactivated user (unless a member of their
-        personal space). DuplicateDocumentError if the target holds the same file. A green
-        document becomes new for the editors of the target who could not read it before
-        (`inbox.arrived`)."""
+        personal space). A green document becomes new for the editors of the target who could
+        not read it before (`inbox.arrived`)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             document, source = await controllable_document(uow, user, id, f"move document {id}")
@@ -750,9 +748,6 @@ class DocumentService:
                 receiver = await uow.users.find(target.personal_of)
                 if receiver is None or not receiver.active:
                     raise NotFoundError("space", space)
-            found = await uow.documents.list_by_sha256(document.sha256, [target.id])
-            if (error := duplicate_error(user, found, {target.id: target})) is not None:
-                raise error
             now = self._clock.now()
             document.move_to(target.id, now)
             await arrived(uow, document, source, now, user.id)

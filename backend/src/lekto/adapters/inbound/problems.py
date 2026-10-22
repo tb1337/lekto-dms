@@ -21,7 +21,9 @@ class Problem(BaseModel):
     existing_document_id: UUID | None = Field(
         default=None,
         description=(
-            "For a duplicate: the document that has the same file, if the caller may read it."
+            "For a duplicate (every file exists once per installation): the document that has "
+            "the same file, if the caller may read it; missing if it lies in a space the caller "
+            "cannot see."
         ),
     )
     space_id: UUID | None = Field(

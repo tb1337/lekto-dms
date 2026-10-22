@@ -883,23 +883,20 @@ class UnitOfWorkContract:
         async with uow_factory() as uow:
             assert (await uow.documents.get(document.id)).pull_events() == []
 
-    async def test_original_is_unique_per_space(self, uow_factory: UnitOfWorkFactory) -> None:
+    async def test_original_is_unique(self, uow_factory: UnitOfWorkFactory) -> None:
+        """Every file exists once per installation, whatever space it lies in."""
         alice, alice_space = await owner_with_space(uow_factory)
         bob, bob_space = await owner_with_space(uow_factory)
         first = builders.document(alice, alice_space, content="same")
         async with uow_factory() as uow:
             await uow.documents.add(first)
-            await uow.documents.add(builders.document(bob, bob_space, content="same"))
             await uow.commit()
         async with uow_factory() as uow:
-            assert await uow.documents.list_by_sha256(first.sha256, [alice_space.id]) == [first]
-            found = await uow.documents.list_by_sha256(first.sha256, [alice_space.id, bob_space.id])
-            assert sorted(item.space_id for item in found) == sorted([alice_space.id, bob_space.id])
-            assert await uow.documents.list_by_sha256(builders.sha256(), [alice_space.id]) == []
-            assert await uow.documents.list_by_sha256(first.sha256, []) == []
+            assert await uow.documents.find_by_sha256(first.sha256) == first
+            assert await uow.documents.find_by_sha256(builders.sha256()) is None
         with pytest.raises(ConflictError):
             async with uow_factory() as uow:
-                await uow.documents.add(builders.document(bob, alice_space, content="same"))
+                await uow.documents.add(builders.document(bob, bob_space, content="same"))
                 await uow.commit()
 
     async def test_a_deleted_uploader_leaves_the_document(

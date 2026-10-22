@@ -84,7 +84,7 @@ async def test_upload_is_accepted_and_processed(api: Api) -> None:
     assert ocr["model_version"] == "fake-ocr 1"
 
 
-async def test_a_duplicate_of_the_same_owner_is_rejected(api: Api) -> None:
+async def test_a_file_exists_once_per_installation(api: Api) -> None:
     owner, other = await api.user(), await api.user()
     first = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
     again = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
@@ -92,10 +92,11 @@ async def test_a_duplicate_of_the_same_owner_is_rejected(api: Api) -> None:
     assert again.headers["content-type"] == PROBLEM
     assert again.json()["existing_document_id"] == first.json()["id"]
     assert again.json()["title"] == "Conflict"
-    # Another owner gets a document of their own for the same file.
-    assert (
-        await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(other))
-    ).status_code == 202
+    # Another user who cannot see it learns only that the file is there.
+    elsewhere = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(other))
+    assert elsewhere.status_code == 409
+    assert "existing_document_id" not in elsewhere.json()
+    assert elsewhere.json()["detail"] == "the file lies in Lekto already, in a space you cannot see"
 
 
 async def test_unsupported_files_are_rejected(api: Api) -> None:

@@ -682,6 +682,7 @@ class DocumentService:
             async with self._uow() as uow:
                 document, _ = await writable_document(uow, await load_actor(uow, actor), id)
                 candidates = await rules.rules(uow, document)
+                candidates += await rules.followers(uow, candidates)
             prepared = await rules.prepare(candidates, document)
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
@@ -734,7 +735,20 @@ class DocumentService:
         into another, active user's personal space; an admin moves any document into any space,
         but, as everyone, hands nothing over to a deactivated user (unless a member of their
         personal space). A green document becomes new for the editors of the target who could
-        not read it before (`inbox.arrived`)."""
+        not read it before (`inbox.arrived`). A completed document then runs the target's rules
+        (as change rules, `ChangeRules.after_arrival`); they leave the space the person chose."""
+        prepared = Prepared()
+        if self._rules is not None:
+            async with self._uow() as uow:
+                user = await load_actor(uow, actor)
+                document, _ = await controllable_document(uow, user, id, f"move document {id}")
+                entering = await uow.spaces.find(space)
+                arriving = (
+                    []
+                    if entering is None
+                    else await self._rules.arrival_rules(uow, document, entering)
+                )
+            prepared = await self._rules.prepare(arriving, document)
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             document, source = await controllable_document(uow, user, id, f"move document {id}")
@@ -750,7 +764,14 @@ class DocumentService:
                 if receiver is None or not receiver.active:
                     raise NotFoundError("space", space)
             await move_by_person(
-                uow, document, source, target, by=user, now=self._clock.now(), rules=self._rules
+                uow,
+                document,
+                source,
+                target,
+                by=user,
+                now=self._clock.now(),
+                rules=self._rules,
+                prepared=prepared,
             )
             await uow.commit()
 

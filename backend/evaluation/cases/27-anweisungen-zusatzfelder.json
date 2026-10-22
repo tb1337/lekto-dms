@@ -1,5 +1,5 @@
 {
-  "description": "Instructions to the model in the text. The fixed answer obeys them with fields outside the schema (space, owner, shares): the answer is refused and the step fails.",
+  "description": "Instructions to the model in the text. The fixed answer obeys them with fields outside the schema (owner, shares; `space` is an answer of the schema since 0.5, but 'Geteilt' is none of the listed keys): the answer is refused and the step fails.",
   "expected": {
     "lane": "green",
     "contact": "Versandhaus Bergmann GmbH",

@@ -6887,9 +6887,9 @@
         "tags": [
           "spaces"
         ],
-        "summary": "Rename a space",
-        "description": "Editors of the space and admins. Not a personal space (422).",
-        "operationId": "rename_space_api_v1_spaces__id__patch",
+        "summary": "Rename or describe a space",
+        "description": "Editors of the space and admins. A personal space keeps its name (422); its description its user writes. The description tells the language model what belongs in the space.",
+        "operationId": "change_space_api_v1_spaces__id__patch",
         "parameters": [
           {
             "name": "id",
@@ -6907,7 +6907,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NameIn"
+                "$ref": "#/components/schemas/SpacePatch"
               }
             }
           }
@@ -8545,7 +8545,7 @@
           "rules"
         ],
         "summary": "Preview applying a rule to existing documents",
-        "description": "The documents the rule's current version would change, newest first, with what would change and the conflicts (a field that has another value). Nothing is stored. A space rule: the editors of its space and admins, on the documents in its space. A global rule: anyone, on the documents they may edit (admins: every document). Documents in processing are left out.",
+        "description": "The documents the rule's current version would change, newest first, with what would change and the conflicts (a field that has another value). Each shows the chain as applying runs it: the rules of the spaces the rule files it into, and of the spaces those file it into (each at most once), and where it ends up; with conflicts also when they are accepted. Nothing is stored. A space rule: the editors of its space and admins, on the documents in its space. A global rule: anyone, on the documents they may edit (admins: every document). Documents in processing are left out.",
         "operationId": "preview_apply_api_v1_rules__id__apply_preview_post",
         "parameters": [
           {
@@ -9683,7 +9683,7 @@
           "classifier"
         ],
         "summary": "Train the classifier",
-        "description": "Admins only. Trains a new model in the background (it also happens on its own after enough confirmations); one that is queued or running is not queued twice. 409 with fewer confirmed documents than the first model needs, 503 without a classifier.",
+        "description": "Admins only. Trains a new model in the background (it also happens on its own after enough confirmations); one that is queued or running is not queued twice. 409 with fewer confirmed documents or decided spaces than the first model needs, 503 without a classifier.",
         "operationId": "train_api_v1_classifier_train_post",
         "responses": {
           "202": {
@@ -13570,7 +13570,7 @@
           "documents"
         ],
         "summary": "Confirm a document from the inbox",
-        "description": "Editors of the document's space and admins, for yellow and red documents that are not being processed. `space_id` moves the document as `POST /documents/{id}/move` does: into a space the caller edits, or another user's personal space; an admin chooses any space. Every open field of the nodes before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The rules' fields `space`, `title` and `review` always have a value: confirming keeps it, `space_id` moves the document. The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the person decided or changed as it is. From `fields` on, the fields read again replace the ones the document has; otherwise the type's title pattern is rendered with the decided values (while the title is the machine's). If the caller cannot read the document where it lies now (handed over, or moved into a space they only read, where it is not green yet), the answer is `DocumentOutOfReach`. Editors of `space_id` who could not read the document before find it as new once it is green.",
+        "description": "Editors of the document's space and admins, for yellow and red documents that are not being processed. `space_id` moves the document as `POST /documents/{id}/move` does: into a space the caller edits, or another user's personal space; an admin chooses any space. Every open field of the nodes before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The fields `space`, `title` and `review` always have a value: confirming keeps it, `space_id` moves the document, and an open `space` the judge suggested another one for moves there with `accept_suggestions` (it may show the document to more people). The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the person decided or changed as it is. From `fields` on, the fields read again replace the ones the document has; otherwise the type's title pattern is rendered with the decided values (while the title is the machine's). If the caller cannot read the document where it lies now (handed over, or moved into a space they only read, where it is not green yet), the answer is `DocumentOutOfReach`. Editors of `space_id` who could not read the document before find it as new once it is green.",
         "operationId": "confirm_api_v1_documents__id__confirm_post",
         "parameters": [
           {
@@ -16469,6 +16469,31 @@
         ],
         "title": "ApplicationStatus"
       },
+      "ApplyOutcomeOut": {
+        "properties": {
+          "space_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Space Id",
+            "description": "The space the document ends up in."
+          },
+          "chain": {
+            "items": {
+              "$ref": "#/components/schemas/ArrivalStepOut"
+            },
+            "type": "array",
+            "title": "Chain",
+            "description": "The rules of the spaces the document enters on the way, in order, as applying runs them; empty if it stays where it is (or no rule there holds)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "space_id",
+          "chain"
+        ],
+        "title": "ApplyOutcomeOut",
+        "description": "Where applying the rule leaves the document."
+      },
       "ApplyPreviewItemOut": {
         "properties": {
           "document_id": {
@@ -16503,6 +16528,21 @@
             "type": "array",
             "title": "Notes",
             "description": "Other actions that would not act, and why."
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ApplyOutcomeOut",
+            "description": "Applied as shown: the steps of the spaces it enters, and where it ends up."
+          },
+          "accepted": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApplyOutcomeOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "With its conflicts accepted (only for documents with conflicts)."
           }
         },
         "type": "object",
@@ -16511,7 +16551,9 @@
           "title",
           "changes",
           "conflicts",
-          "notes"
+          "notes",
+          "outcome",
+          "accepted"
         ],
         "title": "ApplyPreviewItemOut"
       },
@@ -16632,6 +16674,72 @@
             "version": 2
           }
         ]
+      },
+      "ArrivalStepOut": {
+        "properties": {
+          "space_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Space Id",
+            "description": "The space the document entered; its own rules ran."
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/RuleReportOut"
+            },
+            "type": "array",
+            "title": "Rules",
+            "description": "Its rules that hold, and what each did."
+          },
+          "moved_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moved To",
+            "description": "The space its rules filed the document into."
+          },
+          "looped_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Looped To",
+            "description": "A space its rules would file the document into again: the chain stops here (each space at most once)."
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem",
+            "description": "Why the chain stopped, or why a change did not fit."
+          }
+        },
+        "type": "object",
+        "required": [
+          "space_id",
+          "rules",
+          "moved_to",
+          "looped_to",
+          "problem"
+        ],
+        "title": "ArrivalStepOut",
+        "description": "What the rules of one space did to the document when it entered the space."
       },
       "Assignment": {
         "type": "string",
@@ -16905,6 +17013,18 @@
             "description": "Document types it can name.",
             "default": 0
           },
+          "topic": {
+            "type": "integer",
+            "title": "Topic",
+            "description": "Topics it can name.",
+            "default": 0
+          },
+          "space": {
+            "type": "integer",
+            "title": "Space",
+            "description": "Spaces it can name; every user's personal space counts as one (the uploader's own).",
+            "default": 0
+          },
           "tags": {
             "type": "integer",
             "title": "Tags",
@@ -16930,7 +17050,7 @@
           "examples": {
             "type": "integer",
             "title": "Examples",
-            "description": "Confirmed documents it learned from."
+            "description": "Documents it learned from: confirmed ones, and those a person decided the space of (they teach only the space)."
           },
           "examples_until": {
             "anyOf": [
@@ -16943,7 +17063,7 @@
               }
             ],
             "title": "Examples Until",
-            "description": "When the latest of them was confirmed; later confirmations count towards the next training."
+            "description": "When the latest of them was confirmed or placed; later decisions count towards the next training."
           },
           "classes": {
             "$ref": "#/components/schemas/ClassesOut"
@@ -17254,7 +17374,7 @@
           "accept_suggestions": {
             "type": "boolean",
             "title": "Accept Suggestions",
-            "description": "Take the suggestion of every open field that is neither in `changes` nor set on the document.",
+            "description": "Take the suggestion of every open field that is neither in `changes` nor set on the document; for an open `space` with a suggestion, that space: the document moves there (which may show it to more people, as the suggestion says), unless `space_id` chooses another.",
             "default": false
           },
           "resume_at": {
@@ -21743,30 +21863,6 @@
           }
         ]
       },
-      "NameIn": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Name",
-            "examples": [
-              "ACME Energy"
-            ]
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "title": "NameIn",
-        "examples": [
-          {
-            "name": "ACME Energy"
-          }
-        ]
-      },
       "NamedContactOut": {
         "properties": {
           "contact_id": {
@@ -23737,6 +23833,22 @@
               "ACME Energy"
             ]
           },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300,
+                "description": "What belongs in the space, for the language model when it suggests where a document goes; empty removes it. Never sent with other users' personal spaces.",
+                "examples": [
+                  "Wohnung, Nebenkosten, Versorger, Versicherungen fürs Haus, Kinder"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "members": {
             "anyOf": [
               {
@@ -23812,6 +23924,18 @@
             "title": "Personal Of",
             "description": "The user whose personal space it is: what they upload lands there."
           },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "What belongs in the space, for the language model."
+          },
           "role": {
             "$ref": "#/components/schemas/SpaceRole",
             "description": "The caller's role; admins edit every space."
@@ -23838,12 +23962,59 @@
           "id",
           "name",
           "personal_of",
+          "description",
           "role",
           "members",
           "created_at",
           "version"
         ],
         "title": "SpaceOut"
+      },
+      "SpacePatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1,
+                "examples": [
+                  "ACME Energy"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Not for a personal space (422)."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300,
+                "description": "What belongs in the space, for the language model when it suggests where a document goes; empty removes it. Never sent with other users' personal spaces.",
+                "examples": [
+                  "Wohnung, Nebenkosten, Versorger, Versicherungen fürs Haus, Kinder"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SpacePatch",
+        "description": "Fields left out stay; a `description` of null or empty removes it.",
+        "examples": [
+          {
+            "description": "Wohnung, Nebenkosten, Versorger"
+          }
+        ]
       },
       "SpaceRole": {
         "type": "string",

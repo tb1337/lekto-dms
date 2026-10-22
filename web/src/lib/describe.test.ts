@@ -8,7 +8,10 @@ const lookup = {
 	tags: [{ id: 't1', name: 'Tax', created_at: '' }],
 	fields: [{ id: 'a1', name: 'Due', data_type: 'date' }],
 	spaces: [],
-	users: [{ id: 'u1', username: 'alice' }]
+	users: [
+		{ id: 'u1', username: 'alice', personal_space_id: 's1' },
+		{ id: 'u2', username: 'bob', personal_space_id: 's2' }
+	]
 } as unknown as Lookup;
 
 describe('describing changes', () => {
@@ -17,6 +20,8 @@ describe('describing changes', () => {
 		expect(describeValue(['t1', 'zz'], lookup)).toBe('Tax, zz');
 		expect(describeValue({ start: '2026-09-01', end: '2026-09-30' }, lookup)).toBe('2026-09');
 		expect(describeValue('u1', lookup)).toBe('alice');
+		// The personal space of a user the caller is no member of: by that user.
+		expect(describeValue('s2', lookup)).toBe('bob');
 	});
 
 	it('shows plain values', () => {

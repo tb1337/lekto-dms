@@ -13,7 +13,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from lekto.core.domain.classifier import KEPT_MODELS, ClassifierModel
+from lekto.core.domain.classifier import KEPT_MODELS, OWN_SPACE, ClassifierModel
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import (
     ClassifierError,
@@ -30,6 +30,7 @@ from lekto.core.domain.identifiers import (
 from lekto.core.domain.ids import ClassifierModelId, ContactId, TagId, UserId
 from lekto.core.domain.jobs import Job, RetryPolicy
 from lekto.core.domain.json_value import JsonObject
+from lekto.core.domain.spaces import Space
 from lekto.core.domain.text import shorten
 from lekto.core.ports.classifier import Classifier, Prediction, TrainedModel, TrainingExample
 from lekto.core.ports.clock import Clock
@@ -66,7 +67,7 @@ class ClassifierPolicy:
     status shows it. `text_limit`: characters of a document's text it learns from and predicts
     on (`shorten`)."""
 
-    min_examples: int  # confirmed documents before the first model
+    min_examples: int  # confirmed documents or decided spaces before the first model
     retrain_after: int  # confirmations since the last model before another
     threshold: float  # a prediction this sure names its class
     check_interval: timedelta = timedelta(minutes=10)
@@ -155,13 +156,14 @@ class ClassifierService:
 
     async def request_training(self, actor: UserId) -> None:
         """Admins only: queue a training, unless one is queued or running. ConflictError with
-        fewer confirmed documents than a first model needs."""
+        fewer decisions (confirmed documents, decided spaces) than a first model needs."""
         async with self._uow() as uow:
             await require_admin(uow, actor, "train the classifier")
             confirmed = await uow.documents.count_confirmed()
             if confirmed < self.policy.min_examples:
                 raise ConflictError(
-                    f"{confirmed} confirmed documents; training needs {self.policy.min_examples}"
+                    f"{confirmed} confirmed documents or decided spaces; training needs "
+                    f"{self.policy.min_examples}"
                 )
             await uow.jobs.enqueue(TRAIN_JOB, {}, run_at=self._clock.now(), dedup_key=TRAIN_JOB)
             await uow.commit()
@@ -182,18 +184,28 @@ class ClassifierService:
     # --- training ---------------------------------------------------------------------------------
 
     async def train(self) -> ClassifierModel:
-        """A new model from the confirmed documents, and the identifiers learned from them.
-        ClassifierError if there is nothing to learn from."""
+        """A new model from the documents a person confirmed or decided the space of, and the
+        identifiers learned from the confirmed ones. ClassifierError if there is nothing to
+        learn from."""
         examples = await self._examples()
         if len(examples) < 2:
-            raise ClassifierError(f"{len(examples)} confirmed documents with text: too few")
+            raise ClassifierError(
+                f"{len(examples)} confirmed documents or decided spaces with text: too few"
+            )
         accuracy = await self._accuracy(examples)
         trained = await self._classifier.train([item.example for item in examples])
         until = max(
-            (item.document.confirmed_at for item in examples if item.document.confirmed_at),
+            (
+                at
+                for item in examples
+                for at in (item.document.confirmed_at, item.document.space_confirmed_at)
+                if at is not None
+            ),
             default=None,
         )
-        found = await asyncio.to_thread(_identifiers_of, examples)
+        # Identifiers are learned from confirmed contacts only, never from the machine's.
+        confirmed = [item for item in examples if item.example.labelled]
+        found = await asyncio.to_thread(_identifiers_of, confirmed)
         model, learned, old = await retrying(
             lambda: self._store_model(trained, found, accuracy, len(examples), until),
             attempts=_COMMIT_ATTEMPTS,
@@ -264,16 +276,18 @@ class ClassifierService:
         return model, learned, old
 
     async def _examples(self) -> list[_Example]:
-        """The confirmed documents with their texts (one without a text yet is left out)."""
+        """The documents a person confirmed the metadata or decided the space of, with their
+        texts (one without a text yet is left out)."""
         async with self._uow() as uow:
             # Only the tags and topics the classification sets are learned, not those set by
             # hand.
             tags = await uow.tags.list_all()
             targets = {tag.id for tag in tags if tag.is_target}
             topics = {tag.id for tag in tags if tag.is_topic_target}
+            spaces = {space.id: space for space in await uow.spaces.list_all()}
         documents = [
             document
-            async for page in document_pages(self._uow, DocumentFilter(confirmed=True))
+            async for page in document_pages(self._uow, DocumentFilter(labelled=True))
             for document in page
         ]
         examples = []
@@ -289,13 +303,15 @@ class ClassifierService:
                 document_type=document.document_type_id,
                 tags=frozenset(document.tag_ids & targets),
                 topic=document.topic_id if document.topic_id in topics else None,
+                space=space_label(document, spaces.get(document.space_id)),
+                labelled=document.confirmed_at is not None,
             )
             examples.append(_Example(document, example))
         return examples
 
     async def _accuracy(self, examples: Sequence[_Example]) -> JsonObject | None:
-        """The share of held-out examples whose contact and type the model trained on the rest
-        names first; None with too few examples to tell."""
+        """The share of held-out confirmed examples whose contact and type the model trained on
+        the rest names first; None with too few examples to tell."""
         if len(examples) < _HOLDOUT_FROM:
             return None
         ordered = sorted(examples, key=lambda item: item.document.id)
@@ -312,9 +328,17 @@ class ClassifierService:
         examples_held = [item.example for item in held]
         return {
             "tested": len(held),
-            "contact": _hits(examples_held, predictions, lambda e: e.contact, _first_contact),
+            "contact": _hits(
+                examples_held,
+                predictions,
+                lambda e: e.contact if e.labelled else None,
+                _first_contact,
+            ),
             "document_type": _hits(
-                examples_held, predictions, lambda e: e.document_type, _first_type
+                examples_held,
+                predictions,
+                lambda e: e.document_type if e.labelled else None,
+                _first_type,
             ),
         }
 
@@ -390,6 +414,15 @@ def _first_contact(prediction: Prediction) -> object:
 
 def _first_type(prediction: Prediction) -> object:
     return prediction.document_types[0][0] if prediction.document_types else None
+
+
+def space_label(document: Document, space: Space | None) -> str | None:
+    """What the classifier learns of the document's space: `OWN_SPACE` if it lies in its
+    uploader's personal space, otherwise the space's id; None if no person decided the space
+    or its uploader is gone (a personal space would then be no one's own)."""
+    if document.space_confirmed_at is None or document.uploaded_by is None or space is None:
+        return None
+    return OWN_SPACE if space.personal_of == document.uploaded_by else str(space.id)
 
 
 def _hits(

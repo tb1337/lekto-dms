@@ -11,6 +11,7 @@ const space = (id: string, changes: Partial<Space> = {}): Space => ({
 	id,
 	name: 'Personal',
 	personal_of: null,
+	description: null,
 	role: 'edit',
 	members: [{ user_id: 'u1', role: 'edit', username: 'tobi', active: true }],
 	created_at: '2026-10-21T08:00:00Z',

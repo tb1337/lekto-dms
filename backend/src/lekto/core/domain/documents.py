@@ -229,6 +229,11 @@ class Document:
     # it was taken over with the source system's; None while its metadata is the pipeline's
     # own. Confirmed documents train the classifier.
     confirmed_at: datetime | None = None
+    # When a person last decided its space: confirmed it in the inbox, moved or handed it over,
+    # chose it on upload, or it was taken over from the source system (its permissions). None
+    # while the space is where it landed or where the pipeline put it. A decided space trains
+    # the classifier's space and the judge leaves it (`verdict.judge_space`).
+    space_confirmed_at: datetime | None = None
     # When processing last made it new for the inbox: a run ended green without a person's
     # decision in it (`Processing.decided`) that started on a document that was not green (its
     # first run, a retry from red, a reprocessing of a yellow one), or on a green one whose
@@ -256,6 +261,8 @@ class Document:
         self.updated_at = require_utc(self.updated_at, "updated_at")
         if self.new_at is not None:
             self.new_at = require_utc(self.new_at, "new_at")
+        if self.space_confirmed_at is not None:
+            self.space_confirmed_at = require_utc(self.space_confirmed_at, "space_confirmed_at")
 
     # --- creation -------------------------------------------------------------------------------
 
@@ -278,10 +285,11 @@ class Document:
         now: datetime,
         channel: Channel = Channel.API,
         received: datetime | None = None,
+        space_chosen: bool = False,
     ) -> Self:
         """A newly received document. The receive node (hash, duplicate check, storage) is done;
         the nodes after it are due. `received`: when it came in, if not now (a migration takes
-        over the source system's date)."""
+        over the source system's date). `space_chosen`: a person chose its space on upload."""
         if result.outcome is Outcome.FAILED:
             raise ValidationError("a document whose receive node failed is not created")
         filename = require_name(original_filename, "original filename", max_length=None)
@@ -295,6 +303,7 @@ class Document:
             media_type=media_type,
             channel=channel,
             processing=Processing.new(),
+            space_confirmed_at=now if space_chosen else None,
             created_at=now if received is None else received_at(received, now),
             updated_at=now,
         )
@@ -431,9 +440,9 @@ class Document:
         nodes that are not run again count as OK from now on, processing runs again from
         `resume_at` (applying rules, or extracting fields after a type correction) up to filing.
         Nodes that never ran and are not needed to resume (the pages after a failed OCR) run
-        now. The metadata counts as confirmed, and the document is new for no one: the run a
-        person decided in never makes it new. Returns the nodes whose results the person
-        overruled.
+        now. The metadata and the space count as confirmed (the person kept or chose it), and
+        the document is new for no one: the run a person decided in never makes it new.
+        Returns the nodes whose results the person overruled.
 
         Only for documents in the inbox (yellow or red, not being processed, no node still
         running after a failure). Extracting fields needs a parsed text."""
@@ -474,9 +483,23 @@ class Document:
             )
         self._reset({resume_at}, now)
         self.confirmed_at = require_utc(now, "confirmed_at")
+        self.space_confirmed_at = self.confirmed_at
         processing.decided = True
         self.new_at = None
         return tuple(overruled)
+
+    def settle(self, node: Node, now: datetime) -> None:
+        """A later node of the run answered what `node` left uncertain (the rules filed the
+        document into the space the judge suggested): its result counts as OK."""
+        state = self.processing.nodes[node]
+        if state.status is NodeStatus.DONE and state.outcome is Outcome.UNCERTAIN:
+            self.processing.nodes[node] = NodeState(
+                status=NodeStatus.DONE,
+                outcome=Outcome.OK,
+                started_at=state.started_at,
+                finished_at=state.finished_at,
+            )
+            self._touch(now)
 
     def set_page_count(self, count: int, now: datetime) -> None:
         """The pages node rendered `count` page images."""
@@ -665,11 +688,22 @@ class Document:
         self.new_at = require_utc(now, "new_at")
         self._touch(now)
 
-    def move_to(self, space_id: SpaceId, now: datetime) -> None:
-        """File the document into another space. Permissions are checked by the caller."""
+    def confirm_space(self, now: datetime) -> None:
+        """A person decided the space where it lies (or it was taken over with the source
+        system's permissions)."""
+        self.space_confirmed_at = require_utc(now, "space_confirmed_at")
+        self._touch(now)
+
+    def move_to(self, space_id: SpaceId, now: datetime, *, by_person: bool = False) -> None:
+        """File the document into another space. Permissions are checked by the caller.
+        `by_person`: a person moved or handed it over, which decides its space; a move of the
+        pipeline (the judge, a rule) leaves the space undecided."""
         if space_id == self.space_id:
+            if by_person:
+                self.confirm_space(now)
             return
         self.space_id = space_id
+        self.space_confirmed_at = require_utc(now, "space_confirmed_at") if by_person else None
         self._record(DocumentFiled(document_id=self.id, occurred_at=now, space_id=space_id))
         self._touch(now)
 

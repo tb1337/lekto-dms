@@ -12,13 +12,18 @@
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import EditButton from '#lib/components/EditButton.svelte';
 	import SpaceMembers from '#lib/components/SpaceMembers.svelte';
-	import NameDialog from '#lib/components/NameDialog.svelte';
+	import SpaceDialog from '#lib/components/SpaceDialog.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { spaceLabel, type Space, type UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { canChooseMembers, canLeaveSpace, canManageSpace } from '#lib/permissions.ts';
+	import {
+		canChooseMembers,
+		canDescribeSpace,
+		canLeaveSpace,
+		canManageSpace
+	} from '#lib/permissions.ts';
 	import { scope } from '#lib/scope.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 
@@ -26,7 +31,7 @@
 	let users = $state<UserName[]>([]);
 	let problem = $state<string | null>(null);
 	let creating = $state(false);
-	let renaming = $state<Space | null>(null);
+	let editing = $state<Space | null>(null);
 	let removing = $state<Space | null>(null);
 	let leaving = $state<Space | null>(null);
 	let choosing = $state<string | null>(null);
@@ -69,21 +74,21 @@
 		untrack(() => void load());
 	});
 
-	async function create(name: string) {
-		await unwrap(api.POST('/api/v1/spaces', { body: { name } }));
+	async function create(name: string, description: string) {
+		await unwrap(api.POST('/api/v1/spaces', { body: { name, description: description || null } }));
 		toast.success(m.space_created());
 		await load();
 	}
 
-	async function rename(name: string) {
-		if (!renaming) return;
-		await unwrap(
-			api.PATCH('/api/v1/spaces/{id}', {
-				params: { path: { id: renaming.id } },
-				body: { name }
-			})
-		);
-		toast.success(m.space_renamed());
+	// A personal space keeps its name: only its description goes.
+	async function change(name: string, description: string) {
+		if (!editing) return;
+		const body =
+			editing.personal_of === null
+				? { name, description: description || null }
+				: { description: description || null };
+		await unwrap(api.PATCH('/api/v1/spaces/{id}', { params: { path: { id: editing.id } }, body }));
+		toast.success(m.space_saved());
 		await load();
 	}
 
@@ -162,6 +167,9 @@
 					<Badge variant="outline">{m.space_role_read()}</Badge>
 				{/if}
 			</span>
+			{#if space.description}
+				<span class="text-sm break-words">{space.description}</span>
+			{/if}
 			<span class="text-sm text-muted-foreground">
 				{members ? m.space_members_line({ names: members }) : m.space_only_you()}
 			</span>
@@ -198,18 +206,25 @@
 				</Button>
 			{/if}
 		</div>
-		{#if canManageSpace(space, session.user)}
-			<EditButton label={m.space_rename({ name: space.name })} onclick={() => (renaming = space)} />
+		{#if canDescribeSpace(space, session.user)}
+			<EditButton label={m.space_edit({ name: label(space) })} onclick={() => (editing = space)} />
 		{/if}
 	</li>
 {/snippet}
 
-<NameDialog bind:open={creating} title={m.space_new()} submitLabel={m.create()} onsubmit={create} />
-<NameDialog
-	bind:open={() => renaming !== null, (open) => !open && (renaming = null)}
-	title={m.space_rename({ name: renaming?.name ?? '' })}
-	initial={renaming?.name ?? ''}
-	onsubmit={rename}
+<SpaceDialog
+	bind:open={creating}
+	title={m.space_new()}
+	submitLabel={m.create()}
+	onsubmit={create}
+/>
+<SpaceDialog
+	bind:open={() => editing !== null, (open) => !open && (editing = null)}
+	title={m.space_edit({ name: editing ? label(editing) : '' })}
+	initialName={editing?.name ?? ''}
+	initialDescription={editing?.description ?? ''}
+	named={editing?.personal_of === null}
+	onsubmit={change}
 />
 <ConfirmDialog
 	bind:open={() => removing !== null, (open) => !open && (removing = null)}

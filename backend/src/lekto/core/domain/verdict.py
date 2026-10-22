@@ -38,24 +38,33 @@ value.
   is a suggestion; if signals (or identifiers of the pair) name different topics, it stays
   empty with all candidates. A topic never makes a document uncertain. Under a contact that is
   only suggested, the topic is only suggested too.
+- A space is judged among the spaces the uploader may file into (`SpaceChoice`), as a type:
+  sure if two signals name it, or only the model names it and no other signal covers it. A
+  space a person decided is left as it is. Sure of the space the document lies in: nothing
+  changes. Sure of another that shows the document to no one new (fewer or the same
+  members): it moves there. Sure of one with members who cannot see it now: uncertain, with
+  the space as suggestion and its new readers in the reason (more visibility only with a
+  person's click). Not sure: it stays where it is, never uncertain.
 """
 
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from lekto.core.domain.classification import (
     CONTACT,
     DOCUMENT_TYPE,
+    SPACE,
     TAGS,
     TOPIC,
     Candidate,
     CandidateSource,
     FieldCheck,
 )
-from lekto.core.domain.ids import ContactId, DocumentTypeId, TagId
+from lekto.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId, UserId
 from lekto.core.domain.json_value import JsonValue
-from lekto.core.domain.master_data import Contact, DocumentType, MasterData, Tag
+from lekto.core.domain.master_data import Contact, DocumentType, Tag
 from lekto.core.domain.names import best_match, match_key, mentions, related
 from lekto.core.domain.pipeline import Node, Outcome
 from lekto.core.domain.sorting import sort_key
@@ -92,6 +101,7 @@ class ModelProposal:
     tags: tuple[str, ...] = ()
     new_tags: tuple[str, ...] = ()
     topic: str | None = None
+    space: SpaceId | None = None  # the listed space it chose (`propose-5`)
 
 
 @dataclass(frozen=True)
@@ -105,6 +115,9 @@ class ClassifierView:
     known_types: frozenset[DocumentTypeId] = frozenset()
     topics: Sequence[tuple[TagId, float]] = ()
     known_topics: frozenset[TagId] = frozenset()
+    # Spaces among the uploader's candidates (a personal space as the uploader's own one).
+    spaces: Sequence[tuple[SpaceId, float]] = ()
+    known_spaces: frozenset[SpaceId] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -115,6 +128,9 @@ class Neighbour:
     tags: frozenset[TagId] = frozenset()
     similarity: float | None = None  # to the document, as the search index measures it
     topic: TagId | None = None
+    # Its decided space as one of the uploader's candidates: one in its own uploader's
+    # personal space votes for this uploader's personal space; None: no vote.
+    space: SpaceId | None = None
 
 
 @dataclass(frozen=True)
@@ -137,6 +153,7 @@ class KnownLabels:
     document_types: frozenset[DocumentTypeId] = frozenset()
     tags: frozenset[TagId] = frozenset()
     topics: frozenset[TagId] = frozenset()
+    spaces: frozenset[SpaceId] = frozenset()  # as candidates of the uploader
 
 
 @dataclass(frozen=True)
@@ -155,6 +172,11 @@ class Signals:
 # --- ranking ----------------------------------------------------------------------------------
 
 
+class _Named(Protocol):
+    @property
+    def name(self) -> str: ...
+
+
 @dataclass(frozen=True, kw_only=True)
 class _Ranking[K]:
     """What the signals say about the values of one field (contact, type or topic), worked out
@@ -163,7 +185,7 @@ class _Ranking[K]:
     it, the similar documents that carry it, and its name. The judges differ only in their
     rules: when a value is green and what contradicts it."""
 
-    names: Mapping[K, MasterData]  # the values the field can take
+    names: Mapping[K, _Named]  # the values the field can take
     answer: Mapping[K, CandidateSource]  # the value the model's answer matches, as a source
     probabilities: Mapping[K, float]  # the classifier's
     neighbours: tuple[Neighbour, ...]
@@ -172,11 +194,12 @@ class _Ranking[K]:
     evidence: Mapping[K, CandidateSource]  # hard evidence in the text, as a source
     identified: tuple[K, ...]  # the values identifiers in the text point to
     thresholds: Thresholds
+    carried: Callable[[Neighbour], K | None]  # the value a similar document carries
 
     @classmethod
     def of(
         cls,
-        names: Mapping[K, MasterData],
+        names: Mapping[K, _Named],
         signals: Signals,
         thresholds: Thresholds,
         *,
@@ -214,6 +237,7 @@ class _Ranking[K]:
             evidence=evidence or {},
             identified=tuple(identified),
             thresholds=thresholds,
+            carried=carried,
         )
 
     def candidates(self) -> list[K]:
@@ -268,9 +292,7 @@ class _Ranking[K]:
 
     def _neighbour_source(self, id: K) -> CandidateSource:
         neighbours = self.neighbours
-        carrying = [
-            item for item in neighbours if id in (item.contact, item.document_type, item.topic)
-        ]
+        carrying = [item for item in neighbours if self.carried(item) == id]
         similarities = [item.similarity for item in carrying if item.similarity is not None]
         count = self.votes.get(id, 0)
         return CandidateSource(
@@ -735,6 +757,118 @@ def judge_topic(
         reason=reason,
         proposed=proposed,
         suggestion=suggestion,
+        candidates=listed,
+    )
+
+
+# --- space ------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SpaceOption:
+    """A space as the judge weighs it: how the check's candidates name it (`name`: what kind of
+    space it is, never its name: those who read the check may not see it), who may see what
+    lies in it, and whose personal space it is."""
+
+    name: str
+    members: frozenset[UserId]
+    personal_of: UserId | None = None
+
+
+@dataclass(frozen=True)
+class SpaceChoice:
+    """Where a document may go: the spaces its uploader (`uploader`) may file into
+    (`options`, with the space it lies in, `current`), and whether a person decided its space
+    (`locked`)."""
+
+    current: SpaceId
+    options: Mapping[SpaceId, SpaceOption]
+    locked: bool = False
+    uploader: UserId | None = None
+
+
+def judge_space(signals: Signals, choice: SpaceChoice, thresholds: Thresholds) -> FieldCheck:
+    """The space for the document (see the module): the check's `value` is the space the judge
+    moves it to (None: it stays where it is). A move is the judge's own only if it shows the
+    document to no one new and keeps it with its uploader in a space that is no one else's
+    personal space; any other one it suggests (uncertain, a person decides): one that shows it
+    to others, one its uploader would not see, a hand-over. Reasons and candidates name no
+    space and no person (the editors of the document may not see them): the suggestion is the
+    space's id."""
+    current = choice.current
+    names = choice.options
+    if choice.locked:
+        return FieldCheck(
+            field=SPACE, outcome=Outcome.OK, confidence=1.0, reason="a person chose the space"
+        )
+    model = signals.model
+    by_model = model.space if model is not None and model.space in names else None
+    classifier = signals.classifier
+    ranking = _Ranking.of(
+        names,
+        signals,
+        thresholds,
+        answer={by_model: CandidateSource(signal=LLM, names=True)} if by_model else {},
+        classified=classifier.spaces if classifier else (),
+        carried=lambda item: item.space,
+    )
+    namers, probabilities = ranking.namers, ranking.probabilities
+    known = signals.neighbours_know
+
+    def covered_by_others(id: SpaceId) -> bool:
+        by_classifier = classifier is not None and id in classifier.known_spaces
+        by_neighbours = bool(ranking.neighbours) and (known is None or id in known.spaces)
+        return by_classifier or by_neighbours
+
+    def contradicted(id: SpaceId) -> bool:
+        return any(other != id for other in namers)
+
+    def sure(id: SpaceId) -> bool:
+        naming = namers.get(id, ())
+        sole = naming == (LLM,) and not covered_by_others(id)
+        return not contradicted(id) and (len(naming) >= 2 or sole)
+
+    ranked = ranking.candidates()
+    listed = tuple(ranking.listed(ranked, contradicted))
+    chosen = next((id for id in ranked if sure(id)), None)
+    if chosen is None or chosen == current:
+        top = next((id for id in ranked if id != current), None)
+        return FieldCheck(  # it stays: nothing to doubt (as an unsure topic), no model value
+            field=SPACE,
+            outcome=Outcome.OK,
+            confidence=1.0,
+            reason="the signals name different spaces" if len(namers) > 1 else None,
+            suggestion=None if chosen is not None or top is None else str(top),
+            candidates=listed,
+        )
+    confidence = (
+        1.0
+        if len(namers[chosen]) >= 2 or not probabilities
+        else max(probabilities.get(chosen, 0.0), thresholds.accept)
+    )
+    here = names.get(current)
+    target = names[chosen]
+    seeing = here.members if here is not None else frozenset()
+    if target.members - seeing:
+        why = "suggests another space, which shows it to more people"
+    elif target.personal_of is not None and target.personal_of != choice.uploader:
+        why = "suggests handing it over into another user's personal space"
+    elif choice.uploader is not None and choice.uploader not in target.members:
+        why = "suggests a space its uploader does not see"
+    else:
+        return FieldCheck(
+            field=SPACE,
+            outcome=Outcome.OK,
+            confidence=confidence,
+            value=str(chosen),
+            candidates=listed,
+        )
+    return FieldCheck(
+        field=SPACE,
+        outcome=Outcome.UNCERTAIN,
+        confidence=min(confidence, _UNSURE),
+        reason=why,
+        suggestion=str(chosen),
         candidates=listed,
     )
 

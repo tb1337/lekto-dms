@@ -1,7 +1,10 @@
 """Contract of the classifier. Needs the fixture `classifier`."""
 
+from dataclasses import replace
+
 import pytest
 
+from lekto.core.domain.classifier import OWN_SPACE
 from lekto.core.domain.errors import ClassifierError
 from lekto.core.domain.ids import ContactId, DocumentTypeId, TagId, new_id
 from lekto.core.ports.classifier import Classifier, TrainingExample
@@ -36,6 +39,35 @@ def corpus() -> list[TrainingExample]:
 
 
 class ClassifierContract:
+    async def test_it_learns_the_space_from_every_example_that_has_one(
+        self, classifier: Classifier
+    ) -> None:
+        """The space is a label (`OWN_SPACE` or a space id); an example whose metadata no
+        person confirmed teaches only its space."""
+        household = "0198f0c4-0000-7000-8000-000000000001"
+        examples = [
+            replace(item, space=OWN_SPACE if item.contact == UTILITY else household)
+            for item in corpus()
+        ] + [
+            TrainingExample(text, None, None, space=household, labelled=False)
+            for text in ("Kontoauszug Beispielbank Girokonto 1", "Beispielbank Saldo Girokonto 2")
+        ]
+        model = await classifier.train(examples)
+        prediction = await classifier.predict(
+            model.data, "Stadtwerke Musterstadt: Ihr Zählerstand, Strom in Kilowattstunden"
+        )
+        assert prediction.spaces[0][0] == OWN_SPACE
+        assert prediction.known_spaces == {OWN_SPACE, household}
+        assert prediction.known_contacts == {UTILITY, BANK}
+        classes = model.summary["classes"]
+        assert isinstance(classes, dict) and classes["space"] == 2
+
+    async def test_without_spaces_it_knows_none(self, classifier: Classifier) -> None:
+        model = await classifier.train(corpus())
+        prediction = await classifier.predict(model.data, "Stadtwerke Musterstadt Zählerstand")
+        assert not prediction.spaces
+        assert prediction.known_spaces == frozenset()
+
     async def test_it_learns_what_tells_the_classes_apart(self, classifier: Classifier) -> None:
         model = await classifier.train(corpus())
         prediction = await classifier.predict(

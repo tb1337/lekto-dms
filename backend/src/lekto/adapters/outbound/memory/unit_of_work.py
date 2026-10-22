@@ -489,15 +489,27 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
         return counts
 
     async def count_confirmed(self, *, after: datetime | None = None) -> int:
+        def decided(at: datetime | None) -> bool:
+            return at is not None and (after is None or at > after)
+
         return sum(
-            row.confirmed_at is not None and (after is None or row.confirmed_at > after)
-            for row in self._all()
+            decided(row.confirmed_at) or decided(row.space_confirmed_at) for row in self._all()
         )
 
     async def confirmed_labels(self, reader: UserId) -> KnownLabels:
         readable = await self.list_visible_to(reader)
         confirmed = [row for row in readable if row.confirmed_at is not None]
+        spaces = {space.id: space for space in self._uow._rows(SPACES)}
+        own = next((space.id for space in spaces.values() if space.personal_of == reader), None)
+        decided = frozenset(
+            own
+            if own is not None and spaces[row.space_id].personal_of == row.uploaded_by
+            else row.space_id
+            for row in confirmed
+            if row.space_confirmed_at is not None and row.space_id in spaces
+        )
         return KnownLabels(
+            spaces=decided,
             contacts=frozenset(row.contact_id for row in confirmed if row.contact_id is not None),
             document_types=frozenset(
                 row.document_type_id for row in confirmed if row.document_type_id is not None

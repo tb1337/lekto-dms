@@ -129,7 +129,9 @@ class Situation:
       documents its space counts as empty there.
     - `render`: renders the templates of titles, text fields and review reasons (the port
       `TemplateRenderer`).
-    - `model_values`: single fields that hold the value the model set, unconfirmed, as JSON.
+    - `model_values`: single fields that hold the value the model set, unconfirmed, as JSON;
+      `chained` those of them a rule of an earlier space in the chain set on unconfirmed
+      grounds (`running.Chain`).
     - `machine_title`: the title the machine gave, if the document still has it; like the
       file name, rules may replace it.
     - `locked`: single fields a person decided; `person_added_tags` and `person_removed_tags`
@@ -152,6 +154,7 @@ class Situation:
     existing: frozenset[object] = frozenset()
     names: Mapping[object, str] = field(default_factory=dict)
     model_values: Mapping[str, JsonValue] = field(default_factory=dict)
+    chained: frozenset[str] = frozenset()
     machine_title: str | None = None
     locked: frozenset[str] = frozenset()
     person_added_tags: frozenset[TagId] = frozenset()
@@ -224,7 +227,9 @@ class RulePlan:
     `checks`: per single field the rules touched, as in the model nodes: OK if applied,
     uncertain (on arrival) if a person has to decide; the inbox reads them. `reviews`:
     reasons of forced reviews that hold. `labels`: how `reasons` names a field (`field:<id>`)
-    of a check, by its name."""
+    of a check, by its name. `distrusted` and `distrusted_tags`: the single fields and tags set
+    by rules that hold only through unconfirmed model values; a chain of rule runs keeps them
+    unconfirmed for the rules of the next space (`running.Chain`)."""
 
     changes: DocumentChanges
     space: SpaceId | None
@@ -232,6 +237,8 @@ class RulePlan:
     checks: list[FieldCheck]
     reviews: list[str]
     labels: Mapping[str, str] = field(default_factory=dict)
+    distrusted: frozenset[str] = frozenset()
+    distrusted_tags: frozenset[TagId] = frozenset()
 
     @property
     def uncertain(self) -> bool:
@@ -350,6 +357,12 @@ class _Planner:
             changes = replace(changes, tag_ids=tags)
         space = SpaceId(UUID(str(result[SPACE]))) if SPACE in result else None
         definitions = self._s.definitions
+        untrusted = [
+            effect
+            for match, report in zip(self._matched, self._reports, strict=True)
+            if not match.trusted
+            for effect in report.applied
+        ]
         return RulePlan(
             changes=changes,
             space=space,
@@ -361,6 +374,14 @@ class _Planner:
                 for name in self._checks
                 if (id := field_id_of(name)) is not None and id in definitions
             },
+            distrusted=frozenset(
+                effect.field for effect in untrusted if effect.field not in (TAGS, SPACE)
+            ),
+            distrusted_tags=frozenset(
+                TagId(UUID(str(effect.new)))
+                for effect in untrusted
+                if effect.field == TAGS and effect.new is not None
+            ),
         )
 
     # --- collecting ---------------------------------------------------------------------------
@@ -511,7 +532,12 @@ class _Planner:
         elif field_name in s.locked:
             kind, reason = NoteKind.OVERRULED, "a person decided this field"
         elif field_name in s.model_values and _key(s.model_values[field_name]) == _key(current):
-            reason = f"the model set another value ({self._shown(field_name, current)})"
+            shown = self._shown(field_name, current)
+            reason = (
+                f"a rule set another value on unconfirmed values ({shown})"
+                if field_name in s.chained
+                else f"the model set another value ({shown})"
+            )
             if s.mode is Mode.INGEST:
                 self._uncertain(field_name, f"rules: {reason}", suggestion=value)
         if reason is not None:

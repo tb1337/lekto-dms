@@ -37,6 +37,16 @@ const SPACES = [
 		personal_of: 'admin-1',
 		role: 'edit',
 		members: [{ user_id: 'admin-1', role: 'edit' }]
+	},
+	{
+		id: 'space-house',
+		name: 'Haushalt',
+		personal_of: null,
+		role: 'edit',
+		members: [
+			{ user_id: OWNER, role: 'edit', username: 'tobi', active: true },
+			{ user_id: 'anna-1', role: 'read', username: 'anna', active: true }
+		]
 	}
 ];
 
@@ -156,6 +166,41 @@ describe('inbox rows', () => {
 		expect(within(running).getByRole('link').getAttribute('href')).toBe(
 			'/ui/documents/p1?from=inbox'
 		);
+	});
+
+	it('names the space Lekto suggests, and who would see the document there', async () => {
+		start([
+			inboxItem(
+				'review',
+				{ id: 'y2', title: 'Vorschlag' },
+				{
+					open: [
+						{
+							node: 'judge',
+							outcome: 'uncertain',
+							reason: 'space: suggests another space, which shows it to more people',
+							fields: [
+								{
+									field: 'space',
+									outcome: 'uncertain',
+									confidence: 0.89,
+									reason: 'suggests another space, which shows it to more people',
+									proposed: null,
+									evidence: null,
+									value: null,
+									suggestion: 'space-house',
+									new_name: null
+								}
+							]
+						}
+					]
+				}
+			)
+		]);
+		const row = (await screen.findByText('Vorschlag')).closest('li')!;
+		expect(
+			await within(row).findByText(m.space_suggestion_for({ space: 'Haushalt', names: 'anna' }))
+		).toBeTruthy();
 	});
 
 	it('marks a new document calmly, with "seen" in its row', async () => {

@@ -10,6 +10,7 @@ from lekto.adapters.inbound.rest.cursors import decode_cursor, encode_cursor
 from lekto.adapters.inbound.rest.params import AllRules
 from lekto.adapters.inbound.rest.problems import problem_responses
 from lekto.adapters.inbound.rest.schemas.rules import (
+    ApplyOutcomeOut,
     ApplyPreviewItemOut,
     ApplyPreviewOut,
     ApplyPreviewRequest,
@@ -188,8 +189,10 @@ WHO_APPLIES = (
     summary="Preview applying a rule to existing documents",
     description=(
         "The documents the rule's current version would change, newest first, with what would "
-        "change and the conflicts (a field that has another value). Nothing is stored. "
-        + WHO_APPLIES
+        "change and the conflicts (a field that has another value). Each shows the chain as "
+        "applying runs it: the rules of the spaces the rule files it into, and of the spaces "
+        "those file it into (each at most once), and where it ends up; with conflicts also when "
+        "they are accepted. Nothing is stored. " + WHO_APPLIES
     ),
     response_model=ApplyPreviewOut,
     responses=problem_responses(401, 403, 404, 422),
@@ -210,6 +213,8 @@ async def preview_apply(
                 changes=[RuleEffectOut.of(effect) for effect in item.effects],
                 conflicts=[RuleNoteOut.of(note) for note in item.conflicts],
                 notes=[RuleNoteOut.of(note) for note in item.notes],
+                outcome=ApplyOutcomeOut.of(item.outcome),
+                accepted=None if item.accepted is None else ApplyOutcomeOut.of(item.accepted),
             )
             for item in preview.items
         ],

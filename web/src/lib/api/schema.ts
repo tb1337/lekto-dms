@@ -771,10 +771,10 @@ export interface paths {
 		options?: never;
 		head?: never;
 		/**
-		 * Rename a space
-		 * @description Editors of the space and admins. Not a personal space (422).
+		 * Rename or describe a space
+		 * @description Editors of the space and admins. A personal space keeps its name (422); its description its user writes. The description tells the language model what belongs in the space.
 		 */
-		patch: operations['rename_space_api_v1_spaces__id__patch'];
+		patch: operations['change_space_api_v1_spaces__id__patch'];
 		trace?: never;
 	};
 	'/api/v1/spaces/{id}/members/{user_id}': {
@@ -908,7 +908,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Preview applying a rule to existing documents
-		 * @description The documents the rule's current version would change, newest first, with what would change and the conflicts (a field that has another value). Nothing is stored. A space rule: the editors of its space and admins, on the documents in its space. A global rule: anyone, on the documents they may edit (admins: every document). Documents in processing are left out.
+		 * @description The documents the rule's current version would change, newest first, with what would change and the conflicts (a field that has another value). Each shows the chain as applying runs it: the rules of the spaces the rule files it into, and of the spaces those file it into (each at most once), and where it ends up; with conflicts also when they are accepted. Nothing is stored. A space rule: the editors of its space and admins, on the documents in its space. A global rule: anyone, on the documents they may edit (admins: every document). Documents in processing are left out.
 		 */
 		post: operations['preview_apply_api_v1_rules__id__apply_preview_post'];
 		delete?: never;
@@ -1048,7 +1048,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Train the classifier
-		 * @description Admins only. Trains a new model in the background (it also happens on its own after enough confirmations); one that is queued or running is not queued twice. 409 with fewer confirmed documents than the first model needs, 503 without a classifier.
+		 * @description Admins only. Trains a new model in the background (it also happens on its own after enough confirmations); one that is queued or running is not queued twice. 409 with fewer confirmed documents or decided spaces than the first model needs, 503 without a classifier.
 		 */
 		post: operations['train_api_v1_classifier_train_post'];
 		delete?: never;
@@ -1504,7 +1504,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Confirm a document from the inbox
-		 * @description Editors of the document's space and admins, for yellow and red documents that are not being processed. `space_id` moves the document as `POST /documents/{id}/move` does: into a space the caller edits, or another user's personal space; an admin chooses any space. Every open field of the nodes before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The rules' fields `space`, `title` and `review` always have a value: confirming keeps it, `space_id` moves the document. The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the person decided or changed as it is. From `fields` on, the fields read again replace the ones the document has; otherwise the type's title pattern is rendered with the decided values (while the title is the machine's). If the caller cannot read the document where it lies now (handed over, or moved into a space they only read, where it is not green yet), the answer is `DocumentOutOfReach`. Editors of `space_id` who could not read the document before find it as new once it is green.
+		 * @description Editors of the document's space and admins, for yellow and red documents that are not being processed. `space_id` moves the document as `POST /documents/{id}/move` does: into a space the caller edits, or another user's personal space; an admin chooses any space. Every open field of the nodes before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The fields `space`, `title` and `review` always have a value: confirming keeps it, `space_id` moves the document, and an open `space` the judge suggested another one for moves there with `accept_suggestions` (it may show the document to more people). The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the person decided or changed as it is. From `fields` on, the fields read again replace the ones the document has; otherwise the type's title pattern is rendered with the decided values (while the title is the machine's). If the caller cannot read the document where it lies now (handed over, or moved into a space they only read, where it is not green yet), the answer is `DocumentOutOfReach`. Editors of `space_id` who could not read the document before find it as new once it is green.
 		 */
 		post: operations['confirm_api_v1_documents__id__confirm_post'];
 		delete?: never;
@@ -1972,6 +1972,23 @@ export interface components {
 		 * @enum {string}
 		 */
 		ApplicationStatus: 'queued' | 'running' | 'done' | 'failed';
+		/**
+		 * ApplyOutcomeOut
+		 * @description Where applying the rule leaves the document.
+		 */
+		ApplyOutcomeOut: {
+			/**
+			 * Space Id
+			 * Format: uuid
+			 * @description The space the document ends up in.
+			 */
+			space_id: string;
+			/**
+			 * Chain
+			 * @description The rules of the spaces the document enters on the way, in order, as applying runs them; empty if it stays where it is (or no rule there holds).
+			 */
+			chain: components['schemas']['ArrivalStepOut'][];
+		};
 		/** ApplyPreviewItemOut */
 		ApplyPreviewItemOut: {
 			/**
@@ -1996,6 +2013,10 @@ export interface components {
 			 * @description Other actions that would not act, and why.
 			 */
 			notes: components['schemas']['RuleNoteOut'][];
+			/** @description Applied as shown: the steps of the spaces it enters, and where it ends up. */
+			outcome: components['schemas']['ApplyOutcomeOut'];
+			/** @description With its conflicts accepted (only for documents with conflicts). */
+			accepted: components['schemas']['ApplyOutcomeOut'] | null;
 		};
 		/** ApplyPreviewOut */
 		ApplyPreviewOut: {
@@ -2058,6 +2079,38 @@ export interface components {
 			 * @description Selected documents where the rule's value replaces a different one.
 			 */
 			accept_conflicts?: string[];
+		};
+		/**
+		 * ArrivalStepOut
+		 * @description What the rules of one space did to the document when it entered the space.
+		 */
+		ArrivalStepOut: {
+			/**
+			 * Space Id
+			 * Format: uuid
+			 * @description The space the document entered; its own rules ran.
+			 */
+			space_id: string;
+			/**
+			 * Rules
+			 * @description Its rules that hold, and what each did.
+			 */
+			rules: components['schemas']['RuleReportOut'][];
+			/**
+			 * Moved To
+			 * @description The space its rules filed the document into.
+			 */
+			moved_to: string | null;
+			/**
+			 * Looped To
+			 * @description A space its rules would file the document into again: the chain stops here (each space at most once).
+			 */
+			looped_to: string | null;
+			/**
+			 * Problem
+			 * @description Why the chain stopped, or why a change did not fit.
+			 */
+			problem: string | null;
 		};
 		/**
 		 * Assignment
@@ -2227,6 +2280,18 @@ export interface components {
 			 */
 			document_type: number;
 			/**
+			 * Topic
+			 * @description Topics it can name.
+			 * @default 0
+			 */
+			topic: number;
+			/**
+			 * Space
+			 * @description Spaces it can name; every user's personal space counts as one (the uploader's own).
+			 * @default 0
+			 */
+			space: number;
+			/**
 			 * Tags
 			 * @description Tags it can name.
 			 * @default 0
@@ -2247,12 +2312,12 @@ export interface components {
 			trained_at: string;
 			/**
 			 * Examples
-			 * @description Confirmed documents it learned from.
+			 * @description Documents it learned from: confirmed ones, and those a person decided the space of (they teach only the space).
 			 */
 			examples: number;
 			/**
 			 * Examples Until
-			 * @description When the latest of them was confirmed; later confirmations count towards the next training.
+			 * @description When the latest of them was confirmed or placed; later decisions count towards the next training.
 			 */
 			examples_until: string | null;
 			classes: components['schemas']['ClassesOut'];
@@ -2442,7 +2507,7 @@ export interface components {
 			changes?: components['schemas']['DocumentPatch'];
 			/**
 			 * Accept Suggestions
-			 * @description Take the suggestion of every open field that is neither in `changes` nor set on the document.
+			 * @description Take the suggestion of every open field that is neither in `changes` nor set on the document; for an open `space` with a suggestion, that space: the document moves there (which may show it to more people, as the suggestion says), unless `space_id` chooses another.
 			 * @default false
 			 */
 			accept_suggestions: boolean;
@@ -4519,19 +4584,6 @@ export interface components {
 			 */
 			space_id: string;
 		};
-		/**
-		 * NameIn
-		 * @example {
-		 *       "name": "ACME Energy"
-		 *     }
-		 */
-		NameIn: {
-			/**
-			 * Name
-			 * @example ACME Energy
-			 */
-			name: string;
-		};
 		/** NamedContactOut */
 		NamedContactOut: {
 			/**
@@ -5536,6 +5588,8 @@ export interface components {
 			 * @example ACME Energy
 			 */
 			name: string;
+			/** Description */
+			description?: string | null;
 			/**
 			 * Members
 			 * @description Who else is a member, with their role. The caller always edits a space they create; an admin may give the members alone (one of them must edit).
@@ -5569,6 +5623,11 @@ export interface components {
 			 * @description The user whose personal space it is: what they upload lands there.
 			 */
 			personal_of: string | null;
+			/**
+			 * Description
+			 * @description What belongs in the space, for the language model.
+			 */
+			description: string | null;
 			/** @description The caller's role; admins edit every space. */
 			role: components['schemas']['SpaceRole'];
 			/** Members */
@@ -5580,6 +5639,22 @@ export interface components {
 			created_at: string;
 			/** Version */
 			version: number;
+		};
+		/**
+		 * SpacePatch
+		 * @description Fields left out stay; a `description` of null or empty removes it.
+		 * @example {
+		 *       "description": "Wohnung, Nebenkosten, Versorger"
+		 *     }
+		 */
+		SpacePatch: {
+			/**
+			 * Name
+			 * @description Not for a personal space (422).
+			 */
+			name?: string | null;
+			/** Description */
+			description?: string | null;
 		};
 		/**
 		 * SpaceRole
@@ -12630,7 +12705,7 @@ export interface operations {
 			};
 		};
 	};
-	rename_space_api_v1_spaces__id__patch: {
+	change_space_api_v1_spaces__id__patch: {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -12641,7 +12716,7 @@ export interface operations {
 		};
 		requestBody: {
 			content: {
-				'application/json': components['schemas']['NameIn'];
+				'application/json': components['schemas']['SpacePatch'];
 			};
 		};
 		responses: {

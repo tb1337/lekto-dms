@@ -39,6 +39,7 @@ from lekto.core.services.rules import RuleService
 from lekto.core.services.rules.changes import ChangeRules
 from lekto.core.services.rules.nodes import ApplyRulesNode, FileNode
 from lekto.core.services.rules.retroactive import RuleApplicationService
+from lekto.core.services.users import UserService
 from tests.builders import TEMPLATES, incoming
 from tests.unit.services.support import World
 
@@ -209,16 +210,26 @@ class RuleWorld:
         )
 
     @property
-    def documents(self) -> DocumentService:
-        change_rules = ChangeRules(
+    def change_rules(self) -> ChangeRules:
+        return ChangeRules(
             self.world.object_store,
             self.matcher,
             TEMPLATES,
             max_text=MAX_TEXT,
             pipeline_version="test",
         )
+
+    @property
+    def documents(self) -> DocumentService:
         return DocumentService(
-            self.world.uow, self.world.clock, self.world.object_store, rules=change_rules
+            self.world.uow, self.world.clock, self.world.object_store, rules=self.change_rules
+        )
+
+    @property
+    def users(self) -> UserService:
+        """Deleting a user moves documents as a person moves them, with the target's rules."""
+        return UserService(
+            self.world.uow, self.world.clock, self.world.hasher, rules=self.change_rules
         )
 
     def pipeline(

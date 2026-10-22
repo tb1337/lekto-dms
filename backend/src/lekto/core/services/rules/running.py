@@ -9,7 +9,7 @@ values (short) run inside it, on the state that is stored.
 import logging
 import time
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from uuid import UUID
 
@@ -105,6 +105,53 @@ async def active_rules(uow: UnitOfWork, space: SpaceId, trigger: Trigger | None)
     )
 
 
+async def space_rules(uow: UnitOfWork, space: SpaceId, trigger: Trigger) -> list[Rule]:
+    """The enabled rules of `space` itself with `trigger` (no global ones): those that run
+    when a completed document enters the space."""
+    rules = await uow.rules.list_for(spaces=[space], include_global=False)
+    return sorted(
+        (rule for rule in rules if rule.is_active and trigger in rule.definition.triggers),
+        key=lambda rule: rule.order,
+    )
+
+
+async def reachable_rules(
+    uow: UnitOfWork, start: SpaceId, trigger: Trigger, *, include_global: bool
+) -> list[Rule]:
+    """The rules a document entering `start` may meet: those of `start` (with the global ones
+    if `include_global`), and of every space they or the next ones file into (`set_space`),
+    each once; for preparing their patterns before the transaction that runs them."""
+    found: dict[RuleId, Rule] = {}
+    seen: set[SpaceId] = set()
+    queue = [start]
+    first = True
+    while queue:
+        space = queue.pop(0)
+        if space in seen:
+            continue
+        seen.add(space)
+        rules = (
+            await active_rules(uow, space, trigger)
+            if first and include_global
+            else await space_rules(uow, space, trigger)
+        )
+        first = False
+        for rule in rules:
+            found.setdefault(rule.id, rule)
+            queue.extend(
+                action.space_id
+                for action in rule.definition.actions
+                if isinstance(action, SetSpace) and action.space_id not in seen
+            )
+    return sorted(found.values(), key=lambda rule: rule.order)
+
+
+def back_and_forth(names: Sequence[str]) -> str:
+    """Why a chain of moves stopped: the rules would file the document into a space it was
+    in already in this chain (each space at most once)."""
+    return "rules move it back and forth: " + " → ".join(names)
+
+
 # --- text and patterns ------------------------------------------------------------------------
 
 
@@ -195,8 +242,8 @@ _PERSON_ENTRIES = (PERSON, RULES_CHANGE, PERSON_SPACE)
 class Provenance:
     """Where the document's values came from, read from the processing log.
 
-    - `model_values`: single fields (contact, type, topic, date, fields) whose value the model
-      set in its latest run and no person has decided since, as JSON.
+    - `model_values`: single fields (contact, type, topic, date, space, fields) whose value
+      the model set in its latest run and no person has decided since, as JSON.
     - `machine_title`: the title the machine gave (`titles.machine_title`), if the document
       still has it and no person decided the title; applied to existing documents, rules
       replace it as they replace the file name.
@@ -204,6 +251,8 @@ class Provenance:
     - `person`: fields a person decided (confirming in the inbox, or changing the document)
       since the model's latest run; `tags_added` and `tags_removed` by a person likewise.
     - `reviewed`: rules whose forced review a person confirmed in the current processing run.
+    - `chained`: values in `model_values` that a rule of an earlier space in a chain set on
+      unconfirmed values (`Chain`), not the model.
     """
 
     model_values: Mapping[str, JsonValue]
@@ -213,6 +262,7 @@ class Provenance:
     tags_added: frozenset[TagId] = frozenset()
     tags_removed: frozenset[TagId] = frozenset()
     machine_title: str | None = None
+    chained: frozenset[str] = frozenset()
 
     @property
     def unverified(self) -> frozenset[str]:
@@ -367,6 +417,8 @@ def _current_values(document: Document) -> dict[str, JsonValue]:
         DOCUMENT_DATE: None
         if document.document_date is None
         else document.document_date.isoformat(),
+        # The judge's space (`judge_space`) is the model's while the document lies there.
+        SPACE: str(document.space_id),
     }
     for id, value in document.fields.items():
         values[field_key(id)] = field_to_json(value)
@@ -507,6 +559,7 @@ async def situation(
         existing=frozenset(existing),
         names=names,
         model_values=origin.model_values,
+        chained=origin.chained,
         machine_title=origin.machine_title,
         locked=frozenset(locked),
         person_added_tags=person_added_tags,
@@ -521,6 +574,41 @@ async def situation(
 def checked_rules(rules: Iterable[Rule]) -> list[JsonValue]:
     """The rules a run looked at, for the log's input."""
     return [{"id": str(rule.id), "version": rule.current.number} for rule in rules]
+
+
+# --- chains -----------------------------------------------------------------------------------
+
+
+@dataclass
+class Chain:
+    """What a chain of rule runs (each space a document enters runs its rules) carries from one
+    space to the next: values its rules set only through unconfirmed model values stay
+    unconfirmed for the next space's rules, as the model's own would. So a rule cannot launder
+    an unconfirmed contact into a type a later rule files on into a wider space; and a later
+    rule that sets another value there disagrees (a conflict, not a silent overwrite)."""
+
+    values: dict[str, JsonValue] = field(default_factory=dict)
+    tags: set[TagId] = field(default_factory=set)
+
+    def origin(self, origin: Provenance) -> Provenance:
+        """`origin` with what the chain carries so far."""
+        if not self.values and not self.tags:
+            return origin
+        values = {name: value for name, value in self.values.items() if name not in origin.person}
+        return replace(
+            origin,
+            model_values={**origin.model_values, **values},
+            model_tags=origin.model_tags | frozenset(self.tags),
+            chained=origin.chained | frozenset(values),
+        )
+
+    def record(self, plan: RulePlan, document: Document) -> None:
+        """After `plan` was applied to `document`: carry what it set on unconfirmed values."""
+        current = _current_values(document)
+        for name in plan.distrusted:
+            if name in current and current[name] is not None:
+                self.values[name] = current[name]
+        self.tags |= plan.distrusted_tags & set(document.tag_ids)
 
 
 # --- one run ----------------------------------------------------------------------------------

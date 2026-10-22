@@ -36,7 +36,11 @@ from lekto.core.domain.json_value import JsonObject, JsonValue
 from lekto.core.domain.master_data import Assignment
 from lekto.core.domain.pipeline import Lane
 from lekto.core.ports.llm import StructuredRequest
-from lekto.core.services.classification.prompts import FIELDS_OF_TYPE, PROPOSE_SCHEMA
+from lekto.core.services.classification.prompts import (
+    FIELDS_OF_TYPE,
+    PROPOSE_SCHEMA,
+    SPACES_HEADING,
+)
 
 
 class EvaluationSetError(Exception):
@@ -146,6 +150,24 @@ class FakeAnswer:
                         "label": proposal.get("label"),
                     }
                 )
+        # The space only when the request lists spaces, by its label (`own` for the uploader's
+        # personal space), as its key.
+        space = answer.pop("space", None)
+        spaces = _space_keys(message)
+        if spaces:
+            answer["space"] = next(
+                (
+                    key
+                    for label, key in spaces.items()
+                    if isinstance(space, str)
+                    and (
+                        label == space
+                        or label.startswith(f"{space}: ")
+                        or (space == "own" and label.startswith("own "))
+                    )
+                ),
+                None,
+            )
         return {
             "recipient": None,
             "title": None,
@@ -209,8 +231,9 @@ def load_set(path: Path) -> EvaluationSet:
 # three below follow the wording of `core/services/classification/prompts.py` (`propose_message`,
 # `extract_message`): the line that opens the document, the field lines `- a1: "Name"`, the
 # headings "Fields", "Document types" and "Fields for every document", and a type's keys after
-# `FIELDS_OF_TYPE`. A change there leaves the fields of the fixed answers empty;
-# `tests/unit/test_evaluation.py` renders the prompts to hold the two together.
+# `FIELDS_OF_TYPE`; the spaces under `SPACES_HEADING` as `- s1: label`. A change there leaves
+# the fields of the fixed answers empty; `tests/unit/test_evaluation.py` renders the prompts to
+# hold the two together.
 
 
 def _before_document(message: str) -> str:
@@ -242,6 +265,22 @@ def _proposal_keys(message: str, document_type: JsonValue) -> dict[str, str]:
         elif section and section.startswith("Fields for every document"):
             wanted.extend(_keys(line))
     return {key: names[key] for key in wanted if key in names}
+
+
+_SPACE_LINE = re.compile(r"^- (s\d+): (.*)$")
+
+
+def _space_keys(message: str) -> dict[str, str]:
+    """The keys of the spaces the request lists, by their labels; empty without spaces."""
+    before = _before_document(message)
+    if SPACES_HEADING not in before:
+        return {}
+    listed = before.split(SPACES_HEADING, 1)[1]
+    return {
+        found[2]: found[1]
+        for line in listed.splitlines()
+        if (found := _SPACE_LINE.match(line.strip()))
+    }
 
 
 def _keys(line: str) -> list[str]:

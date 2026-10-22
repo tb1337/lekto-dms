@@ -288,6 +288,61 @@ async def test_a_rule_is_applied_to_existing_documents(api: Api) -> None:
     assert two["title"] == "Tax Other" and two["tag_ids"] == [tax["id"]]
 
 
+async def test_the_preview_shows_the_chain_of_the_spaces_a_rule_files_into(api: Api) -> None:
+    admin, owner = await api.admin(), await api.user()
+    a, o = auth(admin), auth(owner)
+    tax = await post(api, "/tags", {"name": "Haushaltskosten"}, a)
+    document = await upload(api, o)
+    home = (await api.client.get(f"{PREFIX}/documents/{document}", headers=o)).json()["space_id"]
+    household = await post(api, "/spaces", {"name": "Haushalt"}, o)
+    channel = {"all": [{"field": "channel", "op": "is", "value": "api"}]}
+    tagging = await post(
+        api,
+        "/rules",
+        {
+            "name": "Rechnungen",
+            "scope": "space",
+            "space_id": household["id"],
+            "conditions": channel,
+            "actions": [{"type": "add_tags", "tag_ids": [tax["id"]]}],
+        },
+        o,
+    )
+    rule = await post(
+        api,
+        "/rules",
+        {
+            "name": "Versorger",
+            "conditions": channel,
+            "actions": [{"type": "set_space", "space_id": household["id"]}],
+        },
+        o,
+    )
+
+    response = await api.client.post(
+        f"{PREFIX}/rules/{rule['id']}/apply/preview", json={}, headers=o
+    )
+
+    assert response.status_code == 200, response.text
+    (item,) = response.json()["items"]
+    assert item["accepted"] is None
+    assert item["outcome"]["space_id"] == household["id"]
+    (step,) = item["outcome"]["chain"]
+    assert (step["space_id"], step["moved_to"], step["looped_to"], step["problem"]) == (
+        household["id"],
+        None,
+        None,
+        None,
+    )
+    (report,) = step["rules"]
+    assert (report["rule_id"], report["name"]) == (tagging["id"], "Rechnungen")
+    assert [(change["field"], change["new"]) for change in report["applied"]] == [
+        ("tags", tax["id"])
+    ]
+    stored = (await api.client.get(f"{PREFIX}/documents/{document}", headers=o)).json()
+    assert (stored["space_id"], stored["tag_ids"]) == (home, [])  # nothing stored
+
+
 async def test_the_preview_pages_with_the_cursor_of_the_document_list(api: Api) -> None:
     owner = await api.user()
     o = auth(owner)

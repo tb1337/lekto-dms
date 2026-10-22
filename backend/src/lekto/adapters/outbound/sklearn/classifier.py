@@ -6,7 +6,7 @@ scikit-learn only fits. The model is the fitted numbers in an npz archive (vocab
 document frequencies, coefficients, classes), read with `allow_pickle=False`: a model cannot
 run code, and it outlives an update of scikit-learn. Predicting is a few lines of numpy
 (`_Model`), checked against scikit-learn's own in the tests. A model trained before topics has
-no topic arrays: it knows no topic.
+no topic arrays: it knows no topic; one trained before spaces knows no space.
 """
 
 import asyncio
@@ -83,6 +83,7 @@ class Fitted:
     document_type: LogisticRegression | None
     tags: dict[TagId, LogisticRegression]
     topic: LogisticRegression | None = None
+    space: LogisticRegression | None = None
 
 
 def fit(examples: list[TrainingExample]) -> tuple[bytes, JsonObject, Fitted]:
@@ -103,9 +104,11 @@ def fit(examples: list[TrainingExample]) -> tuple[bytes, JsonObject, Fitted]:
         matrix = vectorizer.fit_transform(texts)
     except ValueError as error:
         raise ClassifierError(f"the examples have too few words: {error}") from None
-    contact = _single(matrix, [example.contact for example in examples])
-    document_type = _single(matrix, [example.document_type for example in examples])
-    topic = _single(matrix, [example.topic for example in examples])
+    # Metadata only from the examples a person confirmed it of; the space from every one.
+    contact = _single(matrix, [_if(example, example.contact) for example in examples])
+    document_type = _single(matrix, [_if(example, example.document_type) for example in examples])
+    topic = _single(matrix, [_if(example, example.topic) for example in examples])
+    space = _single(matrix, [example.space for example in examples])
     tags = _tags(matrix, examples)
     vocabulary = vectorizer.vocabulary_
     terms = sorted(vocabulary, key=vocabulary.__getitem__)
@@ -117,6 +120,7 @@ def fit(examples: list[TrainingExample]) -> tuple[bytes, JsonObject, Fitted]:
         **_target("contact", contact, len(terms)),
         **_target("document_type", document_type, len(terms)),
         **_target("topic", topic, len(terms)),
+        **_target("space", space, len(terms)),
         **_tag_arrays(tags, len(terms)),
     }
     buffer = io.BytesIO()
@@ -125,6 +129,7 @@ def fit(examples: list[TrainingExample]) -> tuple[bytes, JsonObject, Fitted]:
         "contact": 0 if contact is None else len(contact.classes_),
         "document_type": 0 if document_type is None else len(document_type.classes_),
         "topic": 0 if topic is None else len(topic.classes_),
+        "space": 0 if space is None else len(space.classes_),
         "tags": len(tags),
     }
     summary: JsonObject = {
@@ -133,10 +138,16 @@ def fit(examples: list[TrainingExample]) -> tuple[bytes, JsonObject, Fitted]:
         "terms": len(terms),
         "classes": classes,
     }
-    return buffer.getvalue(), summary, Fitted(vectorizer, contact, document_type, tags, topic)
+    fitted = Fitted(vectorizer, contact, document_type, tags, topic, space)
+    return buffer.getvalue(), summary, fitted
 
 
-def _single(matrix: Any, labels: Sequence[UUID | None]) -> LogisticRegression | None:
+def _if[T](example: TrainingExample, label: T | None) -> T | None:
+    """The label if a person confirmed the example's metadata."""
+    return label if example.labelled else None
+
+
+def _single(matrix: Any, labels: Sequence[UUID | str | None]) -> LogisticRegression | None:
     """A regression over the classes with at least two examples; None for fewer than two."""
     counts = Counter(label for label in labels if label is not None)
     kept = {label for label, count in counts.items() if count >= 2}
@@ -149,13 +160,17 @@ def _single(matrix: Any, labels: Sequence[UUID | None]) -> LogisticRegression | 
 
 
 def _tags(matrix: Any, examples: list[TrainingExample]) -> dict[TagId, LogisticRegression]:
-    """A regression per tag that at least two documents carry and two do not."""
-    counts = Counter(tag for example in examples for tag in example.tags)
+    """A regression per tag that at least two documents carry and two do not, over the
+    examples a person confirmed the metadata of (an unconfirmed document lacking a tag says
+    nothing about it)."""
+    rows = [index for index, example in enumerate(examples) if example.labelled]
+    labelled = [examples[index] for index in rows]
+    counts = Counter(tag for example in labelled for tag in example.tags)
     fitted = {}
     for tag, count in sorted(counts.items(), key=lambda item: str(item[0])):
-        if count >= 2 and len(examples) - count >= 2:
+        if count >= 2 and len(labelled) - count >= 2:
             model = LogisticRegression(C=C, class_weight="balanced", max_iter=1000)
-            model.fit(matrix, [tag in example.tags for example in examples])
+            model.fit(matrix[rows], [tag in example.tags for example in labelled])
             fitted[tag] = model
     return fitted
 
@@ -214,6 +229,7 @@ class _Model:
     contact: _Single
     document_type: _Single
     topic: _Single
+    space: _Single
     tag_classes: list[str]
     tag_coef: _Array
     tag_intercept: _Array
@@ -231,6 +247,7 @@ class _Model:
                     contact=_single_of(archive, "contact"),
                     document_type=_single_of(archive, "document_type"),
                     topic=_single_of(archive, "topic", optional=True),
+                    space=_single_of(archive, "space", optional=True),
                     tag_classes=[str(tag) for tag in archive["tag_classes"]],
                     tag_coef=archive["tag_coef"],
                     tag_intercept=archive["tag_intercept"],
@@ -263,6 +280,7 @@ class _Model:
                 (TagId(UUID(label)), share)
                 for label, share in self.topic.probabilities(indices, weights)
             ],
+            spaces=self.space.probabilities(indices, weights),
         )
 
     def _vector(self, text: str) -> tuple[_Array, _Array]:

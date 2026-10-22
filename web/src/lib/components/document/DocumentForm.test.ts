@@ -542,6 +542,99 @@ describe('DocumentForm', () => {
 		expect(success).toHaveBeenCalledWith(m.move_handed_over({ name: 'anna' }));
 	});
 
+	describe('a space Lekto suggests', () => {
+		const ANNA = '0199a6c4-0000-7000-8000-000000000002';
+		const MINE = '0199a6c4-0000-7000-8000-0000000000d3';
+		const household = {
+			...lookup,
+			spaces: [
+				{
+					id: MINE,
+					name: 'Personal',
+					personal_of: OWNER,
+					role: 'edit',
+					members: [{ user_id: OWNER, role: 'edit', username: 'tobi', active: true }]
+				},
+				{
+					id: SPACE,
+					name: 'Haushalt',
+					personal_of: null,
+					role: 'edit',
+					members: [
+						{ user_id: OWNER, role: 'edit', username: 'tobi', active: true },
+						{ user_id: ANNA, role: 'read', username: 'anna', active: true }
+					]
+				}
+			],
+			users: [
+				{ id: OWNER, username: 'tobi', role: 'user', personal_space_id: MINE },
+				{ id: ANNA, username: 'anna', role: 'user', personal_space_id: null }
+			]
+		} as unknown as Lookup;
+		const suggesting = {
+			document: {},
+			open: [
+				{
+					node: 'judge',
+					outcome: 'uncertain',
+					reason: 'space: suggests another space, which shows it to more people',
+					fields: [
+						check('space', {
+							outcome: 'uncertain',
+							confidence: 0.89,
+							reason: 'suggests another space, which shows it to more people',
+							suggestion: SPACE
+						})
+					]
+				}
+			],
+			nodes: []
+		} as unknown as Review;
+		const mine = () => ({ ...documentOf('review'), space_id: MINE }) as unknown as Document;
+
+		it('starts at the suggestion, says who sees it there, and accepts it', async () => {
+			fetchMock.mockResolvedValue(
+				new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+			);
+			render(
+				DocumentForm,
+				props({ document: mine(), review: suggesting, lookup: household, next: null })
+			);
+			const select = screen.getByRole('combobox', { name: m.field_space() });
+			expect(selectedValue(select)).toBe(SPACE);
+			expect(
+				screen.getByText(m.space_suggestion_for({ space: 'Haushalt', names: 'anna' }))
+			).toBeTruthy();
+			await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
+			expect(await fetchMock.mock.calls[0][0].json()).toEqual({
+				changes: {},
+				accept_suggestions: true,
+				resume_at: 'apply_rules'
+			});
+		});
+
+		it('keeps the space when the person chooses where it lies', async () => {
+			fetchMock.mockResolvedValue(
+				new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+			);
+			render(
+				DocumentForm,
+				props({ document: mine(), review: suggesting, lookup: household, next: null })
+			);
+			await choose(
+				userEvent.setup({ pointerEventsCheck: 0 }),
+				screen.getByRole('combobox', { name: m.field_space() }),
+				MINE
+			);
+			await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
+			expect(await fetchMock.mock.calls[0][0].json()).toEqual({
+				changes: {},
+				accept_suggestions: false,
+				resume_at: 'apply_rules'
+			});
+		});
+	});
+
 	it('lets a failed document with nothing to decide be changed instead of confirmed', () => {
 		const failed = {
 			document: {},

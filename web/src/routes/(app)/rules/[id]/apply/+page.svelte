@@ -20,6 +20,7 @@
 	import { canApplyRule, canChangeRule } from '#lib/permissions.ts';
 	import {
 		applyRequest,
+		chainLines,
 		follow,
 		hasConflict,
 		preselected,
@@ -291,8 +292,23 @@
 								{#if conflict}<Badge variant="outline">{m.rule_conflict()}</Badge>{/if}
 							</span>
 							<RuleEffects effects={item.changes} notes={item.notes} {lookup} />
+							{#if item.outcome.chain.length > 0}
+								<ul class="flex flex-col gap-0.5">
+									{#each chainLines(item.outcome, rule?.name ?? '', lookup, session.user?.id) as line, index (index)}
+										<li>{line}</li>
+									{/each}
+								</ul>
+							{/if}
 							{#if conflict}
 								<RuleEffects effects={[]} notes={item.conflicts} {lookup} />
+								{#if item.accepted && (item.accepted.chain.length > 0 || item.accepted.space_id !== item.outcome.space_id)}
+									<p class="font-medium">{m.rule_chain_accepted()}</p>
+									<ul class="flex flex-col gap-0.5">
+										{#each chainLines(item.accepted, rule?.name ?? '', lookup, session.user?.id) as line, index (index)}
+											<li>{line}</li>
+										{/each}
+									</ul>
+								{/if}
 								<label class="flex w-fit items-center gap-2 font-medium">
 									<input
 										type="checkbox"

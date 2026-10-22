@@ -22,21 +22,26 @@ class FakeClassifier:
     async def train(self, examples: Sequence[TrainingExample]) -> TrainedModel:
         if not any(_words(example.text) for example in examples):
             raise ClassifierError("no example has any text")
-        contacts = _classes((example.contact, example.text) for example in examples)
-        types = _classes((example.document_type, example.text) for example in examples)
-        topics = _classes((example.topic, example.text) for example in examples)
-        tags = {str(tag): sorted(words) for tag, words in _tag_words(examples).items()}
+        # Metadata only from the examples a person confirmed it of; the space from every one.
+        labelled = [example for example in examples if example.labelled]
+        contacts = _classes((example.contact, example.text) for example in labelled)
+        types = _classes((example.document_type, example.text) for example in labelled)
+        topics = _classes((example.topic, example.text) for example in labelled)
+        spaces = _classes((example.space, example.text) for example in examples)
+        tags = {str(tag): sorted(words) for tag, words in _tag_words(labelled).items()}
         data = {
             "format": _FORMAT,
             "contact": contacts,
             "document_type": types,
             "topic": topics,
+            "space": spaces,
             "tags": tags,
         }
         classes: JsonObject = {
             "contact": len(contacts),
             "document_type": len(types),
             "topic": len(topics),
+            "space": len(spaces),
             "tags": len(tags),
         }
         summary: JsonObject = {"classes": classes}
@@ -51,6 +56,7 @@ class FakeClassifier:
             contacts = _ranked(data["contact"], words)
             types = _ranked(data["document_type"], words)
             topics = _ranked(data.get("topic", {}), words)
+            spaces = _ranked(data.get("space", {}), words)
             tags = {TagId(UUID(tag)): _share(set(own), words) for tag, own in data["tags"].items()}
         except (ValueError, KeyError, TypeError, AttributeError):
             raise ClassifierError("the model cannot be read") from None
@@ -59,6 +65,7 @@ class FakeClassifier:
             document_types=[(DocumentTypeId(UUID(key)), share) for key, share in types],
             tags=tags,
             topics=[(TagId(UUID(key)), share) for key, share in topics],
+            spaces=spaces,
         )
 
 

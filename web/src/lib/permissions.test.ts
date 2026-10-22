@@ -6,6 +6,7 @@ import {
 	canEdit,
 	canListAllUsers,
 	canLeaveSpace,
+	canDescribeSpace,
 	canManageSpace,
 	canManageWebhook,
 	editableSpaces,
@@ -83,6 +84,13 @@ describe('spaces', () => {
 		expect(canManageSpace(spaces[2], me)).toBe(false);
 		expect(canManageSpace(spaces[0], me)).toBe(false);
 		expect(canManageSpace(spaces[1], null)).toBe(false);
+	});
+
+	it('lets editors describe a space, a personal one too', () => {
+		expect(canDescribeSpace(spaces[0], me)).toBe(true);
+		expect(canDescribeSpace(spaces[1], me)).toBe(true);
+		expect(canDescribeSpace(spaces[2], me)).toBe(false);
+		expect(canDescribeSpace(spaces[1], null)).toBe(false);
 	});
 
 	it('lets editors choose members; of a personal space its user and admins', () => {

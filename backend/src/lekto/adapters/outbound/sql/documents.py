@@ -20,6 +20,7 @@ from sqlalchemy import (
     distinct,
     func,
     insert,
+    not_,
     or_,
     select,
 )
@@ -249,10 +250,12 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         return await self._entities(rows)
 
     async def count_confirmed(self, *, after: datetime | None = None) -> int:
-        confirmed = t.documents.c.confirmed_at
-        statement = select(func.count()).select_from(t.documents).where(confirmed.is_not(None))
-        if after is not None:
-            statement = statement.where(confirmed > after)
+        decided = (t.documents.c.confirmed_at, t.documents.c.space_confirmed_at)
+        if after is None:
+            criterion = or_(*(column.is_not(None) for column in decided))
+        else:
+            criterion = or_(*(column > after for column in decided))
+        statement = select(func.count()).select_from(t.documents).where(criterion)
         return int((await self._tx.read(statement)).scalar_one())
 
     async def confirmed_labels(self, reader: UserId) -> KnownLabels:
@@ -270,7 +273,29 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             return [row[0] for row in await self._tx.read(statement)]
 
         tagged = documents.join(tags, tags.c.document_id == documents.c.id)
+        spaces = t.spaces
+        placed = documents.join(spaces, spaces.c.id == documents.c.space_id)
+        own = await self._tx.read(select(spaces.c.id).where(spaces.c.personal_of == reader))
+        reader_space = own.scalar_one_or_none()
+        decided = (
+            await self._tx.read(
+                select(documents.c.space_id, spaces.c.personal_of, documents.c.uploaded_by)
+                .select_from(placed)
+                .where(confirmed, documents.c.space_confirmed_at.is_not(None), readable)
+                .distinct()
+            )
+        ).all()
         return KnownLabels(
+            spaces=frozenset(
+                SpaceId(
+                    reader_space
+                    if reader_space is not None
+                    and row.personal_of is not None
+                    and row.personal_of == row.uploaded_by
+                    else row.space_id
+                )
+                for row in decided
+            ),
             contacts=frozenset(map(ContactId, await values(documents.c.contact_id, documents))),
             document_types=frozenset(
                 map(DocumentTypeId, await values(documents.c.document_type_id, documents))
@@ -345,6 +370,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
                 lane=None if row.lane is None else Lane(row.lane),
                 page_count=row.page_count,
                 confirmed_at=row.confirmed_at,
+                space_confirmed_at=row.space_confirmed_at,
                 new_at=row.new_at,
                 processing=Processing(
                     status=ProcessingStatus(row.processing_status),
@@ -383,6 +409,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             "lane": None if entity.lane is None else entity.lane.value,
             "page_count": entity.page_count,
             "confirmed_at": entity.confirmed_at,
+            "space_confirmed_at": entity.space_confirmed_at,
             "new_at": entity.new_at,
             "processing_status": processing.status.value,
             "processing_run": processing.run,
@@ -591,6 +618,11 @@ def _matching(filter: DocumentFilter) -> list[ColumnElement[bool]]:
     if filter.confirmed is not None:
         confirmed = documents.c.confirmed_at
         criteria.append(confirmed.is_not(None) if filter.confirmed else confirmed.is_(None))
+    if filter.labelled is not None:
+        labelled = or_(
+            documents.c.confirmed_at.is_not(None), documents.c.space_confirmed_at.is_not(None)
+        )
+        criteria.append(labelled if filter.labelled else not_(labelled))
     if filter.lanes is not None:
         values = [lane.value for lane in filter.lanes if lane is not None]
         lane_criteria = [documents.c.lane.in_(values)]

@@ -8,10 +8,10 @@ model's signal fails, when its answers do not fit or it cannot be reached after 
   contacts (IBAN, VAT number, ...) found in it, with the topic each points to; evidence, not a
   proposal of its own. The codes on the archive's pages count as well (`domain.codes`): their
   identifiers like those of the text, the payee of a GiroCode like a name in the text.
-- `signal_classifier`: the trained classifier's probabilities for contact, type, topic and
-  tags.
+- `signal_classifier`: the trained classifier's probabilities for contact, type, topic, tags
+  and the space (among the spaces the uploader may file into, `SpaceCandidates`).
 - `signal_neighbours`: the most similar confirmed documents the uploader may read, by vector,
-  with their contact, type, topic and tags.
+  with their contact, type, topic, tags and decided space.
 """
 
 import asyncio
@@ -39,7 +39,7 @@ from lekto.core.domain.errors import (
 )
 from lekto.core.domain.facts import facts_in
 from lekto.core.domain.identifiers import IdentifierKind, identifiers_in
-from lekto.core.domain.ids import ContactId, DocumentTypeId, TagId
+from lekto.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId
 from lekto.core.domain.json_value import (
     JsonObject,
     JsonValue,
@@ -53,6 +53,7 @@ from lekto.core.domain.master_data import Contact
 from lekto.core.domain.permissions import Reach, reach_access
 from lekto.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
 from lekto.core.domain.search import Visibility
+from lekto.core.domain.spaces import Space
 from lekto.core.domain.verdict import (
     ClassifierView,
     FactsView,
@@ -67,6 +68,7 @@ from lekto.core.ports.object_store import ObjectStore
 from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.search_index import SearchIndex, SimilarQuery
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
+from lekto.core.services._spaces import SpaceCandidates, space_candidates
 from lekto.core.services.classification.answers import StoredProposal
 from lekto.core.services.classifier import ClassifierService
 from lekto.core.services.indexing import split_sections
@@ -81,6 +83,7 @@ PROPOSAL = "proposal"
 """Key of the language model's proposal (`StoredProposal`) in the output of `signal_llm`."""
 FACTS = "facts"
 _RANKED = 5  # classes of contact and type the classifier's signal keeps
+_CANDIDATES_MASS = 0.5  # the candidate spaces hold this much of the classifier's: renormalised
 
 
 def abstained(reason: str, *, model_version: str | None = None) -> NodeResult:
@@ -216,11 +219,20 @@ def facts_of(text: str, contacts: Sequence[Contact], codes: Sequence[Code] = ())
 
 class ClassifierSignal:
     """The trained classifier's probabilities, and the classes it knows (a class it does not
-    know it cannot name: the judge then goes by the other signals)."""
+    know it cannot name: the judge then goes by the other signals). Its spaces are the
+    uploader's candidates only (`OWN_SPACE` their personal space); if those hold at least half
+    of the probability, it is spread over them alone, otherwise they keep their small shares
+    and name nothing. Without `uow` it says nothing about spaces."""
 
-    def __init__(self, store: ObjectStore, classifier: ClassifierService | None) -> None:
+    def __init__(
+        self,
+        store: ObjectStore,
+        classifier: ClassifierService | None,
+        uow: UnitOfWorkFactory | None = None,
+    ) -> None:
         self._store = store
         self._classifier = classifier
+        self._uow = uow
 
     async def run(self, document: Document) -> NodeResult:
         if self._classifier is None:
@@ -236,6 +248,13 @@ class ClassifierSignal:
         if predicted is None:
             return abstained("no model is trained yet")
         model, prediction = predicted
+        spaces: list[tuple[SpaceId, float]] = []
+        known_spaces: frozenset[SpaceId] = frozenset()
+        if prediction.spaces and self._uow is not None:
+            async with self._uow() as uow:
+                candidates = await space_candidates(uow, document.uploaded_by)
+            if candidates is not None:
+                spaces, known_spaces = _candidate_spaces(prediction.spaces, candidates)
         view = ClassifierView(
             contacts=prediction.contacts[:_RANKED],
             document_types=prediction.document_types[:_RANKED],
@@ -244,12 +263,31 @@ class ClassifierSignal:
             known_types=prediction.known_types,
             topics=prediction.topics[:_RANKED],
             known_topics=prediction.known_topics,
+            spaces=spaces[:_RANKED],
+            known_spaces=known_spaces,
         )
         return NodeResult(
             outcome=Outcome.OK,
             model_version=f"classifier {model.number}",
             output={"model": model.number, **_classifier_to_json(view)},
         )
+
+
+def _candidate_spaces(
+    predicted: Sequence[tuple[str, float]], candidates: SpaceCandidates
+) -> tuple[list[tuple[SpaceId, float]], frozenset[SpaceId]]:
+    """The classifier's spaces among the candidates, best first (see `ClassifierSignal`), and
+    the candidates it knows. Labels that stand for the same space (`OWN_SPACE` and the id of
+    the uploader's personal space, handed over to them) add up."""
+    shares: dict[SpaceId, float] = {}
+    for label, share in predicted:
+        if (space := candidates.resolve(label)) is not None:
+            shares[space] = shares.get(space, 0.0) + share
+    mass = sum(shares.values())
+    if mass >= _CANDIDATES_MASS:
+        shares = {space: share / mass for space, share in shares.items()}
+    ranked = sorted(shares.items(), key=lambda item: (-item[1], str(item[0])))
+    return ranked, frozenset(shares)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -267,7 +305,9 @@ class NeighboursSignal:
     """The most similar confirmed documents the uploader may read: by the vector of the start of
     the text, against the index's vectors; their contact, type, topic and tags (from the
     database, not the index, which lags a little), and what any confirmed document carries
-    (`known`): the values similar documents could have named."""
+    (`known`): the values similar documents could have named. A neighbour whose space a person
+    decided votes for it if the uploader may file there; one in its own uploader's personal
+    space votes for this uploader's personal space (personal stays personal)."""
 
     def __init__(
         self,
@@ -307,6 +347,7 @@ class NeighboursSignal:
             if owner is None or not owner.active:
                 return abstained("the document has no active uploader to look from")
             spaces = await uow.spaces.list_accessible(owner.id)
+            candidates = await space_candidates(uow, owner.id)
         visibility = Visibility.of(Reach.of(owner.id, spaces))
         try:
             hits = await self._index.similar(
@@ -343,16 +384,32 @@ class NeighboursSignal:
                         tags=frozenset(found.tag_ids & targets),
                         similarity=None if hit.score is None else round(hit.score, 4),
                         topic=found.topic_id if found.topic_id in topics else None,
+                        space=_vote(found, space, candidates),
                     )
                 )
         if not neighbours:
             return abstained("no similar confirmed document")
-        known = replace(known, tags=known.tags & targets, topics=known.topics & topics)
+        known = replace(
+            known,
+            tags=known.tags & targets,
+            topics=known.topics & topics,
+            spaces=known.spaces & frozenset(candidates.spaces if candidates else ()),
+        )
         output: JsonObject = {
             "neighbours": [_neighbour_to_json(item) for item in neighbours],
             "known": _known_to_json(known),
         }
         return NodeResult(outcome=Outcome.OK, output=output)
+
+
+def _vote(document: Document, space: Space, candidates: SpaceCandidates | None) -> SpaceId | None:
+    """The candidate a similar document votes for (see `NeighboursSignal`); None if no person
+    decided its space or the uploader may not file there."""
+    if candidates is None or document.space_confirmed_at is None:
+        return None
+    if space.personal_of is not None and space.personal_of == document.uploaded_by:
+        return candidates.personal
+    return space.id if space.id in candidates.spaces else None
 
 
 def _texts(ids: Iterable[object]) -> list[JsonValue]:
@@ -402,6 +459,7 @@ def _model_view(proposal: StoredProposal | None) -> ModelProposal | None:
         tags=proposal.tags,
         new_tags=proposal.new_tags,
         topic=_optional_text(proposal.topic),
+        space=None if proposal.space is None else SpaceId(proposal.space),
     )
 
 
@@ -410,12 +468,16 @@ def _model_view(proposal: StoredProposal | None) -> ModelProposal | None:
 
 def _classifier_to_json(view: ClassifierView) -> JsonObject:
     known = KnownLabels(
-        contacts=view.known_contacts, document_types=view.known_types, topics=view.known_topics
+        contacts=view.known_contacts,
+        document_types=view.known_types,
+        topics=view.known_topics,
+        spaces=view.known_spaces,
     )
     return {
         "contacts": [[str(id), round(p, 4)] for id, p in view.contacts],
         "document_types": [[str(id), round(p, 4)] for id, p in view.document_types],
         "topics": [[str(id), round(p, 4)] for id, p in view.topics],
+        "spaces": [[str(id), round(p, 4)] for id, p in view.spaces],
         "tags": {str(id): round(p, 4) for id, p in view.tags.items()},
         "known": _known_to_json(known),
     }
@@ -440,6 +502,8 @@ def _classifier_view(output: JsonObject | None) -> ClassifierView | None:
         known_types=known.document_types,
         topics=[(TagId(id), p) for id, p in _ranking(output.get("topics"))],
         known_topics=known.topics,
+        spaces=[(SpaceId(id), p) for id, p in _ranking(output.get("spaces"))],
+        known_spaces=known.spaces,
     )
 
 
@@ -472,6 +536,7 @@ def _neighbour_to_json(neighbour: Neighbour) -> JsonObject:
         "document_type_id": _optional_id(neighbour.document_type),
         "tag_ids": _texts(neighbour.tags),
         "topic_id": _optional_id(neighbour.topic),
+        "space_id": _optional_id(neighbour.space),
     }
 
 
@@ -486,6 +551,7 @@ def _neighbours_view(output: JsonObject | None) -> tuple[Neighbour, ...] | None:
             tags=frozenset(TagId(id) for id in _ids(item.get("tag_ids"))),
             similarity=as_number(item.get("score")),
             topic=_id_of(TagId, item.get("topic_id")),
+            space=_id_of(SpaceId, item.get("space_id")),
         )
         for value in as_list(output.get("neighbours"))
         if (item := as_object(value)) is not None
@@ -498,6 +564,7 @@ def _known_to_json(known: KnownLabels) -> JsonObject:
         "document_types": _texts(known.document_types),
         "tags": _texts(known.tags),
         "topics": _texts(known.topics),
+        "spaces": _texts(known.spaces),
     }
 
 
@@ -510,6 +577,7 @@ def _known_from_json(value: JsonValue) -> KnownLabels | None:
         document_types=frozenset(DocumentTypeId(id) for id in _ids(known.get("document_types"))),
         tags=frozenset(TagId(id) for id in _ids(known.get("tags"))),
         topics=frozenset(TagId(id) for id in _ids(known.get("topics"))),
+        spaces=frozenset(SpaceId(id) for id in _ids(known.get("spaces"))),
     )
 
 

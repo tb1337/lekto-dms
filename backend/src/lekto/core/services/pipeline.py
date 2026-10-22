@@ -95,6 +95,7 @@ from lekto.core.services.inbox import (
     confirmed_into,
     decide,
     open_nodes,
+    suggested_spaces,
 )
 from lekto.core.services.master_data import learn_alias
 from lekto.core.services.objects import original_key
@@ -152,12 +153,17 @@ class MetadataResult:
 
     `confirms`: metadata taken over from the source system, which counts as confirmed;
     otherwise it is the pipeline's, and a document whose contact, type, topic or tags it
-    changes is no longer confirmed."""
+    changes is no longer confirmed.
+
+    `space`: the judge moves the document there (a space that shows it to no one new and keeps
+    it with its uploader, no one else's personal space). If that no longer holds, it stays
+    and the node is uncertain."""
 
     result: NodeResult
     changes: DocumentChanges
     add_tags: frozenset[TagId] = frozenset()
     confirms: bool = False
+    space: SpaceId | None = None
 
     async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
         changes = self.changes
@@ -172,9 +178,38 @@ class MetadataResult:
             return replace(self.result, outcome=Outcome.UNCERTAIN, reason=reason)
         if self.confirms:
             document.mark_confirmed(now)
+            document.confirm_space(now)  # the source system's permissions placed it
         elif CLASSIFIER_LABELS & set(changed):
             document.drop_confirmation()
+        if self.space is not None and self.space != document.space_id:
+            stays = await _judged_move(uow, document, self.space, now)
+            if stays is not None:
+                before = self.result.reason
+                return replace(
+                    self.result,
+                    outcome=Outcome.UNCERTAIN,
+                    reason=f"{before}; {stays}" if before else stays,
+                )
         return self.result
+
+
+async def _judged_move(
+    uow: UnitOfWork, document: Document, target: SpaceId, now: datetime
+) -> str | None:
+    """Move the document into `target`, where the judge put it; why not, if it stays."""
+    here = await uow.spaces.find(document.space_id)
+    there = await uow.spaces.find(target)
+    uploader = document.uploaded_by
+    if (
+        here is None
+        or there is None
+        or here.widens(there)
+        or there.personal_of not in (None, uploader)
+        or (uploader is not None and there.role_of(uploader) is None)
+    ):
+        return "the space the signals chose changed meanwhile; it stays"
+    document.move_to(target, now)
+    return None
 
 
 class NodeExecutor(Protocol):
@@ -378,6 +413,7 @@ class PipelineService:
                 now=now,
                 channel=channel,
                 received=received,
+                space_chosen=chosen,
             )
             await uow.documents.add(document)
             await self._log(uow, document.id, Node.RECEIVE, 1, result, started, now)
@@ -534,8 +570,10 @@ class PipelineService:
     ) -> DocumentView | None:
         """Editors and admins, for a document in the inbox: decide its open fields, apply
         `changes` (as a metadata change), move it into `space` (as `DocumentService.move`: one
-        the caller edits, or another user's personal space; an admin chooses any space) and let
-        processing continue from `resume_at`, up to filing.
+        the caller edits, or another user's personal space; an admin chooses any space), or
+        with `accept_suggestions` into a suggested space, and let processing continue from
+        `resume_at`, up to filing. Its space counts as a person's decision then (kept or
+        chosen).
 
         Each uncertain field of the nodes before `resume_at`, and of the rules when processing
         resumes with them, needs a decision (see `inbox.decide`). The nodes whose results the
@@ -573,6 +611,15 @@ class PipelineService:
             overruled = document.confirm(resume_at, now)
             await uow.inbox.record_confirmation(id, Confirmation(user.id, now))
             definitions = await field_definitions(uow)
+            # A suggested space the person may not move the document into is kept with the
+            # suggestions, not taken: the rest is confirmed.
+            movable = [
+                suggested
+                for suggested in suggested_spaces(open)
+                if accept_suggestions
+                and target is None
+                and await self._movable(uow, user, source, suggested)
+            ]
             decision = decide(
                 open,
                 document,
@@ -580,7 +627,11 @@ class PipelineService:
                 accept_suggestions=accept_suggestions,
                 definitions=definitions,
                 given=() if target is None else (SPACE,),
+                movable=movable,
             )
+            if target is None and decision.space not in (None, document.space_id):
+                assert decision.space is not None
+                target = await self._move_target(uow, user, source, decision.space)
             # The person decided the change as given (with the suggestions they accepted); a
             # topic the new contact does not enable is cleared, but not by their decision.
             decided = changed_fields(decision.changes)
@@ -590,7 +641,7 @@ class PipelineService:
             document.apply_changes(decision.changes, definitions, now)
             corrected = corrected_fields(before, document, decided=decided)
             if target is not None:
-                document.move_to(target.id, now)
+                document.move_to(target.id, now, by_person=True)
                 await confirmed_into(uow, document, source, target, now, user.id)
             run = document.processing.run
             for node in overruled:
@@ -617,6 +668,15 @@ class PipelineService:
             access = document_access(user, document, source if target is None else target)
             await self._restart(uow, document)
         return None if access is None else DocumentView(document, access)
+
+    async def _movable(self, uow: UnitOfWork, user: User, source: Space, id: SpaceId) -> bool:
+        """Whether `user` may move a document of `source` into the space `id` on confirming
+        it."""
+        try:
+            await self._move_target(uow, user, source, id)
+        except (NotFoundError, SpaceWriteDeniedError):
+            return False
+        return True
 
     async def _move_target(self, uow: UnitOfWork, user: User, source: Space, id: SpaceId) -> Space:
         """The space `user` moves a document of `source` into on confirming it (as

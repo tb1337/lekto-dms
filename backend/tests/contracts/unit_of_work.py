@@ -1035,6 +1035,58 @@ class UnitOfWorkContract:
             assert await uow.documents.count_confirmed() == 2
             assert await uow.documents.count_confirmed(after=NOW) == 1
 
+    async def test_decided_spaces(self, uow_factory: UnitOfWorkFactory) -> None:
+        """When a person decided a document's space is kept; such documents are labelled (the
+        classifier's examples) and count as decisions; the decided spaces of the confirmed
+        documents a reader may read (those that vote as neighbours) are known, one in its
+        uploader's personal space as the reader's own."""
+        owner, home = await owner_with_space(uow_factory)
+        other, theirs = await owner_with_space(uow_factory)
+        shared = builders.space(owner, "Haushalt", readers=[other])
+        placed, kept, confirmed, plain = (builders.processed(owner, home) for _ in range(4))
+        placed.move_to(shared.id, NOW + timedelta(hours=2), by_person=True)
+        placed.mark_confirmed(NOW)
+        kept.confirm_space(NOW)
+        kept.mark_confirmed(NOW)
+        confirmed.mark_confirmed(NOW - timedelta(hours=1))
+        foreign = builders.processed(other, theirs)
+        foreign.confirm_space(NOW)
+        async with uow_factory() as uow:
+            await uow.spaces.add(shared)
+            for document in (placed, kept, confirmed, plain, foreign):
+                await uow.documents.add(document)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.documents.get(placed.id)).space_confirmed_at == NOW + timedelta(
+                hours=2
+            )
+            labelled = await uow.documents.query(DocumentFilter(labelled=True), limit=9)
+            assert {item.id for item in labelled} == {placed.id, kept.id, confirmed.id, foreign.id}
+            unlabelled = await uow.documents.query(DocumentFilter(labelled=False), limit=9)
+            assert [item.id for item in unlabelled] == [plain.id]
+            assert await uow.documents.count_confirmed() == 4
+            assert await uow.documents.count_confirmed(after=NOW - timedelta(minutes=1)) == 3
+            # The other user reads the shared space (green documents) and their own: Tobi's
+            # document in his personal space is not theirs to read; theirs has a decided space
+            # but no confirmed metadata, so it votes nowhere and is not known.
+            known = await uow.documents.confirmed_labels(other.id)
+            assert known.spaces == {shared.id}
+            assert (await uow.documents.confirmed_labels(owner.id)).spaces == {shared.id, home.id}
+
+    async def test_a_space_s_description(self, uow_factory: UnitOfWorkFactory) -> None:
+        editor = builders.user()
+        space = builders.space(editor, "Haushalt")
+        space.describe("Wohnung, Nebenkosten")
+        await seed(uow_factory, editor, spaces=(space,))
+        async with uow_factory() as uow:
+            stored = await uow.spaces.get(space.id)
+            assert stored.description == "Wohnung, Nebenkosten"
+            stored.describe(None)
+            await uow.spaces.update(stored)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.spaces.get(space.id)).description is None
+
     async def test_confirmed_labels(self, uow_factory: UnitOfWorkFactory) -> None:
         """What the confirmed documents a user may read carry; not what the open ones do, nor
         another owner's."""

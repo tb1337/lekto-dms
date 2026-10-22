@@ -1971,6 +1971,116 @@ class MigrationSuite:
         assert "global rule 'Away'" in str(stopped.value)
         assert "set_space" in str(stopped.value)
 
+    async def test_decided_spaces_are_kept_and_spaces_described(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0034: a person's decisions on the space (an inbox confirmation, a move, a
+        space chosen on upload) and a document taken over from another system have a decided
+        space, at the latest decision; a metadata confirmation alone decides nothing, and
+        rules that filed the document after the decision make it undecided again. Spaces get
+        a description. The downgrade drops both columns."""
+        await migrate(empty_database, "0033")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        names = ("user", "home", "confirmed", "inbox", "moved", "migrated", "refiled", "kept")
+        ids = {name: new_id() for name in (*names, "plain")}
+        documents = _before_0034(t.documents)
+        filed = {"rules": [{"applied": [{"field": "space", "old": "a", "new": "b"}]}]}
+        tagged = {"rules": [{"applied": [{"field": "tags", "old": None, "new": "t"}]}]}
+        await _insert(
+            empty_database,
+            [
+                (
+                    t.users,
+                    {"id": ids["user"], "username": "u", "username_key": "u", "role": "user"},
+                ),
+                (
+                    _before_0034(t.spaces),
+                    {
+                        "id": ids["home"],
+                        "name": "Personal",
+                        "name_key": "personal",
+                        "personal_of": ids["user"],
+                    },
+                ),
+                *(
+                    (
+                        documents,
+                        {
+                            "id": ids[name],
+                            "uploaded_by": ids["user"],
+                            "space_id": ids["home"],
+                            "sha256": str(number) * 64,
+                            "confirmed_at": confirmed,
+                            "channel": channel,
+                        },
+                    )
+                    for number, (name, confirmed, channel) in enumerate(
+                        (
+                            ("confirmed", NOW, "api"),
+                            ("inbox", NOW, "api"),
+                            ("moved", None, "api"),
+                            ("migrated", NOW, "migration"),
+                            ("refiled", NOW, "api"),
+                            ("kept", NOW, "api"),
+                            ("plain", None, "api"),
+                        )
+                    )
+                ),
+                *(
+                    (
+                        t.processing_log,
+                        {
+                            "document_id": ids[name],
+                            "node": "apply_rules",
+                            "model_version": version,
+                            "input": {},
+                            "output": output,
+                            "run": 1,
+                            "outcome": "ok",
+                            "pipeline_version": "test",
+                            "started_at": NOW + timedelta(hours=hours),
+                        },
+                    )
+                    for name, version, hours, output in (
+                        ("confirmed", "rules:change", 1, {}),
+                        ("inbox", "person", 1, {}),
+                        ("moved", "person:space", 1, {}),
+                        ("moved", "person:space", 3, {}),
+                        ("refiled", "person", 1, {}),
+                        ("refiled", "rules", 2, filed),
+                        ("kept", "person", 1, {}),
+                        ("kept", "rules", 2, tagged),
+                    )
+                ),
+            ],
+        )
+
+        await migrate(empty_database)
+        async with empty_database.reading() as connection:
+            decided = dict(
+                (
+                    await connection.execute(
+                        select(t.documents.c.id, t.documents.c.space_confirmed_at)
+                    )
+                ).all()
+            )
+            described = (await connection.execute(select(t.spaces.c.description))).scalars().all()
+        assert decided == {
+            ids["confirmed"]: None,
+            ids["inbox"]: NOW + timedelta(hours=1),
+            ids["moved"]: NOW + timedelta(hours=3),
+            ids["migrated"]: NOW,
+            ids["refiled"]: None,
+            ids["kept"]: NOW + timedelta(hours=1),
+            ids["plain"]: None,
+        }
+        assert described == [None]
+
+        await downgrade(empty_database, "0033")
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -2177,10 +2287,20 @@ def _drawer(table: sa.TableClause) -> sa.TableClause:
 _INBOX_COLUMNS = frozenset({"new_at", "processing_baseline", "processing_decided"})
 
 
+def _before_0034(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0034 had it: no description of a space, no decided
+    space of a document."""
+    added = {"spaces": {"description"}, "documents": {"space_confirmed_at"}}
+    return sa.table(
+        table.name,
+        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+    )
+
+
 def _before_0033(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0033 had it: a space with an owner (one of theirs their
     default space), a document and a user rule with an owner."""
-    columns = [sa.column(c.name, c.type) for c in table.c]
+    columns = [sa.column(c.name, c.type) for c in _before_0034(table).c]
     if table.name == "spaces":
         columns = [c for c in columns if c.name != "personal_of"]
         columns += [sa.column("owner_id", sa.Uuid()), sa.column("is_default", sa.Boolean())]

@@ -10,6 +10,9 @@ from lekto.core.domain.validation import require_utc
 
 KEPT_MODELS = 3
 """Models kept; older ones and their files are removed after training."""
+OWN_SPACE = "own"
+"""The classifier's label of a space that is the personal space of the document's uploader:
+every user's personal space is one class, the space of whoever uploads the next document."""
 
 
 @dataclass(kw_only=True)

@@ -28,7 +28,7 @@ async def test_status_and_training(api: Api) -> None:
     assert (await api.client.post(train, headers=auth(user))).status_code == 403
     too_few = await api.client.post(train, headers=auth(admin))
     assert too_few.status_code == 409
-    assert too_few.json()["detail"] == "0 confirmed documents; training needs 20"
+    assert too_few.json()["detail"] == "0 confirmed documents or decided spaces; training needs 20"
 
 
 async def test_without_a_classifier_the_endpoints_answer_503(api: Api) -> None:
@@ -64,6 +64,12 @@ async def test_the_status_of_a_trained_model(api: Api) -> None:
     await api.services.classifier.train()
     model = (await api.client.get(f"{PREFIX}/classifier", headers=auth(admin))).json()["model"]
     assert model["number"] == 1 and model["examples"] == 4
-    assert model["classes"] == {"contact": 2, "document_type": 0, "tags": 0}
+    assert model["classes"] == {
+        "contact": 2,
+        "document_type": 0,
+        "topic": 0,
+        "space": 0,
+        "tags": 0,
+    }
     assert (model["learned_identifiers"], model["accuracy"]) == (0, None)
     assert model["method"] == "fake classifier"

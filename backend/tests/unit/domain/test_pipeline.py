@@ -315,6 +315,7 @@ def test_confirming_a_yellow_document_resumes_and_files_it_green(resume_at: Node
     overruled = document.confirm(resume_at, NOW)
 
     assert overruled == (Node.OCR, Node.JUDGE)
+    assert document.confirmed_at == document.space_confirmed_at == NOW  # kept or chosen
     assert document.processing.run == run + 1
     assert document.processing.status is ProcessingStatus.PROCESSING
     assert document.processing.due() == (resume_at,)

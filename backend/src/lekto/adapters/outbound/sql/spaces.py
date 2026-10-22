@@ -50,6 +50,7 @@ class SqlSpaceRepository(SqlRepository[SpaceId, Space]):
                 members={
                     UserId(member.user_id): SpaceRole(member.role) for member in members[row.id]
                 },
+                description=row.description,
                 created_at=row.created_at,
                 version=row.version,
             )
@@ -62,6 +63,7 @@ class SqlSpaceRepository(SqlRepository[SpaceId, Space]):
             "name": entity.name,
             "name_key": name_key(entity.name),
             "personal_of": entity.personal_of,
+            "description": entity.description,
             "created_at": entity.created_at,
             "version": entity.version,
         }

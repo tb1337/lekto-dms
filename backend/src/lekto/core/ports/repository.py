@@ -150,6 +150,8 @@ class DocumentFilter:
     group of each set. `topics`: the document's topic is one of them (a topic with its
     descendants). `lanes`: one of them, where None stands for documents still in processing.
     `confirmed`: whether a person set or confirmed the metadata (`Document.confirmed_at`).
+    `labelled`: whether a person confirmed the metadata or decided the space (the classifier's
+    examples; not in the search index).
     `field`: a value for it is set. `document_dates`: the document date lies in the period (a
     document without one does not match)."""
 
@@ -162,6 +164,7 @@ class DocumentFilter:
     spaces: frozenset[SpaceId] | None = None
     lanes: frozenset[Lane | None] | None = None
     confirmed: bool | None = None
+    labelled: bool | None = None
     field: FieldId | None = None
     document_dates: Period | None = None
 
@@ -191,6 +194,7 @@ class DocumentFilter:
             and (self.spaces is None or view.space in self.spaces)
             and (self.lanes is None or view.lane in self.lanes)
             and (self.confirmed is None or view.confirmed is self.confirmed)
+            and (self.labelled is None or view.labelled is self.labelled)
             and (self.field is None or self.field in view.fields)
             and (
                 self.document_dates is None
@@ -229,6 +233,7 @@ class FilterView:
     confirmed: bool
     fields: frozenset[FieldId]
     document_date: date | None = None
+    labelled: bool = False  # not in the search index
 
     @classmethod
     def of(
@@ -250,6 +255,7 @@ class FilterView:
             confirmed=document.confirmed_at is not None,
             fields=frozenset(document.fields),
             document_date=document.document_date,
+            labelled=document.confirmed_at is not None or document.space_confirmed_at is not None,
         )
 
 
@@ -399,13 +405,16 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         ...
 
     async def count_confirmed(self, *, after: datetime | None = None) -> int:
-        """Documents a person set or confirmed the metadata of, after `after` if given (the
-        confirmations since the classifier was trained)."""
+        """Documents a person set or confirmed the metadata or decided the space of, after
+        `after` if given (the decisions since the classifier was trained)."""
         ...
 
     async def confirmed_labels(self, reader: UserId) -> KnownLabels:
         """The contacts, document types, topics and tags the confirmed documents `reader` may
-        read carry: what a document similar to one of theirs can name."""
+        read carry: what a document similar to one of theirs can name. `spaces`: the decided
+        spaces of those confirmed documents (the ones that vote, `NeighboursSignal`), as the
+        reader's candidates: one in its uploader's personal space counts as the reader's
+        personal space."""
         ...
 
     async def exists(

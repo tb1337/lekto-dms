@@ -399,6 +399,43 @@ async def test_moving_into_a_space_one_only_reads_names_it(api: Api) -> None:
     assert refused.json()["space_id"] == space["id"]
 
 
+async def test_a_space_describes_what_belongs_in_it(api: Api) -> None:
+    owner, friend = await api.user(), await api.user()
+    space = await post(
+        api, "/spaces", {"name": "Haushalt", "description": " Wohnung, Nebenkosten "}, auth(owner)
+    )
+    assert space["description"] == "Wohnung, Nebenkosten"
+    url = f"{PREFIX}/spaces/{space['id']}"
+    renamed = await api.client.patch(url, json={"name": "Zuhause"}, headers=auth(owner))
+    assert (renamed.json()["name"], renamed.json()["description"]) == (
+        "Zuhause",
+        "Wohnung, Nebenkosten",
+    )
+    cleared = await api.client.patch(url, json={"description": None}, headers=auth(owner))
+    assert cleared.json()["description"] is None
+    too_long = await api.client.patch(url, json={"description": "x" * 301}, headers=auth(owner))
+    assert too_long.status_code == 422
+    personal = (await api.client.get(f"{PREFIX}/spaces", headers=auth(friend))).json()[0]
+    described = await api.client.patch(
+        f"{PREFIX}/spaces/{personal['id']}", json={"description": "Arbeit"}, headers=auth(friend)
+    )
+    assert described.json()["description"] == "Arbeit"
+    refused = await api.client.patch(
+        f"{PREFIX}/spaces/{personal['id']}", json={"name": "Mine"}, headers=auth(friend)
+    )
+    assert refused.status_code == 422
+    # An editor of the friend's personal space does not write its description: its user does.
+    await api.client.put(
+        f"{PREFIX}/spaces/{personal['id']}/members/{owner.id}",
+        json={"role": "edit"},
+        headers=auth(friend),
+    )
+    foreign = await api.client.patch(
+        f"{PREFIX}/spaces/{personal['id']}", json={"description": "Mein"}, headers=auth(owner)
+    )
+    assert foreign.status_code == 403
+
+
 async def test_spaces_and_members(api: Api) -> None:
     owner, friend = await api.user(), await api.user("friend")
     space = await post(api, "/spaces", {"name": "Household"}, auth(owner))

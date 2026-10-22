@@ -2,7 +2,8 @@
  * What a signal said in a run, for the protocol: the language model's proposal, the
  * classifier's best classes, the similar documents, the names and identifiers in the text, or
  * why it abstained. For the OCR, how well it read each page it recognised; for the fields node,
- * whether each value stands by its label.
+ * whether each value stands by its label; for the rules, the spaces a document went through and
+ * the space whose rules ran when it arrived there.
  */
 import type { components } from '#lib/api/schema.ts';
 import { documentHref } from '#lib/candidates.ts';
@@ -126,11 +127,34 @@ function labels(output: Json, lookup: Lookup | null): SummaryRow[] {
 		});
 }
 
+/** The rules' entry: the spaces the document went through, one after another (the rules of
+ * each filed it into the next), and for the rules of a space it arrived in, that space and what
+ * stopped them (rules moving it back and forth). */
+function rules(entry: LogEntry, lookup: Lookup | null): SummaryRow[] {
+	const output = object(entry.output);
+	const input = object(entry.input);
+	const rows: SummaryRow[] = [];
+	const chain = list(output.spaces);
+	if (chain.length > 1) {
+		rows.push({
+			label: m.log_rules_chain(),
+			items: [{ text: chain.map((id) => named(id, lookup)).join(' → ') }]
+		});
+	}
+	if (input.trigger === 'ingest' && typeof input.space_id === 'string') {
+		rows.push({ label: m.log_rules_arrived(), items: [{ text: named(input.space_id, lookup) }] });
+	}
+	const problem = text(output.problem);
+	if (problem) rows.push({ label: m.log_rules_problem(), items: [{ text: problem }] });
+	return rows;
+}
+
 /** The rows of a signal's entry, of the OCR's, or the labels of the fields node's; none for
  * other nodes. */
 export function signalSummary(entry: LogEntry, lookup: Lookup | null): SummaryRow[] {
 	if (entry.node === 'ocr') return readings(object(entry.output));
 	if (entry.node === 'fields') return labels(object(entry.output), lookup);
+	if (entry.node === 'apply_rules') return rules(entry, lookup);
 	if (!(SIGNAL_NODES as readonly string[]).includes(entry.node)) return [];
 	const output = object(entry.output);
 	const abstained = text(output.abstained);
@@ -152,6 +176,9 @@ export function signalSummary(entry: LogEntry, lookup: Lookup | null): SummaryRo
 					}))
 				]),
 				...('topic' in proposal ? [row(m.field_topic(), value('topic'))] : []),
+				...(typeof proposal.space === 'string'
+					? [row(m.field_space(), [{ text: named(proposal.space, lookup) }])]
+					: []),
 				row(m.field_date(), value('document_date', true)),
 				row(m.field_title(), value('title')),
 				row(m.signal_language(), value('language'))
@@ -161,7 +188,8 @@ export function signalSummary(entry: LogEntry, lookup: Lookup | null): SummaryRo
 			return [
 				row(m.signal_contacts(), ranked(output.contacts, lookup)),
 				row(m.signal_document_types(), ranked(output.document_types, lookup)),
-				...('topics' in output ? [row(m.signal_topics(), ranked(output.topics, lookup))] : [])
+				...('topics' in output ? [row(m.signal_topics(), ranked(output.topics, lookup))] : []),
+				...('spaces' in output ? [row(m.signal_spaces(), ranked(output.spaces, lookup))] : [])
 			];
 		case 'signal_neighbours':
 			return [
@@ -169,7 +197,7 @@ export function signalSummary(entry: LogEntry, lookup: Lookup | null): SummaryRo
 					m.signal_neighbours(),
 					list(output.neighbours).map((item, index) => {
 						const found = object(item);
-						const about = [found.contact_id, found.document_type_id, found.topic_id]
+						const about = [found.contact_id, found.document_type_id, found.topic_id, found.space_id]
 							.filter((id) => typeof id === 'string')
 							.map((id) => named(id, lookup));
 						const title = m.signal_document({ number: index + 1 });

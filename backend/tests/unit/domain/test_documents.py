@@ -240,6 +240,38 @@ def test_move_records_filed() -> None:
     assert document.space_id == target.id
 
 
+def test_a_person_s_move_decides_the_space_and_the_pipeline_s_does_not() -> None:
+    owner = builders.user()
+    document = builders.document(owner, builders.space(owner))
+    assert document.space_confirmed_at is None
+    shared, other = builders.space(owner), builders.space(owner)
+    document.move_to(shared.id, LATER, by_person=True)
+    assert document.space_confirmed_at == LATER
+    document.move_to(shared.id, LATER + timedelta(minutes=1), by_person=True)  # kept: decided
+    assert document.space_confirmed_at == LATER + timedelta(minutes=1)
+    document.move_to(other.id, LATER + timedelta(minutes=2))  # a rule, the judge
+    assert document.space_confirmed_at is None
+    document.confirm_space(LATER)
+    assert document.space_confirmed_at == LATER
+
+
+def test_a_space_chosen_on_upload_is_decided() -> None:
+    owner = builders.user()
+    space = builders.space(owner)
+    chosen = Document.receive(
+        uploaded_by=owner.id,
+        space_id=space.id,
+        sha256=Sha256.of(b"x"),
+        original_filename="x.pdf",
+        media_type="application/pdf",
+        result=builders.OK,
+        now=NOW,
+        space_chosen=True,
+    )
+    assert chosen.space_confirmed_at == NOW
+    assert builders.received().space_confirmed_at is None
+
+
 def test_delete_records_deleted() -> None:
     document = builders.received()
     document.delete(LATER)

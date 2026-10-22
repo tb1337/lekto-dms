@@ -507,7 +507,13 @@ class JudgeNode:
                 reason=f"no date recognised: the language model gave none ({why})",
             )
         else:
-            date_check = _check_date(DOCUMENT_DATE, proposal.document_date, facts, self._today())
+            date_check = _check_date(
+                DOCUMENT_DATE,
+                proposal.document_date,
+                facts,
+                self._today(),
+                document.created_at.date(),
+            )
         contact = judge_contact(signals, contacts, self._thresholds)
         kind = judge_type(signals, types, self._thresholds)
         topic = judge_topic(signals, contact, contacts, tags, self._thresholds)
@@ -727,6 +733,7 @@ class FieldsNode(_ModelStep):
                 required=definition.is_required_for(document.document_type_id),
                 language=language,
                 default_currency=self._policy.default_currency,
+                received=document.created_at.date(),
             )
             if definition.is_read
             else _set_by_hand(definition)
@@ -807,13 +814,21 @@ def _same_name(proposed: str | None, name: str) -> bool:
 # --- checks -----------------------------------------------------------------------------------
 
 
-def _check_date(field: str, proposal: Proposal, facts: DocumentText, today: date) -> FieldCheck:
+def _check_date(
+    field: str, proposal: Proposal, facts: DocumentText, today: date, received: date | None
+) -> FieldCheck:
+    """A date as the model gives it; `received`, the day the document came in, picks the
+    reading of a two-digit year the text does not decide (`read_date`)."""
     common = _common(field, proposal)
     if proposal.value is None:
         return FieldCheck(
             outcome=Outcome.UNCERTAIN, confidence=0, reason="no date recognised", **common
         )
-    value = read_date(proposal.value, facts) if isinstance(proposal.value, str) else None
+    value = (
+        read_date(proposal.value, facts, received=received)
+        if isinstance(proposal.value, str)
+        else None
+    )
     if value is None:
         return FieldCheck(
             outcome=Outcome.UNCERTAIN,
@@ -852,6 +867,7 @@ def _check_field(
     required: bool,
     language: str | None = None,
     default_currency: str | None = None,
+    received: date | None = None,
 ) -> FieldCheck:
     """A required field must be found, an optional one may stay empty; a value given must
     pass the checks either way. A date equal to the document date is only suggested: models
@@ -869,9 +885,9 @@ def _check_field(
             **common,
         )
     if definition.data_type is FieldType.PERIOD:
-        return _check_period(definition, proposal, facts, today, document_date)
+        return _check_period(definition, proposal, facts, today, document_date, received)
     if definition.data_type is FieldType.DATE:
-        check = _check_date(field, proposal, facts, today)
+        check = _check_date(field, proposal, facts, today, received)
         if check.ok and document_date is not None and check.value == document_date.isoformat():
             check = replace(
                 check,
@@ -893,7 +909,9 @@ def _check_field(
             **common,
         )
     try:
-        value = _parse_value(definition, proposal.value, facts, language, default_currency)
+        value = _parse_value(
+            definition, proposal.value, facts, language, default_currency, received
+        )
     except ValidationError:
         return FieldCheck(
             outcome=Outcome.UNCERTAIN,
@@ -938,13 +956,14 @@ def _check_period(
     facts: DocumentText,
     today: date,
     document_date: date | None,
+    received: date | None = None,
 ) -> FieldCheck:
     """A period as the model gives it: `{start, end}` (extract-5) or as written (propose-4:
     `September 2026`, `KW 38/2026`, `01.09.-30.09.2026`). Its quoted passage must show it. One
     without a year takes that of the document date and is only suggested, as is a single day
     equal to the document date (models put the document date where the text shows none)."""
     common = _common(field_key(definition.id), proposal)
-    read = _read_period(proposal.value, document_date)
+    read = _read_period(proposal.value, document_date, received)
     if read is None:
         return FieldCheck(
             outcome=Outcome.UNCERTAIN,
@@ -990,16 +1009,19 @@ def _check_period(
     )
 
 
-def _read_period(raw: JsonValue, document_date: date | None) -> tuple[Period, bool] | None:
+def _read_period(
+    raw: JsonValue, document_date: date | None, received: date | None = None
+) -> tuple[Period, bool] | None:
     """The period of a proposed value, and whether its year was assumed."""
     if isinstance(raw, dict) and set(raw) == {"start", "end"}:
         start, end = (
-            read_date(day) if isinstance(day, str) else None for day in (raw["start"], raw["end"])
+            read_date(day, received=received) if isinstance(day, str) else None
+            for day in (raw["start"], raw["end"])
         )
         if start is None or end is None or end < start:
             return None
         return Period(start, end), False
-    return read_period(raw, document_date) if isinstance(raw, str) else None
+    return read_period(raw, document_date, received=received) if isinstance(raw, str) else None
 
 
 def _shown(
@@ -1295,6 +1317,7 @@ def _parse_value(
     facts: DocumentText,
     language: str | None,
     default_currency: str | None = None,
+    received: date | None = None,
 ) -> FieldValue:
     """A proposed value read leniently, as a person writes it (`2.111,68 €`, `12.03.2026`,
     `ja`; an ambiguous number the way the text shows it, else as the document's `language`
@@ -1312,7 +1335,7 @@ def _parse_value(
             amount = read_amount(raw, facts, language=language, default=default_currency)
             value = None if amount is None else Money(*amount)
         case FieldType.DATE if isinstance(raw, str):
-            value = read_date(raw, facts)
+            value = read_date(raw, facts, received=received)
         case FieldType.BOOLEAN if isinstance(raw, str):
             truth = truth_value(raw)
             value = raw if truth is None else truth

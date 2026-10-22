@@ -9,7 +9,7 @@ or word. Everything works on a normalised text (see `normalise`).
 import html
 import re
 import unicodedata
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -93,28 +93,42 @@ _DATE_PATTERNS: tuple[tuple[re.Pattern[str], tuple[str, str, str]], ...] = (
 
 
 def dates_in(text: str) -> set[date]:
-    """All dates written in the normalised `text`. Two-digit years: 00 to 69 are 20xx."""
-    return {day for _, _, day in _dated(text)}
+    """All dates written in the normalised `text`. A two-digit year gives both its readings
+    (`12.03.24`: 1924 and 2024): a date is compared, not guessed (`_years`)."""
+    return {day for _, _, days in _dated(text) for day in days}
 
 
-def _dated(text: str) -> Iterator[tuple[int, int, date]]:
-    """The dates of `dates_in` with where they stand in `text`."""
+def _dated(text: str) -> Iterator[tuple[int, int, tuple[date, ...]]]:
+    """The dates of `dates_in` with where they stand in `text`, each place with its readings."""
     for pattern, order in _DATE_PATTERNS:
         for match in pattern.finditer(text):
             parts = dict(zip(order, match.groups(), strict=True))
             month = int(parts["m"]) if parts["m"].isdigit() else _MONTHS[parts["m"]]
-            year = _year(parts["y"])
-            try:
-                yield match.start(), match.end(), date(year, month, int(parts["d"]))
-            except ValueError:
-                continue
+            days = tuple(_days(_years(parts["y"]), month, int(parts["d"])))
+            if days:
+                yield match.start(), match.end(), days
 
 
-def _year(text: str) -> int:
+def _days(years: tuple[int, ...], month: int, day: int) -> Iterator[date]:
+    for year in years:
+        try:
+            yield date(year, month, day)
+        except ValueError:
+            continue
+
+
+def _years(text: str) -> tuple[int, ...]:
+    """The years `text` may mean: two digits mean either century. No fixed year divides them
+    (Tobi, 22.10.2026: ISO 8601 writes four digits; where a choice is needed, the reading
+    nearest to when the document came in counts, `nearest`)."""
     year = int(text)
-    if len(text) == 2:
-        year += 2000 if year < 70 else 1900
-    return year
+    return (1900 + year, 2000 + year) if len(text) == 2 else (year,)
+
+
+def nearest(days: Iterable[date], received: date) -> date:
+    """Of the readings of one written date, the one nearest to `received`, the day the
+    document came in (of two as near, the later)."""
+    return min(days, key=lambda day: (abs((day - received).days), -day.toordinal()))
 
 
 # --- periods ------------------------------------------------------------------------------------
@@ -174,16 +188,25 @@ def _periods(text: str, reference: date | None = None) -> list[_Found]:
     year before if it would lie after it); without `reference` it is left out."""
     found: list[_Found] = []
     dates = sorted(_dated(text))
-    for start, end, day in dates:
-        found.append(_Found(start, end, Period.day(day)))
+    for start, end, days in dates:
+        found.extend(_Found(start, end, Period.day(day)) for day in days)
     for first, second in pairwise(dates):
-        if _GAP.fullmatch(text[first[1] : second[0]]) and first[2] <= second[2]:
-            found.append(_Found(first[0], second[1], Period(first[2], second[2])))
+        if not _GAP.fullmatch(text[first[1] : second[0]]):
+            continue
+        # The readings of two-digit years never span a century: `01.12.24 - 31.01.25` is
+        # 1924 to 1925 or 2024 to 2025, not 1924 to 2025.
+        ambiguous = len(first[2]) > 1 or len(second[2]) > 1
+        found.extend(
+            _Found(first[0], second[1], Period(start_day, end_day))
+            for start_day in first[2]
+            for end_day in second[2]
+            if start_day <= end_day and not (ambiguous and end_day.year - start_day.year >= 100)
+        )
     for pattern in _SPAN_PATTERNS:
         for match in pattern.finditer(text):
-            span = _span(match.groups())
-            if span is not None:
-                found.append(_Found(match.start(), match.end(), span))
+            found.extend(
+                _Found(match.start(), match.end(), span) for span in _spans(match.groups())
+            )
     for pattern, kind in _PERIOD_PATTERNS:
         for match in pattern.finditer(text):
             item = _period(kind, match.groups(), reference)
@@ -192,26 +215,32 @@ def _periods(text: str, reference: date | None = None) -> list[_Found]:
     return found
 
 
-def _span(groups: tuple[str | None, ...]) -> Period | None:
-    """A span from `_SPAN_PATTERNS`: the start takes the month and year of the end it leaves
-    out."""
+def _spans(groups: tuple[str | None, ...]) -> list[Period]:
+    """A span from `_SPAN_PATTERNS`, in each reading of its year: the start takes the month and
+    year of the end it leaves out."""
     parts = [part for part in groups if part is not None]
-    try:
-        if len(parts) == 5:  # d.m. - d.m.y
-            day, month, end_day, end_month, year = parts
-        elif parts[-2].isdigit():  # d. - d.m.y
-            day, end_day, end_month, year = parts
-            month = end_month
-        else:  # d. - d. month y
-            day, end_day, name, year = parts
-            month = end_month = str(_MONTHS[name])
-        span = Period(
-            date(_year(year), int(month), int(day)),
-            date(_year(year), int(end_month), int(end_day)),
-        )
-    except (ValueError, ValidationError, KeyError):
-        return None
-    return span
+    if len(parts) == 5:  # d.m. - d.m.y
+        day, month, end_day, end_month, year = parts
+    elif parts[-2].isdigit():  # d. - d.m.y
+        day, end_day, end_month, year = parts
+        month = end_month
+    elif parts[-2] in _MONTHS:  # d. - d. month y
+        day, end_day, name, year = parts
+        month = end_month = str(_MONTHS[name])
+    else:
+        return []
+    spans = []
+    for reading in _years(year):
+        try:
+            spans.append(
+                Period(
+                    date(reading, int(month), int(day)),
+                    date(reading, int(end_month), int(end_day)),
+                )
+            )
+        except (ValueError, ValidationError):
+            continue
+    return spans
 
 
 def _period(
@@ -262,15 +291,19 @@ def periods_in(text: str) -> set[Period]:
     return {item.period for item in _periods(text) if not item.yearless}
 
 
-def read_period(raw: str, reference: date | None = None) -> tuple[Period, bool] | None:
+def read_period(
+    raw: str, reference: date | None = None, *, received: date | None = None
+) -> tuple[Period, bool] | None:
     """The period `raw` writes (`September 2026`, `KW 38/2026`, `Q3 2026`, `2025`,
     `01.09.-30.09.2026`, `1. bis 30. September 2026`, one date as that day), and whether its
     year was assumed: a month, week or quarter without one takes the year of `reference` (the
     document date). Readings inside another one do not count (the days of a span, the year of
-    a month); None if there is none, or more than one is left."""
+    a month); None if there is none, or more than one is left. A two-digit year
+    (`01.09.-30.09.26`) leaves its two readings at one place: of those, the one nearest to
+    `received` (the day the document came in) counts; without `received`, none."""
     found = _periods(normalise(raw), reference)
-    outer = {
-        (item.period, item.yearless)
+    outer = [
+        item
         for item in found
         if not any(
             other is not item
@@ -279,8 +312,14 @@ def read_period(raw: str, reference: date | None = None) -> tuple[Period, bool] 
             and other.length > item.length
             for other in found
         )
-    }
-    return next(iter(outer)) if len(outer) == 1 else None
+    ]
+    readings = {(item.period, item.yearless) for item in outer}
+    if len(readings) == 1:
+        return next(iter(readings))
+    if readings and received is not None and len({(item.start, item.end) for item in outer}) == 1:
+        start = nearest((period.start for period, _ in readings), received)
+        return next(reading for reading in readings if reading[0].start == start)
+    return None
 
 
 # --- numbers ----------------------------------------------------------------------------------
@@ -459,13 +498,22 @@ def read_number(
     return number
 
 
-def read_date(raw: str, facts: "DocumentText | None" = None) -> date | None:
+def read_date(
+    raw: str, facts: "DocumentText | None" = None, *, received: date | None = None
+) -> date | None:
     """The one date in `raw`, in any notation `dates_in` reads (`2026-03-12`, `12.03.2026`,
-    `12. März 2026`). Of several, the one `facts` shows, if it is just one; else None."""
-    found = dates_in(normalise(raw))
+    `12. März 2026`). Of several, the one `facts` shows, if it is just one; else None. A
+    two-digit year (`12.03.24`) is one date with two readings: the one `facts` shows, else
+    the one nearest to `received` (the day the document came in); without `received`, none."""
+    places = [days for _, _, days in _dated(normalise(raw))]
+    found = {day for days in places for day in days}
     if len(found) > 1 and facts is not None:
-        found = {value for value in found if facts.has_date(value)}
-    return next(iter(found)) if len(found) == 1 else None
+        found = {value for value in found if facts.has_date(value)} or found
+    if len(found) == 1:
+        return next(iter(found))
+    if found and received is not None and len(places) == 1:
+        return nearest(found, received)
+    return None
 
 
 def read_amount(

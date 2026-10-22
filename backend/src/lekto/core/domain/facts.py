@@ -232,6 +232,7 @@ def _persons(
                     assert identifier.user_id is not None
                     add(identifier.user_id, Strength.HARD, identifier.kind.value, spans)
     if any(person.birth_date is not None for person in persons):
+        # A two-digit year reads in both centuries, so `15.06.80` meets 15 June 1980.
         days = dates_in(normalise(text))
         for person in persons:
             if person.birth_date is not None and person.birth_date in days:

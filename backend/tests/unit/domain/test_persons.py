@@ -165,6 +165,18 @@ def _anna() -> Person:
     return Person.of(user, profile)
 
 
+@pytest.mark.parametrize("written", ["15.06.1980", "15.06.80", "15.6.80"])
+def test_a_birth_date_is_compared_in_any_form(written: str) -> None:
+    # Two digits match the known birth date by day, month and year without its century: no
+    # guess of the century (Tobi, 22.10.2026).
+    found = facts_in(f"geb. {written}", [], persons=[_anna()])
+    assert [(p.strength, p.evidence) for p in found.persons] == [(Strength.MEDIUM, ("birth_date",))]
+
+
+def test_another_birth_date_names_no_one() -> None:
+    assert facts_in("geb. 15.06.81", [], persons=[_anna()]).persons == ()
+
+
 def test_persons_by_their_evidence() -> None:
     anna = _anna()
     weak = facts_in("An Frau Anna Sample", [], persons=[anna])

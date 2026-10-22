@@ -2173,9 +2173,10 @@ class MigrationSuite:
         self, empty_database: Database
     ) -> None:
         """Revision 0036: a document whose first run stopped has its lane as the first lane,
-        one still in it none; for one that ran again the log of its first run tells (failed,
-        uncertain, filed), without what a person or a change set off and without a text read
-        again; where it tells nothing, the first lane stays unknown. The downgrade drops it."""
+        one still in it none; for one that ran again the log of its first run tells (filed
+        before all else, then failed, uncertain), without what a person or a change set off and
+        without a text read again; where it tells nothing, the first lane stays unknown. The
+        downgrade drops it."""
         await migrate(empty_database, "0035")
         async with empty_database.reading() as connection:
             schema = await connection.run_sync(_schema)
@@ -2189,6 +2190,8 @@ class MigrationSuite:
             "reprocessed": (2, "review", "yellow"),
             "changed": (2, "completed", "green"),
             "reparsed": (2, "completed", "green"),
+            "settled": (2, "review", "yellow"),
+            "caught_up": (2, "completed", "green"),
             "unknown": (3, "completed", "green"),
         }
         ids = {name: new_id() for name in (*states, "user", "home")}
@@ -2205,6 +2208,14 @@ class MigrationSuite:
             ("changed", 1, "file", "ok", None, {}),
             ("reparsed", 1, "file", "ok", None, {}),
             ("reparsed", 1, "parse", "failed", None, {"reparse": True}),
+            # The space rules settled the uncertain judge, so the first run was filed.
+            ("settled", 1, "judge", "uncertain", None, {}),
+            ("settled", 1, "apply_rules", "ok", None, {}),
+            ("settled", 1, "file", "ok", None, {}),
+            ("settled", 2, "judge", "uncertain", None, {}),
+            # Rendering the pages again failed after the first run was filed.
+            ("caught_up", 1, "file", "ok", None, {}),
+            ("caught_up", 1, "pages", "failed", None, {}),
             ("unknown", 1, "receive", "ok", None, {}),
         ]
         await _insert(
@@ -2270,6 +2281,8 @@ class MigrationSuite:
             ids["reprocessed"]: "green",
             ids["changed"]: "green",
             ids["reparsed"]: "green",
+            ids["settled"]: "green",
+            ids["caught_up"]: "green",
             ids["unknown"]: None,
         }
 

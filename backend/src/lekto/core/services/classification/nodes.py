@@ -45,6 +45,7 @@ from lekto.core.domain.evidence import (
     truth_value,
 )
 from lekto.core.domain.exchanges import ModelCall, tokens_of
+from lekto.core.domain.facts import Strength
 from lekto.core.domain.fields import (
     FieldDefinition,
     FieldType,
@@ -54,7 +55,7 @@ from lekto.core.domain.fields import (
     field_from_json,
     field_to_json,
 )
-from lekto.core.domain.ids import ContactId, DocumentId, FieldId, SpaceId
+from lekto.core.domain.ids import ContactId, DocumentId, FieldId, SpaceId, UserId
 from lekto.core.domain.json_value import JsonObject, JsonValue, as_list
 from lekto.core.domain.labels import LabelCheck, LabelOutcome, check_label
 from lekto.core.domain.locations import Location
@@ -92,6 +93,8 @@ from lekto.core.domain.verdict import (
     judge_tags,
     judge_topic,
     judge_type,
+    named_persons,
+    recipient_persons,
 )
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.llm import LanguageModel, StructuredAnswer, StructuredRequest
@@ -138,6 +141,7 @@ from lekto.core.services.objects import (
     text_key,
 )
 from lekto.core.services.pipeline import MetadataResult
+from lekto.core.services.profiles import matching_persons
 from lekto.core.services.titles import has_machine_title
 
 log = logging.getLogger(__name__)
@@ -478,6 +482,11 @@ class JudgeNode:
             tags = await uow.tags.list_all()
             candidates = await space_candidates(uow, document.uploaded_by)
             current = await uow.spaces.find(document.space_id)
+            people = (
+                [(person.user_id, person.names) for person in await matching_persons(uow)]
+                if candidates is not None
+                else []
+            )
         entries = ProcessingHistory(log).signals()
         signals = signals_of(entries)
         proposal = model_proposal(entries)
@@ -502,6 +511,16 @@ class JudgeNode:
         kind = judge_type(signals, types, self._thresholds)
         topic = judge_topic(signals, contact, contacts, tags, self._thresholds)
         tagged = judge_tags(signals, tags, self._thresholds)
+        # The persons the document names: the facts' and the model's recipient (only names
+        # are matched here; the facts matched the rest of the profiles).
+        persons = named_persons(
+            signals.facts.persons if signals.facts is not None else {},
+            recipient_persons(
+                signals.model.recipient if signals.model is not None else None,
+                people,
+                self._thresholds,
+            ),
+        )
         space = (
             None
             if candidates is None or current is None or len(candidates.spaces) < 2
@@ -509,6 +528,7 @@ class JudgeNode:
                 signals,
                 candidates.choice(current, locked=document.space_confirmed_at is not None),
                 self._thresholds,
+                persons,
             )
         )
         model_entry = entries.get(Node.SIGNAL_LLM)
@@ -555,13 +575,16 @@ class JudgeNode:
         # Tags are added: those the document has (set by its owner) stay.
         add_tags = frozenset(_by_id(tags, value).id for value in as_list(tagged.value))
         uncertain = [check for check in checks if not check.ok]
+        output: JsonObject = {CHECKS: checks_to_json(checks)}
+        if space is not None and persons:
+            output[PERSONS] = _persons_json(persons)
         result = NodeResult(
             outcome=Outcome.UNCERTAIN if uncertain else Outcome.OK,
             reason="; ".join(_reason(check) for check in uncertain) or None,
             confidence=min(check.confidence for check in checks),
             model_version=model_version,
             input=input,
-            output={CHECKS: checks_to_json(checks)},
+            output=output,
         )
         moved = _applied(space, lambda value: SpaceId(UUID(value))) if space else UNSET
         target = None if isinstance(moved, Unset) or moved == document.space_id else moved
@@ -569,6 +592,20 @@ class JudgeNode:
 
     def _today(self) -> date:
         return self._clock.now().date()
+
+
+PERSONS = "persons"
+
+
+def _persons_json(persons: Mapping[UserId, Strength]) -> JsonValue:
+    """The persons the judge weighed for the space, by id with the strength of the evidence
+    (ids only, as the facts keep them)."""
+    return [
+        {"user_id": str(user), "strength": strength.value}
+        for user, strength in sorted(
+            persons.items(), key=lambda item: (-item[1].rank, str(item[0]))
+        )
+    ]
 
 
 class FieldsNode(_ModelStep):

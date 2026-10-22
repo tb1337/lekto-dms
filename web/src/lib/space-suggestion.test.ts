@@ -3,7 +3,15 @@ import type { components } from '#lib/api/schema.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
-import { newReaders, onlySpace, suggestedSpace, suggestionText } from '#lib/space-suggestion.ts';
+import {
+	handedTo,
+	newReaders,
+	onlySpace,
+	suggestedSpace,
+	suggestionText,
+	unseenBy,
+	unseenText
+} from '#lib/space-suggestion.ts';
 
 type OpenNode = components['schemas']['OpenNodeOut'];
 
@@ -39,7 +47,7 @@ const lookup = {
 	]
 } as unknown as Lookup;
 
-const node = (fields: { field: string; suggestion?: unknown }[]) =>
+const node = (fields: { field: string; suggestion?: unknown; unseen_by?: string[] }[]) =>
 	({ node: 'judge', outcome: 'uncertain', reason: null, fields }) as unknown as OpenNode;
 
 describe('the suggested space', () => {
@@ -92,5 +100,27 @@ describe('the suggested space', () => {
 		expect(suggestionText('mine', 'house', lookup)).toBe(
 			m.space_suggestion({ space: m.space_personal() })
 		);
+	});
+
+	it('reads a suggested personal space of another user as a hand-over', () => {
+		expect(handedTo('annas', 'mine', lookup)).toBe('anna');
+		expect(suggestionText('annas', 'mine', lookup)).toBe(
+			m.space_suggestion_hand_over({ name: 'anna' })
+		);
+		// Anna reads Haushalt already: her personal space is no hand-over from there.
+		expect(handedTo('annas', 'house', lookup)).toBeNull();
+		expect(handedTo('house', 'mine', lookup)).toBeNull();
+	});
+
+	it('names those the document names who would not see it there', () => {
+		const open = [node([{ field: 'space', suggestion: null, unseen_by: ['u2', 'u9'] }])];
+		expect(unseenBy(open)).toEqual(['u2', 'u9']);
+		expect(unseenBy([node([{ field: 'space' }])])).toEqual([]);
+		expect(unseenText(['u2'], lookup)).toBe(m.space_named_unseen({ names: 'anna' }));
+		// Someone the caller cannot tell stays unnamed.
+		expect(unseenText(['u2', 'u9'], lookup)).toBe(
+			m.space_named_unseen({ names: `anna, ${m.space_named_someone()}` })
+		);
+		expect(unseenText([], lookup)).toBe('');
 	});
 });

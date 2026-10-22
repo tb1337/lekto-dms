@@ -1,0 +1,53 @@
+{
+  "description": "A joint income tax assessment addressed to both users: the model's recipient names Erika too (medium evidence). That only warns (she would not see it in the uploader's personal space); the document stays green where it is.",
+  "expected": {
+    "lane": "green",
+    "contact": "Finanzamt Musterstadt",
+    "document_type": "Bescheid",
+    "tags": [
+      "Steuer"
+    ],
+    "document_date": "2026-05-12",
+    "fields": {
+      "Aktenzeichen": "123/456/78901",
+      "Betrag": {
+        "amount": "756.30",
+        "currency": "EUR"
+      }
+    }
+  },
+  "fake": {
+    "classification": {
+      "contact": {
+        "value": "Finanzamt Musterstadt",
+        "evidence": "Finanzamt Musterstadt"
+      },
+      "recipient": "Herrn Max Mustermann und Frau Erika Musterfrau",
+      "document_type": "Bescheid",
+      "new_document_type": null,
+      "tags": [
+        "Steuer"
+      ],
+      "new_tags": [],
+      "document_date": {
+        "value": "2026-05-12",
+        "evidence": "Datum: 12.05.2026"
+      }
+    },
+    "fields": {
+      "Aktenzeichen": {
+        "value": "123/456/78901",
+        "evidence": "Steuernummer: 123/456/78901",
+        "label": "Steuernummer"
+      },
+      "Betrag": {
+        "value": {
+          "amount": "756.30",
+          "currency": "EUR"
+        },
+        "evidence": "Erstattungsbetrag von 756,30 €",
+        "label": "Erstattungsbetrag"
+      }
+    }
+  }
+}

@@ -253,6 +253,15 @@ class FieldCheckOut(BaseModel):
             "Recorded only, it changes no outcome; null for other checks and older ones."
         ),
     )
+    unseen_by: list[UUID] = Field(
+        default_factory=list,
+        description=(
+            "`space` only: the users the document names (by an identifier, their birth date or "
+            "as the model's recipient) who would not see it where the check leads: the "
+            "suggestion, the space it moves to, or the one it lies in. A warning, it changes "
+            "no outcome; ids only, as names are the users' own."
+        ),
+    )
 
     @classmethod
     def of(cls, check: FieldCheck) -> "FieldCheckOut":
@@ -270,6 +279,7 @@ class FieldCheckOut(BaseModel):
             locations=[LocationOut.of(location) for location in check.locations],
             candidates=[CandidateOut.of(candidate) for candidate in check.candidates],
             label=None if check.label is None else LabelCheckOut.of(check.label),
+            unseen_by=[UUID(user) for user in check.unseen_by],
         )
 
 

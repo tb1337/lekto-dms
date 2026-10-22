@@ -209,6 +209,9 @@ class FieldCheck:
     - `label`: the label the model gave for the value and whether the value stands by it
       (`labels.check_label`); recorded for fields the model read a value for, it changes no
       outcome (issue #55, step 1). None for other checks and entries from before it.
+    - `unseen_by`: for the space, the users the document names (with medium or hard evidence)
+      who would not see it where the check leads (ids only; the web names whom its viewer may
+      see); none for other checks.
     """
 
     field: str
@@ -224,6 +227,7 @@ class FieldCheck:
     locations: tuple[Location, ...] = ()
     candidates: tuple[Candidate, ...] = ()
     label: LabelCheck | None = None
+    unseen_by: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.outcome is Outcome.FAILED:
@@ -238,7 +242,7 @@ class FieldCheck:
         return self.outcome is Outcome.OK
 
     def to_json(self) -> JsonObject:
-        return {
+        data: JsonObject = {
             "field": self.field,
             "outcome": self.outcome.value,
             "confidence": round(self.confidence, 4),
@@ -253,6 +257,9 @@ class FieldCheck:
             "candidates": [candidate.to_json() for candidate in self.candidates],
             "label": None if self.label is None else self.label.to_json(),
         }
+        if self.unseen_by:
+            data["unseen_by"] = list(self.unseen_by)
+        return data
 
     @classmethod
     def from_json(cls, data: JsonValue) -> Self:
@@ -276,6 +283,7 @@ class FieldCheck:
                 locations=locations_from_json(data.get("locations")),
                 candidates=_candidates(data.get("candidates")),
                 label=LabelCheck.from_json(data.get("label")),
+                unseen_by=tuple(str(item) for item in as_list(data.get("unseen_by"))),
             )
         except (KeyError, ValueError) as error:
             raise ValidationError(f"invalid field check: {error}") from None

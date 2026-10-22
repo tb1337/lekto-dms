@@ -11,7 +11,8 @@ to check that the checks catch wrong answers.
   contact enables), `contact_aliases` (other names by contact), `contact_identifiers`
   (entered by hand: `kind`, `value` and the `topic` it points to, by contact),
   `type_descriptions` and `title_patterns` (by document type; templates as the rules'
-  titles, `{{ contact }}`).
+  titles, `{{ contact }}`), `users` (the household's users and their profiles: display name,
+  aliases, birth date, identifiers, synthetic only; one named `evaluation` is the uploader).
 - `training/<name>.md` and `.json`: the training corpus, 57 earlier letters of eleven contacts
   of the set with their metadata, in the style of their cases (as a sender's letters look
   alike), with IBANs, VAT IDs, customer numbers and mail domains, and a `topic` where the
@@ -24,7 +25,9 @@ to check that the checks catch wrong answers.
 - `cases/<name>.md`: the document text, as the parse step would produce it (OCR and parsing are
   not part of the evaluation); its structure, the words with their boxes the label check looks
   at, is set from it on a fixed grid, a line per line and a column per character.
-- `cases/<name>.json`: `expected` (lane and fields, the topic among them) and `fake`, a fixed
+- `cases/<name>.json`: `expected` (lane and fields, the topic among them, and the `space`
+  Lekto moves the document to or suggests: `own`, `personal space of <username>` or a shared
+  space's name) and `fake`, a fixed
   answer for runs without a model. Some fixed answers are wrong on purpose (`fake.lane` then
   names the lane they must lead to); two cases carry instructions to the model in the text
   (`injection`). `lanes` gives a lane by run where the runs differ; `runs` limits a case to
@@ -37,7 +40,12 @@ to check that the checks catch wrong answers.
   salary's line for the gross total and a premium notice whose answer takes a total far below
   the monthly label (both apart from their labels, both passing every other check, yellow only
   for a required field the answer leaves out while the label is only recorded), and an invoice
-  whose values stand in columns under their labels (beside).
+  whose values stand in columns under their labels (beside). Cases 46 and 47 are about the
+  persons a document names (`users` in `master_data.json`: the uploader Max Mustermann and
+  Erika Musterfrau with a synthetic tax ID): her tax assessment with her tax ID stands in the
+  uploader's personal space, and Lekto suggests handing it over to her (`expected.space`,
+  yellow for that alone); a joint assessment addressed to both only warns that she would not
+  see it there, and stays green.
 
 Every case runs twice, each time on a fresh installation in memory:
 

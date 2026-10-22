@@ -267,4 +267,25 @@ describe('the space in the signals and the rules', () => {
 		]);
 		expect(signalSummary(withInput('apply_rules', { trigger: 'change' }), spaces)).toEqual([]);
 	});
+
+	it('names the persons the facts found and the judge weighed, and who would not see it', () => {
+		const facts = signalSummary(
+			entry('signal_facts', { persons: [{ user_id: ANNA, strength: 'hard' }] }),
+			spaces
+		);
+		expect(texts(facts).at(-1)).toEqual([m.facts_persons(), [`anna · ${m.facts_person_hard()}`]]);
+		const judged = signalSummary(
+			entry('judge', {
+				fields: [{ field: 'space', outcome: 'ok', unseen_by: [ANNA, 'someone'] }],
+				persons: [{ user_id: ANNA, strength: 'medium' }]
+			}),
+			spaces
+		);
+		expect(texts(judged)).toEqual([
+			[m.facts_persons(), [`anna · ${m.facts_person_medium()}`]],
+			[m.log_space_unseen(), ['anna', m.space_named_someone()]]
+		]);
+		// Without a space check the judge's entry has nothing of its own to show.
+		expect(signalSummary(entry('judge', { fields: [{ field: 'contact' }] }), spaces)).toEqual([]);
+	});
 });

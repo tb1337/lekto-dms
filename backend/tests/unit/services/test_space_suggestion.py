@@ -10,8 +10,10 @@ from lekto.core.domain.classification import SPACE, checks_from_json
 from lekto.core.domain.classifier import OWN_SPACE
 from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.errors import NotFoundError
+from lekto.core.domain.identifiers import Identifier, IdentifierKind
 from lekto.core.domain.inbox import InboxTab
 from lekto.core.domain.pipeline import Lane, Node, Outcome, ProcessingStatus
+from lekto.core.domain.profiles import Profile
 from lekto.core.domain.rules import RuleScope
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
@@ -28,7 +30,7 @@ from lekto.core.services.inbox import open_nodes
 from lekto.core.services.objects import text_key
 from lekto.core.services.pipeline import MetadataResult, NodeExecutor
 from lekto.core.services.rules import RuleService
-from tests import builders
+from tests import builders, person_numbers
 from tests.builders import incoming
 from tests.unit.services.rules_support import FakeMatcher
 from tests.unit.services.support import World
@@ -333,3 +335,90 @@ def test_own_and_the_id_of_the_uploader_s_personal_space_add_up() -> None:
     assert ranked[0][1] == pytest.approx(0.65)
     assert [space for space, _ in ranked] == [annas.id, house.id]
     assert known == {annas.id, house.id}
+
+
+async def annas_profile(world: World, anna: User, *, tax: str | None = None) -> None:
+    """Anna's display name, and her tax ID if given."""
+    async with world.uow() as uow:
+        user = await uow.users.get(anna.id)
+        user.display_name = "Anna Busch"
+        await uow.users.update(user)
+        if tax is not None:
+            await uow.profiles.add(
+                Profile(
+                    id=anna.id,
+                    identifiers=[Identifier.parse(IdentifierKind.TAX_ID, tax)],
+                    version=1,
+                )
+            )
+        await uow.commit()
+
+
+async def tobis_upload_of(world: World, tobi: User, text: str) -> Document:
+    document = builders.document(tobi, await world.personal_space(tobi))
+    async with world.uow() as uow:
+        await uow.documents.add(document)
+        await uow.commit()
+    await world.object_store.put(
+        text_key(document.id), text.encode(), content_type="text/markdown; charset=utf-8"
+    )
+    return document
+
+
+async def test_anna_s_tax_id_in_tobi_s_upload_suggests_handing_it_over(world: World) -> None:
+    """No signal names a space; Anna's tax ID stands in the text (hard evidence): Lekto
+    suggests handing it over to her, it never hands over by itself."""
+    await seed(world)
+    tobi, anna, _ = await household(world)
+    tax = person_numbers.tax_id()
+    await annas_profile(world, anna, tax=tax)
+    document = await tobis_upload_of(world, tobi, f"{INVOICE}\n\nSteuer-ID: {tax}\n")
+
+    result = await judge(world, document, model(proposal()))
+
+    assert isinstance(result, MetadataResult)
+    check = space_check(result)
+    assert check.outcome is Outcome.UNCERTAIN
+    assert check.suggestion == str((await world.personal_space(anna)).id)
+    assert result.space is None
+    out: Any = result.result.output
+    assert out["persons"] == [{"user_id": str(anna.id), "strength": "hard"}]
+    assert tax not in str(out)  # ids and strengths only
+
+
+async def test_the_model_s_recipient_only_warns(world: World) -> None:
+    """The letter is addressed to Anna (the model's recipient, medium evidence): it stays with
+    Tobi, never yellow for that, and the check says Anna would not see it."""
+    await seed(world)
+    tobi, anna, _ = await household(world)
+    await annas_profile(world, anna)
+    document = await tobis_invoice(world, tobi)
+
+    result = await judge(world, document, model(proposal(recipient="Frau Anna Busch")))
+
+    assert isinstance(result, MetadataResult)
+    check = space_check(result)
+    assert check.outcome is Outcome.OK
+    assert check.unseen_by == (str(anna.id),)
+    assert check.reason == "names someone who would not see it there"
+    assert result.space is None
+
+
+async def test_the_recipient_is_matched_by_display_names_not_usernames(world: World) -> None:
+    await seed(world)
+    tobi, _, _ = await household(world)
+    document = await tobis_invoice(world, tobi)
+    result = await judge(world, document, model(proposal(recipient="anna")))
+    assert isinstance(result, MetadataResult)
+    assert space_check(result).unseen_by == ()  # "anna" is her username, she gave no name
+
+
+async def test_others_personal_spaces_are_listed_by_display_name(world: World) -> None:
+    await seed(world)
+    tobi, anna, _ = await household(world)
+    await annas_profile(world, anna)
+    document = await tobis_invoice(world, tobi)
+    fake = model(proposal())
+    await signal_step(world, fake).run(document)
+    (request,) = fake.requests
+    assert "- s3: personal space of Anna Busch" in request.user

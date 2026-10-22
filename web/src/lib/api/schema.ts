@@ -3532,6 +3532,11 @@ export interface components {
 			candidates?: components['schemas']['CandidateOut'][];
 			/** @description Fields the model read a value for: its label and whether the value stands by it. Recorded only, it changes no outcome; null for other checks and older ones. */
 			label?: components['schemas']['LabelCheckOut'] | null;
+			/**
+			 * Unseen By
+			 * @description `space` only: the users the document names (by an identifier, their birth date or as the model's recipient) who would not see it where the check leads: the suggestion, the space it moves to, or the one it lies in. A warning, it changes no outcome; ids only, as names are the users' own.
+			 */
+			unseen_by?: string[];
 		};
 		/**
 		 * FieldCreate

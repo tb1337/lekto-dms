@@ -249,5 +249,21 @@
       "assignment": "manual",
       "description": "Die Nummer, die auf die Papierablage gestempelt ist"
     }
+  ],
+  "users": [
+    {
+      "username": "evaluation",
+      "display_name": "Max Mustermann"
+    },
+    {
+      "username": "erika",
+      "display_name": "Erika Musterfrau",
+      "identifiers": [
+        {
+          "kind": "tax_id",
+          "value": "86413725987"
+        }
+      ]
+    }
   ]
 }

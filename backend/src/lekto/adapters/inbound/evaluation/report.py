@@ -13,6 +13,7 @@ from lekto.core.domain.classification import (
     CONTACT,
     DOCUMENT_DATE,
     DOCUMENT_TYPE,
+    SPACE,
     TAGS,
     TITLE,
     TOPIC,
@@ -121,6 +122,8 @@ def summarise(results: Sequence[CaseResult], *, fake: bool) -> Summary:
         checked = {name for name in result.checks if name not in (*FIELDS, TAGS, TITLE)}
         fields = (set(expected.fields) | checked) - result.by_hand
         wanted |= {name: expected.fields.get(name) for name in fields}
+        if SPACE in wanted or expected.space is not None:
+            wanted[SPACE] = expected.space  # by how it names spaces (`MasterData.spaces`)
         wrong = []
         for name, value in wanted.items():
             score = scores.setdefault(name, FieldScore(name))

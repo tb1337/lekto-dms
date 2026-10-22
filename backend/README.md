@@ -486,8 +486,11 @@ and the space, the fields node reads the fields of the decided type and the titl
   its groups (`12 345 678 901`), a social security number anywhere, a health insurance number
   after its label (`Versichertennummer`); a customer number that is one of these is none (a
   pension fund writes "Versicherungsnummer" before the social security number). A person's own
-  numbers, a user's IBAN among them, are no unknown identifiers. The judge does not use the
-  persons yet.
+  numbers, a user's IBAN among them, are no unknown identifiers. The judge weighs the persons
+  for the space (below), and adds the model's recipient: every user whose display name or alias
+  stands whole in it, else one whose name matches it from `LEKTO_CONFIDENCE_THRESHOLD` on, is
+  `medium` (never their username; nothing of a profile goes to the model). The judge's entry
+  keeps the persons it weighed (`persons`: user id and strength).
 
 A signal *names* a value it is sure of: the model, a contact whose name or alias its sender
 matches at least `LEKTO_CONFIDENCE_THRESHOLD` (legal forms and punctuation aside) with no other
@@ -505,7 +508,7 @@ sources. The judge's rule:
 | Document type | two signals name it, or only the model and no other signal covers it (the classifier was not trained on it, no confirmed document carries it) | yellow; a type outside the list is proposed as new |
 | Tags (automatic document tags; one set by hand is never proposed) | set as a type is green, without the parent of a tag set | a suggestion (ids); tags never make a document yellow |
 | Document date | a valid date that appears in the text, in a quoted passage that shows it (`31.03.2026`, `31.3.26`, `2026-03-31`, `31. März 2026`, `March 31, 2026`, ...) | suggested |
-| Space (among the uploader's candidates; only with two or more) | sure as a type: two signals name it, or only the model and no other signal covers it. The space it lies in: nothing changes (no model value, so rules file it as they would). One that shows the document to no one new, keeps it with its uploader and is no one else's personal space: it moves there. One with new readers, one its uploader would not see, or another user's personal space (a hand-over): yellow with the space as suggestion ("suggests another space, which shows it to more people", "suggests handing it over into another user's personal space"); more visibility and a hand-over only with a person's click. Reasons and candidates name no space and no person (the editors of the document may not see them; the web names what its viewer sees). A space a person decided is left | it stays where it is, never yellow (the best candidate is kept in the log) |
+| Space (among the uploader's candidates; only with two or more) | sure as a type: two signals name it, or only the model and no other signal covers it. The space it lies in: nothing changes (no model value, so rules file it as they would). One that shows the document to no one new, keeps it with its uploader and is no one else's personal space: it moves there. One with new readers, one its uploader would not see, or another user's personal space (a hand-over): yellow with the space as suggestion ("suggests another space, which shows it to more people", "suggests handing it over into another user's personal space"); more visibility and a hand-over only with a person's click. Reasons and candidates name no space and no person (the editors of the document may not see them; the web names what its viewer sees). A space a person decided is left. The persons the document names (its uploader aside) weigh in: hard evidence backs the one space whose members are exactly those it names (one other person alone: their personal space; else the one smallest space with all of them), with a signal naming it it is sure; hard evidence against a sure space, or against the one it lies in while unsure, makes it yellow with the backed space as suggestion ("names someone who would not see it there; ..."). Medium evidence only warns: `unseen_by` lists who is named but would not see it where the check leads. Weak evidence only breaks ties among spaces the signals name equally. Persons never move a document by themselves | it stays where it is, never yellow (the best candidate is kept in the log); hard evidence of others it does not show it to leaves a warning (`unseen_by`) |
 
 Without the model's proposal the judge is uncertain; it fails (red) only if the model answered
 and no signal recognised anything.

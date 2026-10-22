@@ -54,7 +54,7 @@
 	import { phone } from '#lib/phone.svelte.ts';
 	import { fieldId, initialValue, isRuleField, type ReviewValue } from '#lib/review.ts';
 	import { session } from '#lib/session.svelte.ts';
-	import { suggestedSpace, suggestionText } from '#lib/space-suggestion.ts';
+	import { suggestedSpace, suggestionText, unseenBy, unseenText } from '#lib/space-suggestion.ts';
 	import { above, normalise, ofScope } from '#lib/tags.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
@@ -157,6 +157,8 @@
 	const confirming = $derived(reviewing && (!failedNode || decisions.length > 0 || hasSpace));
 	// The space Lekto suggests (the judge's open check): the select starts there, marked.
 	const spaceSuggestion = $derived(hasSpace ? suggestedSpace(review?.open ?? []) : null);
+	// Whom the document names who would not see it where the check leads (a warning).
+	const spaceUnseen = $derived(hasSpace ? unseenBy(review?.open ?? []) : []);
 	// Confirmed into a space the caller edits (an admin: any), or handed over into another user's
 	// personal space.
 	const spaceChoices = $derived(
@@ -838,6 +840,9 @@
 						{#if !spaceChoices.some((option) => option.value === spaceSuggestion)}
 							<p class="text-sm text-muted-foreground">{m.space_suggestion_unavailable()}</p>
 						{/if}
+					{/if}
+					{#if spaceUnseen.length > 0}
+						<p class="text-sm text-muted-foreground">{unseenText(spaceUnseen, lookup)}</p>
 					{/if}
 				</FieldShell>
 			{/if}

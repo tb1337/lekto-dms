@@ -1,0 +1,54 @@
+{
+  "description": "Erika's income tax assessment, uploaded by the household's other user: her tax ID stands in it (hard evidence of a person), so Lekto suggests handing it over to her; it never hands over by itself. Everything else is green.",
+  "expected": {
+    "lane": "yellow",
+    "contact": "Finanzamt Musterstadt",
+    "document_type": "Bescheid",
+    "tags": [
+      "Steuer"
+    ],
+    "document_date": "2026-06-22",
+    "fields": {
+      "Aktenzeichen": "123/456/78903",
+      "Betrag": {
+        "amount": "678.40",
+        "currency": "EUR"
+      }
+    },
+    "space": "personal space of erika"
+  },
+  "fake": {
+    "classification": {
+      "contact": {
+        "value": "Finanzamt Musterstadt",
+        "evidence": "Finanzamt Musterstadt"
+      },
+      "recipient": "Frau Erika Musterfrau",
+      "document_type": "Bescheid",
+      "new_document_type": null,
+      "tags": [
+        "Steuer"
+      ],
+      "new_tags": [],
+      "document_date": {
+        "value": "2026-06-22",
+        "evidence": "Datum: 22.06.2026"
+      }
+    },
+    "fields": {
+      "Aktenzeichen": {
+        "value": "123/456/78903",
+        "evidence": "Steuernummer: 123/456/78903",
+        "label": "Steuernummer"
+      },
+      "Betrag": {
+        "value": {
+          "amount": "678.40",
+          "currency": "EUR"
+        },
+        "evidence": "Erstattungsbetrag von 678,40 €",
+        "label": "Erstattungsbetrag"
+      }
+    }
+  }
+}

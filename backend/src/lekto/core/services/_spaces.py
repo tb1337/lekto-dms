@@ -31,15 +31,16 @@ class SpaceCandidates:
         return found
 
     def label(self, id: SpaceId) -> str:
-        """How reasons and the log name a candidate: the uploader's own personal space, another
-        user's personal space by its user, a shared space by its name."""
+        """How the prompt names a candidate: the uploader's own personal space, another user's
+        personal space by its user's display name (their username without one), a shared space
+        by its name."""
         space = self.spaces[id]
         if space.personal_of is None:
             return space.name
         if space.personal_of == self.uploader.id:
             return "own personal space"
         person = self.people.get(space.personal_of)
-        return f"personal space of {person.username if person else space.personal_of}"
+        return f"personal space of {person.label if person else space.personal_of}"
 
     def choice(self, current: Space, *, locked: bool) -> SpaceChoice:
         """What the judge weighs for a document lying in `current`."""

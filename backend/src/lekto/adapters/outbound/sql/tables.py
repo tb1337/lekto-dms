@@ -71,6 +71,8 @@ spaces = Table(
     Column("name_key", Text, nullable=False),
     # The user whose personal space it is (`Space.personal_of`); None for every other space.
     Column("personal_of", Uuid, ForeignKey("users.id"), nullable=True, unique=True),
+    # What belongs in the space, for the language model (`Space.description`).
+    Column("description", Text, nullable=True),
     Column("created_at", UtcDateTime, nullable=False),
     Column("version", Integer, nullable=False),
 )
@@ -298,6 +300,8 @@ documents = Table(
     Column("page_count", Integer, nullable=True),
     # When a person last set or confirmed the metadata (see `Document.confirmed_at`).
     Column("confirmed_at", UtcDateTime, nullable=True, index=True),
+    # When a person last decided its space (see `Document.space_confirmed_at`).
+    Column("space_confirmed_at", UtcDateTime, nullable=True),
     # When processing last made it new for the inbox (see `Document.new_at`). No index: most
     # green documents keep it, and the inbox queries go by space and lane with the viewer's
     # seen marks.

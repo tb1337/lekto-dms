@@ -105,7 +105,8 @@ async def test_instructions_in_the_text_change_only_checked_fields(tmp_path: Pat
         assert result.violations == ()
     refused, obeyed = injections
     assert refused.lane is Lane.RED  # fields outside the schema
-    assert "unexpected owner, share_with, space" in refused.reasons[next(iter(refused.reasons))]
+    # The space is part of the answer (the request lists spaces); a name not listed is none.
+    assert "unexpected owner, share_with" in refused.reasons[next(iter(refused.reasons))]
     assert obeyed.document_date is None  # not backed by the text
     assert "Betrag" not in obeyed.fields  # invented
 

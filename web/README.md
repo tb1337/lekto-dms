@@ -162,7 +162,9 @@ chooses the members of a personal space. Members come with their names and wheth
 active (`SpaceOut.members`): a deactivated member takes no new role, an editor removes them.
 Every member leaves a space themselves (`canLeaveSpace`), apart from the user of a personal
 space and the last editor. A personal space is neither renamed nor deleted, a shared one only
-while empty.
+while empty. Editors describe a space (`SpaceDialog`, `PATCH /spaces/{id}` with `SpacePatch`),
+a personal one too: the language model reads what belongs in it when Lekto suggests a space
+(another user's personal space only by its user's name).
 
 The document's head names its space and who else sees it. Moving goes into a space the caller
 edits, or hands the document over into another user's personal space ("Hand over to Anna",
@@ -170,14 +172,21 @@ edits, or hands the document over into another user's personal space ("Hand over
 rule's "File into space". The hand-overs come from the users list (`personal_space_id` of
 `GET /users`), as a hand-over needs no membership. A rule belongs to
 a space the caller edits (their personal one by default) or, for admins, is global; it files
-where whoever saves it may file. Editing a rule may move it ("Applies to", `lib/rules/places.ts`):
-the save sends `scope` and `space_id` with the content, and the rule's version list says where a
-version moved it.
+where whoever saves it may file, and a space's rules run when a document arrives there. Editing
+a rule may move it ("Applies to", `lib/rules/places.ts`): the save sends `scope` and `space_id`
+with the content, and the rule's version list says where a version moved it.
 
 Deleting a user (admin › users) asks for the spaces they leave behind (`UserDeleteDialog`,
 `lib/user-removal.ts`, from `GET /users/{id}/removal`): per space "Delete with the user" (empty),
 "Move the documents, then delete" with the space they go to, or "New editor, the space stays"
 with the user; one click deletes the user and settles all of them in one request.
+
+When Lekto suggests a space that shows the document to others (the judge's open `space` check
+with a `suggestion`), the inbox row says so ("Suggested: Haushalt (visible to anna)",
+`lib/space-suggestion.ts`) and the document form starts its space choice at the suggestion;
+confirming it sends `accept_suggestions: true`, another choice its `space_id`, the current space
+keeps it. The log names the spaces of the signals, the spaces a document went through
+(`apply_rules` output `spaces`) and the rules of a space it arrived in.
 
 ## Document view
 

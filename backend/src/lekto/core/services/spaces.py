@@ -1,5 +1,6 @@
 from collections.abc import Iterable, Mapping
 
+from lekto.core.domain.documents import UNSET, Unset
 from lekto.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
 from lekto.core.domain.ids import SpaceId, UserId
 from lekto.core.domain.permissions import can_choose_members, can_manage_space
@@ -61,7 +62,12 @@ class SpaceService:
             await uow.commit()
 
     async def create(
-        self, actor: UserId, name: str, *, members: Mapping[UserId, SpaceRole] | None = None
+        self,
+        actor: UserId,
+        name: str,
+        *,
+        members: Mapping[UserId, SpaceRole] | None = None,
+        description: str | None = None,
     ) -> Space:
         """A space the caller edits, shared with `members`. An admin may give the members
         alone (without being one), as long as one of them edits; everyone else is always an
@@ -73,17 +79,34 @@ class SpaceService:
                 chosen[user.id] = SpaceRole.EDIT
             for member in chosen:
                 await _active_user(uow, member)
-            space = Space.create(name=name, members=chosen, now=self._clock.now())
+            space = Space.create(
+                name=name, members=chosen, now=self._clock.now(), description=description
+            )
             await _check_name_free(uow, space)
             await uow.spaces.add(space)
             await uow.commit()
         return space
 
     async def rename(self, actor: UserId, id: SpaceId, name: str) -> Space:
+        return await self.change(actor, id, name=name)
+
+    async def change(
+        self,
+        actor: UserId,
+        id: SpaceId,
+        *,
+        name: str | None = None,
+        description: str | Unset | None = UNSET,
+    ) -> Space:
+        """Rename (not a personal space) or describe a space: editors and admins. None (name)
+        or UNSET (description) leaves it; None or empty removes the description."""
         async with self._uow() as uow:
             space = await _managed_space(uow, await load_actor(uow, actor), id)
-            space.rename(name)
-            await _check_name_free(uow, space)
+            if name is not None:
+                space.rename(name)
+                await _check_name_free(uow, space)
+            if not isinstance(description, Unset):
+                space.describe(description)
             await uow.spaces.update(space)
             await uow.commit()
         return space

@@ -15,7 +15,7 @@ from lekto.core.domain.master_data import one_line
 from lekto.core.domain.text import Shortened
 
 EXTRACT_PROMPT = "extract-5"
-PROPOSE_PROMPT = "propose-4"
+PROPOSE_PROMPT = "propose-5"
 PROPOSE_SCHEMA = "proposal"
 EXTRACT_SCHEMA = "fields"
 """Names of the JSON schemas of the two requests (`StructuredRequest.schema_name`)."""
@@ -61,6 +61,9 @@ as written in the document or as YYYY-MM-DD; not a due date or a period.
 - title: a short title for the document in its language, at most {TITLE_CHARACTERS} \
 characters, naming what it is (for example "Stromrechnung März 2026"); null if you cannot tell.
 - language: the language the document is written in, as ISO 639-1 code (de, en, fr, ...).
+- space: only when spaces are listed: the key of the space the document belongs in, by the \
+descriptions and by whom the document concerns; the uploader's own personal space if it \
+concerns only them or no other space fits; null if you cannot tell.
 - fields: the fields of the document type you chose (the keys listed with it, each \
 described once under Fields), and the fields for every document: one entry per field the \
 document shows, with its key, the value as written in the \
@@ -113,11 +116,13 @@ class Listed:
 # The fixed answers of the evaluation (`adapters/inbound/evaluation/cases.py`, `_proposal_keys`
 # and `_KEY_LINE`) read the field keys from the wording of the two messages: the line that opens
 # the document, the field lines `- a1: "Name"`, the headings "Fields", "Document types" and
-# "Fields for every document", and a type's keys after ` — fields: `. A test renders the
-# messages to hold the two together.
+# "Fields for every document", and a type's keys after ` — fields: `; the heading "Spaces" with
+# its lines `- s1: ...`. A test renders the messages to hold the two together.
 
 FIELDS_OF_TYPE = " — fields: "
 """Between a document type (with its description) and the keys of its fields."""
+SPACES_HEADING = "Spaces (where the document is filed; who may see it follows from that):"
+"""Opens the list of spaces (`propose-5`), each `- <key>: <label>`."""
 
 
 def propose_message(
@@ -126,10 +131,12 @@ def propose_message(
     general: Sequence[tuple[str, FieldDefinition]],
     tags: Sequence[str],
     text: Shortened,
+    spaces: Sequence[tuple[str, str]] = (),
 ) -> str:
     """The lists come before the document: each field once, with its form and description (a
     field may belong to several types); each document type with the keys of its fields; the
-    keys of the fields for every document."""
+    keys of the fields for every document; the spaces by key with their labels, if any (a
+    shared space with its description)."""
     described: dict[str, FieldDefinition] = {}
     types = []
     for listed, fields in document_types:
@@ -147,6 +154,15 @@ def propose_message(
             "Document types, each with the keys of its fields:\n" + ("\n".join(types) or "(none)"),
             "Fields for every document:\n" + (", ".join(key for key, _ in general) or "(none)"),
             "Tags:\n" + _items(tags),
+            *(
+                [
+                    SPACES_HEADING
+                    + "\n"
+                    + "\n".join(f"- {key}: {one_line(label)}" for key, label in spaces)
+                ]
+                if spaces
+                else []
+            ),
             _document(text),
         ]
     )
@@ -212,6 +228,11 @@ def _listed(items: Sequence[Listed]) -> str:
             line += " — topics: " + "; ".join(map(one_line, item.topics))
         lines.append(line)
     return "\n".join(lines) if lines else "(none)"
+
+
+def _spaces(spaces: Sequence[tuple[str, str]]) -> str:
+    lines = "\n".join(f"- {key}: {one_line(label)}" for key, label in spaces)
+    return f"{SPACES_HEADING}\n{lines}"
 
 
 def _items(names: Sequence[str]) -> str:

@@ -9,8 +9,8 @@ from lekto.adapters.inbound.rest.auth import PROTECTED, Authenticated
 from lekto.adapters.inbound.rest.context import Context
 from lekto.adapters.inbound.rest.params import AllSpaces
 from lekto.adapters.inbound.rest.problems import problem_responses
-from lekto.adapters.inbound.rest.schemas.common import NameIn
-from lekto.adapters.inbound.rest.schemas.spaces import MemberIn, SpaceCreate, SpaceOut
+from lekto.adapters.inbound.rest.schemas.spaces import MemberIn, SpaceCreate, SpaceOut, SpacePatch
+from lekto.core.domain.documents import UNSET
 from lekto.core.domain.ids import SpaceId, UserId
 from lekto.core.domain.permissions import space_role
 from lekto.core.domain.sorting import sort_key
@@ -61,7 +61,9 @@ async def create_space(body: SpaceCreate, principal: Authenticated, context: Con
         if body.members is None
         else {UserId(member.user_id): member.role for member in body.members}
     )
-    space = await context.spaces.create(principal.id, body.name, members=members)
+    space = await context.spaces.create(
+        principal.id, body.name, members=members, description=body.description
+    )
     return await _out(space, principal, context)
 
 
@@ -77,15 +79,22 @@ async def get_space(id: UUID, principal: Authenticated, context: Context) -> Spa
 
 @router.patch(
     "/{id}",
-    summary="Rename a space",
-    description=EDITORS + " Not a personal space (422).",
+    summary="Rename or describe a space",
+    description=EDITORS
+    + " A personal space keeps its name (422); its description its user writes. The "
+    "description tells the language model what belongs in the space.",
     response_model=SpaceOut,
     responses=problem_responses(401, 403, 404, 409, 422),
 )
-async def rename_space(
-    id: UUID, body: NameIn, principal: Authenticated, context: Context
+async def change_space(
+    id: UUID, body: SpacePatch, principal: Authenticated, context: Context
 ) -> SpaceOut:
-    space = await context.spaces.rename(principal.id, SpaceId(id), body.name)
+    space = await context.spaces.change(
+        principal.id,
+        SpaceId(id),
+        name=body.name,
+        description=body.description if "description" in body.model_fields_set else UNSET,
+    )
     return await _out(space, principal, context)
 
 

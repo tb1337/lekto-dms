@@ -2,15 +2,29 @@
 
 from collections.abc import Mapping
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from lekto.adapters.inbound.rest.schemas.common import NameIn
+from lekto.adapters.inbound.rest.schemas.common import Name, NameIn
 from lekto.core.domain.ids import UserId
+from lekto.core.domain.master_data import MAX_DESCRIPTION
 from lekto.core.domain.permissions import space_role
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
+
+SpaceDescription = Annotated[
+    str,
+    Field(
+        max_length=MAX_DESCRIPTION,
+        description=(
+            "What belongs in the space, for the language model when it suggests where a "
+            "document goes; empty removes it. Never sent with other users' personal spaces."
+        ),
+        examples=["Wohnung, Nebenkosten, Versorger, Versicherungen fürs Haus, Kinder"],
+    ),
+]
 
 
 class MemberIn(BaseModel):
@@ -47,6 +61,7 @@ class SpaceCreate(NameIn):
         json_schema_extra={"examples": [{"name": "Household"}]},
     )
 
+    description: SpaceDescription | None = None
     members: list[SpaceMember] | None = Field(
         default=None,
         description=(
@@ -54,6 +69,18 @@ class SpaceCreate(NameIn):
             "create; an admin may give the members alone (one of them must edit)."
         ),
     )
+
+
+class SpacePatch(BaseModel):
+    """Fields left out stay; a `description` of null or empty removes it."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"examples": [{"description": "Wohnung, Nebenkosten, Versorger"}]},
+    )
+
+    name: Name | None = Field(default=None, description="Not for a personal space (422).")
+    description: SpaceDescription | None = None
 
 
 class SpaceOut(BaseModel):
@@ -64,6 +91,9 @@ class SpaceOut(BaseModel):
     )
     personal_of: UUID | None = Field(
         description="The user whose personal space it is: what they upload lands there."
+    )
+    description: str | None = Field(
+        description="What belongs in the space, for the language model."
     )
     role: SpaceRole = Field(description="The caller's role; admins edit every space.")
     members: list[MemberDetails]
@@ -79,6 +109,7 @@ class SpaceOut(BaseModel):
             id=space.id,
             name=space.name,
             personal_of=space.personal_of,
+            description=space.description,
             role=role,
             members=[
                 MemberDetails(

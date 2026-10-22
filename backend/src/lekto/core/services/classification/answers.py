@@ -21,7 +21,14 @@ from uuid import UUID
 from lekto.core.domain.documents import MAX_TITLE
 from lekto.core.domain.fields import FieldDefinition, FieldType
 from lekto.core.domain.ids import FieldId
-from lekto.core.domain.json_value import JsonObject, JsonValue, as_object, as_text, as_texts
+from lekto.core.domain.json_value import (
+    JsonObject,
+    JsonValue,
+    as_object,
+    as_text,
+    as_texts,
+    as_uuid,
+)
 from lekto.core.domain.master_data import one_line
 
 # Characters of a quoted passage that are kept: more than the prompt asks for
@@ -82,6 +89,7 @@ class ProposeAnswer:
     language: str | None
     fields: dict[str, Proposal]  # by key; only the fields the model gave
     raw: JsonObject
+    space: str | None = None  # the key of a listed space (`propose-5`, only with spaces listed)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -101,10 +109,17 @@ class StoredProposal:
     title: str | None
     language: str | None
     fields: Mapping[FieldId, Proposal]
+    space: UUID | None = None  # the space the model chose among those listed
 
     @classmethod
-    def of(cls, answer: ProposeAnswer, keys: Mapping[str, FieldDefinition]) -> Self:
-        """The answer, its fields (by the keys sent) by id."""
+    def of(
+        cls,
+        answer: ProposeAnswer,
+        keys: Mapping[str, FieldDefinition],
+        spaces: Mapping[str, UUID] | None = None,
+    ) -> Self:
+        """The answer, its fields (by the keys sent) by id, its space (by the keys of the
+        spaces sent) by id."""
         return cls(
             sender=answer.sender,
             recipient=answer.recipient,
@@ -117,6 +132,7 @@ class StoredProposal:
             title=answer.title,
             language=answer.language,
             fields={keys[key].id: value for key, value in answer.fields.items()},
+            space=None if answer.space is None else (spaces or {}).get(answer.space),
         )
 
     def to_json(self) -> JsonObject:
@@ -132,6 +148,7 @@ class StoredProposal:
             "title": self.title,
             "language": self.language,
             "fields": {str(id): value.to_json() for id, value in self.fields.items()},
+            "space": None if self.space is None else str(self.space),
         }
 
     @classmethod
@@ -156,6 +173,7 @@ class StoredProposal:
                 for key, value in (as_object(fields) or {}).items()
                 if (id := _stored_id(key)) is not None
             },
+            space=as_uuid(data.get("space")),
         )
 
 
@@ -188,10 +206,12 @@ def propose_schema(
     tags: Sequence[str],
     keys: Sequence[str],
     topics: Sequence[str] = (),
+    spaces: Sequence[str] = (),
 ) -> JsonObject:
     """Every field value is text, as written in the document; the fields come as a list of
     the keys the document shows (the model leaves the others out). `topics`: those of the
-    listed contacts, one of them or null."""
+    listed contacts, one of them or null. `spaces`: the keys of the listed spaces; only with
+    spaces listed does the answer have a `space`, one of them or null."""
     # Without tags or fields to list, anything given is left out or proposed as new.
     tag_items: JsonObject = {"type": "string"}
     if tags:
@@ -207,6 +227,7 @@ def propose_schema(
             _LABEL: dict(_TEXT_OR_NULL),
         }
     )
+    space: JsonObject = {"space": _one_of_or_null(spaces)} if spaces else {}
     return _object(
         {
             "sender": _proposal(dict(_TEXT_OR_NULL)),
@@ -220,15 +241,18 @@ def propose_schema(
             "title": dict(_TEXT_OR_NULL),
             "language": dict(_TEXT_OR_NULL),
             "fields": {"type": "array", "items": entry},
+            **space,
         }
     )
 
 
-def parse_propose(content: str, keys: Sequence[str]) -> ProposeAnswer:
+def parse_propose(content: str, keys: Sequence[str], spaces: Sequence[str] = ()) -> ProposeAnswer:
     """Strict about the structure; a field entry with a key that is not listed is left out,
-    and of two entries for one key the first counts."""
+    and of two entries for one key the first counts. A `space` is read only with `spaces`
+    listed; one that is none of them counts as none."""
     data = _load(content)
-    _require_fields(data, _PROPOSE_FIELDS, "the answer")
+    # The space is read only with spaces listed; one left out counts as none.
+    _require_fields(data, _PROPOSE_FIELDS, "the answer", optional=["space"] if spaces else [])
     entries = data["fields"]
     if not isinstance(entries, list):
         raise AnswerError("fields: expected a list")
@@ -260,7 +284,15 @@ def parse_propose(content: str, keys: Sequence[str]) -> ProposeAnswer:
         language=_text_or_null(data["language"], "language"),
         fields=fields,
         raw=data,
+        space=_space(data, spaces),
     )
+
+
+def _space(data: JsonObject, spaces: Sequence[str]) -> str | None:
+    if not spaces:
+        return None
+    key = _text_or_null(data.get("space"), "space")
+    return key if key in spaces else None
 
 
 # --- fields -------------------------------------------------------------------------------

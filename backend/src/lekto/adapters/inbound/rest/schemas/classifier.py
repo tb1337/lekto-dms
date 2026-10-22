@@ -11,6 +11,12 @@ from lekto.core.services.classifier import ClassifierStatus
 class ClassesOut(BaseModel):
     contact: int = Field(default=0, description="Contacts it can name.")
     document_type: int = Field(default=0, description="Document types it can name.")
+    topic: int = Field(default=0, description="Topics it can name.")
+    space: int = Field(
+        default=0,
+        description="Spaces it can name; every user's personal space counts as one (the "
+        "uploader's own).",
+    )
     tags: int = Field(default=0, description="Tags it can name.")
 
 
@@ -23,9 +29,12 @@ class AccuracyOut(BaseModel):
 class ClassifierModelOut(BaseModel):
     number: int = Field(description="Counts the trainings: the first model is 1.")
     trained_at: datetime
-    examples: int = Field(description="Confirmed documents it learned from.")
+    examples: int = Field(
+        description="Documents it learned from: confirmed ones, and those a person decided "
+        "the space of (they teach only the space)."
+    )
     examples_until: datetime | None = Field(
-        description="When the latest of them was confirmed; later confirmations count "
+        description="When the latest of them was confirmed or placed; later decisions count "
         "towards the next training."
     )
     classes: ClassesOut

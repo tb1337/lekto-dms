@@ -771,10 +771,10 @@ export interface paths {
 		options?: never;
 		head?: never;
 		/**
-		 * Rename a space
-		 * @description Editors of the space and admins. Not a personal space (422).
+		 * Rename or describe a space
+		 * @description Editors of the space and admins. A personal space keeps its name (422); its description its user writes. The description tells the language model what belongs in the space.
 		 */
-		patch: operations['rename_space_api_v1_spaces__id__patch'];
+		patch: operations['change_space_api_v1_spaces__id__patch'];
 		trace?: never;
 	};
 	'/api/v1/spaces/{id}/members/{user_id}': {
@@ -2227,6 +2227,18 @@ export interface components {
 			 */
 			document_type: number;
 			/**
+			 * Topic
+			 * @description Topics it can name.
+			 * @default 0
+			 */
+			topic: number;
+			/**
+			 * Space
+			 * @description Spaces it can name; every user's personal space counts as one (the uploader's own).
+			 * @default 0
+			 */
+			space: number;
+			/**
 			 * Tags
 			 * @description Tags it can name.
 			 * @default 0
@@ -2247,12 +2259,12 @@ export interface components {
 			trained_at: string;
 			/**
 			 * Examples
-			 * @description Confirmed documents it learned from.
+			 * @description Documents it learned from: confirmed ones, and those a person decided the space of (they teach only the space).
 			 */
 			examples: number;
 			/**
 			 * Examples Until
-			 * @description When the latest of them was confirmed; later confirmations count towards the next training.
+			 * @description When the latest of them was confirmed or placed; later decisions count towards the next training.
 			 */
 			examples_until: string | null;
 			classes: components['schemas']['ClassesOut'];
@@ -4519,19 +4531,6 @@ export interface components {
 			 */
 			space_id: string;
 		};
-		/**
-		 * NameIn
-		 * @example {
-		 *       "name": "ACME Energy"
-		 *     }
-		 */
-		NameIn: {
-			/**
-			 * Name
-			 * @example ACME Energy
-			 */
-			name: string;
-		};
 		/** NamedContactOut */
 		NamedContactOut: {
 			/**
@@ -5536,6 +5535,8 @@ export interface components {
 			 * @example ACME Energy
 			 */
 			name: string;
+			/** Description */
+			description?: string | null;
 			/**
 			 * Members
 			 * @description Who else is a member, with their role. The caller always edits a space they create; an admin may give the members alone (one of them must edit).
@@ -5569,6 +5570,11 @@ export interface components {
 			 * @description The user whose personal space it is: what they upload lands there.
 			 */
 			personal_of: string | null;
+			/**
+			 * Description
+			 * @description What belongs in the space, for the language model.
+			 */
+			description: string | null;
 			/** @description The caller's role; admins edit every space. */
 			role: components['schemas']['SpaceRole'];
 			/** Members */
@@ -5580,6 +5586,22 @@ export interface components {
 			created_at: string;
 			/** Version */
 			version: number;
+		};
+		/**
+		 * SpacePatch
+		 * @description Fields left out stay; a `description` of null or empty removes it.
+		 * @example {
+		 *       "description": "Wohnung, Nebenkosten, Versorger"
+		 *     }
+		 */
+		SpacePatch: {
+			/**
+			 * Name
+			 * @description Not for a personal space (422).
+			 */
+			name?: string | null;
+			/** Description */
+			description?: string | null;
 		};
 		/**
 		 * SpaceRole
@@ -12630,7 +12652,7 @@ export interface operations {
 			};
 		};
 	};
-	rename_space_api_v1_spaces__id__patch: {
+	change_space_api_v1_spaces__id__patch: {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -12641,7 +12663,7 @@ export interface operations {
 		};
 		requestBody: {
 			content: {
-				'application/json': components['schemas']['NameIn'];
+				'application/json': components['schemas']['SpacePatch'];
 			};
 		};
 		responses: {

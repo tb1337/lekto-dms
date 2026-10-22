@@ -54,7 +54,7 @@ from lekto.core.domain.fields import (
     field_from_json,
     field_to_json,
 )
-from lekto.core.domain.ids import ContactId, DocumentId, FieldId
+from lekto.core.domain.ids import ContactId, DocumentId, FieldId, SpaceId
 from lekto.core.domain.json_value import JsonObject, JsonValue, as_list
 from lekto.core.domain.labels import LabelCheck, LabelOutcome, check_label
 from lekto.core.domain.locations import Location
@@ -88,6 +88,7 @@ from lekto.core.domain.validation import name_key
 from lekto.core.domain.verdict import (
     Thresholds,
     judge_contact,
+    judge_space,
     judge_tags,
     judge_topic,
     judge_type,
@@ -97,6 +98,7 @@ from lekto.core.ports.llm import LanguageModel, StructuredAnswer, StructuredRequ
 from lekto.core.ports.locator import TextLocator
 from lekto.core.ports.object_store import ObjectStore
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
+from lekto.core.services._spaces import SpaceCandidates, space_candidates
 from lekto.core.services.classification.answers import (
     AnswerError,
     Proposal,
@@ -306,9 +308,10 @@ class _ModelStep:
 class LlmSignal(_ModelStep):
     """The language model's proposal (`signal_llm`): one request for the sender and the
     recipient, the type, the topic (among those of the contacts listed), tags, date, a title
-    and the language, and the values of the fields of the type it chooses and of the global
-    ones. Without a model it abstains; two unfit answers fail it. It checks nothing: the judge
-    and the fields node do."""
+    and the language, the values of the fields of the type it chooses and of the global ones,
+    and, with two spaces or more to choose from (`SpaceCandidates`), the space. Without a model
+    it abstains; two unfit answers fail it. It checks nothing: the judge and the fields node
+    do."""
 
     async def run(self, document: Document) -> NodeResult:
         if self._model is None:
@@ -329,6 +332,7 @@ class LlmSignal(_ModelStep):
                 (item for item in await uow.fields.list_all() if item.is_read),
                 key=lambda item: item.name,
             )
+            spaces = _listed_spaces(await space_candidates(uow, document.uploaded_by))
         # Matching every name against a long text takes a while: not in the loop.
         facts = await asyncio.to_thread(DocumentText.read, text)
         listed = await asyncio.to_thread(_listed_tags, tags, facts, self._policy.max_tags)
@@ -366,6 +370,7 @@ class LlmSignal(_ModelStep):
             "tags_listed": len(listed),
             "topics_listed": len(topic_names),
             "fields": {key: str(definition.id) for key, definition in keys.items()},
+            "spaces": {key: str(id) for key, (id, _) in spaces.items()},
         }
         tag_names = [item.name for item in listed]
         try:
@@ -382,20 +387,58 @@ class LlmSignal(_ModelStep):
                     general,
                     tag_names,
                     sent,
+                    [(key, label) for key, (_, label) in spaces.items()],
                 ),
-                propose_schema([item.name for item in types], tag_names, list(keys), topic_names),
+                propose_schema(
+                    [item.name for item in types],
+                    tag_names,
+                    list(keys),
+                    topic_names,
+                    list(spaces),
+                ),
                 PROPOSE_SCHEMA,
-                lambda content: parse_propose(content, list(keys)),
+                lambda content: parse_propose(content, list(keys), list(spaces)),
             )
         except _UnfitAnswerError as error:
             return self._unfit(error, input)
+        chosen = {key: id for key, (id, _) in spaces.items()}
         return NodeResult(
             outcome=Outcome.OK,
             model_version=_model_version(answers[-1]),
             input=input,
             output=_answered(answers, answer.raw)
-            | {PROPOSAL: StoredProposal.of(answer, keys).to_json()},
+            | {PROPOSAL: StoredProposal.of(answer, keys, chosen).to_json()},
         )
+
+
+def _listed_spaces(candidates: SpaceCandidates | None) -> dict[str, tuple[SpaceId, str]]:
+    """The spaces for the prompt by key (`s1`, ...), with their labels: the uploader's own
+    personal space first (with what the uploader wrote about it), then the shared ones with
+    their descriptions, then the personal spaces of the other users by their user only (what
+    they wrote is theirs). None with fewer than two: nothing to choose."""
+    if candidates is None or len(candidates.spaces) < 2:
+        return {}
+    own = candidates.personal
+    shared = sorted(
+        (space for space in candidates.spaces.values() if space.personal_of is None),
+        key=lambda space: sort_key(space.name),
+    )
+    others = sorted(
+        (
+            space
+            for space in candidates.spaces.values()
+            if space.personal_of is not None and space.id != own
+        ),
+        key=lambda space: sort_key(candidates.label(space.id)),
+    )
+    described = candidates.spaces[own].description if own in candidates.spaces else None
+    labels = [(own, "own personal space of the uploader" + (f": {described}" if described else ""))]
+    labels += [
+        (space.id, space.name + (f": {space.description}" if space.description else ""))
+        for space in shared
+    ]
+    labels += [(space.id, candidates.label(space.id)) for space in others]
+    return {f"s{number}": item for number, item in enumerate(labels, start=1)}
 
 
 class JudgeNode:
@@ -403,7 +446,9 @@ class JudgeNode:
     by the rules of `domain.verdict`, and the document date the model read, checked against the
     text. What is green is applied; tags are added. A document the model answered for, but no
     signal recognised anything in, fails (red); without the model's proposal the judge is
-    uncertain."""
+    uncertain. With two spaces or more to choose from (`SpaceCandidates`) it judges the space
+    too (`judge_space`): a space that shows the document to no one new it moves it to, one
+    that shows it to others it suggests (uncertain)."""
 
     def __init__(
         self,
@@ -430,6 +475,8 @@ class JudgeNode:
             contacts = await uow.contacts.list_all()
             types = await uow.document_types.list_all()
             tags = await uow.tags.list_all()
+            candidates = await space_candidates(uow, document.uploaded_by)
+            current = await uow.spaces.find(document.space_id)
         entries = ProcessingHistory(log).signals()
         signals = signals_of(entries)
         proposal = model_proposal(entries)
@@ -454,6 +501,15 @@ class JudgeNode:
         kind = judge_type(signals, types, self._thresholds)
         topic = judge_topic(signals, contact, contacts, tags, self._thresholds)
         tagged = judge_tags(signals, tags, self._thresholds)
+        space = (
+            None
+            if candidates is None or current is None or len(candidates.spaces) < 2
+            else judge_space(
+                signals,
+                candidates.choice(current, locked=document.space_confirmed_at is not None),
+                self._thresholds,
+            )
+        )
         model_entry = entries.get(Node.SIGNAL_LLM)
         llm_input = model_entry.result.input if model_entry is not None else {}
         input: JsonObject = {key: llm_input[key] for key in MODEL_RUN if key in llm_input}
@@ -486,7 +542,7 @@ class JudgeNode:
         date_check = _readable(
             date_check, reading, self._policy.poor_reading, _date_shown(date_check.value)
         )
-        checks = [contact, kind, topic, tagged, date_check]
+        checks = [contact, kind, topic, tagged, date_check, *([space] if space else [])]
         # A topic set is one of the contact's; a contact set that does not enable the
         # document's topic clears it (`checked_changes`).
         changes = DocumentChanges(
@@ -506,7 +562,9 @@ class JudgeNode:
             input=input,
             output={CHECKS: checks_to_json(checks)},
         )
-        return MetadataResult(result, changes, add_tags)
+        moved = _applied(space, lambda value: SpaceId(UUID(value))) if space else UNSET
+        target = None if isinstance(moved, Unset) or moved == document.space_id else moved
+        return MetadataResult(result, changes, add_tags, space=target)
 
     def _today(self) -> date:
         return self._clock.now().date()

@@ -2,6 +2,7 @@
 numbers) is scikit-learn's, and a model is plain arrays."""
 
 import io
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -71,7 +72,13 @@ def test_a_model_is_plain_arrays() -> None:
         assert str(archive["format"]) == FORMAT
         # Two classes: one row, for the second one (as scikit-learn keeps it).
         assert archive["contact_coef"].shape == (1, len(archive["terms"]))
-    assert summary["classes"] == {"contact": 2, "document_type": 2, "topic": 2, "tags": 2}
+    assert summary["classes"] == {
+        "contact": 2,
+        "document_type": 2,
+        "topic": 2,
+        "space": 0,
+        "tags": 2,
+    }
 
 
 def test_a_model_from_before_topics_knows_none() -> None:
@@ -82,6 +89,19 @@ def test_a_model_from_before_topics_knows_none() -> None:
     np.savez_compressed(buffer, **arrays)
     prediction = _Model.load(buffer.getvalue()).predict("Stadtwerke Musterstadt Zählerstand")
     assert prediction.topics == [] and prediction.contacts
+
+
+def test_a_model_from_before_spaces_knows_none() -> None:
+    examples = [replace(item, space=str(index % 2)) for index, item in enumerate(corpus())]
+    data, summary, _ = fit(examples)
+    classes = summary["classes"]
+    assert isinstance(classes, dict) and classes["space"] == 2
+    with np.load(io.BytesIO(data), allow_pickle=False) as archive:
+        arrays = {name: archive[name] for name in archive.files if not name.startswith("space_")}
+    buffer = io.BytesIO()
+    np.savez_compressed(buffer, **arrays)
+    prediction = _Model.load(buffer.getvalue()).predict("Stadtwerke Musterstadt Zählerstand")
+    assert prediction.spaces == [] and prediction.contacts
 
 
 def test_a_model_of_another_format() -> None:

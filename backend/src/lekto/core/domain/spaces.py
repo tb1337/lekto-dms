@@ -9,6 +9,7 @@ from typing import Self
 
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.ids import SpaceId, UserId, new_id
+from lekto.core.domain.master_data import checked_description
 from lekto.core.domain.validation import require_name, require_utc
 
 PERSONAL_SPACE_NAME = "Personal"
@@ -31,25 +32,42 @@ class Space:
     Every user has exactly one personal space (`personal_of`): what they upload lands there,
     they are always an editor of it, and only they (or an admin) choose its other members; it
     can be shared, but neither renamed nor deleted. Every other space keeps at least one
-    editor, and its name is unique regardless of case among them.
+    editor, and its name is unique regardless of case among them. The description tells the
+    language model what belongs in the space (`propose-5`); its editors write it, in a personal
+    space its user.
     """
 
     id: SpaceId
     name: str
     personal_of: UserId | None = None
     members: dict[UserId, SpaceRole] = field(default_factory=dict)
+    description: str | None = None
     created_at: datetime
     version: int = 1
 
     def __post_init__(self) -> None:
         self.name = require_name(self.name, "space name")
+        self.description = checked_description(self.description)
         self.created_at = require_utc(self.created_at, "created_at")
         self._check_members(self.members)
 
     @classmethod
-    def create(cls, *, name: str, members: Mapping[UserId, SpaceRole], now: datetime) -> Self:
+    def create(
+        cls,
+        *,
+        name: str,
+        members: Mapping[UserId, SpaceRole],
+        now: datetime,
+        description: str | None = None,
+    ) -> Self:
         """A space shared by `members` (at least one editor)."""
-        return cls(id=SpaceId(new_id()), name=name, members=dict(members), created_at=now)
+        return cls(
+            id=SpaceId(new_id()),
+            name=name,
+            members=dict(members),
+            description=description,
+            created_at=now,
+        )
 
     @classmethod
     def create_personal(cls, *, user: UserId, now: datetime) -> Self:
@@ -76,6 +94,10 @@ class Space:
         if self.is_personal:
             raise ValidationError("a personal space keeps its name")
         self.name = require_name(name, "space name")
+
+    def describe(self, description: str | None) -> None:
+        """None or empty removes the description."""
+        self.description = checked_description(description)
 
     def set_member(self, user: UserId, role: SpaceRole) -> None:
         members = {**self.members, user: role}

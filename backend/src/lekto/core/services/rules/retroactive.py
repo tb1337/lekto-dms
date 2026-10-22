@@ -39,7 +39,7 @@ from lekto.core.domain.pipeline import (
     Node,
 )
 from lekto.core.domain.rule_planner import Effect, Mode, Note, NoteKind
-from lekto.core.domain.rules import Rule, RuleApplication, RuleScope
+from lekto.core.domain.rules import Rule, RuleApplication, RuleScope, SetSpace, Trigger
 from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.object_store import ObjectStore
@@ -49,6 +49,7 @@ from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import field_definitions, load_actor
 from lekto.core.services._jobs import LEASE, JobRunner, lost
+from lekto.core.services.rules.changes import ChangeRules
 from lekto.core.services.rules.management import visible_rule
 from lekto.core.services.rules.running import (
     PatternBudget,
@@ -59,6 +60,7 @@ from lekto.core.services.rules.running import (
     entry_beside,
     prepare,
     provenance,
+    reachable_rules,
     run_rules,
 )
 
@@ -115,6 +117,10 @@ class RuleApplicationService:
         self._max_documents = max_documents
         self._version = pipeline_version
         self._jobs = JobRunner(uow, clock)
+        # A document a rule files into another space runs that space's rules (as on arrival).
+        self._arrival = ChangeRules(
+            store, matcher, templates, max_text=max_text, pipeline_version=pipeline_version
+        )
 
     # --- preview ---------------------------------------------------------------------------------
 
@@ -282,10 +288,19 @@ class RuleApplicationService:
             rule = replace(
                 rule, current=await uow.rules.get_version(rule.id, application.rule_version)
             )
+            # The rules of the spaces the rule may file the document into run after it.
+            following = [
+                found
+                for action in rule.definition.actions
+                if isinstance(action, SetSpace) and document is not None
+                for found in await reachable_rules(
+                    uow, action.space_id, Trigger.INGEST, include_global=False
+                )
+            ]
         prepared = Prepared()
         if document is not None:
             prepared = await prepare(
-                self._store, self._matcher, [rule], document, max_text=self._max_text
+                self._store, self._matcher, [rule, *following], document, max_text=self._max_text
             )
         try:
             async with self._uow() as uow:
@@ -327,6 +342,7 @@ class RuleApplicationService:
             return
         now = self._clock.now()
         definitions = await field_definitions(uow)
+        source = await uow.spaces.get(document.space_id)
         problem = await apply_plan(uow, document, run.plan, definitions, now)
         if problem is not None:
             application.record_skipped(id, problem)
@@ -347,6 +363,17 @@ class RuleApplicationService:
                 now=now,
             )
         )
+        if document.space_id != source.id:
+            await self._arrival.after_arrival(
+                uow,
+                document=document,
+                source=source,
+                prepared=prepared,
+                definitions=definitions,
+                now=now,
+                by_person=False,
+                applier=user,
+            )
         await uow.documents.update(document)
         await uow.outbox.add(document.pull_events())
         application.record_applied()

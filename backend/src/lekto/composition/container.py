@@ -620,7 +620,7 @@ def classification_nodes(
     signals: dict[Node, NodeExecutor] = {
         Node.SIGNAL_LLM: LlmSignal(uow, store, model, clock, policy),
         Node.SIGNAL_FACTS: facts,
-        Node.SIGNAL_CLASSIFIER: ClassifierSignal(store, classifier),
+        Node.SIGNAL_CLASSIFIER: ClassifierSignal(store, classifier, uow),
         Node.SIGNAL_NEIGHBOURS: NeighboursSignal(
             uow, store, index, embeddings, neighbours_policy_of(settings)
         ),

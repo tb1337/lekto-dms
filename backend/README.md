@@ -418,29 +418,41 @@ insurance group that is employer and insurer at once.
 
 ## Understanding
 
-Four signals propose, the judge decides contact, topic, document type, tags and document date,
-the fields node reads the fields of the decided type and the title
+Four signals propose, the judge decides contact, topic, document type, tags, document date
+and the space, the fields node reads the fields of the decided type and the title
 (`core/services/classification`, the rules in `core/domain/verdict.py`).
 
 - **`signal_llm`**: one request to an OpenAI-compatible chat completions endpoint
-  (`adapters/outbound/openai_compat`, `LEKTO_LLM_*`, prompt `propose-4`) for sender and recipient,
+  (`adapters/outbound/openai_compat`, `LEKTO_LLM_*`, prompt `propose-5`) for sender and recipient,
   the topic (one of the automatic topics the listed contacts enable, or none; the prompt lists
   them at each of the at most 20 preselected contacts), type, tags (the automatic document
   tags), date, a title, the language, and the values of the fields of the type it chooses
   and of the global ones, each with the quoted passage and its label. The prompt describes each
   field once and lists only its key at every type it belongs to (a field may serve several
-  types). The answer must follow a
+  types). With two spaces or more the uploader may file into (their personal space, the spaces
+  they edit, the other active users' personal spaces), it also asks for the space: the
+  prompt lists them by key (`s1`, ...), the uploader's own personal space first, shared spaces
+  with their description, other users' personal spaces by their user only (what they wrote
+  about theirs is not the uploader's business); the answer is a key or null. The answer must
+  follow a
   JSON schema (`response_format` `json_schema`, or `json_object` for providers without schema
   support); an answer that does not fit is asked for once more, then the signal fails (red).
   Without a configured model (`LEKTO_LLM_BASE_URL` and `LEKTO_LLM_MODEL`) it abstains with "no language
   model is configured", and a person classifies.
 - **`signal_classifier`**: TF-IDF of words and word pairs and a logistic regression per target
-  (contact, topic, type, each automatic document tag), trained on the confirmed documents
-  (`LEKTO_CLASSIFIER`, see Classifier). It abstains without a trained model.
+  (contact, topic, type, each automatic document tag, the space), trained on the confirmed
+  documents (`LEKTO_CLASSIFIER`, see Classifier). The space is learned from the documents whose
+  space a person decided (`space_confirmed_at`: confirmed in the inbox, moved or handed over,
+  chosen on upload, taken over), also those whose metadata nobody confirmed (they teach only the
+  space); every user's personal space is one class, the uploader's own. Its spaces are the
+  uploader's candidates only; if those hold at least half of the probability, it is spread over
+  them. It abstains without a trained model.
 - **`signal_neighbours`**: the `LEKTO_NEIGHBOURS` most similar confirmed documents the uploader
   may read (it abstains when the uploader's account is gone or deactivated), by the vector of
   the start of the text against the search index; their contact, topic, type and automatic
-  document tags come from the database. It abstains without embeddings or index. The log, the
+  document tags come from the database, and their space if a person decided it and the
+  uploader may file there (one in its own uploader's personal space votes for this uploader's
+  personal space). It abstains without embeddings or index. The log, the
   review and the inbox show an editor of the document's space (or who received it) only the
   similar documents they may read themselves, and what the uploader's documents carry
   (`known`) only to admins.
@@ -471,6 +483,7 @@ sources. The judge's rule:
 | Document type | two signals name it, or only the model and no other signal covers it (the classifier was not trained on it, no confirmed document carries it) | yellow; a type outside the list is proposed as new |
 | Tags (automatic document tags; one set by hand is never proposed) | set as a type is green, without the parent of a tag set | a suggestion (ids); tags never make a document yellow |
 | Document date | a valid date that appears in the text, in a quoted passage that shows it (`31.03.2026`, `31.3.26`, `2026-03-31`, `31. März 2026`, `March 31, 2026`, ...) | suggested |
+| Space (among the uploader's candidates; only with two or more) | sure as a type: two signals name it, or only the model and no other signal covers it. The space it lies in: nothing changes. One that shows the document to no one new (no member the current space lacks): it moves there. One with new readers: yellow with the space as suggestion, naming them ("suggests the space 'Haushalt', which shows it to anna"): more visibility only with a person's click. A space a person decided is left | it stays where it is, never yellow (the best candidate is kept in the log) |
 
 Without the model's proposal the judge is uncertain; it fails (red) only if the model answered
 and no signal recognised anything.
@@ -615,14 +628,17 @@ with `OLLAMA_CONTEXT_LENGTH=8192` or more. Local models on a CPU are slow:
 **Classifier.** One model for all users (`core/services/classifier.py`,
 `adapters/outbound/sklearn`). Training examples are the documents whose metadata a person set or
 confirmed (`confirmed_at`: confirming in the inbox, changing contact, type, topic, tags, date or
-fields, taking a document over); green documents do not train. A change that only adds or
+fields, taking a document over); green documents do not train. The space is learned from the
+documents whose space a person decided (`space_confirmed_at`), as the label `own` when it is
+the uploader's personal space; such a document whose metadata nobody confirmed teaches only the
+space (contact, type, topic and tags learn from confirmed documents alone). A change that only adds or
 removes tags set by hand (statuses such as "to pay") confirms nothing: they say nothing about
 contact and type (`documents.confirms`); with an automatic tag or any other confirming value
 it confirms. A recurring job (`classifier.check`,
 every ten minutes) queues the training (`classifier.train`, which may take an hour before another
 worker takes it over) once `LEKTO_CLASSIFIER_MIN_EXAMPLES`
-documents are confirmed and no model exists, or `LEKTO_CLASSIFIER_RETRAIN_AFTER` were confirmed
-since the last one; `lekto train` and `POST /classifier/train` train at
+documents are confirmed (or placed by a person) and no model exists, or
+`LEKTO_CLASSIFIER_RETRAIN_AFTER` were confirmed or placed since the last one; `lekto train` and `POST /classifier/train` train at
 once. Training also learns identifiers of contacts: one that stands in at least two confirmed
 documents, all of one contact (the household's own IBAN stands on letters of many and is never
 learned); a learned identifier an admin rejected stays rejected. The model is stored as `npz`
@@ -689,7 +705,7 @@ everything open, not only yellow and red documents: a client that wants those as
 search index, SQLite file and classifier format have new names, and nothing reads the old ones.
 The steps are in [deploy/README.md](../deploy/README.md) ("Upgrading from Papiq").
 
-Rights hang on spaces alone (a break of the API). Revision 0033 runs at start:
+Rights hang on spaces alone (a break of the API). Revisions 0033 and 0034 run at start:
 
 1. Every user's default space becomes their personal space (`personal_of`, stored name
    "Personal"; a user without one gets one). The owner of every other space becomes an
@@ -710,6 +726,12 @@ Rights hang on spaces alone (a break of the API). Revision 0033 runs at start:
    the vectors it has. Until it is through, the search filters entries of layout 5 by space
    only: an editor misses nothing, a document whose owner is no member of its space stays
    hidden from that owner.
+5. Revision 0034: spaces get a description (for the language model), documents the time a
+   person last decided their space (`space_confirmed_at`): a confirmed or taken-over document
+   has it from `confirmed_at`, one a person moved or placed on upload from the latest such
+   log entry; every other document's space is undecided. The classifier learns the space with
+   its next training (`lekto train`, or after `LEKTO_CLASSIFIER_RETRAIN_AFTER` decisions);
+   until then the language model alone suggests spaces where the other signals know none.
 
 The downgrade restores owners and shares where the data allow (a personal space becomes the
 default space, any other space belongs to its oldest editor, a document to who uploaded it
@@ -756,6 +778,17 @@ where it is and edits where it goes (global: admins); every version names its sp
   (`all_users=true`: every space's; `space_id` narrows the list to one space). On arrival the
   global rules and those of the space the document lies in run (its uploader's personal space,
   unless the upload named another).
+- **Entering a space.** If rules file a document into another space, that space's own rules
+  (trigger `ingest`) run next, and so on. Each space at most once in such a chain: rules that
+  would file it back into a space it was in stop the chain, the move is not made and the
+  document waits in the inbox ("rules move it back and forth: tobi → Haushalt → tobi"; the
+  node's output lists the `spaces`). The patterns of every rule the chain may meet run before
+  the transaction. A completed document that a person moves or hands over, or that a rule
+  applied to existing documents files elsewhere, runs the target's rules the same way, but as
+  change rules: nothing turns yellow, what cannot be applied is reported in a `rules_change`
+  log entry per space (`trigger` `ingest`, `space_id`); after a person's move the rules leave
+  the space they chose. Confirming a document into another space continues processing at
+  `apply_rules`, where the target's rules run on arrival.
 - **Filing.** `set_space` files into a space whoever saved the rule's current version may file
   into (an editor of it, or an admin), or hands the document over into another user's
   personal space (no membership needed; a deactivated user receives nothing). If that right is
@@ -1019,7 +1052,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /contacts/{id}/logo/fetch` | Fetch the logo from the contact's website (admins, `202`); `503` without `LEKTO_LOGO_FETCH`, `409` with an uploaded logo, `422` without a domain |
 | `PUT /document-types/{id}/fields` | The fields of a document type, each required or optional, set from the type in one transaction (admins); answers its fields. A global field is `422`; taking off a field that has values on its documents or that the type's title pattern uses is `409` |
 | `POST /contacts/{id}/identifiers` | Attach one identifier to a contact, entered by hand (admins), optionally with a `topic_id` the contact enables; the others stay; `409` if another contact has it by hand. `PATCH` replaces the whole list |
-| `GET/POST /spaces`, `GET/PATCH/DELETE /spaces/{id}`, `PUT/DELETE /spaces/{id}/members/{user_id}` | Spaces the caller is a member of (admins: all), with `personal_of`, the caller's `role` and the `members`; create (`members`; the caller edits it, an admin may give the members alone), rename, delete (empty, never a personal space), members with `role` `read` or `edit` and their `username` and `active` (editors; of a personal space its user); every member leaves a space themselves (`204`) |
+| `GET/POST /spaces`, `GET/PATCH/DELETE /spaces/{id}`, `PUT/DELETE /spaces/{id}/members/{user_id}` | Spaces the caller is a member of (admins: all), with `personal_of`, the caller's `role`, the `members` and the `description` (what belongs in it, for the language model, at most 300 characters); create (`members`, `description`; the caller edits it, an admin may give the members alone), rename and describe (`PATCH` with `name` and/or `description`, null removes it; a personal space keeps its name), delete (empty, never a personal space), members with `role` `read` or `edit` and their `username` and `active` (editors; of a personal space its user); every member leaves a space themselves (`204`) |
 | `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `sort` (`relevance`, the default, or a key of `GET /documents`; relevance breaks ties), `limit`, `offset`, `semantic_ratio`; hits with snippet (the document with `in_inbox`, as in `GET /documents`), `estimated_total`, `next_offset`, `semantic` |
 | `POST /search/reindex` | Rebuild the search index in the background (admins); `202` |
 | `GET /documents` | Readable documents, each with `in_inbox` (it stands open in the caller's inbox); `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), `field`, `-field` (the value of the field `sort_field_id`: a date, a period by its first day, a number, an amount by its value; `422` for other types), documents without a date or value last either way; filters `contact_id`, `document_type_id`, `space_id` (each repeats, one of them must match), `tag_id` (with the tags below it; repeats, all must match), `contact_group_id` and `document_type_group_id` (the document's contact or type in the group or one below it; each repeats, one of them must match), `topic_id` (the topic or one below it; repeats, one of them must match), `document_date_from` and `document_date_to` (the document date lies between them, both days included, either end open; a document without a date does not match; `422` if the end lies before the start), `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (`next_cursor` of the page before, an opaque value naming its last document; its sort value is looked up, `422` if that document is gone) |
@@ -1043,7 +1076,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /inbox/summary` | The count of each tab, `open` (all but done) and the worst lane among the open documents; `all_users` (admins) |
 | `PUT/DELETE /documents/{id}/seen`, `POST /inbox/seen` | Seen per user: the caller saw a document (read access; the web UI, when its view opens), it is new again (read access), everything new in the inbox as seen (`marked`; `all_users` for admins) |
 | `GET /documents/{id}/review` | What the model proposed and how each field was checked (editors and admins) |
-| `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `space_id`), then continue from `resume_at` (`apply_rules`, or `fields` after a type change) up to filing (editors and admins); undecided fields: `422` with `open_fields`; handed over or out of the caller's reach: `{id, access: null}` |
+| `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `space_id`; an open space with a suggestion moves there with `accept_suggestions` and stays otherwise, both a decision of its space), then continue from `resume_at` (`apply_rules`, or `fields` after a type change) up to filing (editors and admins); undecided fields: `422` with `open_fields`; handed over or out of the caller's reach: `{id, access: null}` |
 | `GET/POST /rules`, `GET/PUT/PATCH/DELETE /rules/{id}`, `GET /rules/{id}/versions`, `/versions/{number}` | Rules: list (`scope`, `space_id`, `include_disabled`, `all_users` for admins), create (`scope`, `space_id`), change (new version; with `scope`, `space_id` it moves), enable or disable, delete; see Rules |
 | `POST /rules/{id}/apply/preview`, `POST /rules/{id}/apply`, `GET /rule-applications/{id}` | Apply a rule to existing documents: preview, start (`202`), progress |
 | `GET /events` | Server-sent events of the documents the caller may read, for admins also `classifier.trained`; `?document_id=` |

@@ -98,7 +98,9 @@
 					{m.classifier_classes({
 						contacts: formatNumber(model.classes.contact),
 						types: formatNumber(model.classes.document_type),
-						tags: formatNumber(model.classes.tags)
+						topics: formatNumber(model.classes.topic),
+						tags: formatNumber(model.classes.tags),
+						spaces: formatNumber(model.classes.space)
 					})}
 				</p>
 				<p>{m.classifier_identifiers({ count: formatNumber(model.learned_identifiers) })}</p>

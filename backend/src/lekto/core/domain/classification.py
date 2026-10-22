@@ -39,7 +39,7 @@ class CheckField(StrEnum):
     TAGS = "tags"
     DOCUMENT_DATE = "document_date"
     TITLE = "title"
-    SPACE = "space"  # set by rules and people, never checked by the signals
+    SPACE = "space"  # judged from the signals (`verdict.judge_space`), set by rules and people
     REVIEW = "review"  # a review a rule forces; no field of the document
 
 

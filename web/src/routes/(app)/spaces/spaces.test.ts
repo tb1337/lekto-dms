@@ -22,6 +22,7 @@ const space = (id: string, changes: Partial<Space>): Space => ({
 	id,
 	name: 'Personal',
 	personal_of: null,
+	description: null,
 	role: 'edit',
 	members: [],
 	created_at: '2026-10-21T08:00:00Z',
@@ -63,7 +64,10 @@ function start(spaces: Space[]) {
 		'GET /api/v1/spaces': () => spaces,
 		'GET /api/v1/users': () => USERS,
 		'PUT /api/v1/spaces/house/members/u3': () => HOUSE,
-		'DELETE /api/v1/spaces/house/members/u2': () => HOUSE
+		'DELETE /api/v1/spaces/house/members/u2': () => HOUSE,
+		'POST /api/v1/spaces': () => HOUSE,
+		'PATCH /api/v1/spaces/house': () => HOUSE,
+		'PATCH /api/v1/spaces/tobi': () => TOBI
 	});
 	vi.stubGlobal('fetch', api);
 	render(Page);
@@ -151,6 +155,55 @@ describe('spaces', () => {
 		const put = api.mock.calls.find(([request]) => request.method === 'PUT')![0];
 		expect(await put.json()).toEqual({ role: 'read' });
 	});
+	it('shows what belongs in a space, and creates one with its description', async () => {
+		const user = userEvent.setup({ pointerEventsCheck: 0 });
+		const api = start([{ ...HOUSE, description: 'Wohnung, Nebenkosten' }, TOBI]);
+		expect(await screen.findByText('Wohnung, Nebenkosten')).toBeTruthy();
+		await user.click(screen.getByRole('button', { name: m.space_new() }));
+		const dialog = await screen.findByRole('dialog');
+		await user.type(within(dialog).getByLabelText(m.field_name()), 'Auto');
+		await user.type(
+			within(dialog).getByLabelText(m.space_description()),
+			'Versicherung, Werkstatt'
+		);
+		await user.click(within(dialog).getByRole('button', { name: m.create() }));
+		await waitFor(() => expect(calls(api)).toContain('POST /api/v1/spaces'));
+		const post = api.mock.calls.find(([request]) => request.method === 'POST')![0];
+		expect(await post.json()).toEqual({ name: 'Auto', description: 'Versicherung, Werkstatt' });
+	});
+
+	it('describes the personal space without renaming it', async () => {
+		const user = userEvent.setup({ pointerEventsCheck: 0 });
+		const api = start([HOUSE, TOBI]);
+		await user.click(
+			await screen.findByRole('button', { name: m.space_edit({ name: m.space_personal() }) })
+		);
+		const dialog = await screen.findByRole('dialog');
+		expect(within(dialog).queryByLabelText(m.field_name())).toBeNull();
+		await user.type(within(dialog).getByLabelText(m.space_description()), 'Arbeit');
+		await user.click(within(dialog).getByRole('button', { name: m.save() }));
+		await waitFor(() => expect(calls(api)).toContain('PATCH /api/v1/spaces/tobi'));
+		const patch = api.mock.calls.find(([request]) => request.method === 'PATCH')![0];
+		expect(await patch.json()).toEqual({ description: 'Arbeit' });
+	});
+
+	it('renames a shared space with its description, and removes an emptied one', async () => {
+		const user = userEvent.setup({ pointerEventsCheck: 0 });
+		const api = start([{ ...HOUSE, description: 'alt' }, TOBI]);
+		await user.click(
+			await screen.findByRole('button', { name: m.space_edit({ name: 'Haushalt' }) })
+		);
+		const dialog = await screen.findByRole('dialog');
+		const name = within(dialog).getByLabelText(m.field_name());
+		await user.clear(name);
+		await user.type(name, 'Zuhause');
+		await user.clear(within(dialog).getByLabelText(m.space_description()));
+		await user.click(within(dialog).getByRole('button', { name: m.save() }));
+		await waitFor(() => expect(calls(api)).toContain('PATCH /api/v1/spaces/house'));
+		const patch = api.mock.calls.find(([request]) => request.method === 'PATCH')![0];
+		expect(await patch.json()).toEqual({ name: 'Zuhause', description: null });
+	});
+
 	it('lets a reader leave a space, after asking', async () => {
 		signIn('u2');
 		// A dialog of an earlier test may still leave the body without pointer events.

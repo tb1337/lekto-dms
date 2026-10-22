@@ -64,6 +64,12 @@ async def test_the_status_of_a_trained_model(api: Api) -> None:
     await api.services.classifier.train()
     model = (await api.client.get(f"{PREFIX}/classifier", headers=auth(admin))).json()["model"]
     assert model["number"] == 1 and model["examples"] == 4
-    assert model["classes"] == {"contact": 2, "document_type": 0, "tags": 0}
+    assert model["classes"] == {
+        "contact": 2,
+        "document_type": 0,
+        "topic": 0,
+        "space": 0,
+        "tags": 0,
+    }
     assert (model["learned_identifiers"], model["accuracy"]) == (0, None)
     assert model["method"] == "fake classifier"

@@ -105,6 +105,53 @@ async def active_rules(uow: UnitOfWork, space: SpaceId, trigger: Trigger | None)
     )
 
 
+async def space_rules(uow: UnitOfWork, space: SpaceId, trigger: Trigger) -> list[Rule]:
+    """The enabled rules of `space` itself with `trigger` (no global ones): those that run
+    when a completed document enters the space."""
+    rules = await uow.rules.list_for(spaces=[space], include_global=False)
+    return sorted(
+        (rule for rule in rules if rule.is_active and trigger in rule.definition.triggers),
+        key=lambda rule: rule.order,
+    )
+
+
+async def reachable_rules(
+    uow: UnitOfWork, start: SpaceId, trigger: Trigger, *, include_global: bool
+) -> list[Rule]:
+    """The rules a document entering `start` may meet: those of `start` (with the global ones
+    if `include_global`), and of every space they or the next ones file into (`set_space`),
+    each once; for preparing their patterns before the transaction that runs them."""
+    found: dict[RuleId, Rule] = {}
+    seen: set[SpaceId] = set()
+    queue = [start]
+    first = True
+    while queue:
+        space = queue.pop(0)
+        if space in seen:
+            continue
+        seen.add(space)
+        rules = (
+            await active_rules(uow, space, trigger)
+            if first and include_global
+            else await space_rules(uow, space, trigger)
+        )
+        first = False
+        for rule in rules:
+            found.setdefault(rule.id, rule)
+            queue.extend(
+                action.space_id
+                for action in rule.definition.actions
+                if isinstance(action, SetSpace) and action.space_id not in seen
+            )
+    return sorted(found.values(), key=lambda rule: rule.order)
+
+
+def back_and_forth(names: Sequence[str]) -> str:
+    """Why a chain of moves stopped: the rules would file the document into a space it was
+    in already in this chain (each space at most once)."""
+    return "rules move it back and forth: " + " → ".join(names)
+
+
 # --- text and patterns ------------------------------------------------------------------------
 
 
@@ -195,8 +242,8 @@ _PERSON_ENTRIES = (PERSON, RULES_CHANGE, PERSON_SPACE)
 class Provenance:
     """Where the document's values came from, read from the processing log.
 
-    - `model_values`: single fields (contact, type, topic, date, fields) whose value the model
-      set in its latest run and no person has decided since, as JSON.
+    - `model_values`: single fields (contact, type, topic, date, space, fields) whose value
+      the model set in its latest run and no person has decided since, as JSON.
     - `machine_title`: the title the machine gave (`titles.machine_title`), if the document
       still has it and no person decided the title; applied to existing documents, rules
       replace it as they replace the file name.
@@ -367,6 +414,8 @@ def _current_values(document: Document) -> dict[str, JsonValue]:
         DOCUMENT_DATE: None
         if document.document_date is None
         else document.document_date.isoformat(),
+        # The judge's space (`judge_space`) is the model's while the document lies there.
+        SPACE: str(document.space_id),
     }
     for id, value in document.fields.items():
         values[field_key(id)] = field_to_json(value)

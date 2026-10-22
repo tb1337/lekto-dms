@@ -11,16 +11,21 @@
   only reported (a filed document would disappear for everyone else).
 - The change, the rules' change, the events and the log entry are stored together. The log
   entry also records what the person changed, for later rule runs.
+
+A completed document that enters a space outside processing (a person moves or hands it over,
+a rule applied to existing documents files it) runs that space's own rules with trigger
+`ingest` the same way (`after_arrival`): as on arrival, but nothing turns yellow. Each space at
+most once in the chain; a person's move fixes the space (the rules leave it).
 """
 
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime
 
-from lekto.core.domain.classification import TAGS, TITLE
+from lekto.core.domain.classification import SPACE, TAGS, TITLE
 from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.fields import FieldDefinition
-from lekto.core.domain.ids import FieldId
+from lekto.core.domain.ids import FieldId, SpaceId
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.pipeline import (
     ACTOR,
@@ -33,16 +38,19 @@ from lekto.core.domain.pipeline import (
 )
 from lekto.core.domain.rule_planner import Mode, changed_fields
 from lekto.core.domain.rules import Rule, Trigger
+from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import User
 from lekto.core.ports.object_store import ObjectStore
 from lekto.core.ports.patterns import PatternMatcher
 from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork
+from lekto.core.services._access import space_label
 from lekto.core.services.rules.running import (
     Prepared,
     RuleRun,
     active_rules,
     apply_plan,
+    back_and_forth,
     checked_rules,
     corrected_fields,
     entry_beside,
@@ -50,8 +58,10 @@ from lekto.core.services.rules.running import (
     person_record,
     prepare,
     provenance,
+    reachable_rules,
     run_rules,
     space_choice,
+    space_rules,
 )
 
 
@@ -82,6 +92,90 @@ class ChangeRules:
     async def prepare(self, rules: Sequence[Rule], document: Document) -> Prepared:
         """Outside a transaction: the text and its patterns, if a rule needs them."""
         return await prepare(self._store, self._matcher, rules, document, max_text=self._max_text)
+
+    async def arrival_rules(self, uow: UnitOfWork, document: Document, space: Space) -> list[Rule]:
+        """The rules `document` may meet when it enters `space` (see `after_arrival`): none
+        while its processing is not complete (the node `apply_rules` runs them then)."""
+        if document.processing.status is not ProcessingStatus.COMPLETED:
+            return []
+        return await reachable_rules(uow, space.id, Trigger.INGEST, include_global=False)
+
+    async def after_arrival(
+        self,
+        uow: UnitOfWork,
+        *,
+        document: Document,
+        source: Space,
+        prepared: Prepared,
+        definitions: Mapping[FieldId, FieldDefinition],
+        now: datetime,
+        by_person: bool,
+        applier: User | None = None,
+    ) -> None:
+        """After `document` was moved out of `source` into the space it lies in now: run the
+        rules of that space (its own, trigger `ingest`) in the manner of change rules, and of
+        every space they file it into, each at most once; one log entry per space. `by_person`:
+        a person chose the space, the rules leave it."""
+        if document.processing.status is not ProcessingStatus.COMPLETED:
+            return
+        visited = [source.id]
+        while True:
+            here = document.space_id
+            visited.append(here)
+            rules = await space_rules(uow, here, Trigger.INGEST)
+            if not rules:
+                return
+            origin = provenance(await uow.processing_log.list_for(document.id), document)
+            locked = origin.person | ({SPACE} if by_person else set())
+            run = await run_rules(
+                uow,
+                self._matcher,
+                self._templates,
+                mode=Mode.CHANGE,
+                document=document,
+                rules=rules,
+                prepared=prepared,
+                origin=origin,
+                definitions=definitions,
+                locked=locked,
+                applier=None if applier is None else applier.id,
+            )
+            output: dict[str, JsonValue] = run.output()
+            target = run.plan.space
+            looping = target is not None and target != here and target in visited
+            plan = replace(run.plan, space=None) if looping else run.plan
+            problem = await apply_plan(uow, document, plan, definitions, now)
+            if looping:
+                assert target is not None
+                problem = back_and_forth(await self._names(uow, [*visited, target]))
+            if problem is not None:
+                output["problem"] = problem
+            await uow.processing_log.append(
+                entry_beside(
+                    document,
+                    node=Node.APPLY_RULES,
+                    model_version=RULES_CHANGE,
+                    input={
+                        TRIGGER: Trigger.INGEST.value,
+                        "space_id": str(here),
+                        "rules": checked_rules(rules),
+                        **({} if applier is None else {ACTOR: str(applier.id)}),
+                    },
+                    output=output,
+                    version=self._version,
+                    now=now,
+                )
+            )
+            if looping or document.space_id == here:
+                return
+
+    async def _names(self, uow: UnitOfWork, spaces: Sequence[SpaceId]) -> list[str]:
+        users = {user.id: user for user in await uow.users.list_all()}
+        names = []
+        for id in spaces:
+            space = await uow.spaces.find(id)
+            names.append(str(id) if space is None else space_label(space, users))
+        return names
 
     def space_chosen(self, document: Document, *, actor: User, now: datetime) -> NodeRun:
         """The log entry of a person moving the document: rules leave the space then."""

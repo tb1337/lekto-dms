@@ -132,6 +132,44 @@ async def test_the_classifier_proposes_with_its_probabilities(world: World) -> N
     assert output(await ClassifierSignal(world.object_store, None).run(document))[ABSTAINED]
 
 
+async def test_the_classifier_names_spaces_among_the_uploader_s_candidates(world: World) -> None:
+    """Learned from documents whose space a person decided: the uploader's own personal space
+    is one class for everyone; a space the uploader cannot file into is none of theirs."""
+    owner, stranger = await world.user(), await world.user()
+    shared = builders.space(owner, "Haushalt")
+    async with world.uow() as uow:
+        await uow.spaces.add(shared)
+        await uow.commit()
+    service = ClassifierService(
+        world.uow, world.object_store, world.clock, FakeClassifier(), builders.CLASSIFIER
+    )
+    for number in range(2):
+        for text, space in (("Stadtwerke Stromrechnung", None), ("Beispielbank Saldo", shared)):
+            document = await stored(world, owner, f"{text} {number}")
+            async with world.uow() as uow:
+                current = await uow.documents.get(document.id)
+                if space is None:
+                    current.confirm_space(builders.NOW)
+                else:
+                    current.move_to(space.id, builders.NOW, by_person=True)
+                await uow.documents.update(current)
+                await uow.commit()
+    await service.train()
+    signal = ClassifierSignal(world.object_store, service, world.uow)
+    home = str((await world.personal_space(owner)).id)
+
+    mine = output(await signal.run(await stored(world, owner, "Stadtwerke Stromrechnung")))
+    (best, probability), _ = mine["spaces"]
+    assert best == home and probability > 0.5
+    assert sorted(mine["known"]["spaces"]) == sorted([home, str(shared.id)])
+    assert mine["contacts"] == []  # the space alone teaches no contact
+
+    theirs = output(await signal.run(await stored(world, stranger, "Beispielbank Saldo")))
+    assert [space for space, _ in theirs["spaces"]] == [
+        str((await world.personal_space(stranger)).id)
+    ]
+
+
 # --- neighbours -------------------------------------------------------------------------------
 
 
@@ -202,6 +240,7 @@ async def test_neighbours_are_the_confirmed_documents_the_owner_may_read(world: 
         "document_types": [],
         "tags": [],
         "topics": [],
+        "spaces": [],
     }
     # They vote on the tags the classification sets, not on those set by hand.
     electricity = Tag.create(name="Strom", now=builders.NOW)
@@ -217,6 +256,18 @@ async def test_neighbours_are_the_confirmed_documents_the_owner_may_read(world: 
     tagged = output(await signal.run(document))
     assert tagged["neighbours"][0]["tag_ids"] == [str(electricity.id)]
     assert tagged["known"]["tags"] == [str(electricity.id)]
+    assert tagged["neighbours"][0]["space_id"] is None  # nobody decided its space
+
+    # A neighbour in its uploader's personal space votes for this uploader's personal space.
+    async with world.uow() as uow:
+        current = await uow.documents.get(near.id)
+        current.confirm_space(builders.NOW)
+        await uow.documents.update(current)
+        await uow.commit()
+    placed = output(await signal.run(document))
+    home = str((await world.personal_space(owner)).id)
+    assert placed["neighbours"][0]["space_id"] == home
+    assert placed["known"]["spaces"] == [home]
 
     for unavailable in (
         NeighboursSignal(world.uow, world.object_store, None, embeddings, builders.NEIGHBOURS),

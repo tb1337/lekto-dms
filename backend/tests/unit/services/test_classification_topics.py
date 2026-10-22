@@ -85,7 +85,7 @@ async def test_the_model_is_asked_for_a_topic_of_the_contacts_it_sees(world: Wor
     document = await document_with(world, PAY_SLIP)
     result = await signal_step(world, fake).run(document)
     assert result.outcome is Outcome.OK
-    assert result.input["prompt"] == "propose-4"
+    assert result.input["prompt"] == "propose-5"
     assert result.input["topics_listed"] == 2
     assert output(result)["proposal"]["topic"] == "Arbeit"
     (request,) = fake.requests

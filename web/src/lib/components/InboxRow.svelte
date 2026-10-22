@@ -13,9 +13,10 @@
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
+	import { onlySpace, suggestedSpace, suggestionText } from '#lib/space-suggestion.ts';
 
 	// One document of the inbox, by where it stands: in processing with its progress; yellow or
-	// red with its lane and why; new calmly, marked and with "seen" (no call to act); done with
+	// red with its lane and why (a suggested space as the suggestion); new calmly, marked and with "seen" (no call to act); done with
 	// how, when and by whom, and "new again" for one seen. The actions stand beside the row's
 	// link; on a phone as icons a finger can hit.
 	let {
@@ -43,6 +44,8 @@
 	const when = $derived(
 		done ? formatDate(done.at, { dateStyle: 'medium', timeStyle: 'short' }) : ''
 	);
+	// Waiting only for the space Lekto suggests: say which, and who would see it there.
+	const suggestion = $derived(onlySpace(item.open) ? suggestedSpace(item.open) : null);
 	const action = 'h-11 shrink-0 max-sm:w-11 max-sm:px-0 sm:h-9';
 </script>
 
@@ -53,7 +56,9 @@
 		<span class="flex min-w-0 items-center gap-2 text-sm">
 			<LaneBadge lane={document.lane} class="shrink-0" />
 			<span class="truncate text-muted-foreground">
-				{item.open[0]?.reason ?? m.inbox_open_fields({ count: item.open.length })}
+				{suggestion
+					? suggestionText(suggestion, document.space_id, lookup)
+					: (item.open[0]?.reason ?? m.inbox_open_fields({ count: item.open.length }))}
 			</span>
 		</span>
 	{:else if item.tab === 'new'}

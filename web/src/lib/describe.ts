@@ -42,6 +42,9 @@ export function describeValue(value: unknown, lookup: Lookup | null): string {
 		if (named) return named.name;
 		const space = lookup.spaces.find((entry) => entry.id === text);
 		if (space) return spaceLabel(space, lookup.users, session.user?.id);
+		// Another user's personal space the caller is no member of: named by its user.
+		const holder = lookup.users.find((entry) => entry.personal_space_id === text);
+		if (holder) return holder.id === session.user?.id ? m.space_personal() : holder.username;
 		const user = lookup.users.find((entry) => entry.id === text);
 		if (user) return user.username;
 	}

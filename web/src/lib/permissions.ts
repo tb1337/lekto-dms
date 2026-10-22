@@ -56,6 +56,11 @@ export function canManageSpace(space: SpaceLike, user: Actor): boolean {
 	return user !== null && space.personal_of === null && space.role === 'edit';
 }
 
+/** Describe a space for the language model: its editors and admins, of a personal space too. */
+export function canDescribeSpace(space: SpaceLike, user: Actor): boolean {
+	return user !== null && space.role === 'edit';
+}
+
 /** Add, change and remove members: the editors of a space and admins; the members of a personal
  * space only its user and admins. */
 export function canChooseMembers(space: SpaceLike, user: Actor): boolean {

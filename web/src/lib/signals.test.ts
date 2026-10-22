@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { components } from '#lib/api/schema.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { session } from '#lib/session.svelte.ts';
 import { signalSummary } from '#lib/signals.ts';
 
 type LogEntry = components['schemas']['LogEntry'];
@@ -197,5 +198,73 @@ describe('the labels in the fields node', () => {
 		expect(signalSummary(entry('fields', output), fields)).toEqual([]);
 		expect(signalSummary(entry('fields', {}), fields)).toEqual([]);
 		expect(signalSummary(entry('judge', output), fields)).toEqual([]);
+	});
+});
+
+describe('the space in the signals and the rules', () => {
+	beforeEach(() =>
+		session.start({
+			user: { id: '0199a6c4-0000-7000-8000-000000000001', username: 'tobi', role: 'user' },
+			method: 'password',
+			expires_at: '2026-10-22T12:00:00Z',
+			csrf_token: 'token'
+		} as never)
+	);
+	afterEach(() => session.clear());
+
+	const ME = '0199a6c4-0000-7000-8000-000000000001';
+	const ANNA = '0199a6c4-0000-7000-8000-000000000002';
+	const MINE = '0199a6c4-0000-7000-8000-0000000000d1';
+	const HOUSE = '0199a6c4-0000-7000-8000-0000000000d2';
+	const ANNAS = '0199a6c4-0000-7000-8000-0000000000d3';
+	const spaces = {
+		...lookup,
+		spaces: [
+			{ id: MINE, name: 'Personal', personal_of: ME, role: 'edit', members: [] },
+			{ id: HOUSE, name: 'Haushalt', personal_of: null, role: 'edit', members: [] }
+		],
+		users: [
+			{ id: ME, username: 'tobi', role: 'user', personal_space_id: MINE },
+			{ id: ANNA, username: 'anna', role: 'user', personal_space_id: ANNAS }
+		]
+	} as unknown as Lookup;
+	const withInput = (node: string, input: Record<string, unknown>, output = {}) =>
+		({ node, input, output }) as unknown as LogEntry;
+
+	it('names the spaces of the model, the classifier and the similar documents', () => {
+		const llm = texts(signalSummary(entry('signal_llm', { proposal: { space: HOUSE } }), spaces));
+		expect(llm).toContainEqual([m.field_space(), ['Haushalt']]);
+		const output = { contacts: [], document_types: [], spaces: [[ANNAS, 0.7]] };
+		const classifier = texts(signalSummary(entry('signal_classifier', output), spaces));
+		// Anna's personal space, which the caller is no member of, by her name.
+		expect(classifier).toContainEqual([m.signal_spaces(), ['anna 70%']]);
+		const [similar] = signalSummary(
+			entry('signal_neighbours', {
+				neighbours: [{ document_id: 'd1', contact_id: UTILITY, space_id: HOUSE }]
+			}),
+			spaces
+		);
+		expect(similar.items[0].text).toBe(`${m.signal_document({ number: 1 })}: Stadtwerke, Haushalt`);
+	});
+
+	it('shows the spaces a document went through, and the rules of a space it arrived in', () => {
+		const chain = signalSummary(
+			withInput('apply_rules', { trigger: 'ingest' }, { spaces: [MINE, HOUSE] }),
+			spaces
+		);
+		expect(texts(chain)).toEqual([[m.log_rules_chain(), [`${m.space_personal()} → Haushalt`]]]);
+		const arrived = signalSummary(
+			withInput(
+				'apply_rules',
+				{ trigger: 'ingest', space_id: HOUSE },
+				{ problem: 'rules move it back and forth: Haushalt → Persönlich → Haushalt' }
+			),
+			spaces
+		);
+		expect(texts(arrived)).toEqual([
+			[m.log_rules_arrived(), ['Haushalt']],
+			[m.log_rules_problem(), ['rules move it back and forth: Haushalt → Persönlich → Haushalt']]
+		]);
+		expect(signalSummary(withInput('apply_rules', { trigger: 'change' }), spaces)).toEqual([]);
 	});
 });

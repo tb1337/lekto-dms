@@ -1971,6 +1971,97 @@ class MigrationSuite:
         assert "global rule 'Away'" in str(stopped.value)
         assert "set_space" in str(stopped.value)
 
+    async def test_decided_spaces_are_kept_and_spaces_described(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0034: a confirmed document and one a person moved have a decided space (the
+        later of both times), a document nobody placed has none; spaces get a description.
+        The downgrade drops both columns."""
+        await migrate(empty_database, "0033")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        ids = {name: new_id() for name in ("user", "home", "confirmed", "moved", "both", "plain")}
+        documents = _before_0034(t.documents)
+        log = {"node": "apply_rules", "model_version": "person:space", "input": {}, "output": {}}
+        await _insert(
+            empty_database,
+            [
+                (
+                    t.users,
+                    {"id": ids["user"], "username": "u", "username_key": "u", "role": "user"},
+                ),
+                (
+                    _before_0034(t.spaces),
+                    {
+                        "id": ids["home"],
+                        "name": "Personal",
+                        "name_key": "personal",
+                        "personal_of": ids["user"],
+                    },
+                ),
+                *(
+                    (
+                        documents,
+                        {
+                            "id": ids[name],
+                            "uploaded_by": ids["user"],
+                            "space_id": ids["home"],
+                            "sha256": str(number) * 64,
+                            "confirmed_at": confirmed,
+                        },
+                    )
+                    for number, (name, confirmed) in enumerate(
+                        (
+                            ("confirmed", NOW),
+                            ("moved", None),
+                            ("both", NOW + timedelta(hours=2)),
+                            ("plain", None),
+                        )
+                    )
+                ),
+                *(
+                    (
+                        t.processing_log,
+                        log
+                        | {
+                            "document_id": ids[name],
+                            "run": 1,
+                            "outcome": "ok",
+                            "pipeline_version": "test",
+                            "started_at": at,
+                        },
+                    )
+                    for name, at in (
+                        ("moved", NOW + timedelta(hours=1)),
+                        ("moved", NOW + timedelta(hours=3)),
+                        ("both", NOW + timedelta(hours=1)),
+                    )
+                ),
+            ],
+        )
+
+        await migrate(empty_database)
+        async with empty_database.reading() as connection:
+            decided = dict(
+                (
+                    await connection.execute(
+                        select(t.documents.c.id, t.documents.c.space_confirmed_at)
+                    )
+                ).all()
+            )
+            described = (await connection.execute(select(t.spaces.c.description))).scalars().all()
+        assert decided == {
+            ids["confirmed"]: NOW,
+            ids["moved"]: NOW + timedelta(hours=3),
+            ids["both"]: NOW + timedelta(hours=2),
+            ids["plain"]: None,
+        }
+        assert described == [None]
+
+        await downgrade(empty_database, "0033")
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -2177,10 +2268,20 @@ def _drawer(table: sa.TableClause) -> sa.TableClause:
 _INBOX_COLUMNS = frozenset({"new_at", "processing_baseline", "processing_decided"})
 
 
+def _before_0034(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0034 had it: no description of a space, no decided
+    space of a document."""
+    added = {"spaces": {"description"}, "documents": {"space_confirmed_at"}}
+    return sa.table(
+        table.name,
+        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+    )
+
+
 def _before_0033(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0033 had it: a space with an owner (one of theirs their
     default space), a document and a user rule with an owner."""
-    columns = [sa.column(c.name, c.type) for c in table.c]
+    columns = [sa.column(c.name, c.type) for c in _before_0034(table).c]
     if table.name == "spaces":
         columns = [c for c in columns if c.name != "personal_of"]
         columns += [sa.column("owner_id", sa.Uuid()), sa.column("is_default", sa.Boolean())]

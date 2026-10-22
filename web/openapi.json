@@ -6887,9 +6887,9 @@
         "tags": [
           "spaces"
         ],
-        "summary": "Rename a space",
-        "description": "Editors of the space and admins. Not a personal space (422).",
-        "operationId": "rename_space_api_v1_spaces__id__patch",
+        "summary": "Rename or describe a space",
+        "description": "Editors of the space and admins. A personal space keeps its name (422); its description its user writes. The description tells the language model what belongs in the space.",
+        "operationId": "change_space_api_v1_spaces__id__patch",
         "parameters": [
           {
             "name": "id",
@@ -6907,7 +6907,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NameIn"
+                "$ref": "#/components/schemas/SpacePatch"
               }
             }
           }
@@ -16905,6 +16905,18 @@
             "description": "Document types it can name.",
             "default": 0
           },
+          "topic": {
+            "type": "integer",
+            "title": "Topic",
+            "description": "Topics it can name.",
+            "default": 0
+          },
+          "space": {
+            "type": "integer",
+            "title": "Space",
+            "description": "Spaces it can name; every user's personal space counts as one (the uploader's own).",
+            "default": 0
+          },
           "tags": {
             "type": "integer",
             "title": "Tags",
@@ -16930,7 +16942,7 @@
           "examples": {
             "type": "integer",
             "title": "Examples",
-            "description": "Confirmed documents it learned from."
+            "description": "Documents it learned from: confirmed ones, and those a person decided the space of (they teach only the space)."
           },
           "examples_until": {
             "anyOf": [
@@ -16943,7 +16955,7 @@
               }
             ],
             "title": "Examples Until",
-            "description": "When the latest of them was confirmed; later confirmations count towards the next training."
+            "description": "When the latest of them was confirmed or placed; later decisions count towards the next training."
           },
           "classes": {
             "$ref": "#/components/schemas/ClassesOut"
@@ -21743,30 +21755,6 @@
           }
         ]
       },
-      "NameIn": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Name",
-            "examples": [
-              "ACME Energy"
-            ]
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "title": "NameIn",
-        "examples": [
-          {
-            "name": "ACME Energy"
-          }
-        ]
-      },
       "NamedContactOut": {
         "properties": {
           "contact_id": {
@@ -23737,6 +23725,22 @@
               "ACME Energy"
             ]
           },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300,
+                "description": "What belongs in the space, for the language model when it suggests where a document goes; empty removes it. Never sent with other users' personal spaces.",
+                "examples": [
+                  "Wohnung, Nebenkosten, Versorger, Versicherungen fürs Haus, Kinder"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "members": {
             "anyOf": [
               {
@@ -23812,6 +23816,18 @@
             "title": "Personal Of",
             "description": "The user whose personal space it is: what they upload lands there."
           },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "What belongs in the space, for the language model."
+          },
           "role": {
             "$ref": "#/components/schemas/SpaceRole",
             "description": "The caller's role; admins edit every space."
@@ -23838,12 +23854,59 @@
           "id",
           "name",
           "personal_of",
+          "description",
           "role",
           "members",
           "created_at",
           "version"
         ],
         "title": "SpaceOut"
+      },
+      "SpacePatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1,
+                "examples": [
+                  "ACME Energy"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Not for a personal space (422)."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300,
+                "description": "What belongs in the space, for the language model when it suggests where a document goes; empty removes it. Never sent with other users' personal spaces.",
+                "examples": [
+                  "Wohnung, Nebenkosten, Versorger, Versicherungen fürs Haus, Kinder"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SpacePatch",
+        "description": "Fields left out stay; a `description` of null or empty removes it.",
+        "examples": [
+          {
+            "description": "Wohnung, Nebenkosten, Versorger"
+          }
+        ]
       },
       "SpaceRole": {
         "type": "string",

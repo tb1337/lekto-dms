@@ -53,6 +53,7 @@
 	import { phone } from '#lib/phone.svelte.ts';
 	import { fieldId, initialValue, isRuleField, type ReviewValue } from '#lib/review.ts';
 	import { session } from '#lib/session.svelte.ts';
+	import { suggestedSpace, suggestionText } from '#lib/space-suggestion.ts';
 	import { above, normalise, ofScope } from '#lib/tags.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
@@ -153,9 +154,17 @@
 	// Something to confirm. A failed node alone is repeated, not confirmed; its document can
 	// still be changed (dry run and save).
 	const confirming = $derived(reviewing && (!failedNode || decisions.length > 0 || hasSpace));
+	// The space Lekto suggests (the judge's open check): the select starts there, marked.
+	const spaceSuggestion = $derived(hasSpace ? suggestedSpace(review?.open ?? []) : null);
 	// Confirmed into a space the caller edits (an admin: any), or handed over into another user's
 	// personal space.
-	const spaceChoices = $derived(spaceOptions(lookup.spaces, lookup.users, session.user));
+	const spaceChoices = $derived(
+		spaceOptions(lookup.spaces, lookup.users, session.user).map((option) =>
+			option.value === spaceSuggestion
+				? { ...option, label: m.space_suggestion({ space: option.label }) }
+				: option
+		)
+	);
 
 	const snapshot = () =>
 		JSON.stringify([title, date, contact, topic, documentType, tags, values, spaceId]);
@@ -188,6 +197,8 @@
 		if (reviewing) {
 			for (const check of decisions)
 				assign(check.field, initialValue(check, document, lookup.fields));
+			if (spaceSuggestion && spaceChoices.some((option) => option.value === spaceSuggestion))
+				spaceId = spaceSuggestion;
 		}
 		baseline = { id: document.id, form: snapshot(), reviewing };
 	}
@@ -242,6 +253,8 @@
 		void lookup.fields;
 		void reviewing;
 		void decisions;
+		void spaceSuggestion;
+		void spaceChoices;
 		untrack(() => {
 			const edited = baseline?.id === document.id && snapshot() !== baseline.form;
 			if (!edited) fromDocument();
@@ -344,11 +357,16 @@
 		}
 		if (Object.keys(fields).length > 0) changes.fields = fields;
 		else delete changes.fields;
+		const moving = hasSpace && spaceId !== '' && spaceId !== document.space_id;
+		// The suggested space is accepted as the suggestion; every other field has its decision
+		// in `changes` then. After a corrected type the fields are extracted again and have none:
+		// the space goes by name.
+		const accepting = moving && spaceId === spaceSuggestion && !typeChanged;
 		return {
 			changes,
-			accept_suggestions: false,
+			accept_suggestions: accepting,
 			resume_at: typeChanged ? 'fields' : 'apply_rules',
-			...(hasSpace && spaceId && spaceId !== document.space_id ? { space_id: spaceId } : {})
+			...(moving && !accepting ? { space_id: spaceId } : {})
 		};
 	}
 
@@ -376,6 +394,7 @@
 		const enabling = session.isAdmin && enablesTopic;
 		try {
 			const body = buildConfirm();
+			const target = body.accept_suggestions ? spaceSuggestion : (body.space_id ?? null);
 			const result = await unwrap(
 				api.POST('/api/v1/documents/{id}/confirm', {
 					params: { path: { id: document.id } },
@@ -394,7 +413,7 @@
 			else {
 				// Handed over, or into a space the caller only reads, where it is not green yet.
 				const receiver = (lookup?.users ?? []).find(
-					(other) => other.personal_space_id === body.space_id && other.id !== session.user?.id
+					(other) => other.personal_space_id === target && other.id !== session.user?.id
 				);
 				toast.success(
 					receiver ? m.move_handed_over({ name: receiver.username }) : m.document_moved_away()
@@ -811,6 +830,11 @@
 					onjump={jump}
 				>
 					<Select id="doc-space" bind:value={spaceId} disabled={!editable} options={spaceChoices} />
+					{#if spaceSuggestion}
+						<p class="text-sm text-muted-foreground">
+							{suggestionText(spaceSuggestion, document.space_id, lookup)}
+						</p>
+					{/if}
 				</FieldShell>
 			{/if}
 		</FieldGroup>

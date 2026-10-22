@@ -198,7 +198,7 @@ class OcrmypdfEngine:
                 mode = ["--redo-ocr"]
             else:
                 mode = ["--skip-text", "--deskew"]
-            pdfa, notes = await self._convert(
+            pdfa, rgb, notes = await self._convert(
                 source,
                 temporary,
                 [*mode, *extra],
@@ -246,6 +246,7 @@ class OcrmypdfEngine:
             words=words,
             read_again=unreadable or hidden,
             vision=reading,
+            rgb=rgb,
         )
 
     async def _convert(
@@ -258,10 +259,11 @@ class OcrmypdfEngine:
         env: dict[str, str],
         timeout: timedelta,
         records: Path | None,
-    ) -> tuple[bool, list[str]]:
+    ) -> tuple[bool, bool, list[str]]:
         """Run OCRmyPDF, with a second run where it helps (see the module). Returns whether the
-        output is PDF/A, and the notes for the processing log; `work` keeps the files of the
-        last run, `records` those of the vision plugin."""
+        output is PDF/A, whether its colours were converted to RGB for it, and the notes for the
+        processing log; `work` keeps the files of the last run, `records` those of the vision
+        plugin."""
         notes: list[str] = []
         invalidate = False
 
@@ -287,7 +289,7 @@ class OcrmypdfEngine:
             converted = await run(pdfa=True, invalidate=invalidate, colours=True)
             if converted.returncode == 0:
                 notes.append(COLOUR_NOTE)
-                return True, notes
+                return True, True, notes
             # Converting did not help either: a plain PDF, for the first run's reason.
             notes.append(f"not PDF/A: {reason}")
             pdfa = False
@@ -316,7 +318,7 @@ class OcrmypdfEngine:
         if code == _PDFA_CONVERSION_FAILED:
             pdfa = False
             notes.append(f"not PDF/A: {pdfa_reasons(completed.stderr)}")
-        return pdfa, notes
+        return pdfa, False, notes
 
     async def _run(
         self,

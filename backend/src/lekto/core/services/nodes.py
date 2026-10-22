@@ -105,6 +105,7 @@ class OcrNode:
             note=result.note,
             readings=tuple(result.readings),
             read_again=result.read_again,
+            rgb=result.rgb,
         )
         note = result.note
         if not result.pdfa:

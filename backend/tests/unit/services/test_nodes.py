@@ -53,6 +53,18 @@ class Unsigned(FakeOcr):
         return OcrResult(pages=1, engine="fake-ocr 1", pdfa=True, note="signature not carried")
 
 
+class Converted(FakeOcr):
+    """PDF/A once its colours were converted to RGB."""
+
+    async def make_archive(
+        self, source: Path, target: Path, *, media_type: str, vision: bool = False
+    ) -> OcrResult:
+        await super().make_archive(source, target, media_type=media_type)
+        return OcrResult(
+            pages=1, engine="fake-ocr 1", pdfa=True, note="colours converted", rgb=True
+        )
+
+
 def pipeline(
     world: World,
     *,
@@ -165,6 +177,15 @@ async def test_a_signature_left_out_of_the_archive_is_ok_with_a_note(world: Worl
     assert entry.node is Node.OCR and entry.result.outcome is Outcome.OK
     assert entry.result.reason == "signature not carried"
     assert entry.result.output["note"] == "signature not carried"
+    assert "rgb" not in entry.result.output
+
+
+async def test_colours_converted_for_pdfa_are_flagged_in_the_log(world: World) -> None:
+    owner, document = await ingest(world, pipeline(world, ocr=Converted()), "scan.pdf")
+    assert document.lane is Lane.GREEN
+    entry = await logged(world, owner, document, Node.OCR)
+    assert entry.result.output["rgb"] is True
+    assert entry.result.output["note"] == "colours converted"
 
 
 async def test_a_document_without_text_goes_red(world: World) -> None:

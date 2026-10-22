@@ -71,7 +71,9 @@ def test_the_ocr_output_round_trip_and_what_an_old_entry_lacks() -> None:
         readings=(PageReading(page=1, words=10, unsure=1),),
         vision={"model": "vlm", "endpoint": "vlm.lan", "prompt": "p", "calls": 1},
         tokens=({"prompt": 3, "completion": 1, "usage": {}},),
+        rgb=True,
     )
+    assert output.to_json()["rgb"] is True
     assert OcrOutput.from_json(output.to_json()) == output
     plain = OcrOutput(archive="documents/x/archive.pdf", pages=1, pdfa=False)
     assert plain.to_json() == {"archive": "documents/x/archive.pdf", "pages": 1, "pdfa": False}

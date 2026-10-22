@@ -18,7 +18,8 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.identity import Credential, ExternalIdentity, check_new_password
-from lekto.core.domain.ids import SpaceId, UserId
+from lekto.core.domain.ids import DocumentId, SpaceId, UserId
+from lekto.core.domain.rules import Rule
 from lekto.core.domain.sorting import sort_key
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import (
@@ -37,6 +38,7 @@ from lekto.core.services._access import load_actor, require_admin
 from lekto.core.services._moves import move_by_person
 from lekto.core.services.rules.changes import ChangeRules
 from lekto.core.services.rules.references import disable_rules, refers_to
+from lekto.core.services.rules.running import Prepared
 
 log = logging.getLogger(__name__)
 
@@ -265,6 +267,7 @@ class UserService:
         saw in the inbox; the documents they uploaded keep no uploader. Rules that file into a
         space that goes are disabled."""
         chosen = dict(settle or {})
+        prepared = await self._arrivals(chosen)
         async with self._uow() as uow:
             admin = await require_admin(uow, actor, "manage users")
             user = await uow.users.get(id)
@@ -294,7 +297,14 @@ class UserService:
                     target = await _move_target(uow, settlement.move_to, leaving)
                     for document in await _documents_in(uow, space.id):
                         await move_by_person(
-                            uow, document, space, target, by=admin, now=now, rules=self._rules
+                            uow,
+                            document,
+                            space,
+                            target,
+                            by=admin,
+                            now=now,
+                            rules=self._rules,
+                            prepared=prepared.get(document.id),
                         )
                 elif settlement.editor is not None:
                     editor = await uow.users.find(settlement.editor)
@@ -328,6 +338,29 @@ class UserService:
             await uow.users.remove(id)
             await uow.commit()
         log.info("user deleted", extra={"user_id": str(id)})
+
+    async def _arrivals(self, chosen: Mapping[SpaceId, Settlement]) -> dict[DocumentId, Prepared]:
+        """Outside a transaction: for each document a deletion moves, what the rules of the
+        space it moves into need (`ChangeRules.arrival_rules`, as `DocumentService.move`)."""
+        if self._rules is None:
+            return {}
+        arriving: list[tuple[Document, list[Rule]]] = []
+        async with self._uow() as uow:
+            for space, settlement in chosen.items():
+                target = (
+                    None
+                    if settlement.move_to is None
+                    else await uow.spaces.find(settlement.move_to)
+                )
+                if target is None:
+                    continue  # the deletion refuses it
+                for document in await _documents_in(uow, space):
+                    arriving.append(
+                        (document, await self._rules.arrival_rules(uow, document, target))
+                    )
+        return {
+            document.id: await self._rules.prepare(rules, document) for document, rules in arriving
+        }
 
     # --- first admin ----------------------------------------------------------------------------
 

@@ -13,7 +13,7 @@ from lekto.core.domain.rules import (
     Trigger,
 )
 from lekto.core.domain.spaces import Space, SpaceRole
-from lekto.core.domain.users import User
+from lekto.core.domain.users import Settle, Settlement, User
 from lekto.core.services.rules.changes import ChangeRules
 from lekto.core.services.rules.running import Prepared
 from tests import builders
@@ -248,3 +248,27 @@ async def test_change_rules_that_file_it_run_the_target_s_rules(world: World) ->
     first, second = await rules.rule_entries(document, RULES_CHANGE)
     assert first.result.input["trigger"] == Trigger.CHANGE.value
     assert second.result.input["space_id"] == str(shared.id)
+
+
+async def test_deleting_a_user_runs_the_rules_of_the_space_their_documents_move_into(
+    world: World,
+) -> None:
+    """The admin's move when deleting a user is a person's move (Tobi, 22.10.2026): the rules
+    of the space the documents go into run, and the space is decided."""
+    rules = await rule_world(world)
+    tobi, anna, shared = await household(rules)
+    tag = await rules.tag("Haushalt")
+    await rules.space_rule(
+        tobi,
+        shared.id,
+        definition("Tag", channel_api(), add_tags(tag.id), triggers=(Trigger.INGEST,)),
+    )
+    document = await rules.arrive(anna)
+    annas = await world.personal_space(anna)
+    await rules.users.delete_user(
+        rules.admin.id, anna.id, {annas.id: Settlement(Settle.MOVE_TO, move_to=shared.id)}
+    )
+    moved = await rules.stored(document)
+    assert (moved.space_id, moved.lane) == (shared.id, Lane.GREEN)
+    assert tag.id in moved.tag_ids
+    assert moved.space_confirmed_at is not None

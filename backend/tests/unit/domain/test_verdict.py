@@ -151,7 +151,7 @@ def test_each_source_tells_its_value_and_from_where_it_names_one() -> None:
 def test_similar_documents_split_between_senders_name_none() -> None:
     """A pay slip of a new employer: the similar documents are the employee's pay slips from
     two earlier ones, alike by the form and the employee. They name no sender, so they do not
-    contradict the model and the name in the text; undivided, they still would."""
+    contradict the model and the name in the text."""
     split = neighbours(*[(BANK.id, None)] * 3, *[(EMPLOYEE.id, None)] * 2)
     signals = Signals(
         model=model(sender="Stadtwerke Musterstadt"), facts=NAMED_UTILITY, neighbours=split
@@ -159,20 +159,71 @@ def test_similar_documents_split_between_senders_name_none() -> None:
     check = judge_contact(signals, CONTACTS)
     assert (check.outcome, check.value) == (Outcome.OK, str(UTILITY.id))
     assert check.candidates[0].value == str(UTILITY.id) and not check.candidates[0].contradicted
+
+
+def test_similar_documents_contradict_only_with_a_proof_of_their_contact() -> None:
+    """Tobi, 22.10.2026: undivided, the similar pay slips name the old employer; it does not
+    stand in the text, the new one's name does: that rules the old one out, the model's
+    contact is green. Stands the old one's name in the text too, it is a contradiction."""
     undivided = neighbours(*[(BANK.id, None)] * 3, (EMPLOYEE.id, None), (None, None))
-    check = judge_contact(replace(signals, neighbours=undivided), CONTACTS)
+    signals = Signals(
+        model=model(sender="Stadtwerke Musterstadt"), facts=NAMED_UTILITY, neighbours=undivided
+    )
+    check = judge_contact(signals, CONTACTS)
+    assert (check.outcome, check.value) == (Outcome.OK, str(UTILITY.id))
+    by_value = {candidate.value: candidate for candidate in check.candidates}
+    assert not by_value[str(UTILITY.id)].contradicted
+    assert by_value[str(BANK.id)].contradicted  # the similar documents named it, against it
+    classified = replace(signals, neighbours=None, classifier=classifier(BANK.id))
+    assert judge_contact(classified, CONTACTS).value == str(UTILITY.id)  # nor the classifier
+    both = replace(signals, facts=FactsView(named=frozenset({UTILITY.id, BANK.id})))
+    check = judge_contact(both, CONTACTS)
     assert check.outcome is Outcome.UNCERTAIN
     assert check.reason == "the signals disagree: 'Stadtwerke Musterstadt' or 'Beispielbank'"
+
+
+def test_a_payslip_of_a_new_employer_is_green_by_its_proof() -> None:
+    """Tobi, 22.10.2026, Anna's payslip among Tobi's: the model reads the new employer (a
+    full match), its personnel number and its name stand in the text; four of the five
+    similar payslips are from Tobi's employer, one from another, the classifier leans to
+    Tobi's employer (52 %) without naming it. The old employer is not in the text: no
+    contradiction, the new one is green."""
+    employer = Contact.create(name="Schwälmer Brotladen", now=NOW)
+    old, other = (
+        Contact.create(name="JUKO Marburg", now=NOW),
+        Contact.create(name="walter", now=NOW),
+    )
+    insurer = Contact.create(name="INTER Versicherung", now=NOW)
+    contacts = [employer, old, other, insurer]
+    signals = Signals(
+        model=model(sender="Schwälmer Brotladen"),
+        classifier=ClassifierView(contacts=[(old.id, 0.52), (insurer.id, 0.29), (other.id, 0.12)]),
+        neighbours=neighbours(*[(old.id, None)] * 4, (other.id, None)),
+        facts=FactsView(
+            named=frozenset({employer.id}), identifiers={employer.id: ("personnel_number",)}
+        ),
+    )
+    check = judge_contact(signals, contacts)
+    assert (check.outcome, check.value) == (Outcome.OK, str(employer.id))
+    by_value = {candidate.value: candidate for candidate in check.candidates}
+    assert not by_value[str(employer.id)].contradicted
+    named = {
+        value
+        for value, candidate in by_value.items()
+        if any(source.names for source in candidate.sources)
+    }
+    assert str(insurer.id) not in named  # 29 %: a candidate no signal names
 
 
 @pytest.mark.parametrize(
     ("signals", "reason"),
     [
         (
+            # The classifier names the bank, whose name stands in the text too.
             Signals(
                 model=model(sender="Stadtwerke Musterstadt"),
                 classifier=classifier(BANK.id),
-                facts=NAMED_UTILITY,
+                facts=FactsView(named=frozenset({UTILITY.id, BANK.id})),
             ),
             "the signals disagree: 'Stadtwerke Musterstadt' or 'Beispielbank'",
         ),

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { chosen, sourceChips, type Candidate, type CandidateSource } from '#lib/candidates.ts';
+import {
+	chosen,
+	disputed,
+	sourceChips,
+	type Candidate,
+	type CandidateSource
+} from '#lib/candidates.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 const source = (fields: Partial<CandidateSource>) =>
@@ -69,5 +75,17 @@ describe('chosen', () => {
 		expect(chosen(check(['a', 'b'])).map((item) => item.value)).toEqual(['a', 'b']);
 		expect(chosen(check(null))).toEqual([]);
 		expect(chosen({ value: 'a' } as Parameters<typeof chosen>[0])).toEqual([]);
+	});
+});
+
+describe('disputed', () => {
+	const named = (names: boolean) => ({ signal: 'signal_classifier', names }) as CandidateSource;
+	const candidate = (contradicted: boolean, ...sources: CandidateSource[]) =>
+		({ value: 'a', label: 'a', contradicted, sources }) as Candidate;
+
+	it('marks a contradicted candidate only if a signal names it', () => {
+		expect(disputed(candidate(true, named(true)))).toBe(true);
+		expect(disputed(candidate(true, named(false)))).toBe(false); // 29 %: only listed
+		expect(disputed(candidate(false, named(true)))).toBe(false);
 	});
 });

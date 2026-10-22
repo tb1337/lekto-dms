@@ -1,13 +1,14 @@
 <script lang="ts">
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import type { Snippet } from 'svelte';
-	import type { Candidate } from '#lib/candidates.ts';
+	import { disputed, type Candidate } from '#lib/candidates.ts';
 	import CandidateSources from '#lib/components/document/CandidateSources.svelte';
 	import { m } from '#lib/paraglide/messages.js';
 
 	// The values the signals proposed for an open field, best first, with what each signal
-	// said; one that exists can be taken with a click. A value another signal named against is
-	// marked. `lead` goes before a value's name (a contact's logo, a type's icon).
+	// said; one that exists can be taken with a click. A value a signal names and another signal
+	// named another one against is marked (`disputed`). `lead` goes before a value's name (a
+	// contact's logo, a type's icon).
 	let {
 		candidates,
 		onpick,
@@ -42,7 +43,7 @@
 						<span class="text-xs text-muted-foreground">{m.candidate_new()}</span>
 					{/if}
 				{/if}
-				{#if candidate.contradicted}
+				{#if disputed(candidate)}
 					<span class="inline-flex items-center gap-1 text-xs text-lane-red-foreground">
 						<CircleAlert class="size-3.5" aria-hidden="true" />
 						{m.candidate_contradicted()}

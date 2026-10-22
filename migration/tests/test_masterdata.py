@@ -294,3 +294,48 @@ def test_names_that_do_not_resolve_are_missing() -> None:
     world = World()
     ten = resolve(world.all()[0], world.directory)
     assert "user 'tobias'" in ten.missing and "contact 'ACME Energy'" in ten.missing
+
+
+async def test_users_get_their_names_and_e_mail_from_paperless() -> None:
+    """A new user gets first and last name as display name and the e-mail; an existing user
+    without a name gets them too, one with a name keeps everything; a name another user has is
+    left out."""
+    lekto = FakeLekto()
+    world = World()
+    actions, directory = await prepared(world, lekto)
+    users = by(actions, "user")
+    assert users["anna"].detail == "Anna Example"
+    assert "display name and e-mail from Paperless" in users["anna"].notes
+    anna = directory.find("user", "anna")
+    assert anna is not None
+    assert lekto.users[str(anna["id"])]["display_name"] == "Anna Example"
+    assert lekto.profiles[str(anna["id"])]["email"] == "anna@mail.example"
+    bob = directory.find("user", "bob")
+    assert bob is not None and lekto.users[str(bob["id"])]["display_name"] == "Bob"
+    tobias = directory.find("user", "tobias")
+    assert tobias is not None and not lekto.users[str(tobias["id"])].get("display_name")
+
+    # Again: nothing changes for users who have a name.
+    again, _ = await prepared(World(), lekto)
+    assert {a.status for a in by(again, "user").values()} == {EXISTS}
+
+
+async def test_an_existing_user_keeps_what_they_have() -> None:
+    lekto = FakeLekto()
+    lekto.users["u-anna"] = {"id": "u-anna", "username": "anna", "role": "user", "active": True}
+    lekto.spaces["personal:u-anna"] = fake_lekto._personal("u-anna")
+    lekto.profiles["u-anna"] = {"email": "own@mail.example"}
+    lekto.users["u-carla"] = {
+        "id": "u-carla",
+        "username": "carla",
+        "display_name": "Bob",
+        "role": "user",
+        "active": True,
+    }
+    lekto.spaces["personal:u-carla"] = fake_lekto._personal("u-carla")
+    actions, _ = await prepared(World(), lekto)
+    users = by(actions, "user")
+    assert users["anna"].status == UPDATED
+    assert lekto.users["u-anna"]["display_name"] == "Anna Example"
+    assert lekto.profiles["u-anna"]["email"] == "own@mail.example"  # never overwritten
+    assert "display name 'Bob' is taken: left out" in users["bob"].notes

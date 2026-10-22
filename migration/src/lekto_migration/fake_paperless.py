@@ -101,8 +101,25 @@ def sample_archive(base_pdf: bytes, jpeg: bytes | None = None) -> Archive:
     with a parent, a document Lekto cannot take (an e-mail) and one in the trash."""
     users = [
         {"id": 1, "username": "tobias", "is_active": True, "is_superuser": True, "groups": [1]},
-        {"id": 2, "username": "anna", "is_active": True, "is_superuser": False, "groups": [1]},
-        {"id": 3, "username": "bob", "is_active": True, "is_superuser": False, "groups": []},
+        {
+            "id": 2,
+            "username": "anna",
+            "first_name": "Anna",
+            "last_name": "Example",
+            "email": "anna@mail.example",
+            "is_active": True,
+            "is_superuser": False,
+            "groups": [1],
+        },
+        {
+            "id": 3,
+            "username": "bob",
+            "first_name": "Bob",
+            "last_name": "",
+            "is_active": True,
+            "is_superuser": False,
+            "groups": [],
+        },
         {"id": 4, "username": "gone", "is_active": False, "is_superuser": False, "groups": []},
     ]
     fields = [

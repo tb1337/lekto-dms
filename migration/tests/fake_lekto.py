@@ -30,6 +30,7 @@ class FakeLekto:
         default_factory=lambda: {f"personal:{ADMIN['id']}": _personal(ADMIN["id"])}
     )
     documents: dict[str, dict[str, Any]] = field(default_factory=dict)
+    profiles: dict[str, dict[str, Any]] = field(default_factory=dict)  # user id -> e-mail
     scope: str = "read_write"
     role: str = "admin"
     ticks: int = 1  # polls until a document's pipeline is through
@@ -103,6 +104,8 @@ class FakeLekto:
                     if key in body:
                         store[found[2]][key] = body[key]
                 return httpx2.Response(200, json=store[found[2]])
+        if found := re.fullmatch(r"/users/([^/]+)/profile", path):
+            return self._profile(found[1], method, body)
         if found := re.fullmatch(r"/(users|fields)/([^/]+)", path):
             store = self.users if found[1] == "users" else self.fields
             if method == "PATCH" and found[2] in store:
@@ -131,6 +134,36 @@ class FakeLekto:
                 return _problem(404, "document not found")
             return self._document(document, method, found[2] or "", request, body)
         return _problem(404, f"unknown {method} {path}")
+
+    def _profile(self, user: str, method: str, body: dict[str, Any]) -> httpx2.Response:
+        """A user's profile: display name (on the user) and e-mail; a name another user has is
+        a conflict, as in Lekto."""
+        if user not in self.users:
+            return _problem(404, "user not found")
+        profile = self.profiles.setdefault(user, {"email": None})
+        if method == "PATCH":
+            wanted = body.get("display_name")
+            if wanted and any(
+                str(other.get("display_name") or "").lower() == wanted.lower()
+                for id, other in self.users.items()
+                if id != user
+            ):
+                return _problem(409, f"'{wanted}' is the name of another user")
+            if "display_name" in body:
+                self.users[user]["display_name"] = wanted
+            if "email" in body:
+                profile["email"] = body["email"]
+        return httpx2.Response(
+            200,
+            json={
+                "user_id": user,
+                "display_name": self.users[user].get("display_name"),
+                "aliases": [],
+                "birth_date": None,
+                "email": profile["email"],
+                "identifiers": [],
+            },
+        )
 
     def _collection(
         self, path: str, store: dict[str, dict[str, Any]], method: str, body: dict[str, Any]

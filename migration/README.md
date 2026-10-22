@@ -114,7 +114,7 @@ asn: {to: field, name: ASN}
 
 | Paperless-ngx | Lekto |
 | --- | --- |
-| Users | users by user name; missing ones created without password, role `user`; those inactive in Paperless deactivated at the end of a run (as owners and as readers or writers they keep their place in the spaces, so they get back what Paperless allowed them if they are let in again); users inactive in Lekto before the migration neither upload nor become members; a user the migration deactivated is active again while `prepare` makes them a member or `run` uploads in their name, and deactivated afterwards |
+| Users | users by user name; missing ones created without password, role `user`, with Paperless' first and last name as display name and its e-mail in their profile (an existing user without a display name gets them too; nothing Lekto has is overwritten, a display name another user has is left out with a note); those inactive in Paperless deactivated at the end of a run (as owners and as readers or writers they keep their place in the spaces, so they get back what Paperless allowed them if they are let in again); users inactive in Lekto before the migration neither upload nor become members; a user the migration deactivated is active again while `prepare` makes them a member or `run` uploads in their name, and deactivated afterwards |
 | Correspondents, document types, tags | contacts, document types, document tags by name, tags below the tag above them |
 | Custom fields | global fields: string/longtext → text, url → link, date → date, boolean → yes/no, integer/float → number, monetary → amount, select → choice; `documentlink` dropped |
 | ASN | field `ASN` (number) |

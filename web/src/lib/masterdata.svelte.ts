@@ -7,6 +7,7 @@ import { unwrap } from '#lib/api/call.ts';
 import type { components } from '#lib/api/schema.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { editableSpaces, handOverTargets } from '#lib/permissions.ts';
+import { scope } from '#lib/scope.svelte.ts';
 
 export type Contact = components['schemas']['ContactOut'];
 export type DocumentType = components['schemas']['DocumentTypeOut'];
@@ -28,13 +29,16 @@ export interface Lookup {
 	users: UserName[];
 }
 
+/** The master data; the spaces follow the reach of the lists (`scope`): an admin gets every
+ * space only with "Alle Nutzer einbeziehen", otherwise the ones they are a member of, like
+ * everyone (Tobi, 22.10.2026). A page that keeps it loads it again when the reach changes. */
 export async function loadLookup(): Promise<Lookup> {
 	const [contacts, documentTypes, tags, fields, spaces, users] = await Promise.all([
 		unwrap(api.GET('/api/v1/contacts')),
 		unwrap(api.GET('/api/v1/document-types')),
 		unwrap(api.GET('/api/v1/tags')),
 		unwrap(api.GET('/api/v1/fields')),
-		unwrap(api.GET('/api/v1/spaces')),
+		unwrap(api.GET('/api/v1/spaces', { params: { query: { all_users: scope.query } } })),
 		unwrap(api.GET('/api/v1/users'))
 	]);
 	return { contacts, documentTypes, tags, fields, spaces, users };

@@ -41,7 +41,8 @@ class Directory:
             directory.tags.setdefault(scope, {})[norm(tag["name"])] = tag
         for item in await lekto.items("/fields"):
             directory.fields[norm(item["name"])] = item
-        directory.spaces = await lekto.items("/spaces")
+        # Every space: the list follows the reach an admin asks for (`all_users`).
+        directory.spaces = await lekto.items("/spaces", params={"all_users": "true"})
         directory.users.setdefault(norm(directory.admin["username"]), directory.admin)
         return directory
 

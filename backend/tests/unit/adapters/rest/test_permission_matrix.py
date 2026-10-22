@@ -444,7 +444,13 @@ async def test_spaces(api: Api) -> None:
     # Admins see and manage every space (Tobi, 08.10.2026).
     admin_view = (await api.client.get(url, headers=scene.headers["admin"])).json()
     assert admin_view["role"] == "edit"
-    every = (await api.client.get(f"{PREFIX}/spaces", headers=scene.headers["admin"])).json()
+    own = (await api.client.get(f"{PREFIX}/spaces", headers=scene.headers["admin"])).json()
+    assert str(scene.shared.id) not in {d["id"] for d in own}  # the list follows the reach
+    every = (
+        await api.client.get(
+            f"{PREFIX}/spaces", params={"all_users": True}, headers=scene.headers["admin"]
+        )
+    ).json()
     assert {str(scene.shared.id), str(scene.own_space.id)} <= {d["id"] for d in every}
     changes = [
         ("PATCH", url, {"name": "Renamed"}),

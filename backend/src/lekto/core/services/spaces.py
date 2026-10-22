@@ -7,7 +7,7 @@ from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
-from lekto.core.services._access import load_actor, visible_space
+from lekto.core.services._access import load_actor, load_lister, visible_space
 from lekto.core.services.rules.references import disable_rules, refers_to
 
 
@@ -16,11 +16,14 @@ class SpaceService:
         self._uow = uow
         self._clock = clock
 
-    async def list_spaces(self, actor: UserId) -> list[Space]:
-        """The spaces the user is a member of; every space for admins."""
+    async def list_spaces(self, actor: UserId, all_users: bool = False) -> list[Space]:
+        """The spaces the user is a member of, admins too; with `all_users` (admins only)
+        every space. An admin's rights reach every space either way; the list follows the
+        reach the admin chose, as the lists of documents, inboxes and rules do (Tobi,
+        22.10.2026)."""
         async with self._uow() as uow:
-            user = await load_actor(uow, actor)
-            if user.is_active_admin:
+            await load_lister(uow, actor, all_users, "list every user's spaces")
+            if all_users:
                 return await uow.spaces.list_all()
             return await uow.spaces.list_accessible(actor)
 

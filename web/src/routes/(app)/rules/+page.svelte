@@ -50,7 +50,7 @@
 					})
 				),
 				users.length > 0 ? users : unwrap(api.GET('/api/v1/users')),
-				unwrap(api.GET('/api/v1/spaces'))
+				unwrap(api.GET('/api/v1/spaces', { params: { query: { all_users: scope.query } } }))
 			]);
 			// An earlier answer arriving late (the toggle switched twice) is dropped.
 			if (current !== loads) return;

@@ -1,5 +1,5 @@
-"""`/spaces`: the spaces the caller is a member of (every space for admins), and their
-members."""
+"""`/spaces`: the spaces the caller is a member of (with `all_users`, every space for admins),
+and their members."""
 
 from uuid import UUID
 
@@ -7,6 +7,7 @@ from fastapi import APIRouter, Response
 
 from lekto.adapters.inbound.rest.auth import PROTECTED, Authenticated
 from lekto.adapters.inbound.rest.context import Context
+from lekto.adapters.inbound.rest.params import AllSpaces
 from lekto.adapters.inbound.rest.problems import problem_responses
 from lekto.adapters.inbound.rest.schemas.common import NameIn
 from lekto.adapters.inbound.rest.schemas.spaces import MemberIn, SpaceCreate, SpaceOut
@@ -26,13 +27,17 @@ EDITORS = "Editors of the space and admins."
     summary="List spaces",
     description=(
         "The spaces the caller is a member of, their personal space first among them by its "
-        "`personal_of`; every space for admins."
+        "`personal_of`, admins too; with `all_users` every space (admins only). An admin's "
+        "rights reach every space either way."
     ),
     response_model=list[SpaceOut],
-    responses=problem_responses(401),
+    responses=problem_responses(401, 403, 422),
 )
-async def list_spaces(principal: Authenticated, context: Context) -> list[SpaceOut]:
-    spaces = sorted(await context.spaces.list_spaces(principal.id), key=lambda d: sort_key(d.name))
+async def list_spaces(
+    principal: Authenticated, context: Context, all_users: AllSpaces = False
+) -> list[SpaceOut]:
+    found = await context.spaces.list_spaces(principal.id, all_users)
+    spaces = sorted(found, key=lambda d: sort_key(d.name))
     people = await context.spaces.members(principal.id, spaces)
     return [SpaceOut.of(space, principal.user, people) for space in spaces]
 

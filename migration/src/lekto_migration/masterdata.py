@@ -577,7 +577,7 @@ async def _relist_space(lekto: Lekto, name: str) -> dict[str, Any] | None:
     return next(
         (
             s
-            for s in await lekto.items("/spaces")
+            for s in await lekto.items("/spaces", params={"all_users": "true"})
             if s.get("personal_of") is None and norm(s["name"]) == norm(name)
         ),
         None,

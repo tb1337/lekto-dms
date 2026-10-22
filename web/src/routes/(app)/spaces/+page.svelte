@@ -5,7 +5,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import UserRound from '@lucide/svelte/icons/user-round';
 	import Users from '@lucide/svelte/icons/users';
-	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
@@ -19,6 +19,7 @@
 	import { spaceLabel, type Space, type UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { canChooseMembers, canLeaveSpace, canManageSpace } from '#lib/permissions.ts';
+	import { scope } from '#lib/scope.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 
 	let spaces = $state<Space[] | null>(null);
@@ -32,13 +33,14 @@
 
 	const me = $derived(session.user?.id);
 	const isMember = (space: Space) => space.members.some((member) => member.user_id === me);
-	// The caller's spaces, their personal one first; admins also see every other space.
+	// The caller's spaces, their personal one first; with "Alle Nutzer einbeziehen" an admin
+	// also gets every other space (the list follows the reach, `scope`).
 	const mine = $derived(
 		(spaces ?? [])
 			.filter(isMember)
 			.toSorted((a, b) => Number(b.personal_of === me) - Number(a.personal_of === me))
 	);
-	const others = $derived((spaces ?? []).filter((space) => !isMember(space)));
+	const others = $derived(scope.allUsers ? (spaces ?? []).filter((space) => !isMember(space)) : []);
 	const chosen = $derived(spaces?.find((space) => space.id === choosing) ?? null);
 	const label = (space: Space) => spaceLabel(space, users, me);
 	const memberLine = (space: Space) =>
@@ -52,7 +54,7 @@
 	async function load() {
 		try {
 			[spaces, users] = await Promise.all([
-				unwrap(api.GET('/api/v1/spaces')),
+				unwrap(api.GET('/api/v1/spaces', { params: { query: { all_users: scope.query } } })),
 				unwrap(api.GET('/api/v1/users'))
 			]);
 			problem = null;
@@ -61,7 +63,11 @@
 		}
 	}
 
-	onMount(() => void load());
+	// Again when an admin switches the reach in the user menu.
+	$effect(() => {
+		void scope.allUsers;
+		untrack(() => void load());
+	});
 
 	async function create(name: string) {
 		await unwrap(api.POST('/api/v1/spaces', { body: { name } }));

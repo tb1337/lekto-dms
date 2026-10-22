@@ -84,6 +84,13 @@ class FakeLekto:
             if path == "/tags" and method == "GET" and "scope" in request.url.params:
                 scope = request.url.params["scope"]
                 store = {k: v for k, v in store.items() if v.get("scope", "document") == scope}
+            if path == "/spaces" and method == "GET" and "all_users" not in request.url.params:
+                # Like the API: without `all_users` an admin lists their own spaces only.
+                store = {
+                    k: v
+                    for k, v in store.items()
+                    if any(m["user_id"] == ADMIN["id"] for m in v.get("members", []))
+                }
             return self._collection(path, store, method, body)
         if found := re.fullmatch(r"/(contacts|document-types|tags)/([^/]+)", path):
             store = {

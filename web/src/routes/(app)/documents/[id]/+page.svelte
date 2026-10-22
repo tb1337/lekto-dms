@@ -278,6 +278,15 @@
 		});
 	});
 
+	// Again when an admin switches the reach: the spaces offered follow it.
+	let reachBefore = scope.allUsers;
+	$effect(() => {
+		const reach = scope.allUsers;
+		if (reach === reachBefore) return;
+		reachBefore = reach;
+		untrack(() => loadLookup().then((value) => (lookup = value), reportError));
+	});
+
 	onMount(() => {
 		loadLookup().then((value) => (lookup = value), reportError);
 		unwrap(api.GET('/api/v1/pipeline')).then((value) => {

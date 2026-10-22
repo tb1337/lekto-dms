@@ -4,7 +4,7 @@
 	import List from '@lucide/svelte/icons/list';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -249,6 +249,20 @@
 		void events.generation;
 		void list.reload();
 		void loadFacets();
+	});
+
+	// Again when an admin switches the reach: the spaces of the filter follow it.
+	let reachBefore = scope.allUsers;
+	$effect(() => {
+		const reach = scope.allUsers;
+		if (reach === reachBefore) return;
+		reachBefore = reach;
+		untrack(() =>
+			loadLookup().then(
+				(value) => (lookup = value),
+				(error) => (lookupError = describeError(error))
+			)
+		);
 	});
 
 	onMount(() => {

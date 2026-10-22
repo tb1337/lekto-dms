@@ -137,7 +137,11 @@ async def test_the_whole_migration_runs_against_the_api(api: Api, tmp_path: Path
         assert by_title["Document 10"]["document_date"] == "2024-05-01"
         assert len(by_title["Document 10"]["fields"]) == 11  # notes are no longer taken over
 
-        spaces = (await api.client.get(f"{PREFIX}/spaces", headers=helpers.auth(m.admin))).json()
+        spaces = (
+            await api.client.get(
+                f"{PREFIX}/spaces", params={"all_users": True}, headers=helpers.auth(m.admin)
+            )
+        ).json()
         personal = {s["personal_of"]: s for s in spaces if s["personal_of"] is not None}
         # Without further permissions a document goes to its uploader's personal space.
         assert by_title["Document 10"]["space_id"] == personal[users["tobias"]["id"]]["id"]

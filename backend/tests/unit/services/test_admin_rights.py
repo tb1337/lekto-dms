@@ -32,8 +32,13 @@ async def test_admins_list_spaces_of_everyone_and_manage_them(world: World) -> N
     office = await world.spaces.create(owner.id, "Office")
     await world.spaces.set_member(owner.id, office.id, friend.id, SpaceRole.READ)
 
-    assert office.id in {space.id for space in await world.spaces.list_spaces(admin.id)}
+    # The list follows the reach the admin chose; the rights reach every space either way.
+    assert office.id not in {space.id for space in await world.spaces.list_spaces(admin.id)}
+    everyone = await world.spaces.list_spaces(admin.id, all_users=True)
+    assert office.id in {space.id for space in everyone}
     assert office.id not in {space.id for space in await world.spaces.list_spaces(stranger.id)}
+    with pytest.raises(PermissionDeniedError):
+        await world.spaces.list_spaces(stranger.id, all_users=True)
     assert (await world.spaces.get(admin.id, office.id)).id == office.id
 
     renamed = await world.spaces.rename(admin.id, office.id, "Büro")

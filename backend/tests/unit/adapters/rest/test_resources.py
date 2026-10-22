@@ -7,6 +7,7 @@ from uuid import UUID
 
 from lekto.adapters.inbound.rest import PREFIX
 from lekto.core.domain.ids import DocumentId, new_id
+from lekto.core.domain.users import Role
 from lekto.core.services.objects import archive_key
 from tests.api import auth
 from tests.builders import PASSWORD, SAMPLES
@@ -416,6 +417,18 @@ async def test_spaces_and_members(api: Api) -> None:
         ("Personal", str(friend.id)),
         ("Household", None),
     }
+    # An admin lists their own spaces like everyone, every space only with `all_users`.
+    admin = await api.user("admin", role=Role.ADMIN)
+    own = (await api.client.get(f"{PREFIX}/spaces", headers=auth(admin))).json()
+    assert [d["personal_of"] for d in own] == [str(admin.id)]
+    every = await api.client.get(
+        f"{PREFIX}/spaces", params={"all_users": True}, headers=auth(admin)
+    )
+    assert "Household" in {d["name"] for d in every.json()}
+    refused = await api.client.get(
+        f"{PREFIX}/spaces", params={"all_users": True}, headers=auth(friend)
+    )
+    assert refused.status_code == 403
     duplicate = await api.client.post(
         f"{PREFIX}/spaces", json={"name": "household"}, headers=auth(friend)
     )

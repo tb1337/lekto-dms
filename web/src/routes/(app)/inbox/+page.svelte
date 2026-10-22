@@ -1,7 +1,7 @@
 <script lang="ts">
 	import CheckCheck from '@lucide/svelte/icons/check-check';
 	import Upload from '@lucide/svelte/icons/upload';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
 	import { api } from '#lib/api/client.ts';
@@ -86,6 +86,20 @@
 		void scope.allUsers;
 		void events.generation;
 		void list.reload();
+	});
+
+	// Again when an admin switches the reach: names of spaces follow it.
+	let reachBefore = scope.allUsers;
+	$effect(() => {
+		const reach = scope.allUsers;
+		if (reach === reachBefore) return;
+		reachBefore = reach;
+		untrack(() =>
+			loadLookup().then(
+				(value) => (lookup = value),
+				() => {}
+			)
+		);
 	});
 
 	onMount(() => {

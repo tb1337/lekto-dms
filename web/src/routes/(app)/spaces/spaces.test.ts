@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { components } from '#lib/api/schema.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { scope } from '#lib/scope.svelte.ts';
 import { session } from '#lib/session.svelte.ts';
 import { calls, fakeApi } from '#lib/testing/documents.ts';
 import { choose } from '#lib/testing/select.ts';
@@ -71,6 +72,7 @@ function start(spaces: Space[]) {
 
 beforeEach(() => signIn('u1'));
 afterEach(() => {
+	scope.set(false);
 	vi.unstubAllGlobals();
 	session.clear();
 });
@@ -96,19 +98,35 @@ describe('spaces', () => {
 		expect(screen.queryByRole('button', { name: m.space_members({ name: 'anna' }) })).toBeNull();
 	});
 
-	it('shows an admin the spaces they are no member of apart', async () => {
+	it('shows an admin the spaces they are no member of apart, with all users included', async () => {
+		signIn('u3', 'admin');
+		scope.set(true);
+		const admins = space('admins', {
+			personal_of: 'u3',
+			members: [{ user_id: 'u3', role: 'edit', username: 'admin', active: true }]
+		});
+		const api = start([HOUSE, TOBI, admins]);
+		const others = await screen.findByRole('region', { name: m.spaces_others() });
+		expect(within(others).getAllByRole('listitem')).toHaveLength(2);
+		const lists = calls(api).filter((call) => call.startsWith('GET /api/v1/spaces'));
+		expect(lists.at(-1)).toContain('all_users=true');
+		// An admin chooses the members of another user's personal space.
+		expect(
+			within(others).getByRole('button', { name: m.space_members({ name: 'tobi' }) })
+		).toBeTruthy();
+	});
+
+	it('shows an admin only their own spaces without all users, like everyone', async () => {
 		signIn('u3', 'admin');
 		const admins = space('admins', {
 			personal_of: 'u3',
 			members: [{ user_id: 'u3', role: 'edit', username: 'admin', active: true }]
 		});
-		start([HOUSE, TOBI, admins]);
-		const others = await screen.findByRole('region', { name: m.spaces_others() });
-		expect(within(others).getAllByRole('listitem')).toHaveLength(2);
-		// An admin chooses the members of another user's personal space.
-		expect(
-			within(others).getByRole('button', { name: m.space_members({ name: 'tobi' }) })
-		).toBeTruthy();
+		const api = start([admins]);
+		await screen.findByRole('heading', { name: m.spaces_own() });
+		expect(screen.queryByRole('region', { name: m.spaces_others() })).toBeNull();
+		const lists = calls(api).filter((call) => call.startsWith('GET /api/v1/spaces'));
+		expect(lists.at(-1)).not.toContain('all_users');
 	});
 
 	it('adds and removes members; the last editor stays', async () => {

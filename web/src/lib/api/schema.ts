@@ -737,7 +737,7 @@ export interface paths {
 		};
 		/**
 		 * List spaces
-		 * @description The spaces the caller is a member of, their personal space first among them by its `personal_of`; every space for admins.
+		 * @description The spaces the caller is a member of, their personal space first among them by its `personal_of`, admins too; with `all_users` every space (admins only). An admin's rights reach every space either way.
 		 */
 		get: operations['list_spaces_api_v1_spaces_get'];
 		put?: never;
@@ -12186,7 +12186,10 @@ export interface operations {
 	};
 	list_spaces_api_v1_spaces_get: {
 		parameters: {
-			query?: never;
+			query?: {
+				/** @description Every space instead of the caller's (admins). */
+				all_users?: boolean;
+			};
 			header?: never;
 			path?: never;
 			cookie?: never;
@@ -12214,6 +12217,40 @@ export interface operations {
 					 *       "title": "Unauthorized",
 					 *       "status": 401,
 					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

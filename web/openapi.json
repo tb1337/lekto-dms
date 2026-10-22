@@ -6523,18 +6523,32 @@
           "spaces"
         ],
         "summary": "List spaces",
-        "description": "The spaces the caller is a member of, their personal space first among them by its `personal_of`; every space for admins.",
+        "description": "The spaces the caller is a member of, their personal space first among them by its `personal_of`, admins too; with `all_users` every space (admins only). An admin's rights reach every space either way.",
         "operationId": "list_spaces_api_v1_spaces_get",
+        "parameters": [
+          {
+            "name": "all_users",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Every space instead of the caller's (admins).",
+              "default": false,
+              "title": "All Users"
+            },
+            "description": "Every space instead of the caller's (admins)."
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
+                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/SpaceOut"
                   },
-                  "type": "array",
                   "title": "Response List Spaces Api V1 Spaces Get"
                 }
               }
@@ -6552,6 +6566,38 @@
                   "title": "Unauthorized",
                   "status": 401,
                   "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -6590,14 +6636,14 @@
         "description": "Names of the spaces that are nobody's personal one are unique regardless of case (409). The caller edits the space; `members` adds active users (an unknown or deactivated user: 404). An admin may give the members alone, one of whom edits (422 otherwise).",
         "operationId": "create_space_api_v1_spaces_post",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/SpaceCreate"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {

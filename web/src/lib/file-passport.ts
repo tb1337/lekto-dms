@@ -13,7 +13,7 @@ type Stored = components['schemas']['StoredFileOut'];
 /** What the life needs of the document itself: its lane, its confirmation, its processing. */
 export type Reviewed = Pick<
 	components['schemas']['DocumentDetails'],
-	'lane' | 'confirmed_at' | 'processing' | 'channel'
+	'lane' | 'confirmed_at' | 'processing' | 'channel' | 'first_lane'
 >;
 type Metadata = NonNullable<components['schemas']['StoredFileOut']['metadata']>;
 type Entry = Metadata['entries'][number];

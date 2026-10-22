@@ -43,7 +43,8 @@
 	// what made it, what it says about itself), and below every entry of their metadata, to
 	// search and to narrow by file and source, in columns that keep their width. With the
 	// document, the life ends with its review, and the line between two steps says how long
-	// lay between them (Tobi, 21.10.2026).
+	// lay between them (Tobi, 21.10.2026); below the life, how its first processing ended, which
+	// no later review changes (Tobi, 22.10.2026).
 	// `editable`: when the document came in can be set at its milestone; `onchanged` follows.
 	let {
 		documentId,
@@ -120,6 +121,19 @@
 		unreviewed: { label: m.files_step_unreviewed, icon: ClipboardMinus },
 		modified: { label: m.files_step_modified, icon: Pencil },
 		review: { label: m.files_step_confirmed, icon: ClipboardClock }
+	};
+
+	type FirstLane = NonNullable<Reviewed['first_lane']>;
+	const FIRST_LANES: Record<FirstLane, { label: () => string; tone: string }> = {
+		green: {
+			label: m.files_first_lane_green,
+			tone: 'bg-lane-green text-lane-green-foreground'
+		},
+		yellow: {
+			label: m.files_first_lane_yellow,
+			tone: 'bg-lane-yellow text-lane-yellow-foreground'
+		},
+		red: { label: m.files_first_lane_red, tone: 'bg-lane-red text-lane-red-foreground' }
 	};
 
 	const life = $derived(files ? lifeOf(files, document) : []);
@@ -451,6 +465,15 @@
 							</li>
 						{/each}
 					</ol>
+					{#if document?.first_lane}
+						{@const first = FIRST_LANES[document.first_lane]}
+						<dl class="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t pt-3 text-sm">
+							<dt class="text-muted-foreground">{m.files_first_lane()}</dt>
+							<dd class={cn('rounded-full px-2 py-0.5 text-[11.5px] font-semibold', first.tone)}>
+								{first.label()}
+							</dd>
+						</dl>
+					{/if}
 				</section>
 
 				<div class="grid gap-3.5 @4xl:grid-cols-2">

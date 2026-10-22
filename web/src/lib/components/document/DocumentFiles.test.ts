@@ -133,6 +133,23 @@ describe('DocumentFiles', () => {
 		vi.useRealTimers();
 	});
 
+	it('says how the first processing ended, whatever a person decided since', async () => {
+		fetchMock.mockImplementation(async () => Response.json(FILES));
+		const document = {
+			lane: 'green' as const,
+			first_lane: 'yellow' as const,
+			confirmed_at: '2026-07-04T09:00:00Z',
+			channel: 'web' as const,
+			processing: { status: 'completed' as const, run: 2, vision: false, nodes: [] }
+		};
+		const { rerender } = render(DocumentFiles, { documentId: 'doc-1', document });
+		const label = await screen.findByText(m.files_first_lane());
+		expect(label.tagName).toBe('DT');
+		expect(label.nextElementSibling?.textContent?.trim()).toBe(m.files_first_lane_yellow());
+		await rerender({ documentId: 'doc-1', document: { ...document, first_lane: null } });
+		expect(screen.queryByText(m.files_first_lane())).toBeNull();
+	});
+
 	it('sets anew when the document came in, at its milestone', async () => {
 		fetchMock.mockImplementation(async (request) =>
 			request.method === 'PATCH' ? Response.json({}) : Response.json(FILES)

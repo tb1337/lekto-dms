@@ -134,6 +134,15 @@ class SubscriptionState:
     retries: list[Retry] = field(default_factory=list)  # failed events, in order of failure
 
 
+@dataclass(frozen=True)
+class SeenMark:
+    """A user's seen mark on a document: when, and whether a move set it silently (it keeps
+    the document from being new but is no seeing, `InboxRepository.mark_seen`)."""
+
+    at: datetime
+    silent: bool = False
+
+
 @dataclass
 class MemoryDatabase:
     """What has been committed. Rows are private copies; insertion order is creation order."""
@@ -147,5 +156,5 @@ class MemoryDatabase:
     subscriptions: dict[str, SubscriptionState] = field(default_factory=dict)
     locks: dict[str, asyncio.Lock] = field(default_factory=dict)  # see MemoryUnitOfWork.lock
     # What the inbox keeps: when each user saw a document last, who confirmed it last.
-    seen: dict[tuple[UserId, DocumentId], datetime] = field(default_factory=dict)
+    seen: dict[tuple[UserId, DocumentId], "SeenMark"] = field(default_factory=dict)
     confirmations: dict[DocumentId, Confirmation] = field(default_factory=dict)

@@ -288,6 +288,30 @@ class RuleCreate(RuleDefinitionIn):
         return data
 
 
+class RuleChange(RuleDefinitionIn):
+    """The new content of a rule, and, with `scope`, where it moves."""
+
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"examples": [_RULE_EXAMPLE]})
+
+    scope: RuleScope | None = Field(
+        default=None,
+        description=(
+            "Moves the rule: `space`, into `space_id` (one the caller edits; default: the "
+            "caller's personal space); `global` (admins). Without it the rule stays where it "
+            "is."
+        ),
+    )
+    space_id: UUID | None = Field(
+        default=None, description="With `scope: space`: the space the rule moves into."
+    )
+
+    def to_json(self) -> JsonValue:
+        data: JsonValue = self.model_dump(
+            mode="json", by_alias=True, exclude_defaults=True, exclude={"scope", "space_id"}
+        )
+        return data
+
+
 class RulePatch(BaseModel):
     model_config = ConfigDict(extra="forbid", json_schema_extra={"examples": [{"enabled": False}]})
 
@@ -304,7 +328,14 @@ class _RuleDefinitionOut(BaseModel):
 
 class RuleVersionOut(_RuleDefinitionOut):
     rule_id: UUID
-    version: int = Field(description="Counts from 1; every change of the content adds one.")
+    version: int = Field(
+        description="Counts from 1; every change of the content or of the space adds one."
+    )
+    scope: RuleScope = Field(description="Where the rule belonged with this version.")
+    space_id: UUID | None = Field(
+        description="The space the rule belonged to with this version; None: global. A "
+        "version whose space differs from the one before moved the rule."
+    )
     created_at: datetime
     created_by: UUID | None
 
@@ -315,6 +346,8 @@ class RuleVersionOut(_RuleDefinitionOut):
                 **definition_to_json(version.definition),
                 "rule_id": version.rule_id,
                 "version": version.number,
+                "scope": RuleScope.GLOBAL if version.space_id is None else RuleScope.SPACE,
+                "space_id": version.space_id,
                 "created_at": version.created_at,
                 "created_by": version.created_by,
             }

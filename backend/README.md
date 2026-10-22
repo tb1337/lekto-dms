@@ -83,11 +83,14 @@ whether it is active. A deactivated user has no rights and cannot authenticate.
   caller (or the admin resetting it) asks to revoke them, and are refused while the account is
   deactivated.
 - Accounts: admins create users (optionally with a password), change roles, reset passwords,
-  deactivate, turn TOTP off and remove links to identity providers. Deleting a user needs that
-  their personal space is empty and that they are not the last editor of a space; it removes
-  their personal space with its rules, their memberships and their sign-in data, and the
-  documents they uploaded keep no uploader. The last active admin cannot be demoted,
-  deactivated or deleted.
+  deactivate, turn TOTP off and remove links to identity providers. Deleting a user settles the
+  spaces they leave behind in the same request (`GET /users/{id}/removal` names them; one left
+  open: `409` with `blocking_spaces`): the documents of their personal space move into another
+  space (`move_to`); a shared space they alone edit goes along if empty (`remove`), moves its
+  documents and goes (`move_to`), or gets another editor and stays (`editor`). Documents move as
+  an admin moves them by hand; all or nothing. It removes their personal space with its rules,
+  their memberships and their sign-in data, and the documents they uploaded keep no uploader.
+  The last active admin cannot be demoted, deactivated or deleted.
 - The first admin: `LEKTO_ADMIN_USERNAME` and `LEKTO_ADMIN_PASSWORD[_FILE]` create an admin at
   API start while there is no admin at all. Afterwards they are ignored; they never change an
   existing account. A name taken by another user stops the start.
@@ -329,7 +332,9 @@ members of the space it left keep their state, moving is no seeing.
   newest first by when it left, ties by id (the cursor names the last document, and when it
   left is looked up; `422` once that document is no longer done). The other tabs go by arrival.
   It comes from the seen marks and the latest confirmation of each document
-  (`inbox_confirmations`, written with the confirmation); no history is kept. The cleanup
+  (`inbox_confirmations`, written with the confirmation); no history is kept. A move marks a
+  document seen, silently (`inbox_seen.silent`), for whoever knew it already: it is not new for
+  them, and it does not stand under done either, until they open it. The cleanup
   removes the confirmations after 14 days, and the seen marks that tell nothing any more (their
   document became new again since, or is new for no one).
 - **Summary** (`GET /inbox/summary`): the count of each tab, everything open together (what the
@@ -692,13 +697,15 @@ Rights hang on spaces alone (a break of the API). Revision 0033 runs at start:
    (`PUT/DELETE /spaces/{id}/members/{user_id}` replace the shares). Spaces of several owners
    with the same name keep the oldest's; the others get " (username)", shortened to fit and
    never a name another space keeps. Former sharers with `read_write`, editors now, find no
-   old document new in their inbox.
+   old document new in their inbox (their marks are silent: not under done either).
 2. A document's owner becomes who uploaded it (`uploaded_by`), information only. Every file
    exists once per installation now: the original is unique, no longer per owner. If two
    owners hold the same file, the revision stops at the new index; delete one of them first.
 3. A user rule becomes a rule of its owner's personal space (`scope` `space`, `space_id`);
    `{{ owner }}` in rule templates and title patterns becomes `{{ uploaded_by }}` (a template
    that uses `uploaded_by` otherwise stops the revision). Global rules may do everything now.
+   Every rule version names the space of its rule (`rule_versions.space_id`), since a rule may
+   move.
 4. The worker's reconciliation writes every entry in the index's layout 6 (no owner), with
    the vectors it has. Until it is through, the search filters entries of layout 5 by space
    only: an editor misses nothing, a document whose owner is no member of its space stays
@@ -719,7 +726,10 @@ Rules are data, not code (`core/domain/rules.py`, `rules_json.py`, `rule_conditi
 `rule_planner.py`, `core/services/rules`). A rule has a name, a priority (0 to 1000, default
 100, higher first), triggers, a tree of conditions and actions. Changing its content makes a new
 version; old versions stay readable, so the processing log can refer to them. Enabling and
-disabling make no version; deleting is a soft delete.
+disabling make no version; deleting is a soft delete. A change may move the rule into another
+space or between a space and global (`PUT` with `scope` and `space_id`): the caller changes it
+where it is and edits where it goes (global: admins); every version names its space
+(`space_id` in `GET /rules/{id}/versions`), so the history shows the move.
 
 ```json
 {
@@ -1001,7 +1011,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /auth/totp`, `/totp/confirm`, `/totp/disable`, `/totp/recovery-codes` | TOTP |
 | `GET/POST /auth/tokens`, `DELETE /auth/tokens/{id}` | Own API tokens |
 | `GET /auth/oidc`, `/auth/oidc/login`, `/auth/oidc/callback`; `POST/DELETE /auth/oidc/link` | OpenID Connect |
-| `GET /users`, `GET/PATCH/DELETE /users/{id}` | Accounts: list (others see active users' names), role and state, delete (admins) |
+| `GET /users`, `GET/PATCH/DELETE /users/{id}`, `GET /users/{id}/removal` | Accounts: list (others see active users' names), role and state, delete with the spaces it settles (admins) |
 | `POST /users`, `POST /users/{id}/password`, `DELETE /users/{id}/totp`, `DELETE /users/{id}/oidc` | Create with password, reset password, turn TOTP off, remove links (admins, session only, not the own account) |
 | `/contacts`, `/document-types`, `/tags`, `/fields` (`GET`, `POST`, `GET/PATCH/DELETE /{id}`) | Master data: read by all, changed by admins, deleted only when unused. Contacts and types take `group_ids`, contacts `topic_ids` (the topics they enable) and identifiers with an optional `topic_id`. Fields: name, description, choices and scope change, the data type does not; removing a used choice or narrowing the scope past documents with values is `409`. The lists take `document_counts=true` (and `all_users` for admins): each item with `document_count`, the documents in the caller's reach that have it (a field: a value for it; a tag: see Tags), counted in one query (tags in a few: the parents' counts and the groups' come apart) |
 | `GET /tags` | The tags in the order of their trees (each after its parent, siblings by name; document tags, contact groups, type groups, topics), or of one `scope`; each with `scope`, `parent_id`, `path` (the names from the top), `assignment`, `shown`, `icon`, `color`. `POST` takes `scope` (default `document`), `parent_id`, `assignment` and `shown` (by scope unless given), `icon` and `color`; `PATCH` name, parent (`null`: the top), assignment, `shown`, `icon` and `color` (`null` removes them), never the scope. Document types take an `icon` too |
@@ -1034,7 +1044,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `PUT/DELETE /documents/{id}/seen`, `POST /inbox/seen` | Seen per user: the caller saw a document (read access; the web UI, when its view opens), it is new again (read access), everything new in the inbox as seen (`marked`; `all_users` for admins) |
 | `GET /documents/{id}/review` | What the model proposed and how each field was checked (editors and admins) |
 | `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `space_id`), then continue from `resume_at` (`apply_rules`, or `fields` after a type change) up to filing (editors and admins); undecided fields: `422` with `open_fields`; handed over or out of the caller's reach: `{id, access: null}` |
-| `GET/POST /rules`, `GET/PUT/PATCH/DELETE /rules/{id}`, `GET /rules/{id}/versions`, `/versions/{number}` | Rules: list (`scope`, `space_id`, `include_disabled`, `all_users` for admins), create (`scope`, `space_id`), change (new version), enable or disable, delete; see Rules |
+| `GET/POST /rules`, `GET/PUT/PATCH/DELETE /rules/{id}`, `GET /rules/{id}/versions`, `/versions/{number}` | Rules: list (`scope`, `space_id`, `include_disabled`, `all_users` for admins), create (`scope`, `space_id`), change (new version; with `scope`, `space_id` it moves), enable or disable, delete; see Rules |
 | `POST /rules/{id}/apply/preview`, `POST /rules/{id}/apply`, `GET /rule-applications/{id}` | Apply a rule to existing documents: preview, start (`202`), progress |
 | `GET /events` | Server-sent events of the documents the caller may read, for admins also `classifier.trained`; `?document_id=` |
 | `GET/POST /webhooks`, `GET/PATCH/DELETE /webhooks/{id}` | Webhooks: the caller's own (admins read everybody's, `?owner=`); create (the answer shows the secret once), change, switch on or off, delete; see Webhooks |

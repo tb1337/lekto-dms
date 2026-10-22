@@ -391,6 +391,9 @@ inbox_seen = Table(
         index=True,
     ),
     Column("seen_at", UtcDateTime, nullable=False),
+    # Set by a move for someone who knew the document already: it is not new for them, but
+    # they did not look at it, so it does not stand under done.
+    Column("silent", Boolean, nullable=False, server_default=false()),
 )
 
 # Who confirmed a document out of yellow or red last, and when: for "done", removed by the
@@ -439,6 +442,9 @@ rule_versions = Table(
     Column("actions", json_type(), nullable=False),
     Column("created_at", UtcDateTime, nullable=False),
     Column("created_by", Uuid, nullable=True),
+    # The space the rule belonged to with this version (None: global); no foreign key, the
+    # history keeps it after the space is gone.
+    Column("space_id", Uuid, nullable=True),
 )
 
 # The rule of a document type's title pattern (`Rule.managed_by`), while it is not deleted.

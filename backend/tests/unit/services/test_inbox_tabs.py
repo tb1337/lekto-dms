@@ -423,6 +423,8 @@ async def test_a_moved_document_is_new_for_who_could_not_read_it_before(world: W
 
     owners = {item.document.id: item.state.tab for item in await world.inbox.items(owner.id)}
     assert owners == {unseen.id: InboxTab.NEW}  # moving is no seeing
+    # Nor is it done for whoever knew it: the move's mark is silent (Tobi, 22.10.2026).
+    assert await world.inbox.items(owner.id, tab=InboxTab.DONE) == []
     partners = {item.document.id: item.state.tab for item in await world.inbox.items(partner.id)}
     assert partners == {seen.id: InboxTab.NEW, unseen.id: InboxTab.NEW}
 
@@ -432,3 +434,4 @@ async def test_a_moved_document_is_new_for_who_could_not_read_it_before(world: W
     await world.spaces.set_member(partner.id, personal.id, admin.id, SpaceRole.EDIT)
     await world.documents.move(admin.id, seen.id, personal.id)
     assert await world.inbox.items(admin.id) == []
+    assert await world.inbox.items(admin.id, tab=InboxTab.DONE, all_users=True) == []

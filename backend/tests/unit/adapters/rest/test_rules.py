@@ -48,6 +48,36 @@ async def test_a_rule_is_created_changed_disabled_and_deleted(api: Api) -> None:
     assert listed.json() == []
 
 
+async def test_a_rule_moves_into_another_space_with_a_change(api: Api) -> None:
+    """Tobi, 22.10.2026: the space of a rule is changed with its content; the versions name
+    where it belonged."""
+    owner = await api.user()
+    household = await post(api, "/spaces", {"name": "Household"}, auth(owner))
+    body = {
+        "name": "Scan",
+        "conditions": {"all": [{"field": "channel", "op": "is", "value": "api"}]},
+        "actions": [{"type": "set_title", "template": "Scan"}],
+    }
+    rule = await post(api, "/rules", body, auth(owner))
+    url = f"{PREFIX}/rules/{rule['id']}"
+    lone = await api.client.put(
+        url, json={**body, "space_id": household["id"]}, headers=auth(owner)
+    )
+    assert lone.status_code == 422  # a space needs the scope
+    moved = await api.client.put(
+        url, json={**body, "scope": "space", "space_id": household["id"]}, headers=auth(owner)
+    )
+    assert moved.status_code == 200, moved.text
+    assert (moved.json()["space_id"], moved.json()["version"]) == (household["id"], 2)
+    refused = await api.client.put(url, json={**body, "scope": "global"}, headers=auth(owner))
+    assert refused.status_code == 403
+    versions = (await api.client.get(f"{url}/versions", headers=auth(owner))).json()
+    assert [(item["scope"], item["space_id"]) for item in versions] == [
+        ("space", rule["space_id"]),
+        ("space", household["id"]),
+    ]
+
+
 async def test_global_rules_are_for_admins_and_may_do_everything(api: Api) -> None:
     admin, user = await api.admin(), await api.user()
     contact = await post(api, "/contacts", {"name": "ACME"}, auth(admin))

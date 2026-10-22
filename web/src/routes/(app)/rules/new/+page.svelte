@@ -6,13 +6,13 @@
 	import { BASE } from '#lib/base.ts';
 	import RuleBuilder from '#lib/components/rules/RuleBuilder.svelte';
 	import { describeError } from '#lib/errors.ts';
-	import { loadLookup, spaceLabel, spaceOptions, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { loadLookup, spaceOptions, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { ruleSpaces } from '#lib/permissions.ts';
 	import { problemText } from '#lib/rules/describe.ts';
 	import { saveErrors } from '#lib/rules/errors.ts';
 	import { newModel, toApi, validate } from '#lib/rules/model.ts';
-	import { createSwitchedOff, GLOBAL } from '#lib/rules/save.ts';
+	import { rulePlaces } from '#lib/rules/places.ts';
+	import { createSwitchedOff } from '#lib/rules/save.ts';
 	import { session } from '#lib/session.svelte.ts';
 
 	const model = $state(newModel());
@@ -25,18 +25,9 @@
 	let busy = $state(false);
 
 	// A rule belongs to a space the caller edits; admins also make global ones.
-	const places = $derived([
-		...(session.isAdmin ? [{ value: GLOBAL, label: m.rule_scope_global() }] : []),
-		...ruleSpaces(lookup?.spaces ?? [])
-			.toSorted(
-				(a, b) =>
-					Number(b.personal_of === session.user?.id) - Number(a.personal_of === session.user?.id)
-			)
-			.map((space) => ({
-				value: space.id,
-				label: spaceLabel(space, lookup?.users ?? [], session.user?.id)
-			}))
-	]);
+	const places = $derived(
+		rulePlaces(lookup?.spaces ?? [], lookup?.users ?? [], session.user?.id, session.isAdmin)
+	);
 	const personal = $derived(
 		lookup?.spaces.find((space) => space.personal_of === session.user?.id)?.id ?? ''
 	);

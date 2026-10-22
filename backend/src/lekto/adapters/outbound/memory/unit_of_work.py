@@ -37,6 +37,7 @@ from lekto.adapters.outbound.memory.database import (
     WEBHOOKS,
     IdentifiersRow,
     MemoryDatabase,
+    SeenMark,
     Table,
 )
 from lekto.adapters.outbound.memory.identity import (
@@ -107,7 +108,7 @@ class MemoryUnitOfWork:
         self._purged_jobs: set[JobId] = set()
         self._held: asyncio.Lock | None = None
         # The inbox's marks this unit wrote; None removes one.
-        self._seen: dict[SeenKey, datetime | None] = {}
+        self._seen: dict[SeenKey, SeenMark | None] = {}
         self._confirmations: dict[DocumentId, Confirmation | None] = {}
 
         self.users = MemoryUserRepository(self, USERS)
@@ -199,11 +200,11 @@ class MemoryUnitOfWork:
 
     def _commit_inbox(self, removed: set[UUID]) -> None:
         """Apply the inbox's marks; those of removed documents go with them."""
-        for key, at in self._seen.items():
-            if at is None:
+        for key, mark in self._seen.items():
+            if mark is None:
                 self._db.seen.pop(key, None)
             else:
-                self._db.seen[key] = at
+                self._db.seen[key] = mark
         for document, confirmation in self._confirmations.items():
             if confirmation is None:
                 self._db.confirmations.pop(document, None)

@@ -931,7 +931,9 @@ class MigrationSuite:
                 ).all()
             )
             (link,) = (await connection.execute(select(t.title_pattern_rules))).all()
-            (version,) = (await connection.execute(select(t.rule_versions))).mappings().all()
+            (version,) = (
+                (await connection.execute(select(_before_0033(t.rule_versions)))).mappings().all()
+            )
             (rule,) = (await connection.execute(select(t.rules))).mappings().all()
         new = "Lohn {{ contact }} {{ document_date | date: '%Y-%m' }} {{ field.la_brutto }}"
         assert patterns == {payslip: new, letter: None}
@@ -1559,7 +1561,7 @@ class MigrationSuite:
             assert set(await _read_all(connection, select(*inbox))) == {(None, None)}
             decided = select(t.documents.c.processing_decided)
             assert set(await _read_all(connection, decided)) == {(False,)}
-            assert await _read_all(connection, select(t.inbox_seen)) == []
+            assert await _read_all(connection, select(_before_0033(t.inbox_seen))) == []
             assert await _read_all(connection, select(t.inbox_confirmations)) == []
         async with empty_database.writing() as connection:
             await connection.execute(
@@ -1743,6 +1745,8 @@ class MigrationSuite:
         }
         assert (rule.scope, rule.space_id) == (RuleScope.SPACE, ids["bob_home"])
         assert (everyone.scope, everyone.space_id) == (RuleScope.GLOBAL, None)
+        # Every version names the space its rule belongs to (a rule may move since 0.5).
+        assert (rule.current.space_id, everyone.current.space_id) == (ids["bob_home"], None)
         assert rule.definition.actions == (ForceReview("From {{ uploaded_by }}"),)
         assert kind.title_pattern == "{{ uploaded_by }}: {{ title }}"
         async with empty_database.reading() as connection:
@@ -1896,7 +1900,10 @@ class MigrationSuite:
         async with empty_database.reading() as connection:
             seen = set(
                 await _read_all(
-                    connection, select(t.inbox_seen.c.user_id, t.inbox_seen.c.document_id)
+                    connection,
+                    select(
+                        t.inbox_seen.c.user_id, t.inbox_seen.c.document_id, t.inbox_seen.c.silent
+                    ),
                 )
             )
         named = {key: stored[ids[key]].name for key in names if ids[key] in stored}
@@ -1915,7 +1922,7 @@ class MigrationSuite:
         }
         assert (daves_home.name, daves_home.personal_of) == ("Personal", ids["dave"])
         assert stored[ids["alice_personal"]].personal_of is None
-        assert seen == {(ids["bob"], ids["new"])}
+        assert seen == {(ids["bob"], ids["new"], True)}  # silently: not done for him either
 
         await downgrade(empty_database, "0032")
         async with empty_database.reading() as connection:
@@ -2104,7 +2111,9 @@ async def _stored(database: Database, *, old: bool) -> dict[str, Any]:
     async with database.reading() as connection:
         definition, scope, value = await _only_rows(connection, definitions, types, values)
         document, log = await _only_rows(connection, documents, log_table)
-        rule, job, event = await _only_rows(connection, t.rule_versions, t.jobs, t.outbox)
+        rule, job, event = await _only_rows(
+            connection, _before_0033(t.rule_versions), t.jobs, t.outbox
+        )
     return {
         "definition": tuple(definition),
         "scope": tuple(scope),
@@ -2181,6 +2190,10 @@ def _before_0033(table: sa.Table) -> sa.TableClause:
         ]
     elif table.name == "rules":
         columns = [sa.column("owner_id", sa.Uuid()) if c.name == "space_id" else c for c in columns]
+    elif table.name == "rule_versions":
+        columns = [c for c in columns if c.name != "space_id"]
+    elif table.name == "inbox_seen":
+        columns = [c for c in columns if c.name != "silent"]
     return sa.table(table.name, *columns)
 
 

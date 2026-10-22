@@ -26,6 +26,7 @@
 		place = '',
 		places = [],
 		onplace,
+		placeHint,
 		lookup,
 		targets,
 		errors,
@@ -35,11 +36,13 @@
 		onsubmit
 	}: {
 		model: RuleModel;
-		/** Where the rule belongs: `global` or a space (new rule); it stays once saved. */
+		/** Where the rule belongs: `global` or a space; editing it may move it. */
 		place?: string;
 		/** The places to choose from; fewer than two: no choice. */
 		places?: readonly { value: string; label: string }[];
 		onplace?: (place: string) => void;
+		/** Said under the choice of the place besides what a place is (editing: who moves it). */
+		placeHint?: string;
 		lookup: Lookup;
 		/** Where the rule may file documents (spaces, hand-overs). */
 		targets: readonly { value: string; label: string }[];
@@ -120,6 +123,7 @@
 				onchange={(value) => onplace?.(value)}
 			/>
 			<Field.Description>{m.rule_scope_hint()}</Field.Description>
+			{#if placeHint}<Field.Description>{placeHint}</Field.Description>{/if}
 		</Field.Field>
 	{/if}
 

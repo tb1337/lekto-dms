@@ -2285,7 +2285,7 @@
           "users"
         ],
         "summary": "Delete a user",
-        "description": "Admins only. Only a user whose personal space is empty and who is not the last editor of a space (409); removes their personal space with its rules, their memberships and their sign-in data. The documents they uploaded stay, without uploader.",
+        "description": "Admins only. The body settles each space that stops it (`GET /users/{id}/removal`; one left open: 409 with `blocking_spaces`): the personal space's documents move into another space (`move_to`); a shared space the user alone edits goes if empty (`remove`), moves its documents and goes (`move_to`), or gets another editor (`editor`). Documents move as an admin moves them by hand. All or nothing. Removes the personal space with its rules, the user's memberships and sign-in data; the documents they uploaded stay, without uploader.",
         "operationId": "delete_user_api_v1_users__id__delete",
         "parameters": [
           {
@@ -2299,6 +2299,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/UserRemovalIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "204": {
             "description": "Successful Response"
@@ -2395,6 +2412,22 @@
                   "title": "Internal Server Error",
                   "status": 500,
                   "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "the request body is larger than 1048576 bytes"
                 }
               }
             }
@@ -2775,6 +2808,128 @@
         "security": [
           {
             "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/users/{id}/removal": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "What stops deleting a user",
+        "description": "Admins only. The spaces deleting the user must settle (Tobi, 22.10.2026): their personal space while it holds documents, and each shared space they alone edit. Empty: nothing stops it.",
+        "operationId": "removal_api_v1_users__id__removal_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRemovalOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
           }
         ]
       }
@@ -7664,7 +7819,7 @@
           "rules"
         ],
         "summary": "Change a rule",
-        "description": "Makes a new version; earlier ones stay readable. A space rule: the editors of its space and admins (its references are checked for the caller, who saves it). A global rule: admins. The content is checked: operators fit the field and the field's data type, patterns compile (422, the message names the place, such as `conditions.all[1].any[0]` or `actions[2]`); contacts, types, tags, fields and spaces exist (404); a rule files only into spaces the caller may file into (403), or hands documents over into another user's personal space.",
+        "description": "Makes a new version; earlier ones stay readable. With `scope` the rule moves into another space or between a space and global: the caller changes it where it is and edits where it goes (global: admins); the version names the space. A space rule: the editors of its space and admins (its references are checked for the caller, who saves it). A global rule: admins. The content is checked: operators fit the field and the field's data type, patterns compile (422, the message names the place, such as `conditions.all[1].any[0]` or `actions[2]`); contacts, types, tags, fields and spaces exist (404); a rule files only into spaces the caller may file into (403), or hands documents over into another user's personal space.",
         "operationId": "change_rule_api_v1_rules__id__put",
         "parameters": [
           {
@@ -7683,7 +7838,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RuleDefinitionIn"
+                "$ref": "#/components/schemas/RuleChange"
               }
             }
           }
@@ -16455,6 +16610,54 @@
         ],
         "title": "AuthorizationUrl"
       },
+      "BlockingSpaceOut": {
+        "properties": {
+          "space_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Space Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "The stored name; a personal space is presented by `personal`."
+          },
+          "personal": {
+            "type": "boolean",
+            "title": "Personal",
+            "description": "The user's personal space (it holds documents)."
+          },
+          "documents": {
+            "type": "integer",
+            "title": "Documents",
+            "description": "How many documents lie in it."
+          },
+          "choices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Choices",
+            "description": "How it may be settled: `remove` (an empty space goes with the user), `move_to` (its documents move into another space, then it goes), `editor` (another user edits it, it stays).",
+            "examples": [
+              [
+                "move_to",
+                "editor"
+              ]
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "space_id",
+          "name",
+          "personal",
+          "documents",
+          "choices"
+        ],
+        "title": "BlockingSpaceOut",
+        "description": "A space that stops deleting a user until the deletion settles it."
+      },
       "BoxOut": {
         "properties": {
           "x": {
@@ -22403,6 +22606,165 @@
         ],
         "title": "RuleApplicationOut"
       },
+      "RuleChange": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "priority": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Priority",
+            "description": "Higher first; the order of the log and of suggestions. Conflicts are never decided by priority.",
+            "default": 100
+          },
+          "triggers": {
+            "items": {
+              "$ref": "#/components/schemas/Trigger"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Triggers",
+            "description": "`ingest`: when a document arrives; `change`: when a person changes it."
+          },
+          "conditions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AllGroup-Input"
+              },
+              {
+                "$ref": "#/components/schemas/AnyGroup-Input"
+              }
+            ],
+            "title": "Conditions",
+            "description": "Nested at most 5 deep, at most 50 conditions."
+          },
+          "actions": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SetSpaceAction"
+                },
+                {
+                  "$ref": "#/components/schemas/SetContactAction"
+                },
+                {
+                  "$ref": "#/components/schemas/SetDocumentTypeAction"
+                },
+                {
+                  "$ref": "#/components/schemas/SetTopicAction"
+                },
+                {
+                  "$ref": "#/components/schemas/SetTitleAction"
+                },
+                {
+                  "$ref": "#/components/schemas/AddTagsAction"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveTagsAction"
+                },
+                {
+                  "$ref": "#/components/schemas/SetFieldAction"
+                },
+                {
+                  "$ref": "#/components/schemas/ForceReviewAction"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "add_tags": "#/components/schemas/AddTagsAction",
+                  "force_review": "#/components/schemas/ForceReviewAction",
+                  "remove_tags": "#/components/schemas/RemoveTagsAction",
+                  "set_contact": "#/components/schemas/SetContactAction",
+                  "set_document_type": "#/components/schemas/SetDocumentTypeAction",
+                  "set_field": "#/components/schemas/SetFieldAction",
+                  "set_space": "#/components/schemas/SetSpaceAction",
+                  "set_title": "#/components/schemas/SetTitleAction",
+                  "set_topic": "#/components/schemas/SetTopicAction"
+                }
+              }
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Actions"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuleScope"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Moves the rule: `space`, into `space_id` (one the caller edits; default: the caller's personal space); `global` (admins). Without it the rule stays where it is."
+          },
+          "space_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Space Id",
+            "description": "With `scope: space`: the space the rule moves into."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "conditions",
+          "actions"
+        ],
+        "title": "RuleChange",
+        "description": "The new content of a rule, and, with `scope`, where it moves.",
+        "examples": [
+          {
+            "actions": [
+              {
+                "space_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b",
+                "type": "set_space"
+              },
+              {
+                "tag_ids": [
+                  "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b"
+                ],
+                "type": "add_tags"
+              }
+            ],
+            "conditions": {
+              "all": [
+                {
+                  "field": "contact",
+                  "op": "is",
+                  "value": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b"
+                },
+                {
+                  "field": "text",
+                  "op": "contains",
+                  "value": "Rechnung"
+                }
+              ]
+            },
+            "name": "Telekom to household",
+            "priority": 100,
+            "triggers": [
+              "ingest",
+              "change"
+            ]
+          }
+        ]
+      },
       "RuleCreate": {
         "properties": {
           "name": {
@@ -22549,141 +22911,6 @@
             "name": "Telekom to household",
             "priority": 100,
             "scope": "space",
-            "triggers": [
-              "ingest",
-              "change"
-            ]
-          }
-        ]
-      },
-      "RuleDefinitionIn": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Name"
-          },
-          "priority": {
-            "type": "integer",
-            "maximum": 1000.0,
-            "minimum": 0.0,
-            "title": "Priority",
-            "description": "Higher first; the order of the log and of suggestions. Conflicts are never decided by priority.",
-            "default": 100
-          },
-          "triggers": {
-            "items": {
-              "$ref": "#/components/schemas/Trigger"
-            },
-            "type": "array",
-            "minItems": 1,
-            "title": "Triggers",
-            "description": "`ingest`: when a document arrives; `change`: when a person changes it."
-          },
-          "conditions": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AllGroup-Input"
-              },
-              {
-                "$ref": "#/components/schemas/AnyGroup-Input"
-              }
-            ],
-            "title": "Conditions",
-            "description": "Nested at most 5 deep, at most 50 conditions."
-          },
-          "actions": {
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/SetSpaceAction"
-                },
-                {
-                  "$ref": "#/components/schemas/SetContactAction"
-                },
-                {
-                  "$ref": "#/components/schemas/SetDocumentTypeAction"
-                },
-                {
-                  "$ref": "#/components/schemas/SetTopicAction"
-                },
-                {
-                  "$ref": "#/components/schemas/SetTitleAction"
-                },
-                {
-                  "$ref": "#/components/schemas/AddTagsAction"
-                },
-                {
-                  "$ref": "#/components/schemas/RemoveTagsAction"
-                },
-                {
-                  "$ref": "#/components/schemas/SetFieldAction"
-                },
-                {
-                  "$ref": "#/components/schemas/ForceReviewAction"
-                }
-              ],
-              "discriminator": {
-                "propertyName": "type",
-                "mapping": {
-                  "add_tags": "#/components/schemas/AddTagsAction",
-                  "force_review": "#/components/schemas/ForceReviewAction",
-                  "remove_tags": "#/components/schemas/RemoveTagsAction",
-                  "set_contact": "#/components/schemas/SetContactAction",
-                  "set_document_type": "#/components/schemas/SetDocumentTypeAction",
-                  "set_field": "#/components/schemas/SetFieldAction",
-                  "set_space": "#/components/schemas/SetSpaceAction",
-                  "set_title": "#/components/schemas/SetTitleAction",
-                  "set_topic": "#/components/schemas/SetTopicAction"
-                }
-              }
-            },
-            "type": "array",
-            "maxItems": 20,
-            "minItems": 1,
-            "title": "Actions"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "name",
-          "conditions",
-          "actions"
-        ],
-        "title": "RuleDefinitionIn",
-        "description": "The content of a rule; changing it makes a new version.",
-        "examples": [
-          {
-            "actions": [
-              {
-                "space_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b",
-                "type": "set_space"
-              },
-              {
-                "tag_ids": [
-                  "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b"
-                ],
-                "type": "add_tags"
-              }
-            ],
-            "conditions": {
-              "all": [
-                {
-                  "field": "contact",
-                  "op": "is",
-                  "value": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b"
-                },
-                {
-                  "field": "text",
-                  "op": "contains",
-                  "value": "Rechnung"
-                }
-              ]
-            },
-            "name": "Telekom to household",
-            "priority": 100,
             "triggers": [
               "ingest",
               "change"
@@ -23056,7 +23283,24 @@
           "version": {
             "type": "integer",
             "title": "Version",
-            "description": "Counts from 1; every change of the content adds one."
+            "description": "Counts from 1; every change of the content or of the space adds one."
+          },
+          "scope": {
+            "$ref": "#/components/schemas/RuleScope",
+            "description": "Where the rule belonged with this version."
+          },
+          "space_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Space Id",
+            "description": "The space the rule belonged to with this version; None: global. A version whose space differs from the one before moved the rule."
           },
           "created_at": {
             "type": "string",
@@ -23085,6 +23329,8 @@
           "actions",
           "rule_id",
           "version",
+          "scope",
+          "space_id",
           "created_at",
           "created_by"
         ],
@@ -23560,6 +23806,64 @@
           "edit"
         ],
         "title": "SpaceRole"
+      },
+      "SpaceSettlementIn": {
+        "properties": {
+          "space_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Space Id"
+          },
+          "remove": {
+            "type": "boolean",
+            "title": "Remove",
+            "description": "The empty space goes with the user.",
+            "default": false
+          },
+          "move_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move To",
+            "description": "Its documents move into this space (as an admin moves them by hand), then the space goes with the user."
+          },
+          "editor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Editor",
+            "description": "This user edits the space from then on; it stays."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "space_id"
+        ],
+        "title": "SpaceSettlementIn",
+        "description": "How deleting a user settles one of the spaces that stop it.",
+        "examples": [
+          {
+            "move_to": "01999d5e-9b8a-7c1e-b6a3-2f4d5e6f7a8b",
+            "space_id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+          },
+          {
+            "remove": true,
+            "space_id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8c"
+          }
+        ]
       },
       "SpanOut": {
         "properties": {
@@ -24473,6 +24777,53 @@
           }
         ]
       },
+      "UserRemovalIn": {
+        "properties": {
+          "spaces": {
+            "items": {
+              "$ref": "#/components/schemas/SpaceSettlementIn"
+            },
+            "type": "array",
+            "title": "Spaces",
+            "description": "Each space once."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "UserRemovalIn",
+        "description": "The decisions on the spaces that stop deleting a user (`GET /users/{id}/removal`).",
+        "examples": [
+          {
+            "spaces": [
+              {
+                "move_to": "01999d5e-9b8a-7c1e-b6a3-2f4d5e6f7a8b",
+                "space_id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+              },
+              {
+                "editor": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
+                "space_id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8c"
+              }
+            ]
+          }
+        ]
+      },
+      "UserRemovalOut": {
+        "properties": {
+          "blocking_spaces": {
+            "items": {
+              "$ref": "#/components/schemas/BlockingSpaceOut"
+            },
+            "type": "array",
+            "title": "Blocking Spaces"
+          }
+        },
+        "type": "object",
+        "required": [
+          "blocking_spaces"
+        ],
+        "title": "UserRemovalOut",
+        "description": "What stops deleting a user until the deletion settles it."
+      },
       "ValueCount": {
         "properties": {
           "id": {
@@ -25003,6 +25354,22 @@
             "default": null,
             "description": "Confirming a document: the fields that need a decision.",
             "title": "Open Fields"
+          },
+          "blocking_spaces": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BlockingSpaceOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Deleting a user: the spaces that need a decision (`DELETE /users/{id}`).",
+            "title": "Blocking Spaces"
           },
           "second_factor_required": {
             "anyOf": [

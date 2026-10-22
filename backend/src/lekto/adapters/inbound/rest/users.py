@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter
 
+from lekto.adapters.inbound.problems import blocking_space_out
 from lekto.adapters.inbound.rest.auth import (
     PROTECTED,
     Authenticated,
@@ -20,6 +21,8 @@ from lekto.adapters.inbound.rest.schemas.users import (
     PasswordReset,
     UserCreate,
     UserPatch,
+    UserRemovalIn,
+    UserRemovalOut,
 )
 from lekto.core.domain.ids import SpaceId, UserId
 from lekto.core.services.users import Account
@@ -153,17 +156,41 @@ async def unlink(id: UUID, admin: SessionPrincipal, context: Context) -> Removed
     return Removed(removed=await context.users.unlink_external_identities(admin.id, UserId(id)))
 
 
+@router.get(
+    "/{id}/removal",
+    summary="What stops deleting a user",
+    description=(
+        ADMINS_ONLY + " The spaces deleting the user must settle (Tobi, 22.10.2026): their "
+        "personal space while it holds documents, and each shared space they alone edit. "
+        "Empty: nothing stops it."
+    ),
+    response_model=UserRemovalOut,
+    responses=problem_responses(401, 403, 404, 422),
+)
+async def removal(id: UUID, user: CurrentUser, context: Context) -> UserRemovalOut:
+    spaces = await context.users.removal(user, UserId(id))
+    return UserRemovalOut(blocking_spaces=[blocking_space_out(item) for item in spaces])
+
+
 @router.delete(
     "/{id}",
     status_code=204,
     summary="Delete a user",
     description=(
-        ADMINS_ONLY + " Only a user whose personal space is empty and who is not the last "
-        "editor of a space (409); removes their personal space with its rules, their "
-        "memberships and their sign-in data. The documents they uploaded stay, without "
-        "uploader."
+        ADMINS_ONLY + " The body settles each space that stops it (`GET /users/{id}/removal`; "
+        "one left open: 409 with `blocking_spaces`): the personal space's documents move into "
+        "another space (`move_to`); a shared space the user alone edits goes if empty "
+        "(`remove`), moves its documents and goes (`move_to`), or gets another editor "
+        "(`editor`). Documents move as an admin moves them by hand. All or nothing. Removes "
+        "the personal space with its rules, the user's memberships and sign-in data; the "
+        "documents they uploaded stay, without uploader."
     ),
     responses=problem_responses(401, 403, 404, 409, 422),
 )
-async def delete_user(id: UUID, user: CurrentUser, context: Context) -> None:
-    await context.users.delete_user(user, UserId(id))
+async def delete_user(
+    id: UUID, user: CurrentUser, context: Context, body: UserRemovalIn | None = None
+) -> None:
+    settle = (
+        {} if body is None else {SpaceId(item.space_id): item.settlement() for item in body.spaces}
+    )
+    await context.users.delete_user(user, UserId(id), settle)

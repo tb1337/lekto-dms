@@ -20,7 +20,11 @@ document has no owner any more, only who uploaded it.
   does not sort them out.
 - A user rule becomes a rule of its owner's personal space (`rules.space_id`, scope `space`).
 - A document that is new stays new for who uploaded it; the other editors of its space, in
-  whose inbox it stands now, have seen it.
+  whose inbox it stands now, have seen it. A seen mark may be silent (`inbox_seen.silent`):
+  set by a move for someone who knew the document, it does not count as done (Tobi,
+  22.10.2026).
+- A rule's space can change (Tobi, 22.10.2026): every version names the space its rule
+  belonged to with it (`rule_versions.space_id`); the existing ones name the rule's.
 - The variable `owner` in templates becomes `uploaded_by` (rules and title patterns), as 0024
   renamed `drawer`; a template that uses `uploaded_by` otherwise stops the revision. The scope
   of rule reports in the processing log becomes `space`.
@@ -154,9 +158,14 @@ def upgrade() -> None:
         _rebuild_up(spaces, rule_owners, defaults)
     else:
         _alter_up(spaces, rule_owners, defaults)
+    op.add_column(
+        "inbox_seen",
+        sa.Column("silent", sa.Boolean(), nullable=False, server_default=sa.false()),
+    )
     _keep_new_as_it_was(connection, spaces)
     _rename_stored("owner", "uploaded_by")
     _rename_scopes("user", "space")
+    _add_version_spaces()
 
 
 def downgrade() -> None:
@@ -170,6 +179,9 @@ def downgrade() -> None:
     users = {row.id: row for row in connection.execute(sa.select(_users))}
     spaces = _spaces_down(connection, users)
     _check_way_back(connection, spaces, users)
+    # Not batch operations: on SQLite, they would copy tables others refer to.
+    op.drop_column("inbox_seen", "silent")
+    op.drop_column("rule_versions", "space_id")
     owners = {space.id: space.owner for space in spaces}
     members = {space.id: space.members or {} for space in spaces}
     document_owners: dict[UUID, UUID] = {}
@@ -294,6 +306,7 @@ _seen = sa.table(
     sa.column("user_id", sa.Uuid()),
     sa.column("document_id", sa.Uuid()),
     sa.column("seen_at", types.UtcDateTime()),
+    sa.column("silent", sa.Boolean()),
 )
 _new_documents_at = sa.table(
     "documents",
@@ -304,10 +317,26 @@ _new_documents_at = sa.table(
 )
 
 
+def _add_version_spaces() -> None:
+    """Every version names the space its rule belongs to (a rule moves since 0.5, Tobi,
+    22.10.2026); the versions before name the space the rule has now."""
+    op.add_column("rule_versions", sa.Column("space_id", sa.Uuid(), nullable=True))
+    versions = sa.table("rule_versions", sa.column("rule_id", sa.Uuid()), sa.column("space_id"))
+    rules = sa.table("rules", sa.column("id", sa.Uuid()), sa.column("space_id", sa.Uuid()))
+    op.execute(
+        versions.update().values(
+            space_id=sa.select(rules.c.space_id)
+            .where(rules.c.id == versions.c.rule_id)
+            .scalar_subquery()
+        )
+    )
+
+
 def _keep_new_as_it_was(connection: sa.Connection, spaces: Iterable[_Space]) -> None:
     """Until 0.5 a document stood in its owner's inbox only; now in the inbox of every editor
     of its space. What was new for its owner stays new for them; for the other editors (a
-    space's owner, a sharer with `read_write`) nothing old turns up as new: they have seen it."""
+    space's owner, a sharer with `read_write`) nothing old turns up as new: they have seen it,
+    silently (it does not stand under done for them either)."""
     editors = {
         space.id: {user for user, role in (space.members or {}).items() if role == "edit"}
         for space in spaces
@@ -318,7 +347,7 @@ def _keep_new_as_it_was(connection: sa.Connection, spaces: Iterable[_Space]) -> 
     }
     now = datetime.now(UTC)
     rows = [
-        {"user_id": user, "document_id": row.id, "seen_at": now}
+        {"user_id": user, "document_id": row.id, "seen_at": now, "silent": True}
         for row in connection.execute(
             sa.select(_new_documents_at).where(_new_documents_at.c.new_at.is_not(None))
         )

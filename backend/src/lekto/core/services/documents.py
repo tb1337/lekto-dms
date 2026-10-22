@@ -76,8 +76,9 @@ from lekto.core.services._access import (
     readable_log,
     writable_document,
 )
+from lekto.core.services._moves import move_by_person
 from lekto.core.services._tags import expand, expanded, tag_counts, tag_tree
-from lekto.core.services.inbox import Review, arrived, in_inbox, node_reviews, open_nodes
+from lekto.core.services.inbox import Review, in_inbox, node_reviews, open_nodes
 from lekto.core.services.maintenance import REMOVE_FILES_JOB, RemoveFiles
 from lekto.core.services.objects import (
     EXCHANGE_NODES,
@@ -748,14 +749,9 @@ class DocumentService:
                 receiver = await uow.users.find(target.personal_of)
                 if receiver is None or not receiver.active:
                     raise NotFoundError("space", space)
-            now = self._clock.now()
-            document.move_to(target.id, now)
-            await arrived(uow, document, source, now, user.id)
-            if self._rules is not None:
-                await uow.processing_log.append(
-                    self._rules.space_chosen(document, actor=user, now=now)
-                )
-            await _save(uow, document)
+            await move_by_person(
+                uow, document, source, target, by=user, now=self._clock.now(), rules=self._rules
+            )
             await uow.commit()
 
     async def delete(self, actor: UserId, id: DocumentId) -> None:

@@ -687,6 +687,13 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         totp=container.totp,
         sessions=session_policy_of(settings),
     )
+    change_rules = ChangeRules(
+        store,
+        container.patterns,
+        container.templates,
+        max_text=settings.rules_max_text,
+        pipeline_version=__version__,
+    )
     return Services(
         auth=auth,
         oidc=(
@@ -702,7 +709,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
                 auto_create=settings.oidc_auto_create,
             )
         ),
-        users=UserService(uow, clock, container.password_hasher),
+        users=UserService(uow, clock, container.password_hasher, rules=change_rules),
         spaces=SpaceService(uow, clock),
         master_data=MasterDataService(
             uow,
@@ -734,13 +741,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             clock,
             store,
             metadata=container.metadata,
-            rules=ChangeRules(
-                store,
-                container.patterns,
-                container.templates,
-                max_text=settings.rules_max_text,
-                pipeline_version=__version__,
-            ),
+            rules=change_rules,
         ),
         inbox=InboxService(uow, clock),
         pipeline=PipelineService(

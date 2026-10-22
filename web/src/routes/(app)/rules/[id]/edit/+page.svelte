@@ -15,6 +15,7 @@
 	import { problemText } from '#lib/rules/describe.ts';
 	import { saveErrors } from '#lib/rules/errors.ts';
 	import { fromApi, toApi, validate, type RuleModel } from '#lib/rules/model.ts';
+	import { placeOf, rulePlaces } from '#lib/rules/places.ts';
 	import { changeSwitchedOff } from '#lib/rules/save.ts';
 	import { session } from '#lib/session.svelte.ts';
 
@@ -28,6 +29,19 @@
 	let errors = $state<Record<string, string>>({});
 	let general = $state<string | null>(null);
 	let busy = $state(false);
+	// Where the rule moves to (empty: where it is); its space changes with its content.
+	let chosen = $state('');
+	const current = $derived(rule ? placeOf(rule) : '');
+	const place = $derived(chosen || current);
+	const places = $derived(
+		rulePlaces(
+			lookup?.spaces ?? [],
+			lookup?.users ?? [],
+			session.user?.id,
+			session.isAdmin,
+			current
+		)
+	);
 
 	// The rule files where whoever saves it may file (the API checks it for the caller).
 	const targets = $derived(spaceOptions(lookup?.spaces ?? [], lookup?.users ?? [], session.user));
@@ -58,13 +72,14 @@
 		if (general) return;
 		const definition = toApi(model);
 		const before = toApi(fromApi(rule));
-		if (JSON.stringify(definition) === JSON.stringify(before)) {
+		const moved = place !== current;
+		if (!moved && JSON.stringify(definition) === JSON.stringify(before)) {
 			await goto(`${BASE}/rules/${rule.id}`);
 			return;
 		}
 		busy = true;
 		try {
-			const saved = await changeSwitchedOff(rule, definition);
+			const saved = await changeSwitchedOff(rule, definition, moved ? place : undefined);
 			toast.success(m.rule_saved());
 			await goto(`${BASE}/rules/${saved.id}/apply?saved=1`);
 		} catch (error) {
@@ -99,6 +114,10 @@
 	{:else}
 		<RuleBuilder
 			{model}
+			{place}
+			{places}
+			onplace={(next) => (chosen = next)}
+			placeHint={m.rule_scope_move_hint()}
 			{lookup}
 			{targets}
 			{errors}

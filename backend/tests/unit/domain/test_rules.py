@@ -836,3 +836,34 @@ def test_a_topic_condition_and_action() -> None:
         Condition(field=ConditionField.TOPIC, op=Operator.CONTAINS, value=str(topic))
     with pytest.raises(ValidationError, match="the same field twice"):
         definition(SetTopic(topic), SetTopic(other))
+
+
+def test_a_rule_moves_and_its_versions_name_the_space() -> None:
+    rule = space_rule()
+    assert rule.current.space_id == SPACE
+    other = SpaceId(new_id())
+    rule.change(definition(), ADMIN, NOW, scope=RuleScope.SPACE, space_id=other)
+    assert (rule.space_id, rule.current.space_id, rule.current.number) == (other, other, 2)
+    version = rule.change(definition(), ADMIN, NOW, scope=RuleScope.GLOBAL)
+    assert (rule.scope, rule.space_id, version.space_id) == (RuleScope.GLOBAL, None, None)
+    with pytest.raises(ValidationError, match="global rules belong to no space"):
+        rule.change(definition(), ADMIN, NOW, scope=RuleScope.SPACE)
+    with pytest.raises(ValidationError, match="names another space"):
+        Rule(
+            id=rule.id,
+            scope=RuleScope.SPACE,
+            space_id=other,
+            current=rule.current,
+            created_at=NOW,
+            updated_at=NOW,
+        )
+    pattern = Rule.create(
+        scope=RuleScope.GLOBAL,
+        space_id=None,
+        definition=definition(),
+        by=ADMIN,
+        now=NOW,
+        managed_by=DocumentTypeId(new_id()),
+    )
+    with pytest.raises(ValidationError, match="title pattern is global"):
+        pattern.change(definition(), ADMIN, NOW, scope=RuleScope.SPACE, space_id=other)

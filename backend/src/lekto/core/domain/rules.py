@@ -579,11 +579,15 @@ def _field(definitions: Mapping[FieldId, FieldDefinition], id: FieldId) -> Field
 
 @dataclass(frozen=True, kw_only=True)
 class RuleVersion:
+    """A saved state of a rule. `space_id`: the space the rule belonged to with it (None:
+    global), so its history shows who moved it from where to where."""
+
     rule_id: RuleId
     number: int
     definition: RuleDefinition
     created_at: datetime
     created_by: UserId | None
+    space_id: SpaceId | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "created_at", require_utc(self.created_at, "created_at"))
@@ -621,6 +625,8 @@ class Rule:
             raise ValidationError("the rule of a title pattern is global")
         if self.current.rule_id != self.id:
             raise ValidationError("the current version belongs to another rule")
+        if self.current.space_id != self.space_id:
+            raise ValidationError("the current version names another space")
         self.created_at = require_utc(self.created_at, "created_at")
         self.updated_at = require_utc(self.updated_at, "updated_at")
 
@@ -641,7 +647,12 @@ class Rule:
             scope=scope,
             space_id=space_id,
             current=RuleVersion(
-                rule_id=id, number=1, definition=definition, created_at=now, created_by=by
+                rule_id=id,
+                number=1,
+                definition=definition,
+                created_at=now,
+                created_by=by,
+                space_id=space_id,
             ),
             created_at=now,
             updated_at=now,
@@ -656,15 +667,31 @@ class Rule:
     def is_active(self) -> bool:
         return self.enabled and self.deleted_at is None
 
-    def change(self, definition: RuleDefinition, by: UserId, now: datetime) -> RuleVersion:
-        """A new version with `definition`."""
+    def change(
+        self,
+        definition: RuleDefinition,
+        by: UserId,
+        now: datetime,
+        *,
+        scope: RuleScope | None = None,
+        space_id: SpaceId | None = None,
+    ) -> RuleVersion:
+        """A new version with `definition`; with `scope`, the rule moves: into the space
+        `space_id` or, global, into none (the rule of a title pattern stays global)."""
         self._check_not_deleted()
+        if scope is not None:
+            if (scope is RuleScope.GLOBAL) != (space_id is None):
+                raise ValidationError("global rules belong to no space, space rules to one")
+            if self.managed_by is not None and scope is not RuleScope.GLOBAL:
+                raise ValidationError("the rule of a title pattern is global")
+            self.scope, self.space_id = scope, space_id
         self.current = RuleVersion(
             rule_id=self.id,
             number=self.current.number + 1,
             definition=definition,
             created_at=now,
             created_by=by,
+            space_id=self.space_id,
         )
         self.updated_at = require_utc(now, "updated_at")
         return self.current

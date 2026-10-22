@@ -5,6 +5,7 @@
 	import type { components } from '#lib/api/schema.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import Select from '#lib/components/Select.svelte';
+	import UserDeleteDialog from '#lib/components/UserDeleteDialog.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
@@ -30,7 +31,8 @@
 	let password = $state('');
 	let revoke = $state(false);
 	let resetError = $state<string | null>(null);
-	let confirm = $state<'totp' | 'oidc' | 'delete' | null>(null);
+	let confirm = $state<'totp' | 'oidc' | null>(null);
+	let deleting = $state(false);
 
 	const own = $derived(account?.id === session.user?.id);
 
@@ -120,13 +122,9 @@
 		} else if (confirm === 'oidc') {
 			await unwrap(api.DELETE('/api/v1/users/{id}/oidc', { params: { path: { id: userId } } }));
 			toast.success(m.user_oidc_removed());
-		} else if (confirm === 'delete') {
-			await unwrap(api.DELETE('/api/v1/users/{id}', { params: { path: { id: userId } } }));
-			toast.success(m.user_deleted());
-			open = false;
 		}
 		onchanged();
-		if (confirm !== 'delete') await load();
+		await load();
 	}
 </script>
 
@@ -205,7 +203,7 @@
 							</Button>
 						{/if}
 						{#if !own}
-							<Button variant="destructive" disabled={busy} onclick={() => (confirm = 'delete')}>
+							<Button variant="destructive" disabled={busy} onclick={() => (deleting = true)}>
 								{m.user_delete()}
 							</Button>
 						{/if}
@@ -218,16 +216,20 @@
 
 <ConfirmDialog
 	bind:open={() => confirm !== null, (value) => !value && (confirm = null)}
-	title={confirm === 'totp'
-		? m.user_totp_remove()
-		: confirm === 'oidc'
-			? m.user_oidc_remove()
-			: m.user_delete()}
-	description={confirm === 'totp'
-		? m.user_totp_remove_confirm()
-		: confirm === 'oidc'
-			? m.user_oidc_remove_confirm()
-			: m.user_delete_confirm()}
+	title={confirm === 'totp' ? m.user_totp_remove() : m.user_oidc_remove()}
+	description={confirm === 'totp' ? m.user_totp_remove_confirm() : m.user_oidc_remove_confirm()}
 	confirmLabel={m.confirm_yes()}
 	onconfirm={confirmed}
 />
+
+{#if account}
+	<UserDeleteDialog
+		bind:open={deleting}
+		{userId}
+		username={account.username}
+		ondeleted={() => {
+			open = false;
+			onchanged();
+		}}
+	/>
+{/if}

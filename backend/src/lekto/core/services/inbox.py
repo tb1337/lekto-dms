@@ -429,6 +429,7 @@ class InboxService:
                     seen_at=entry.seen_at,
                     confirmation=entry.confirmation,
                     since=since,
+                    silent=entry.silent,
                 )
                 if state is None:
                     log.error(
@@ -518,7 +519,9 @@ async def arrived(
     """`document` was moved out of `source` into the space it lies in now: while green, it is
     new for the editors there who could not read it before. The members of `source` keep
     their state (whoever had nothing new in it is marked as having seen it now, moving is no
-    seeing); `by`, who moved it from outside the space (an admin), has seen it."""
+    seeing); `by`, who moved it from outside the space (an admin), has seen it. These marks
+    are silent: the document does not stand under done for anyone who did not look at it
+    (Tobi, 22.10.2026)."""
     if document.lane is not Lane.GREEN:
         return
     unseen = {
@@ -528,7 +531,7 @@ async def arrived(
     document.mark_new(now)
     outside = [] if by is None or by in source.members else [by]
     for user in [*(user for user, new in unseen.items() if not new), *outside]:
-        await uow.inbox.mark_seen(user, document.id, now)
+        await uow.inbox.mark_seen(user, document.id, now, silent=True)
 
 
 async def confirmed_into(
@@ -537,13 +540,15 @@ async def confirmed_into(
     """`document`, decided in the inbox by `by`, was moved out of `source` into `target`: once
     processing ends green it is new for the editors of `target` who could not read it in
     `source`, where it waited for a decision (a hand-over arrives as new for the receiver).
-    The editors of `source` and `by` saw it there; confirming makes it new for no one else."""
+    The editors of `source` had it before them (a silent mark: done only for who decided);
+    `by` decided it; confirming makes it new for no one else."""
     newcomers = target.editors - source.editors - {by}
     if not newcomers:
         return
     document.mark_new(now)
-    for user in sorted(source.editors | {by}, key=str):
-        await uow.inbox.mark_seen(user, document.id, now)
+    for user in sorted(source.editors - {by}, key=str):
+        await uow.inbox.mark_seen(user, document.id, now, silent=True)
+    await uow.inbox.mark_seen(by, document.id, now)
 
 
 async def _position(
@@ -557,7 +562,11 @@ async def _position(
     if tab is not InboxTab.DONE:
         return InboxPosition(after)
     entry = await uow.inbox.entry(viewer, after)
-    left = None if entry is None else left_at(entry.document, entry.seen_at, entry.confirmation)
+    left = (
+        None
+        if entry is None
+        else left_at(entry.document, None if entry.silent else entry.seen_at, entry.confirmation)
+    )
     if left is None:
         raise ValidationError("cursor: its document is no longer done; start from the first page")
     return InboxPosition(after, left)

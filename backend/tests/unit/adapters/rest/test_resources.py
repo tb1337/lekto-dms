@@ -529,6 +529,38 @@ async def test_the_last_admin_stays(api: Api) -> None:
     assert response.status_code == 409
 
 
+async def test_deleting_a_user_settles_the_spaces_that_stop_it(api: Api) -> None:
+    """Tobi, 22.10.2026: the API names the spaces, the admin decides in one request."""
+    admin, anna = await api.admin("root"), await api.user("anna")
+    document = await upload(api, auth(anna), content=unique_pdf("anna"))
+    url = f"{PREFIX}/users/{anna.id}"
+    removal = await api.client.get(f"{url}/removal", headers=auth(admin))
+    assert removal.status_code == 200, removal.text
+    (blocking,) = removal.json()["blocking_spaces"]
+    assert (blocking["personal"], blocking["documents"], blocking["choices"]) == (
+        True,
+        1,
+        ["move_to"],
+    )
+    assert (await api.client.get(f"{url}/removal", headers=auth(anna))).status_code == 403
+    refused = await api.client.delete(url, headers=auth(admin))
+    assert refused.status_code == 409
+    assert [item["space_id"] for item in refused.json()["blocking_spaces"]] == [
+        blocking["space_id"]
+    ]
+    target = (await api.client.get(f"{PREFIX}/users/{admin.id}", headers=auth(admin))).json()[
+        "personal_space_id"
+    ]
+    both = {"space_id": blocking["space_id"], "move_to": target, "remove": True}
+    unclear = await api.client.request("DELETE", url, json={"spaces": [both]}, headers=auth(admin))
+    assert unclear.status_code == 422
+    settle = {"spaces": [{"space_id": blocking["space_id"], "move_to": target}]}
+    deleted = await api.client.request("DELETE", url, json=settle, headers=auth(admin))
+    assert deleted.status_code == 204, deleted.text
+    moved = await api.client.get(f"{PREFIX}/documents/{document}", headers=auth(admin))
+    assert (moved.json()["space_id"], moved.json()["uploaded_by"]) == (target, None)
+
+
 async def test_secrets_do_not_come_back(api: Api) -> None:
     admin = await api.admin()
     async with api.sign_in(admin) as session:

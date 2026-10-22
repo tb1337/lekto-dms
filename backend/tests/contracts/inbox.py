@@ -203,6 +203,33 @@ class InboxRepositoryContract:
         )
         assert by_id[scene.documents["new_again"].id].seen_at == NOW
 
+    async def test_a_silent_mark_keeps_a_document_from_being_new_but_not_done(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """A move marks it for who knew it (Tobi, 22.10.2026): not new, not done either, until
+        they see it."""
+        owner, space = await owner_with_space(uow_factory)
+        moved = green(owner, space)
+        await store(uow_factory, moved)
+        async with uow_factory() as uow:
+            await uow.inbox.mark_seen(owner.id, moved.id, LATER, silent=True)
+            await uow.commit()
+        async with uow_factory() as uow:
+            counts = await uow.inbox.count(owner.id, editor=owner.id, since=SINCE)
+            assert (counts[InboxTab.NEW], counts[InboxTab.DONE]) == (0, 0)
+            entry = await uow.inbox.entry(owner.id, moved.id)
+            assert entry is not None and (entry.seen_at, entry.silent) == (LATER, True)
+            assert await uow.inbox.seen(owner.id, [moved.id]) == {moved.id: LATER}
+            await uow.inbox.mark_seen(owner.id, moved.id, LAST)  # now they look at it
+            await uow.commit()
+        async with uow_factory() as uow:
+            done = await uow.inbox.query(
+                owner.id, editor=owner.id, tab=InboxTab.DONE, since=SINCE, limit=9
+            )
+            assert [(item.document.id, item.seen_at, item.silent) for item in done] == [
+                (moved.id, LAST, False)
+            ]
+
     async def test_admins_see_every_users_inbox_with_their_own_seen(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:

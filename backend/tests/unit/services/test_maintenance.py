@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from lekto.adapters.outbound.memory import MemoryEventBus
+from lekto.adapters.outbound.memory.database import SeenMark
 from lekto.core.domain.errors import AuthenticationError
 from lekto.core.domain.ids import DocumentId, EventId, new_id
 from lekto.core.domain.inbox import DONE_PERIOD, Confirmation
@@ -247,7 +248,7 @@ async def test_cleanup_removes_what_only_done_needs_after_its_period(world: Worl
     world.clock.advance(INTERVAL)
     assert await service.run_next_job()
     assert world.database.confirmations == {}
-    assert world.database.seen == {(owner.id, seen.id): builders.NOW}
+    assert world.database.seen == {(owner.id, seen.id): SeenMark(builders.NOW)}
 
 
 async def test_a_cancelled_cleanup_gives_its_job_back_at_once(world: World) -> None:

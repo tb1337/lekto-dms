@@ -168,7 +168,10 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
         schema = original_openapi()
         components = schema.setdefault("components", {}).setdefault("schemas", {})
         components.setdefault("EventMessage", EventMessage.model_json_schema())
-        components.setdefault("Problem", problems.Problem.model_json_schema())
+        problem = problems.Problem.model_json_schema(ref_template="#/components/schemas/{model}")
+        for name, definition in problem.pop("$defs", {}).items():  # the spaces deleting a user
+            components.setdefault(name, definition)
+        components.setdefault("Problem", problem)
         # The stream: a string for OpenAPI 3.1 tools, `itemSchema` (OpenAPI 3.2) per event,
         # whose `data` is the JSON of an EventMessage.
         stream = schema["paths"][f"{PREFIX}/events"]["get"]["responses"]["200"]["content"]

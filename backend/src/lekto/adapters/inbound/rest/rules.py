@@ -15,8 +15,8 @@ from lekto.adapters.inbound.rest.schemas.rules import (
     ApplyPreviewRequest,
     ApplyRequest,
     RuleApplicationOut,
+    RuleChange,
     RuleCreate,
-    RuleDefinitionIn,
     RuleOut,
     RulePatch,
     RuleVersionOut,
@@ -108,15 +108,20 @@ async def get_rule(id: UUID, user: CurrentUser, context: Context) -> RuleOut:
 @router.put(
     "/{id}",
     summary="Change a rule",
-    description="Makes a new version; earlier ones stay readable. " + WHO_CHANGES + CHECKS,
+    description=(
+        "Makes a new version; earlier ones stay readable. With `scope` the rule moves into "
+        "another space or between a space and global: the caller changes it where it is and "
+        "edits where it goes (global: admins); the version names the space. " + WHO_CHANGES + CHECKS
+    ),
     response_model=RuleOut,
     responses=problem_responses(401, 403, 404, 409, 422),
 )
-async def change_rule(
-    id: UUID, body: RuleDefinitionIn, user: CurrentUser, context: Context
-) -> RuleOut:
+async def change_rule(id: UUID, body: RuleChange, user: CurrentUser, context: Context) -> RuleOut:
     definition = definition_from_json(body.to_json())
-    return RuleOut.of(await context.rules.change(user, RuleId(id), definition))
+    space = None if body.space_id is None else SpaceId(body.space_id)
+    return RuleOut.of(
+        await context.rules.change(user, RuleId(id), definition, scope=body.scope, space=space)
+    )
 
 
 @router.patch(

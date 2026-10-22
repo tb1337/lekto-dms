@@ -111,10 +111,13 @@ def departure(
     seen_at: datetime | None,
     confirmation: Confirmation | None,
     since: datetime,
+    silent: bool = False,
 ) -> Done | None:
     """How the green document left `viewer`'s inbox from `since` on (`left_at`), if it did:
-    the viewer saw it since it became new, or a person confirmed it."""
-    at = left_at(document, seen_at, confirmation)
+    the viewer saw it since it became new, or a person confirmed it. A `silent` mark (a move
+    set it for someone who knew the document, Tobi, 22.10.2026) keeps it from being new but
+    is no seeing: it does not make the document done."""
+    at = left_at(document, None if silent else seen_at, confirmation)
     if document.lane is not Lane.GREEN or at is None or at < since:
         return None
     if document.new_at is None and confirmation is not None:
@@ -129,14 +132,21 @@ def inbox_state(
     seen_at: datetime | None,
     confirmation: Confirmation | None,
     since: datetime,
+    silent: bool = False,
 ) -> InboxState | None:
     """Where the document stands in `viewer`'s inbox, who saw it last at `seen_at` (None:
-    never); done counts from `since`. None if it stands nowhere there."""
+    never; `silent`: the mark is a move's, see `departure`); done counts from `since`. None if
+    it stands nowhere there."""
     tab = open_tab(document, seen_at)
     if tab is not None:
         return InboxState(tab)
     done = departure(
-        document, viewer=viewer, seen_at=seen_at, confirmation=confirmation, since=since
+        document,
+        viewer=viewer,
+        seen_at=seen_at,
+        confirmation=confirmation,
+        since=since,
+        silent=silent,
     )
     return None if done is None else InboxState(InboxTab.DONE, done)
 

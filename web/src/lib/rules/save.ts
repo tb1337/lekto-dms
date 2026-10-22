@@ -29,12 +29,21 @@ export async function createSwitchedOff(place: string, definition: ApiDefinition
 	return setEnabled(created.id, false);
 }
 
-export async function changeSwitchedOff(rule: Rule, definition: ApiDefinition): Promise<Rule> {
+/** `place`: where the rule moves (`GLOBAL` or a space id); none: it stays where it is. */
+export async function changeSwitchedOff(
+	rule: Rule,
+	definition: ApiDefinition,
+	place?: string
+): Promise<Rule> {
+	const body =
+		place === undefined
+			? definition
+			: place === GLOBAL
+				? { ...definition, scope: 'global' as const }
+				: { ...definition, scope: 'space' as const, space_id: place };
 	if (rule.enabled) await setEnabled(rule.id, false);
 	try {
-		return await unwrap(
-			api.PUT('/api/v1/rules/{id}', { params: { path: { id: rule.id } }, body: definition })
-		);
+		return await unwrap(api.PUT('/api/v1/rules/{id}', { params: { path: { id: rule.id } }, body }));
 	} catch (error) {
 		if (rule.enabled) await setEnabled(rule.id, true).catch(() => toast.warning(m.rule_left_off()));
 		throw error;

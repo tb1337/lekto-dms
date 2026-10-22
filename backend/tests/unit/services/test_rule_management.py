@@ -411,3 +411,50 @@ async def test_an_admin_lists_the_rules_of_any_space(world: World) -> None:
     listed = await r.rules.list_rules(r.admin.id, space=household.id)
     assert [item.id for item in listed] == [rule.id]
     assert await r.rules.list_rules((await world.user()).id, space=household.id) == []
+
+
+async def test_a_rule_moves_between_spaces_and_global(world: World) -> None:
+    """Tobi, 22.10.2026: a change may move a rule; the mover changes it where it is and edits
+    where it goes (global: admins); the history shows the move."""
+    r = await rule_world(world)
+    editor, other = await world.user(), await world.user()
+    household = await world.spaces.create(editor.id, "Household")
+    archive = await world.spaces.create(editor.id, "Archive")
+    foreign = await world.spaces.create(other.id, "Foreign")
+    await world.spaces.set_member(other.id, foreign.id, editor.id, SpaceRole.READ)
+    title = definition("Title", channel_api(), SetTitle("Scan"))
+    rule = await r.space_rule(editor, household.id, title)
+
+    moved = await r.rules.change(editor.id, rule.id, title, scope=RuleScope.SPACE, space=archive.id)
+    assert (moved.scope, moved.space_id, moved.current.number) == (
+        RuleScope.SPACE,
+        archive.id,
+        2,
+    )
+    with pytest.raises(PermissionDeniedError):  # reads the space only
+        await r.rules.change(editor.id, rule.id, title, scope=RuleScope.SPACE, space=foreign.id)
+    with pytest.raises(PermissionDeniedError, match="only admins"):
+        await r.rules.change(editor.id, rule.id, title, scope=RuleScope.GLOBAL)
+    with pytest.raises(ValidationError, match="give the scope"):
+        await r.rules.change(editor.id, rule.id, title, space=household.id)
+    global_ = await r.rules.change(r.admin.id, rule.id, title, scope=RuleScope.GLOBAL)
+    assert (global_.scope, global_.space_id) == (RuleScope.GLOBAL, None)
+    with pytest.raises(PermissionDeniedError, match="only admins change global rules"):
+        await r.rules.change(editor.id, rule.id, title, scope=RuleScope.SPACE)
+    back = await r.rules.change(r.admin.id, rule.id, title, scope=RuleScope.SPACE)
+    assert back.space_id == (await world.personal_space(r.admin)).id
+    versions = await r.rules.versions(r.admin.id, rule.id)
+    assert [version.space_id for version in versions] == [
+        household.id,
+        archive.id,
+        None,
+        back.space_id,
+    ]
+    assert [version.created_by for version in versions] == [
+        editor.id,
+        editor.id,
+        r.admin.id,
+        r.admin.id,
+    ]
+    # Without a scope it stays where it is.
+    assert (await r.rules.change(r.admin.id, rule.id, title)).space_id == back.space_id

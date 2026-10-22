@@ -145,6 +145,7 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
         (f"{PREFIX}/users/{{id}}", "get"),
         (f"{PREFIX}/users/{{id}}", "patch"),
         (f"{PREFIX}/users/{{id}}", "delete"),
+        (f"{PREFIX}/users/{{id}}/removal", "get"),
         (f"{PREFIX}/users/{{id}}/password", "post"),
         (f"{PREFIX}/users/{{id}}/totp", "delete"),
         (f"{PREFIX}/users/{{id}}/oidc", "delete"),
@@ -332,7 +333,12 @@ async def test_request_bodies_have_examples(api: Api) -> None:
         for method, operation in item.items():
             content = operation.get("requestBody", {}).get("content", {})
             if "application/json" in content:
-                name = content["application/json"]["schema"]["$ref"].rsplit("/", 1)[-1]
+                body = content["application/json"]["schema"]
+                # An optional body (deleting a user) is any of the model or nothing.
+                ref = body.get("$ref") or next(
+                    item["$ref"] for item in body.get("anyOf", []) if "$ref" in item
+                )
+                name = ref.rsplit("/", 1)[-1]
                 assert components[name].get("examples"), (path, method, name)
 
 

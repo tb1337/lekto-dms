@@ -175,6 +175,7 @@ class SqlRuleRepository(SqlRepository[RuleId, Rule]):
                 actions=data["actions"],
                 created_at=version.created_at,
                 created_by=version.created_by,
+                space_id=version.space_id,
             )
         )
 
@@ -195,6 +196,7 @@ def _version(row: Row[Any]) -> RuleVersion:
         definition=definition,
         created_at=row.created_at,
         created_by=None if row.created_by is None else UserId(row.created_by),
+        space_id=None if row.space_id is None else SpaceId(row.space_id),
     )
 
 

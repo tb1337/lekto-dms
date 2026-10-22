@@ -8,6 +8,9 @@ Who may do what:
   for the author of the current version whenever the rule runs. Users who do not edit a space
   do not learn that its rules exist (NotFoundError).
 - Global rules are read by everyone and changed by admins only; they may do everything.
+- A change may move a rule into another space or between a space and global (Tobi,
+  22.10.2026): whoever moves it changes it where it is and edits where it goes (global:
+  admins). The new version names the space, so the history shows the move.
 """
 
 from collections.abc import Iterable, Mapping
@@ -151,14 +154,7 @@ class RuleService:
         edits (None: the caller's personal space)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            if scope is RuleScope.GLOBAL:
-                admin_only(user, "create global rules")
-                if space is not None:
-                    raise ValidationError("space_id: a global rule belongs to no space")
-            elif space is None:
-                space = (await uow.spaces.get_personal(user.id)).id
-            else:
-                await _edited_space(uow, user, space)
+            space = await _place(uow, user, scope, space)
             rule = Rule.create(
                 scope=scope,
                 space_id=space,
@@ -222,12 +218,29 @@ class RuleService:
                 continue
         return written
 
-    async def change(self, actor: UserId, id: RuleId, definition: RuleDefinition) -> Rule:
-        """A new version; the scope stays."""
+    async def change(
+        self,
+        actor: UserId,
+        id: RuleId,
+        definition: RuleDefinition,
+        *,
+        scope: RuleScope | None = None,
+        space: SpaceId | None = None,
+    ) -> Rule:
+        """A new version. With `scope` the rule moves (Tobi, 22.10.2026): into the space
+        `space`, which the caller edits (None: the caller's personal space), or, by an admin,
+        to global; whoever moves it may change it where it is, too. Without `scope` it stays
+        where it is."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             rule = await _managed_rule(uow, user, id)
-            rule.change(definition, user.id, self._clock.now())
+            if scope is None:
+                if space is not None:
+                    raise ValidationError("space_id: give the scope with it")
+                rule.change(definition, user.id, self._clock.now())
+            else:
+                place = await _place(uow, user, scope, space)
+                rule.change(definition, user.id, self._clock.now(), scope=scope, space_id=place)
             await check_references(uow, definition, author=user)
             check_patterns(self._patterns, definition)
             await check_templates(uow, self._templates, definition)
@@ -413,6 +426,22 @@ async def _author(uow: UnitOfWork, rule: Rule) -> User | None:
     account is gone."""
     by = rule.current.created_by
     return None if by is None else await uow.users.find(by)
+
+
+async def _place(
+    uow: UnitOfWork, user: User, scope: RuleScope, space: SpaceId | None
+) -> SpaceId | None:
+    """Where a rule of `scope` the user makes or moves belongs: global (admins only, no space)
+    or the space `space`, which they edit (None: their personal space)."""
+    if scope is RuleScope.GLOBAL:
+        admin_only(user, "make global rules")
+        if space is not None:
+            raise ValidationError("space_id: a global rule belongs to no space")
+        return None
+    if space is None:
+        return (await uow.spaces.get_personal(user.id)).id
+    await _edited_space(uow, user, space)
+    return space
 
 
 async def _edits(uow: UnitOfWork, user: User, space: SpaceId) -> bool:

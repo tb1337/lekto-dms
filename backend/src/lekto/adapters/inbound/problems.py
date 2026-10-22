@@ -8,7 +8,34 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse
 
+from lekto.core.domain.users import BlockingSpace
+
 PROBLEM_JSON = "application/problem+json"
+
+
+class BlockingSpaceOut(BaseModel):
+    """A space that stops deleting a user until the deletion settles it."""
+
+    space_id: UUID
+    name: str = Field(description="The stored name; a personal space is presented by `personal`.")
+    personal: bool = Field(description="The user's personal space (it holds documents).")
+    documents: int = Field(description="How many documents lie in it.")
+    choices: list[str] = Field(
+        description="How it may be settled: `remove` (an empty space goes with the user), "
+        "`move_to` (its documents move into another space, then it goes), `editor` (another "
+        "user edits it, it stays).",
+        examples=[["move_to", "editor"]],
+    )
+
+
+def blocking_space_out(space: BlockingSpace) -> BlockingSpaceOut:
+    return BlockingSpaceOut(
+        space_id=space.id,
+        name=space.name,
+        personal=space.personal,
+        documents=space.documents,
+        choices=[choice.value for choice in space.choices],
+    )
 
 
 class Problem(BaseModel):
@@ -32,6 +59,10 @@ class Problem(BaseModel):
     )
     open_fields: list[str] | None = Field(
         default=None, description="Confirming a document: the fields that need a decision."
+    )
+    blocking_spaces: list[BlockingSpaceOut] | None = Field(
+        default=None,
+        description="Deleting a user: the spaces that need a decision (`DELETE /users/{id}`).",
     )
     second_factor_required: bool | None = Field(
         default=None,

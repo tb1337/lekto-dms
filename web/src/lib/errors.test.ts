@@ -11,6 +11,7 @@ const problem = (status: number, detail: string | null = null): Problem => ({
 	existing_document_id: null,
 	space_id: null,
 	open_fields: null,
+	blocking_spaces: null,
 	second_factor_required: null
 });
 

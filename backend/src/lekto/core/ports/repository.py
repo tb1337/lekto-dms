@@ -447,11 +447,13 @@ class DocumentIdentifierRepository(Protocol):
 @dataclass(frozen=True)
 class InboxEntry:
     """A document in a viewer's inbox, with what `domain.inbox.inbox_state` decides by: when
-    the viewer saw it last (None: never), and who confirmed it out of yellow or red last."""
+    the viewer saw it last (None: never), and who confirmed it out of yellow or red last.
+    `silent`: the viewer's mark is a move's (`InboxRepository.mark_seen`)."""
 
     document: Document
     seen_at: datetime | None
     confirmation: Confirmation | None
+    silent: bool = False
 
 
 @dataclass(frozen=True)
@@ -507,8 +509,12 @@ class InboxRepository(Protocol):
         """When `viewer` saw each of `documents` last; those never seen are left out."""
         ...
 
-    async def mark_seen(self, viewer: UserId, document: DocumentId, at: datetime) -> None:
-        """`viewer` saw `document` at `at`, which replaces when they saw it before."""
+    async def mark_seen(
+        self, viewer: UserId, document: DocumentId, at: datetime, *, silent: bool = False
+    ) -> None:
+        """`viewer` saw `document` at `at`, which replaces when they saw it before. A `silent`
+        mark, which a move sets for someone who knew the document, keeps it from being new for
+        them but does not make it done (`domain.inbox.departure`); the next mark replaces it."""
         ...
 
     async def mark_all_seen(self, viewer: UserId, *, editor: UserId | None, at: datetime) -> int:

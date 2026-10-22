@@ -7,7 +7,7 @@ from collections.abc import Collection, Iterator
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from lekto.adapters.outbound.memory.database import DOCUMENTS, SPACES, USERS
+from lekto.adapters.outbound.memory.database import DOCUMENTS, SPACES, USERS, SeenMark
 from lekto.adapters.outbound.memory.rows import _copy
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import ConflictError
@@ -38,17 +38,17 @@ class MemoryInboxRepository:
         limit: int,
     ) -> list[InboxEntry]:
         found = [
-            (document, state, seen_at, confirmation)
-            for document, state, seen_at, confirmation in self._states(viewer, editor, since)
+            (document, state, mark, confirmation)
+            for document, state, mark, confirmation in self._states(viewer, editor, since)
             if (state.tab is not InboxTab.DONE if tab is None else state.tab is tab)
         ]
         if tab is InboxTab.DONE:  # by when they left, newest first, ties by id
             found.sort(key=lambda item: (_left(item[1]), item[0].id), reverse=True)
         entries: list[InboxEntry] = []
-        for document, state, seen_at, confirmation in found:
+        for document, state, mark, confirmation in found:
             if after is not None and not _before(document, state, after, tab):
                 continue
-            entries.append(InboxEntry(_copy(document), seen_at, confirmation))
+            entries.append(_entry(document, mark, confirmation))
             if len(entries) == limit:
                 break
         return entries
@@ -57,8 +57,8 @@ class MemoryInboxRepository:
         row = self._uow._row(DOCUMENTS, document)
         if row is None:
             return None
-        return InboxEntry(
-            _copy(row), self._marks().get((viewer, document)), self._confirmations().get(document)
+        return _entry(
+            row, self._marks().get((viewer, document)), self._confirmations().get(document)
         )
 
     async def count(
@@ -74,24 +74,26 @@ class MemoryInboxRepository:
     ) -> dict[DocumentId, datetime]:
         wanted = set(documents)
         return {
-            document: at
-            for (user, document), at in self._marks().items()
+            document: mark.at
+            for (user, document), mark in self._marks().items()
             if user == viewer and document in wanted and self._exists(document)
         }
 
-    async def mark_seen(self, viewer: UserId, document: DocumentId, at: datetime) -> None:
+    async def mark_seen(
+        self, viewer: UserId, document: DocumentId, at: datetime, *, silent: bool = False
+    ) -> None:
         self._marks()  # the unit is open
         self._refer(document)
         if self._uow._row(USERS, viewer) is None:
             raise ConflictError(f"seen mark of a user that does not exist: {viewer}")
-        self._uow._seen[(viewer, document)] = require_utc(at, "seen_at")
+        self._uow._seen[(viewer, document)] = SeenMark(require_utc(at, "seen_at"), silent)
 
     async def mark_all_seen(self, viewer: UserId, *, editor: UserId | None, at: datetime) -> int:
         marks = self._marks()
         new = [
             document.id
             for document in self._documents(editor)
-            if open_tab(document, marks.get((viewer, document.id))) is InboxTab.NEW
+            if open_tab(document, _at(marks.get((viewer, document.id)))) is InboxTab.NEW
         ]
         for document in new:
             await self.mark_seen(viewer, document, at)
@@ -113,8 +115,9 @@ class MemoryInboxRepository:
             if confirmation.at < before:
                 self._uow._confirmations[document] = None
                 removed += 1
-        for key, at in self._marks().items():
+        for key, mark in self._marks().items():
             row = self._uow._row(DOCUMENTS, key[1])
+            at = mark.at
             if at < before and (row is None or row.new_at is None or row.new_at > at):
                 self._uow._seen[key] = None
                 removed += 1
@@ -128,17 +131,22 @@ class MemoryInboxRepository:
 
     def _states(
         self, viewer: UserId, editor: UserId | None, since: datetime
-    ) -> Iterator[tuple[Document, InboxState, datetime | None, Confirmation | None]]:
+    ) -> Iterator[tuple[Document, InboxState, SeenMark | None, Confirmation | None]]:
         """The documents of `editor` that stand in `viewer`'s inbox, newest first, with where."""
         marks, confirmations = self._marks(), self._confirmations()
         for document in sorted(self._documents(editor), key=lambda row: row.id, reverse=True):
-            seen_at = marks.get((viewer, document.id))
+            mark = marks.get((viewer, document.id))
             confirmation = confirmations.get(document.id)
             state = inbox_state(
-                document, viewer=viewer, seen_at=seen_at, confirmation=confirmation, since=since
+                document,
+                viewer=viewer,
+                seen_at=_at(mark),
+                confirmation=confirmation,
+                since=since,
+                silent=mark is not None and mark.silent,
             )
             if state is not None:
-                yield document, state, seen_at, confirmation
+                yield document, state, mark, confirmation
 
     def _documents(self, editor: UserId | None) -> list[Document]:
         """The documents in the spaces `editor` edits (None: every one), as the unit sees them
@@ -160,15 +168,15 @@ class MemoryInboxRepository:
         if not self._exists(document):
             raise ConflictError(f"inbox mark of a document that does not exist: {document}")
 
-    def _marks(self) -> dict[SeenKey, datetime]:
+    def _marks(self) -> dict[SeenKey, SeenMark]:
         """The seen marks committed, with this unit's changes."""
         self._uow._check_open()
         marks = dict(self._uow._db.seen)
-        for key, at in self._uow._seen.items():
-            if at is None:
+        for key, mark in self._uow._seen.items():
+            if mark is None:
                 marks.pop(key, None)
             else:
-                marks[key] = at
+                marks[key] = mark
         return marks
 
     def _confirmations(self) -> dict[DocumentId, Confirmation]:
@@ -181,6 +189,16 @@ class MemoryInboxRepository:
             else:
                 confirmations[document] = confirmation
         return confirmations
+
+
+def _at(mark: SeenMark | None) -> datetime | None:
+    return None if mark is None else mark.at
+
+
+def _entry(
+    document: Document, mark: SeenMark | None, confirmation: Confirmation | None
+) -> InboxEntry:
+    return InboxEntry(_copy(document), _at(mark), confirmation, mark is not None and mark.silent)
 
 
 def _left(state: InboxState) -> datetime:

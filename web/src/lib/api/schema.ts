@@ -352,7 +352,7 @@ export interface paths {
 		post?: never;
 		/**
 		 * Delete a user
-		 * @description Admins only. Only a user whose personal space is empty and who is not the last editor of a space (409); removes their personal space with its rules, their memberships and their sign-in data. The documents they uploaded stay, without uploader.
+		 * @description Admins only. The body settles each space that stops it (`GET /users/{id}/removal`; one left open: 409 with `blocking_spaces`): the personal space's documents move into another space (`move_to`); a shared space the user alone edits goes if empty (`remove`), moves its documents and goes (`move_to`), or gets another editor (`editor`). Documents move as an admin moves them by hand. All or nothing. Removes the personal space with its rules, the user's memberships and sign-in data; the documents they uploaded stay, without uploader.
 		 */
 		delete: operations['delete_user_api_v1_users__id__delete'];
 		options?: never;
@@ -419,6 +419,26 @@ export interface paths {
 		 * @description Admins only. Needs a session; API tokens are refused (403).
 		 */
 		delete: operations['unlink_api_v1_users__id__oidc_delete'];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/users/{id}/removal': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * What stops deleting a user
+		 * @description Admins only. The spaces deleting the user must settle (Tobi, 22.10.2026): their personal space while it holds documents, and each shared space they alone edit. Empty: nothing stops it.
+		 */
+		get: operations['removal_api_v1_users__id__removal_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
 		options?: never;
 		head?: never;
 		patch?: never;
@@ -819,7 +839,7 @@ export interface paths {
 		get: operations['get_rule_api_v1_rules__id__get'];
 		/**
 		 * Change a rule
-		 * @description Makes a new version; earlier ones stay readable. A space rule: the editors of its space and admins (its references are checked for the caller, who saves it). A global rule: admins. The content is checked: operators fit the field and the field's data type, patterns compile (422, the message names the place, such as `conditions.all[1].any[0]` or `actions[2]`); contacts, types, tags, fields and spaces exist (404); a rule files only into spaces the caller may file into (403), or hands documents over into another user's personal space.
+		 * @description Makes a new version; earlier ones stay readable. With `scope` the rule moves into another space or between a space and global: the caller changes it where it is and edits where it goes (global: admins); the version names the space. A space rule: the editors of its space and admins (its references are checked for the caller, who saves it). A global rule: admins. The content is checked: operators fit the field and the field's data type, patterns compile (422, the message names the place, such as `conditions.all[1].any[0]` or `actions[2]`); contacts, types, tags, fields and spaces exist (404); a rule files only into spaces the caller may file into (403), or hands documents over into another user's personal space.
 		 */
 		put: operations['change_rule_api_v1_rules__id__put'];
 		post?: never;
@@ -2054,6 +2074,41 @@ export interface components {
 			 * @description Send the browser there.
 			 */
 			authorization_url: string;
+		};
+		/**
+		 * BlockingSpaceOut
+		 * @description A space that stops deleting a user until the deletion settles it.
+		 */
+		BlockingSpaceOut: {
+			/**
+			 * Space Id
+			 * Format: uuid
+			 */
+			space_id: string;
+			/**
+			 * Name
+			 * @description The stored name; a personal space is presented by `personal`.
+			 */
+			name: string;
+			/**
+			 * Personal
+			 * @description The user's personal space (it holds documents).
+			 */
+			personal: boolean;
+			/**
+			 * Documents
+			 * @description How many documents lie in it.
+			 */
+			documents: number;
+			/**
+			 * Choices
+			 * @description How it may be settled: `remove` (an empty space goes with the user), `move_to` (its documents move into another space, then it goes), `editor` (another user edits it, it stays).
+			 * @example [
+			 *       "move_to",
+			 *       "editor"
+			 *     ]
+			 */
+			choices: string[];
 		};
 		/**
 		 * BoxOut
@@ -4951,6 +5006,83 @@ export interface components {
 			finished_at: string | null;
 		};
 		/**
+		 * RuleChange
+		 * @description The new content of a rule, and, with `scope`, where it moves.
+		 * @example {
+		 *       "actions": [
+		 *         {
+		 *           "space_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b",
+		 *           "type": "set_space"
+		 *         },
+		 *         {
+		 *           "tag_ids": [
+		 *             "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b"
+		 *           ],
+		 *           "type": "add_tags"
+		 *         }
+		 *       ],
+		 *       "conditions": {
+		 *         "all": [
+		 *           {
+		 *             "field": "contact",
+		 *             "op": "is",
+		 *             "value": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b"
+		 *           },
+		 *           {
+		 *             "field": "text",
+		 *             "op": "contains",
+		 *             "value": "Rechnung"
+		 *           }
+		 *         ]
+		 *       },
+		 *       "name": "Telekom to household",
+		 *       "priority": 100,
+		 *       "triggers": [
+		 *         "ingest",
+		 *         "change"
+		 *       ]
+		 *     }
+		 */
+		RuleChange: {
+			/** Name */
+			name: string;
+			/**
+			 * Priority
+			 * @description Higher first; the order of the log and of suggestions. Conflicts are never decided by priority.
+			 * @default 100
+			 */
+			priority: number;
+			/**
+			 * Triggers
+			 * @description `ingest`: when a document arrives; `change`: when a person changes it.
+			 */
+			triggers?: components['schemas']['Trigger'][];
+			/**
+			 * Conditions
+			 * @description Nested at most 5 deep, at most 50 conditions.
+			 */
+			conditions: components['schemas']['AllGroup-Input'] | components['schemas']['AnyGroup-Input'];
+			/** Actions */
+			actions: (
+				| components['schemas']['SetSpaceAction']
+				| components['schemas']['SetContactAction']
+				| components['schemas']['SetDocumentTypeAction']
+				| components['schemas']['SetTopicAction']
+				| components['schemas']['SetTitleAction']
+				| components['schemas']['AddTagsAction']
+				| components['schemas']['RemoveTagsAction']
+				| components['schemas']['SetFieldAction']
+				| components['schemas']['ForceReviewAction']
+			)[];
+			/** @description Moves the rule: `space`, into `space_id` (one the caller edits; default: the caller's personal space); `global` (admins). Without it the rule stays where it is. */
+			scope?: components['schemas']['RuleScope'] | null;
+			/**
+			 * Space Id
+			 * @description With `scope: space`: the space the rule moves into.
+			 */
+			space_id?: string | null;
+		};
+		/**
 		 * RuleCreate
 		 * @example {
 		 *       "actions": [
@@ -5029,76 +5161,6 @@ export interface components {
 			 * @description The space a space rule belongs to; none for a global rule.
 			 */
 			space_id?: string | null;
-		};
-		/**
-		 * RuleDefinitionIn
-		 * @description The content of a rule; changing it makes a new version.
-		 * @example {
-		 *       "actions": [
-		 *         {
-		 *           "space_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b",
-		 *           "type": "set_space"
-		 *         },
-		 *         {
-		 *           "tag_ids": [
-		 *             "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b"
-		 *           ],
-		 *           "type": "add_tags"
-		 *         }
-		 *       ],
-		 *       "conditions": {
-		 *         "all": [
-		 *           {
-		 *             "field": "contact",
-		 *             "op": "is",
-		 *             "value": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b"
-		 *           },
-		 *           {
-		 *             "field": "text",
-		 *             "op": "contains",
-		 *             "value": "Rechnung"
-		 *           }
-		 *         ]
-		 *       },
-		 *       "name": "Telekom to household",
-		 *       "priority": 100,
-		 *       "triggers": [
-		 *         "ingest",
-		 *         "change"
-		 *       ]
-		 *     }
-		 */
-		RuleDefinitionIn: {
-			/** Name */
-			name: string;
-			/**
-			 * Priority
-			 * @description Higher first; the order of the log and of suggestions. Conflicts are never decided by priority.
-			 * @default 100
-			 */
-			priority: number;
-			/**
-			 * Triggers
-			 * @description `ingest`: when a document arrives; `change`: when a person changes it.
-			 */
-			triggers?: components['schemas']['Trigger'][];
-			/**
-			 * Conditions
-			 * @description Nested at most 5 deep, at most 50 conditions.
-			 */
-			conditions: components['schemas']['AllGroup-Input'] | components['schemas']['AnyGroup-Input'];
-			/** Actions */
-			actions: (
-				| components['schemas']['SetSpaceAction']
-				| components['schemas']['SetContactAction']
-				| components['schemas']['SetDocumentTypeAction']
-				| components['schemas']['SetTopicAction']
-				| components['schemas']['SetTitleAction']
-				| components['schemas']['AddTagsAction']
-				| components['schemas']['RemoveTagsAction']
-				| components['schemas']['SetFieldAction']
-				| components['schemas']['ForceReviewAction']
-			)[];
 		};
 		/** RuleEffectOut */
 		RuleEffectOut: {
@@ -5251,9 +5313,16 @@ export interface components {
 			rule_id: string;
 			/**
 			 * Version
-			 * @description Counts from 1; every change of the content adds one.
+			 * @description Counts from 1; every change of the content or of the space adds one.
 			 */
 			version: number;
+			/** @description Where the rule belonged with this version. */
+			scope: components['schemas']['RuleScope'];
+			/**
+			 * Space Id
+			 * @description The space the rule belonged to with this version; None: global. A version whose space differs from the one before moved the rule.
+			 */
+			space_id: string | null;
 			/**
 			 * Created At
 			 * Format: date-time
@@ -5517,6 +5586,41 @@ export interface components {
 		 * @enum {string}
 		 */
 		SpaceRole: 'read' | 'edit';
+		/**
+		 * SpaceSettlementIn
+		 * @description How deleting a user settles one of the spaces that stop it.
+		 * @example {
+		 *       "move_to": "01999d5e-9b8a-7c1e-b6a3-2f4d5e6f7a8b",
+		 *       "space_id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+		 *     }
+		 * @example {
+		 *       "remove": true,
+		 *       "space_id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8c"
+		 *     }
+		 */
+		SpaceSettlementIn: {
+			/**
+			 * Space Id
+			 * Format: uuid
+			 */
+			space_id: string;
+			/**
+			 * Remove
+			 * @description The empty space goes with the user.
+			 * @default false
+			 */
+			remove: boolean;
+			/**
+			 * Move To
+			 * @description Its documents move into this space (as an admin moves them by hand), then the space goes with the user.
+			 */
+			move_to?: string | null;
+			/**
+			 * Editor
+			 * @description This user edits the space from then on; it stays.
+			 */
+			editor?: string | null;
+		};
 		/** SpanOut */
 		SpanOut: {
 			/**
@@ -5914,6 +6018,37 @@ export interface components {
 			 */
 			active?: boolean | null;
 		};
+		/**
+		 * UserRemovalIn
+		 * @description The decisions on the spaces that stop deleting a user (`GET /users/{id}/removal`).
+		 * @example {
+		 *       "spaces": [
+		 *         {
+		 *           "move_to": "01999d5e-9b8a-7c1e-b6a3-2f4d5e6f7a8b",
+		 *           "space_id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+		 *         },
+		 *         {
+		 *           "editor": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
+		 *           "space_id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8c"
+		 *         }
+		 *       ]
+		 *     }
+		 */
+		UserRemovalIn: {
+			/**
+			 * Spaces
+			 * @description Each space once.
+			 */
+			spaces?: components['schemas']['SpaceSettlementIn'][];
+		};
+		/**
+		 * UserRemovalOut
+		 * @description What stops deleting a user until the deletion settles it.
+		 */
+		UserRemovalOut: {
+			/** Blocking Spaces */
+			blocking_spaces: components['schemas']['BlockingSpaceOut'][];
+		};
 		/** ValueCount */
 		ValueCount: {
 			/**
@@ -6198,6 +6333,12 @@ export interface components {
 			 * @default null
 			 */
 			open_fields: string[] | null;
+			/**
+			 * Blocking Spaces
+			 * @description Deleting a user: the spaces that need a decision (`DELETE /users/{id}`).
+			 * @default null
+			 */
+			blocking_spaces: components['schemas']['BlockingSpaceOut'][] | null;
 			/**
 			 * Second Factor Required
 			 * @description Sign-in: the password was right; send it again with `code` or `recovery_code`.
@@ -8154,7 +8295,11 @@ export interface operations {
 			};
 			cookie?: never;
 		};
-		requestBody?: never;
+		requestBody?: {
+			content: {
+				'application/json': components['schemas']['UserRemovalIn'] | null;
+			};
+		};
 		responses: {
 			/** @description Successful Response */
 			204: {
@@ -8226,6 +8371,23 @@ export interface operations {
 					 *       "title": "Conflict",
 					 *       "status": 409,
 					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8661,6 +8823,113 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['Removed'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	removal_api_v1_users__id__removal_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['UserRemovalOut'];
 				};
 			};
 			/** @description Unauthorized */
@@ -13034,7 +13303,7 @@ export interface operations {
 		};
 		requestBody: {
 			content: {
-				'application/json': components['schemas']['RuleDefinitionIn'];
+				'application/json': components['schemas']['RuleChange'];
 			};
 		};
 		responses: {

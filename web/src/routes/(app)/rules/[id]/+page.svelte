@@ -23,6 +23,7 @@
 	import { loadLookup, spaceLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { canApplyRule, canChangeRule } from '#lib/permissions.ts';
+	import { moves, placeLabel } from '#lib/rules/places.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 
@@ -45,6 +46,9 @@
 		return space ? spaceLabel(space, lookup?.users ?? [], session.user?.id) : m.rule_unknown();
 	});
 	const spaces = $derived(lookup?.spaces ?? []);
+	const moved = $derived(moves(versions));
+	const placed = (place: string) =>
+		placeLabel(place, spaces, lookup?.users ?? [], session.user?.id);
 
 	// Again after a master data dialog saved: a title pattern's rule follows its type.
 	$effect(() => {
@@ -191,6 +195,12 @@
 								user: userName(version.created_by)
 							})}
 						</span>
+						{#if moved.get(version.version)}
+							{@const [from, to] = moved.get(version.version) ?? ['', '']}
+							<span class="text-muted-foreground"
+								>· {m.rule_version_moved({ from: placed(from), to: placed(to) })}</span
+							>
+						{/if}
 					</li>
 				{/each}
 			</ul>

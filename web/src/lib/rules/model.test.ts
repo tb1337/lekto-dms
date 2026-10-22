@@ -39,6 +39,7 @@ const failed = (status: number, detail: string, spaceId: string | null = null) =
 			existing_document_id: null,
 			space_id: spaceId,
 			open_fields: null,
+			blocking_spaces: null,
 			second_factor_required: null
 		},
 		null

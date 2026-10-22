@@ -1974,15 +1974,19 @@ class MigrationSuite:
     async def test_decided_spaces_are_kept_and_spaces_described(
         self, empty_database: Database
     ) -> None:
-        """Revision 0034: a confirmed document and one a person moved have a decided space (the
-        later of both times), a document nobody placed has none; spaces get a description.
-        The downgrade drops both columns."""
+        """Revision 0034: a person's decisions on the space (an inbox confirmation, a move, a
+        space chosen on upload) and a document taken over from another system have a decided
+        space, at the latest decision; a metadata confirmation alone decides nothing, and
+        rules that filed the document after the decision make it undecided again. Spaces get
+        a description. The downgrade drops both columns."""
         await migrate(empty_database, "0033")
         async with empty_database.reading() as connection:
             schema = await connection.run_sync(_schema)
-        ids = {name: new_id() for name in ("user", "home", "confirmed", "moved", "both", "plain")}
+        names = ("user", "home", "confirmed", "inbox", "moved", "migrated", "refiled", "kept")
+        ids = {name: new_id() for name in (*names, "plain")}
         documents = _before_0034(t.documents)
-        log = {"node": "apply_rules", "model_version": "person:space", "input": {}, "output": {}}
+        filed = {"rules": [{"applied": [{"field": "space", "old": "a", "new": "b"}]}]}
+        tagged = {"rules": [{"applied": [{"field": "tags", "old": None, "new": "t"}]}]}
         await _insert(
             empty_database,
             [
@@ -2008,33 +2012,45 @@ class MigrationSuite:
                             "space_id": ids["home"],
                             "sha256": str(number) * 64,
                             "confirmed_at": confirmed,
+                            "channel": channel,
                         },
                     )
-                    for number, (name, confirmed) in enumerate(
+                    for number, (name, confirmed, channel) in enumerate(
                         (
-                            ("confirmed", NOW),
-                            ("moved", None),
-                            ("both", NOW + timedelta(hours=2)),
-                            ("plain", None),
+                            ("confirmed", NOW, "api"),
+                            ("inbox", NOW, "api"),
+                            ("moved", None, "api"),
+                            ("migrated", NOW, "migration"),
+                            ("refiled", NOW, "api"),
+                            ("kept", NOW, "api"),
+                            ("plain", None, "api"),
                         )
                     )
                 ),
                 *(
                     (
                         t.processing_log,
-                        log
-                        | {
+                        {
                             "document_id": ids[name],
+                            "node": "apply_rules",
+                            "model_version": version,
+                            "input": {},
+                            "output": output,
                             "run": 1,
                             "outcome": "ok",
                             "pipeline_version": "test",
-                            "started_at": at,
+                            "started_at": NOW + timedelta(hours=hours),
                         },
                     )
-                    for name, at in (
-                        ("moved", NOW + timedelta(hours=1)),
-                        ("moved", NOW + timedelta(hours=3)),
-                        ("both", NOW + timedelta(hours=1)),
+                    for name, version, hours, output in (
+                        ("confirmed", "rules:change", 1, {}),
+                        ("inbox", "person", 1, {}),
+                        ("moved", "person:space", 1, {}),
+                        ("moved", "person:space", 3, {}),
+                        ("refiled", "person", 1, {}),
+                        ("refiled", "rules", 2, filed),
+                        ("kept", "person", 1, {}),
+                        ("kept", "rules", 2, tagged),
                     )
                 ),
             ],
@@ -2051,9 +2067,12 @@ class MigrationSuite:
             )
             described = (await connection.execute(select(t.spaces.c.description))).scalars().all()
         assert decided == {
-            ids["confirmed"]: NOW,
+            ids["confirmed"]: None,
+            ids["inbox"]: NOW + timedelta(hours=1),
             ids["moved"]: NOW + timedelta(hours=3),
-            ids["both"]: NOW + timedelta(hours=2),
+            ids["migrated"]: NOW,
+            ids["refiled"]: None,
+            ids["kept"]: NOW + timedelta(hours=1),
             ids["plain"]: None,
         }
         assert described == [None]

@@ -18,8 +18,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 
-# Output kept for error messages.
-_TAIL = 4000
+# Output kept for error messages, unless the caller asks for more (`tail`).
+TAIL = 4000
 # The prefix of Lekto's configuration variables (`composition/settings.py`); none of them
 # reaches a child.
 _SETTINGS_PREFIX = "LEKTO_"
@@ -29,7 +29,7 @@ _SETTINGS_PREFIX = "LEKTO_"
 class Completed:
     returncode: int
     stdout: str
-    stderr: str  # the last few thousand characters
+    stderr: str  # the last `tail` characters
 
 
 async def run_process(
@@ -37,10 +37,11 @@ async def run_process(
     *,
     timeout: timedelta,
     env: Mapping[str, str] | None = None,
+    tail: int = TAIL,
 ) -> Completed:
     """Run `args` and wait for it. TimeoutError after `timeout`; the process group is killed
     then, and also when the caller is cancelled. `env` adds to the child's environment (see the
-    module)."""
+    module); `tail` is how much of the end of its error output is kept."""
     process = await asyncio.create_subprocess_exec(
         *args,
         stdin=asyncio.subprocess.DEVNULL,
@@ -65,7 +66,7 @@ async def run_process(
     return Completed(
         returncode=process.returncode,
         stdout=stdout.decode(errors="replace"),
-        stderr=stderr.decode(errors="replace")[-_TAIL:],
+        stderr=stderr.decode(errors="replace")[-tail:],
     )
 
 

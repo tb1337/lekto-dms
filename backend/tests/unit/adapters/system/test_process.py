@@ -39,3 +39,13 @@ async def test_a_child_that_takes_too_long_is_killed() -> None:
             [sys.executable, "-I", "-c", "import time; time.sleep(30)"],
             timeout=timedelta(milliseconds=200),
         )
+
+
+async def test_the_end_of_the_error_output_is_kept_as_far_as_asked() -> None:
+    script = "import sys; sys.stderr.write('a' * 5000 + 'b' * 5000)"
+    default = await run_process([sys.executable, "-c", script], timeout=timedelta(seconds=30))
+    assert default.stderr == "b" * 4000
+    more = await run_process(
+        [sys.executable, "-c", script], timeout=timedelta(seconds=30), tail=8000
+    )
+    assert more.stderr == "a" * 3000 + "b" * 5000

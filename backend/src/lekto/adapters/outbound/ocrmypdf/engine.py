@@ -129,6 +129,10 @@ _VISION_ERROR = re.compile(r"^\S*VisionError: (.+)$", re.M)
 PLUGIN = "lekto.adapters.outbound.ocrmypdf.plugin"
 """The plugin OCRmyPDF loads to read pages with the vision language model."""
 _NOTE_MAX = 300
+# Characters of OCRmyPDF's output kept: with `-v1` a document of a few pages writes tens of
+# thousands, and Ghostscript names why PDF/A failed far before the end (a font with CID 0 some
+# 6,600 characters before it); the reasons and the colour check read it.
+OUTPUT_KEPT = 256_000
 
 A4_LONG_EDGE = 11.69  # inches
 PLAUSIBLE_PAGE = (3.0, 17.0)  # long edge in inches: from a receipt to A3
@@ -347,7 +351,10 @@ class OcrmypdfEngine:
         if invalidate:
             args.append("--invalidate-digital-signatures")
         completed = await run_process(
-            [*args, str(source), str(output)], timeout=timeout, env={**env, "TMPDIR": str(work)}
+            [*args, str(source), str(output)],
+            timeout=timeout,
+            env={**env, "TMPDIR": str(work)},
+            tail=OUTPUT_KEPT,
         )
         # Where it kept the files is no reason for anything.
         return replace(completed, stderr=_KEPT.sub("", completed.stderr))

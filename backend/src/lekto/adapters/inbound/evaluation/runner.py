@@ -287,7 +287,7 @@ async def _receive(
     on a fixed grid: the words a label check looks at."""
     with tempfile.TemporaryDirectory(prefix="lekto-evaluation-") as directory:
         path = Path(directory) / "case.pdf"
-        # A distinct file per document: a space cannot hold the same file twice.
+        # A distinct file per document: every file exists once per installation.
         path.write_bytes(f"%PDF-1.7\n% evaluation {marker}\n%%EOF\n".encode())
         received = await pipeline.receive(
             actor,

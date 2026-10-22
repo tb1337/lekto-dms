@@ -280,18 +280,18 @@ class PipelineService:
 
         The media type is recognised from the content; an unsupported type raises
         UnsupportedMediaTypeError and nothing is stored. Without `space` the document goes to
-        the uploader's personal space; otherwise the caller needs to edit `space`. A file the
-        uploader can read (`Reach`), or one in the target space, is rejected with
-        DuplicateDocumentError (naming it if the caller may read it), also if the same file
-        arrives twice at the same moment; a copy they cannot read does not count. An original
-        that is stored already (the same file in another space) is not stored again.
+        the uploader's personal space; otherwise the caller needs to edit `space`. Every file
+        exists once per installation: one that lies in Lekto already is rejected with
+        DuplicateDocumentError (naming the document if the caller may read it), also if the
+        same file arrives twice at the same moment. An original left in the store (its document
+        deleted, its files not removed yet) is not stored again.
         `channel`: how the document arrived (for rules).
 
         `uploaded_by`: an active admin may receive the document on behalf of another active
-        user, who is named as its uploader (their personal space and their spaces for the
-        duplicate check). `imported`: metadata of a document taken over from another system, for
-        an active admin and the channel `migration` only; it is checked against the master data
-        now and applied by the classification nodes instead of the language model.
+        user, who is named as its uploader (the document goes to their personal space unless
+        `space` says otherwise). `imported`: metadata of a document taken over from another
+        system, for an active admin and the channel `migration` only; it is checked against the
+        master data now and applied by the classification nodes instead of the language model.
         """
         started = self._clock.now()
         sha256 = file.sha256

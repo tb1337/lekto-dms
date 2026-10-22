@@ -20,7 +20,8 @@
 	} from '#lib/rules/model.ts';
 
 	// The form of a rule: name, priority, when it runs, its conditions and actions. The page
-	// saves it; `errors` are by key (see `validate` and `saveErrors`).
+	// saves it; `errors` are by key (see `validate` and `saveErrors`). It does not save while a
+	// period's text cannot be read (`unreadable`, by key): the model then is not what is shown.
 	let {
 		model,
 		scope,
@@ -57,6 +58,12 @@
 		...actionTypesFor(scope).map((type) => ({ value: type, label: ACTION_LABELS[type]() }))
 	]);
 	let adding = $state('');
+	let unreadable = $state<Record<string, boolean>>({});
+	const blocked = $derived(Object.values(unreadable).some(Boolean));
+
+	function mark(key: string, cannotRead: boolean) {
+		unreadable[key] = cannotRead;
+	}
 
 	function add(type: string) {
 		if (type) model.actions.push(newAction(type as ActionType));
@@ -75,6 +82,7 @@
 	novalidate
 	onsubmit={(event) => {
 		event.preventDefault();
+		if (blocked) return;
 		onsubmit();
 	}}
 >
@@ -135,7 +143,7 @@
 
 	<section class="flex flex-col gap-3" aria-labelledby="rule-conditions">
 		<h2 id="rule-conditions" class="text-lg font-semibold">{m.rule_conditions()}</h2>
-		<ConditionGroup group={model.conditions} {model} {lookup} {errors} />
+		<ConditionGroup group={model.conditions} {model} {lookup} {errors} onunreadable={mark} />
 	</section>
 
 	<section class="flex flex-col gap-3" aria-labelledby="rule-actions">
@@ -146,6 +154,7 @@
 				{lookup}
 				{spaces}
 				error={errors[action.key]}
+				onunreadable={(unreadable) => mark(action.key, unreadable)}
 				onremove={() => model.actions.splice(index, 1)}
 				onup={index > 0 ? () => move(model.actions, index, -1) : undefined}
 				ondown={index < model.actions.length - 1 ? () => move(model.actions, index, 1) : undefined}
@@ -166,7 +175,7 @@
 		{#if general}<p class="text-sm text-destructive" role="alert">{general}</p>{/if}
 		<p class="text-sm text-muted-foreground">{m.rule_save_hint()}</p>
 		<div class="flex flex-wrap gap-2">
-			<Button type="submit" disabled={busy}>{m.rule_save()}</Button>
+			<Button type="submit" disabled={busy || blocked}>{m.rule_save()}</Button>
 			<a href={cancelHref} class="inline-flex h-9 items-center px-3 text-sm hover:underline">
 				{m.cancel()}
 			</a>

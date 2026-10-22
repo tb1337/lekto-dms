@@ -123,6 +123,10 @@
 	let preview = $state<Preview | null>(null);
 	let patch = $state<Patch>({});
 	let fieldErrors = $state<Record<string, string>>({});
+	// Period fields whose text cannot be read (by field id): their value is not what they show,
+	// so the form does not save or confirm while there is one (`PeriodInput`).
+	let unreadable = $state<Record<string, boolean>>({});
+	const blocked = $derived(Object.values(unreadable).some(Boolean));
 	let formError = $state<string | null>(null);
 
 	const evidence = $derived(fieldEvidence(review));
@@ -361,7 +365,7 @@
 
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
-		if (busy || !editable) return;
+		if (busy || !editable || blocked) return;
 		if (confirming) await confirm();
 		else await dryRun();
 	}
@@ -826,6 +830,7 @@
 					id="field-{field.id}"
 					disabled={!editable}
 					error={fieldErrors[`field:${field.id}`]}
+					onunreadable={(cannotRead) => (unreadable[field.id] = cannotRead)}
 				/>
 			</FieldShell>
 		{/snippet}
@@ -878,7 +883,7 @@
 				</label>
 			{/if}
 			<div class="flex gap-2">
-				<Button type="submit" disabled={busy}>{m.review_confirm()}</Button>
+				<Button type="submit" disabled={busy || blocked}>{m.review_confirm()}</Button>
 				<Button type="button" variant="ghost" disabled={busy} onclick={reset}>
 					{m.review_reset()}
 				</Button>
@@ -886,7 +891,7 @@
 		{:else}
 			<p class="text-sm text-muted-foreground">{m.edit_hint()}</p>
 			<div class="flex gap-2">
-				<Button type="submit" disabled={!dirty || busy}>{m.edit_review()}</Button>
+				<Button type="submit" disabled={!dirty || busy || blocked}>{m.edit_review()}</Button>
 				<Button type="button" variant="ghost" disabled={!dirty || busy} onclick={reset}>
 					{m.edit_discard()}
 				</Button>

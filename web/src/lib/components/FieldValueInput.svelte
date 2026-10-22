@@ -8,19 +8,22 @@
 	import { m } from '#lib/paraglide/messages.js';
 
 	// The input for one field, by its data type; the caller labels it (`id`). An empty field
-	// removes the value.
+	// removes the value. `onunreadable` says while a period's text cannot be read (the value
+	// then is not what the field shows; see `PeriodInput`).
 	let {
 		field,
 		value = $bindable(),
 		error,
 		id,
-		disabled = false
+		disabled = false,
+		onunreadable
 	}: {
 		field: FieldDefinition;
 		value: InputValue;
 		error?: string;
 		id: string;
 		disabled?: boolean;
+		onunreadable?: (unreadable: boolean) => void;
 	} = $props();
 
 	const yesNo = $derived([
@@ -53,7 +56,7 @@
 		/>
 	</div>
 {:else if field.data_type === 'period' && isPeriod(value)}
-	<PeriodInput bind:value {id} {disabled} invalid={Boolean(error)} />
+	<PeriodInput bind:value {id} {disabled} invalid={Boolean(error)} {onunreadable} />
 {:else if field.data_type === 'boolean' && typeof value === 'string'}
 	<Select {id} bind:value {disabled} options={yesNo} aria-invalid={error ? true : undefined} />
 {:else if field.data_type === 'choice' && typeof value === 'string'}

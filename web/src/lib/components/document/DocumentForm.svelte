@@ -834,6 +834,9 @@
 						<p class="text-sm text-muted-foreground">
 							{suggestionText(spaceSuggestion, document.space_id, lookup)}
 						</p>
+						{#if !spaceChoices.some((option) => option.value === spaceSuggestion)}
+							<p class="text-sm text-muted-foreground">{m.space_suggestion_unavailable()}</p>
+						{/if}
 					{/if}
 				</FieldShell>
 			{/if}

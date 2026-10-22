@@ -65,6 +65,16 @@ describe('the suggested space', () => {
 		expect(onlySpace([node([{ field: 'space', suggestion: 'house' }])])).toBe(true);
 		expect(onlySpace([node([{ field: 'space' }, { field: 'contact' }])])).toBe(false);
 		expect(onlySpace([])).toBe(false);
+		// A failed node (no fields) is the point to show, not the suggestion beside it.
+		const failed = { node: 'ocr', outcome: 'failed', reason: 'broken', fields: [] };
+		expect(onlySpace([failed as unknown as OpenNode, node([{ field: 'space' }])])).toBe(false);
+	});
+
+	it('does not name a space the caller cannot see', () => {
+		expect(suggestionText('elsewhere', 'mine', lookup)).toBe(
+			m.space_suggestion({ space: m.space_unseen() })
+		);
+		expect(suggestionText('elsewhere', 'mine', lookup)).not.toContain('elsewhere');
 	});
 
 	it('names who sees the document there anew', () => {

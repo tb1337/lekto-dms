@@ -19,10 +19,20 @@ export function suggestedSpace(open: readonly OpenNode[]): string | null {
 	return null;
 }
 
-/** Whether the only open field is the suggested space. */
+/** Whether the only open point is the suggested space (a failed node is one, without fields). */
 export function onlySpace(open: readonly OpenNode[]): boolean {
+	if (open.some((node) => node.outcome === 'failed')) return false;
 	const fields = open.flatMap((node) => node.fields);
 	return fields.length > 0 && fields.every((check) => check.field === 'space');
+}
+
+/** Whether the caller can tell which space `target` is: one of theirs, or a user's personal one. */
+export function knownSpace(target: string, lookup: Lookup | null): boolean {
+	if (!lookup) return false;
+	return (
+		lookup.spaces.some((space) => space.id === target) ||
+		lookup.users.some((user) => user.personal_space_id === target)
+	);
 }
 
 /** The members of `target` who are no members of `current`, by name; for another user's
@@ -41,8 +51,10 @@ export function newReaders(target: string, current: string, lookup: Lookup | nul
 	return holder && !already.has(holder.id) ? [holder.username] : [];
 }
 
-/** "Vorschlag: Haushalt (sichtbar für anna)": the suggested space and who sees it there anew. */
+/** "Vorschlag: Haushalt (sichtbar für anna)": the suggested space and who sees it there anew;
+ * a space the caller cannot see is not named (its id says nothing to them). */
 export function suggestionText(target: string, current: string, lookup: Lookup | null): string {
+	if (!knownSpace(target, lookup)) return m.space_suggestion({ space: m.space_unseen() });
 	const space = describeValue(target, lookup);
 	const names = newReaders(target, current, lookup);
 	return names.length > 0

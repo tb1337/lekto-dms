@@ -251,6 +251,8 @@
 	"move_hand_over": "Übergeben an {name}",
 	"space_suggestion": "Vorschlag: {space}",
 	"space_suggestion_for": "Vorschlag: {space} (sichtbar für {names})",
+	"space_suggestion_unavailable": "Dorthin kannst du es nicht legen; Bestätigen lässt es, wo es liegt.",
+	"space_unseen": "ein Space, den du nicht siehst",
 	"visible_to": "sichtbar für {names}",
 	"visible_to_you": "nur für dich sichtbar",
 	"visible_to_readers_later": "{names} lesen es, sobald es grün ist",

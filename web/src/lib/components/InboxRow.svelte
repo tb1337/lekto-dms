@@ -16,9 +16,9 @@
 	import { onlySpace, suggestedSpace, suggestionText } from '#lib/space-suggestion.ts';
 
 	// One document of the inbox, by where it stands: in processing with its progress; yellow or
-	// red with its lane and why (a suggested space as the suggestion); new calmly, marked and with "seen" (no call to act); done with
-	// how, when and by whom, and "new again" for one seen. The actions stand beside the row's
-	// link; on a phone as icons a finger can hit.
+	// red with its lane and why (a suggested space as the suggestion); new calmly, marked and
+	// with "seen" (no call to act); done with how, when and by whom, and "new again" for one
+	// seen. The actions stand beside the row's link; on a phone as icons a finger can hit.
 	let {
 		item,
 		lookup,

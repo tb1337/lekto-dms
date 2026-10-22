@@ -251,6 +251,8 @@
 	"move_hand_over": "Hand over to {name}",
 	"space_suggestion": "Suggested: {space}",
 	"space_suggestion_for": "Suggested: {space} (visible to {names})",
+	"space_suggestion_unavailable": "You cannot file it there; confirming leaves it where it is.",
+	"space_unseen": "a space you cannot see",
 	"visible_to": "visible to {names}",
 	"visible_to_you": "visible to you only",
 	"visible_to_readers_later": "{names} read it once it is green",

@@ -577,12 +577,12 @@ describe('DocumentForm', () => {
 				{
 					node: 'judge',
 					outcome: 'uncertain',
-					reason: "space: suggests the space 'Haushalt', which shows it to anna",
+					reason: 'space: suggests another space, which shows it to more people',
 					fields: [
 						check('space', {
 							outcome: 'uncertain',
 							confidence: 0.89,
-							reason: "suggests the space 'Haushalt', which shows it to anna",
+							reason: 'suggests another space, which shows it to more people',
 							suggestion: SPACE
 						})
 					]

@@ -26,29 +26,46 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 
 # SQLite engine settings, applied to every connection.
 SQLITE_BUSY_TIMEOUT = timedelta(seconds=15)
+_SQLITE_BUSY = f"PRAGMA busy_timeout={int(SQLITE_BUSY_TIMEOUT.total_seconds() * 1000)}"
 _SQLITE_PRAGMAS = (
     "PRAGMA journal_mode=WAL",  # readers do not block the writer and vice versa
     "PRAGMA synchronous=NORMAL",  # durable with WAL except on power loss, much faster
     "PRAGMA foreign_keys=ON",
-    f"PRAGMA busy_timeout={int(SQLITE_BUSY_TIMEOUT.total_seconds() * 1000)}",
+    _SQLITE_BUSY,
 )
+# A read-only connection leaves the journal mode alone: switching a fresh file to WAL is a write.
+_SQLITE_READER_PRAGMAS = (_SQLITE_BUSY,)
 
 
 class Database:
     """An async engine for SQLite or Postgres. Create it with `sqlite()` or `postgres()`."""
 
-    def __init__(self, engine: AsyncEngine) -> None:
+    def __init__(self, engine: AsyncEngine, sqlite_path: Path | None = None) -> None:
         self.engine = engine
+        self.sqlite_path = sqlite_path  # the file of a SQLite database
         # Tasks holding SQLite's write lock.
         self._writers: weakref.WeakSet[asyncio.Task[Any]] = weakref.WeakSet()
 
     @classmethod
-    def sqlite(cls, path: Path) -> "Database":
+    def sqlite(cls, path: Path, *, read_only: bool = False) -> "Database":
         """A SQLite database file (created by `migrate`). Only on a local volume: WAL mode
-        does not work on network file systems."""
-        engine = create_async_engine(URL.create("sqlite+aiosqlite", database=str(path)))
-        event.listen(engine.sync_engine, "connect", _configure_sqlite)
-        return cls(engine)
+        does not work on network file systems.
+
+        `read_only`, for the schema check: the file is opened read-only and its journal mode is
+        left alone, so a check never writes. On a fresh file the switch to WAL is a write; a
+        check polling while the migration created the file switched it too, and SQLite answers
+        the one promoting its read to a write with SQLITE_BUSY at once instead of waiting (it
+        would deadlock), which failed the migration."""
+        if read_only:
+            url = URL.create(
+                "sqlite+aiosqlite", database=f"file:{path}", query={"mode": "ro", "uri": "true"}
+            )
+            engine = create_async_engine(url)
+            event.listen(engine.sync_engine, "connect", _configure_sqlite_reader)
+        else:
+            engine = create_async_engine(URL.create("sqlite+aiosqlite", database=str(path)))
+            event.listen(engine.sync_engine, "connect", _configure_sqlite)
+        return cls(engine, sqlite_path=path)
 
     @classmethod
     def postgres(cls, *, host: str, port: int, name: str, user: str, password: str) -> "Database":
@@ -117,11 +134,19 @@ class Database:
 
 
 def _configure_sqlite(dbapi_connection: Any, _record: object) -> None:
+    _apply(dbapi_connection, _SQLITE_PRAGMAS)
+
+
+def _configure_sqlite_reader(dbapi_connection: Any, _record: object) -> None:
+    _apply(dbapi_connection, _SQLITE_READER_PRAGMAS)
+
+
+def _apply(dbapi_connection: Any, pragmas: tuple[str, ...]) -> None:
     # Autocommit in the driver: the adapter emits BEGIN itself (see the module docstring).
     dbapi_connection.isolation_level = None
     cursor = dbapi_connection.cursor()
     try:
-        for pragma in _SQLITE_PRAGMAS:
+        for pragma in pragmas:
             cursor.execute(pragma)
     finally:
         cursor.close()

@@ -320,6 +320,26 @@ def test_check_schema_rejects_a_database_of_a_newer_version(
     assert any("newer version" in event for event in _events(capsys))
 
 
+def test_check_schema_only_reads_a_sqlite_file(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    # A missing file stays missing, and so does its directory: the migration creates them.
+    missing = tmp_path / "data" / "lekto.db"
+    monkeypatch.setenv("LEKTO_DB_SQLITE_PATH", str(missing))
+    assert main(["check-schema"]) == 1
+    assert not missing.parent.exists()
+
+    # A fresh file the migration just created is not switched to WAL by the check: that switch
+    # is a write, and racing the migration's own switch failed it ("database is locked").
+    fresh = tmp_path / "fresh.db"
+    fresh.touch()
+    monkeypatch.setenv("LEKTO_DB_SQLITE_PATH", str(fresh))
+    assert main(["check-schema"]) == 1
+    assert fresh.stat().st_size == 0
+    assert not (tmp_path / "fresh.db-wal").exists()
+    capsys.readouterr()
+
+
 def test_check_schema_waits_for_the_migration(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:

@@ -8,9 +8,11 @@ from lekto.adapters.outbound.sql import Database, SchemaState, migrate, schema_s
 from lekto.composition.settings import Settings
 
 
-def open_database(settings: Settings) -> Database:
+def open_database(settings: Settings, *, read_only: bool = False) -> Database:
+    """The configured database; `read_only` opens a SQLite file read-only (the schema check,
+    which must not write while another process migrates)."""
     if settings.db_type == "sqlite":
-        return Database.sqlite(settings.db_sqlite_path)
+        return Database.sqlite(settings.db_sqlite_path, read_only=read_only)
     # Settings guarantee these for postgres.
     assert settings.db_host and settings.db_name and settings.db_user and settings.db_password
     return Database.postgres(
@@ -41,8 +43,9 @@ log = logging.getLogger(__name__)
 async def check_schema(settings: Settings, *, wait: float = 0) -> SchemaState:
     """The schema's state; with `wait` seconds, keep looking while it is `outdated` or the
     database is not reachable yet (the API of another container may still be migrating). A
-    database that is `newer` than this version never becomes right and is returned at once."""
-    database = open_database(settings)
+    database that is `newer` than this version never becomes right and is returned at once.
+    It only reads: a SQLite file is opened read-only (`Database.sqlite`)."""
+    database = open_database(settings, read_only=True)
     deadline = time.monotonic() + wait
     next_report = 0.0
     try:

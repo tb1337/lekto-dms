@@ -40,6 +40,8 @@
 		waiting: m.node_status_waiting
 	};
 
+	// A label inside a segment: dark on the coloured ones, the text colour on the pale running one.
+	const label = (tone: BandTone) => (tone === 'running' ? 'text-foreground' : 'text-card');
 	const columns = $derived(phases.map((phase) => `${phase.width}fr`).join(' '));
 	const duration = (step: BandStep) =>
 		step.seconds === null ? null : formatDuration(step.seconds);
@@ -101,11 +103,16 @@
 								title={title(main)}
 							>
 								{#if roomy(phase, group.weight) && beside.length === 0}
-									<span class="truncate px-2 text-[11px] font-semibold text-card">
+									<span class={cn('truncate px-2 text-[11px] font-semibold', label(main.tone))}>
 										{[NODE_LABELS[main.node](), duration(main)].filter(Boolean).join(' ')}
 									</span>
 								{:else if roomy(phase, group.weight)}
-									<span class="truncate px-2 text-[10px] leading-none font-semibold text-card">
+									<span
+										class={cn(
+											'truncate px-2 text-[10px] leading-none font-semibold',
+											label(main.tone)
+										)}
+									>
 										{[NODE_LABELS[main.node](), duration(main)].filter(Boolean).join(' ')}
 									</span>
 								{/if}

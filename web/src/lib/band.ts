@@ -67,12 +67,15 @@ function levelsOf(graph: readonly GraphNode[]): Map<Node, number> {
  * The band of a run's steps: its phases with their part of the bar and their steps in groups.
  * Steps the run kept from an earlier one take no time in it; a phase of only such steps keeps
  * the smallest part and says so (`carried`). Skipped steps and steps that did not run are left
- * out; a phase without any step at all too.
+ * out; a phase without any step at all too. `timed` false: which steps the run kept is not
+ * known (no log yet, or a reader's view of a later run), so their times would mix in an earlier
+ * run's: the band tells only how the steps stand, steps one after another in equal parts.
  */
 export function bandOf(
 	steps: readonly Step[],
 	graph: readonly GraphNode[],
-	now: Date
+	now: Date,
+	timed = true
 ): BandPhase[] {
 	const level = levelsOf(graph);
 	const phases = PHASES.map((phase) => {
@@ -89,7 +92,7 @@ export function bandOf(
 		}
 		const groups = [...byLevel.entries()]
 			.sort(([a], [b]) => a - b)
-			.map(([, members]) => group(members, now));
+			.map(([, members]) => group(members, now, timed));
 		const seconds = groups.reduce((sum, entry) => sum + entry.weight, 0);
 		return { phase, groups, seconds, carried: own.length === 0 && carried };
 	}).filter((entry) => entry.groups.length > 0 || entry.carried);
@@ -102,14 +105,14 @@ export function bandOf(
 	}));
 }
 
-function group(members: readonly Step[], now: Date): BandGroup {
-	const timed = members.map((step) => {
+function group(members: readonly Step[], now: Date, timed: boolean): BandGroup {
+	const steps = members.map((step) => {
 		const tone = toneOf(step) as BandTone;
-		const seconds = step.state ? durationSeconds(step.state, now) : null;
+		const seconds = timed && step.state ? durationSeconds(step.state, now) : null;
 		return { node: step.node, tone, seconds: tone === 'waiting' ? null : seconds };
 	});
 	const length = (step: { seconds: number | null }) => step.seconds ?? WAITING_SECONDS;
-	const sorted = [...timed].sort((a, b) => length(b) - length(a));
+	const sorted = [...steps].sort((a, b) => length(b) - length(a));
 	const longest = Math.max(length(sorted[0]), Number.EPSILON);
 	return {
 		weight: Math.max(length(sorted[0]), WAITING_SECONDS / 10),

@@ -121,4 +121,16 @@ describe('bandOf', () => {
 		]);
 		expect(band[0].groups).toEqual([]);
 	});
+
+	it('tells only how the steps stand while it is not known which ones the run kept', () => {
+		// Run 3 without its log: receiving is run 1's, hours earlier; its time must not count.
+		const steps = stepsFrom([ran('receive', -8 * 3600, 0.1), ran('ocr', 0.1, 4)], [], 3);
+		const band = bandOf(steps, graph, new Date(), false);
+		const read = band[0];
+		expect(read.groups.flatMap((group) => group.steps.map((step) => step.seconds))).toEqual([
+			null,
+			null
+		]);
+		expect(read.groups.map((group) => group.weight)).toEqual([1, 1]);
+	});
 });

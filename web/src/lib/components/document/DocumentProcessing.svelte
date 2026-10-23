@@ -173,10 +173,14 @@
 		)
 	);
 	const counts = $derived(countsOf(steps));
+	// Whether the steps the shown run kept from an earlier one are known: by the log (a reader
+	// never loads it, an editor until it is there), or in the first run, which kept none.
+	// Otherwise their times would count as this run's: no times then.
+	const timed = $derived(entries !== null || shownRun === 1);
 	const changes = $derived(
 		manageable && entries !== null ? changesOf(entries, graph, shownRun, runs, lookup) : null
 	);
-	const bandPhases = $derived(bandOf(steps, graph, now));
+	const bandPhases = $derived(bandOf(steps, graph, now, timed));
 	// The verdict the shown run worked with: the judge's own entry in it, or the one it kept;
 	// after a person's confirmation (their entry for the judge, without checks) the latest
 	// verdict before. None while the judge is still to run again.
@@ -263,7 +267,7 @@
 	}
 
 	function phaseDuration(phase: readonly Step[]): string | null {
-		if (entries === null && !isCurrent) return null;
+		if (!timed) return null;
 		const value = phaseSeconds(phase, now);
 		return value === null ? null : formatDuration(value);
 	}
@@ -367,11 +371,11 @@
 <!-- On a desktop the view fills the window: the left column and the box of the runs scroll
      each on their own, the page does not. Both are positioned, so what lies absolutely in them
      (text for screen readers) scrolls with them instead of stretching the page. -->
-<div class="lg:h-full lg:min-h-0">
-	{#if problem}<p class="mb-4 text-destructive" role="alert">{problem}</p>{/if}
+<div class="lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+	{#if problem}<p class="mb-4 shrink-0 text-destructive" role="alert">{problem}</p>{/if}
 	{#if wide}
 		<div
-			class="grid h-full grid-cols-[minmax(0,1fr)_20rem] grid-rows-[minmax(0,1fr)] items-start gap-6"
+			class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_20rem] grid-rows-[minmax(0,1fr)] items-start gap-6"
 		>
 			<div class="relative flex max-h-full min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pr-1">
 				{@render summary()}

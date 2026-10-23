@@ -43,13 +43,17 @@
 	}
 
 	// From the first phase with a waiting step on, the line is dashed: that part is still ahead.
+	// That phase's dot too, unless something in it is uncertain, failed or running.
 	const lines = $derived.by(() => {
 		const tones = groups.map((group) => lineOf(group.steps));
 		const waiting = groups.findIndex((group) =>
 			group.steps.some((step) => step.state?.status === 'waiting')
 		);
 		return tones.map((tone, index) => ({
-			dot: waiting !== -1 && index > waiting ? 'waiting' : tone,
+			dot:
+				waiting !== -1 && (index > waiting || (index === waiting && tone === 'green'))
+					? 'waiting'
+					: tone,
 			dashed: waiting !== -1 && index >= waiting
 		}));
 	});

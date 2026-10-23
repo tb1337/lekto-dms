@@ -1,7 +1,7 @@
 <script lang="ts">
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
-	import type { Snippet } from 'svelte';
+	import { tick, type Snippet } from 'svelte';
 	import StepCard from '#lib/components/document/StepCard.svelte';
 	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -29,11 +29,20 @@
 		summaryOf: (step: Step) => string | null;
 		durationOf: (step: Step) => string | null;
 		phaseDuration: (steps: readonly Step[]) => string | null;
-		ontoggle: (node: Node) => void;
+		ontoggle: (node: Node) => void | Promise<void>;
 		details: Snippet<[Step]>;
 	} = $props();
 
 	const PANEL = 'step-details';
+	let section = $state<HTMLElement | null>(null);
+
+	/** Close the panel with its own button: the focus goes back to the step's card, which stays
+	 * (the button itself goes with the panel). */
+	async function close(node: Node) {
+		await ontoggle(node);
+		await tick();
+		section?.querySelector<HTMLElement>(`[data-node="${node}"]`)?.focus();
+	}
 	// An arrow between two phases.
 	const GAP = '1.125rem';
 
@@ -66,6 +75,7 @@
 </script>
 
 <section
+	bind:this={section}
 	aria-labelledby="steps-heading"
 	class="flex min-w-0 flex-col gap-3.5 rounded-2xl border bg-card p-5"
 >
@@ -132,7 +142,7 @@
 					type="button"
 					class="ml-auto grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-secondary"
 					aria-label={m.run_close_details()}
-					onclick={() => ontoggle(open.node)}
+					onclick={() => close(open.node)}
 				>
 					<ChevronUp class="size-4" aria-hidden="true" />
 				</button>

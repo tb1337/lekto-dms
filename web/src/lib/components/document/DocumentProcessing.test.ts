@@ -232,8 +232,11 @@ describe('DocumentProcessing', () => {
 		);
 		await userEvent.click(screen.getByRole('button', { name: m.run_close_details() }));
 		await waitFor(() => expect(container.querySelector('#step-details')).toBeNull());
+		// The focus goes back to the step's card, the close button went with the panel.
+		await waitFor(() => expect(window.document.activeElement).toBe(card(container, 'signal_llm')));
 		// Closed is closed: the uncertain verdict does not open again by itself.
 		expect(card(container, 'judge').getAttribute('aria-expanded')).toBe('false');
+		expect(card(container, 'judge').getAttribute('aria-controls')).toBeNull();
 	});
 
 	it('tells the tokens behind the info icon and shows the prompt', async () => {
@@ -350,6 +353,28 @@ describe('DocumentProcessing', () => {
 		const matrix = await screen.findByRole('table');
 		expect(within(matrix).getByText('JUKO Marburg e.V.')).toBeTruthy();
 		expect(within(matrix).queryByRole('img', { name: m.matrix_open() })).toBeNull();
+	});
+
+	it('tells no times of a later run it cannot tell apart from an earlier one', async () => {
+		// Run 2 without the log (a reader): receiving is run 1's, hours before the rest.
+		const later = documentAt(2, 'completed', [
+			{
+				...state('receive', 'ok'),
+				started_at: '2026-10-13T01:00:00Z',
+				finished_at: '2026-10-13T01:00:01Z'
+			},
+			state('ocr', 'ok'),
+			state('pages', 'ok'),
+			state('signal_llm', 'ok'),
+			state('signal_neighbours', 'ok'),
+			state('judge', 'ok'),
+			state('file', 'ok')
+		]);
+		show({ document: later, manageable: false });
+		const read = screen.getByRole('heading', { name: new RegExp(m.phase_read()) });
+		expect(read.textContent).not.toMatch(/\d+(h|m|s)/);
+		const band = screen.getByRole('img', { name: new RegExp(m.run_band({ run: 2 })) });
+		expect(band.getAttribute('aria-label')).not.toMatch(/\d+h/);
 	});
 
 	it('shows only the states to someone who may not read the log', async () => {

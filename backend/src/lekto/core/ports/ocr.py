@@ -4,6 +4,7 @@ from typing import Protocol
 
 from lekto.core.domain.exchanges import ModelCall
 from lekto.core.domain.reading import PageReading, PageWords
+from lekto.core.domain.reasons import Reason
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -32,7 +33,7 @@ class OcrResult:
     pdfa: bool  # False if the archive could not be made PDF/A; it is a plain PDF then
     # Why the archive is not what was asked for, for the processing log: the reason it is not
     # PDF/A, or that a digital signature of the original was not carried over.
-    note: str | None = None
+    notes: tuple[Reason, ...] = ()
     # How well each page the engine recognised was read; pages with text of their own are
     # not recognised and have none.
     readings: tuple[PageReading, ...] = ()
@@ -45,7 +46,7 @@ class OcrResult:
     # Every page was read by the vision language model (`make_archive` with `vision`).
     vision: VisionReading | None = None
     # The colours were converted to RGB to make the archive PDF/A (a colour space PDF/A cannot
-    # hold); `note` says so too.
+    # hold); `notes` say so too.
     rgb: bool = False
 
 

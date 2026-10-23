@@ -14,6 +14,7 @@ from lekto.adapters.inbound.schemas import (
     FieldJson,
     MoneyValue,
     PeriodValue,
+    ReasonOut,
     RuleEffectOut,
     RuleNoteOut,
     RuleReportOut,
@@ -456,16 +457,21 @@ class ArrivalStepOut(BaseModel):
             "space at most once)."
         )
     )
-    problem: str | None = Field(description="Why the chain stopped, or why a change did not fit.")
+    problem: str | None = Field(
+        description="Why the chain stopped, or why a change did not fit, in English."
+    )
+    problem_reason: ReasonOut | None = Field(default=None, description="The same with its code.")
 
     @classmethod
     def of(cls, step: ArrivalStep) -> "ArrivalStepOut":
+        problem = step.problem
         return cls(
             space_id=step.space_id,
             rules=[RuleReportOut.of(report) for report in step.reports],
             moved_to=step.moved_to,
             looped_to=step.looped_to,
-            problem=step.problem,
+            problem=None if problem is None else problem.text,
+            problem_reason=None if problem is None else ReasonOut.of(problem),
         )
 
 

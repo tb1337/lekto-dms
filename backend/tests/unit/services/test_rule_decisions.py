@@ -32,7 +32,7 @@ class UnsureOfTheContact:
         )
         result = NodeResult(
             outcome=Outcome.UNCERTAIN,
-            reason="contact: unsure",
+            reasons=(written("contact: unsure"),),
             model_version="fake-llm 1",
             output={"fields": checks_to_json([check])},
         )

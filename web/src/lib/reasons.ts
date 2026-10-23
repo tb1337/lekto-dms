@@ -5,7 +5,9 @@
  * document). A code this UI does not know yet (a newer API) shows the API's English text.
  */
 import type { components } from '#lib/api/schema.ts';
+import { fieldLabel } from '#lib/describe.ts';
 import { formatDate, formatNumber, getLocale, regionalLocale } from '#lib/i18n.ts';
+import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 export type Reason = components['schemas']['ReasonOut'];
@@ -13,7 +15,7 @@ export type ReasonCode = components['schemas']['ReasonCode'];
 
 /** How the API writes a parameter (`x-reasons`); a parameter without one is text. */
 export type ReasonKind =
-	'number' | 'percent' | 'date' | 'value' | 'names' | 'fields' | 'rule_values';
+	'number' | 'percent' | 'date' | 'value' | 'names' | 'fields' | 'rule_values' | 'path' | 'reason';
 
 /** A message of `#lib/paraglide/messages.js`, whatever it takes. */
 type Message = (inputs: never) => string;
@@ -61,7 +63,7 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	space_other: entry(m.reason_space_other),
 	spaces_disagree: entry(m.reason_spaces_disagree),
 	date_none: entry(m.reason_date_none),
-	date_none_from_model: entry(m.reason_date_none_from_model),
+	date_none_from_model: entry(m.reason_date_none_from_model, { why: 'reason' }),
 	not_a_date: entry(m.reason_not_a_date),
 	date_implausible: entry(m.reason_date_implausible, { date: 'date' }),
 	same_as_document_date: entry(m.reason_same_as_document_date),
@@ -130,7 +132,48 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	title_empty: entry(m.reason_title_empty),
 	title_yields: entry(m.reason_title_yields),
 	value_empty: entry(m.reason_value_empty),
-	template_missing_value: entry(m.reason_template_missing_value)
+	template_missing_value: entry(m.reason_template_missing_value),
+	node_attempts_exhausted: entry(m.reason_node_attempts_exhausted, { attempts: 'number' }),
+	node_crashed: entry(m.reason_node_crashed),
+	file_not_pdf_or_image: entry(m.reason_file_not_pdf_or_image),
+	file_damaged: entry(m.reason_file_damaged),
+	file_not_processable: entry(m.reason_file_not_processable),
+	pdf_encrypted: entry(m.reason_pdf_encrypted),
+	pdf_unreadable: entry(m.reason_pdf_unreadable),
+	pdf_unreadable_detail: entry(m.reason_pdf_unreadable_detail),
+	image_unreadable: entry(m.reason_image_unreadable),
+	image_unreadable_detail: entry(m.reason_image_unreadable_detail),
+	document_no_pages: entry(m.reason_document_no_pages),
+	ocr_failed: entry(m.reason_ocr_failed, { problem: 'reason' }),
+	text_unreadable: entry(m.reason_text_unreadable),
+	signature_dropped: entry(m.reason_signature_dropped),
+	colours_converted: entry(m.reason_colours_converted),
+	not_pdfa: entry(m.reason_not_pdfa),
+	archive_not_pdfa: entry(m.reason_archive_not_pdfa),
+	vision_read: entry(m.reason_vision_read),
+	vision_not_configured: entry(m.reason_vision_not_configured),
+	no_text: entry(m.reason_no_text),
+	answer_unfit: entry(m.reason_answer_unfit),
+	nothing_recognised: entry(m.reason_nothing_recognised),
+	master_data_changed: entry(m.reason_master_data_changed),
+	metadata_unfit: entry(m.reason_metadata_unfit),
+	taken_over: entry(m.reason_taken_over),
+	space_changed_meanwhile: entry(m.reason_space_changed_meanwhile),
+	rules_back_and_forth: entry(m.reason_rules_back_and_forth, { spaces: 'path' }),
+	rules_change_unfit: entry(m.reason_rules_change_unfit),
+	signal_did_not_run: entry(m.reason_signal_did_not_run),
+	no_language_model: entry(m.reason_no_language_model),
+	no_document_text: entry(m.reason_no_document_text),
+	no_classifier: entry(m.reason_no_classifier),
+	classifier_unusable: entry(m.reason_classifier_unusable),
+	classifier_untrained: entry(m.reason_classifier_untrained),
+	neighbours_off: entry(m.reason_neighbours_off),
+	no_embedding_index: entry(m.reason_no_embedding_index),
+	text_not_embedded: entry(m.reason_text_not_embedded),
+	vector_misfit: entry(m.reason_vector_misfit),
+	no_uploader: entry(m.reason_no_uploader),
+	index_unavailable: entry(m.reason_index_unavailable),
+	no_similar: entry(m.reason_no_similar)
 };
 
 function listLocale(): string {
@@ -180,9 +223,21 @@ function write(value: unknown, kind: ReasonKind | undefined, options: ReasonOpti
 					return `${quoted(String(rule))}: ${writeValue(set)}`;
 				})
 				.join(', ');
+		case 'path':
+			return items(value).map(String).join(' → ');
+		case 'reason':
+			return nested(value, options);
 		default:
 			return String(value ?? '');
 	}
+}
+
+/** A reason inside another (its parameter of the kind `reason`); its English text where this UI
+ * does not know its code. */
+function nested(value: unknown, options: ReasonOptions): string {
+	const reason = value as Reason | null;
+	if (!reason || typeof reason !== 'object' || !known(reason.code)) return String(value ?? '');
+	return reasonText(reason, options);
 }
 
 function known(code: string): code is ReasonCode {
@@ -204,6 +259,9 @@ export function reasonText(reason: Reason, options: ReasonOptions = {}): string 
 	}
 	if (reason.subject) text = m.reason_about({ subject: reason.subject, text });
 	if (reason.rule) text = m.reason_by_rule({ rule: reason.rule, text });
+	if (reason.field) {
+		text = m.reason_field({ field: options.field?.(reason.field) ?? reason.field, text });
+	}
 	return text;
 }
 
@@ -218,4 +276,23 @@ export function reasonsText(
 ): string | null {
 	if (!reasons?.length || !reasons.every((reason) => known(reason.code))) return fallback ?? null;
 	return reasons.map((reason) => reasonText(reason, options)).join('; ');
+}
+
+/** Options that name check fields as the UI does (`field:<id>` by the field's name). */
+export function labelled(lookup: Lookup | null): ReasonOptions {
+	return { field: (name) => fieldLabel(name, lookup) };
+}
+
+/**
+ * A reason a log entry's output holds beside its English text (`abstained_reason` beside
+ * `abstained`, `problem_reason` beside `problem`), in the user's language; the text without it.
+ */
+export function outputReasonText(
+	reason: unknown,
+	fallback: unknown,
+	options: ReasonOptions = {}
+): string | null {
+	const text = typeof fallback === 'string' && fallback ? fallback : null;
+	if (!reason || typeof reason !== 'object' || !('code' in reason)) return text;
+	return reasonsText([reason as Reason], text, options);
 }

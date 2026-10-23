@@ -7,7 +7,7 @@ import type { components } from '#lib/api/schema.ts';
 import { describeValue, fieldLabel } from '#lib/describe.ts';
 import { spaceLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
-import { reasonsText } from '#lib/reasons.ts';
+import { labelled, outputReasonText, reasonsText } from '#lib/reasons.ts';
 
 export type PreviewItem = components['schemas']['ApplyPreviewItemOut'];
 export type Application = components['schemas']['RuleApplicationOut'];
@@ -133,7 +133,9 @@ export function chainLines(
 			const spaces = [...visited, step.looped_to].map(name).join(' → ');
 			lines.push(m.rule_chain_loop({ spaces }));
 		} else if (step.problem !== null) {
-			lines.push(m.rule_chain_problem({ problem: step.problem }));
+			const problem =
+				outputReasonText(step.problem_reason, step.problem, labelled(lookup)) ?? step.problem;
+			lines.push(m.rule_chain_problem({ problem }));
 		}
 	}
 	if (outcome.chain.length > 0) lines.push(m.rule_chain_end({ space: name(outcome.space_id) }));

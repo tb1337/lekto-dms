@@ -38,6 +38,7 @@ from lekto.core.domain.pipeline import (
     NodeRun,
     ProcessingStatus,
 )
+from lekto.core.domain.reasons import Reason
 from lekto.core.domain.rule_planner import Mode, RuleReport, changed_fields
 from lekto.core.domain.rules import Rule, SetSpace, Trigger
 from lekto.core.domain.spaces import Space
@@ -60,6 +61,7 @@ from lekto.core.services.rules.running import (
     field_patterns,
     person_record,
     prepare,
+    problem_output,
     provenance,
     reachable_rules,
     run_rules,
@@ -79,7 +81,7 @@ class ArrivalStep:
     reports: tuple[RuleReport, ...]
     moved_to: SpaceId | None
     looped_to: SpaceId | None
-    problem: str | None
+    problem: Reason | None
 
 
 class ChangeRules:
@@ -188,7 +190,7 @@ class ChangeRules:
                 assert target is not None
                 problem = back_and_forth(await self._names(uow, [*visited, target]))
             if problem is not None:
-                output["problem"] = problem
+                output |= problem_output(problem)
             await uow.processing_log.append(
                 entry_beside(
                     document,
@@ -270,7 +272,6 @@ class ChangeRules:
         rules = await self.rules(uow, document)
         run: RuleRun | None = None
         output: dict[str, JsonValue] = {}
-        reason: str | None = None
         if rules:
             origin = provenance(await uow.processing_log.list_for(document.id), document)
             origin = replace(
@@ -304,9 +305,9 @@ class ChangeRules:
             )
             input["rules"] = checked_rules(rules)
             output = run.output()
-            reason = await apply_plan(uow, document, run.plan, definitions, now)
-            if reason is not None:
-                output["problem"] = reason
+            unfit = await apply_plan(uow, document, run.plan, definitions, now)
+            if unfit is not None:
+                output |= problem_output(unfit)
         if log:
             await uow.processing_log.append(
                 entry_beside(

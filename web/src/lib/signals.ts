@@ -13,6 +13,7 @@ import { IDENTIFIER_KINDS, kindLabel, type IdentifierKind } from '#lib/identifie
 import type { Strength } from '#lib/facts.ts';
 import { userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { labelled, outputReasonText } from '#lib/reasons.ts';
 
 type LogEntry = components['schemas']['LogEntry'];
 
@@ -192,7 +193,7 @@ function rules(entry: LogEntry, lookup: Lookup | null): SummaryRow[] {
 	if (input.trigger === 'ingest' && typeof input.space_id === 'string') {
 		rows.push({ label: m.log_rules_arrived(), items: [{ text: named(input.space_id, lookup) }] });
 	}
-	const problem = text(output.problem);
+	const problem = outputReasonText(output.problem_reason, output.problem, labelled(lookup));
 	if (problem) rows.push({ label: m.log_rules_problem(), items: [{ text: problem }] });
 	return rows;
 }
@@ -206,7 +207,7 @@ export function signalSummary(entry: LogEntry, lookup: Lookup | null): SummaryRo
 	if (entry.node === 'apply_rules') return rules(entry, lookup);
 	if (!(SIGNAL_NODES as readonly string[]).includes(entry.node)) return [];
 	const output = object(entry.output);
-	const abstained = text(output.abstained);
+	const abstained = outputReasonText(output.abstained_reason, output.abstained, labelled(lookup));
 	if (abstained) return [{ label: m.signal_abstained(), items: [{ text: abstained }] }];
 	switch (entry.node) {
 		case 'signal_llm': {

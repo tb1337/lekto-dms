@@ -177,7 +177,10 @@ async def test_the_whole_migration_runs_against_the_api(api: Api, tmp_path: Path
         signals = {"signal_llm", "signal_classifier", "signal_neighbours", "signal_facts"}
         assert set(imported) == {"judge", "fields", *signals}
         for signal in signals:  # nothing to propose: they abstain
-            assert imported[signal]["output"] == {"abstained": "taken over from the source system"}
+            assert imported[signal]["output"] == {
+                "abstained": "taken over from the source system",
+                "abstained_reason": {"code": "taken_over", "params": {}},
+            }
 
         assert await m.run("check") == 0, m.messages
         assert await m.run("check", download=True) == 0, m.messages

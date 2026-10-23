@@ -64,7 +64,7 @@ def classified(contact: Contact) -> NodeResult:
     ]
     return NodeResult(
         outcome=Outcome.UNCERTAIN,
-        reason="contact, document_date",
+        reasons=(written("contact, document_date"),),
         model_version="fake-llm 1",
         input={"truncated": True},
         output={"fields": checks_to_json(checks)},
@@ -82,7 +82,7 @@ def extracted(amount: FieldDefinition) -> NodeResult:
     )
     return NodeResult(
         outcome=Outcome.UNCERTAIN,
-        reason="Betrag",
+        reasons=(written("Betrag"),),
         model_version="fake-llm 1",
         output={"fields": checks_to_json([check])},
     )
@@ -554,7 +554,7 @@ def test_suggestions_that_do_not_fit_are_refused() -> None:
         reasons=(written("similar"),),
         suggestion="not an id",
     )
-    open = [OpenNode(Node.JUDGE, Outcome.UNCERTAIN, "x", (check,))]
+    open = [OpenNode(Node.JUDGE, Outcome.UNCERTAIN, (written("x"),), (check,))]
     with pytest.raises(ValidationError, match="cannot be taken"):
         decide(open, DOCUMENT, DocumentChanges(), accept_suggestions=True, definitions={})
     decision = decide(
@@ -573,6 +573,6 @@ def test_fields_of_removed_fields_need_no_decision() -> None:
     check = FieldCheck(
         field=field_key(gone.id), outcome=Outcome.UNCERTAIN, confidence=0, reasons=(written("x"),)
     )
-    open = [OpenNode(Node.FIELDS, Outcome.UNCERTAIN, "x", (check,))]
+    open = [OpenNode(Node.FIELDS, Outcome.UNCERTAIN, (written("x"),), (check,))]
     decision = decide(open, DOCUMENT, DocumentChanges(), accept_suggestions=False, definitions={})
     assert decision.changes == DocumentChanges()

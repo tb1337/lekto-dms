@@ -23,6 +23,7 @@ from lekto.adapters.outbound.system import Completed
 from lekto.core.domain import media_types
 from lekto.core.domain.errors import LanguageModelError, UnprocessableDocumentError
 from lekto.core.domain.reading import PageReading
+from lekto.core.domain.reasons import text_of
 from lekto.core.ports.ocr import OcrResult
 from tests.builders import DEFAULT_SETTINGS
 
@@ -160,7 +161,7 @@ async def convert(runs: Runs, tmp_path: Path) -> tuple[OcrResult, Path]:
 async def test_a_clean_run_is_pdfa_without_a_note(runs: Runs, tmp_path: Path) -> None:
     runs.outcomes = [(0, "")]
     result, target = await convert(runs, tmp_path)
-    assert (result.pdfa, result.note, result.pages, result.rgb) == (True, None, 1, False)
+    assert (result.pdfa, text_of(result.notes), result.pages, result.rgb) == (True, None, 1, False)
     assert [options(call) for call in runs.calls] == [("pdfa", False)]
     assert target.exists() and [p.name for p in tmp_path.iterdir()] == ["archive.pdf"]
 
@@ -184,7 +185,11 @@ async def test_text_that_cannot_be_read_is_recognised_from_the_images(
     runs.outcomes = [(0, "")]
     runs.unreadable_text = runs.hidden_text = True
     result, _ = await convert(runs, tmp_path)
-    assert (result.read_again, result.pdfa, result.note) == (True, True, module.UNREADABLE_NOTE)
+    assert (result.read_again, result.pdfa, text_of(result.notes)) == (
+        True,
+        True,
+        module.UNREADABLE_NOTE.text,
+    )
     (call,) = runs.calls
     assert "--force-ocr" in call and "--deskew" in call
     assert "--skip-text" not in call and "--redo-ocr" not in call
@@ -220,7 +225,7 @@ async def test_a_signed_pdf_is_processed_again_without_its_signature(
 ) -> None:
     runs.outcomes = [(2, SIGNATURE), (0, "")]
     result, _ = await convert(runs, tmp_path)
-    assert (result.pdfa, result.note) == (True, SIGNATURE_NOTE)
+    assert (result.pdfa, text_of(result.notes)) == (True, SIGNATURE_NOTE.text)
     assert [options(call) for call in runs.calls] == [("pdfa", False), ("pdfa", True)]
 
 
@@ -234,7 +239,7 @@ async def test_a_colour_space_pdfa_cannot_hold_is_converted_to_rgb(
 ) -> None:
     runs.outcomes = [(1, COLOUR), (0, "")]
     result, _ = await convert(runs, tmp_path)
-    assert (result.pdfa, result.note, result.rgb) == (True, COLOUR_NOTE, True)
+    assert (result.pdfa, text_of(result.notes), result.rgb) == (True, COLOUR_NOTE.text, True)
     assert [options(call) for call in runs.calls] == [("pdfa", False), ("pdfa", False)]
     assert [converts_colours(call) for call in runs.calls] == [False, True]
 
@@ -247,7 +252,7 @@ async def test_ocrmypdfs_own_fallback_for_a_colour_space_is_converted_too(
     )
     runs.outcomes = [(10, f"{issue}\n"), (0, "")]
     result, _ = await convert(runs, tmp_path)
-    assert (result.pdfa, result.note) == (True, COLOUR_NOTE)
+    assert (result.pdfa, text_of(result.notes)) == (True, COLOUR_NOTE.text)
     assert [converts_colours(call) for call in runs.calls] == [False, True]
 
 
@@ -257,7 +262,10 @@ async def test_a_colour_space_that_converting_cannot_fix_falls_back_to_a_plain_p
     runs.outcomes = [(1, COLOUR), (1, COLOUR), (0, "")]
     result, _ = await convert(runs, tmp_path)
     assert (result.pdfa, result.rgb) == (False, False)
-    assert result.note == "not PDF/A: the colour space of the file cannot be represented in PDF/A"
+    assert (
+        text_of(result.notes)
+        == "not PDF/A: the colour space of the file cannot be represented in PDF/A"
+    )
     assert [options(call) for call in runs.calls] == [
         ("pdfa", False),
         ("pdfa", False),
@@ -271,7 +279,10 @@ async def test_a_signed_pdf_with_such_colours_is_converted_without_its_signature
 ) -> None:
     runs.outcomes = [(2, SIGNATURE), (1, COLOUR), (0, "")]
     result, _ = await convert(runs, tmp_path)
-    assert (result.pdfa, result.note) == (True, f"{SIGNATURE_NOTE}; {COLOUR_NOTE}")
+    assert (result.pdfa, text_of(result.notes)) == (
+        True,
+        f"{SIGNATURE_NOTE.text}; {COLOUR_NOTE.text}",
+    )
     assert [options(call) for call in runs.calls] == [
         ("pdfa", False),
         ("pdfa", True),
@@ -285,7 +296,7 @@ async def test_a_failed_pdfa_conversion_falls_back_to_a_plain_pdf(
     runs.outcomes = [(1, "SomethingElseError: odd file\n"), (0, "")]
     result, _ = await convert(runs, tmp_path)
     assert result.pdfa is False
-    assert result.note == "not PDF/A: SomethingElseError: odd file"
+    assert text_of(result.notes) == "not PDF/A: SomethingElseError: odd file"
     assert [options(call) for call in runs.calls] == [("pdfa", False), ("pdf", False)]
     assert not any(converts_colours(call) for call in runs.calls)
 
@@ -296,7 +307,9 @@ async def test_a_signed_pdf_whose_pdfa_conversion_fails_gets_both(
     runs.outcomes = [(2, SIGNATURE), (1, "SomethingElseError: odd file\n"), (0, "")]
     result, _ = await convert(runs, tmp_path)
     assert result.pdfa is False
-    assert result.note == f"{SIGNATURE_NOTE}; not PDF/A: SomethingElseError: odd file"
+    assert (
+        text_of(result.notes) == f"{SIGNATURE_NOTE.text}; not PDF/A: SomethingElseError: odd file"
+    )
     assert [options(call) for call in runs.calls] == [
         ("pdfa", False),
         ("pdfa", True),
@@ -310,7 +323,7 @@ async def test_ocrmypdfs_own_fallback_names_ghostscripts_reasons(
     runs.outcomes = [(10, GHOSTSCRIPT)]
     result, _ = await convert(runs, tmp_path)
     assert result.pdfa is False
-    assert result.note == (
+    assert text_of(result.notes) == (
         "not PDF/A: Setting Overprint Mode to 1 not permitted in PDF/A-2, overprint mode not "
         "set; A CIDFont uses CID 0, which is not legal for PDF/A, reverting to normal PDF output."
     )
@@ -321,7 +334,7 @@ async def test_ghostscript_s_reason_far_before_the_end_is_kept(runs: Runs, tmp_p
     # OCRmyPDF writes tens of thousands of characters after Ghostscript's messages.
     runs.outcomes = [(10, GHOSTSCRIPT + "Postprocessing done\n" * 2_000)]
     result, _ = await convert(runs, tmp_path)
-    assert result.note is not None and "CIDFont uses CID 0" in result.note
+    assert "CIDFont uses CID 0" in (text_of(result.notes) or "")
     assert runs.tails == [OUTPUT_KEPT]
     assert len(GHOSTSCRIPT) + 40_000 < OUTPUT_KEPT
 

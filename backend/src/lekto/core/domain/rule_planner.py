@@ -241,7 +241,7 @@ class RulePlan:
     space: SpaceId | None
     reports: list[RuleReport]
     checks: list[FieldCheck]
-    reviews: list[str]
+    reviews: list[Reason]
     labels: Mapping[str, str] = field(default_factory=dict)
     distrusted: frozenset[str] = frozenset()
     distrusted_tags: frozenset[TagId] = frozenset()
@@ -251,11 +251,16 @@ class RulePlan:
         return bool(self.reviews) or any(not check.ok for check in self.checks)
 
     @property
-    def reasons(self) -> list[str]:
+    def reasons(self) -> list[Reason]:
+        """Why a person has to decide, as the rules node gives it: each check's reasons about
+        its field (a custom field by its name, `labels`), then the forced reviews."""
         return [
-            f"{self.labels.get(check.field, check.field)}: {check.reason}"
+            reason.about(self.labels[check.field])
+            if check.field in self.labels
+            else reason.for_field(check.field)
             for check in self.checks
             if not check.ok
+            for reason in check.reasons
         ] + self.reviews
 
     @property
@@ -266,7 +271,7 @@ class RulePlan:
         return {
             "rules": [report.to_json() for report in self.reports],
             CHECKS: [check.to_json() for check in self.checks],
-            "reviews": list(self.reviews),
+            "reviews": [review.text for review in self.reviews],
         }
 
 
@@ -309,7 +314,7 @@ class _Planner:
             for match in self._matched
         ]
         self._checks: dict[str, FieldCheck] = {}
-        self._reviews: list[str] = []
+        self._reviews: list[Reason] = []
         self._candidates: dict[str, list[_Candidate]] = {}
         self._adds: dict[TagId, list[RuleReport]] = {}
         self._removes: dict[TagId, list[RuleReport]] = {}
@@ -377,7 +382,7 @@ class _Planner:
             checks=list(self._checks.values()),
             reviews=self._reviews,
             labels={
-                name: f"'{definitions[id].name}'"
+                name: definitions[id].name
                 for name in self._checks
                 if (id := field_id_of(name)) is not None and id in definitions
             },
@@ -502,7 +507,7 @@ class _Planner:
             report.notes.append(Note(REVIEW, NoteKind.OVERRULED, confirmed))
         else:
             report.notes.append(Note(REVIEW, NoteKind.REVIEW, written(reason)))
-            self._reviews.append(f"rule '{report.name}': {reason}")
+            self._reviews.append(written(reason).by_rule(report.name))
             self._uncertain(REVIEW, written(reason).by_rule(report.name), suggestion=None)
 
     # --- resolving ----------------------------------------------------------------------------

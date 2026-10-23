@@ -11,10 +11,13 @@ none, or the text). A parameter without a kind is text. `Reason.text` renders th
 document).
 
 A reason may be about a custom field (`subject`, its name: "'Amount': the amount does not
-appear in the text") or come from a rule (`rule`, its name). `TEXT` is a reason as written: by
-a person (a review a rule forces, a migration plan's), or stored before reasons had codes.
+appear in the text"), come from a rule (`rule`, its name), or, among a node's reasons, be about
+one of the built-in check fields (`field`: "contact: no contact recognised"). `TEXT` is a
+reason as written: by a person (a review a rule forces, a migration plan's), or stored before
+reasons had codes.
 """
 
+import json
 import string
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
@@ -124,6 +127,48 @@ class ReasonCode(StrEnum):
     TITLE_YIELDS = "title_yields"
     VALUE_EMPTY = "value_empty"
     TEMPLATE_MISSING_VALUE = "template_missing_value"
+    # nodes: failures, notes, abstaining signals
+    NODE_ATTEMPTS_EXHAUSTED = "node_attempts_exhausted"
+    NODE_CRASHED = "node_crashed"
+    FILE_NOT_PDF_OR_IMAGE = "file_not_pdf_or_image"
+    FILE_DAMAGED = "file_damaged"
+    FILE_NOT_PROCESSABLE = "file_not_processable"
+    PDF_ENCRYPTED = "pdf_encrypted"
+    PDF_UNREADABLE = "pdf_unreadable"
+    PDF_UNREADABLE_DETAIL = "pdf_unreadable_detail"
+    IMAGE_UNREADABLE = "image_unreadable"
+    IMAGE_UNREADABLE_DETAIL = "image_unreadable_detail"
+    DOCUMENT_NO_PAGES = "document_no_pages"
+    OCR_FAILED = "ocr_failed"
+    TEXT_UNREADABLE = "text_unreadable"
+    SIGNATURE_DROPPED = "signature_dropped"
+    COLOURS_CONVERTED = "colours_converted"
+    NOT_PDFA = "not_pdfa"
+    ARCHIVE_NOT_PDFA = "archive_not_pdfa"
+    VISION_READ = "vision_read"
+    VISION_NOT_CONFIGURED = "vision_not_configured"
+    NO_TEXT = "no_text"
+    ANSWER_UNFIT = "answer_unfit"
+    NOTHING_RECOGNISED = "nothing_recognised"
+    MASTER_DATA_CHANGED = "master_data_changed"
+    METADATA_UNFIT = "metadata_unfit"
+    TAKEN_OVER = "taken_over"
+    SPACE_CHANGED_MEANWHILE = "space_changed_meanwhile"
+    RULES_BACK_AND_FORTH = "rules_back_and_forth"
+    RULES_CHANGE_UNFIT = "rules_change_unfit"
+    SIGNAL_DID_NOT_RUN = "signal_did_not_run"
+    NO_LANGUAGE_MODEL = "no_language_model"
+    NO_DOCUMENT_TEXT = "no_document_text"
+    NO_CLASSIFIER = "no_classifier"
+    CLASSIFIER_UNUSABLE = "classifier_unusable"
+    CLASSIFIER_UNTRAINED = "classifier_untrained"
+    NEIGHBOURS_OFF = "neighbours_off"
+    NO_EMBEDDING_INDEX = "no_embedding_index"
+    TEXT_NOT_EMBEDDED = "text_not_embedded"
+    VECTOR_MISFIT = "vector_misfit"
+    NO_UPLOADER = "no_uploader"
+    INDEX_UNAVAILABLE = "index_unavailable"
+    NO_SIMILAR = "no_similar"
 
 
 TEMPLATES: Mapping[ReasonCode, str] = {
@@ -160,7 +205,9 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.SPACE_OTHER: "suggests another space",
     ReasonCode.SPACES_DISAGREE: "the signals name different spaces",
     ReasonCode.DATE_NONE: "no date recognised",
-    ReasonCode.DATE_NONE_FROM_MODEL: "no date recognised: the language model gave none ({detail})",
+    ReasonCode.DATE_NONE_FROM_MODEL: (
+        "no date recognised: the language model gave none ({why:reason})"
+    ),
     ReasonCode.NOT_A_DATE: "'{value}' is not a date",
     ReasonCode.DATE_IMPLAUSIBLE: "{date:date} is not plausible",
     ReasonCode.SAME_AS_DOCUMENT_DATE: "the same date as the document date",
@@ -243,6 +290,64 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.TITLE_YIELDS: "another rule sets the title",
     ReasonCode.VALUE_EMPTY: "the value would be empty",
     ReasonCode.TEMPLATE_MISSING_VALUE: "{path} has no value",
+    ReasonCode.NODE_ATTEMPTS_EXHAUSTED: (
+        "node did not finish in {attempts:number} attempts (the worker died or ran out of time "
+        "each time)"
+    ),
+    ReasonCode.NODE_CRASHED: "{error}: {detail}",
+    ReasonCode.FILE_NOT_PDF_OR_IMAGE: "the file is no PDF and no image",
+    ReasonCode.FILE_DAMAGED: "the file is damaged or not a valid document",
+    ReasonCode.FILE_NOT_PROCESSABLE: "the file cannot be processed",
+    ReasonCode.PDF_ENCRYPTED: "the PDF is encrypted",
+    ReasonCode.PDF_UNREADABLE: "the PDF cannot be read",
+    ReasonCode.PDF_UNREADABLE_DETAIL: "the PDF cannot be read: {detail}",
+    ReasonCode.IMAGE_UNREADABLE: "the image cannot be read",
+    ReasonCode.IMAGE_UNREADABLE_DETAIL: "the image cannot be read: {detail}",
+    ReasonCode.DOCUMENT_NO_PAGES: "the document has no pages",
+    ReasonCode.OCR_FAILED: "{problem:reason}: {detail}",
+    ReasonCode.TEXT_UNREADABLE: (
+        "the text in the PDF cannot be read (a font without a character map); every page was "
+        "recognised from its image"
+    ),
+    ReasonCode.SIGNATURE_DROPPED: (
+        "the original is digitally signed; the archive does not carry the signature (the "
+        "original is unchanged)"
+    ),
+    ReasonCode.COLOURS_CONVERTED: (
+        "the colours were converted to RGB to make the archive PDF/A (the original is unchanged)"
+    ),
+    ReasonCode.NOT_PDFA: "not PDF/A: {detail}",
+    ReasonCode.ARCHIVE_NOT_PDFA: "the archive could not be made PDF/A",
+    ReasonCode.VISION_READ: (
+        "every page was read by the vision language model {model} ({endpoint})"
+    ),
+    ReasonCode.VISION_NOT_CONFIGURED: (
+        "a person asked for the vision language model, but none is configured"
+    ),
+    ReasonCode.NO_TEXT: "no text recognised: the pages are blank or hold only pictures",
+    ReasonCode.ANSWER_UNFIT: "the model's answer does not fit the schema: {detail}",
+    ReasonCode.NOTHING_RECOGNISED: "nothing recognised: no contact, document type or date",
+    ReasonCode.MASTER_DATA_CHANGED: (
+        "the master data changed during the node; nothing was applied ({detail})"
+    ),
+    ReasonCode.METADATA_UNFIT: "the metadata of the source system no longer fits: {detail}",
+    ReasonCode.TAKEN_OVER: "taken over from the source system",
+    ReasonCode.SPACE_CHANGED_MEANWHILE: ("the space the signals chose changed meanwhile; it stays"),
+    ReasonCode.RULES_BACK_AND_FORTH: "rules move it back and forth: {spaces:path}",
+    ReasonCode.RULES_CHANGE_UNFIT: "the rules' change does not fit: {detail}",
+    ReasonCode.SIGNAL_DID_NOT_RUN: "it did not run",
+    ReasonCode.NO_LANGUAGE_MODEL: "no language model is configured",
+    ReasonCode.NO_DOCUMENT_TEXT: "the document has no text",
+    ReasonCode.NO_CLASSIFIER: "no classifier is configured",
+    ReasonCode.CLASSIFIER_UNUSABLE: "the classifier cannot be used: {detail}",
+    ReasonCode.CLASSIFIER_UNTRAINED: "no model is trained yet",
+    ReasonCode.NEIGHBOURS_OFF: "neighbours are turned off",
+    ReasonCode.NO_EMBEDDING_INDEX: "there is no search index with embeddings",
+    ReasonCode.TEXT_NOT_EMBEDDED: "the text could not be embedded: {detail}",
+    ReasonCode.VECTOR_MISFIT: "the text's vector does not fit the index",
+    ReasonCode.NO_UPLOADER: "the document has no active uploader to look from",
+    ReasonCode.INDEX_UNAVAILABLE: "the search index cannot be asked: {detail}",
+    ReasonCode.NO_SIMILAR: "no similar confirmed document",
 }
 
 KINDS: Mapping[str, str] = {
@@ -254,12 +359,16 @@ KINDS: Mapping[str, str] = {
     "or": "names",
     "fields": "fields",
     "rule_values": "rule_values",
+    "path": "path",
+    "reason": "reason",
 }
 """The kinds a template may give a parameter (after its colon; none: text), by the name the
 catalog gives them: `number` a number, `percent` a fraction from 0 to 1, `date` a day in ISO
 8601, `value` a field's value as a reason shows it (a string, true or false for yes or no, null
 for none), `names` a list of names, `fields` a list of check fields (`contact`, `field:<id>`,
-...), `rule_values` a list of `{"rule": name, "value": value}` (what each rule sets)."""
+...), `rule_values` a list of `{"rule": name, "value": value}` (what each rule sets), `path`
+a list of names one after the other (spaces a document went through), `reason` another reason
+(`Reason.to_json`)."""
 
 
 class _Formatter(string.Formatter):
@@ -279,6 +388,13 @@ class _Formatter(string.Formatter):
                     for item in _items(value)
                     if isinstance(item, dict)
                 )
+            case "path":
+                return " → ".join(str(item) for item in _items(value))
+            case "reason":
+                try:
+                    return Reason.from_json(value).text  # type: ignore[arg-type]
+                except ValidationError:
+                    return str(value)
         return str(value)
 
 
@@ -319,12 +435,14 @@ def catalog() -> dict[str, dict[str, str]]:
 @dataclass(frozen=True)
 class Reason:
     """A reason with its code: `params` are exactly the template's parameters; `subject` the
-    name of the custom field it is about, `rule` the name of the rule it comes from."""
+    name of the custom field it is about, `rule` the name of the rule it comes from, `field`
+    the built-in check field (`contact`, ...) a node's reason is about."""
 
     code: ReasonCode
     params: Mapping[str, JsonValue] = field(default_factory=dict)
     subject: str | None = None
     rule: str | None = None
+    field: str | None = None
 
     def __post_init__(self) -> None:
         expected = PARAMETERS[self.code].keys()
@@ -332,6 +450,10 @@ class Reason:
             raise ValidationError(
                 f"reason {self.code}: parameters {sorted(self.params)}, expected {sorted(expected)}"
             )
+
+    def __hash__(self) -> int:
+        params = json.dumps(self.params, sort_keys=True, ensure_ascii=False, default=str)
+        return hash((self.code, params, self.subject, self.rule, self.field))
 
     @property
     def text(self) -> str:
@@ -341,6 +463,8 @@ class Reason:
             text = f"'{self.subject}': {text}"
         if self.rule is not None:
             text = f"rule '{self.rule}': {text}"
+        if self.field is not None:
+            text = f"{self.field}: {text}"
         return text
 
     def about(self, subject: str) -> Self:
@@ -349,12 +473,17 @@ class Reason:
     def by_rule(self, rule: str) -> Self:
         return replace(self, rule=rule)
 
+    def for_field(self, field: str) -> Self:
+        return replace(self, field=field)
+
     def to_json(self) -> JsonObject:
         data: JsonObject = {"code": self.code.value, "params": dict(self.params)}
         if self.subject is not None:
             data["subject"] = self.subject
         if self.rule is not None:
             data["rule"] = self.rule
+        if self.field is not None:
+            data["field"] = self.field
         return data
 
     @classmethod
@@ -373,6 +502,7 @@ class Reason:
             dict(as_object(found.get("params")) or {}),
             subject=as_text(found.get("subject")),
             rule=as_text(found.get("rule")),
+            field=as_text(found.get("field")),
         )
 
 

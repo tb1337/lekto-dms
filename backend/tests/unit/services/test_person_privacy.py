@@ -23,7 +23,7 @@ def _run(document: Document, node: Node, output: dict[str, object]) -> NodeRun:
         run=1,
         result=NodeResult(
             outcome=Outcome.UNCERTAIN if node is Node.JUDGE else Outcome.OK,
-            reason="space" if node is Node.JUDGE else None,
+            reasons=(written("space"),) if node is Node.JUDGE else (),
             output=output,  # type: ignore[arg-type]
         ),
         pipeline_version="1",

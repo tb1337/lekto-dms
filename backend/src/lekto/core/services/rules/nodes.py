@@ -5,14 +5,21 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from uuid import UUID
 
-from lekto.core.domain.classification import CHECKS, SPACE, FieldCheck, checks_from_json, field_key
+from lekto.core.domain.classification import (
+    CHECKS,
+    SPACE,
+    FieldCheck,
+    checks_from_json,
+    field_key,
+    node_reasons,
+)
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.fields import FieldDefinition
 from lekto.core.domain.ids import FieldId, SpaceId
 from lekto.core.domain.json_value import JsonObject, JsonValue, as_list
 from lekto.core.domain.pipeline import RULES, TRIGGER, Node, NodeResult, NodeRun, Outcome
-from lekto.core.domain.reasons import ReasonCode, because
+from lekto.core.domain.reasons import Reason, ReasonCode, because
 from lekto.core.domain.rule_planner import Mode
 from lekto.core.domain.rules import Rule, Trigger
 from lekto.core.domain.sorting import sort_key
@@ -91,7 +98,7 @@ class RulesResult:
         chain = Chain()
         looked: list[Rule] = []
         output: JsonObject = {}
-        reasons: list[str] = []
+        reasons: list[Reason] = []
         while True:
             # The first space with the global rules, every one it enters with its own.
             rules = (
@@ -147,7 +154,7 @@ class RulesResult:
         if reasons:
             result = NodeResult(
                 outcome=Outcome.UNCERTAIN,
-                reason="; ".join(reasons),
+                reasons=tuple(reasons),
                 model_version=RULES,
                 input=input,
                 output=output,
@@ -245,8 +252,8 @@ def _waiting_for_hand(
         **result.output,
         CHECKS: [*as_list(checks), *(c.to_json() for c in waiting)],
     }
-    reasons = [*([result.reason] if result.reason else []), *(c.reason or "" for c in waiting)]
-    return replace(result, outcome=Outcome.UNCERTAIN, reason="; ".join(reasons), output=output)
+    reasons = (*result.reasons, *node_reasons(waiting))
+    return replace(result, outcome=Outcome.UNCERTAIN, reasons=reasons, output=output)
 
 
 class FileNode:

@@ -12,6 +12,7 @@ from lekto.core.domain.documents import Document
 from lekto.core.domain.locations import Box
 from lekto.core.domain.pipeline import Lane, Node, NodeRun, Outcome
 from lekto.core.domain.reading import PageReading, PageWords, ReadWord, reading_from_json
+from lekto.core.domain.reasons import written
 from lekto.core.domain.users import User
 from lekto.core.ports.ocr import OcrResult
 from lekto.core.services.nodes import OcrNode, PagesNode, ParseNode, has_text
@@ -40,7 +41,8 @@ class NotPdfa(FakeOcr):
         self, source: Path, target: Path, *, media_type: str, vision: bool = False
     ) -> OcrResult:
         await super().make_archive(source, target, media_type=media_type)
-        return OcrResult(pages=1, engine="fake-ocr 1", pdfa=False, note=self.note)
+        notes = () if self.note is None else (written(self.note),)
+        return OcrResult(pages=1, engine="fake-ocr 1", pdfa=False, notes=notes)
 
 
 class Unsigned(FakeOcr):
@@ -50,7 +52,8 @@ class Unsigned(FakeOcr):
         self, source: Path, target: Path, *, media_type: str, vision: bool = False
     ) -> OcrResult:
         await super().make_archive(source, target, media_type=media_type)
-        return OcrResult(pages=1, engine="fake-ocr 1", pdfa=True, note="signature not carried")
+        notes = (written("signature not carried"),)
+        return OcrResult(pages=1, engine="fake-ocr 1", pdfa=True, notes=notes)
 
 
 class Converted(FakeOcr):
@@ -61,7 +64,7 @@ class Converted(FakeOcr):
     ) -> OcrResult:
         await super().make_archive(source, target, media_type=media_type)
         return OcrResult(
-            pages=1, engine="fake-ocr 1", pdfa=True, note="colours converted", rgb=True
+            pages=1, engine="fake-ocr 1", pdfa=True, notes=(written("colours converted"),), rgb=True
         )
 
 
@@ -166,7 +169,7 @@ async def test_the_engines_reason_for_a_plain_pdf_is_in_the_log(world: World) ->
     owner, document = await ingest(world, pipeline(world, ocr=NotPdfa(note)), "scan.pdf")
     assert document.lane is Lane.YELLOW
     entry = await logged(world, owner, document, Node.OCR)
-    assert entry.result.reason == f"the archive could not be made PDF/A: {note}"
+    assert entry.result.reason == f"the archive could not be made PDF/A; {note}"
     assert entry.result.output["note"] == note
 
 

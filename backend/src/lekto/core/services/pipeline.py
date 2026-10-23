@@ -61,6 +61,7 @@ from lekto.core.domain.reading import (
     OcrOutput,
     vision_advice,
 )
+from lekto.core.domain.reasons import Reason, ReasonCode, because
 from lekto.core.domain.rule_planner import changed_fields
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import User
@@ -174,8 +175,8 @@ class MetadataResult:
             definitions = await field_definitions(uow)
             changed = document.apply_changes(changes, definitions, now)
         except (NotFoundError, ValidationError) as error:
-            reason = f"the master data changed during the node; nothing was applied ({error})"
-            return replace(self.result, outcome=Outcome.UNCERTAIN, reason=reason)
+            meanwhile = because(ReasonCode.MASTER_DATA_CHANGED, detail=str(error))
+            return replace(self.result, outcome=Outcome.UNCERTAIN, reasons=(meanwhile,))
         if self.confirms:
             document.mark_confirmed(now)
             document.confirm_space(now)  # the source system's permissions placed it
@@ -184,18 +185,15 @@ class MetadataResult:
         if self.space is not None and self.space != document.space_id:
             stays = await _judged_move(uow, document, self.space, now)
             if stays is not None:
-                before = self.result.reason
                 return replace(
-                    self.result,
-                    outcome=Outcome.UNCERTAIN,
-                    reason=f"{before}; {stays}" if before else stays,
+                    self.result, outcome=Outcome.UNCERTAIN, reasons=(*self.result.reasons, stays)
                 )
         return self.result
 
 
 async def _judged_move(
     uow: UnitOfWork, document: Document, target: SpaceId, now: datetime
-) -> str | None:
+) -> Reason | None:
     """Move the document into `target`, where the judge put it; why not, if it stays."""
     here = await uow.spaces.find(document.space_id)
     there = await uow.spaces.find(target)
@@ -207,7 +205,7 @@ async def _judged_move(
         or there.personal_of not in (None, uploader)
         or (uploader is not None and there.role_of(uploader) is None)
     ):
-        return "the space the signals chose changed meanwhile; it stays"
+        return because(ReasonCode.SPACE_CHANGED_MEANWHILE)
     document.move_to(target, now)
     return None
 
@@ -845,18 +843,20 @@ class PipelineService:
             await self._jobs.end(job)
             return
         if job.tries > self._retry.max_attempts:
-            reason = (
-                f"node did not finish in {self._retry.max_attempts} attempts "
-                "(the worker died or ran out of time each time)"
+            exhausted = because(
+                ReasonCode.NODE_ATTEMPTS_EXHAUSTED, attempts=self._retry.max_attempts
             )
-            await self._record(job, document_id, node, run, _failed(reason), started)
+            await self._record(job, document_id, node, run, _failed(exhausted), started)
             return
         try:
             outcome: NodeResult | DeferredResult = await self._executors[node].run(document)
         except UnprocessableDocumentError as error:
-            outcome = _failed(str(error))
+            outcome = _failed(error.reason)
         except Exception as error:
-            reason = f"{type(error).__name__}: {error}"
+            crashed = because(
+                ReasonCode.NODE_CRASHED, error=type(error).__name__, detail=str(error)
+            )
+            reason = crashed.text
             retry_at = self._retry.next_run(job.tries, self._clock.now())
             log.warning(
                 "pipeline node failed",
@@ -864,7 +864,7 @@ class PipelineService:
                 exc_info=True,
             )
             if retry_at is None:
-                await self._record(job, document_id, node, run, _failed(reason), started)
+                await self._record(job, document_id, node, run, _failed(crashed), started)
                 return
             await self._defer(job, document_id, node, run, retry_at, reason)
             return
@@ -943,7 +943,7 @@ class PipelineService:
         try:
             outcome = await self._executors[Node.PARSE].run(document)
         except UnprocessableDocumentError as error:
-            outcome = _failed(str(error))
+            outcome = _failed(error.reason)
         except Exception as error:
             await self._failed_aside(job, "reading the text again failed", document_id, error)
             return
@@ -1122,8 +1122,8 @@ async def _check_imported(uow: UnitOfWork, imported: ImportedMetadata) -> None:
         raise ValidationError(f"metadata: {error}") from None
 
 
-def _failed(reason: str) -> NodeResult:
-    return NodeResult(outcome=Outcome.FAILED, reason=reason)
+def _failed(reason: Reason) -> NodeResult:
+    return NodeResult(outcome=Outcome.FAILED, reasons=(reason,))
 
 
 def _head(path: Path) -> bytes:

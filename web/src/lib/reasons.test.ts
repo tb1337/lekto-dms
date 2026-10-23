@@ -4,7 +4,7 @@ import openapi from '../../openapi.json';
 import de from '../../messages/de.json';
 import en from '../../messages/en.json';
 import { getLocale, setLocale } from '#lib/paraglide/runtime.js';
-import { REASONS, reasonText, reasonsText, type Reason } from './reasons.ts';
+import { REASONS, outputReasonText, reasonText, reasonsText, type Reason } from './reasons.ts';
 
 const catalog = (openapi as unknown as { 'x-reasons': Record<string, Record<string, string>> })[
 	'x-reasons'
@@ -70,6 +70,22 @@ describe('a reason in the user language', () => {
 			'Regel „Strom“: „Betrag“: der Betrag steht nicht im Text'
 		);
 		expect(reasonText(reason('text', { text: 'Bitte prüfen' }))).toBe('Bitte prüfen');
+	});
+
+	it('writes a reason within a reason, the field a node names and a log output', () => {
+		setLocale('de', { reload: false });
+		const why = { code: 'no_language_model', params: {} };
+		expect(reasonText({ code: 'date_none_from_model', params: { why } } as unknown as Reason)).toBe(
+			'kein Datum erkannt: das Sprachmodell hat keins genannt (kein Sprachmodell eingerichtet)'
+		);
+		const field = { code: 'contact_none', params: {}, field: 'contact' } as Reason;
+		expect(reasonText(field, { field: () => 'Kontakt' })).toBe('Kontakt: kein Kontakt erkannt');
+		const back = { code: 'rules_back_and_forth', params: { spaces: ['tobi', 'Haushalt', 'tobi'] } };
+		expect(outputReasonText(back, 'English')).toBe(
+			'Regeln verschieben es hin und her: tobi → Haushalt → tobi'
+		);
+		expect(outputReasonText(undefined, 'English')).toBe('English');
+		expect(outputReasonText(undefined, undefined)).toBeNull();
 	});
 
 	it('falls back to the English text without codes or for a code it does not know', () => {

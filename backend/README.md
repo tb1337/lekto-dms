@@ -1179,9 +1179,13 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
   that document; without it, the file lies in a space the caller cannot see. Moving,
   confirming and rules never meet a duplicate.
 - Reasons come with codes (issue #83, `core/domain/reasons.py`): beside the English text
-  (`reason`), a check (`FieldCheckOut`) and a rule's note (`RuleNoteOut`) carry `reasons`, each
-  a `code` with its `params`, the custom field it is about (`subject`) and the rule it comes
-  from (`rule`). The OpenAPI document lists every code with its parameters and how each is
+  (`reason`), a check (`FieldCheckOut`), a rule's note (`RuleNoteOut`), a log entry
+  (`LogEntry`, stored in `processing_log.reasons` since revision 0038) and an open node of the
+  inbox carry `reasons`, each a `code` with its `params`, the custom field it is about
+  (`subject`), the rule it comes from (`rule`) and, among a node's reasons, the built-in field
+  (`field`). A signal that abstains writes `abstained_reason` beside `abstained` in its output,
+  the rules `problem_reason` beside `problem` (also `ArrivalStepOut`); a document the adapters
+  cannot process fails its node with the error's own code (`DomainError.reason`). The OpenAPI document lists every code with its parameters and how each is
   written (`x-reasons`: `text`, `number`, `percent` (0 to 1), `date`, `value` (a field's value
   as a reason shows it: true or false for yes or no, null for none), `names`, `fields` (check
   fields), `rule_values`). `text` is a reason as written (a person's, or one stored before

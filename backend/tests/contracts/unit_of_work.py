@@ -26,6 +26,7 @@ from lekto.core.domain.pipeline import (
     ProcessingStatus,
 )
 from lekto.core.domain.profiles import Profile
+from lekto.core.domain.reasons import ReasonCode, because, written
 from lekto.core.domain.rules import (
     AddTags,
     Condition,
@@ -1674,7 +1675,11 @@ class UnitOfWorkContract:
                     Node.OCR,
                     NodeResult(
                         outcome=Outcome.UNCERTAIN,
-                        reason="low quality scan",
+                        reasons=(
+                            written("low quality scan"),
+                            because(ReasonCode.PAGE_POORLY_READ, page=2, share=0.5),
+                            because(ReasonCode.AMOUNT_NOT_IN_TEXT).about("Amount").for_field("x"),
+                        ),
                         confidence=0.25,
                         model_version="tesseract 5.5",
                         input={"pages": 2},

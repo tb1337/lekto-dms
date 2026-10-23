@@ -16,6 +16,7 @@ from PIL import ExifTags, Image, UnidentifiedImageError
 
 from lekto.core.domain import media_types
 from lekto.core.domain.errors import UnprocessableDocumentError
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.ports.metadata import FileMetadata, MetadataEntry, MetadataSource
 
 MAX_VALUE = 2000
@@ -45,7 +46,7 @@ def _read(data: bytes) -> FileMetadata:
         return _pdf(data)
     if kind in (media_types.JPEG, media_types.PNG, media_types.TIFF):
         return _image(data)
-    raise UnprocessableDocumentError("the file is no PDF and no image")
+    raise UnprocessableDocumentError(because(ReasonCode.FILE_NOT_PDF_OR_IMAGE))
 
 
 def _text(value: object) -> str | None:
@@ -60,9 +61,9 @@ def _pdf(data: bytes) -> FileMetadata:
     try:
         pdf = pikepdf.open(io.BytesIO(data))
     except pikepdf.PasswordError:
-        raise UnprocessableDocumentError("the PDF is encrypted") from None
+        raise UnprocessableDocumentError(because(ReasonCode.PDF_ENCRYPTED)) from None
     except pikepdf.PdfError:
-        raise UnprocessableDocumentError("the PDF cannot be read") from None
+        raise UnprocessableDocumentError(because(ReasonCode.PDF_UNREADABLE)) from None
     with pdf:
         entries: list[MetadataEntry] = []
         for key, value in pdf.docinfo.items():
@@ -112,4 +113,4 @@ def _image(data: bytes) -> FileMetadata:
                 entries=tuple(entries),
             )
     except (UnidentifiedImageError, OSError, ValueError):
-        raise UnprocessableDocumentError("the image cannot be read") from None
+        raise UnprocessableDocumentError(because(ReasonCode.IMAGE_UNREADABLE)) from None

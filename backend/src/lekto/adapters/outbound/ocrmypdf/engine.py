@@ -81,6 +81,7 @@ from lekto.adapters.outbound.system import Completed, run_process
 from lekto.core.domain import media_types
 from lekto.core.domain.errors import LanguageModelError, UnprocessableDocumentError
 from lekto.core.domain.reading import PageReading, PageWords
+from lekto.core.domain.reasons import Reason, ReasonCode, because
 from lekto.core.ports.ocr import OcrResult, VisionModel, VisionReading
 
 log = logging.getLogger(__name__)
@@ -92,22 +93,14 @@ _ALREADY_DONE_OCR = 6
 _ENCRYPTED_PDF = 8
 _PDFA_CONVERSION_FAILED = 10
 _UNPROCESSABLE = {
-    _INPUT_FILE: "the file is damaged or not a valid document",
-    _ALREADY_DONE_OCR: "the file cannot be processed",
-    _ENCRYPTED_PDF: "the PDF is encrypted",
+    _INPUT_FILE: ReasonCode.FILE_DAMAGED,
+    _ALREADY_DONE_OCR: ReasonCode.FILE_NOT_PROCESSABLE,
+    _ENCRYPTED_PDF: ReasonCode.PDF_ENCRYPTED,
 }
 _SIGNATURE_HINT = "digital signature"
-UNREADABLE_NOTE = (
-    "the text in the PDF cannot be read (a font without a character map); every page was "
-    "recognised from its image"
-)
-SIGNATURE_NOTE = (
-    "the original is digitally signed; the archive does not carry the signature "
-    "(the original is unchanged)"
-)
-COLOUR_NOTE = (
-    "the colours were converted to RGB to make the archive PDF/A (the original is unchanged)"
-)
+UNREADABLE_NOTE = because(ReasonCode.TEXT_UNREADABLE)
+SIGNATURE_NOTE = because(ReasonCode.SIGNATURE_DROPPED)
+COLOUR_NOTE = because(ReasonCode.COLOURS_CONVERTED)
 # Ghostscript converts what PDF/A cannot hold; OCRmyPDF's own PDF/A writer converts nothing.
 COLOUR_OPTIONS = ("--pdfa-backend", "ghostscript", "--color-conversion-strategy", "RGB")
 _COLOUR_ERROR = "ColorConversionNeededError"
@@ -241,7 +234,7 @@ class OcrmypdfEngine:
             pages=pages,
             engine=await self._engine_name(vision=vision),
             pdfa=pdfa,
-            note=_join(notes),
+            notes=tuple(notes),
             readings=readings,
             words=words,
             read_again=unreadable or hidden,
@@ -259,12 +252,12 @@ class OcrmypdfEngine:
         env: dict[str, str],
         timeout: timedelta,
         records: Path | None,
-    ) -> tuple[bool, bool, list[str]]:
+    ) -> tuple[bool, bool, list[Reason]]:
         """Run OCRmyPDF, with a second run where it helps (see the module). Returns whether the
         output is PDF/A, whether its colours were converted to RGB for it, and the notes for the
         processing log; `work` keeps the files of the last run, `records` those of the vision
         plugin."""
-        notes: list[str] = []
+        notes: list[Reason] = []
         invalidate = False
 
         async def run(*, pdfa: bool, invalidate: bool, colours: bool = False) -> Completed:
@@ -291,17 +284,18 @@ class OcrmypdfEngine:
                 notes.append(COLOUR_NOTE)
                 return True, True, notes
             # Converting did not help either: a plain PDF, for the first run's reason.
-            notes.append(f"not PDF/A: {reason}")
+            notes.append(_not_pdfa(reason))
             pdfa = False
             completed = await run(pdfa=False, invalidate=invalidate)
         elif completed.returncode == _BAD_ARGS:
-            notes.append(f"not PDF/A: {_error_reason(completed.stderr)}")
+            notes.append(_not_pdfa(_error_reason(completed.stderr)))
             pdfa = False
             completed = await run(pdfa=False, invalidate=invalidate)
         code = completed.returncode
         if code in _UNPROCESSABLE:
+            problem = because(_UNPROCESSABLE[code]).to_json()
             raise UnprocessableDocumentError(
-                f"{_UNPROCESSABLE[code]}: {_last_line(completed.stderr)}"
+                because(ReasonCode.OCR_FAILED, problem=problem, detail=_last_line(completed.stderr))
             )
         if code not in (0, _PDFA_CONVERSION_FAILED):
             # A page the model could not read: the plugin leaves the reason in `records`; its
@@ -317,7 +311,7 @@ class OcrmypdfEngine:
             )
         if code == _PDFA_CONVERSION_FAILED:
             pdfa = False
-            notes.append(f"not PDF/A: {pdfa_reasons(completed.stderr)}")
+            notes.append(_not_pdfa(pdfa_reasons(completed.stderr)))
         return pdfa, False, notes
 
     async def _run(
@@ -389,7 +383,9 @@ def prepare_image(source: Path, prepared: Path) -> tuple[Path, int]:
             dpi = image_dpi(image.size, image.info.get("dpi"))
             frames = [frame.copy() for frame in ImageSequence.Iterator(image)]
     except (OSError, ValueError, Image.DecompressionBombError) as error:
-        raise UnprocessableDocumentError(f"the image cannot be read: {error}") from None
+        raise UnprocessableDocumentError(
+            because(ReasonCode.IMAGE_UNREADABLE_DETAIL, detail=str(error))
+        ) from None
     converted = [_ocr_ready(frame) for frame in frames]
     if len(frames) == 1 and converted[0] is frames[0]:
         return source, dpi
@@ -455,11 +451,10 @@ def _error_reason(stderr: str) -> str:
     return _last_line(stderr)
 
 
-def _join(notes: Sequence[str]) -> str | None:
-    if not notes:
-        return None
-    text = "; ".join(notes)
-    return text if len(text) <= _NOTE_MAX else text[: _NOTE_MAX - 1] + "…"
+def _not_pdfa(reason: str) -> Reason:
+    """Why the archive is not PDF/A, as the tools say it; shortened to `_NOTE_MAX`."""
+    detail = reason if len(reason) <= _NOTE_MAX else reason[: _NOTE_MAX - 1] + "…"
+    return because(ReasonCode.NOT_PDFA, detail=detail)
 
 
 def _ocr_ready(image: Image.Image) -> Image.Image:

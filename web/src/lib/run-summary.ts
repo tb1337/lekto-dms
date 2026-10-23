@@ -9,6 +9,7 @@ import { choiceTitle, filingKind, type Viewer } from '#lib/filing.ts';
 import { userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { NODE_LABELS } from '#lib/node-labels.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { labelled, reasonsText } from '#lib/reasons.ts';
 import type { GraphNode, Node } from '#lib/pipeline.ts';
 import { nodeRun, startedAgain } from '#lib/runs.ts';
 import { list, object, person, text } from '#lib/signals.ts';
@@ -82,7 +83,10 @@ export function headlineOf(
 			return {
 				tone: 'red',
 				title: m.run_failed({ run: run.number, steps: names(failed) }),
-				detail: first?.outcome === 'failed' ? (first.reason ?? null) : null,
+				detail:
+					first?.outcome === 'failed'
+						? reasonsText(first.reasons, first.reason, labelled(lookup))
+						: null,
 				action: run.current ? 'reprocess' : null
 			};
 		}

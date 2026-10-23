@@ -20,6 +20,7 @@ from lekto.adapters.outbound.pdfium.library import LOCK
 from lekto.core.domain.codes import Code
 from lekto.core.domain.errors import UnprocessableDocumentError
 from lekto.core.domain.locations import Box
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.ports.codes import CodeReading
 
 DPI = 300
@@ -45,7 +46,9 @@ class ZxingCodeReader:
                 document = pypdfium2.PdfDocument(source)
                 total = len(document)  # a library call too: under the lock
         except pypdfium2.PdfiumError as error:
-            raise UnprocessableDocumentError(f"the PDF cannot be read: {error}") from None
+            raise UnprocessableDocumentError(
+                because(ReasonCode.PDF_UNREADABLE_DETAIL, detail=str(error))
+            ) from None
         codes: list[Code] = []
         try:
             pages = min(total, self._max_pages)

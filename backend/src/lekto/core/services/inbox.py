@@ -66,6 +66,7 @@ from lekto.core.domain.pipeline import (
     Outcome,
     ProcessingHistory,
 )
+from lekto.core.domain.reasons import Reason, text_of
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
@@ -96,8 +97,12 @@ class OpenNode:
 
     node: Node
     outcome: Outcome
-    reason: str | None
+    reasons: tuple[Reason, ...]
     fields: tuple[FieldCheck, ...] = ()
+
+    @property
+    def reason(self) -> str | None:
+        return text_of(self.reasons)
 
 
 @dataclass(frozen=True)
@@ -107,10 +112,14 @@ class NodeReview:
     node: Node
     run: int
     outcome: Outcome
-    reason: str | None
+    reasons: tuple[Reason, ...]
     model_version: str | None
     truncated: bool | None
     fields: tuple[FieldCheck, ...]
+
+    @property
+    def reason(self) -> str | None:
+        return text_of(self.reasons)
 
 
 @dataclass(frozen=True)
@@ -186,11 +195,11 @@ def open_nodes(document: Document, log: Sequence[NodeRun]) -> tuple[OpenNode, ..
         if outcome not in (Outcome.UNCERTAIN, Outcome.FAILED):
             continue
         entry = latest.get(node)
-        reason = entry.result.reason if entry is not None else None
+        reasons = entry.result.reasons if entry is not None else ()
         fields: tuple[FieldCheck, ...] = ()
         if entry is not None and outcome is Outcome.UNCERTAIN:
             fields = tuple(check for check in _checks(entry.result) if not check.ok)
-        result.append(OpenNode(node, outcome, reason, fields))
+        result.append(OpenNode(node, outcome, reasons, fields))
     return tuple(result)
 
 
@@ -207,7 +216,7 @@ def node_reviews(log: Sequence[NodeRun]) -> tuple[NodeReview, ...]:
                 node=node,
                 run=entry.run,
                 outcome=entry.result.outcome,
-                reason=entry.result.reason,
+                reasons=entry.result.reasons,
                 model_version=entry.result.model_version,
                 truncated=truncated if isinstance(truncated, bool) else None,
                 fields=tuple(_checks(entry.result)),

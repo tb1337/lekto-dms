@@ -42,6 +42,7 @@ from lekto.core.domain.pipeline import (
     Lane,
     Node,
 )
+from lekto.core.domain.reasons import Reason
 from lekto.core.domain.rule_planner import Effect, Mode, Note, NoteKind
 from lekto.core.domain.rules import Rule, RuleApplication, RuleScope, SetSpace, Trigger
 from lekto.core.domain.users import User
@@ -110,7 +111,7 @@ class _Played:
     did not apply, and the chain after it."""
 
     run: RuleRun
-    problem: str | None
+    problem: Reason | None
     chain: tuple[ArrivalStep, ...]
 
 
@@ -390,7 +391,7 @@ class RuleApplicationService:
             application.record_unchanged()
             return
         if played.problem is not None:
-            application.record_skipped(id, played.problem)
+            application.record_skipped(id, played.problem.text)
             return
         await uow.documents.update(document)
         await uow.outbox.add(document.pull_events())

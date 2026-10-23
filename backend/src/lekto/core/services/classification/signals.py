@@ -53,6 +53,7 @@ from lekto.core.domain.master_data import Contact
 from lekto.core.domain.permissions import Reach, reach_access
 from lekto.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
 from lekto.core.domain.profiles import Person
+from lekto.core.domain.reasons import Reason, ReasonCode, because, written
 from lekto.core.domain.search import Visibility
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.verdict import (
@@ -80,7 +81,9 @@ from lekto.core.services.profiles import matching_persons
 log = logging.getLogger(__name__)
 
 ABSTAINED = "abstained"
-"""Key of the output of a signal that had nothing to say: why."""
+"""Key of the output of a signal that had nothing to say: why, in English."""
+ABSTAINED_REASON = "abstained_reason"
+"""Key of the same with its code (`Reason.to_json`)."""
 PROPOSAL = "proposal"
 """Key of the language model's proposal (`StoredProposal`) in the output of `signal_llm`."""
 FACTS = "facts"
@@ -88,8 +91,19 @@ _RANKED = 5  # classes of contact and type the classifier's signal keeps
 _CANDIDATES_MASS = 0.5  # the candidate spaces hold this much of the classifier's: renormalised
 
 
-def abstained(reason: str, *, model_version: str | None = None) -> NodeResult:
-    return NodeResult(outcome=Outcome.OK, model_version=model_version, output={ABSTAINED: reason})
+def abstained(reason: Reason, *, model_version: str | None = None) -> NodeResult:
+    output: JsonObject = {ABSTAINED: reason.text, ABSTAINED_REASON: reason.to_json()}
+    return NodeResult(outcome=Outcome.OK, model_version=model_version, output=output)
+
+
+def abstained_reason(output: JsonObject) -> Reason | None:
+    """Why a signal abstained, from its output; None if it did not."""
+    if ABSTAINED not in output:
+        return None
+    try:
+        return Reason.from_json(output.get(ABSTAINED_REASON))
+    except ValidationError:
+        return written(str(output[ABSTAINED]))
 
 
 async def _text(store: ObjectStore, document: Document) -> str | None:
@@ -119,7 +133,7 @@ class FactsSignal:
     async def run(self, document: Document) -> "NodeResult | FactsResult":
         text = await _text(self._store, document)
         if text is None:
-            return abstained("the document has no text", model_version=FACTS)
+            return abstained(because(ReasonCode.NO_DOCUMENT_TEXT), model_version=FACTS)
         codes = await self.codes(document)
         async with self._uow() as uow:
             contacts = await uow.contacts.list_all()
@@ -253,17 +267,17 @@ class ClassifierSignal:
 
     async def run(self, document: Document) -> NodeResult:
         if self._classifier is None:
-            return abstained("no classifier is configured")
+            return abstained(because(ReasonCode.NO_CLASSIFIER))
         text = await _text(self._store, document)
         if text is None:
-            return abstained("the document has no text")
+            return abstained(because(ReasonCode.NO_DOCUMENT_TEXT))
         try:
             predicted = await self._classifier.predict(text)
         except ClassifierError as error:
             log.warning("the classifier could not be asked: %s", error)
-            return abstained(f"the classifier cannot be used: {error}")
+            return abstained(because(ReasonCode.CLASSIFIER_UNUSABLE, detail=str(error)))
         if predicted is None:
-            return abstained("no model is trained yet")
+            return abstained(because(ReasonCode.CLASSIFIER_UNTRAINED))
         model, prediction = predicted
         spaces: list[tuple[SpaceId, float]] = []
         known_spaces: frozenset[SpaceId] = frozenset()
@@ -342,27 +356,27 @@ class NeighboursSignal:
 
     async def run(self, document: Document) -> NodeResult:
         if self._policy.count == 0:
-            return abstained("neighbours are turned off")
+            return abstained(because(ReasonCode.NEIGHBOURS_OFF))
         if self._index is None or self._embeddings is None:
-            return abstained("there is no search index with embeddings")
+            return abstained(because(ReasonCode.NO_EMBEDDING_INDEX))
         text = await _text(self._store, document)
         sections = [] if text is None else split_sections(text, self._policy.chunk_size, 1)
         if not sections:
-            return abstained("the document has no text")
+            return abstained(because(ReasonCode.NO_DOCUMENT_TEXT))
         try:
             embedded = await self._embeddings.embed([self._policy.document_prefix + sections[0]])
         except EmbeddingsError as error:
-            return abstained(f"the text could not be embedded: {error}")
+            return abstained(because(ReasonCode.TEXT_NOT_EMBEDDED, detail=str(error)))
         vector = tuple(embedded.vectors[0]) if embedded.vectors else ()
         wanted = self._policy.dimensions
         if not vector or (wanted is not None and len(vector) != wanted):
-            return abstained("the text's vector does not fit the index")
+            return abstained(because(ReasonCode.VECTOR_MISFIT))
         async with self._uow() as uow:
             owner = (
                 None if document.uploaded_by is None else await uow.users.find(document.uploaded_by)
             )
             if owner is None or not owner.active:
-                return abstained("the document has no active uploader to look from")
+                return abstained(because(ReasonCode.NO_UPLOADER))
             spaces = await uow.spaces.list_accessible(owner.id)
             candidates = await space_candidates(uow, owner.id)
         visibility = Visibility.of(Reach.of(owner.id, spaces))
@@ -377,7 +391,7 @@ class NeighboursSignal:
                 )
             )
         except SearchError as error:
-            return abstained(f"the search index cannot be asked: {error}")
+            return abstained(because(ReasonCode.INDEX_UNAVAILABLE, detail=str(error)))
         neighbours: list[Neighbour] = []
         async with self._uow() as uow:
             known = await uow.documents.confirmed_labels(owner.id)
@@ -405,7 +419,7 @@ class NeighboursSignal:
                     )
                 )
         if not neighbours:
-            return abstained("no similar confirmed document")
+            return abstained(because(ReasonCode.NO_SIMILAR))
         known = replace(
             known,
             tags=known.tags & targets,

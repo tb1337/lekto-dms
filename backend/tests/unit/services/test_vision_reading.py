@@ -17,9 +17,10 @@ from lekto.core.domain.errors import (
 from lekto.core.domain.jobs import JobStatus
 from lekto.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
 from lekto.core.domain.reading import PageReading, VisionAdvice
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.users import Role, User
 from lekto.core.ports.ocr import OcrResult
-from lekto.core.services.nodes import NO_VISION_MODEL, OcrNode, PagesNode, ParseNode
+from lekto.core.services.nodes import OcrNode, PagesNode, ParseNode
 from lekto.core.services.objects import archive_key, exchanges_key, original_key
 from lekto.core.services.pipeline import PipelineService
 from tests.builders import SAMPLES, incoming
@@ -194,7 +195,8 @@ async def test_a_model_configured_away_fails_the_ocr(world: World) -> None:
     document = await world.documents.get(owner.id, document.id)
     assert document.lane is Lane.RED
     *_, last = await ocr_runs(world, owner, document)
-    assert (last.result.outcome, last.result.reason) == (Outcome.FAILED, NO_VISION_MODEL)
+    assert last.result.outcome is Outcome.FAILED
+    assert last.result.reasons == (because(ReasonCode.VISION_NOT_CONFIGURED),)
 
 
 async def test_the_owner_and_admins_ask_for_the_model(world: World) -> None:

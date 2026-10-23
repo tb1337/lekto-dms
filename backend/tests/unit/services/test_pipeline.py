@@ -38,6 +38,7 @@ from lekto.core.domain.pipeline import (
     Outcome,
     ProcessingStatus,
 )
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.services.objects import original_key
@@ -629,7 +630,7 @@ class Unprocessable:
 
     async def run(self, document: Document) -> NodeResult:
         self.calls += 1
-        raise UnprocessableDocumentError("the PDF is encrypted")
+        raise UnprocessableDocumentError(because(ReasonCode.PDF_ENCRYPTED))
 
 
 async def test_an_unprocessable_document_fails_at_once(world: World) -> None:
@@ -642,6 +643,7 @@ async def test_an_unprocessable_document_fails_at_once(world: World) -> None:
     assert ocr.calls == 1  # no automatic retry
     log = await world.documents.processing_log(owner.id, document.id)
     assert (log[-1].node, log[-1].result.reason) == (Node.OCR, "the PDF is encrypted")
+    assert log[-1].result.reasons == (because(ReasonCode.PDF_ENCRYPTED),)
     (job,) = [job for job in world.database.jobs.values() if job.payload["node"] == Node.OCR.value]
     assert job.status is JobStatus.FAILED
 

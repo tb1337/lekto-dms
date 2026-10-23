@@ -52,6 +52,7 @@ from lekto.core.domain.pipeline import (
     Processing,
     ProcessingStatus,
 )
+from lekto.core.domain.reasons import reasons_from_json, reasons_to_json
 from lekto.core.domain.sorting import sort_key
 from lekto.core.domain.verdict import KnownLabels
 from lekto.core.ports.repository import (
@@ -519,6 +520,7 @@ class SqlProcessingLog:
                 run=run.run,
                 outcome=result.outcome.value,
                 reason=result.reason,
+                reasons=reasons_to_json(result.reasons),
                 confidence=result.confidence,
                 model_version=result.model_version,
                 input=result.input,
@@ -544,7 +546,7 @@ def _node_run(row: Row[Any]) -> NodeRun:
         run=row.run,
         result=NodeResult(
             outcome=Outcome(row.outcome),
-            reason=row.reason,
+            reasons=reasons_from_json(row.reasons, row.reason),
             confidence=row.confidence,
             model_version=row.model_version,
             input=row.input,

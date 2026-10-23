@@ -21,7 +21,8 @@ from lekto.core.domain.documents import Document
 from lekto.core.domain.exchanges import tokens_of
 from lekto.core.domain.json_value import JsonObject
 from lekto.core.domain.pipeline import Node, NodeResult, Outcome
-from lekto.core.domain.reading import NO_TEXT_REASON, OcrOutput, reading_to_json
+from lekto.core.domain.reading import OcrOutput, reading_to_json
+from lekto.core.domain.reasons import Reason, ReasonCode, because, text_of
 from lekto.core.ports.object_store import ObjectStore
 from lekto.core.ports.ocr import Ocr, VisionReading
 from lekto.core.ports.pages import PAGE_MEDIA_TYPE, PREVIEW_FILE, PageRenderer
@@ -71,7 +72,7 @@ class OcrNode:
             if self._ocr.vision is None:
                 return NodeResult(
                     outcome=Outcome.FAILED,
-                    reason=NO_VISION_MODEL,
+                    reasons=(because(ReasonCode.VISION_NOT_CONFIGURED),),
                     model_version=None,
                     input=input,
                     output={},
@@ -102,36 +103,33 @@ class OcrNode:
             archive=archive_key(document.id),
             pages=result.pages,
             pdfa=result.pdfa,
-            note=result.note,
+            note=text_of(result.notes),
             readings=tuple(result.readings),
             read_again=result.read_again,
             rgb=result.rgb,
         )
-        note = result.note
+        notes = result.notes
         if not result.pdfa:
-            note = "the archive could not be made PDF/A" + ("" if note is None else f": {note}")
+            notes = (because(ReasonCode.ARCHIVE_NOT_PDFA), *notes)
         if result.vision is not None:
             output = replace(
                 output,
                 vision=_vision_output(result.vision),
                 tokens=tuple(tokens_of(call.usage for call in result.vision.calls)),
             )
-            note = read_by(result.vision) + ("" if note is None else f"; {note}")
+            notes = (read_by(result.vision), *notes)
             await keep_calls(self._store, document, Node.OCR, list(result.vision.calls))
         return NodeResult(
             outcome=Outcome.OK if result.pdfa else Outcome.UNCERTAIN,
-            reason=note,
+            reasons=notes,
             model_version=result.engine,
             input=input,
             output=output.to_json(),
         )
 
 
-NO_VISION_MODEL = "a person asked for the vision language model, but none is configured"
-
-
-def read_by(vision: VisionReading) -> str:
-    return f"every page was read by the vision language model {vision.model} ({vision.endpoint})"
+def read_by(vision: VisionReading) -> Reason:
+    return because(ReasonCode.VISION_READ, model=vision.model, endpoint=vision.endpoint)
 
 
 def _vision_output(vision: VisionReading) -> JsonObject:
@@ -224,7 +222,7 @@ class ParseNode:
         if not has_text(text):
             return NodeResult(
                 outcome=Outcome.FAILED,
-                reason=NO_TEXT_REASON,
+                reasons=(because(ReasonCode.NO_TEXT),),
                 model_version=result.parser,
                 input=input,
                 output=output,

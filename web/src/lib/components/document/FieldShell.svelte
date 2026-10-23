@@ -9,10 +9,11 @@
 	import CandidateList from '#lib/components/document/CandidateList.svelte';
 	import SourceChip from '#lib/components/document/SourceChip.svelte';
 	import SourcesInfo from '#lib/components/document/SourcesInfo.svelte';
-	import { describeValue } from '#lib/describe.ts';
+	import { describeValue, fieldLabel } from '#lib/describe.ts';
 	import { byPage, provenance, type FieldEvidence, type Place } from '#lib/document-view.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { reasonsText } from '#lib/reasons.ts';
 	import TypeIcon from '#lib/components/TypeIcon.svelte';
 	import { cn } from '#lib/utils.ts';
 
@@ -69,6 +70,11 @@
 	} = $props();
 
 	const check = $derived(evidence?.check);
+	const reason = $derived(
+		check
+			? reasonsText(check.reasons, check.reason, { field: (name) => fieldLabel(name, lookup) })
+			: null
+	);
 	const card = $derived(review && evidence?.open === true);
 	const calm = $derived(!card && advice && evidence !== undefined);
 	const kind = $derived(check ? provenance(check) : null);
@@ -140,7 +146,7 @@
 			<Lightbulb class="size-4 shrink-0 text-brand" aria-hidden="true" strokeWidth={2.2} />
 			<label id={labelId} for={inputId} class="font-semibold">{@render labelText()}</label>
 		</div>
-		{#if check.reason}<p class="text-sm">{check.reason}</p>{/if}
+		{#if reason}<p class="text-sm">{reason}</p>{/if}
 		{#if check.candidates?.length}
 			<CandidateList candidates={check.candidates} onpick={pick} {lead} />
 		{/if}
@@ -153,7 +159,7 @@
 			/>
 			<label id={labelId} for={inputId} class="font-semibold">{@render labelText()}</label>
 		</div>
-		{#if check.reason}<p class="text-sm">{check.reason}</p>{/if}
+		{#if reason}<p class="text-sm">{reason}</p>{/if}
 		{#if check.candidates?.length}
 			<CandidateList candidates={check.candidates} onpick={pick} {lead} />
 		{/if}

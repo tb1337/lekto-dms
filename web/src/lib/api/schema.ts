@@ -3509,9 +3509,14 @@ export interface components {
 			confidence: number;
 			/**
 			 * Reason
-			 * @description Why the field is uncertain (for the topic: why it was not set).
+			 * @description Why the field is uncertain (for the topic: why it was not set), in English; several reasons are joined by `; `.
 			 */
 			reason: string | null;
+			/**
+			 * Reasons
+			 * @description The reasons with their codes, in the same order.
+			 */
+			reasons?: components['schemas']['ReasonOut'][];
 			/**
 			 * Proposed
 			 * @description What the model answered, unchanged.
@@ -5150,6 +5155,133 @@ export interface components {
 			advice: components['schemas']['VisionAdvice'] | null;
 		};
 		/**
+		 * ReasonCode
+		 * @enum {string}
+		 */
+		ReasonCode:
+			| 'text'
+			| 'error'
+			| 'signals_disagree'
+			| 'only_suggested'
+			| 'one_signal_only'
+			| 'only_identifier'
+			| 'contact_is_recipient'
+			| 'contact_identifiers_several'
+			| 'contact_new_proposed'
+			| 'contact_none'
+			| 'contact_none_no_model'
+			| 'contact_not_in_text'
+			| 'sender_not_a_contact'
+			| 'sender_matches_several'
+			| 'sender_only_similar'
+			| 'type_new_proposed'
+			| 'type_none'
+			| 'topic_without_contact'
+			| 'topic_none'
+			| 'topic_contact_suggested'
+			| 'space_chosen_by_person'
+			| 'space_named_unseen'
+			| 'space_stays_for_named'
+			| 'space_shows_more'
+			| 'space_hand_over'
+			| 'space_uploader_unseen'
+			| 'space_other'
+			| 'spaces_disagree'
+			| 'date_none'
+			| 'date_none_from_model'
+			| 'not_a_date'
+			| 'date_implausible'
+			| 'same_as_document_date'
+			| 'not_a_period'
+			| 'period_implausible'
+			| 'period_no_year'
+			| 'same_day_as_document_date'
+			| 'field_set_by_hand'
+			| 'field_by_hand_missing'
+			| 'field_not_found'
+			| 'field_not_read_no_model'
+			| 'value_invalid'
+			| 'quote_not_in_text'
+			| 'quote_missing'
+			| 'quote_without_value'
+			| 'quote_too_short'
+			| 'date_not_in_text'
+			| 'period_not_in_text'
+			| 'amount_not_in_text'
+			| 'currency_not_in_text'
+			| 'number_not_in_text'
+			| 'link_not_in_text'
+			| 'text_not_in_text'
+			| 'value_read_unsure'
+			| 'page_poorly_read'
+			| 'page_poorly_read_content'
+			| 'surroundings_poorly_read'
+			| 'source_lacks_contact'
+			| 'source_lacks_document_type'
+			| 'source_lacks_document_date'
+			| 'field_does_not_apply'
+			| 'field_gone'
+			| 'contact_gone'
+			| 'document_type_gone'
+			| 'topic_gone'
+			| 'tag_gone'
+			| 'space_gone'
+			| 'tag_is_group'
+			| 'rule_other_space'
+			| 'space_no_right_any_more'
+			| 'space_no_right'
+			| 'space_widens_unconfirmed'
+			| 'space_widens_needs_confirmed'
+			| 'review_on_arrival_only'
+			| 'review_confirmed'
+			| 'rules_disagree'
+			| 'value_other_not_accepted'
+			| 'person_decided_field'
+			| 'rule_value_on_unconfirmed'
+			| 'model_value_other'
+			| 'rules_value_on_unconfirmed'
+			| 'rules_model_value_other'
+			| 'topic_person_chose'
+			| 'topic_no_contact'
+			| 'topic_not_enabled'
+			| 'tag_added_and_removed'
+			| 'tag_removed_by_person'
+			| 'tag_set_by_person'
+			| 'tag_above_kept'
+			| 'title_empty'
+			| 'title_yields'
+			| 'value_empty'
+			| 'template_missing_value';
+		/**
+		 * ReasonOut
+		 * @description A reason with its code: a client translates `code` with `params`; the English text
+		 *     stands beside it (`reason`). The codes, their parameters and how each parameter is written
+		 *     are in the OpenAPI document (`x-reasons`). `text` is a reason as written: by a person, or
+		 *     from before reasons had codes (its `params` hold the `text`).
+		 */
+		ReasonOut: {
+			code: components['schemas']['ReasonCode'];
+			/**
+			 * Params
+			 * @example {
+			 *       "contact": "Stadtwerke"
+			 *     }
+			 */
+			params: {
+				[key: string]: unknown;
+			};
+			/**
+			 * Subject
+			 * @description The custom field the reason is about, by its name (put before the text).
+			 */
+			subject?: string | null;
+			/**
+			 * Rule
+			 * @description The rule the reason comes from, by its name.
+			 */
+			rule?: string | null;
+		};
+		/**
 		 * RecoveryCodes
 		 * @description Shown once; each works once instead of a TOTP code.
 		 */
@@ -5457,8 +5589,16 @@ export interface components {
 			field: string;
 			/** @description `overruled`: a person decided the field; `refused`: not allowed (rights, scope, unconfirmed values); `conflict`: rules or values disagree; `skipped`: something it refers to is gone or does not apply, or a template writes a missing value; `review`: the rule holds the document for a review; `yielded`: a document type's title pattern gave way to another rule that sets the title. */
 			kind: components['schemas']['NoteKind'];
-			/** Reason */
+			/**
+			 * Reason
+			 * @description Why, in English.
+			 */
 			reason: string;
+			/**
+			 * Reasons
+			 * @description Why, with its code (one reason).
+			 */
+			reasons: components['schemas']['ReasonOut'][];
 		};
 		/** RuleOut */
 		RuleOut: {

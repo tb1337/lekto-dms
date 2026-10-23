@@ -2,6 +2,7 @@
 	import type { components } from '#lib/api/schema.ts';
 	import { describeValue, fieldLabel } from '#lib/describe.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
+	import { reasonsText } from '#lib/reasons.ts';
 
 	// What a rule does to a document: field old → new, then its notes (skipped, conflicts, …).
 	let {
@@ -23,6 +24,9 @@
 		</li>
 	{/each}
 	{#each notes as note (note.field + note.kind)}
-		<li class="text-muted-foreground">{fieldLabel(note.field, lookup)}: {note.reason}</li>
+		<li class="text-muted-foreground">
+			{fieldLabel(note.field, lookup)}:
+			{reasonsText(note.reasons, note.reason, { field: (name) => fieldLabel(name, lookup) })}
+		</li>
 	{/each}
 </ul>

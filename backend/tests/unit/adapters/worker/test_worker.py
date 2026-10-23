@@ -1,7 +1,7 @@
 """The worker service on in-memory adapters: runs jobs, delivers events, stops cleanly."""
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import timedelta
@@ -128,6 +128,30 @@ async def test_documents_reach_the_search_index() -> None:
     async with container.unit_of_work() as uow:  # the reconciliation is scheduled as well
         job = await uow.jobs.claim(now=container.clock.now() + timedelta(days=1), lease=FAST)
     assert job is not None
+
+
+async def test_the_pipeline_goes_before_the_index(monkeypatch: pytest.MonkeyPatch) -> None:
+    container = build_memory_container()
+    services = build_services(container)
+    assert services.indexing is not None
+    calls: list[str] = []
+
+    def jobs(name: str, count: int) -> Callable[[], Awaitable[bool]]:
+        async def run_next_job() -> bool:
+            nonlocal count
+            if not count:
+                return False
+            count -= 1
+            calls.append(name)
+            return True
+
+        return run_next_job
+
+    monkeypatch.setattr(services.pipeline, "run_next_job", jobs("pipeline", 3))
+    monkeypatch.setattr(services.indexing, "run_next_job", jobs("index", 3))
+    async with running(worker(container, services, indexing=services.indexing)):
+        await until(lambda: len(calls) == 6)
+    assert calls == ["pipeline"] * 3 + ["index"] * 3
 
 
 async def test_a_moved_tag_is_normalised_at_its_documents() -> None:

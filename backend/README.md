@@ -1228,6 +1228,8 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
   failed sign-ins, the previous secrets of webhooks whose grace period
   (`LEKTO_WEBHOOK_SECRET_GRACE`) is over, and what only the inbox's done needs after 14 days
   (see Inbox). The same loop runs the removal of a deleted document's files.
+- Pipeline steps go before index jobs: the search index lags behind a bulk ingest and catches
+  up when no step is due (the document lists read the database, not the index).
 - Rule applications (`rules.apply`) run 25 documents per job, then queue the next job, so
   pipeline nodes do not wait behind them.
 - After a tag moved, `tags.normalise` leaves what carries it and a tag now above it the one

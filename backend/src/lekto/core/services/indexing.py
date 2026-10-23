@@ -5,8 +5,11 @@ reads the current state of the document from the database and the object store a
 into the index. A job is idempotent and may be repeated.
 
 - Every event of a document (`received`, `node_completed`, `lane_changed`, `filed`, `updated`,
-  `deleted`) leads to a `search.index` job, without a dedup key: a key would also count a job
-  that is running and has read its state already, and lose the change that arrived since.
+  `deleted`) leads to a `search.index` job. The jobs of a document coalesce while queued (a
+  coalesce key, not a dedup key): a queued job reads the state when it runs and so covers every
+  event before, but a running job has read its state already, and a dedup key would lose the
+  change that arrives since. A document in the pipeline thus costs one or two index jobs, not
+  one per node. Reconciliation and refresh queue with the same key.
 - A job that finds the document gone removes it from the index.
 - Two jobs for one document may run at the same time, and the older state may be written last.
   So a job checks after writing that the document and the names it carries are still as it read
@@ -100,6 +103,11 @@ def refresh_payload(kind: RefreshKind, id: UUID) -> JsonObject:
 def _refreshed(payload: JsonObject) -> tuple[RefreshKind, UUID]:
     """What a `REFRESH_JOB` refreshes (`refresh_payload`)."""
     return RefreshKind(str(payload["kind"])), UUID(str(payload["id"]))
+
+
+def _index_key(document: DocumentId) -> str:
+    """The coalesce key of the index jobs of a document: one of them queued at a time."""
+    return f"{INDEX_JOB}:{document}"
 
 
 _ROUNDS = 3
@@ -206,7 +214,10 @@ class IndexingService:
             return
         async with self._uow() as uow:
             await uow.jobs.enqueue(
-                INDEX_JOB, document_payload(event.document_id), run_at=self._clock.now()
+                INDEX_JOB,
+                document_payload(event.document_id),
+                run_at=self._clock.now(),
+                coalesce_key=_index_key(event.document_id),
             )
             await uow.commit()
 
@@ -441,11 +452,17 @@ class IndexingService:
         await self._queue(list(carrying))
 
     async def _queue(self, documents: list[DocumentId]) -> None:
+        # In order: two batches that share documents wait for each other's coalesce keys in the
+        # same order, not crosswise (a deadlock in Postgres).
+        documents = sorted(documents)
         for start in range(0, len(documents), _QUEUE_BATCH):
             async with self._uow() as uow:
                 for id in documents[start : start + _QUEUE_BATCH]:
                     await uow.jobs.enqueue(
-                        INDEX_JOB, document_payload(id), run_at=self._clock.now()
+                        INDEX_JOB,
+                        document_payload(id),
+                        run_at=self._clock.now(),
+                        coalesce_key=_index_key(id),
                     )
                 await uow.commit()
 

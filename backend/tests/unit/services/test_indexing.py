@@ -79,6 +79,20 @@ async def test_starts_deferrals_and_signals_queue_no_index_job(setup: Setup) -> 
     assert len(index_jobs(setup.world)) == 1
 
 
+async def test_the_index_jobs_of_a_document_coalesce_while_queued(setup: Setup) -> None:
+    document, other = DocumentId(new_id()), DocumentId(new_id())
+
+    def judged(id: DocumentId) -> NodeCompleted:
+        return NodeCompleted(document_id=id, occurred_at=NOW, node=Node.JUDGE, run=1, outcome=OK)
+
+    for id in (document, document, other, document):
+        await setup.indexing.on_event(judged(id))
+    assert len(index_jobs(setup.world)) == 2  # one per document
+    assert await run_due(setup.indexing) == 2
+    await setup.indexing.on_event(judged(document))  # after the job: a job of its own
+    assert [job.status for job in index_jobs(setup.world)].count(JobStatus.QUEUED) == 1
+
+
 async def test_the_lane_follows_the_pipeline(setup: Setup) -> None:
     owner = await setup.world.user()
     document = await setup.document(owner)
@@ -374,10 +388,10 @@ async def test_a_failing_embedding_service_is_waited_for(world: World) -> None:
     await setup.put_text(received.id, "Text")
     await setup.bus.dispatch()
     indexing = setup.indexing
-    assert await run_due(indexing) == 2  # the events `received` and `node_completed`
+    assert await run_due(indexing) == 1  # the events `received` and `node_completed`, coalesced
     assert setup.entry(received.id).vectors == ()  # found by its words, the vectors follow
     jobs = index_jobs(world)
-    assert [job.status for job in jobs] == [JobStatus.QUEUED] * 2
+    assert [job.status for job in jobs] == [JobStatus.QUEUED]
     assert all(job.run_at > world.clock.now() for job in jobs)
     assert all("connection refused" in (job.last_error or "") for job in jobs)
     assert not await indexing.run_next_job()  # not due yet
@@ -385,7 +399,7 @@ async def test_a_failing_embedding_service_is_waited_for(world: World) -> None:
     assert isinstance(setup.embeddings, BrokenEmbeddings)
     setup.embeddings.up = True
     world.clock.advance(HOUR)
-    assert await run_due(indexing) == 2
+    assert await run_due(indexing) == 1
     assert len(setup.entry(received.id).vectors or ()) == 1
 
 
@@ -401,7 +415,7 @@ async def test_the_last_attempt_writes_without_vectors_and_the_reconciliation_ad
     indexing = setup.indexing
     for _ in range(10):
         world.clock.advance(HOUR)
-        assert await run_due(indexing) == 2
+        assert await run_due(indexing) == 1
     entry = setup.entry(received.id)
     assert (entry.vectors, entry.embedding) == ((), None)
     assert {job.status for job in index_jobs(world)} == {JobStatus.DONE}

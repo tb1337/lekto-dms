@@ -1541,6 +1541,22 @@ PR mit Label `enhancement` nach `release/0.5.0`, nach Paket 3.
 4. CI: die Compose-Beispiele prüfen (`docker compose config`), das Migrations-Image bauen, wenn sich `migration/` ändert.
 5. `docker/` mit den Beispielen; `deploy/README.md`, `README.md` und `CLAUDE.md` angepasst.
 
+**Gebaut (23.10.2026):** wie geplant. Dazu:
+
+- `compose.ollama.yml` setzt `OLLAMA_CONTEXT_LENGTH=8192` (Ollama schneidet längere Prompts stillschweigend ab) und zieht die beiden Modelle beim ersten Start.
+- Die Proxy-Beispiele schließen Lektos eigenen Port (`ports: !reset []`) und vertrauen dann jeder Adresse davor (`LEKTO_FORWARDED_ALLOW_IPS=*`), weil alle drei `X-Forwarded-For` der Clients ersetzen; die Beispiele brauchen deshalb Compose 2.24 oder neuer.
+- Die Beispiele bleiben ohne Hilfsdateien: Garages Konfiguration und das Einrichtungsskript stehen als `configs` mit `content` in `compose.s3.yml` (im Skript jedes `$` als `$$`), der Einmal-Container baut sich per `dockerfile_inline`.
+- `deploy/README.md`: Geheimnisse als Variablen (die Beispiele) oder als Dateien (wo andere Container einsehen können); Backup und Update für die neuen Beispiele.
+- `deploy/secrets/` und `deploy/backup/` bleiben in `.gitignore`, damit Geheimnisse aus den alten Beispielen nicht ins Repo geraten.
+- Geprüft: alle Kombinationen der Beispiele mit `docker compose config` (auch in der CI), wie `$$` im Container ankommt, das Migrations-Image (208 MB, Benutzer 1000:1000), das Runtime-Image mit `LEKTO_VERSION=0.6.0` (Label und `lekto.__version__`, keine Warnung über unbekannte Variablen), die Tag-Regeln mit Tests, die Workflows mit actionlint.
+
+**Offen für Tobi:**
+
+- `ghcr.io/tb1337/lekto:latest` gibt es erst nach dem ersten Release mit diesem Workflow (v0.6.0); bis dahin lassen sich die Beispiele nicht starten, lokal gebaute Images ausgenommen.
+- Beim ersten Lauf prüfen, ob die Pakete öffentlich sind; sonst einmal in den Paket-Einstellungen auf „public“ stellen.
+- `deploy/test-image.sh` lief im Devcontainer nicht (Docker auf dem Host sieht dessen Dateien nicht); die CI prüft das Image auf den Runnern.
+- Betas ab 1.0 (`v1.2.0-beta.1`): den Release Drafter dafür einstellen (Pre-Release, Zusatz im Tag), wenn es so weit ist.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

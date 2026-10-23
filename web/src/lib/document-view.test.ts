@@ -10,6 +10,8 @@ import {
 	type InboxPlace,
 	placesApply,
 	provenance,
+	stepHref,
+	stepOf,
 	tabHref,
 	tabOf,
 	viewerSources,
@@ -63,6 +65,33 @@ describe('tabs', () => {
 		expect(tabHref(url, 'document')).toBe('/ui/documents/1?from=inbox&left=text&right=form');
 		expect(tabHref(new URL('http://lekto/ui/documents/1?tab=processing'), 'document')).toBe(
 			'/ui/documents/1'
+		);
+	});
+
+	it('keep the step only on the processing tab', () => {
+		const url = new URL('http://lekto/ui/documents/1?tab=processing&step=judge');
+		expect(tabHref(url, 'document')).toBe('/ui/documents/1');
+		expect(tabHref(url, 'properties')).toBe('/ui/documents/1?tab=properties');
+		expect(tabHref(url, 'processing')).toBe('/ui/documents/1?tab=processing&step=judge');
+		expect(viewHref(url, { left: 'pages', right: 'form' })).toBe(
+			'/ui/documents/1?left=pages&right=form'
+		);
+	});
+});
+
+describe('the step of the processing tab', () => {
+	it('comes from the URL when the graph knows it', () => {
+		const url = new URL('http://lekto/ui/documents/1?tab=processing&step=judge');
+		expect(stepOf(url, ['ocr', 'judge'])).toBe('judge');
+		expect(stepOf(url, ['ocr'])).toBeNull();
+		expect(stepOf(new URL('http://lekto/ui/documents/1?tab=processing'), ['ocr'])).toBeNull();
+	});
+
+	it('goes into the link of the processing tab, keeping the other parameters', () => {
+		const url = new URL('http://lekto/ui/documents/1?from=inbox&tab=processing');
+		expect(stepHref(url, 'ocr')).toBe('/ui/documents/1?from=inbox&tab=processing&step=ocr');
+		expect(stepHref(new URL('http://lekto/ui/documents/1?step=ocr&tab=processing'), null)).toBe(
+			'/ui/documents/1?tab=processing'
 		);
 	});
 });

@@ -181,6 +181,25 @@ class JobQueueContract:
             with pytest.raises(ConcurrencyError):
                 await uow.jobs.release(claimed, run_at=NOW, error="stale claim")
 
+    async def test_an_extended_claim_holds_the_job_longer(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        id = await enqueue(uow_factory)
+        assert id is not None
+        claimed = await claim(uow_factory)
+        assert claimed is not None
+        async with uow_factory() as uow:
+            await uow.jobs.extend(claimed, until=NOW + timedelta(hours=1))
+            await uow.commit()
+        job = await get(uow_factory, id)
+        assert (job.status, job.locked_until) == (JobStatus.RUNNING, NOW + timedelta(hours=1))
+        assert await claim(uow_factory, at=LEASE) is None  # its lease alone would have run out
+        again = await claim(uow_factory, at=timedelta(hours=1))
+        assert again is not None and again.id == id
+        async with uow_factory() as uow:
+            with pytest.raises(ConcurrencyError):
+                await uow.jobs.extend(claimed, until=NOW + timedelta(hours=2))
+
     async def test_failed_job_is_given_up(self, uow_factory: UnitOfWorkFactory) -> None:
         id = await enqueue(uow_factory)
         assert id is not None

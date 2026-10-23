@@ -686,6 +686,10 @@ class MemoryJobQueue:
         self._write(claimed)
         return copy.deepcopy(claimed)
 
+    async def extend(self, job: Job, *, until: datetime) -> None:
+        current = await self._claimed(job)
+        self._write(dataclasses.replace(current, locked_until=require_utc(until, "until")))
+
     async def complete(self, job: Job) -> None:
         current = await self._claimed(job)
         self._write(dataclasses.replace(current, status=JobStatus.DONE, locked_until=None))

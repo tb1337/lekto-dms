@@ -1,0 +1,6 @@
+# Only what the image build needs (`Dockerfile`): no local state, reports or caches.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!src/

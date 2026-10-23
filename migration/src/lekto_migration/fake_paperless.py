@@ -38,6 +38,8 @@ class FakePaperless:
         self.archive = archive
         self.requests: list[tuple[str, str]] = []
         self.downloads: list[int] = []
+        self.unavailable = 0  # the next requests answered with 502
+        self.errors: dict[int, tuple[int, int]] = {}  # document -> (status, times) of its download
 
     def transport(self) -> httpx2.MockTransport:
         return httpx2.MockTransport(self._handle)
@@ -45,6 +47,9 @@ class FakePaperless:
     def _handle(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append((request.method, request.url.path))
         headers = {"x-version": "3.3.0", "x-api-version": "10"}
+        if self.unavailable:
+            self.unavailable -= 1
+            return httpx2.Response(502, text="Bad Gateway")
         if request.headers.get("authorization") != f"Token {TOKEN}":
             return httpx2.Response(401, json={"detail": "Invalid token."}, headers=headers)
         if request.method != "GET":
@@ -58,6 +63,10 @@ class FakePaperless:
             document_id = int(path[2])
             if document_id not in self.archive.files:
                 return httpx2.Response(404, headers=headers)
+            status, times = self.errors.get(document_id, (0, 0))
+            if times:
+                self.errors[document_id] = (status, times - 1)
+                return httpx2.Response(status, headers=headers)
             self.downloads.append(document_id)
             return httpx2.Response(200, content=self.archive.files[document_id], headers=headers)
         counted = {

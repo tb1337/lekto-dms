@@ -170,6 +170,10 @@ says why. API keys
 come from the environment (or a file) only and are never written to the plan, the state or the
 reports.
 
+Server errors (500, 502, 503, 504) and dropped connections of either API are repeated after
+1, 3 and 10 seconds; a document that fails still is `failed` in the state and the next `run`
+tries it again.
+
 The plan and the state file belong to one Paperless and one Lekto (if Lekto is reset, delete
 the state file, too). The state maps every document to its Lekto document and records what the
 migration set; an interrupted run continues where it stopped and a second run creates nothing

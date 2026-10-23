@@ -1,13 +1,17 @@
-"""Reading Paperless-ngx through its REST API. Only GET requests, nothing is written."""
+"""Reading Paperless-ngx through its REST API. Only GET requests, nothing is written. Server
+errors and a dropped connection are repeated a few times, as towards Lekto."""
 
+import asyncio
 import hashlib
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import httpx2
+
+from lekto_migration.lekto import DELAYS, RETRY_STATUS
 
 API_VERSION = "10"
 DOCUMENT_FIELDS = ",".join(
@@ -39,6 +43,10 @@ COUNTED = ("saved_views", "workflows", "mail_rules", "mail_accounts", "share_lin
 
 class PaperlessError(Exception):
     pass
+
+
+class _UnavailableError(PaperlessError):
+    """A failure that may pass: a server error or a dropped connection."""
 
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -77,7 +85,13 @@ class Download:
 
 class Paperless:
     def __init__(
-        self, base_url: str, token: str, *, transport: httpx2.AsyncBaseTransport | None = None
+        self,
+        base_url: str,
+        token: str,
+        *,
+        transport: httpx2.AsyncBaseTransport | None = None,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        delays: tuple[float, ...] = DELAYS,
     ) -> None:
         self._client = httpx2.AsyncClient(
             base_url=base_url,
@@ -89,17 +103,35 @@ class Paperless:
             transport=transport,
         )
         self.version = "unknown"
+        self._sleep = sleep
+        self._delays = delays
 
     async def close(self) -> None:
         await self._client.aclose()
 
+    async def _retrying[T](self, once: Callable[[], Awaitable[T]]) -> T:
+        """`once`, repeated after each of the delays while it fails in a way that may pass."""
+        for delay in self._delays:
+            try:
+                return await once()
+            except _UnavailableError:
+                await self._sleep(delay)
+        return await once()
+
     async def _get(self, path: str, **params: Any) -> httpx2.Response:
+        return await self._retrying(lambda: self._get_once(path, params))
+
+    async def _get_once(self, path: str, params: dict[str, Any]) -> httpx2.Response:
         try:
             response = await self._client.get(path, params=params)
+        except httpx2.TransportError as error:
+            raise _UnavailableError(f"Paperless is not reachable: {type(error).__name__}") from None
         except httpx2.HTTPError as error:
             raise PaperlessError(f"Paperless is not reachable: {type(error).__name__}") from None
         if response.status_code == 401 or response.status_code == 403:
             raise PaperlessError(f"Paperless refused the API key ({response.status_code})")
+        if response.status_code in RETRY_STATUS:
+            raise _UnavailableError(f"GET {path}: HTTP {response.status_code}")
         if response.status_code >= 400:
             raise PaperlessError(f"GET {path}: HTTP {response.status_code}")
         self.version = response.headers.get("x-version", self.version)
@@ -157,18 +189,26 @@ class Paperless:
 
     async def download_original(self, id: int, target: Path) -> Download:
         """The original file of a document, written to `target`; its SHA-256 and size."""
+        return await self._retrying(lambda: self._download_once(id, target))
+
+    async def _download_once(self, id: int, target: Path) -> Download:
         digest, size = hashlib.sha256(), 0
         try:
             async with self._client.stream(
                 "GET", f"/api/documents/{id}/download/", params={"original": "true"}
             ) as response:
                 if response.status_code >= 400:
-                    raise PaperlessError(f"download of document {id}: HTTP {response.status_code}")
+                    reason = f"download of document {id}: HTTP {response.status_code}"
+                    if response.status_code in RETRY_STATUS:
+                        raise _UnavailableError(reason)
+                    raise PaperlessError(reason)
                 with target.open("wb") as out:
                     async for chunk in response.aiter_bytes(1024 * 1024):
                         digest.update(chunk)
                         size += len(chunk)
                         out.write(chunk)
+        except httpx2.TransportError as error:
+            raise _UnavailableError(f"download of document {id}: {type(error).__name__}") from None
         except httpx2.HTTPError as error:
             raise PaperlessError(f"download of document {id}: {type(error).__name__}") from None
         return Download(digest.hexdigest(), size)

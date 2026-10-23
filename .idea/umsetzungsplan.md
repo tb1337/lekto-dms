@@ -1561,6 +1561,8 @@ PR mit Label `enhancement` nach `release/0.5.0`, nach Paket 3.
 
 **Anlass (Tobi, 23.10.2026):** Die Migration in Lekto prod kam auf etwa 3,6 Dokumente pro Minute (228 nach 63 Minuten). Ein Dokument brauchte rund 10 Sekunden Arbeit in seinen Knoten, jeder der elf Knoten wartete aber 90 bis 130 Sekunden, bis ihn ein Worker nahm. Ursache: Die Job-Schleife fragte die Suche vor der Pipeline, und jedes Ereignis eines Dokuments legte einen eigenen `search.index`-Job an (etwa ein Dutzend je Dokument in der Pipeline), jeder wartet auf seine Meilisearch-Aufgabe. Die Worker indizierten also vor allem, und jeder Index-Job las ohnehin den aktuellen Stand – die meisten schrieben dasselbe noch einmal.
 
+**Nachtrag: Wiederholung bei Paperless (`bugfix/paperless-retry`, Tobi 23.10.2026):** Paperless antwortete während der Migration sieben Sekunden lang mit 502; in der Zeit lief der Client mit 706 Dokumenten in Fehler (`download of document N: HTTP 502`), weil er nur Lekto-Anfragen wiederholte. Jetzt wiederholt er auch die GET-Anfragen und Downloads bei Paperless bei 500, 502, 503, 504 und abgebrochenen Verbindungen nach 1, 3 und 10 Sekunden; andere Fehler (404, 401) nicht.
+
 **Umsetzung:**
 
 - **Pipeline vor Suche:** `_run_job` fragt nach der Bereinigung die Pipeline, danach die Suche. Der Index hängt einem Massenimport nach und holt auf, sobald kein Schritt fällig ist; die Dokumentlisten lesen die Datenbank, nur die Wortsuche findet die neuesten Dokumente später.

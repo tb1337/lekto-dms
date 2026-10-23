@@ -171,7 +171,9 @@ async def execute(
     written, 2 cannot go on, 130 stopped)."""
     stop = stop or asyncio.Event()
     ask = ask or terminal(config)
-    source = Paperless(config.paperless_url, config.paperless_token, transport=paperless_transport)
+    source = Paperless(
+        config.paperless_url, config.paperless_token, transport=paperless_transport, delays=delays
+    )
     target = (
         Lekto(config.lekto_url, config.lekto_token, transport=lekto_transport, delays=delays)
         if config.lekto_url and config.lekto_token

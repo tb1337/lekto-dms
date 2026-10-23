@@ -250,6 +250,21 @@ describe('DocumentProcessing', () => {
 		await userEvent.keyboard('{Escape}');
 	});
 
+	it('tells which signal named what, without a column of results on a desktop', async () => {
+		show();
+		const matrix = await screen.findByRole('table');
+		expect(within(matrix).getByText('Schwälmer Brotladen')).toBeTruthy();
+		expect(
+			within(matrix).getByRole('img', { name: `${m.node_signal_llm()}: ${m.matrix_suggests()}` })
+		).toBeTruthy();
+		expect(
+			within(matrix).getByRole('img', {
+				name: `${m.node_signal_neighbours()}: ${m.matrix_contradicts()}`
+			})
+		).toBeTruthy();
+		expect(within(matrix).queryByText(m.matrix_chip_question())).toBeNull();
+	});
+
 	it('runs the steps down a line on a narrower screen, opening a step below its card', async () => {
 		desktop.override(false);
 		const { container } = show();
@@ -257,6 +272,8 @@ describe('DocumentProcessing', () => {
 		expect(judge.getAttribute('aria-controls')).toBe('step-details-judge');
 		const panel = container.querySelector('#step-details-judge') as HTMLElement;
 		expect(await within(panel).findByText('contact: the name is only similar')).toBeTruthy();
+		// The matrix with a word for each value.
+		expect(await screen.findByText(m.matrix_chip_question())).toBeTruthy();
 	});
 
 	it('shows one run at a time and tells what changed since the run before', async () => {
@@ -327,5 +344,6 @@ describe('DocumentProcessing', () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 		const panel = container.querySelector('#step-details') as HTMLElement;
 		expect(within(panel).getByText(m.log_editors_only())).toBeTruthy();
+		expect(screen.queryByRole('table')).toBeNull();
 	});
 });

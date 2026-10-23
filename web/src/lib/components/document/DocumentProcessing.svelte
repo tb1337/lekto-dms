@@ -12,6 +12,7 @@
 	import ProcessingSummary from '#lib/components/document/ProcessingSummary.svelte';
 	import ProcessingTimeline from '#lib/components/document/ProcessingTimeline.svelte';
 	import PromptDialog from '#lib/components/document/PromptDialog.svelte';
+	import SignalMatrix from '#lib/components/document/SignalMatrix.svelte';
 	import StepEntries from '#lib/components/document/StepEntries.svelte';
 	import { desktop } from '#lib/desktop.svelte.ts';
 	import { stepHref, stepOf, viewHref, viewOf } from '#lib/document-view.ts';
@@ -26,6 +27,7 @@
 	import { changesOf, headlineOf } from '#lib/run-summary.ts';
 	import { glance, runNumbers, runTokens, startedAgain } from '#lib/runs.ts';
 	import { session } from '#lib/session.svelte.ts';
+	import { matrixOf } from '#lib/signal-matrix.ts';
 	import { list, object } from '#lib/signals.ts';
 	import { byPerson, stepSummary } from '#lib/step-summary.ts';
 	import { countsOf, phaseSeconds, phasesOf, stepsOf, stuck, type Step } from '#lib/steps.ts';
@@ -38,8 +40,8 @@
 	// The processing of a document (mock D, Tobi 23.10.2026): how the run went at a glance (one
 	// sentence, the band, the counts, what changed), its steps in four phases as the cards of the
 	// log before, each opening what it did (when, with which model, the tokens and the prompt,
-	// why, what it said). The runs stand in their box as before. Live with the events in the
-	// current run. On a desktop the view fills the window and only
+	// why, what it said), and which signal named what. The runs stand in their box as before.
+	// Live with the events in the current run. On a desktop the view fills the window and only
 	// its columns scroll; narrower, everything stands one below the other and the steps run down
 	// a line. A step the run did not start again shows what it did in the earlier run the run
 	// worked with. Only editors read the log.
@@ -176,7 +178,11 @@
 	);
 	const bandPhases = $derived(bandOf(steps, graph, now));
 	const verdict = $derived(steps.find((step) => step.node === 'judge')?.done.entries.at(-1));
-
+	const matrix = $derived(
+		manageable && entries !== null
+			? matrixOf(verdict, waiting, document.space_id, lookup, viewer)
+			: []
+	);
 	const carriedLabel = $derived(
 		counts.carriedFrom === null
 			? m.run_count_carried_earlier()
@@ -357,6 +363,7 @@
 					ontoggle={toggle}
 					{details}
 				/>
+				{#if matrix.length > 0}<SignalMatrix rows={matrix} chips={false} />{/if}
 			</div>
 			<div class="relative max-h-full min-w-0 overflow-y-auto">
 				{@render runBox()}
@@ -376,6 +383,7 @@
 				ontoggle={toggle}
 				{details}
 			/>
+			{#if matrix.length > 0}<SignalMatrix rows={matrix} chips={true} />{/if}
 		</div>
 	{/if}
 </div>

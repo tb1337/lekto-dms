@@ -209,11 +209,6 @@
 			? matrixOf(verdict, waiting, document.space_id, lookup, viewer, decided)
 			: []
 	);
-	const carriedLabel = $derived(
-		counts.carriedFrom === null
-			? m.run_count_carried_earlier()
-			: m.log_from_run({ run: counts.carriedFrom })
-	);
 
 	// The step whose details are open: the one the link names; else, in the current run when it
 	// stopped for a person, the step that keeps it (as the log opened what was uncertain or
@@ -270,6 +265,12 @@
 		if (!timed) return null;
 		const value = phaseSeconds(phase, now);
 		return value === null ? null : formatDuration(value);
+	}
+
+	/** How a step of the shown run that did not end OK by itself came to count as OK. */
+	function noteOf(node: Node): string | null {
+		const step = steps.find((entry) => entry.node === node);
+		return step?.overruled ? summaryOf(step) : null;
 	}
 
 	const phaseDurationOf = (phase: string) =>
@@ -350,7 +351,7 @@
 				run={shownRun}
 				{wide}
 				phaseDuration={phaseDurationOf}
-				{carriedLabel}
+				{noteOf}
 			/>
 		{/snippet}
 	</ProcessingSummary>

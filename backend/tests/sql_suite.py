@@ -2290,6 +2290,30 @@ class MigrationSuite:
         async with empty_database.reading() as connection:
             assert await connection.run_sync(_schema) == schema
 
+    async def test_the_coalesce_key_of_revision_0037_comes_and_goes(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0037: jobs get a coalesce key; those queued before have none. The
+        downgrade drops it and keeps the jobs."""
+        await migrate(empty_database, "0036")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        job = new_id()
+        await _insert(
+            empty_database,
+            [(_before_0037(t.jobs), {"id": job, "kind": "search.index", "payload": {}})],
+        )
+        await migrate(empty_database)
+        async with empty_database.reading() as connection:
+            keys = (await connection.execute(select(t.jobs.c.id, t.jobs.c.coalesce_key))).all()
+        assert [tuple(row) for row in keys] == [(job, None)]
+        await downgrade(empty_database, "0036")
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+            assert (
+                await connection.execute(select(_before_0037(t.jobs).c.id))
+            ).scalars().all() == [job]
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -2431,7 +2455,7 @@ async def _stored(database: Database, *, old: bool) -> dict[str, Any]:
         definition, scope, value = await _only_rows(connection, definitions, types, values)
         document, log = await _only_rows(connection, documents, log_table)
         rule, job, event = await _only_rows(
-            connection, _before_0033(t.rule_versions), t.jobs, t.outbox
+            connection, _before_0033(t.rule_versions), _before_0037(t.jobs), t.outbox
         )
     return {
         "definition": tuple(definition),
@@ -2455,7 +2479,7 @@ async def _node_names(database: Database, *, old: bool) -> dict[str, Any]:
     log_table = _before_0009(t.processing_log) if old else t.processing_log
     async with database.reading() as connection:
         document, log = await _only_rows(connection, documents, log_table)
-        job, event = await _only_rows(connection, t.jobs, t.outbox)
+        job, event = await _only_rows(connection, _before_0037(t.jobs), t.outbox)
         webhook, delivery = await _only_rows(connection, t.webhooks, t.webhook_deliveries)
     return {
         "document": (
@@ -2496,12 +2520,25 @@ def _drawer(table: sa.TableClause) -> sa.TableClause:
 _INBOX_COLUMNS = frozenset({"new_at", "processing_baseline", "processing_decided"})
 
 
+def _before_0037(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0037 had it: no coalesce key of a job."""
+    added = {"jobs": {"coalesce_key"}}
+    return sa.table(
+        table.name,
+        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+    )
+
+
 def _before_0036(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0036 had it: no first lane of a document."""
     added = {"documents": {"first_lane"}}
     return sa.table(
         table.name,
-        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+        *(
+            sa.column(c.name, c.type)
+            for c in _before_0037(table).c
+            if c.name not in added.get(table.name, ())
+        ),
     )
 
 

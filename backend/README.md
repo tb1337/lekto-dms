@@ -986,8 +986,10 @@ does, a score and a snippet whose matches are marked. `semantic` in the answer t
 meaning took part.
 
 - **The index follows the documents.** The indexing service subscribes to the document events
-  (`search.index`) and queues one job per change; it writes the document and reads it back, up to
-  three rounds, so a change made meanwhile is not lost. A failed job repeats after 30 s,
+  (`search.index`) and queues a job per change, but one at a time per document: while one waits,
+  further changes join it (`coalesce_key`); a change after it started queues the next. A job
+  writes the document and reads it back, up to three rounds, so a change made meanwhile is not
+  lost. A failed job repeats after 30 s,
   doubling up to an hour, ten times; the last attempt writes the words without vectors. Renaming
   a contact, a type or a tag, nesting a tag elsewhere and changing the groups of a contact or
   type queue the documents concerned: the index holds names for the search by words. A reconciliation compares the index with the database and queues what is
@@ -1226,6 +1228,8 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
   failed sign-ins, the previous secrets of webhooks whose grace period
   (`LEKTO_WEBHOOK_SECRET_GRACE`) is over, and what only the inbox's done needs after 14 days
   (see Inbox). The same loop runs the removal of a deleted document's files.
+- Pipeline steps go before index jobs: the search index lags behind a bulk ingest and catches
+  up when no step is due (the document lists read the database, not the index).
 - Rule applications (`rules.apply`) run 25 documents per job, then queue the next job, so
   pipeline nodes do not wait behind them.
 - After a tag moved, `tags.normalise` leaves what carries it and a tag now above it the one

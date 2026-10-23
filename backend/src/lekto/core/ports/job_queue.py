@@ -24,9 +24,12 @@ class JobQueue(Protocol):
         *,
         run_at: datetime,
         dedup_key: str | None = None,
+        coalesce_key: str | None = None,
     ) -> JobId | None:
         """Add a job, due at `run_at`. Returns None, and adds nothing, if a queued or running
-        job with the same `dedup_key` exists."""
+        job with the same `dedup_key` exists, or a queued one with the same `coalesce_key`
+        (claiming a job clears its `coalesce_key`: see `Job`). A job has at most one of the two
+        keys (ValueError)."""
         ...
 
     async def claim(

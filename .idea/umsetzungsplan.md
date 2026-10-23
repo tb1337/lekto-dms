@@ -1557,6 +1557,18 @@ PR mit Label `enhancement` nach `release/0.5.0`, nach Paket 3.
 - `deploy/test-image.sh` lief im Devcontainer nicht (Docker auf dem Host sieht dessen Dateien nicht); die CI prüft das Image auf den Runnern.
 - Betas ab 1.0 (`v1.2.0-beta.1`): den Release Drafter dafür einstellen (Pre-Release, Zusatz im Tag), wenn es so weit ist.
 
+### Zwischenschritt: Pipeline vor Suchindex, Index-Jobs zusammengefasst (`performance/index-jobs-yield`)
+
+**Anlass (Tobi, 23.10.2026):** Die Migration in Lekto prod kam auf etwa 3,6 Dokumente pro Minute (228 nach 63 Minuten). Ein Dokument brauchte rund 10 Sekunden Arbeit in seinen Knoten, jeder der elf Knoten wartete aber 90 bis 130 Sekunden, bis ihn ein Worker nahm. Ursache: Die Job-Schleife fragte die Suche vor der Pipeline, und jedes Ereignis eines Dokuments legte einen eigenen `search.index`-Job an (etwa ein Dutzend je Dokument in der Pipeline), jeder wartet auf seine Meilisearch-Aufgabe. Die Worker indizierten also vor allem, und jeder Index-Job las ohnehin den aktuellen Stand – die meisten schrieben dasselbe noch einmal.
+
+**Umsetzung:**
+
+- **Pipeline vor Suche:** `_run_job` fragt nach der Bereinigung die Pipeline, danach die Suche. Der Index hängt einem Massenimport nach und holt auf, sobald kein Schritt fällig ist; die Dokumentlisten lesen die Datenbank, nur die Wortsuche findet die neuesten Dokumente später.
+- **Index-Jobs je Dokument zusammengefasst:** Die Warteschlange kennt neben `dedup_key` einen `coalesce_key`: Pro Schlüssel höchstens ein *wartender* Job; ein weiterer mit demselben Schlüssel legt nichts an. Das Holen (`claim`) löscht den Schlüssel, denn ein laufender Job hat seinen Stand schon gelesen – eine Änderung danach braucht einen neuen Job (deshalb kein `dedup_key`, der auch laufende Jobs zählt). Ein Job hat höchstens einen der beiden Schlüssel. Ereignisse, Abgleich und Auffrischung nutzen denselben Schlüssel `search.index:<id>`; ein Dokument kostet so ein bis zwei Index-Jobs statt eines je Knoten. Der Abgleich und die Auffrischung reihen die Dokumente sortiert ein, damit zwei Stapel mit gemeinsamen Dokumenten in Postgres nicht über Kreuz aufeinander warten.
+- **Schema:** Revision 0037, Spalte `jobs.coalesce_key` mit eindeutigem Index (nur wartende Jobs tragen einen Schlüssel); SQL-Adapter per `ON CONFLICT DO NOTHING`, In-Memory-Adapter mit Konfliktprüfung beim Commit, Contract-Tests für alle drei.
+
+**Offen für Tobi:** Die laufende Migration profitiert erst nach einem Release mit dieser Änderung und einem Neustart (Revision 0037). Bereits wartende Index-Jobs bleiben ohne Schlüssel und laufen einzeln ab.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

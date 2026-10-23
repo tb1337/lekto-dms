@@ -130,11 +130,13 @@ class Worker:
 
     async def _run_job(self) -> bool:
         # The cleanup first: it is due once per interval and would otherwise wait for a quiet
-        # moment, which a long bulk ingest never has.
+        # moment, which a long bulk ingest never has. The pipeline before the index: people wait
+        # for the processing, while the index may lag (the document lists do not read it), and
+        # its jobs coalesce per document while they wait.
         return (
             await self._maintenance.run_next_job()
-            or (self._indexing is not None and await self._indexing.run_next_job())
             or await self._pipeline.run_next_job()
+            or (self._indexing is not None and await self._indexing.run_next_job())
             or (self._rules is not None and await self._rules.run_next_job())
             or (self._master_data is not None and await self._master_data.run_next_job())
             or (self._logos is not None and await self._logos.run_next_job())

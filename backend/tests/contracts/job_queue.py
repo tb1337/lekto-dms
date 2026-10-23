@@ -18,9 +18,12 @@ async def enqueue(
     *,
     run_at: timedelta = timedelta(0),
     dedup_key: str | None = None,
+    coalesce_key: str | None = None,
 ) -> JobId | None:
     async with uow_factory() as uow:
-        job = await uow.jobs.enqueue(kind, {"n": 1}, run_at=NOW + run_at, dedup_key=dedup_key)
+        job = await uow.jobs.enqueue(
+            kind, {"n": 1}, run_at=NOW + run_at, dedup_key=dedup_key, coalesce_key=coalesce_key
+        )
         await uow.commit()
     return job
 
@@ -254,6 +257,51 @@ class JobQueueContract:
             assert await uow.jobs.enqueue("test", {}, run_at=NOW, dedup_key="k") is not None
             assert await uow.jobs.enqueue("test", {}, run_at=NOW, dedup_key="k") is None
             await uow.commit()
+
+    async def test_coalesce_key_while_queued(self, uow_factory: UnitOfWorkFactory) -> None:
+        first = await enqueue(uow_factory, coalesce_key="index:a")
+        assert first is not None
+        assert (await get(uow_factory, first)).coalesce_key == "index:a"
+        assert await enqueue(uow_factory, coalesce_key="index:a") is None
+        assert await enqueue(uow_factory, run_at=timedelta(hours=1), coalesce_key="index:b")
+        claimed = await claim(uow_factory)
+        assert claimed is not None and claimed.id == first
+        assert claimed.coalesce_key is None  # claimed: its work has begun
+        assert (await get(uow_factory, first)).coalesce_key is None
+        second = await enqueue(uow_factory, coalesce_key="index:a")
+        assert second is not None
+        assert await enqueue(uow_factory, coalesce_key="index:a") is None
+
+    async def test_coalesce_key_within_one_unit(self, uow_factory: UnitOfWorkFactory) -> None:
+        async with uow_factory() as uow:
+            assert await uow.jobs.enqueue("test", {}, run_at=NOW, coalesce_key="k") is not None
+            assert await uow.jobs.enqueue("test", {}, run_at=NOW, coalesce_key="k") is None
+            await uow.commit()
+
+    async def test_a_job_has_one_key_at_most(self, uow_factory: UnitOfWorkFactory) -> None:
+        async with uow_factory() as uow:
+            with pytest.raises(ValueError, match="not both"):
+                await uow.jobs.enqueue("test", {}, run_at=NOW, dedup_key="k", coalesce_key="k")
+
+    async def test_a_coalesced_job_queued_again_holds_no_key(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        assert await enqueue(uow_factory, coalesce_key="index:a") is not None
+        retried = await claim(uow_factory)
+        assert retried is not None
+        assert await enqueue(uow_factory, coalesce_key="index:a") is not None
+        released = await claim(uow_factory)
+        assert released is not None
+        newest = await enqueue(uow_factory, coalesce_key="index:a")
+        assert newest is not None
+        async with uow_factory() as uow:
+            await uow.jobs.reschedule(retried, run_at=NOW, error="timeout")
+            await uow.jobs.release(released, run_at=NOW, error="interrupted")
+            await uow.commit()
+        assert (await get(uow_factory, retried.id)).coalesce_key is None
+        assert (await get(uow_factory, released.id)).coalesce_key is None
+        assert (await get(uow_factory, newest)).coalesce_key == "index:a"
+        assert await enqueue(uow_factory, coalesce_key="index:a") is None
 
     async def test_a_job_is_never_claimed_twice(self, uow_factory: UnitOfWorkFactory) -> None:
         id = await enqueue(uow_factory)

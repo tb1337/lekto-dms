@@ -46,6 +46,7 @@ class SqlJobQueue:
         *,
         run_at: datetime,
         dedup_key: str | None = None,
+        coalesce_key: str | None = None,
     ) -> JobId | None:
         id = JobId(new_id())
         values = {
@@ -53,24 +54,25 @@ class SqlJobQueue:
             "kind": kind,
             "payload": dict(payload),
             "dedup_key": dedup_key,
+            "coalesce_key": coalesce_key,
             "status": JobStatus.QUEUED.value,
             "attempts": 0,
             "releases": 0,
             "run_at": require_utc(run_at, "run_at"),
         }
-        if dedup_key is None:
+        if dedup_key is None and coalesce_key is None:
             await self._tx.write(insert(_jobs).values(values))
             return id
-        statement = (
-            self._tx.database.insert(_jobs)
-            .values(values)
-            .on_conflict_do_nothing(
-                index_elements=[_jobs.c.dedup_key],
-                index_where=_ACTIVE,
+        if dedup_key is not None and coalesce_key is not None:
+            raise ValueError("a job has a dedup key or a coalesce key, not both")
+        statement = self._tx.database.insert(_jobs).values(values)
+        if dedup_key is not None:
+            statement = statement.on_conflict_do_nothing(
+                index_elements=[_jobs.c.dedup_key], index_where=_ACTIVE
             )
-            .returning(_jobs.c.id)
-        )
-        result = await self._tx.write(statement)
+        else:
+            statement = statement.on_conflict_do_nothing(index_elements=[_jobs.c.coalesce_key])
+        result = await self._tx.write(statement.returning(_jobs.c.id))
         return id if result.first() is not None else None
 
     async def claim(
@@ -97,6 +99,7 @@ class SqlJobQueue:
                 status=JobStatus.RUNNING.value,
                 attempts=_jobs.c.attempts + 1,
                 locked_until=require_utc(now, "now") + lease,
+                coalesce_key=None,
             )
             .returning(*_jobs.c)
         )
@@ -165,4 +168,5 @@ def _job(row: Row[Any]) -> Job:
         locked_until=row.locked_until,
         last_error=row.last_error,
         releases=row.releases,
+        coalesce_key=row.coalesce_key,
     )

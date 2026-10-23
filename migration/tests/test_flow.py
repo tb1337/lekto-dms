@@ -3,6 +3,7 @@
 import asyncio
 import json
 import sqlite3
+from collections import Counter
 from datetime import UTC, datetime
 from typing import Any
 
@@ -493,6 +494,29 @@ async def test_a_server_error_is_repeated_and_a_refusal_is_reported(setup: Setup
     sent = len(setup.lekto.uploads)
     assert await setup.run("run") == 0
     assert len(setup.lekto.uploads) == sent + 1 and len(setup.lekto.documents) == 8
+
+
+async def test_paperless_errors_that_may_pass_are_repeated(setup: Setup) -> None:
+    setup.paperless.unavailable = 2  # Paperless restarts while the plan reads it
+    assert await setup.run("plan") == 0
+    setup.paperless.errors[10] = (502, 2)
+    setup.paperless.errors[11] = (503, 99)
+    setup.paperless.errors[12] = (404, 99)
+    assert await setup.migrate() == 1
+    failed = {
+        d["id"]: d["reason"] for d in setup.report("run")["documents"] if d["status"] == "failed"
+    }
+    assert failed == {
+        11: "download of document 11: HTTP 503",
+        12: "download of document 12: HTTP 404",
+    }
+    downloads = Counter(
+        int(path.split("/")[3]) for method, path in setup.paperless.requests if "download" in path
+    )
+    assert (downloads[10], downloads[11], downloads[12]) == (3, 4, 1)  # a 404 is not repeated
+    setup.paperless.errors.clear()
+    assert await setup.run("run") == 0
+    assert len(setup.lekto.documents) == 8
 
 
 async def test_a_duplicate_is_mapped_not_counted_as_an_error(setup: Setup) -> None:

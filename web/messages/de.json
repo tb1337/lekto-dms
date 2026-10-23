@@ -1136,6 +1136,7 @@
 	"run_why_unseen_one": "{name} sähe es dort nicht.",
 	"run_why_unseen": "{names} sähen es dort nicht.",
 	"run_why_fields": "Unsicher: {fields}.",
+	"run_why_rule_review": "Eine Regel verlangt eine Prüfung.",
 	"run_to_review": "Zur Prüfung",
 	"run_counts": "Schritte nach Stand",
 	"run_count_done": "erledigt",

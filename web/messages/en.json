@@ -1136,6 +1136,7 @@
 	"run_why_unseen_one": "{name} would not see it there.",
 	"run_why_unseen": "{names} would not see it there.",
 	"run_why_fields": "Uncertain: {fields}.",
+	"run_why_rule_review": "A rule asks for a review.",
 	"run_to_review": "To the review",
 	"run_counts": "Steps by state",
 	"run_count_done": "done",

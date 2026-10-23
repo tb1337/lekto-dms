@@ -122,16 +122,19 @@ function review(
 		...checksOf(lastOf(steps, 'apply_rules'))
 	].filter((check) => UNSURE.has(String(check.outcome)));
 	const spaceCheck = checks.find((check) => check.field === 'space');
+	// A review a rule forces is no field of the document: a sentence of its own.
+	const ruleReview = checks.some((check) => check.field === 'review');
 	const others = [
 		...new Set(
 			checks
-				.filter((check) => check.field !== 'space')
+				.filter((check) => check.field !== 'space' && check.field !== 'review')
 				.map((check) => fieldLabel(String(check.field), lookup))
 		)
 	];
 	const parts: string[] = [];
 	if (spaceCheck) parts.push(...spaceWhy(spaceCheck, verdict, space, lookup, viewer));
 	if (others.length > 0) parts.push(m.run_why_fields({ fields: others.join(', ') }));
+	if (ruleReview) parts.push(m.run_why_rule_review());
 	if (parts.length === 0) {
 		const open = stuck(steps);
 		if (open.length > 0) parts.push(m.run_why_fields({ fields: names(open) }));

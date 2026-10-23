@@ -53,7 +53,8 @@ const graph: GraphNode[] = [
 	{ node: 'signal_llm', requires: ['ocr'] },
 	{ node: 'judge', requires: ['signal_llm'] },
 	{ node: 'fields', requires: ['judge'] },
-	{ node: 'file', requires: ['fields'] }
+	{ node: 'apply_rules', requires: ['fields'] },
+	{ node: 'file', requires: ['apply_rules'] }
 ];
 const NODES = graph.map((entry) => entry.node);
 
@@ -184,6 +185,26 @@ describe('headlineOf', () => {
 		);
 		expect(headline.detail).toBe(m.run_why_fields({ fields: m.field_date() }));
 		expect(headline.action).toBe('review');
+	});
+
+	it('tells a review a rule forces in a sentence of its own', () => {
+		const output = {
+			fields: [{ field: 'review', outcome: 'uncertain', confidence: 0, reason: "rule 'x': check" }]
+		};
+		const shown = steps(
+			[state('apply_rules', 'uncertain'), state('file', null, 'waiting')],
+			[entry('apply_rules', 2, 'uncertain', output)],
+			2,
+			'review'
+		);
+		const headline = headlineOf(
+			{ number: 2, current: true, status: 'review' },
+			shown,
+			MINE,
+			lookup,
+			tobi
+		);
+		expect(headline.detail).toBe(m.run_why_rule_review());
 	});
 
 	it('tells where a run failed and why', () => {

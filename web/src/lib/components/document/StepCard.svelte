@@ -7,8 +7,10 @@
 
 	// One step of a run as a card, as in the log before: its state by icon and word (not by
 	// colour alone), its name, how long it took, what it found in one line, and whether it is
-	// an earlier run's. A button: it opens the step's details (`controls`, named while open). `compact` (two cards
-	// side by side on a phone): the state and the time go below the name, which keeps its line.
+	// an earlier run's. A button: it opens the step's details (`controls`, named while open).
+	// `compact` (two cards side by side on a phone): the state and the time go below the name,
+	// which keeps its line. Pointed at or focused, it tells the band (`onhighlight`); lit up
+	// (`highlighted`) while its segment in the band is.
 	let {
 		step,
 		summary,
@@ -16,6 +18,8 @@
 		expanded,
 		controls,
 		compact = false,
+		highlighted = false,
+		onhighlight,
 		onclick
 	}: {
 		step: Step;
@@ -24,6 +28,9 @@
 		expanded: boolean;
 		controls: string;
 		compact?: boolean;
+		/** Its segment in the band is pointed at or focused. */
+		highlighted?: boolean;
+		onhighlight?: (on: boolean) => void;
 		onclick: () => void;
 	} = $props();
 
@@ -51,11 +58,17 @@
 	data-status={step.state?.status ?? 'not_run'}
 	aria-expanded={expanded}
 	aria-controls={expanded ? controls : undefined}
+	data-highlighted={highlighted ? '' : undefined}
 	{onclick}
+	onmouseenter={() => onhighlight?.(true)}
+	onmouseleave={() => onhighlight?.(false)}
+	onfocus={() => onhighlight?.(true)}
+	onblur={() => onhighlight?.(false)}
 	class={cn(
 		'flex w-full min-w-0 flex-col gap-1 rounded-2xl border px-3 py-2.5 text-left transition-colors',
 		cards[look.tone],
-		expanded && ['ring-2', rings[look.tone]]
+		expanded && ['ring-2', rings[look.tone]],
+		highlighted && !expanded && 'shadow-md ring-2 ring-ring/45'
 	)}
 >
 	<span class="flex w-full min-w-0 items-start gap-2">

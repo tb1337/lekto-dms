@@ -20,6 +20,8 @@
 		summaryOf,
 		durationOf,
 		phaseDuration,
+		highlighted = null,
+		onhighlight,
 		ontoggle,
 		details
 	}: {
@@ -29,6 +31,9 @@
 		summaryOf: (step: Step) => string | null;
 		durationOf: (step: Step) => string | null;
 		phaseDuration: (steps: readonly Step[]) => string | null;
+		/** The step pointed at or focused, here or in the band. */
+		highlighted?: Node | null;
+		onhighlight: (node: Node | null) => void;
 		ontoggle: (node: Node) => void | Promise<void>;
 		details: Snippet<[Step]>;
 	} = $props();
@@ -103,6 +108,8 @@
 						summary={summaryOf(step)}
 						duration={durationOf(step)}
 						expanded={step.node === selected}
+						highlighted={step.node === highlighted}
+						onhighlight={(on) => onhighlight(on ? step.node : null)}
 						controls={PANEL}
 						onclick={() => ontoggle(step.node)}
 					/>

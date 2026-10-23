@@ -194,7 +194,7 @@ describe('DocumentProcessing', () => {
 		// The way to the review in the document tab.
 		const review = screen.getByRole('link', { name: m.run_to_review() });
 		expect(review.getAttribute('href')).toBe('/ui/documents/doc-1?left=pages&right=form');
-		const band = screen.getByRole('img', { name: new RegExp(m.run_band({ run: 1 })) });
+		const band = screen.getByRole('group', { name: new RegExp(m.run_band({ run: 1 })) });
 		expect(band.getAttribute('aria-label')).toContain(`${m.node_judge()} ${m.outcome_uncertain()}`);
 		const counts = screen.getByRole('list', { name: m.run_counts() });
 		expect(counts.textContent).toContain(`5 ${m.run_count_done()}`);
@@ -237,6 +237,38 @@ describe('DocumentProcessing', () => {
 		// Closed is closed: the uncertain verdict does not open again by itself.
 		expect(card(container, 'judge').getAttribute('aria-expanded')).toBe('false');
 		expect(card(container, 'judge').getAttribute('aria-controls')).toBeNull();
+	});
+
+	it('lights up a step in the band and at its card together, and opens it from the band', async () => {
+		const { container } = show();
+		const band = screen.getByRole('group', { name: new RegExp(m.run_band({ run: 1 })) });
+		const segment = within(band).getByRole('button', {
+			name: new RegExp(`^${m.node_signal_llm()}`)
+		});
+		await userEvent.hover(segment);
+		// The card lights up, the segment too, and its name, time and state stand above the bar.
+		expect(card(container, 'signal_llm').hasAttribute('data-highlighted')).toBe(true);
+		expect(segment.hasAttribute('data-lit')).toBe(true);
+		await waitFor(() =>
+			expect(container.textContent).toContain(`${m.node_signal_llm()} · 6s · ${m.outcome_ok()}`)
+		);
+		await userEvent.unhover(segment);
+		expect(card(container, 'signal_llm').hasAttribute('data-highlighted')).toBe(false);
+		// Pointing at a card lights up its segment.
+		await userEvent.hover(card(container, 'ocr'));
+		const ocr = within(band).getByRole('button', { name: new RegExp(`^${m.node_ocr()}`) });
+		expect(ocr.hasAttribute('data-lit')).toBe(true);
+		await userEvent.unhover(card(container, 'ocr'));
+		// A click on the segment opens the step as its card does.
+		await userEvent.click(segment);
+		expect(goto).toHaveBeenCalledWith('/ui/documents/doc-1?tab=processing&step=signal_llm', {
+			replace: true,
+			reset: false
+		});
+		await waitFor(() =>
+			expect(card(container, 'signal_llm').getAttribute('aria-expanded')).toBe('true')
+		);
+		expect(segment.getAttribute('aria-expanded')).toBe('true');
 	});
 
 	it('tells the tokens behind the info icon and shows the prompt', async () => {
@@ -373,7 +405,7 @@ describe('DocumentProcessing', () => {
 		show({ document: later, manageable: false });
 		const read = screen.getByRole('heading', { name: new RegExp(m.phase_read()) });
 		expect(read.textContent).not.toMatch(/\d+(h|m|s)/);
-		const band = screen.getByRole('img', { name: new RegExp(m.run_band({ run: 2 })) });
+		const band = screen.getByRole('group', { name: new RegExp(m.run_band({ run: 2 })) });
 		expect(band.getAttribute('aria-label')).not.toMatch(/\d+h/);
 	});
 

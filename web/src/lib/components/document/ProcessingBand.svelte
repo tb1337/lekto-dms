@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import {
 		GROUP_GAP,
 		PHASE_GAP,
@@ -23,12 +24,19 @@
 	// their duration and colour, the steps that ran beside the longest one as thin stripes below
 	// it, the steps an earlier run did muted. Wide, the phases' names stand below their part of
 	// the bar; narrow, in one line. A label stands inside a segment only where it fits whole.
+	// Each segment is a button for its step (Tobi, 23.10.2026): pointing at it or focusing it
+	// lights it up, with its name, time and state above the bar, and lights up the step's card;
+	// a card pointed at lights up its segment (`highlighted`); a click opens the step.
 	let {
 		phases,
 		run,
 		wide,
 		phaseDuration,
-		noteOf
+		noteOf,
+		highlighted = null,
+		expanded = null,
+		onhighlight,
+		onselect
 	}: {
 		phases: readonly BandPhase[];
 		run: number;
@@ -36,6 +44,12 @@
 		phaseDuration: (phase: Phase) => string | null;
 		/** How a step that did not end OK by itself came to count as OK, for its tooltip. */
 		noteOf: (node: Node) => string | null;
+		/** The step pointed at or focused, here or at its card. */
+		highlighted?: Node | null;
+		/** The step whose details are open. */
+		expanded?: Node | null;
+		onhighlight: (node: Node | null) => void;
+		onselect: (node: Node) => void;
 	} = $props();
 
 	const tones: Record<BandTone, string> = {
@@ -94,7 +108,7 @@
 		phase.carried ? fromLabel(phase.from) : (phaseDuration(phase.phase) ?? '');
 
 	// For a screen reader the bar in words: each phase with its time or where it is from, and
-	// the steps of the run that did not end well.
+	// the steps of the run that did not end well; each segment tells its own step.
 	const description = $derived(
 		`${m.run_band({ run })}: ${phases
 			.map((phase) => {
@@ -106,11 +120,88 @@
 			})
 			.join(', ')}`
 	);
+
+	const steps = $derived(phases.flatMap((phase) => phase.groups.flatMap((group) => group.steps)));
+	const lit = $derived(steps.find((step) => step.node === highlighted) ?? null);
+
+	// The label above the lit segment: over its middle, or flush with its edge near the ends of
+	// the bar, so that it is never cut.
+	let frame = $state<HTMLElement | null>(null);
+	let tip = $state<{ x: number; align: 'start' | 'center' | 'end' } | null>(null);
+	$effect(() => {
+		const node = lit?.node;
+		void width;
+		if (!node || !frame) {
+			tip = null;
+			return;
+		}
+		void tick().then(() => {
+			const segment = frame?.querySelector<HTMLElement>(`[data-band-node="${node}"]`);
+			if (!frame || !segment) return;
+			const outer = frame.getBoundingClientRect();
+			const own = segment.getBoundingClientRect();
+			const middle = own.left + own.width / 2 - outer.left;
+			if (middle < outer.width * 0.2) tip = { x: own.left - outer.left, align: 'start' };
+			else if (middle > outer.width * 0.8) tip = { x: own.right - outer.left, align: 'end' };
+			else tip = { x: middle, align: 'center' };
+		});
+	});
 </script>
 
-<div class="flex flex-col gap-2">
+{#snippet segment(step: BandStep, text: string | null, stripe: boolean)}
+	{@const on = step.node === highlighted}
+	<button
+		type="button"
+		data-band-node={step.node}
+		data-lit={on ? '' : undefined}
+		aria-label={title(step)}
+		aria-expanded={step.node === expanded}
+		class={cn(
+			'relative flex min-w-0 items-center overflow-hidden rounded-[3px] outline-none motion-safe:transition-[transform,box-shadow] motion-safe:duration-150',
+			'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
+			stripe ? 'h-[3px] shrink-0' : 'min-h-0 w-full flex-1',
+			tones[step.tone],
+			step.overruled && 'ring-2 ring-lane-yellow-mark ring-inset',
+			on && ['z-10 shadow-md', stripe ? 'scale-y-[2.5]' : 'scale-y-[1.35]']
+		)}
+		style:width={stripe ? `${step.share * 100}%` : undefined}
+		onmouseenter={() => onhighlight(step.node)}
+		onmouseleave={() => onhighlight(null)}
+		onfocus={() => onhighlight(step.node)}
+		onblur={() => onhighlight(null)}
+		onclick={() => onselect(step.node)}
+	>
+		{#if text}
+			<span
+				class={cn(
+					'px-2 text-[11px] font-semibold whitespace-nowrap',
+					label(step.tone),
+					on && 'opacity-0'
+				)}
+				aria-hidden="true"
+			>
+				{text}
+			</span>
+		{/if}
+	</button>
+{/snippet}
+
+<div class="relative flex flex-col gap-2" bind:this={frame}>
+	{#if lit && tip}
+		<span
+			class={cn(
+				'pointer-events-none absolute -top-2 z-20 -translate-y-full rounded-md border bg-popover px-2 py-1 text-xs whitespace-nowrap text-popover-foreground shadow-md',
+				tip.align === 'center' && '-translate-x-1/2',
+				tip.align === 'end' && '-translate-x-full'
+			)}
+			style:left={`${tip.x}px`}
+			aria-hidden="true"
+		>
+			{title(lit)}
+		</span>
+	{/if}
 	<div
-		role="img"
+		role="group"
 		aria-label={description}
 		class={cn('grid gap-1', wide ? 'h-9' : 'h-8')}
 		style:grid-template-columns={columns}
@@ -121,37 +212,13 @@
 			<span class="flex min-w-0" style:gap={`${GROUP_GAP}px`}>
 				{#each phase.groups as group, index (index)}
 					{@const [main, ...beside] = group.steps}
-					{@const text = inside(main, sizes[index], beside.length === 0 ? 11 : 10)}
 					<span
 						class="flex min-w-0 flex-col gap-0.5"
 						style:flex={`${group.grow} 1 ${group.basis}px`}
 					>
-						<span
-							class={cn(
-								'flex min-h-0 w-full flex-1 items-center overflow-hidden rounded-[3px]',
-								tones[main.tone],
-								main.overruled && 'ring-2 ring-lane-yellow-mark ring-inset'
-							)}
-							title={title(main)}
-						>
-							{#if text}
-								<span
-									class={cn(
-										'px-2 font-semibold whitespace-nowrap',
-										beside.length === 0 ? 'text-[11px]' : 'text-[10px] leading-none',
-										label(main.tone)
-									)}
-								>
-									{text}
-								</span>
-							{/if}
-						</span>
+						{@render segment(main, inside(main, sizes[index], 11), false)}
 						{#each beside as step (step.node)}
-							<span
-								class={cn('h-[3px] shrink-0 rounded-full', tones[step.tone])}
-								style:width={`${step.share * 100}%`}
-								title={title(step)}
-							></span>
+							{@render segment(step, null, true)}
 						{/each}
 					</span>
 				{/each}

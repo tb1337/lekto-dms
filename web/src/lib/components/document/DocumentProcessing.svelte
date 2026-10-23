@@ -223,6 +223,10 @@
 		return stopped ? (stuck(steps)[0]?.node ?? null) : null;
 	});
 
+	// The step pointed at or focused, in the band or at its card: both light it up.
+	let highlighted = $state<Node | null>(null);
+	const highlight = (node: Node | null) => (highlighted = node);
+
 	async function toggle(node: Node) {
 		if (selected === node) {
 			closed = { document: document.id, run: shownRun };
@@ -352,6 +356,10 @@
 				{wide}
 				phaseDuration={phaseDurationOf}
 				{noteOf}
+				{highlighted}
+				expanded={selected}
+				onhighlight={highlight}
+				onselect={toggle}
 			/>
 		{/snippet}
 	</ProcessingSummary>
@@ -387,6 +395,8 @@
 					{summaryOf}
 					{durationOf}
 					{phaseDuration}
+					{highlighted}
+					onhighlight={highlight}
 					ontoggle={toggle}
 					{details}
 				/>
@@ -407,6 +417,8 @@
 				{summaryOf}
 				{durationOf}
 				{phaseDuration}
+				{highlighted}
+				onhighlight={highlight}
 				ontoggle={toggle}
 				{details}
 			/>

@@ -10,7 +10,7 @@ import { documentHref } from '#lib/candidates.ts';
 import { describeValue, fieldLabel } from '#lib/describe.ts';
 import { formatNumber } from '#lib/i18n.ts';
 import { IDENTIFIER_KINDS, kindLabel, type IdentifierKind } from '#lib/identifiers.ts';
-import { strengthLabel, type Strength } from '#lib/facts.ts';
+import type { Strength } from '#lib/facts.ts';
 import { userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 
@@ -67,16 +67,26 @@ function ranked(value: unknown, lookup: Lookup | null, count = 3): SummaryItem[]
 		});
 }
 
+const WITH_STRENGTH: Record<Strength, (inputs: { name: string }) => string> = {
+	hard: m.signal_person_hard,
+	medium: m.signal_person_medium,
+	weak: m.signal_person_weak
+};
+
+/** A person an entry names, with the strength of the evidence in brackets: "Anna Leider
+ * (sicher belegt)". */
+export function personWithStrength(item: unknown, lookup: Lookup | null): string {
+	const found = object(item);
+	const name = person(found.user_id, lookup);
+	const strength = String(found.strength ?? '');
+	return Object.hasOwn(WITH_STRENGTH, strength)
+		? WITH_STRENGTH[strength as Strength]({ name })
+		: name;
+}
+
 /** The persons an entry names, by name, with the strength of the evidence. */
 function persons(value: unknown, lookup: Lookup | null): SummaryItem[] {
-	return list(value).map((item) => {
-		const found = object(item);
-		const strength = String(found.strength ?? '');
-		const label = ['hard', 'medium', 'weak'].includes(strength)
-			? strengthLabel(strength as Strength)
-			: strength;
-		return { text: `${person(found.user_id, lookup)} · ${label}` };
-	});
+	return list(value).map((item) => ({ text: personWithStrength(item, lookup) }));
 }
 
 export function person(id: unknown, lookup: Lookup | null): string {

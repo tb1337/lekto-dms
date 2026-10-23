@@ -273,7 +273,10 @@ describe('the space in the signals and the rules', () => {
 			entry('signal_facts', { persons: [{ user_id: ANNA, strength: 'hard' }] }),
 			spaces
 		);
-		expect(texts(facts).at(-1)).toEqual([m.facts_persons(), [`anna · ${m.facts_person_hard()}`]]);
+		expect(texts(facts).at(-1)).toEqual([
+			m.facts_persons(),
+			[m.signal_person_hard({ name: 'anna' })]
+		]);
 		const judged = signalSummary(
 			entry('judge', {
 				fields: [{ field: 'space', outcome: 'ok', unseen_by: [ANNA, 'someone'] }],
@@ -282,7 +285,7 @@ describe('the space in the signals and the rules', () => {
 			spaces
 		);
 		expect(texts(judged)).toEqual([
-			[m.facts_persons(), [`anna · ${m.facts_person_medium()}`]],
+			[m.facts_persons(), [m.signal_person_medium({ name: 'anna' })]],
 			[m.log_space_unseen(), ['anna', m.space_named_someone()]]
 		]);
 		// Without a space check the judge's entry has nothing of its own to show.

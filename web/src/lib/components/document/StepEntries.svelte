@@ -1,14 +1,17 @@
 <script lang="ts">
 	import MessageSquareCode from '@lucide/svelte/icons/message-square-code';
 	import type { components } from '#lib/api/schema.ts';
+	import FactRows from '#lib/components/document/FactRows.svelte';
 	import SignalSummary from '#lib/components/document/SignalSummary.svelte';
+	import StepDetails, { type DetailContext } from '#lib/components/document/StepDetails.svelte';
 	import TokenInfo from '#lib/components/document/TokenInfo.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { formatDuration } from '#lib/duration.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { person } from '#lib/signals.ts';
+	import { object, person } from '#lib/signals.ts';
+	import { drawsDetails, drawsFacts } from '#lib/step-details.ts';
 	import { confirmationOf } from '#lib/step-summary.ts';
 	import type { Step } from '#lib/steps.ts';
 	import { usageOf } from '#lib/usage.ts';
@@ -18,8 +21,9 @@
 
 	// What a step did in the run shown, as the log told it before: per entry when, in which run,
 	// with which model, the tokens and the prompt, how it ended and how long it took, why, and
-	// what it said; for a step a person or the rules overruled, how that came; for the verdict
-	// whose space waits, the way to the filing question. Only editors read it.
+	// what it said (drawn where a picture tells it better, `StepDetails`); for a step a person or
+	// the rules overruled, how that came; for the verdict whose space waits, the way to the
+	// filing question. Only editors read it.
 	let {
 		step,
 		manageable,
@@ -27,6 +31,7 @@
 		current,
 		lookup = null,
 		filingHref = null,
+		context,
 		hasPrompt,
 		onprompt
 	}: {
@@ -38,6 +43,8 @@
 		lookup?: Lookup | null;
 		/** The filing question in the document tab, while the verdict's space waits. */
 		filingHref?: string | null;
+		/** What the drawn details need beyond the entry. */
+		context: DetailContext;
 		hasPrompt: (entry: LogEntry) => boolean;
 		onprompt: (entry: LogEntry) => void;
 	} = $props();
@@ -115,8 +122,13 @@
 						<dt class="text-muted-foreground">{m.log_reason()}</dt>
 						<dd class="wrap-break-word">{entry.reason}</dd>
 					{/if}
-					<SignalSummary {entry} {lookup} />
+					{#if drawsFacts(entry)}
+						<FactRows output={object(entry.output)} {lookup} />
+					{:else if !drawsDetails(entry)}
+						<SignalSummary {entry} {lookup} />
+					{/if}
 				</dl>
+				{#if drawsDetails(entry)}<StepDetails {entry} {lookup} {context} />{/if}
 			</div>
 		{/each}
 		{#if filingHref && step.node === 'judge'}

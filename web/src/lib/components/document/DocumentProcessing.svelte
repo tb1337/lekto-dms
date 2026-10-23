@@ -13,9 +13,10 @@
 	import ProcessingTimeline from '#lib/components/document/ProcessingTimeline.svelte';
 	import PromptDialog from '#lib/components/document/PromptDialog.svelte';
 	import SignalMatrix from '#lib/components/document/SignalMatrix.svelte';
+	import type { DetailContext } from '#lib/components/document/StepDetails.svelte';
 	import StepEntries from '#lib/components/document/StepEntries.svelte';
 	import { desktop } from '#lib/desktop.svelte.ts';
-	import { stepHref, stepOf, viewHref, viewOf } from '#lib/document-view.ts';
+	import { pageHref, stepHref, stepOf, viewHref, viewOf } from '#lib/document-view.ts';
 	import { formatDuration } from '#lib/duration.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { events } from '#lib/events.svelte.ts';
@@ -29,6 +30,7 @@
 	import { session } from '#lib/session.svelte.ts';
 	import { decidedBy, matrixOf, verdictOf } from '#lib/signal-matrix.ts';
 	import { list, object } from '#lib/signals.ts';
+	import { classifierThresholds } from '#lib/step-details.ts';
 	import { byPerson, stepSummary } from '#lib/step-summary.ts';
 	import { countsOf, phaseSeconds, phasesOf, stepsOf, stuck, type Step } from '#lib/steps.ts';
 
@@ -36,6 +38,8 @@
 	type LogEntry = components['schemas']['LogEntry'];
 	type Exchange = components['schemas']['RunExchangeOut'];
 	type ExchangeNode = components['schemas']['ExchangeNode'];
+	type Files = components['schemas']['DocumentFilesOut'];
+	type Reading = components['schemas']['ReadingOut'];
 
 	// The processing of a document (mock D, Tobi 23.10.2026): how the run went at a glance (one
 	// sentence, the band, the counts, what changed), its steps in four phases as the cards of the
@@ -66,6 +70,10 @@
 
 	let entries = $state<LogEntry[] | null>(null);
 	let exchanges = $state<Partial<Record<Node, Exchange[]>>>({});
+	// The document's files and how its text was read, for the details of the text recognition;
+	// without them the details leave that out.
+	let files = $state<Files | null>(null);
+	let reading = $state<Reading | null>(null);
 	let problem = $state<string | null>(null);
 	let prompt = $state<{ title: string; meta: string; calls: Exchange['calls'] } | null>(null);
 	let promptOpen = $state(false);
@@ -92,9 +100,25 @@
 			entries = log;
 			exchanges = Object.fromEntries(MODEL_NODES.map((node, index) => [node, kept[index]]));
 			problem = null;
+			void loadExtras(wanted, request);
 		} catch (error) {
 			if (wanted === document.id && request === latest) problem = describeError(error);
 		}
+	}
+
+	/** The files and the reading, beside the log; a failure leaves them out, not the log. */
+	async function loadExtras(wanted: string, request: number) {
+		const [found, read] = await Promise.all([
+			unwrap(api.GET('/api/v1/documents/{id}/files', { params: { path: { id: wanted } } })).catch(
+				() => null
+			),
+			unwrap(api.GET('/api/v1/documents/{id}/reading', { params: { path: { id: wanted } } })).catch(
+				() => null
+			)
+		]);
+		if (wanted !== document.id || request !== latest) return;
+		files = found && typeof found === 'object' && 'original' in found ? found : null;
+		reading = read && typeof read === 'object' && Array.isArray(read.pages) ? read : null;
 	}
 
 	// Loaded once per document and after each completed node; a new state of the document
@@ -107,6 +131,8 @@
 		untrack(() => {
 			if (loadedFor !== id) {
 				entries = null;
+				files = null;
+				reading = null;
 				problem = null;
 				loadedFor = id;
 			}
@@ -322,6 +348,24 @@
 		promptOpen = true;
 	}
 
+	// What the drawn details need: the latest run of each step (the files, the reading and the
+	// text are the document's current ones), the classifier's thresholds as the verdict tells
+	// them, the ways to the text and to a page.
+	const detailContext: DetailContext = $derived({
+		documentId: document.id,
+		latest: Object.fromEntries(
+			nodes.map((node) => [
+				node,
+				Math.max(0, ...(entries ?? []).filter((entry) => entry.node === node).map((e) => e.run))
+			])
+		),
+		files,
+		poor: (reading?.pages ?? []).filter((each) => each.poor).map((each) => each.page),
+		thresholds: classifierThresholds(verdict),
+		textHref: viewHref(page.url, { left: 'text', right: viewOf(page.url).right }),
+		pageHref: (number: number) => pageHref(page.url, number)
+	});
+
 	// The document tab with the form: the filing question and the review are there.
 	const reviewHref = $derived(viewHref(page.url, { left: viewOf(page.url).left, right: 'form' }));
 	// The way to the filing question from the verdict, while its space waits for a person.
@@ -342,6 +386,7 @@
 		current={isCurrent}
 		{lookup}
 		{filingHref}
+		context={detailContext}
 		hasPrompt={(entry) => exchangeOf(entry) !== undefined}
 		onprompt={showPrompt}
 	/>

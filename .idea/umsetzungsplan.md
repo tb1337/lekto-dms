@@ -1491,6 +1491,7 @@ PR mit Label `enhancement` nach `release/0.5.0`, nach Paket 3.
 4. „Seit Lauf N“ vergleicht nur Werte, die in beiden Läufen entschieden sind; Felder als Zahl („2 Felder geändert“), nicht einzeln.
 5. Offen ist zunächst der Schritt, der den aktuellen Lauf hält; geschlossen bleibt er zu, bis ein anderer Lauf oder ein anderes Dokument kommt.
 6. Schmaler als `lg` (64rem, auch Tablets) die Zeitleiste statt der Spalten.
+7. Laufband nach einer Bestätigung: Brauchte der Lauf selbst unter einer Sekunde (nur Regeln und Ablage), stehen alle Schritte gleich breit, die übernommenen gedämpft – sonst füllte ein Schritt von 0 Sekunden die Leiste. Mit Zeiten behält eine ganz übernommene Phase einen kleinen Teil (8 %, mindestens Platz für ihren Namen), ein übernommener Schritt neben denen des Laufs 10 Pixel, ein Schritt von 0 Sekunden 4 Pixel.
 
 ### M16 – Lesen
 

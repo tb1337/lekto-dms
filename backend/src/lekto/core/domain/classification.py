@@ -27,6 +27,7 @@ from lekto.core.domain.json_value import (
 from lekto.core.domain.labels import LabelCheck
 from lekto.core.domain.locations import Location, locations_from_json, locations_to_json
 from lekto.core.domain.pipeline import Outcome
+from lekto.core.domain.reasons import Reason, reasons_from_json, reasons_to_json, text_of
 
 
 class CheckField(StrEnum):
@@ -197,6 +198,8 @@ class Candidate:
 class FieldCheck:
     """One field of a model's proposal and its check.
 
+    - `reasons`: why the field is uncertain (or a remark on an OK one), with their codes;
+      `reason` gives them in English. Entries from before codes have one as written.
     - `proposed`: what the model answered for the field, unchanged.
     - `evidence`: the excerpt the model quoted, if any.
     - `value`: the checked value as JSON (contact, type or topic id, tag ids, ISO date,
@@ -223,7 +226,7 @@ class FieldCheck:
     field: str
     outcome: Outcome
     confidence: float
-    reason: str | None = None
+    reasons: tuple[Reason, ...] = ()
     proposed: JsonValue = None
     evidence: str | None = None
     value: JsonValue = None
@@ -238,7 +241,7 @@ class FieldCheck:
     def __post_init__(self) -> None:
         if self.outcome is Outcome.FAILED:
             raise ValidationError("a field is either OK or uncertain")
-        if self.outcome is Outcome.UNCERTAIN and not self.reason:
+        if self.outcome is Outcome.UNCERTAIN and not self.reasons:
             raise ValidationError(f"uncertain field {self.field} needs a reason")
         if not 0 <= self.confidence <= 1:
             raise ValidationError(f"confidence must be between 0 and 1, got {self.confidence}")
@@ -247,12 +250,18 @@ class FieldCheck:
     def ok(self) -> bool:
         return self.outcome is Outcome.OK
 
+    @property
+    def reason(self) -> str | None:
+        """The reasons in English (`Reason.text`), joined by "; "."""
+        return text_of(self.reasons)
+
     def to_json(self) -> JsonObject:
         data: JsonObject = {
             "field": self.field,
             "outcome": self.outcome.value,
             "confidence": round(self.confidence, 4),
             "reason": self.reason,
+            "reasons": reasons_to_json(self.reasons),
             "proposed": self.proposed,
             "evidence": self.evidence,
             "value": self.value,
@@ -279,7 +288,7 @@ class FieldCheck:
                 field=str(data["field"]),
                 outcome=Outcome(str(data["outcome"])),
                 confidence=float(confidence),
-                reason=as_text(data.get("reason")),
+                reasons=reasons_from_json(data.get("reasons"), as_text(data.get("reason"))),
                 proposed=data.get("proposed"),
                 evidence=as_text(data.get("evidence")),
                 value=data.get("value"),

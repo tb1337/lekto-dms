@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, TypeAdapter
 
 from lekto.core.domain.fields import FieldValue, field_to_json
+from lekto.core.domain.reasons import Reason, ReasonCode
 from lekto.core.domain.rule_planner import Effect, Note, NoteKind, RuleReport
 from lekto.core.domain.rules import RuleScope
 
@@ -44,6 +45,29 @@ def field_json(value: FieldValue) -> str | bool | MoneyValue | PeriodValue:
     return _FIELD_JSON.validate_python(field_to_json(value))
 
 
+class ReasonOut(BaseModel):
+    """A reason with its code: a client translates `code` with `params`; the English text
+    stands beside it (`reason`). The codes, their parameters and how each parameter is written
+    are in the OpenAPI document (`x-reasons`). `text` is a reason as written: by a person, or
+    from before reasons had codes (its `params` hold the `text`)."""
+
+    code: ReasonCode
+    params: dict[str, Any] = Field(examples=[{"contact": "Stadtwerke"}])
+    subject: str | None = Field(
+        default=None,
+        description="The custom field the reason is about, by its name (put before the text).",
+    )
+    rule: str | None = Field(
+        default=None, description="The rule the reason comes from, by its name."
+    )
+
+    @classmethod
+    def of(cls, reason: Reason) -> "ReasonOut":
+        return cls(
+            code=reason.code, params=dict(reason.params), subject=reason.subject, rule=reason.rule
+        )
+
+
 class RuleEffectOut(BaseModel):
     field: str = Field(
         description="`space`, `contact`, `document_type`, `topic`, `title`, `tags`, ..."
@@ -67,11 +91,17 @@ class RuleNoteOut(BaseModel):
             "title pattern gave way to another rule that sets the title."
         )
     )
-    reason: str
+    reason: str = Field(description="Why, in English.")
+    reasons: list[ReasonOut] = Field(description="Why, with its code (one reason).")
 
     @classmethod
     def of(cls, note: Note) -> "RuleNoteOut":
-        return cls.model_validate(note.to_json())
+        return cls(
+            field=note.field,
+            kind=note.kind,
+            reason=note.reason.text,
+            reasons=[ReasonOut.of(note.reason)],
+        )
 
 
 class RuleReportOut(BaseModel):

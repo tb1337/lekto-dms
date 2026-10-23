@@ -19,21 +19,25 @@ from lekto.core.domain.classification import (
 )
 from lekto.core.domain.documents import Channel, Document, DocumentChanges
 from lekto.core.domain.errors import ValidationError
-from lekto.core.domain.imports import IMPORTED, ImportedMetadata, ImportedReview
+from lekto.core.domain.imports import IMPORTED, ImportedMetadata
 from lekto.core.domain.json_value import JsonObject
 from lekto.core.domain.pipeline import Node, NodeResult, Outcome
+from lekto.core.domain.reasons import Reason, ReasonCode, because, written
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from lekto.core.services._access import field_definitions
 from lekto.core.services.classification.signals import abstained
 from lekto.core.services.pipeline import DeferredResult, MetadataResult, NodeExecutor
 
 REASON = "taken over from the source system"
-MISSING: dict[str, str] = {
-    CONTACT: "contact",
-    DOCUMENT_TYPE: "document type",
-    DOCUMENT_DATE: "document date",
+MISSING: dict[str, ReasonCode] = {
+    CONTACT: ReasonCode.SOURCE_LACKS_CONTACT,
+    DOCUMENT_TYPE: ReasonCode.SOURCE_LACKS_DOCUMENT_TYPE,
+    DOCUMENT_DATE: ReasonCode.SOURCE_LACKS_DOCUMENT_DATE,
 }
 """The judge's fields a document needs; without them from the source system, a person decides."""
+
+type _Review = tuple[Reason, str | None]
+"""Why a person should look at the document, and the field it is about (None: the whole)."""
 
 
 class _ImportedStep:
@@ -84,10 +88,14 @@ class ImportedJudgeNode(_ImportedStep):
     nothing."""
 
     def _apply(self, imported: ImportedMetadata, document: Document) -> MetadataResult:
-        reviews = [item for item in imported.review if field_id_of(item.field or "") is None]
-        reviewed = {item.field for item in reviews}
+        reviews: list[_Review] = [
+            (written(item.reason), item.field)
+            for item in imported.review
+            if field_id_of(item.field or "") is None
+        ]
+        reviewed = {field for _, field in reviews}
         reviews += [
-            ImportedReview(reason=f"no {MISSING[field]} in the source system", field=field)
+            (because(MISSING[field]), field)
             for field in _lacking(imported, document)
             if field not in reviewed
         ]
@@ -104,7 +112,11 @@ class ImportedFieldsNode(_ImportedStep):
     """Field values from the source system; a review of one of them makes it uncertain."""
 
     def _apply(self, imported: ImportedMetadata, document: Document) -> MetadataResult:
-        reviews = [item for item in imported.review if field_id_of(item.field or "") is not None]
+        reviews: list[_Review] = [
+            (written(item.reason), item.field)
+            for item in imported.review
+            if field_id_of(item.field or "") is not None
+        ]
         output: JsonObject = {"fields": len(imported.fields)}
         if reviews:
             output[CHECKS] = checks_to_json(_open(reviews))
@@ -123,19 +135,19 @@ def _lacking(imported: ImportedMetadata, document: Document) -> list[str]:
     return [field for field, values in held.items() if values == (None, None)]
 
 
-def _result(reviews: list[ImportedReview], output: JsonObject) -> NodeResult:
+def _result(reviews: list[_Review], output: JsonObject) -> NodeResult:
     if not reviews:
         return NodeResult(outcome=Outcome.OK, reason=REASON, model_version=IMPORTED, output=output)
-    reason = "; ".join(dict.fromkeys(item.reason for item in reviews))
+    reason = "; ".join(dict.fromkeys(item.text for item, _ in reviews))
     return NodeResult(
         outcome=Outcome.UNCERTAIN, reason=reason, model_version=IMPORTED, output=output
     )
 
 
-def _open(reviews: list[ImportedReview]) -> list[FieldCheck]:
+def _open(reviews: list[_Review]) -> list[FieldCheck]:
     """The named fields as open checks: kept with a value, decided by a person without one."""
     return [
-        FieldCheck(field=item.field, outcome=Outcome.UNCERTAIN, confidence=0.0, reason=item.reason)
-        for item in reviews
-        if item.field is not None
+        FieldCheck(field=field, outcome=Outcome.UNCERTAIN, confidence=0.0, reasons=(reason,))
+        for reason, field in reviews
+        if field is not None
     ]

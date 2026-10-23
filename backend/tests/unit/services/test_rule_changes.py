@@ -9,6 +9,7 @@ from lekto.core.domain.documents import DocumentChanges
 from lekto.core.domain.errors import NotFoundError, ValidationError
 from lekto.core.domain.master_data import TagScope
 from lekto.core.domain.pipeline import RULES_CHANGE, Lane, Outcome, ProcessingStatus
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.rule_planner import Note, NoteKind
 from lekto.core.domain.rules import (
     Condition,
@@ -71,7 +72,9 @@ async def test_a_change_rule_acts_when_it_starts_to_hold(world: World) -> None:
         owner.id, document.id, DocumentChanges(contact_id=acme.id, title="Mine")
     )
     assert applied(change) == ["tags"]
-    assert reported(change) == [Note("title", NoteKind.OVERRULED, "a person decided this field")]
+    assert reported(change) == [
+        Note("title", NoteKind.OVERRULED, because(ReasonCode.PERSON_DECIDED_FIELD))
+    ]
     stored = await r.stored(document)
     assert (stored.tag_ids, stored.title, stored.lane) == ({tag.id}, "Mine", Lane.GREEN)
     entry = (await r.rule_entries(document, RULES_CHANGE))[-1]
@@ -100,9 +103,9 @@ async def test_a_change_rule_acts_when_it_starts_to_hold(world: World) -> None:
         owner.id, document.id, DocumentChanges(contact_id=acme.id)
     )
     assert change.rules is not None and len(change.rules.plan.reports) == 1
-    assert Note("tags", NoteKind.OVERRULED, f"a person removed tag '{tag.name}'") in reported(
-        change
-    )
+    assert Note(
+        "tags", NoteKind.OVERRULED, because(ReasonCode.TAG_REMOVED_BY_PERSON, tag=tag.name)
+    ) in reported(change)
     assert (await r.stored(document)).tag_ids == set()
 
 
@@ -121,7 +124,9 @@ async def test_a_change_rule_keeps_what_the_person_decided_earlier(world: World)
     )
 
     assert applied(change) == []
-    assert reported(change) == [Note("title", NoteKind.OVERRULED, "a person decided this field")]
+    assert reported(change) == [
+        Note("title", NoteKind.OVERRULED, because(ReasonCode.PERSON_DECIDED_FIELD))
+    ]
     assert (await r.stored(document)).title == "Mine"
 
 

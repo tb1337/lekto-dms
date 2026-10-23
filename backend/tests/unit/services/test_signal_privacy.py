@@ -7,6 +7,7 @@ from typing import Any
 from lekto.core.domain.classification import Candidate, CandidateSource, FieldCheck, checks_to_json
 from lekto.core.domain.documents import Document
 from lekto.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
+from lekto.core.domain.reasons import written
 from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.users import Role, User
 from tests import builders
@@ -55,7 +56,7 @@ async def _scene(world: World) -> tuple[User, User, Document, Document, Document
         field="contact",
         outcome=Outcome.UNCERTAIN,
         confidence=0.5,
-        reason="unsure",
+        reasons=(written("unsure"),),
         candidates=(Candidate(value=None, label="Dr. Private", sources=(sources,)),),
     )
     async with world.uow() as uow:

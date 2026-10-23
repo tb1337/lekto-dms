@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from lekto.adapters.inbound.rest.schemas.documents import DocumentDetails, DocumentPatch
+from lekto.adapters.inbound.schemas import ReasonOut
 from lekto.core.domain.classification import Candidate, CandidateSource, FieldCheck
 from lekto.core.domain.inbox import Departure, Done, InboxTab
 from lekto.core.domain.labels import LABEL_LINES, LabelCheck, LabelOutcome
@@ -215,7 +216,13 @@ class FieldCheckOut(BaseModel):
         )
     )
     reason: str | None = Field(
-        description="Why the field is uncertain (for the topic: why it was not set)."
+        description=(
+            "Why the field is uncertain (for the topic: why it was not set), in English; "
+            "several reasons are joined by `; `."
+        )
+    )
+    reasons: list[ReasonOut] = Field(
+        default_factory=list, description="The reasons with their codes, in the same order."
     )
     proposed: Any = Field(description="What the model answered, unchanged.")
     evidence: str | None = Field(description="The excerpt the model quoted.")
@@ -278,6 +285,7 @@ class FieldCheckOut(BaseModel):
             outcome=check.outcome,
             confidence=round(check.confidence, 4),
             reason=check.reason,
+            reasons=[ReasonOut.of(reason) for reason in check.reasons],
             proposed=check.proposed,
             evidence=check.evidence,
             value=check.value,

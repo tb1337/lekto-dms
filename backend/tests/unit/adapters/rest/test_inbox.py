@@ -15,6 +15,7 @@ from lekto.core.domain.ids import DocumentId
 from lekto.core.domain.labels import LabelCheck, LabelOutcome
 from lekto.core.domain.master_data import Contact
 from lekto.core.domain.pipeline import Node, NodeResult, Outcome
+from lekto.core.domain.reasons import written
 from tests.api import auth
 from tests.builders import NOW, Returns
 from tests.unit.adapters.rest.support import DOCUMENTS, Api, sample_file, unique_pdf, upload
@@ -29,7 +30,7 @@ def uncertain(contact: Contact) -> NodeResult:
             field="contact",
             outcome=Outcome.UNCERTAIN,
             confidence=0.8,
-            reason="'Stadtwerk' is similar to the contact 'Stadtwerke'",
+            reasons=(written("'Stadtwerk' is similar to the contact 'Stadtwerke'"),),
             proposed="Stadtwerk",
             suggestion=str(contact.id),
             candidates=(
@@ -57,7 +58,7 @@ def uncertain(contact: Contact) -> NodeResult:
             field="document_date",
             outcome=Outcome.UNCERTAIN,
             confidence=0,
-            reason="the date does not appear in the text",
+            reasons=(written("the date does not appear in the text"),),
             proposed="2026-03-31",
             label=LabelCheck("Datum", LabelOutcome.APART),
         ),

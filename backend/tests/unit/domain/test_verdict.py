@@ -11,6 +11,7 @@ from lekto.core.domain.classification import CandidateSource, FieldCheck
 from lekto.core.domain.ids import ContactId, DocumentTypeId, TagId
 from lekto.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
 from lekto.core.domain.pipeline import Outcome
+from lekto.core.domain.reasons import written
 from lekto.core.domain.verdict import (
     ClassifierView,
     FactsView,
@@ -425,10 +426,12 @@ YELLOW = FieldCheck(
     field="contact",
     outcome=Outcome.UNCERTAIN,
     confidence=0.5,
-    reason="only one signal",
+    reasons=(written("only one signal"),),
     suggestion=str(NORD.id),
 )
-NONE = FieldCheck(field="contact", outcome=Outcome.UNCERTAIN, confidence=0, reason="none")
+NONE = FieldCheck(
+    field="contact", outcome=Outcome.UNCERTAIN, confidence=0, reasons=(written("none"),)
+)
 
 
 def pair(*topics: Tag) -> FactsView:

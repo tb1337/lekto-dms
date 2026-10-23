@@ -12,6 +12,7 @@ from lekto.core.domain.fields import FieldDefinition
 from lekto.core.domain.ids import FieldId, SpaceId
 from lekto.core.domain.json_value import JsonObject, JsonValue, as_list
 from lekto.core.domain.pipeline import RULES, TRIGGER, Node, NodeResult, NodeRun, Outcome
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.rule_planner import Mode
 from lekto.core.domain.rules import Rule, Trigger
 from lekto.core.domain.sorting import sort_key
@@ -229,7 +230,7 @@ def _waiting_for_hand(
             field=field_key(definition.id),
             outcome=Outcome.UNCERTAIN,
             confidence=0,
-            reason=f"'{definition.name}' is set by hand and has no value yet",
+            reasons=(because(ReasonCode.FIELD_BY_HAND_MISSING, field=definition.name),),
         )
         for definition in sorted(definitions.values(), key=lambda item: sort_key(item.name))
         if not definition.is_read

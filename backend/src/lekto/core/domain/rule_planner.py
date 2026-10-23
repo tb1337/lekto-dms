@@ -74,6 +74,7 @@ from lekto.core.domain.json_value import JsonObject, JsonValue, as_list, as_obje
 from lekto.core.domain.master_data import TagScope
 from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Outcome
+from lekto.core.domain.reasons import Reason, ReasonCode, because, written
 from lekto.core.domain.rule_conditions import Match, Taxonomy
 from lekto.core.domain.rules import (
     AddTags,
@@ -192,10 +193,15 @@ class Note:
 
     field: str
     kind: NoteKind
-    reason: str
+    reason: Reason
 
     def to_json(self) -> JsonObject:
-        return {"field": self.field, "kind": self.kind, "reason": self.reason}
+        return {
+            "field": self.field,
+            "kind": self.kind,
+            "reason": self.reason.text,
+            "reasons": [self.reason.to_json()],
+        }
 
 
 @dataclass
@@ -329,8 +335,9 @@ class _Planner:
             definition = self._s.definitions[field_id]
             if not definition.applies_to(type_after):
                 for candidate in self._candidates[field_name]:
+                    does_not_apply = because(ReasonCode.FIELD_DOES_NOT_APPLY, field=definition.name)
                     candidate.report.notes.append(
-                        Note(field_name, NoteKind.SKIPPED, f"'{definition.name}' does not apply")
+                        Note(field_name, NoteKind.SKIPPED, does_not_apply)
                     )
                 continue
             self._single(field_name, result)
@@ -404,19 +411,20 @@ class _Planner:
                 tree = s.taxonomy.tree
                 for tag in sorted(tags):
                     if tag not in s.existing:
-                        report.notes.append(
-                            Note(TAGS, NoteKind.SKIPPED, f"tag {tag} no longer exists")
-                        )
+                        gone = because(ReasonCode.TAG_GONE, id=str(tag))
+                        report.notes.append(Note(TAGS, NoteKind.SKIPPED, gone))
                     elif tag in tree and tree.tags[tag].scope is not TagScope.DOCUMENT:
-                        reason = f"tag {self._tag(tag)} is a group, not a document tag"
-                        report.notes.append(Note(TAGS, NoteKind.SKIPPED, reason))
+                        group = because(ReasonCode.TAG_IS_GROUP, tag=self._tag(tag))
+                        report.notes.append(Note(TAGS, NoteKind.SKIPPED, group))
                     else:
                         target.setdefault(tag, []).append(report)
             case SetField(field_id=field, value=value):
                 name = field_key(field)
                 definition = s.definitions.get(field)
                 if definition is None:
-                    report.notes.append(Note(name, NoteKind.SKIPPED, "the field no longer exists"))
+                    report.notes.append(
+                        Note(name, NoteKind.SKIPPED, because(ReasonCode.FIELD_GONE))
+                    )
                     return
                 if definition.data_type is FieldType.TEXT and isinstance(value, str):
                     self._texts.append((report, action, match))
@@ -424,7 +432,7 @@ class _Planner:
                 try:
                     field_from_json(definition, value)
                 except ValidationError as error:
-                    report.notes.append(Note(name, NoteKind.SKIPPED, str(error)))
+                    report.notes.append(Note(name, NoteKind.SKIPPED, _error(error)))
                     return
                 self._candidates.setdefault(name, []).append(_Candidate(report, value, match))
             case ForceReview(reason=reason):
@@ -434,9 +442,8 @@ class _Planner:
         self, field_name: str, value: str, id: object, match: Match, report: RuleReport
     ) -> None:
         if id not in self._s.existing:
-            report.notes.append(
-                Note(field_name, NoteKind.SKIPPED, f"{field_name} {value} no longer exists")
-            )
+            gone = because(_GONE[field_name], id=value)
+            report.notes.append(Note(field_name, NoteKind.SKIPPED, gone))
         else:
             self._candidates.setdefault(field_name, []).append(_Candidate(report, value, match))
 
@@ -445,42 +452,42 @@ class _Planner:
         target = s.spaces.get(space)
         rule = match.rule
         if rule.scope is RuleScope.SPACE and rule.space_id != self._document.space_id:
-            report.notes.append(Note(SPACE, NoteKind.REFUSED, "the rule belongs to another space"))
+            other = because(ReasonCode.RULE_OTHER_SPACE)
+            report.notes.append(Note(SPACE, NoteKind.REFUSED, other))
         elif target is None:
-            report.notes.append(Note(SPACE, NoteKind.SKIPPED, f"space {space} no longer exists"))
+            gone = because(ReasonCode.SPACE_GONE, id=str(space))
+            report.notes.append(Note(SPACE, NoteKind.SKIPPED, gone))
         elif not target.open_to(rule.current.created_by):
-            reason = f"no right to file into space '{target.name}' (any more)"
+            reason = because(ReasonCode.SPACE_NO_RIGHT_ANY_MORE, space=target.name)
             report.notes.append(Note(SPACE, NoteKind.REFUSED, reason))
             if s.mode is Mode.INGEST and SPACE not in s.locked:
-                self._uncertain(SPACE, f"rule '{report.name}': {reason}", suggestion=None)
+                self._uncertain(SPACE, reason.by_rule(report.name), suggestion=None)
         elif s.mode is Mode.RETROACTIVE and not target.open_to(s.applier):
             # Applying a rule moves no document where the person could not move it by hand.
-            reason = f"you have no right to file into space '{target.name}'"
+            reason = because(ReasonCode.SPACE_NO_RIGHT, space=target.name)
             report.notes.append(Note(SPACE, NoteKind.REFUSED, reason))
         elif target.widens and not match.trusted and s.mode is Mode.RETROACTIVE:
             # The person sees the move in the preview and may accept it, as any conflict.
-            fields = ", ".join(match.distrusted)
             if s.accept_conflicts:
                 self._candidates.setdefault(SPACE, []).append(_Candidate(report, str(space), match))
             else:
-                reason = (
-                    f"files into the space '{target.name}', which more people see, with an "
-                    f"unconfirmed {fields}; not accepted"
+                reason = because(
+                    ReasonCode.SPACE_WIDENS_UNCONFIRMED,
+                    space=target.name,
+                    fields=list(match.distrusted),
                 )
                 report.notes.append(Note(SPACE, NoteKind.CONFLICT, reason))
         elif target.widens and not match.trusted:
-            fields = ", ".join(match.distrusted)
-            reason = (
-                f"files into the space '{target.name}', which more people see, only with a "
-                f"confirmed {fields}"
+            reason = because(
+                ReasonCode.SPACE_WIDENS_NEEDS_CONFIRMED,
+                space=target.name,
+                fields=list(match.distrusted),
             )
             report.notes.append(Note(SPACE, NoteKind.REFUSED, reason))
             if s.mode is Mode.INGEST:
                 for name in match.distrusted:
                     self._uncertain(
-                        name,
-                        f"rule '{report.name}' {reason}",
-                        suggestion=self._current(name),
+                        name, reason.by_rule(report.name), suggestion=self._current(name)
                     )
         else:
             self._candidates.setdefault(SPACE, []).append(_Candidate(report, str(space), match))
@@ -488,15 +495,15 @@ class _Planner:
     def _review(self, report: RuleReport, reason: str) -> None:
         s = self._s
         if s.mode is not Mode.INGEST:
-            report.notes.append(
-                Note(REVIEW, NoteKind.SKIPPED, "reviews are forced on arrival only")
-            )
+            arrival = because(ReasonCode.REVIEW_ON_ARRIVAL_ONLY)
+            report.notes.append(Note(REVIEW, NoteKind.SKIPPED, arrival))
         elif report.rule_id in s.reviewed:
-            report.notes.append(Note(REVIEW, NoteKind.OVERRULED, "a person confirmed the review"))
+            confirmed = because(ReasonCode.REVIEW_CONFIRMED)
+            report.notes.append(Note(REVIEW, NoteKind.OVERRULED, confirmed))
         else:
-            report.notes.append(Note(REVIEW, NoteKind.REVIEW, reason))
+            report.notes.append(Note(REVIEW, NoteKind.REVIEW, written(reason)))
             self._reviews.append(f"rule '{report.name}': {reason}")
-            self._uncertain(REVIEW, f"rule '{report.name}': {reason}", suggestion=None)
+            self._uncertain(REVIEW, written(reason).by_rule(report.name), suggestion=None)
 
     # --- resolving ----------------------------------------------------------------------------
 
@@ -508,11 +515,11 @@ class _Planner:
         current = self._current(field_name)
         values = list(dict.fromkeys(_key(candidate.value) for candidate in candidates))
         if len(values) > 1:
-            listed = ", ".join(
-                f"'{candidate.report.name}': {self._shown(field_name, candidate.value)}"
+            listed: list[JsonValue] = [
+                {"rule": candidate.report.name, "value": self._shown(field_name, candidate.value)}
                 for candidate in candidates
-            )
-            disagree = f"rules set different values ({listed})"
+            ]
+            disagree = because(ReasonCode.RULES_DISAGREE, values=listed)
             for candidate in candidates:
                 candidate.report.notes.append(Note(field_name, NoteKind.CONFLICT, disagree))
             if s.mode is Mode.INGEST and field_name not in s.locked:
@@ -521,25 +528,29 @@ class _Planner:
         value = candidates[0].value
         if _key(value) == _key(current):
             return
-        reason: str | None = None
+        reason: Reason | None = None
         kind = NoteKind.CONFLICT
         if s.mode is Mode.RETROACTIVE:
             if not self._empty(field_name, current) and not s.accept_conflicts:
-                reason = (
-                    f"the document has another value ({self._shown(field_name, current)}); "
-                    "not accepted"
+                reason = because(
+                    ReasonCode.VALUE_OTHER_NOT_ACCEPTED, value=self._shown(field_name, current)
                 )
         elif field_name in s.locked:
-            kind, reason = NoteKind.OVERRULED, "a person decided this field"
+            kind, reason = NoteKind.OVERRULED, because(ReasonCode.PERSON_DECIDED_FIELD)
         elif field_name in s.model_values and _key(s.model_values[field_name]) == _key(current):
             shown = self._shown(field_name, current)
-            reason = (
-                f"a rule set another value on unconfirmed values ({shown})"
-                if field_name in s.chained
-                else f"the model set another value ({shown})"
+            chained = field_name in s.chained
+            reason = because(
+                ReasonCode.RULE_VALUE_ON_UNCONFIRMED if chained else ReasonCode.MODEL_VALUE_OTHER,
+                value=shown,
             )
             if s.mode is Mode.INGEST:
-                self._uncertain(field_name, f"rules: {reason}", suggestion=value)
+                code = (
+                    ReasonCode.RULES_VALUE_ON_UNCONFIRMED
+                    if chained
+                    else ReasonCode.RULES_MODEL_VALUE_OTHER
+                )
+                self._uncertain(field_name, because(code, value=shown), suggestion=value)
         if reason is not None:
             for candidate in candidates:
                 candidate.report.notes.append(Note(field_name, kind, reason))
@@ -566,7 +577,7 @@ class _Planner:
             if topic in self._s.taxonomy.topics_of(UUID(str(candidate.value))):
                 kept.append(candidate)
             else:
-                reason = f"a person chose the topic {self._tag(topic)}, which it does not enable"
+                reason = because(ReasonCode.TOPIC_PERSON_CHOSE, topic=self._tag(topic))
                 candidate.report.notes.append(Note(CONTACT, NoteKind.OVERRULED, reason))
         if kept:
             self._candidates[CONTACT] = kept
@@ -583,11 +594,13 @@ class _Planner:
         candidates = self._candidates.get(TOPIC, [])
         for candidate in candidates:
             if TagId(UUID(str(candidate.value))) not in enabled:
-                named = self._shown(TOPIC, candidate.value)
                 reason = (
-                    "the document has no contact"
+                    because(ReasonCode.TOPIC_NO_CONTACT)
                     if contact_id is None
-                    else f"its contact does not enable the topic {named}"
+                    else because(
+                        ReasonCode.TOPIC_NOT_ENABLED,
+                        topic=self._tag(TagId(UUID(str(candidate.value)))),
+                    )
                 )
                 candidate.report.notes.append(Note(TOPIC, NoteKind.SKIPPED, reason))
         kept = [item for item in candidates if TagId(UUID(str(item.value))) in enabled]
@@ -608,7 +621,7 @@ class _Planner:
         current = frozenset(self._document.tag_ids)
         both = set(self._adds) & set(self._removes)
         for tag in sorted(both):
-            reason = f"tag {self._tag(tag)} is added and removed by rules"
+            reason = because(ReasonCode.TAG_ADDED_AND_REMOVED, tag=self._tag(tag))
             for report in self._adds[tag] + self._removes[tag]:
                 report.notes.append(Note(TAGS, NoteKind.CONFLICT, reason))
             if s.mode is Mode.INGEST and TAGS not in s.locked:
@@ -620,7 +633,7 @@ class _Planner:
                 continue
             if tag in s.person_removed_tags:
                 for report in reports:
-                    reason = f"a person removed tag {self._tag(tag)}"
+                    reason = because(ReasonCode.TAG_REMOVED_BY_PERSON, tag=self._tag(tag))
                     report.notes.append(Note(TAGS, NoteKind.OVERRULED, reason))
                 continue
             added.add(tag)
@@ -629,7 +642,7 @@ class _Planner:
                 continue
             if tag in s.person_added_tags:
                 for report in reports:
-                    reason = f"a person set tag {self._tag(tag)}"
+                    reason = because(ReasonCode.TAG_SET_BY_PERSON, tag=self._tag(tag))
                     report.notes.append(Note(TAGS, NoteKind.OVERRULED, reason))
                 continue
             removed.add(tag)
@@ -644,7 +657,7 @@ class _Planner:
                 if tag in result:
                     report.applied.append(Effect(TAGS, None, str(tag)))
                 else:
-                    reason = f"tag {self._tag(tag)} is above a tag the document has"
+                    reason = because(ReasonCode.TAG_ABOVE_KEPT, tag=self._tag(tag))
                     report.notes.append(Note(TAGS, NoteKind.SKIPPED, reason))
         return None if result == current else result
 
@@ -659,7 +672,8 @@ class _Planner:
                 continue
             title = " ".join(rendered.split())
             if not title:
-                report.notes.append(Note(TITLE, NoteKind.SKIPPED, "the title would be empty"))
+                empty = because(ReasonCode.TITLE_EMPTY)
+                report.notes.append(Note(TITLE, NoteKind.SKIPPED, empty))
                 continue
             candidate = _Candidate(report, title, match)
             if pattern:
@@ -669,9 +683,8 @@ class _Planner:
         # The type's title pattern gives way to a rule of its own that sets the title.
         if TITLE in self._candidates:
             for candidate in patterns:
-                candidate.report.notes.append(
-                    Note(TITLE, NoteKind.YIELDED, "another rule sets the title")
-                )
+                yields = because(ReasonCode.TITLE_YIELDS)
+                candidate.report.notes.append(Note(TITLE, NoteKind.YIELDED, yields))
         elif patterns:
             self._candidates[TITLE] = patterns
         self._single(TITLE, result)
@@ -690,13 +703,14 @@ class _Planner:
             if rendered is None:
                 continue
             if not rendered.strip():
-                report.notes.append(Note(name, NoteKind.SKIPPED, "the value would be empty"))
+                empty = because(ReasonCode.VALUE_EMPTY)
+                report.notes.append(Note(name, NoteKind.SKIPPED, empty))
                 continue
             value = rendered.strip()
             try:
                 field_from_json(self._s.definitions[action.field_id], value)
             except ValidationError as error:
-                report.notes.append(Note(name, NoteKind.SKIPPED, str(error)))
+                report.notes.append(Note(name, NoteKind.SKIPPED, _error(error)))
                 continue
             self._candidates.setdefault(name, []).append(_Candidate(report, value, match))
 
@@ -760,27 +774,29 @@ class _Planner:
         template cannot be rendered."""
         try:
             return self._s.render(template, values)
-        except (MissingValueError, ValidationError) as error:
-            report.notes.append(Note(field_name, NoteKind.SKIPPED, str(error)))
+        except MissingValueError as error:
+            missing = because(ReasonCode.TEMPLATE_MISSING_VALUE, path=error.path)
+            report.notes.append(Note(field_name, NoteKind.SKIPPED, missing))
+            return None
+        except ValidationError as error:
+            report.notes.append(Note(field_name, NoteKind.SKIPPED, _error(error)))
             return None
 
     # --- helpers ------------------------------------------------------------------------------
 
-    def _shown(self, field_name: str, value: JsonValue) -> str:
-        """`value` of `field_name` as a reason names it: a contact, type, topic or space by its
-        name, a title quoted, a field's value as written (`_value_text`); the id where no name
-        is known."""
+    def _shown(self, field_name: str, value: JsonValue) -> JsonValue:
+        """`value` of `field_name` as a reason names it (a `value` parameter): a contact, type,
+        topic or space by its name quoted, a title quoted, a field's value as written
+        (`_value_text`); the id where no name is known; None for none."""
         s = self._s
         if value is None:
-            return "none"
+            return None
         if field_name in (CONTACT, DOCUMENT_TYPE, SPACE, TOPIC):
             try:
                 id = UUID(str(value))
             except ValueError:
                 return str(value)
-            if field_name == TOPIC:
-                return self._tag(TagId(id))
-            name = s.names.get(id)
+            name = self._tag_name(TagId(id)) if field_name == TOPIC else s.names.get(id)
             return str(value) if name is None else f"'{name}'"
         if field_name == TITLE:
             return f"'{value}'"
@@ -789,10 +805,13 @@ class _Planner:
         return str(value) if definition is None else _value_text(definition, value)
 
     def _tag(self, tag: TagId) -> str:
-        """A tag (of any scope) as a reason names it: its name quoted; its id if it is gone."""
+        """A tag (of any scope) as a reason names it: its name; its id if it is gone."""
+        name = self._tag_name(tag)
+        return str(tag) if name is None else name
+
+    def _tag_name(self, tag: TagId) -> str | None:
         tree = self._s.taxonomy.tree
-        name = tree.tags[tag].name if tag in tree else self._s.names.get(tag)
-        return str(tag) if name is None else f"'{name}'"
+        return tree.tags[tag].name if tag in tree else self._s.names.get(tag)
 
     def _type_after(self, result: Mapping[str, JsonValue]) -> DocumentTypeId | None:
         if DOCUMENT_TYPE in result:
@@ -829,18 +848,32 @@ class _Planner:
             return current in (_default_title(self._document), self._s.machine_title)
         return current is None
 
-    def _uncertain(self, field_name: str, reason: str, *, suggestion: JsonValue) -> None:
+    def _uncertain(self, field_name: str, reason: Reason, *, suggestion: JsonValue) -> None:
+        reasons: tuple[Reason, ...] = (reason,)
         existing = self._checks.get(field_name)
         if existing is not None and not existing.ok:
-            reason = f"{existing.reason}; {reason}"
+            reasons = (*existing.reasons, reason)
             suggestion = existing.suggestion if existing.suggestion is not None else suggestion
         self._checks[field_name] = FieldCheck(
             field=field_name,
             outcome=Outcome.UNCERTAIN,
             confidence=0,
-            reason=reason,
+            reasons=reasons,
             suggestion=suggestion,
         )
+
+
+_GONE: dict[str, ReasonCode] = {
+    CONTACT: ReasonCode.CONTACT_GONE,
+    DOCUMENT_TYPE: ReasonCode.DOCUMENT_TYPE_GONE,
+    TOPIC: ReasonCode.TOPIC_GONE,
+}
+"""Why a rule's contact, type or topic is skipped: it no longer exists."""
+
+
+def _error(error: Exception) -> Reason:
+    """The message of an error without a code of its own."""
+    return because(ReasonCode.ERROR, detail=str(error))
 
 
 def _key(value: JsonValue) -> str:
@@ -848,16 +881,17 @@ def _key(value: JsonValue) -> str:
     return repr(value)
 
 
-def _value_text(definition: FieldDefinition, value: JsonValue) -> str:
+def _value_text(definition: FieldDefinition, value: JsonValue) -> JsonValue:
     """A field's value (its JSON form) as written: text and choices quoted, numbers as they
-    are, an amount with its currency, a date and a period in ISO 8601, yes or no."""
+    are, an amount with its currency, a date and a period in ISO 8601, yes or no as true or
+    false (a reason's `value` parameter writes them)."""
     try:
         parsed = field_from_json(definition, value)
     except ValidationError:
         return str(value)
     match parsed:
         case bool():
-            return "yes" if parsed else "no"
+            return parsed
         case str():
             return f"'{parsed}'"
         case Decimal():

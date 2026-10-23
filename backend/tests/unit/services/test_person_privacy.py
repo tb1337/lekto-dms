@@ -8,6 +8,7 @@ from typing import Any
 from lekto.core.domain.classification import FieldCheck, checks_to_json
 from lekto.core.domain.documents import Document
 from lekto.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
+from lekto.core.domain.reasons import written
 from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.users import Role, User
 from tests import builders
@@ -51,7 +52,7 @@ async def _scene(world: World) -> tuple[User, User, User, Document]:
         field="space",
         outcome=Outcome.UNCERTAIN,
         confidence=0.5,
-        reason="names someone who would not see it there",
+        reasons=(written("names someone who would not see it there"),),
         unseen_by=(str(anna.id), str(bob.id), str(carla.id)),
     )
     judge: dict[str, object] = {

@@ -2161,9 +2161,11 @@ export interface components {
 			looped_to: string | null;
 			/**
 			 * Problem
-			 * @description Why the chain stopped, or why a change did not fit.
+			 * @description Why the chain stopped, or why a change did not fit, in English.
 			 */
 			problem: string | null;
+			/** @description The same with its code. */
+			problem_reason?: components['schemas']['ReasonOut'] | null;
 		};
 		/**
 		 * Assignment
@@ -4452,8 +4454,16 @@ export interface components {
 			/** Run */
 			run: number;
 			outcome: components['schemas']['Outcome'];
-			/** Reason */
+			/**
+			 * Reason
+			 * @description Why, in English; several reasons joined by `; `.
+			 */
 			reason: string | null;
+			/**
+			 * Reasons
+			 * @description The reasons with their codes, in the same order; for an entry written before they had codes, one as written (`text`).
+			 */
+			reasons?: components['schemas']['ReasonOut'][];
 			/**
 			 * Confidence
 			 * @description The judge's and the fields node's summary of their checks, not a probability: the lowest of their fields' (`FieldCheckOut.confidence`).
@@ -4796,6 +4806,11 @@ export interface components {
 			/** Reason */
 			reason: string | null;
 			/**
+			 * Reasons
+			 * @description The reasons with their codes (`reason` in English).
+			 */
+			reasons?: components['schemas']['ReasonOut'][];
+			/**
 			 * Model Version
 			 * @example qwen3:8b
 			 */
@@ -4848,8 +4863,16 @@ export interface components {
 		OpenNodeOut: {
 			node: components['schemas']['Node'];
 			outcome: components['schemas']['Outcome'];
-			/** Reason */
+			/**
+			 * Reason
+			 * @description Why, in English; several reasons joined by `; `.
+			 */
 			reason: string | null;
+			/**
+			 * Reasons
+			 * @description The reasons with their codes, in the same order.
+			 */
+			reasons?: components['schemas']['ReasonOut'][];
 			/**
 			 * Fields
 			 * @description Uncertain fields of classification, field extraction and the rules (also `space`, `title`, `review`), and of filing (`space`).
@@ -5251,7 +5274,48 @@ export interface components {
 			| 'title_empty'
 			| 'title_yields'
 			| 'value_empty'
-			| 'template_missing_value';
+			| 'template_missing_value'
+			| 'node_attempts_exhausted'
+			| 'node_crashed'
+			| 'file_not_pdf_or_image'
+			| 'file_damaged'
+			| 'file_not_processable'
+			| 'pdf_encrypted'
+			| 'pdf_unreadable'
+			| 'pdf_unreadable_detail'
+			| 'image_unreadable'
+			| 'image_unreadable_detail'
+			| 'document_no_pages'
+			| 'ocr_failed'
+			| 'text_unreadable'
+			| 'signature_dropped'
+			| 'colours_converted'
+			| 'not_pdfa'
+			| 'archive_not_pdfa'
+			| 'vision_read'
+			| 'vision_not_configured'
+			| 'no_text'
+			| 'answer_unfit'
+			| 'nothing_recognised'
+			| 'master_data_changed'
+			| 'metadata_unfit'
+			| 'taken_over'
+			| 'space_changed_meanwhile'
+			| 'rules_back_and_forth'
+			| 'rules_change_unfit'
+			| 'signal_did_not_run'
+			| 'no_language_model'
+			| 'no_document_text'
+			| 'no_classifier'
+			| 'classifier_unusable'
+			| 'classifier_untrained'
+			| 'neighbours_off'
+			| 'no_embedding_index'
+			| 'text_not_embedded'
+			| 'vector_misfit'
+			| 'no_uploader'
+			| 'index_unavailable'
+			| 'no_similar';
 		/**
 		 * ReasonOut
 		 * @description A reason with its code: a client translates `code` with `params`; the English text
@@ -5280,6 +5344,11 @@ export interface components {
 			 * @description The rule the reason comes from, by its name.
 			 */
 			rule?: string | null;
+			/**
+			 * Field
+			 * @description Among a node's reasons: the built-in field it is about (`contact`, `document_type`, `topic`, `tags`, `document_date`, `title`, `space`, `review`).
+			 */
+			field?: string | null;
 		};
 		/**
 		 * RecoveryCodes

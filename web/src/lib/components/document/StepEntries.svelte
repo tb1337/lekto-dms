@@ -10,6 +10,7 @@
 	import { formatDate } from '#lib/i18n.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { labelled, reasonsText } from '#lib/reasons.ts';
 	import { object, person } from '#lib/signals.ts';
 	import { drawsDetails, drawsFacts } from '#lib/step-details.ts';
 	import { YELLOW_ACTION } from '#lib/step-look.ts';
@@ -122,7 +123,9 @@
 					{/if}
 					{#if entry.reason}
 						<dt class="text-muted-foreground">{m.log_reason()}</dt>
-						<dd class="wrap-break-word">{entry.reason}</dd>
+						<dd class="wrap-break-word">
+							{reasonsText(entry.reasons, entry.reason, labelled(lookup))}
+						</dd>
 					{/if}
 					{#if drawsFacts(entry)}
 						<FactRows output={object(entry.output)} {lookup} />

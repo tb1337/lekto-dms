@@ -7,6 +7,7 @@ import { describeValue, fieldLabel } from '#lib/describe.ts';
 import { formatDate, formatNumber } from '#lib/i18n.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { labelled, outputReasonText, reasonsText } from '#lib/reasons.ts';
 import type { Node, NodeState } from '#lib/pipeline.ts';
 import { kind, list, named, object, percent, person, SIGNAL_NODES, text } from '#lib/signals.ts';
 
@@ -67,12 +68,12 @@ export function stepSummary(
 			: m.summary_overruled_confirmed({ name });
 	}
 	if (settled(state, entry)) return m.summary_overruled_settled();
-	if (entry.outcome === 'failed') return entry.reason;
+	if (entry.outcome === 'failed') return reasonsText(entry.reasons, entry.reason, labelled(lookup));
 	if (byPerson(entry)) {
 		return entry.model_version === 'imported' ? m.summary_imported() : m.summary_person();
 	}
 	const output = object(entry.output);
-	const abstained = text(output.abstained);
+	const abstained = outputReasonText(output.abstained_reason, output.abstained, labelled(lookup));
 	if (abstained && (SIGNAL_NODES as readonly string[]).includes(node)) {
 		return `${m.signal_abstained()}: ${abstained}`;
 	}
@@ -240,7 +241,7 @@ function read(output: Json): string {
 function ruled(entry: LogEntry, lookup: Lookup | null): string {
 	const output = object(entry.output);
 	const input = object(entry.input);
-	const problem = text(output.problem);
+	const problem = outputReasonText(output.problem_reason, output.problem, labelled(lookup));
 	if (problem) return problem;
 	const chain = list(output.spaces);
 	const where =

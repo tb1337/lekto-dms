@@ -59,7 +59,7 @@
 	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { reasonsText } from '#lib/reasons.ts';
+	import { labelled, reasonsText } from '#lib/reasons.ts';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { fieldId, initialValue, isRuleField, type ReviewValue } from '#lib/review.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -657,7 +657,11 @@
 		{#if reviewing && failedNode}
 			<div class="flex flex-col gap-3 rounded-2xl border border-destructive/40 bg-card p-4">
 				<p class="font-medium">{m.review_failed()}</p>
-				{#if failedNode.reason}<p class="text-sm">{failedNode.reason}</p>{/if}
+				{#if failedNode.reason}
+					<p class="text-sm">
+						{reasonsText(failedNode.reasons, failedNode.reason, labelled(lookup))}
+					</p>
+				{/if}
 				{#if editable}
 					<div>
 						<Button type="button" variant="outline" disabled={busy} onclick={retry}>
@@ -673,7 +677,7 @@
 			{#each nodeNotes as note (note.node)}
 				<p class="rounded-xl border bg-card px-4 py-3 text-sm">
 					<span class="font-medium">{NODE_LABELS[note.node]()}:</span>
-					{note.reason}
+					{reasonsText(note.reasons, note.reason, labelled(lookup))}
 				</p>
 			{/each}
 			{#each ruleNotes as note (note.field)}

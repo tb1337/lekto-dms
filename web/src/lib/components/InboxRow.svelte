@@ -12,6 +12,7 @@
 	import type { InboxItem } from '#lib/inbox-view.ts';
 	import { userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { labelled, reasonsText } from '#lib/reasons.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { onlySpace, suggestedSpace, suggestionText } from '#lib/space-suggestion.ts';
 
@@ -59,7 +60,8 @@
 			<span class="truncate text-muted-foreground">
 				{suggestion
 					? suggestionText(suggestion, document.space_id, lookup)
-					: (item.open[0]?.reason ?? m.inbox_open_fields({ count: item.open.length }))}
+					: (reasonsText(item.open[0]?.reasons, item.open[0]?.reason, labelled(lookup)) ??
+						m.inbox_open_fields({ count: item.open.length }))}
 			</span>
 		</span>
 	{:else if item.tab === 'new'}

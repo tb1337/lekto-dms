@@ -45,6 +45,7 @@ jobs:
       image: ${{ steps.diff.outputs.image }}
       web: ${{ steps.diff.outputs.web }}
       migration: ${{ steps.diff.outputs.migration }}
+      release: ${{ steps.diff.outputs.release }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -71,6 +72,8 @@ jobs:
           # The backend's unit tests run the migration client against the API, too.
           backend_tests="$code|^migration/"
           web="^web/|^\.github/workflows/ci\.yml$"
+          # The Compose examples, the release's tag script and the workflows.
+          release="^docker/|^\.github/(scripts|workflows)/"
           image="^(Dockerfile|\.dockerignore)$|^\.devcontainer/|$ci"
           runtime="^(Dockerfile|\.dockerignore)$|^deploy/|^web/|^\.github/workflows/ci\.yml$"
           # The runtime image's inputs. Documentation, the UI's tests and the API description (the
@@ -89,6 +92,7 @@ jobs:
             matches "$backend_tests" && echo "backend=true" >> "$GITHUB_OUTPUT"
             matches "$web" && echo "web=true" >> "$GITHUB_OUTPUT"
             matches "$migration" && echo "migration=true" >> "$GITHUB_OUTPUT"
+            matches "$release" && echo "release=true" >> "$GITHUB_OUTPUT"
             if [ "$DRAFT" != true ]; then
               matches "$code" && echo "integration=true" >> "$GITHUB_OUTPUT"
               matches "$image" && echo "devcontainer=true" >> "$GITHUB_OUTPUT"
@@ -130,13 +134,13 @@ jobs:
       - run: uv run pytest -m unit -n logical
 
   # The migration client (Paperless-ngx to Lekto): lint, types and tests against stand-ins for both
-  # APIs. Fast on purpose (httpx2 is its only dependency); its tests against the real API run
-  # in `backend`.
+  # APIs, then its image. Fast on purpose (httpx2 is its only dependency); its tests against the
+  # real API run in `backend`.
   migration:
     needs: changes
     if: needs.changes.outputs.migration == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: migration
@@ -150,6 +154,37 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run pytest
+      # The image `lekto-migration` that each release publishes (`release.yml`).
+      - run: docker build -t lekto-migration:ci .
+      - run: docker run --rm lekto-migration:ci --help
+
+  # What the release uses besides the images (pull requests only): the Compose examples in
+  # docker/ with every extension (`docker compose config`, a .env with every value set), the tag
+  # script's tests, and the workflows (actionlint).
+  release:
+    needs: changes
+    if: needs.changes.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Tag script
+        run: python3 -m unittest discover -s .github/scripts
+      - name: Compose examples
+        working-directory: docker
+        run: |
+          sed 's/^\([A-Z_]*\)=$/\1=ci/' .env.example > .env
+          check() { echo "compose $*"; docker compose "$@" config -q; }
+          check -f compose.yml
+          check -f compose.postgres.yml
+          check -f compose.postgres.yml -f compose.workers.yml -f compose.s3.yml
+          for extension in ollama caddy traefik nginx; do
+            check -f compose.yml -f "compose.$extension.yml"
+            check -f compose.postgres.yml -f "compose.$extension.yml"
+          done
+          check -f compose.yml -f compose.migration.yml --profile migration
+      - name: Workflows
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
 
   # The web UI: lint, format, types, unit tests (Vitest in jsdom), the generated API client
   # against web/openapi.json, and the build. Playwright runs locally only (no browsers here).

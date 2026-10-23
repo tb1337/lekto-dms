@@ -258,11 +258,16 @@ class PipelineService:
         poor_reading: float,
         lease: timedelta = timedelta(minutes=10),
         vision: VisionModel | None = None,
+        vision_lease: timedelta | None = None,
         facts: NodeExecutor | None = None,
     ) -> None:
         """`suggest_contact`: the similarity from which a name suggests a contact; an alias
         learned on confirmation must be at least that related to the contact's names;
+        `lease`: how long a worker holds the job of a node, longer than any node may take;
         `vision`: the vision language model the OCR can read pages with, if any;
+        `vision_lease`: how long a worker holds the OCR of a document the vision model reads
+        (`Document.read_with_vision`), if longer than `lease`: it extends the claim when the
+        node starts, so a job whose worker died runs again after `lease`, not after this;
         `poor_reading`: the share of unsure (content) words from which a page counts as
         poorly read;
         `facts`: the facts signal for reading facts outside processing (`request_facts`)."""
@@ -277,6 +282,7 @@ class PipelineService:
         self._suggest_contact = suggest_contact
         self._retry = retry
         self._lease = lease
+        self._vision_lease = vision_lease
         self._jobs = JobRunner(uow, clock)
         self._vision = vision
         self._poor_reading = poor_reading
@@ -296,6 +302,11 @@ class PipelineService:
     def lease(self) -> timedelta:
         """How long a worker holds the job of a node."""
         return self._lease
+
+    @property
+    def vision_lease(self) -> timedelta | None:
+        """How long a worker holds the OCR of a document the vision model reads, if longer."""
+        return self._vision_lease
 
     # --- ingest ---------------------------------------------------------------------------------
 
@@ -829,7 +840,7 @@ class PipelineService:
         if job.kind == CATCH_UP_JOB:
             document = await self._skipped(document_id, node, run)
         else:
-            document = await self._start(document_id, node, run, started)
+            document = await self._start(job, document_id, node, run, started)
         if document is None:
             await self._jobs.end(job)
             return
@@ -976,9 +987,10 @@ class PipelineService:
         return document
 
     async def _start(
-        self, document_id: DocumentId, node: Node, run: int, now: datetime
+        self, job: Job, document_id: DocumentId, node: Node, run: int, now: datetime
     ) -> Document | None:
-        """Mark the node as running and return the document; None if the job is stale. A
+        """Mark the node as running and return the document; None if the job is stale. The
+        OCR of a document the vision model reads holds its job for `vision_lease`. A
         concurrent change of the document (another node of it finishing) is retried."""
 
         async def start() -> Document | None:
@@ -987,6 +999,12 @@ class PipelineService:
                 if document is None or not document.is_awaiting(node, run):
                     return None
                 document.start_node(node, run, now)
+                if (
+                    node is Node.OCR
+                    and document.processing.vision
+                    and self._vision_lease is not None
+                ):
+                    await uow.jobs.extend(job, until=now + self._vision_lease)
                 await uow.documents.update(document)
                 await uow.outbox.add(document.pull_events())
                 await uow.commit()

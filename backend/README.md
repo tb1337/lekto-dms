@@ -219,10 +219,11 @@ through.
   engine version, reason and duration of every run.
 - OCRmyPDF (`adapters/outbound/ocrmypdf`) runs as a child process per document with a time
   limit (`LEKTO_OCR_TIMEOUT`); on timeout or cancellation the process group is killed. The job
-  lease is the longest limit of a node (OCR, reading with the vision model in
-  `LEKTO_VLM_TIMEOUT` if one is configured, or twice `LEKTO_LLM_TIMEOUT`) plus two minutes, so a
+  lease is the longest limit of a node (OCR, or twice `LEKTO_LLM_TIMEOUT`) plus two minutes, so a
   node normally keeps its claim; if it overruns (e.g. a slow S3 transfer), another worker takes
-  the job over and the late result is discarded. A node interrupted by a stopping worker is
+  the job over and the late result is discarded. The OCR of a document a person has read with
+  the vision model extends its claim to `LEKTO_VLM_TIMEOUT` plus two minutes when it starts
+  (`JobQueue.extend`): the job of a worker that died runs again after the short lease. A node interrupted by a stopping worker is
   released at once (`JobQueue.release`); that does not count against
   `LEKTO_NODE_MAX_ATTEMPTS`.
 - OCRmyPDF: `--skip-text` (pages with text are not recognised again), `--deskew`,
@@ -1500,7 +1501,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `LEKTO_VLM_BASE_URL` | both | unset | OpenAI-compatible endpoint of a vision language model that reads a document's pages when a person asks for it (`POST /documents/{id}/vision`); the page images go there. Set together with the model or neither; off without. The API names model and endpoint in `GET /pipeline` |
 | `LEKTO_VLM_MODEL` | both | unset | see above: a model that takes images and gives each line's box in pixels (measured with Claude Sonnet 5.5) |
 | `LEKTO_VLM_API_KEY` | Worker | unset | *secret* |
-| `LEKTO_VLM_TIMEOUT` | Worker | `1800` | Seconds for reading a whole document with the model (one page at most 300); the job lease grows with it |
+| `LEKTO_VLM_TIMEOUT` | Worker | `1800` | Seconds for reading a whole document with the model (one page at most 300); that OCR's job lease grows with it |
 | `LEKTO_CONFIDENCE_THRESHOLD` | Worker | `0.9` | A field passes from this confidence on |
 | `LEKTO_CONTACT_SUGGEST_THRESHOLD` | Worker | `0.75` | An existing contact is suggested from this similarity on; not above the confidence threshold |
 | `LEKTO_POOR_READING_THRESHOLD` | Worker | `0.08` | Share of unsure content words (below 60 % of Tesseract's confidence; noise left out, see the field checks) from which a value's place counts as poorly read, and the value is only suggested: the 20 content words nearest to it, else the page the OCR recognised. The default lies between good scans (up to 7 %) and broken ones (from 9 %) of a first sample; calibration in M18 |

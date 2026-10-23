@@ -3,6 +3,7 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 from lekto.adapters.outbound.memory import (
     FakeCipher,
@@ -153,6 +154,7 @@ class World:
         executors: Mapping[Node, NodeExecutor] | None = None,
         *,
         vision: VisionModel | None = None,
+        vision_lease: timedelta | None = None,
         facts: NodeExecutor | None = None,
     ) -> PipelineService:
         return builders.pipeline_service(
@@ -161,6 +163,7 @@ class World:
             self.object_store,
             {**self.executors, **(executors or {})},
             vision=vision,
+            vision_lease=vision_lease,
             facts=facts,
         )
 

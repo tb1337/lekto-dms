@@ -68,6 +68,7 @@ def pipeline_service(
     executors: Mapping[Node, NodeExecutor],
     *,
     vision: VisionModel | None = None,
+    vision_lease: timedelta | None = None,
     facts: NodeExecutor | None = None,
 ) -> PipelineService:
     """A pipeline with the shipped defaults for its tuning."""
@@ -81,6 +82,7 @@ def pipeline_service(
         retry=RETRY,
         poor_reading=DEFAULT_SETTINGS.poor_reading_threshold,
         vision=vision,
+        vision_lease=vision_lease,
         facts=facts,
     )
 

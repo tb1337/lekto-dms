@@ -1471,6 +1471,27 @@ PR mit Label `enhancement` nach `release/0.5.0`, nach Paket 3.
 
 - `release/0.5.0` → `main` als Draft-PR mit `skip-changelog`; gemergt auf Tobis Wort, danach die Notes prüfen (beim Ändern eines Entwurfs `tag_name` mitschicken).
 
+### Zwischenschritt: Verarbeitung auf einen Blick
+
+**Anlass (Tobi, 22./23.10.2026):** „Metadaten“ ist nicht der richtige Name des Dateipasses, „Protokoll“ nicht der der Verarbeitung; das Protokoll soll hübscher und smarter werden. Entschieden: Reiter Dokument · Eigenschaften · Verarbeitung. Von drei Entwürfen (A neu gedacht mit Signal-Matrix und Zeitstrahl, B Zeitleiste, C Übersicht und Detail) wurde C in der Nacht 22./23.10. gebaut und am Morgen verworfen („sah im Mock besser aus, als es sich in echt anfühlt“); gewählt dann D, eine Mischung aus der Ansicht davor und A, mit der Läufe-Box oben rechts wie zuvor, „Wer hat was erkannt?“ (am Desktop ohne Ergebnisspalte) und am Handy der Zeitleiste aus A; die Seite scrollt am Desktop nicht. Ergebnis in `architektur.md` › Schnittstellen › Web-UI › Verarbeitung.
+
+**Umsetzung (23.10.2026, Branch `enhancement/processing-overview` von main 5b4d47e; der Bau von C liegt auf `enhancement/processing-view`):**
+
+- **Backend:** Die Texterkennung vermerkt `rgb: true` im Protokoll, wenn Ghostscript die Farben für PDF/A nach RGB umrechnete (`OcrResult.rgb`, `OcrOutput.rgb`).
+- **Reiter:** `?tab=properties` und `?tab=processing`; Links mit `metadata` und `log` öffnen den passenden Reiter. Der offene Schritt steht in `?step=`; andere Reiter lassen ihn fallen.
+- **Web:** `DocumentProcessing` (Laden, Live, Lauf und offener Schritt) mit `ProcessingSummary` (Kopf, Zahlen, „Seit Lauf N“), `ProcessingBand`, `ProcessingGraph` (Desktop) und `ProcessingTimeline` (schmaler), `StepCard`, `StepEntries` (was ein Schritt tat, wie im Protokoll davor), `ProcessingRuns` (die Box wie zuvor) und `SignalMatrix`. Reine Module: `steps.ts` (Phasen, Dauer einer Phase, was hält, Zahlen), `band.ts` (das Laufband), `run-summary.ts` (Satz, Hilfe, Änderungen seit dem Lauf davor), `signal-matrix.ts` (Marken aus den Kandidaten des Urteils), `step-summary.ts` (die eine Zeile je Schritt), `duration.ts` (Dauern ohne Leerzeichen, auch in den Token-Zahlen), `desktop.svelte.ts` (ab `lg`). `DocumentLog` ist weg; `TokenInfo`, `SignalSummary` und `PromptDialog` bleiben.
+- **Ursache gefunden:** Die Seite scrollte am Desktop trotz scrollender Spalte, weil ein absolut gesetzter Text für Screenreader (`sr-only` im Kopf der Matrix) nicht in der Spalte, sondern im Fenster lag; die Spalten sind jetzt positioniert.
+- **Prüfung:** Backend und Web grün; Sichtprüfung im Browser an einer Prüfinstanz mit erfundenen Daten (SQLite, ein falsches Modell, drei Läufe, der letzte hält vor der Ablage), Desktop hell und dunkel ohne Scrollen der Seite, Tablet und Handy.
+
+**Offen für Tobi:**
+
+1. Die Gründe (`reason`) und das „Enthalten“ der Signale bleiben englisch, wie sie im Protokoll stehen; der Kopf nennt sie nach einem Fehler so.
+2. Phasen-Überschriften grau statt in den Farben des Mocks (Gelb hieße sonst „unsicher“); das Band färbt nach Ergebnis.
+3. Die Matrix lässt die Tags aus (ein Wert je Merkmal passt nicht zu mehreren Tags) und das Datum (dafür nennen die Signale keine Kandidaten).
+4. „Seit Lauf N“ vergleicht nur Werte, die in beiden Läufen entschieden sind; Felder als Zahl („2 Felder geändert“), nicht einzeln.
+5. Offen ist zunächst der Schritt, der den aktuellen Lauf hält; geschlossen bleibt er zu, bis ein anderer Lauf oder ein anderes Dokument kommt.
+6. Schmaler als `lg` (64rem, auch Tablets) die Zeitleiste statt der Spalten.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

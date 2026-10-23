@@ -45,6 +45,7 @@ from lekto.core.domain.permissions import (
     space_role,
 )
 from lekto.core.domain.pipeline import Node, NodeRun
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.text_places import TextPlaces
 from lekto.core.domain.users import User
@@ -334,7 +335,7 @@ class DocumentService:
         try:
             data = await load_text(store, id)
         except NotFoundError:
-            raise ConflictError("document has no text yet") from None
+            raise ConflictError(because(ReasonCode.NO_TEXT_YET)) from None
         text = data.decode("utf-8", errors="replace")
         end = offset + limit
         return DocumentText(
@@ -364,7 +365,7 @@ class DocumentService:
         try:
             text = (await load_text(store, id)).decode("utf-8", errors="replace")
         except NotFoundError:
-            raise ConflictError("document has no text yet") from None
+            raise ConflictError(because(ReasonCode.NO_TEXT_YET)) from None
         codes = await self._codes(id)
         pages = await load_layout(store, id)
 
@@ -426,7 +427,7 @@ class DocumentService:
         try:
             return await store.get(structure_key(id))
         except NotFoundError:
-            raise ConflictError("document has no structure yet") from None
+            raise ConflictError(because(ReasonCode.NO_STRUCTURE_YET)) from None
 
     async def query(
         self,

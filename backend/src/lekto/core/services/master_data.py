@@ -25,6 +25,7 @@ from lekto.core.domain.master_data import (
     one_line,
 )
 from lekto.core.domain.names import match_key, related
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.rules import References, Rule, RuleScope, title_rule
 from lekto.core.domain.rules_json import definition_to_json
 from lekto.core.domain.sorting import sort_key
@@ -203,8 +204,7 @@ class MasterDataService:
                     if await uow.documents.exists(contact=item.id, topic=removed):
                         topic = await uow.tags.get(removed)
                         raise ConflictError(
-                            f"documents of '{item.name}' carry the topic '{topic.name}': give "
-                            "them another topic first"
+                            because(ReasonCode.TOPIC_CARRIED, contact=item.name, topic=topic.name)
                         )
             if identifiers is not None or rejected_identifiers is not None:
                 entered = identifiers
@@ -537,7 +537,7 @@ class MasterDataService:
             if choices is not None:
                 removed = definition.change_choices(choices)
                 if removed and await uow.documents.field_in_use(id, values=removed):
-                    raise ConflictError(f"documents use the choices {', '.join(sorted(removed))}")
+                    raise ConflictError(because(ReasonCode.CHOICES_IN_USE, choices=sorted(removed)))
             if not isinstance(document_type_ids, Unset):
                 for document_type in document_type_ids or ():
                     await uow.document_types.get(document_type)
@@ -548,13 +548,16 @@ class MasterDataService:
                     and scope is not None
                     and await uow.documents.field_in_use(id, outside_types=scope)
                 ):
-                    raise ConflictError("documents outside the new scope have values")
+                    raise ConflictError(because(ReasonCode.VALUES_OUTSIDE_SCOPE))
                 if narrower:
                     for patterned in await self._patterns_using(uow, definition.key):
                         if not definition.applies_to(patterned.id):
                             raise ConflictError(
-                                f"the title pattern of '{patterned.name}' uses "
-                                f"field.{definition.key}"
+                                because(
+                                    ReasonCode.TITLE_PATTERN_USES_FIELD,
+                                    type=patterned.name,
+                                    key=definition.key,
+                                )
                             )
             definition.require(required=required, types=required_document_type_ids)
             if not isinstance(description, Unset):
@@ -613,13 +616,19 @@ class MasterDataService:
                         )
                     if await uow.documents.field_in_use(definition.id, outside_types=new_scope):
                         raise ConflictError(
-                            f"documents of '{document_type.name}' have values for "
-                            f"'{definition.name}'"
+                            because(
+                                ReasonCode.TYPE_HAS_VALUES,
+                                type=document_type.name,
+                                field=definition.name,
+                            )
                         )
                     if pattern and field_used(self._templates.check(pattern), definition.key):
                         raise ConflictError(
-                            f"the title pattern of '{document_type.name}' uses "
-                            f"field.{definition.key}"
+                            because(
+                                ReasonCode.TITLE_PATTERN_USES_FIELD,
+                                type=document_type.name,
+                                key=definition.key,
+                            )
                         )
                 else:
                     continue
@@ -736,33 +745,35 @@ class MasterDataService:
         async def used(uow: UnitOfWork) -> bool:
             tag = await uow.tags.get(id)
             if any(item.parent_id == id for item in await uow.tags.list_all()):
-                raise ConflictError(f"'{tag.name}' has tags below it")
+                raise ConflictError(because(ReasonCode.TAG_HAS_CHILDREN, tag=tag.name))
             if await uow.documents.exists(tag=id) or await uow.documents.exists(topic=id):
                 return True
             contacts = await uow.contacts.list_all()
-            for kind, items in (
-                ("contacts", contacts),
-                ("document types", await uow.document_types.list_all()),
+            for code, items in (
+                (ReasonCode.TAG_HAS_CONTACTS, contacts),
+                (ReasonCode.TAG_HAS_TYPES, await uow.document_types.list_all()),
             ):
                 if any(id in item.group_ids for item in items):
-                    raise ConflictError(f"{kind} are in '{tag.name}'")
+                    raise ConflictError(because(code, tag=tag.name))
             enabling = sorted(
-                f"'{item.name}'"
+                item.name
                 for item in contacts
                 if id in item.topic_ids or any(entry.topic_id == id for entry in item.identifiers)
             )
             if enabling:
-                raise ConflictError(f"the contacts {', '.join(enabling)} enable '{tag.name}'")
+                raise ConflictError(
+                    because(ReasonCode.TOPIC_ENABLED_BY, contacts=enabling, tag=tag.name)
+                )
             rules = [
                 rule
                 for rule in await uow.rules.list_for(spaces=None, include_global=True)
                 if id in rule.definition.references().tags
             ]
             if rules:
-                names = ", ".join(
-                    sorted((f"'{rule.definition.name}'" for rule in rules), key=sort_key)
+                names = sorted((rule.definition.name for rule in rules), key=sort_key)
+                raise ConflictError(
+                    because(ReasonCode.TAG_USED_BY_RULES, tag=tag.name, rules=names)
                 )
-                raise ConflictError(f"'{tag.name}' is used by the rules {names}")
             return False
 
         await self._delete(actor, _tags, id, used, ("tag", lambda refs: refs.tags))
@@ -776,17 +787,15 @@ class MasterDataService:
             definition = await uow.fields.get(id)
             patterns = await self._patterns_using(uow, definition.key)
             if patterns:
-                names = ", ".join(sorted((f"'{item.name}'" for item in patterns), key=sort_key))
+                types = sorted((item.name for item in patterns), key=sort_key)
                 raise ConflictError(
-                    f"field.{definition.key} is used by the title patterns of {names}"
+                    because(ReasonCode.FIELD_USED_BY_PATTERNS, key=definition.key, types=types)
                 )
             rules = await self._rules_using(uow, definition.key)
             if rules:
-                names = ", ".join(
-                    sorted((f"'{rule.definition.name}'" for rule in rules), key=sort_key)
-                )
+                names = sorted((rule.definition.name for rule in rules), key=sort_key)
                 raise ConflictError(
-                    f"field.{definition.key} is used by the templates of the rules {names}"
+                    because(ReasonCode.FIELD_USED_BY_RULES, key=definition.key, rules=names)
                 )
             return False
 
@@ -895,7 +904,7 @@ class MasterDataService:
             await require_admin(uow, actor, "change master data")
             item = await repository(uow).get(id)
             if await used(uow):
-                raise ConflictError(f"'{item.name}' is in use")
+                raise ConflictError(because(ReasonCode.IN_USE, name=item.name))
             if before is not None:
                 await before(uow)
             await repository(uow).remove(id)
@@ -1045,14 +1054,14 @@ async def _check_name_free[K, E: MasterData](repository: NamedRepository[K, E], 
     this look-up gives the message."""
     existing = await repository.find_by_name(item.name)
     if existing is not None and existing.id != item.id:
-        raise ConflictError(f"'{item.name}' already exists")
+        raise ConflictError(because(ReasonCode.NAME_TAKEN, name=item.name))
 
 
 async def _check_tag_name_free(uow: UnitOfWork, tag: Tag) -> None:
     """Names are unique per scope (as `_check_name_free`)."""
     existing = await uow.tags.find_by_name(tag.name, tag.scope)
     if existing is not None and existing.id != tag.id:
-        raise ConflictError(f"'{tag.name}' already exists")
+        raise ConflictError(because(ReasonCode.NAME_TAKEN, name=tag.name))
 
 
 async def _groups(uow: UnitOfWork, ids: Collection[TagId], scope: TagScope) -> frozenset[TagId]:
@@ -1083,8 +1092,12 @@ async def _check_key_free(uow: UnitOfWork, definition: FieldDefinition) -> None:
     for other in await uow.fields.list_all():
         if other.id != definition.id and other.key == definition.key:
             raise ConflictError(
-                f"'{definition.name}' would be field.{definition.key} in templates, "
-                f"as '{other.name}' is"
+                because(
+                    ReasonCode.FIELD_KEY_TAKEN,
+                    field=definition.name,
+                    key=definition.key,
+                    other=other.name,
+                )
             )
 
 
@@ -1122,7 +1135,7 @@ async def _check_contact_identifiers(uow: UnitOfWork, contact: Contact) -> None:
     personal = sorted(key for key in mine if of_person(key, persons))
     if personal:
         _, value = personal[0]
-        raise ConflictError(f"'{value}' is an identifier of a person")
+        raise ConflictError(because(ReasonCode.IDENTIFIER_OF_PERSON, value=value))
     for item in contact.identifiers:
         if item.user_id is not None:
             await uow.users.get(item.user_id)
@@ -1133,7 +1146,9 @@ async def _check_contact_identifiers(uow: UnitOfWork, contact: Contact) -> None:
         for theirs in [item for item in other.identifiers if item.key in mine]:
             if theirs.source is MANUAL:
                 raise ConflictError(
-                    f"'{theirs.value}' is already an identifier of the contact '{other.name}'"
+                    because(
+                        ReasonCode.IDENTIFIER_OF_CONTACT, value=theirs.value, contact=other.name
+                    )
                 )
             changed |= other.drop_identifier(theirs.key)
         if changed:
@@ -1193,11 +1208,13 @@ async def _check_contact_names(uow: UnitOfWork, contact: Contact) -> None:
             continue
         for name in contact.names():
             if other.is_named(name):
-                raise ConflictError(f"'{name}' is already a name of the contact '{other.name}'")
+                raise ConflictError(
+                    because(ReasonCode.NAME_OF_CONTACT, name=name, contact=other.name)
+                )
         for mine, theirs in _alias_pairs(contact, other):
             if match_key(mine) and match_key(mine) == match_key(theirs):
                 raise ConflictError(
-                    f"'{mine}' is too close to '{theirs}' of the contact '{other.name}'"
+                    because(ReasonCode.NAME_TOO_CLOSE, name=mine, other=theirs, contact=other.name)
                 )
 
 

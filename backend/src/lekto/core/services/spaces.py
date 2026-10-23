@@ -4,6 +4,7 @@ from lekto.core.domain.documents import UNSET, Unset
 from lekto.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
 from lekto.core.domain.ids import SpaceId, UserId
 from lekto.core.domain.permissions import can_choose_members, can_manage_space
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
@@ -49,9 +50,9 @@ class SpaceService:
         async with self._uow() as uow:
             space = await _managed_space(uow, await load_actor(uow, actor), id)
             if space.is_personal:
-                raise ConflictError("a personal space cannot be deleted")
+                raise ConflictError(because(ReasonCode.PERSONAL_SPACE_UNDELETABLE))
             if await uow.documents.exists(space=id):
-                raise ConflictError(f"space '{space.name}' is not empty")
+                raise ConflictError(because(ReasonCode.SPACE_NOT_EMPTY, space=space.name))
             await uow.spaces.remove(id)
             await disable_rules(
                 uow,
@@ -181,4 +182,4 @@ async def _check_name_free(uow: UnitOfWork, space: Space) -> None:
         return
     other = await uow.spaces.find_by_name(space.name)
     if other is not None and other.id != space.id:
-        raise ConflictError(f"space '{space.name}' already exists")
+        raise ConflictError(because(ReasonCode.SPACE_NAME_TAKEN, space=space.name))

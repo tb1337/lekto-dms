@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 
 from lekto.core.domain.errors import ConflictError, NotFoundError
 from lekto.core.domain.ids import DeliveryId, UserId, WebhookId
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.users import User
 from lekto.core.domain.webhooks import Webhook, WebhookDelivery, new_secret
 from lekto.core.ports.clock import Clock
@@ -60,7 +61,7 @@ class WebhookService:
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             if await uow.webhooks.count_for_owner(user.id) >= self._policy.per_user:
-                raise ConflictError(f"at most {self._policy.per_user} webhooks per user")
+                raise ConflictError(because(ReasonCode.WEBHOOKS_LIMIT, max=self._policy.per_user))
             secret = new_secret()
             webhook = Webhook.create(
                 owner_id=user.id,

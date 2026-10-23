@@ -30,6 +30,7 @@ from lekto.core.domain.identifiers import (
 from lekto.core.domain.ids import ClassifierModelId, ContactId, TagId, UserId
 from lekto.core.domain.jobs import Job, RetryPolicy
 from lekto.core.domain.json_value import JsonObject
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.text import shorten
 from lekto.core.ports.classifier import Classifier, Prediction, TrainedModel, TrainingExample
@@ -163,8 +164,11 @@ class ClassifierService:
             confirmed = await uow.documents.count_confirmed()
             if confirmed < self.policy.min_examples:
                 raise ConflictError(
-                    f"{confirmed} confirmed documents or decided spaces; training needs "
-                    f"{self.policy.min_examples}"
+                    because(
+                        ReasonCode.TRAINING_NEEDS_EXAMPLES,
+                        confirmed=confirmed,
+                        needed=self.policy.min_examples,
+                    )
                 )
             await uow.jobs.enqueue(TRAIN_JOB, {}, run_at=self._clock.now(), dedup_key=TRAIN_JOB)
             await uow.commit()

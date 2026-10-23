@@ -523,7 +523,7 @@ class PipelineService:
         person's decision; nothing else asks for it. InvalidTransitionError without a model,
         and where reprocessing from OCR is not possible."""
         if self._vision is None:
-            raise InvalidTransitionError("no vision language model is configured")
+            raise InvalidTransitionError(because(ReasonCode.NO_VISION_MODEL))
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             document, _ = await controllable_document(

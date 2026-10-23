@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse
 
+from lekto.adapters.inbound.schemas import ReasonOut
 from lekto.core.domain.users import BlockingSpace
 
 PROBLEM_JSON = "application/problem+json"
@@ -26,6 +27,22 @@ class BlockingSpaceOut(BaseModel):
         "user edits it, it stays).",
         examples=[["move_to", "editor"]],
     )
+
+
+class InputErrorOut(BaseModel):
+    """What is wrong with one part of a request."""
+
+    field: str = Field(
+        description=(
+            "The part of the body or query, its path joined by `.` (`name`, `fields.<id>`, "
+            "`body` for the whole)."
+        ),
+        examples=["name"],
+    )
+    message: str = Field(
+        description="In English.", examples=["String should have at most 200 characters"]
+    )
+    reason: ReasonOut = Field(description="The same with its code.")
 
 
 def blocking_space_out(space: BlockingSpace) -> BlockingSpaceOut:
@@ -68,6 +85,17 @@ class Problem(BaseModel):
         default=None,
         description="Sign-in: the password was right; send it again with `code` or "
         "`recovery_code`.",
+    )
+    reason: ReasonOut | None = Field(
+        default=None,
+        description=(
+            "`detail` with its code, where the error has one (issue #83): a client translates "
+            "`code` with `params`; without it, `detail` stands as it is."
+        ),
+    )
+    errors: list[InputErrorOut] | None = Field(
+        default=None,
+        description="A request that does not fit (422): what is wrong with each part.",
     )
 
 

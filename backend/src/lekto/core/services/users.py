@@ -19,6 +19,7 @@ from lekto.core.domain.errors import (
 )
 from lekto.core.domain.identity import Credential, ExternalIdentity, check_new_password
 from lekto.core.domain.ids import DocumentId, SpaceId, UserId
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.rules import Rule
 from lekto.core.domain.sorting import sort_key
 from lekto.core.domain.spaces import Space, SpaceRole
@@ -413,7 +414,7 @@ async def add_user(
     user.display_name = display_name_of(display_name)
     await uow.lock(USER_NAMES_LOCK)
     if await uow.users.find_by_username(user.username) is not None:
-        raise ConflictError(f"username '{user.username}' is taken")
+        raise ConflictError(because(ReasonCode.USERNAME_TAKEN, username=user.username))
     await check_username(uow, user.username)
     await check_display_name(uow, user.id, user.display_name)
     await uow.users.add(user)
@@ -481,7 +482,7 @@ async def _keep_an_admin(uow: UnitOfWork, leaving: User) -> None:
         if user.is_active_admin and user.id != leaving.id
     ]
     if not others:
-        raise ConflictError("the last active admin must stay an active admin")
+        raise ConflictError(because(ReasonCode.LAST_ADMIN))
     for other in others:
         await uow.users.update(other)
 

@@ -25,6 +25,7 @@ from PIL import BmpImagePlugin, Image, ImageOps
 
 from lekto.core.domain import media_types
 from lekto.core.domain.errors import ImageError, UnsupportedMediaTypeError
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.ports.images import LOGO_SIZE, MAX_ICON_ENTRIES, MAX_PIXELS
 
 MAX_JPEG_SCANS = 64
@@ -46,7 +47,7 @@ class PillowImageNormaliser:
     def _normalise(self, data: bytes) -> bytes:
         kind = media_types.detect_image(data[: media_types.SNIFF_SIZE])
         if kind is None:
-            raise UnsupportedMediaTypeError("a logo is a PNG, JPEG, WebP or ICO image")
+            raise UnsupportedMediaTypeError(because(ReasonCode.LOGO_TYPE))
         if kind == media_types.JPEG and data.count(b"\xff\xda") > MAX_JPEG_SCANS:
             raise ImageError(f"the image has more than {MAX_JPEG_SCANS} scans")
         try:

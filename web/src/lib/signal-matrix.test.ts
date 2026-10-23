@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { components } from '#lib/api/schema.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
-import { matrixOf } from './signal-matrix.ts';
+import { decidedBy, matrixOf, verdictOf } from './signal-matrix.ts';
 
 type LogEntry = components['schemas']['LogEntry'];
 
@@ -160,5 +160,74 @@ describe('matrixOf', () => {
 		expect(rows.map((row) => row.field)).toEqual(['space']);
 		expect(rows[0].chip).toBe(m.matrix_chip_unsure());
 		expect(matrixOf(undefined, false, MINE, lookup, tobi)).toEqual([]);
+	});
+
+	it('counts text evidence for another value, and what speaks against a contact by its rule', () => {
+		// The identifier proves the bakery, the model names JUKO: JUKO is contradicted. The
+		// neighbours name JUKO too: they speak for JUKO, not against.
+		const proven = {
+			field: 'contact',
+			outcome: 'uncertain',
+			suggestion: JUKO,
+			candidates: [
+				{
+					value: JUKO,
+					label: 'JUKO Marburg e.V.',
+					contradicted: true,
+					sources: [
+						{ signal: 'signal_llm', names: true },
+						{ signal: 'signal_neighbours', names: true, votes: 4, of: 5 }
+					]
+				},
+				{
+					value: BAKERY,
+					label: 'Schwälmer Brotladen',
+					contradicted: true,
+					sources: [
+						{ signal: 'signal_classifier', names: true, score: 0.9, threshold: 0.8 },
+						{ signal: 'signal_facts', identifiers: ['personnel_number'] }
+					]
+				}
+			]
+		};
+		const [row] = matrixOf(verdict([proven]), true, MINE, lookup, tobi);
+		// The classifier names the bakery, which the text proves: against JUKO; the identifier
+		// itself too.
+		expect(kinds(row)).toEqual(['names', 'contradicts', 'names', 'contradicts']);
+		// Without a proof of the bakery, the classifier naming it does not speak against JUKO
+		// (contradicted by something else, here the model's recipient).
+		const unproven = structuredClone(proven);
+		unproven.candidates[1].sources = [
+			{ signal: 'signal_classifier', names: true, score: 0.9, threshold: 0.8 }
+		];
+		const [other] = matrixOf(verdict([unproven]), true, MINE, lookup, tobi);
+		expect(kinds(other)).toEqual(['names', 'other', 'names', 'silent']);
+	});
+
+	it('shows what a person decided after the verdict as decided by hand', () => {
+		const decided = decidedBy(
+			{
+				...verdict([]),
+				outcome: 'ok',
+				model_version: 'person',
+				output: { accepted: ['space'], entered: [], kept: [] }
+			},
+			{ contact: BAKERY, space: MINE }
+		);
+		expect([...decided]).toEqual([['space', MINE]]);
+		const rows = matrixOf(verdict([space]), false, MINE, lookup, tobi, decided);
+		expect(rows[0]).toMatchObject({ open: false, chip: m.matrix_chip_by_hand() });
+		expect(rows[0].value).not.toContain('Anna');
+	});
+});
+
+describe('verdictOf', () => {
+	it("takes the latest verdict up to the run, not a person's confirmation", () => {
+		const first = { ...verdict([]), run: 1 };
+		const second = { ...verdict([]), run: 2 };
+		const person = { ...verdict([]), run: 3, model_version: 'person' };
+		expect(verdictOf([first, second, person], 3)).toBe(second);
+		expect(verdictOf([first, second, person], 1)).toBe(first);
+		expect(verdictOf([person], 3)).toBeUndefined();
 	});
 });

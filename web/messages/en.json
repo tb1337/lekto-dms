@@ -1182,6 +1182,7 @@
 	"matrix_chip_signals": "green · {count} signals",
 	"matrix_chip_question": "A question for you",
 	"matrix_chip_unsure": "uncertain",
+	"matrix_chip_by_hand": "decided by hand",
 	"master_identifiers": "Identifiers",
 	"master_identifiers_hint": "IBAN, VAT number, customer or contract number, the personnel number at an employer, the domain of e-mail and web addresses. Found in a document, they are evidence for the contact. Lekto learns more from confirmed documents.",
 	"master_groups": "Groups",

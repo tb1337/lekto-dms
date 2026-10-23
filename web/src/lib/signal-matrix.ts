@@ -13,6 +13,7 @@ import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { NODE_LABELS } from '#lib/node-labels.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { list, object, SIGNAL_NODES, text } from '#lib/signals.ts';
+import { byPerson } from '#lib/step-summary.ts';
 
 type LogEntry = components['schemas']['LogEntry'];
 type Json = Record<string, unknown>;
@@ -67,17 +68,67 @@ function candidatesOf(check: Json): Candidate[] {
 const evidence = (source: CandidateSource | undefined) =>
 	Boolean(source && ((source.identifiers ?? []).length > 0 || source.named_in_text));
 
+/** Whether `signal` says `candidate`: it names it, or the text proves it (the facts in the text
+ * name nothing, they prove). */
+const says = (candidate: Candidate, signal: Signal) =>
+	candidate.sources.some((entry) => entry.signal === signal && (entry.names || evidence(entry)));
+
+/**
+ * Whether `signal`, saying `other`, speaks against the value of a `field`'s row, as the verdict
+ * weighs it (`verdict.py`): for the contact the language model always, an identifier in the
+ * text always, the classifier and the similar documents only with a proof of the other contact
+ * in the text (the 0.5.0 contact rule); for the type, the topic and the space every signal
+ * that names or proves another value.
+ */
+function opposes(field: string, signal: Signal, other: Candidate): boolean {
+	const source = other.sources.find((entry) => entry.signal === signal);
+	if (!source) return false;
+	if (field !== 'contact' || signal === 'signal_llm') return true;
+	if (signal === 'signal_facts') return (source.identifiers ?? []).length > 0;
+	return other.sources.some(evidence);
+}
+
+/**
+ * The verdict a run worked with: the latest of the judge's own entries up to `run` (a person's
+ * confirmation writes an entry of theirs for the judge in the run it starts, without checks).
+ */
+export function verdictOf(entries: readonly LogEntry[], run: number): LogEntry | undefined {
+	return entries
+		.filter((entry) => entry.node === 'judge' && entry.run <= run && !byPerson(entry))
+		.reduce<LogEntry | undefined>(
+			(found, entry) => (found && found.run > entry.run ? found : entry),
+			undefined
+		);
+}
+
+/**
+ * The properties a person decided with their confirmation of the verdict (`confirmation`, their
+ * entry for the judge), with the value the document holds (`values`, by property).
+ */
+export function decidedBy(
+	confirmation: LogEntry | undefined,
+	values: Readonly<Record<string, unknown>>
+): Map<string, unknown> {
+	const output = object(confirmation?.output);
+	const fields = ['accepted', 'entered', 'kept'].flatMap((key) => list(output[key]).map(String));
+	return new Map(
+		fields.filter((field) => field in values).map((field) => [field, values[field]] as const)
+	);
+}
+
 /**
  * The rows of a verdict's entry: one per property with candidates. `waiting`: the run waits
  * for a person (the open rows ask them); `space`: where the document lies (a space the verdict
- * leaves it in has no value of its own).
+ * leaves it in has no value of its own); `decided`: the properties a person decided after the
+ * verdict, with their value (`decidedBy`): decided by hand, whatever the verdict left open.
  */
 export function matrixOf(
 	verdict: LogEntry | undefined,
 	waiting: boolean,
 	space: string,
 	lookup: Lookup | null,
-	viewer: Viewer
+	viewer: Viewer,
+	decided: ReadonlyMap<string, unknown> = new Map()
 ): MatrixRow[] {
 	const checks = list(object(verdict?.output).fields).map(object);
 	return FIELDS.flatMap((field) => {
@@ -85,10 +136,13 @@ export function matrixOf(
 		if (!check) return [];
 		const candidates = candidatesOf(check);
 		if (candidates.length === 0) return [];
-		const open = check.outcome !== 'ok';
-		const focus = open
-			? (check.suggestion ?? candidates[0].value)
-			: (check.value ?? (field === 'space' ? space : null));
+		const byHand = decided.has(field);
+		const open = !byHand && check.outcome !== 'ok';
+		const focus = byHand
+			? (decided.get(field) ?? (field === 'space' ? space : null))
+			: open
+				? (check.suggestion ?? candidates[0].value)
+				: (check.value ?? (field === 'space' ? space : null));
 		// An open check without a suggestion asks about its best candidate.
 		const chosen =
 			candidates.find((candidate) => candidate.value !== null && candidate.value === focus) ??
@@ -112,14 +166,18 @@ export function matrixOf(
 					title: m.matrix_cell_says({ signal: label, say })
 				};
 			}
-			const other = candidates.find(
-				(candidate) =>
-					candidate !== chosen &&
-					candidate.sources.some((entry) => entry.signal === signal && entry.names)
+			const others = candidates.filter(
+				(candidate) => candidate !== chosen && says(candidate, signal)
 			);
+			// Against the value only where the verdict counted it so (the candidate is contradicted)
+			// and this signal is one that can contradict it.
+			const against = chosen?.contradicted
+				? others.find((candidate) => opposes(field, signal, candidate))
+				: undefined;
+			const other = against ?? others[0];
 			if (other) {
 				const value = name(other);
-				return chosen?.contradicted
+				return against
 					? {
 							signal,
 							kind: 'contradicts',
@@ -158,7 +216,7 @@ export function matrixOf(
 				value: valueOf(field, focus, chosen, open, space, lookup, viewer),
 				open,
 				cells,
-				chip: chipOf(open, waiting, chosen, cells)
+				chip: byHand ? m.matrix_chip_by_hand() : chipOf(open, waiting, chosen, cells)
 			}
 		];
 	});
@@ -177,8 +235,10 @@ function valueOf(
 		const kind = filingKind(focus, space, lookup, viewer);
 		return m.run_suggestion({ choice: choiceTitle(kind, focus, lookup, viewer) });
 	}
-	if (typeof focus === 'string') return describeValue(focus, lookup);
-	return chosen?.label || m.value_unset();
+	if (typeof focus !== 'string') return chosen?.label || m.value_unset();
+	// The name the verdict knew, for a value the lookup does not (yet) name.
+	const described = describeValue(focus, lookup);
+	return described === focus && chosen?.value === focus && chosen.label ? chosen.label : described;
 }
 
 function chipOf(

@@ -1182,6 +1182,7 @@
 	"matrix_chip_signals": "grün · {count} Signale",
 	"matrix_chip_question": "Frage an dich",
 	"matrix_chip_unsure": "unsicher",
+	"matrix_chip_by_hand": "von Hand entschieden",
 	"master_identifiers": "Kennungen",
 	"master_identifiers_hint": "IBAN, USt-IdNr., Kunden- oder Vertragsnummer, Personalnummer beim Arbeitgeber, die Domain der E-Mail- und Webadressen. Steht eine im Dokument, belegt sie den Kontakt. Lekto lernt weitere aus bestätigten Dokumenten.",
 	"master_groups": "Gruppen",

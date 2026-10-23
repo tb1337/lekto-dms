@@ -257,9 +257,11 @@ describe('DocumentProcessing', () => {
 		expect(
 			within(matrix).getByRole('img', { name: `${m.node_signal_llm()}: ${m.matrix_suggests()}` })
 		).toBeTruthy();
+		// The neighbours name JUKO without a proof in the text: another value, not against it
+		// (the 0.5.0 contact rule).
 		expect(
 			within(matrix).getByRole('img', {
-				name: `${m.node_signal_neighbours()}: ${m.matrix_contradicts()}`
+				name: `${m.node_signal_neighbours()}: ${m.matrix_other()}`
 			})
 		).toBeTruthy();
 		expect(within(matrix).queryByText(m.matrix_chip_question())).toBeNull();
@@ -316,7 +318,13 @@ describe('DocumentProcessing', () => {
 			outcome: 'ok',
 			reason: null,
 			model_version: 'person',
-			output: { confirmed_by: 'u-tobi', outcome_before: 'uncertain' }
+			output: {
+				confirmed_by: 'u-tobi',
+				outcome_before: 'uncertain',
+				accepted: [],
+				entered: ['contact'],
+				kept: []
+			}
 		};
 		serve([proposed, judged, confirmed]);
 		const current = documentAt(2, 'completed', [
@@ -328,6 +336,7 @@ describe('DocumentProcessing', () => {
 			state('judge', 'ok'),
 			state('file', 'ok')
 		]);
+		current.contact_id = 'c-juko';
 		const { container } = show({ document: current });
 		const judge = card(container, 'judge');
 		const name = m.space_named_someone();
@@ -337,6 +346,10 @@ describe('DocumentProcessing', () => {
 		expect(within(panel).getByText(m.processing_overruled_confirmed({ name }))).toBeTruthy();
 		// A person's confirmation has no prompt of its own.
 		expect(within(panel).queryByRole('button', { name: m.prompt_open() })).toBeNull();
+		// Which signal named what stays: the verdict the confirmation decided, decided by hand.
+		const matrix = await screen.findByRole('table');
+		expect(within(matrix).getByText('JUKO Marburg e.V.')).toBeTruthy();
+		expect(within(matrix).queryByRole('img', { name: m.matrix_open() })).toBeNull();
 	});
 
 	it('shows only the states to someone who may not read the log', async () => {

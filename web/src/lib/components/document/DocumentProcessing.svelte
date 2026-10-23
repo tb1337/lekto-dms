@@ -27,7 +27,7 @@
 	import { changesOf, headlineOf } from '#lib/run-summary.ts';
 	import { glance, runNumbers, runTokens, startedAgain } from '#lib/runs.ts';
 	import { session } from '#lib/session.svelte.ts';
-	import { matrixOf } from '#lib/signal-matrix.ts';
+	import { decidedBy, matrixOf, verdictOf } from '#lib/signal-matrix.ts';
 	import { list, object } from '#lib/signals.ts';
 	import { byPerson, stepSummary } from '#lib/step-summary.ts';
 	import { countsOf, phaseSeconds, phasesOf, stepsOf, stuck, type Step } from '#lib/steps.ts';
@@ -177,10 +177,32 @@
 		manageable && entries !== null ? changesOf(entries, graph, shownRun, runs, lookup) : null
 	);
 	const bandPhases = $derived(bandOf(steps, graph, now));
-	const verdict = $derived(steps.find((step) => step.node === 'judge')?.done.entries.at(-1));
+	// The verdict the shown run worked with: the judge's own entry in it, or the one it kept;
+	// after a person's confirmation (their entry for the judge, without checks) the latest
+	// verdict before. None while the judge is still to run again.
+	const judged = $derived(steps.find((step) => step.node === 'judge')?.done.entries ?? []);
+	const verdict = $derived(
+		judged.filter((entry) => !byPerson(entry)).at(-1) ??
+			(judged.some(byPerson) ? verdictOf(entries ?? [], shownRun) : undefined)
+	);
+	// What a person decided with their confirmation in the current run, by what the document
+	// holds now; in a past run the matrix shows the verdict as it ended.
+	const decided = $derived(
+		isCurrent
+			? decidedBy(
+					judged.findLast((entry) => entry.model_version === 'person'),
+					{
+						contact: document.contact_id,
+						document_type: document.document_type_id,
+						topic: document.topic_id,
+						space: document.space_id
+					}
+				)
+			: new Map<string, unknown>()
+	);
 	const matrix = $derived(
 		manageable && entries !== null
-			? matrixOf(verdict, waiting, document.space_id, lookup, viewer)
+			? matrixOf(verdict, waiting, document.space_id, lookup, viewer, decided)
 			: []
 	);
 	const carriedLabel = $derived(

@@ -643,6 +643,62 @@ def test_events_follow_the_state_changes() -> None:
     assert (event.old, event.new) == (Lane.YELLOW, None)
 
 
+@pytest.mark.parametrize(
+    ("results", "lane"),
+    [
+        ({}, Lane.GREEN),
+        ({Node.JUDGE: UNCERTAIN}, Lane.YELLOW),
+        ({Node.FILE: UNCERTAIN}, Lane.YELLOW),
+        ({Node.PARSE: FAILED}, Lane.RED),
+    ],
+)
+def test_the_first_run_keeps_the_lane_it_ended_in(
+    results: dict[Node, NodeResult], lane: Lane
+) -> None:
+    document = builders.received()
+    assert document.first_lane is None  # while the first run runs
+    builders.run_pipeline(document, results)
+    assert document.first_lane is document.lane is lane
+
+
+def test_a_confirmation_leaves_the_first_lane_yellow() -> None:
+    document = builders.run_pipeline(builders.received(), {Node.JUDGE: UNCERTAIN})
+    document.confirm(Node.APPLY_RULES, NOW)
+    builders.run_pipeline(document)
+    assert document.lane is Lane.GREEN
+    assert document.first_lane is Lane.YELLOW
+
+
+def test_a_retry_leaves_the_first_lane_red() -> None:
+    document = builders.received()
+    document.start_node(Node.PAGES, 1, NOW)
+    builders.run_pipeline(document, {Node.OCR: FAILED})
+    document.record_result(Node.PAGES, 1, OK, NOW)  # still running when OCR failed
+    assert document.first_lane is Lane.RED
+    document.retry(NOW)
+    builders.run_pipeline(document)
+    assert document.lane is Lane.GREEN
+    assert document.first_lane is Lane.RED
+
+
+def test_a_later_run_leaves_the_first_lane() -> None:
+    document = builders.run_pipeline(builders.received())
+    document.reprocess_from(Node.JUDGE, NOW)
+    builders.run_pipeline(document, {Node.JUDGE: UNCERTAIN})
+    assert document.lane is Lane.YELLOW
+    assert document.first_lane is Lane.GREEN
+
+
+def test_a_first_run_nobody_knows_stays_unknown() -> None:
+    """A document from before the first lane was kept, whose log did not tell (revision
+    0036): its later runs set none."""
+    document = builders.run_pipeline(builders.received(), {Node.JUDGE: UNCERTAIN})
+    document.first_lane = None
+    document.reprocess_from(Node.APPLY_RULES, NOW)
+    builders.run_pipeline(document)
+    assert document.first_lane is None
+
+
 def test_failure_records_lane_red_without_filing() -> None:
     document = builders.received()
     builders.run_pipeline(document, {Node.OCR: FAILED})

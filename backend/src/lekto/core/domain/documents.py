@@ -200,7 +200,7 @@ class Document:
     tag of scope `topic` its contact enables; the services see to that, `_access`); field
     values fit their definition, and type-bound fields only exist while the document has a
     matching type. `lane` is None while the pipeline runs and is set when it completes or
-    fails.
+    fails; `first_lane` keeps the lane the first run ended in.
 
     State changes record domain events; `pull_events()` hands them over for the outbox.
     """
@@ -222,6 +222,11 @@ class Document:
     document_date: date | None = None
     channel: Channel = Channel.API
     lane: Lane | None = None
+    # The lane its first processing run ended in by itself (`record_result`), kept for good:
+    # neither a person's confirmation nor a later run changes it, so reports can tell how many
+    # documents went through without a person. None while the first run runs, and for documents
+    # whose first run is not known (from before revision 0036, if their log does not tell).
+    first_lane: Lane | None = None
     processing: Processing
     page_count: int | None = None  # known once the pages node has rendered the page images
     # When a person last set or confirmed its metadata (in the inbox, or by changing contact,
@@ -366,7 +371,7 @@ class Document:
         self._touch(now)
         if result.outcome is Outcome.FAILED:
             processing.status = ProcessingStatus.FAILED
-            self._set_lane(Lane.RED, now)
+            self._stopped(Lane.RED, now)
             return ()
         if processing.status is ProcessingStatus.FAILED:
             return ()  # a node that was still running after another failed
@@ -380,14 +385,14 @@ class Document:
                 return ()  # the rest waits for nodes still running
             processing.status = ProcessingStatus.COMPLETED
             lane = Lane.from_outcomes(processing.outcomes.values())
-            self._set_lane(lane, now)
+            self._stopped(lane, now)
             if lane is Lane.GREEN and self._becomes_new():
                 self.new_at = now
             return ()
         if Node.FILE in due and self._uncertain_before(Node.FILE):
             # Filed only once an editor has confirmed what is uncertain.
             processing.status = ProcessingStatus.REVIEW
-            self._set_lane(Lane.YELLOW, now)
+            self._stopped(Lane.YELLOW, now)
             return ()
         return tuple(following for following in due if node in following.requires)
 
@@ -725,6 +730,12 @@ class Document:
 
     def _record(self, event: DocumentEvent) -> None:
         self._events.append(event)
+
+    def _stopped(self, lane: Lane, now: datetime) -> None:
+        """Processing stopped in `lane`; where the first run first stopped is kept for good."""
+        if self.processing.run == 1 and self.first_lane is None:
+            self.first_lane = lane
+        self._set_lane(lane, now)
 
     def _set_lane(self, lane: Lane | None, now: datetime) -> None:
         if lane is self.lane:

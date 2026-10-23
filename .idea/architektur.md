@@ -255,6 +255,8 @@ Bestand: Ein Dokument von vor 0.2 behält Doclings Markdown (`content.md`, wird 
 
 Die Lane eines Dokuments ist das schlechteste Ergebnis aller Knoten. Solange die Verarbeitung läuft, hat ein Dokument keine Lane; die Leser seines Space sehen es erst, wenn es grün ist. Gelbe und rote Dokumente bleiben im Posteingang der Bearbeiter ihres Space, bis sie gelöst sind.
 
+Das Dokument merkt sich, in welcher Lane sein erster Lauf von selbst endete (`first_lane`, Tobi, 22.10.2026): grün lief ohne Menschen durch, gelb musste geprüft werden, rot schlug fehl. Gesetzt beim ersten Halt des ersten Laufs, danach nie geändert, weder durch Bestätigen noch durch Wiederholen oder neu Verarbeiten; daraus lässt sich berichten, wie viel direkt durchlief. Solange der erste Lauf läuft, ist sie leer, ebenso bei Bestandsdokumenten, deren Protokoll nichts darüber sagt (Revision 0036 liest sie sonst aus Lane und Protokoll zurück). Die API nennt sie in `DocumentDetails.first_lane`, die Web-UI unter den Meilensteinen im Tab Eigenschaften.
+
 **Posteingang (Tobi, 17./18.10.2026)**
 
 Der Posteingang ist der Eingang: Dort stellt ein Nutzer Dokumente ein, und dort steht alles Neue, bis ein Mensch es gesehen oder entschieden hat. Gelb und Rot sind Aufgaben (die Verarbeitung hält vor der Ablage an), ein von selbst grünes Dokument ist eine Nachricht (abgelegt, Regeln gelaufen, nichts zu tun).

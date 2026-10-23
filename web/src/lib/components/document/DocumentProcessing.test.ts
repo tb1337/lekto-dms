@@ -358,6 +358,31 @@ describe('DocumentProcessing', () => {
 		expect(screen.queryByText(new RegExp(m.run_since({ run: 1 })))).toBeNull();
 	});
 
+	it('ends the first run in the runs list as the document keeps it', async () => {
+		desktop.override(true);
+		// The log of run 1 stopped for review; the document keeps that its first run failed.
+		const again = { ...judged, run: 2, outcome: 'ok', reason: null };
+		serve([proposed, judged, again], { signal_llm: [exchange] });
+		const runs = (first_lane: Document['first_lane']) =>
+			({
+				...document,
+				first_lane,
+				processing: { ...document.processing, run: 2 }
+			}) as unknown as Document;
+		const first = () =>
+			within(screen.getByRole('region', { name: m.log_runs() })).getByRole('button', {
+				name: new RegExp(m.log_run({ run: 1 }))
+			});
+
+		const { unmount } = show({ document: runs('red') });
+		expect(await screen.findByText(`${m.processing_steps()} · ${m.log_run({ run: 2 })}`));
+		await waitFor(() => expect(first().textContent).toContain(m.outcome_failed()));
+		unmount();
+
+		show({ document: runs(null) });
+		await waitFor(() => expect(first().textContent).toContain(m.lane_yellow()));
+	});
+
 	it('tells a step a person confirmed as it was', async () => {
 		const confirmed = {
 			...judged,

@@ -113,6 +113,7 @@ _DOCUMENT_EXAMPLE: dict[str, Any] = {
         }
     },
     "lane": "green",
+    "first_lane": "green",
     "page_count": 2,
     "confirmed_at": None,
     "space_confirmed_at": None,
@@ -180,6 +181,15 @@ class DocumentDetails(BaseModel):
     document_date: date | None
     fields: dict[UUID, FieldJson] = Field(description="Values by field id.")
     lane: Lane | None = Field(description="None while processing runs.")
+    first_lane: Lane | None = Field(
+        description=(
+            "The lane the document's first processing run ended in by itself, where it first "
+            "stopped: `green` went through without a review, `yellow` needed one, `red` failed. "
+            "It never changes afterwards, neither by a confirmation nor by a later run. Null "
+            "while the first run is still processing, and for older documents whose processing "
+            "log does not tell."
+        ),
+    )
     page_count: int | None = Field(
         description="Pages of the document, once its page images are rendered (`pages` node)."
     )
@@ -230,6 +240,7 @@ class DocumentDetails(BaseModel):
             document_date=document.document_date,
             fields={key: field_json(value) for key, value in sorted(document.fields.items())},
             lane=document.lane,
+            first_lane=document.first_lane,
             page_count=document.page_count,
             confirmed_at=document.confirmed_at,
             space_confirmed_at=document.space_confirmed_at,

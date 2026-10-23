@@ -13,6 +13,7 @@ import {
 } from '#lib/pipeline.ts';
 import { usageOf } from '#lib/usage.ts';
 
+type Lane = components['schemas']['Lane'];
 type LogEntry = components['schemas']['LogEntry'];
 type ProcessingStatus = components['schemas']['ProcessingStatus'];
 
@@ -141,18 +142,31 @@ export interface Glance {
 	finished: string | null;
 }
 
+// How the first run ended by its lane, as the document keeps it (`first_lane`).
+const FIRST_RUN_STATUS: Record<Lane, ProcessingStatus> = {
+	green: 'completed',
+	yellow: 'review',
+	red: 'failed'
+};
+
 /**
  * A run at a glance: how it stands or ended, when it began and ended, by its entries; without
- * the log (`entries` null) the current run by the states of its nodes.
+ * the log (`entries` null) the current run by the states of its nodes. A past first run ends
+ * as the document keeps it (`firstLane`, which no later confirmation changes), else by the log.
  */
 export function glance(
 	entries: readonly LogEntry[] | null,
 	graph: readonly GraphNode[],
 	processing: Processing,
-	run: number
+	run: number,
+	firstLane: Lane | null = null
 ): Glance {
 	const current = run === processing.run;
-	const status = current ? processing.status : pastStatus(entries ?? [], graph, run);
+	const status = current
+		? processing.status
+		: run === 1 && firstLane !== null
+			? FIRST_RUN_STATUS[firstLane]
+			: pastStatus(entries ?? [], graph, run);
 	let started: string | null;
 	let finished: string | null;
 	if (entries === null) {

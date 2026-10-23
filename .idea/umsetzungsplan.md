@@ -1503,6 +1503,23 @@ PR mit Label `enhancement` nach `release/0.5.0`, nach Paket 3.
 - **Klassifikator und Ähnliche Dokumente:** wie in Entwurf B – je Art (Kontakte, Typen, Themen, Spaces) die besten drei mit Balken und Prozent, die Schwelle aus den Kandidaten des Urteils als Strich; die ähnlichen Dokumente als Zeilen mit Link, was sie tragen, und Balken der Ähnlichkeit. Titel der ähnlichen Dokumente gibt es ohne eine Anfrage je Dokument nicht; sie heißen weiter „Dokument N“.
 - **Fakten im Text:** genannte Kontakte als Chips, Kennungen als „Personalnummer 20417 → Schwälmer Brotladen“; Personen überall als „Anna Leider (genannt)“, „(wahrscheinlich)“, „(sicher belegt)“ – „genannt“ ist die schwächste Stufe (nur der Name steht im Text).
 
+### Zwischenschritt: Lane des ersten Laufs (`feature/first-lane`)
+
+**Anlass (Tobi, 22.10.2026):** „Wichtig ist mir, dass Lekto sich merkt, ob ein Dokument grün, gelb oder rot wurde in der Verarbeitung – auch wenn ich die Felder geprüft und das Dokument grün gemacht habe später –, damit später reportet werden kann, wie viel direkt durchlief und wie viel nicht.“ Bisher überschreibt das Bestätigen die Lane (gelb wird grün), ein Wiederholen ebenso.
+
+**Umsetzung (Nacht 22./23.10.2026, ohne Rückfragen):**
+
+- Domäne: `Document.first_lane`, gesetzt in `record_result` beim ersten Halt des ersten Laufs (fehlgeschlagen rot, Prüfung gelb, fertig nach den Ergebnissen), nur in Lauf 1 und nur einmal; Bestätigen, Wiederholen, neu Verarbeiten und Änderungen einer Person lassen sie stehen.
+- Revision 0036: Spalte `documents.first_lane` mit Rücklesen. Hielt der erste Lauf noch an (Lauf 1, nicht in Verarbeitung), ist es die Lane; lief das Dokument erneut, sagt es das Protokoll des ersten Laufs: Ablage grün, gleich was der Lauf sonst protokolliert (die Ablage läuft nur, wenn davor nichts unsicher oder fehlgeschlagen ist; die Regeln können ein unsicheres Urteil erledigt haben, ein Nachholen der Seitenbilder kann danach fehlschlagen), sonst ein fehlgeschlagener Knoten rot, ein unsicheres Ergebnis gelb. Einträge einer Person oder Änderung (`person`, `person:space`, `rules:change`, `rules:apply`) zählen nicht, ein später neu ausgelesener Text (`reparse`) auch nicht. Sonst bleibt sie leer („unbekannt“). Gelesen und geschrieben wird in Stücken von 500 Dokumenten.
+- API: `DocumentDetails.first_lane`. Web: Zeile „Erste Verarbeitung“ unter den Meilensteinen im Tab Eigenschaften (Ohne Prüfung durchgelaufen, Musste geprüft werden, Fehlgeschlagen), verborgen, wenn leer.
+
+**Offen für Tobi:**
+
+- Ein Bericht selbst (Zähler, Filter) ist nicht gebaut. Ein Filter oder Zähler in Dokumentliste und Suche braucht ein Feld im Suchindex (neues Layout, Neuindizierung) – nur auf dein Wort. Alternativ ein eigener Endpunkt mit Zahlen je erster Lane (und Zeitraum, Kanal) aus der Datenbank, ohne Index.
+- Entscheidet eine Person schon im ersten Lauf, bevor er hält (Metadaten ändern, während er läuft), zählt seine Lane trotzdem als erste Lane; die Person ist nicht herausgerechnet.
+- Aus Paperless übernommene Dokumente: Ihr erster Lauf ist Lektos eigene Verarbeitung mit den übernommenen Metadaten (Kanal `migration`), vor dem Abgleich des Migrationsclients. Ihre erste Lane sagt also, wie Lekto mit den Paperless-Werten zurechtkam, nicht, wie gut Lekto allein klassifiziert; ein Bericht sollte nach Kanal trennen.
+- Rot nach einer Störung (etwa ein Zeitüberlauf des Modells nach allen Versuchen), danach grün beim Wiederholen: zählt als rot, also nicht direkt durchgelaufen.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

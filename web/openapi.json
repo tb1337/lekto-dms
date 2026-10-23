@@ -18516,6 +18516,17 @@
             ],
             "description": "None while processing runs."
           },
+          "first_lane": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lane"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The lane the document's first processing run ended in by itself, where it first stopped: `green` went through without a review, `yellow` needed one, `red` failed. It never changes afterwards, neither by a confirmation nor by a later run. Null while the first run is still processing, and for older documents whose processing log does not tell."
+          },
           "page_count": {
             "anyOf": [
               {
@@ -18602,6 +18613,7 @@
           "document_date",
           "fields",
           "lane",
+          "first_lane",
           "page_count",
           "confirmed_at",
           "processing",
@@ -18622,6 +18634,7 @@
                 "currency": "EUR"
               }
             },
+            "first_lane": "green",
             "id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b",
             "lane": "green",
             "media_type": "application/pdf",
@@ -18807,6 +18820,17 @@
             ],
             "description": "None while processing runs."
           },
+          "first_lane": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lane"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The lane the document's first processing run ended in by itself, where it first stopped: `green` went through without a review, `yellow` needed one, `red` failed. It never changes afterwards, neither by a confirmation nor by a later run. Null while the first run is still processing, and for older documents whose processing log does not tell."
+          },
           "page_count": {
             "anyOf": [
               {
@@ -18878,6 +18902,7 @@
           "document_date",
           "fields",
           "lane",
+          "first_lane",
           "page_count",
           "confirmed_at",
           "processing",
@@ -18899,6 +18924,7 @@
                 "currency": "EUR"
               }
             },
+            "first_lane": "green",
             "id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b",
             "lane": "green",
             "media_type": "application/pdf",
@@ -21802,6 +21828,17 @@
             ],
             "description": "None while processing runs."
           },
+          "first_lane": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lane"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The lane the document's first processing run ended in by itself, where it first stopped: `green` went through without a review, `yellow` needed one, `red` failed. It never changes afterwards, neither by a confirmation nor by a later run. Null while the first run is still processing, and for older documents whose processing log does not tell."
+          },
           "page_count": {
             "anyOf": [
               {
@@ -21878,6 +21915,7 @@
           "document_date",
           "fields",
           "lane",
+          "first_lane",
           "page_count",
           "confirmed_at",
           "processing",
@@ -21900,6 +21938,7 @@
                 "currency": "EUR"
               }
             },
+            "first_lane": "green",
             "id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b",
             "in_inbox": true,
             "lane": "green",

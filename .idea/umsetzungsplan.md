@@ -1493,6 +1493,16 @@ PR mit Label `enhancement` nach `release/0.5.0`, nach Paket 3.
 6. Schmaler als `lg` (64rem, auch Tablets) die Zeitleiste statt der Spalten.
 7. Laufband nach einer Bestätigung: Brauchte der Lauf selbst unter einer Sekunde (nur Regeln und Ablage), stehen alle Schritte gleich breit, die übernommenen gedämpft – sonst füllte ein Schritt von 0 Sekunden die Leiste. Mit Zeiten behält eine ganz übernommene Phase einen kleinen Teil (8 %, mindestens Platz für ihren Namen), ein übernommener Schritt neben denen des Laufs 10 Pixel, ein Schritt von 0 Sekunden 4 Pixel.
 
+**Rückmeldung (Tobi, 23.10.2026) und Umsetzung:**
+
+- **Band und Schritte verbunden:** Jeder Abschnitt des Laufbands ist ein Knopf seines Schritts. Zeigen oder Fokus hebt ihn an, nennt über der Leiste Name, Dauer und Stand und hebt die Karte des Schritts hervor; das Zeigen auf eine Karte hebt ihren Abschnitt hervor. Ein Klick auf den Abschnitt öffnet den Schritt wie ein Klick auf die Karte (am Handy klappt die Karte auf und rückt ins Bild).
+- **Farben:** Das Band, die Marken der Matrix, die Linie der Zeitleiste und die Zählpunkte füllten mit den Textfarben der Ampel; im hellen Layout wurde Gelb dadurch dunkelbraun, Grün ein eigener Ton. Neu sind Marken-Farben in `app.css` (`--lane-*-mark`, `-mark-edge`, `-on-mark`) in den Tönen der Ampel, hell und dunkel; das helle Gelb ist ein echtes Gelb mit dunklerem Rand (3:1 zur Karte), eine Schrift darauf liest sich (4.5:1), ein Test hält beides. Der Punkt am Reiter und der Knopf zur Ablage-Frage folgen.
+- **Infobox Texterkennung:** Original und Archiv nebeneinander (Format, PDF/A, Größe, Seiten; aus `/files`, nur für den letzten Lauf, weil die Dateien die heutigen sind), Hinweise (Farben umgerechnet, fremde Textschicht ersetzt, VLM mit Zahl der Aufrufe, kein PDF/A) und „Wie gut jede Seite gelesen wurde“ als Säulen des Anteils unsicherer Wörter mit Wortzahl; schwach gelesene Seiten (`/reading`) gelb.
+- **Infobox Seiten:** die Seitenbilder als Leiste; jedes führt zur Seite im Reiter Dokument (`?page=N`, der Reiter zeigt die Seite und vergisst den Parameter).
+- **Infobox Auslesen:** Zeichen gesamt, je Seite im Schnitt und als Säulen je Seite (aus dem Text, die Seiten getrennt durch den Seitenvorschub; nur für den letzten Lauf und bis 400.000 Zeichen), „Text ansehen“.
+- **Klassifikator und Ähnliche Dokumente:** wie in Entwurf B – je Art (Kontakte, Typen, Themen, Spaces) die besten drei mit Balken und Prozent, die Schwelle aus den Kandidaten des Urteils als Strich; die ähnlichen Dokumente als Zeilen mit Link, was sie tragen, und Balken der Ähnlichkeit. Titel der ähnlichen Dokumente gibt es ohne eine Anfrage je Dokument nicht; sie heißen weiter „Dokument N“.
+- **Fakten im Text:** genannte Kontakte als Chips, Kennungen als „Personalnummer 20417 → Schwälmer Brotladen“; Personen überall als „Anna Leider (genannt)“, „(wahrscheinlich)“, „(sicher belegt)“ – „genannt“ ist die schwächste Stufe (nur der Name steht im Text).
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

@@ -366,6 +366,12 @@ def test_variables_of_the_migration_client_are_not_unknown(monkeypatch: pytest.M
     assert find_unknown_variables() == []
 
 
+def test_the_version_of_the_image_is_not_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The image sets `LEKTO_VERSION` from the tag of its release; it is no setting."""
+    set_env(monkeypatch, {"LEKTO_VERSION": "0.6.0"})
+    assert find_unknown_variables() == []
+
+
 def test_variables_of_the_image_are_not_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     """`PUID`, `PGID` and the `S6_` variables belong to the container, not to Lekto."""
     set_env(

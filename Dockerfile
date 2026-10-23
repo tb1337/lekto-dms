@@ -167,6 +167,10 @@ COPY --from=web /web/build /opt/lekto/ui
 # The s6 services and scripts.
 COPY deploy/image/rootfs/ /
 
+# The version of the release, from its tag (`.github/workflows/release.yml`); `lekto.__version__`
+# reads it. Late in the file, so that another version only changes the last layers.
+ARG LEKTO_VERSION=0.0.0.dev0
+
 # /command holds the s6 programs (`docker exec` shells need it in PATH).
 # s6-overlay: a failing init service stops the container (exit code 1, reason in the log).
 # Shutdown on `docker stop`: the worker gets LEKTO_WORKER_SHUTDOWN_TIMEOUT (30 s) to finish
@@ -182,13 +186,15 @@ ENV PATH="/command:/opt/lekto/venv/bin:$PATH" \
     LEKTO_DB_SQLITE_PATH=/data/lekto.db \
     LEKTO_STORAGE_PATH=/data/objects \
     LEKTO_UI_DIR=/opt/lekto/ui \
+    LEKTO_VERSION=$LEKTO_VERSION \
     PUID=1000 \
     PGID=1000
 
 LABEL org.opencontainers.image.title="Lekto DMS" \
       org.opencontainers.image.description="Self-hosted, headless document management system" \
       org.opencontainers.image.source="https://github.com/tb1337/lekto-dms" \
-      org.opencontainers.image.licenses="GPL-3.0-only"
+      org.opencontainers.image.licenses="GPL-3.0-only" \
+      org.opencontainers.image.version="$LEKTO_VERSION"
 
 VOLUME /data
 EXPOSE 8000

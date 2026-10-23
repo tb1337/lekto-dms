@@ -1585,6 +1585,29 @@ PR mit Label `enhancement` nach `release/0.5.0`, nach Paket 3.
 
 **Offen für Tobi:** Die 5 bestehenden grünen Dokumente ohne Kontakt ändert das Update nicht; den Kontakt von Hand setzen.
 
+### Zwischenschritt: Gründe und Meldungen übersetzen (Issue #83)
+
+**Anlass (Tobi, 23.10.2026):** „Lösen wir Issue #83. Mach mal einen gescheiten Plan dafür.“ Die Gründe der Prüfungen, der Regeln und der Knoten und die Fehlermeldungen kommen englisch aus der API; eine deutsche UI mischt englische Sätze ein.
+
+**Entscheidungen (Frage-Antwort-Runde 23.10.2026):**
+
+- Ein Code mit Parametern neben dem englischen Text; der Text bleibt (API, MCP, Protokoll). Codes und Parameter in der OpenAPI (`x-reasons`), Vollständigkeit der Übersetzungen über den Compiler.
+- Knotengründe in einer eigenen Spalte `processing_log.reasons` (Empfehlung Claude, Tobi: so, wie es am besten ins Projekt passt: `reason` steht schon als Spalte neben `output`).
+- Alte Protokolleinträge bleiben englisch.
+- Fehlermeldungen: Codes, wo die UI sie auslösen kann, und die Prüfung der Eingaben (Pydantic) allgemein; dazu alles, was unter „Verarbeitung“ im Dokument erscheint.
+- Der Migrationsclient sendet für seine eigenen Gründe Codes; selbst geschriebene Gründe des Plans bleiben Text.
+- MCP bleibt englisch.
+
+**Umsetzung in PRs (Label `enhancement`):**
+
+1. **Grundlage und Prüfgründe** (`enhancement/reason-codes`): `core/domain/reasons.py` (`ReasonCode`, englische Vorlagen mit Parameterarten, `Reason` mit `subject` für ein Feld und `rule` für eine Regel); `FieldCheck.reasons` statt `reason` (mypy verlangt so überall Codes); Notizen der Regeln (`Note.reason` als `Reason`), weil die unsicheren Prüfungen der Regeln dieselben Gründe tragen (ursprünglich als eigener PR geplant); `ReasonOut` an `FieldCheckOut` und `RuleNoteOut`; `x-reasons` in der OpenAPI; Web: `reasons.ts`, Meldungen `reason_<code>`, Prüfkarten, Regelnotizen, Regelwirkung und Kette beim Anwenden.
+2. **Knoten und Verarbeitung:** `NodeResult.reasons`, Spalte `processing_log.reasons` (Revision 0038), Fehlschläge der Knoten, Enthaltungen der Signale, Vision, alles unter „Verarbeitung“ (auch `output.problem`), die Zeile im Posteingang.
+3. **Fehlermeldungen, Mechanik:** `DomainError` mit Code, `Problem.code`, `params`, `errors[]`; Pydantics 422 nach Typ; „wird verwendet“, Name vergeben, Ablage und Übergänge, Rechte, offene Felder, Löschen blockiert, Upload, Anmeldung.
+4. **Migrationsclient:** Codes für seine eigenen Gründe (`ImportedReview` mit Code).
+5. **Fehlermeldungen, Rest:** Bereich für Bereich; was bewusst Text bleibt, in einer Liste. Dazu das Überspringen beim Anwenden einer Regel und `disabled_reason` von Regeln und Webhooks.
+
+**PR 1 gebaut (23.10.2026):** 93 Codes (91 übersetzt, dazu `text` und `error`). Englische Texte unverändert bis auf zwei Korrekturen: ein Ja/Nein- oder Auswahlfeld ohne Zitat heißt jetzt „no quoted passage“, eins mit zu kurzem Zitat „the quoted passage is too short to show the value“ (bisher beide „does not appear in the text“); eine Regel, die ein Feld unsicher macht, weil sie nur mit bestätigten Werten in einen größeren Space ablegt, schreibt „rule 'X': files into …“ (mit Doppelpunkt wie die übrigen). Fehlermeldungen einer Vorlage oder eines Werts in den Regelnotizen tragen bis PR 3 den Code `error` mit dem englischen Text.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

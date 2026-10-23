@@ -173,7 +173,7 @@ jobs:
       - name: Compose examples
         working-directory: docker
         run: |
-          sed 's/^\([A-Z_]*\)=$/\1=ci/' .env.example > .env
+          sed 's/^\([A-Z0-9_]*\)=$/\1=ci/' .env.example > .env
           check() { echo "compose $*"; docker compose "$@" config -q; }
           check -f compose.yml
           check -f compose.postgres.yml

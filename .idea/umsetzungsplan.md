@@ -1520,6 +1520,27 @@ PR mit Label `enhancement` nach `release/0.5.0`, nach Paket 3.
 - Aus Paperless übernommene Dokumente: Ihr erster Lauf ist Lektos eigene Verarbeitung mit den übernommenen Metadaten (Kanal `migration`), vor dem Abgleich des Migrationsclients. Ihre erste Lane sagt also, wie Lekto mit den Paperless-Werten zurechtkam, nicht, wie gut Lekto allein klassifiziert; ein Bericht sollte nach Kanal trennen.
 - Rot nach einer Störung (etwa ein Zeitüberlauf des Modells nach allen Versuchen), danach grün beim Wiederholen: zählt als rot, also nicht direkt durchgelaufen.
 
+### Zwischenschritt: Images veröffentlichen (`ci/release-images`)
+
+**Anlass (Tobi, 23.10.2026):** Mit einem Release soll das Image gebaut und auf ghcr.io veröffentlicht werden, mit korrekten Tags, wie bei paperless-secretary. Erledigt den Punkt „Veröffentlichen des Images“ aus M9 und M13.
+
+**Entscheidungen (Frage-Antwort-Runde 23.10.2026):**
+
+- **Wann:** Ein Workflow `release.yml` baut, wenn ein Release veröffentlicht wird, dazu ein manueller Start mit Tag-Angabe. Kein Image je Push oder Pull Request, kein „nightly“, nichts aufzuräumen. Kein zweiter Test: Die CI hat Code und Image vor dem Merge geprüft. Kein Layer-Cache (ein kalter Bau dauert etwa 2,5 Minuten je Architektur, beide laufen parallel); ein Release dauert so etwa 4 bis 5 Minuten.
+- **Images:** `ghcr.io/tb1337/lekto` (amd64 und arm64; alle Rollen, empfohlen für SQLite) und `ghcr.io/tb1337/lekto-migration` (der Migrationsclient als kleines eigenes Image). Später, als eigenes Thema, `lekto-web` (statische Oberfläche mit Proxy auf `/api`), `lekto-api` und `lekto-worker` als Stufen desselben Dockerfiles, vor allem der Größe wegen (die API braucht keine OCR-Werkzeuge); `lekto` bleibt. Mehrere Server gehen schon mit einem Image und `LEKTO_ROLE` (eine API, beliebig viele Worker; Postgres, S3 und ein gemeinsames Meilisearch). Redis braucht es nicht: Warteschlange, Outbox, Sitzungen und Drosselungen liegen in der Datenbank.
+- **Tags:** jedes Release seine Version ohne `v` (`0.6.0`). Beta ist eine Version unter 1.0 oder mit Zusatz nach Semver (`1.2.0-beta.1`); eine Beta bekommt `beta`, ein stabiles Release `stable`. `latest` zeigt auf das neueste stabile Release, solange es keins gibt auf die neueste Beta. Ein Kanal-Tag zieht nur nach vorn: Ein erneut gebautes älteres Release nimmt `latest`, `beta` oder `stable` niemandem weg. Ältere Releases als v0.6.0 bekommen kein Image.
+- **Version:** Im Repo `0.0.0.dev0`; das Image setzt `LEKTO_VERSION` aus dem Tag (und das OCI-Label `org.opencontainers.image.version`); `lekto.__version__` liest sie (OpenAPI, MCP, User-Agent, `pipeline_version` im Protokoll), sonst gilt die Version des Pakets. Die Prüfung unbekannter `LEKTO_`-Variablen lässt `LEKTO_VERSION` aus.
+- **Sichtbarkeit:** Ein Paket, das ein Workflow eines öffentlichen Repos veröffentlicht, erbt dessen Sichtbarkeit; beim ersten Lauf prüfen, sonst einmal auf „public“ stellen.
+- **Compose-Beispiele** im neuen Ordner `docker/`, immer mit `latest`, ohne Hilfsdateien: Geheimnisse und Einstellungen in einer `.env` (Vorlage `.env.example`), Konfigurationen als `configs` mit `content` in der Compose-Datei (Compose 2.23 oder neuer). `compose.yml` (ein Container, SQLite, Platte, Meilisearch), `compose.postgres.yml` (API und Worker getrennt, Platte), Ergänzungen `compose.workers.yml` (drei Worker), `compose.s3.yml` (Garage für mehrere Server, Einrichtung durch einen Einmal-Container), `compose.ollama.yml`, `compose.caddy.yml`, `compose.traefik.yml`, `compose.nginx.yml`, dazu `compose.migration.yml`. In `deploy/` bleiben die Dateien des Images, `test-image.sh` und das README zum Betrieb; die alten Beispiele, `create-secrets.sh`, `garage.toml` und `garage-init/` entfallen.
+
+**Umsetzung:**
+
+1. Version: `__version__` aus `LEKTO_VERSION`, sonst aus den Paketdaten; `pyproject.toml` beider Python-Projekte `0.0.0.dev0`; Dockerfile setzt `LEKTO_VERSION` (Build-Argument) und das Label.
+2. `migration/Dockerfile` für `lekto-migration` (Arbeitsordner `/work` für Plan, Zustand und Berichte, nicht als root).
+3. `.github/workflows/release.yml` (Bau je Image und Architektur auf eigenen Runnern, Push per Digest, Manifest mit den Tags) und `.github/scripts/image_tags.py` (welche Tags ein Release bekommt).
+4. CI: die Compose-Beispiele prüfen (`docker compose config`), das Migrations-Image bauen, wenn sich `migration/` ändert.
+5. `docker/` mit den Beispielen; `deploy/README.md`, `README.md` und `CLAUDE.md` angepasst.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

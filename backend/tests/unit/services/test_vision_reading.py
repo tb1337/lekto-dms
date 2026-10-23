@@ -14,7 +14,8 @@ from lekto.core.domain.errors import (
     LanguageModelError,
     NotFoundError,
 )
-from lekto.core.domain.pipeline import Lane, Node, NodeRun, Outcome, ProcessingStatus
+from lekto.core.domain.jobs import JobStatus
+from lekto.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
 from lekto.core.domain.reading import PageReading, VisionAdvice
 from lekto.core.domain.users import Role, User
 from lekto.core.ports.ocr import OcrResult
@@ -101,6 +102,36 @@ async def test_the_model_reads_only_when_a_person_asks(world: World) -> None:
     assert exchange.run == asked.processing.run
     (call,) = exchange.calls
     assert (call.model, call.usage["prompt_tokens"]) == ("fake-vlm", 1500)
+
+
+async def test_the_ocr_the_model_reads_holds_its_job_longer(world: World) -> None:
+    ocr = FakeOcr(vision=FAKE_VISION)
+    held: list[timedelta] = []
+
+    class Watched(OcrNode):
+        async def run(self, document: Document) -> NodeResult:
+            held.extend(
+                job.locked_until - world.clock.now()
+                for job in world.database.jobs.values()
+                if job.status is JobStatus.RUNNING and job.locked_until is not None
+            )
+            return await super().run(document)
+
+    store = world.object_store
+    service = world.pipeline(
+        {
+            Node.OCR: Watched(store, ocr),
+            Node.PAGES: PagesNode(store, FakePageRenderer()),
+            Node.PARSE: ParseNode(store, FakeParser("Rechnung")),
+        },
+        vision=ocr.vision,
+        vision_lease=timedelta(minutes=32),
+    )
+    owner, document = await ingest(world, service)
+    await service.read_with_vision(owner.id, document.id)
+    await world.drain(service)
+    # Tesseract within the lease of every node, the model with its own.
+    assert held == [service.lease, timedelta(minutes=32)]
 
 
 async def test_reprocessing_reads_with_tesseract_again(world: World) -> None:

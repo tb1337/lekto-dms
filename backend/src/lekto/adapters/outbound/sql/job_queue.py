@@ -106,6 +106,9 @@ class SqlJobQueue:
         row = result.first()
         return None if row is None else _job(row)
 
+    async def extend(self, job: Job, *, until: datetime) -> None:
+        await self._held(job, locked_until=require_utc(until, "until"))
+
     async def complete(self, job: Job) -> None:
         await self._finish(job, status=JobStatus.DONE)
 
@@ -142,6 +145,10 @@ class SqlJobQueue:
         return int(result.rowcount)
 
     async def _finish(self, job: Job, *, status: JobStatus, **values: Any) -> None:
+        await self._held(job, status=status.value, locked_until=None, **values)
+
+    async def _held(self, job: Job, **values: Any) -> None:
+        """Change the job while it runs under the claim `job`."""
         result = await self._tx.write(
             update(_jobs)
             .where(
@@ -149,7 +156,7 @@ class SqlJobQueue:
                 _jobs.c.status == JobStatus.RUNNING.value,
                 _jobs.c.attempts == job.attempts,
             )
-            .values(status=status.value, locked_until=None, **values)
+            .values(**values)
         )
         if result.rowcount == 0:
             await self.get(job.id)  # NotFoundError if it does not exist

@@ -500,11 +500,18 @@ VISION_REQUEST_TIMEOUT = timedelta(minutes=5)
 
 
 def node_lease(settings: Settings) -> timedelta:
-    """How long a worker holds the job of a node: longer than any node may take."""
-    longest = max(settings.ocr_timeout, 2 * settings.llm_timeout)
-    if settings.vlm_base_url is not None:
-        longest = max(longest, settings.vlm_timeout)
-    return longest + WORK_LEASE_MARGIN
+    """How long a worker holds the job of a node: longer than any node may take, except the
+    OCR of a document the vision model reads (`vision_lease`)."""
+    return max(settings.ocr_timeout, 2 * settings.llm_timeout) + WORK_LEASE_MARGIN
+
+
+def vision_lease(settings: Settings) -> timedelta | None:
+    """How long a worker holds the OCR of a document the vision model reads; None without a
+    vision model, or if the lease of every node is as long."""
+    if settings.vlm_base_url is None:
+        return None
+    lease = settings.vlm_timeout + WORK_LEASE_MARGIN
+    return lease if lease > node_lease(settings) else None
 
 
 def classifier_policy_of(settings: Settings) -> ClassifierPolicy:
@@ -756,10 +763,11 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             suggest_contact=settings.contact_suggest_threshold,
             retry=retry_policy_of(settings),
             # Longer than any node may take, so a running node never loses its claim.
-            # A classification node may ask the model twice (once more after an invalid answer);
-            # the OCR node may read a document with the vision model.
+            # A classification node may ask the model twice (once more after an invalid answer).
+            # The OCR node that reads a document with the vision model extends its claim.
             lease=node_lease(settings),
             vision=container.ocr.vision,
+            vision_lease=vision_lease(settings),
             poor_reading=settings.poor_reading_threshold,
             facts=facts,
         ),

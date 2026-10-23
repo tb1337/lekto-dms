@@ -33,6 +33,8 @@
 		type InboxPlace,
 		LEFT,
 		type Left,
+		pageHref,
+		pageOf,
 		type Right,
 		tabHref,
 		tabOf,
@@ -348,6 +350,18 @@
 		untrack(() => {
 			opened.add(view.left);
 			opened.add(view.right);
+		});
+	});
+
+	// A page a link asks for (`?page=`, a page image of the processing view): shown in the pages
+	// once they are laid out, then the link forgets it.
+	$effect(() => {
+		const wanted = pageOf(page.url);
+		if (tab !== 'document' || document === null || wanted === null) return;
+		untrack(() => {
+			const place: Place = { page: wanted, boxes: [] };
+			for (const wait of [300, 900, 1800]) setTimeout(() => viewer?.reveal(place), wait);
+			void goto(pageHref(page.url, null), { replace: true, reset: false });
 		});
 	});
 

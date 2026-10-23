@@ -101,6 +101,26 @@ export function viewHref(url: Address, view: View): string {
 	return hrefOf(url, params);
 }
 
+/** The page a URL asks the document tab to show (`?page=`, from a page image of the processing
+ * view); null for none. */
+export function pageOf(url: Address): number | null {
+	const page = Number(url.searchParams.get('page') ?? '');
+	return Number.isInteger(page) && page >= 1 ? page : null;
+}
+
+/** The URL of the document tab showing the pages at page `number` (null: the link forgets the
+ * page it asked for), the other pane as it is. */
+export function pageHref(url: Address, number: number | null): string {
+	const params = new URLSearchParams(url.search);
+	params.delete('tab');
+	params.delete('step');
+	params.set('left', 'pages');
+	params.set('right', viewOf(url).right);
+	if (number === null) params.delete('page');
+	else params.set('page', String(number));
+	return hrefOf(url, params);
+}
+
 type Viewed = Pick<components['schemas']['DocumentDetails'], 'id' | 'media_type' | 'page_count'>;
 
 /**

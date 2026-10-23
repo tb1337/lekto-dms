@@ -8,6 +8,8 @@ import {
 	neighbours,
 	nextDecision,
 	type InboxPlace,
+	pageHref,
+	pageOf,
 	placesApply,
 	provenance,
 	stepHref,
@@ -110,6 +112,18 @@ describe('the view of the document tab', () => {
 		expect(viewOf(at('?tab=details'))).toEqual({ left: 'pages', right: 'form' });
 		expect(viewOf(at('?tab=content&right=form'))).toEqual({ left: 'text', right: 'form' });
 		expect(viewOf(at('?left=nonsense&right=facts'))).toEqual({ left: 'pages', right: 'facts' });
+	});
+
+	it('shows a page a link asks for, then forgets it', () => {
+		const url = new URL('http://lekto/ui/documents/1?from=inbox&tab=processing&step=pages');
+		const href = pageHref(url, 3);
+		expect(href).toBe('/ui/documents/1?from=inbox&left=pages&right=form&page=3');
+		expect(pageOf(new URL(`http://lekto${href}`))).toBe(3);
+		expect(pageHref(new URL(`http://lekto${href}`), null)).toBe(
+			'/ui/documents/1?from=inbox&left=pages&right=form'
+		);
+		expect(pageOf(new URL('http://lekto/ui/documents/1?page=0'))).toBeNull();
+		expect(pageOf(new URL('http://lekto/ui/documents/1?page=x'))).toBeNull();
 	});
 
 	it('is linked, leaving a tab of before behind', () => {

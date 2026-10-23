@@ -300,6 +300,18 @@ describe('the document tab', () => {
 		});
 	});
 
+	it('shows a page a link of the processing view asks for, then forgets it', async () => {
+		goTo('/ui/documents/doc-1?left=pages&right=form&page=2', { id: 'doc-1' });
+		serve(() => documentOf({ lane: 'green' }));
+		render(Page);
+		await waitFor(() =>
+			expect(goto).toHaveBeenCalledWith('/ui/documents/doc-1?left=pages&right=form', {
+				replace: true,
+				reset: false
+			})
+		);
+	});
+
 	it('marks the quote of a field in the text while the field is hovered', async () => {
 		goTo('/ui/documents/doc-1?left=text&right=form', { id: 'doc-1' });
 		const dated = () => ({ ...parsed(), document_date: '2026-03-12' });

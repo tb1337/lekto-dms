@@ -15,8 +15,8 @@
 	import DocumentFacts from '#lib/components/document/DocumentFacts.svelte';
 	import DocumentFiles from '#lib/components/document/DocumentFiles.svelte';
 	import DocumentForm from '#lib/components/document/DocumentForm.svelte';
-	import DocumentLog from '#lib/components/document/DocumentLog.svelte';
 	import DocumentHeader from '#lib/components/document/DocumentHeader.svelte';
+	import DocumentProcessing from '#lib/components/document/DocumentProcessing.svelte';
 	import DocumentText from '#lib/components/document/DocumentText.svelte';
 	import PageImages from '#lib/components/document/PageImages.svelte';
 	import PdfViewer from '#lib/components/PdfViewer.svelte';
@@ -594,7 +594,7 @@
 			<DocumentFiles documentId={id} document={document ?? undefined} {editable} onchanged={load} />
 		{:else if tab === 'processing'}
 			<div class="lg:min-h-0 lg:flex-1">
-				<DocumentLog
+				<DocumentProcessing
 					{document}
 					{graph}
 					manageable={editable}

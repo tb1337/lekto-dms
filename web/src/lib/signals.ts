@@ -35,25 +35,25 @@ export interface SummaryRow {
 
 type Json = Record<string, unknown>;
 
-const object = (value: unknown): Json =>
+export const object = (value: unknown): Json =>
 	value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Json) : {};
-const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
-const text = (value: unknown): string | null =>
+export const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+export const text = (value: unknown): string | null =>
 	typeof value === 'string' && value.trim() !== '' ? value : null;
-const percent = (value: unknown) =>
+export const percent = (value: unknown) =>
 	formatNumber(typeof value === 'number' ? value : 0, {
 		style: 'percent',
 		maximumFractionDigits: 0
 	});
 
-function kind(value: unknown): string {
+export function kind(value: unknown): string {
 	const name = String(value);
 	return (IDENTIFIER_KINDS as readonly string[]).includes(name)
 		? kindLabel(name as IdentifierKind)
 		: name;
 }
 
-function named(id: unknown, lookup: Lookup | null): string {
+export function named(id: unknown, lookup: Lookup | null): string {
 	return typeof id === 'string' ? describeValue(id, lookup) : m.value_unset();
 }
 
@@ -79,7 +79,7 @@ function persons(value: unknown, lookup: Lookup | null): SummaryItem[] {
 	});
 }
 
-function person(id: unknown, lookup: Lookup | null): string {
+export function person(id: unknown, lookup: Lookup | null): string {
 	const user = lookup?.users.find((entry) => entry.id === id);
 	return user ? userLabel(user) : m.space_named_someone();
 }

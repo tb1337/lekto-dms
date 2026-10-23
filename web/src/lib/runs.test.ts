@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { components } from '#lib/api/schema.ts';
-import type { GraphNode } from '#lib/pipeline.ts';
+import type { GraphNode, Processing } from '#lib/pipeline.ts';
 import {
+	glance,
+	glanceSeconds,
 	nodeRun,
 	pastStatus,
 	runNumbers,
@@ -146,5 +148,51 @@ describe('runTokens', () => {
 		];
 		expect(runTokens(log, 2)).toEqual({ input: 4000, output: 400 });
 		expect(runTokens(LOG, 1)).toBeNull();
+	});
+});
+
+describe('glance', () => {
+	const processing = (status: Processing['status'], run: number): Processing => ({
+		status,
+		run,
+		vision: false,
+		nodes: [
+			{
+				node: 'receive',
+				status: 'done',
+				outcome: 'ok',
+				started_at: '2026-10-14T08:49:01Z',
+				finished_at: '2026-10-14T08:49:02Z'
+			},
+			{
+				node: 'ocr',
+				status: status === 'processing' ? 'running' : 'done',
+				outcome: status === 'processing' ? null : 'ok',
+				started_at: '2026-10-14T08:49:02Z',
+				finished_at: status === 'processing' ? null : '2026-10-14T08:49:30Z'
+			}
+		]
+	});
+
+	it('reads a past run from the log and the current one from its state', () => {
+		const past = glance(LOG, GRAPH, processing('review', 2), 1);
+		expect(past).toEqual({
+			status: 'review',
+			started: '2026-10-14T08:49:01.000Z',
+			finished: '2026-10-14T08:50:13.000Z'
+		});
+		expect(glanceSeconds(past)).toBe(72);
+		expect(glance(LOG, GRAPH, processing('completed', 2), 2).status).toBe('completed');
+	});
+
+	it('takes the states of the nodes without the log, and has no end while running', () => {
+		expect(glance(null, GRAPH, processing('completed', 1), 1)).toEqual({
+			status: 'completed',
+			started: '2026-10-14T08:49:01Z',
+			finished: '2026-10-14T08:49:30Z'
+		});
+		const running = glance(null, GRAPH, processing('processing', 1), 1);
+		expect(running.finished).toBeNull();
+		expect(glanceSeconds(running)).toBeNull();
 	});
 });

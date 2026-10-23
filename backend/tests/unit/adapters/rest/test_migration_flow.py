@@ -121,7 +121,10 @@ async def test_the_whole_migration_runs_against_the_api(api: Api, tmp_path: Path
         assert await m.run("run") == 0, m.messages
         documents = await m.documents()
         assert len(documents) == 8
-        assert {d["lane"] for d in documents} == {"green"}
+        # Only Document 10 has a correspondent and a type in Paperless: of the others, a
+        # person decides what Paperless lacks.
+        assert [d["title"] for d in documents if d["lane"] == "green"] == ["Document 10"]
+        assert {d["lane"] for d in documents} == {"green", "yellow"}
         assert {d["channel"] for d in documents} == {"migration"}
 
         users = {
@@ -219,7 +222,18 @@ async def test_reviews_and_the_alignment_run_against_the_api(api: Api, tmp_path:
         ).json()
         judge = next(e for e in log if e["node"] == "judge")
         assert (judge["outcome"], judge["reason"]) == ("uncertain", "Check the tag")
-        assert by_title["Document 12"]["lane"] == "green"  # no tax tag
+        twelve = next(
+            e
+            for e in (
+                await api.client.get(
+                    f"{PREFIX}/documents/{by_title['Document 12']['id']}/log",
+                    headers=helpers.auth(m.admin),
+                )
+            ).json()
+            if e["node"] == "judge"
+        )
+        # No tax tag, no review of it; Paperless lacks the type alone.
+        assert twelve["reason"] == "no document type in the source system"
 
         # A plan changed afterwards aligns what was migrated.
         m.edit("custom_fields", "Count", "drop")

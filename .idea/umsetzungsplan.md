@@ -1573,6 +1573,18 @@ PR mit Label `enhancement` nach `release/0.5.0`, nach Paket 3.
 
 **Offen für Tobi:** Die laufende Migration profitiert erst nach einem Release mit dieser Änderung und einem Neustart (Revision 0037). Bereits wartende Index-Jobs bleiben ohne Schlüssel und laufen einzeln ab.
 
+### Zwischenschritt: Migrierte Dokumente ohne Stammdaten werden gelb (`bugfix/imported-master-data`)
+
+**Anlass (Tobi, 23.10.2026):** „Wenn in Paperless Stammdaten fehlen (Kontakt, Dokumenttyp etc.), dürfen die Dokumente nach der Migration nicht grün sein.“ Der Judge übernahm die Metadaten der Migration ungeprüft (Ergebnis ok); gelb wurde ein Dokument nur mit einem `review` aus dem Plan. In prod betraf das bis dahin 5 grüne migrierte Dokumente ohne Kontakt (keins ohne Typ oder Datum).
+
+**Umsetzung:**
+
+- `ImportedJudgeNode`: Fehlen Kontakt, Dokumenttyp oder Dokumentdatum in den übernommenen Metadaten und am Dokument, ist der Judge unsicher, mit dem Feld als offener Prüfung („no contact in the source system“) und ohne Bestätigung. Ein Review des Plans für dasselbe Feld geht vor (ein Grund je Feld). Was eine Person später gesetzt hat, zählt beim neu Verarbeiten: Das Dokument bleibt grün.
+- So gilt es für jeden Client und jeden Plan, auch wenn der Plan einen Korrespondenten verwirft; der Migrationsclient bleibt unverändert.
+- `architektur.md` (API-Erweiterungen für die Migration) und `migration/README.md` ergänzt.
+
+**Offen für Tobi:** Die 5 bestehenden grünen Dokumente ohne Kontakt ändert das Update nicht; den Kontakt von Hand setzen.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

@@ -416,6 +416,49 @@ async def test_a_review_holds_the_document_until_a_person_decides(api: Api) -> N
     assert document["confirmed_at"] is not None
 
 
+async def test_what_the_source_system_lacks_a_person_decides(api: Api) -> None:
+    admin, owner = await api.admin(), await api.user()
+    data = await master_data(api, admin)
+    response = await upload(
+        api,
+        auth(admin),
+        channel="migration",
+        uploaded_by=str(owner.id),
+        metadata=metadata(data, contact_id=None, document_type_id=None),
+    )
+    assert response.status_code == 202, response.text
+    url = response.json()["status_url"]
+    await api.drain()
+
+    document = (await api.client.get(url, headers=auth(owner))).json()
+    assert (document["lane"], document["processing"]["status"]) == ("yellow", "review")
+    assert document["title"] == "Electricity March"  # the values there are applied
+    (item,) = (await api.client.get(f"{PREFIX}/inbox", headers=auth(owner))).json()["items"]
+    (open,) = item["open"]
+    assert (open["node"], open["outcome"]) == ("judge", "uncertain")
+    assert open["reason"] == (
+        "no contact in the source system; no document type in the source system"
+    )
+    assert [field["field"] for field in open["fields"]] == ["contact", "document_type"]
+
+    changes = {"contact_id": data["contact"]["id"], "document_type_id": data["type"]["id"]}
+    confirmed = await api.client.post(
+        f"{url}/confirm", json={"changes": changes}, headers=auth(owner)
+    )
+    assert confirmed.status_code == 202, confirmed.text
+    await api.drain()
+    assert (await api.client.get(url, headers=auth(owner))).json()["lane"] == "green"
+
+    # Processed again, the metadata lack them still, but the document has them now.
+    reprocess = await api.client.post(
+        f"{url}/reprocess", json={"from_node": "judge"}, headers=auth(owner)
+    )
+    assert reprocess.status_code == 202, reprocess.text
+    await api.drain()
+    document = (await api.client.get(url, headers=auth(owner))).json()
+    assert (document["lane"], document["contact_id"]) == ("green", data["contact"]["id"])
+
+
 async def test_a_review_of_a_field_with_a_value_keeps_it(api: Api) -> None:
     admin, owner = await api.admin(), await api.user()
     data = await master_data(api, admin)

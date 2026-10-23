@@ -5,7 +5,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { SIGNAL_NODES } from '#lib/signals.ts';
 	import type { CellKind, MatrixRow } from '#lib/signal-matrix.ts';
-	import { MARK } from '#lib/step-look.ts';
+	import { DOT } from '#lib/step-look.ts';
 	import { cn } from '#lib/utils.ts';
 
 	// "Wer hat was erkannt?" (from mock A, Tobi 23.10.2026): per property the value and what
@@ -14,19 +14,21 @@
 	// marks say it: no column of its own, Tobi).
 	let { rows, chips }: { rows: readonly MatrixRow[]; chips: boolean } = $props();
 
+	// Flat shapes in the colours of the lane chips (Tobi, 23.10.2026): a circle names, a square
+	// is evidence in the text, a diamond contradicts; rings for another value or silence.
 	function mark(kind: CellKind, open: boolean): string {
-		const fill = open ? MARK.yellow : MARK.green;
+		const fill = open ? DOT.yellow : DOT.green;
 		switch (kind) {
 			case 'names':
-				return cn('size-3.5 rounded-full', fill);
+				return cn('size-4 rounded-full', fill);
 			case 'evidence':
-				return cn('size-3.5 rounded-[4px]', fill);
+				return cn('size-4 rounded-[4px]', fill);
 			case 'other':
-				return 'size-3.5 rounded-full border-2 border-muted-foreground/70';
+				return 'size-4 rounded-full border-[1.5px] border-muted-foreground';
 			case 'contradicts':
-				return 'size-3.5 rounded-full border-2 border-lane-red-mark-edge';
+				return cn('mx-0.5 size-3 rotate-45 rounded-[2px]', DOT.red);
 			case 'silent':
-				return 'size-3.5 rounded-full border-2 border-dashed border-muted-foreground/50';
+				return 'size-4 rounded-full border-[1.5px] border-dashed border-muted-foreground/60';
 		}
 	}
 

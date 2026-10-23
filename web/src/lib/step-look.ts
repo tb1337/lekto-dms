@@ -45,20 +45,52 @@ export const TONE_TEXT: Record<Tone, string> = {
 	muted: 'text-muted-foreground'
 };
 
-/** A lane as a filled mark (the band, the dots, the rail of the timeline): the lanes' own
- * hues in light and dark, the light yellow with a darker edge to stand out from the card. */
-export const MARK: Record<'green' | 'yellow' | 'red', string> = {
-	green: 'bg-lane-green-mark',
-	yellow: 'bg-lane-yellow-mark ring-1 ring-lane-yellow-mark-edge ring-inset',
-	red: 'bg-lane-red-mark'
+type Lane = 'green' | 'yellow' | 'red';
+
+/** A lane as a mark (the band, the rail of the timeline), drawn like the lane's chip (Tobi,
+ * 23.10.2026): its ground, and an edge in its text colour that sets the pale ground of the
+ * light theme off the card. */
+export const MARK: Record<Lane, string> = {
+	green: 'bg-lane-green ring-1 ring-inset ring-lane-green-foreground/35',
+	yellow: 'bg-lane-yellow ring-1 ring-inset ring-lane-yellow-foreground/45',
+	red: 'bg-lane-red ring-1 ring-inset ring-lane-red-foreground/40'
 };
 
-/** Text written on a lane's mark. */
-export const ON_MARK: Record<'green' | 'yellow' | 'red', string> = {
-	green: 'text-lane-green-on-mark',
-	yellow: 'text-lane-yellow-on-mark',
-	red: 'text-lane-red-on-mark'
+/** A small mark (the matrix, the counts, the dots of the timeline): flat, the lane's ground in
+ * a plain border of its text colour; an inner ring looks shaded at that size. */
+export const DOT: Record<Lane, string> = {
+	green: 'border-[1.5px] border-lane-green-foreground bg-lane-green',
+	yellow: 'border-[1.5px] border-lane-yellow-foreground bg-lane-yellow',
+	red: 'border-[1.5px] border-lane-red-foreground bg-lane-red'
 };
+
+/** A stripe too thin for a ground (the steps beside the longest one in the band): the lane's
+ * text colour, softened. */
+export const STRIPE: Record<Lane, string> = {
+	green: 'bg-lane-green-foreground/45',
+	yellow: 'bg-lane-yellow-foreground/60',
+	red: 'bg-lane-red-foreground/55'
+};
+
+/** Text written on a lane's mark: the chip's text. */
+export const ON_MARK: Record<Lane, string> = {
+	green: 'text-lane-green-foreground',
+	yellow: 'text-lane-yellow-foreground',
+	red: 'text-lane-red-foreground'
+};
+
+/** The ring of a mark or card that is pointed at, in its tone's text colour. */
+export const LIT_RING: Record<Tone, string> = {
+	green: 'ring-lane-green-foreground',
+	yellow: 'ring-lane-yellow-foreground',
+	red: 'ring-lane-red-foreground',
+	running: 'ring-lane-running-foreground',
+	muted: 'ring-muted-foreground'
+};
+
+/** An action in the yellow lane (to the filing question), drawn like the chip. */
+export const YELLOW_ACTION =
+	'bg-lane-yellow text-lane-yellow-foreground ring-1 ring-inset ring-lane-yellow-foreground/35 hover:bg-lane-yellow/70';
 
 /** A chip in a tone: its ground and text. */
 export const TONE_CHIP: Record<Tone, string> = {

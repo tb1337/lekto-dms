@@ -51,18 +51,6 @@
 	--lane-red-foreground: #a11d17;
 	--lane-running: #efeeea;
 	--lane-running-foreground: #5f5c55;
-	/* The lanes as marks (the band, dots and rails of the processing view): filled shapes in
-	 * the lanes' hues, a text on them (`on-mark`, 4.5:1) and their edge (3:1 on the card). The
-	 * yellow is a real yellow here, not the brown of its text: a darker edge carries it. */
-	--lane-green-mark: #17652f;
-	--lane-green-mark-edge: #17652f;
-	--lane-green-on-mark: #ffffff;
-	--lane-yellow-mark: #f2b42c;
-	--lane-yellow-mark-edge: #a87800;
-	--lane-yellow-on-mark: #2a1d00;
-	--lane-red-mark: #a11d17;
-	--lane-red-mark-edge: #a11d17;
-	--lane-red-on-mark: #ffffff;
 	/* Notes and tips (alerts `note` and `tip`): blue, as GitHub and Docusaurus draw notes. */
 	--note: #e7f0fb;
 	--note-foreground: #1d4f91;
@@ -102,15 +90,6 @@
 	--lane-red-foreground: #ff9089;
 	--lane-running: #232826;
 	--lane-running-foreground: #a2a8a5;
-	--lane-green-mark: #74d396;
-	--lane-green-mark-edge: #74d396;
-	--lane-green-on-mark: #0b2414;
-	--lane-yellow-mark: #f0c75a;
-	--lane-yellow-mark-edge: #f0c75a;
-	--lane-yellow-on-mark: #2a1d00;
-	--lane-red-mark: #ff9089;
-	--lane-red-mark-edge: #ff9089;
-	--lane-red-on-mark: #3a0d0b;
 	--note: #14223a;
 	--note-foreground: #8db8f0;
 }
@@ -156,15 +135,6 @@
 	--color-lane-red-foreground: var(--lane-red-foreground);
 	--color-lane-running: var(--lane-running);
 	--color-lane-running-foreground: var(--lane-running-foreground);
-	--color-lane-green-mark: var(--lane-green-mark);
-	--color-lane-green-mark-edge: var(--lane-green-mark-edge);
-	--color-lane-green-on-mark: var(--lane-green-on-mark);
-	--color-lane-yellow-mark: var(--lane-yellow-mark);
-	--color-lane-yellow-mark-edge: var(--lane-yellow-mark-edge);
-	--color-lane-yellow-on-mark: var(--lane-yellow-on-mark);
-	--color-lane-red-mark: var(--lane-red-mark);
-	--color-lane-red-mark-edge: var(--lane-red-mark-edge);
-	--color-lane-red-on-mark: var(--lane-red-on-mark);
 }
 
 @layer base {

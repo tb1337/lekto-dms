@@ -37,7 +37,7 @@
 		pageBars,
 		pageCharacters
 	} from '#lib/step-details.ts';
-	import { MARK } from '#lib/step-look.ts';
+	import { DOT, MARK } from '#lib/step-look.ts';
 	import { cn } from '#lib/utils.ts';
 
 	type LogEntry = components['schemas']['LogEntry'];
@@ -187,7 +187,7 @@
 				</ol>
 				{#if poor.length > 0}
 					<p class="flex items-center gap-1.5 text-xs text-muted-foreground" aria-hidden="true">
-						<span class={cn('size-2.5 rounded-sm', MARK.yellow)}></span>{m.details_poor()}
+						<span class={cn('size-2.5 rounded-sm', DOT.yellow)}></span>{m.details_poor()}
 					</p>
 				{/if}
 			</figure>

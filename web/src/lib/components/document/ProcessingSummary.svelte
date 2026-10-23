@@ -9,7 +9,7 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import type { Changes, Headline, HeadlineTone } from '#lib/run-summary.ts';
-	import { MARK } from '#lib/step-look.ts';
+	import { DOT, YELLOW_ACTION } from '#lib/step-look.ts';
 	import type { Counts } from '#lib/steps.ts';
 	import { cn } from '#lib/utils.ts';
 
@@ -52,27 +52,31 @@
 	// The counts in words, the number in bold: only what there is.
 	const tallies = $derived(
 		[
-			{ count: counts.done, label: m.run_count_done(), dot: MARK.green },
-			{ count: counts.uncertain, label: m.run_count_uncertain(), dot: MARK.yellow },
-			{ count: counts.failed, label: m.run_count_failed(), dot: MARK.red },
+			{ count: counts.done, label: m.run_count_done(), dot: DOT.green },
+			{ count: counts.uncertain, label: m.run_count_uncertain(), dot: DOT.yellow },
+			{ count: counts.failed, label: m.run_count_failed(), dot: DOT.red },
 			{
 				count: counts.running,
 				label: counts.running === 1 ? m.run_count_running_one() : m.run_count_running(),
-				dot: 'animate-pulse bg-lane-running-foreground'
+				dot: 'animate-pulse border-[1.5px] border-lane-running-foreground bg-lane-running'
 			},
 			{
 				count: counts.waiting,
 				label: counts.waiting === 1 ? m.run_count_waiting_one() : m.run_count_waiting(),
-				dot: 'border border-dashed border-muted-foreground'
+				dot: 'border-[1.5px] border-dashed border-muted-foreground'
 			},
-			{ count: counts.skipped, label: m.run_count_skipped(), dot: 'bg-muted-foreground/40' },
+			{
+				count: counts.skipped,
+				label: m.run_count_skipped(),
+				dot: 'border-[1.5px] border-dashed border-muted-foreground/50'
+			},
 			{
 				count: counts.carried,
 				label:
 					counts.carriedFrom === null
 						? m.run_count_carried_earlier()
 						: m.run_count_carried({ run: counts.carriedFrom }),
-				dot: 'bg-muted-foreground/60'
+				dot: 'border-[1.5px] border-border bg-muted'
 			}
 		].filter((entry) => entry.count > 0)
 	);
@@ -99,10 +103,7 @@
 			{/if}
 		</div>
 		{#if headline.action === 'filing' || headline.action === 'review'}
-			<Button
-				href={reviewHref}
-				class="shrink-0 bg-lane-yellow-mark text-lane-yellow-on-mark ring-1 ring-lane-yellow-mark-edge ring-inset hover:bg-lane-yellow-mark/85"
-			>
+			<Button href={reviewHref} class={cn('shrink-0', YELLOW_ACTION)}>
 				{headline.action === 'filing' ? m.processing_filing_link() : m.run_to_review()}
 			</Button>
 		{:else if headline.action === 'reprocess' && canReprocess}
@@ -123,7 +124,8 @@
 				<ul class="flex flex-wrap items-center gap-x-4 gap-y-1" aria-label={m.run_counts()}>
 					{#each tallies as tally (tally.label)}
 						<li class="flex items-center gap-1.5 whitespace-nowrap">
-							<span class={cn('size-2 shrink-0 rounded-full', tally.dot)} aria-hidden="true"></span>
+							<span class={cn('size-2.5 shrink-0 rounded-full', tally.dot)} aria-hidden="true"
+							></span>
 							<span
 								><strong class="font-semibold text-foreground">{tally.count}</strong>
 								{tally.label}</span

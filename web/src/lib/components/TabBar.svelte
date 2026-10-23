@@ -72,7 +72,7 @@
 			{/if}
 			{#if tab.marker}
 				<span
-					class="size-[7px] rounded-full bg-lane-yellow-mark ring-1 ring-lane-yellow-mark-edge ring-inset"
+					class="size-2 rounded-full border-[1.5px] border-lane-yellow-foreground bg-lane-yellow"
 					aria-hidden="true"
 				></span>
 				<span class="sr-only">{tab.marker}</span>

@@ -12,9 +12,11 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { object, person } from '#lib/signals.ts';
 	import { drawsDetails, drawsFacts } from '#lib/step-details.ts';
+	import { YELLOW_ACTION } from '#lib/step-look.ts';
 	import { confirmationOf } from '#lib/step-summary.ts';
 	import type { Step } from '#lib/steps.ts';
 	import { usageOf } from '#lib/usage.ts';
+	import { cn } from '#lib/utils.ts';
 
 	type LogEntry = components['schemas']['LogEntry'];
 	type Outcome = components['schemas']['Outcome'];
@@ -132,11 +134,7 @@
 			</div>
 		{/each}
 		{#if filingHref && step.node === 'judge'}
-			<Button
-				href={filingHref}
-				size="sm"
-				class="self-start bg-lane-yellow-mark text-lane-yellow-on-mark ring-1 ring-lane-yellow-mark-edge ring-inset hover:bg-lane-yellow-mark/85"
-			>
+			<Button href={filingHref} size="sm" class={cn('self-start', YELLOW_ACTION)}>
 				{m.processing_filing_link()}
 			</Button>
 		{/if}

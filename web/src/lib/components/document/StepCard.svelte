@@ -39,16 +39,25 @@
 	const cards: Record<Tone, string> = {
 		running: 'bg-card',
 		muted: 'border-dashed bg-card',
-		red: 'border-lane-red-mark-edge/40 bg-lane-red/40',
-		yellow: 'border-lane-yellow-mark-edge/40 bg-lane-yellow/25',
+		red: 'border-lane-red-foreground/35 bg-lane-red',
+		yellow: 'border-lane-yellow-foreground/35 bg-lane-yellow',
 		green: 'bg-card hover:bg-secondary/40'
 	};
 	const rings: Record<Tone, string> = {
 		running: 'ring-brand',
 		muted: 'ring-brand',
-		red: 'ring-lane-red-mark-edge',
-		yellow: 'ring-lane-yellow-mark-edge',
+		red: 'ring-lane-red-foreground',
+		yellow: 'ring-lane-yellow-foreground',
 		green: 'ring-brand'
+	};
+	// Lit (pointed at, here or at its segment in the band): an edge in its tone and a soft glow
+	// around it, the colours of its chip.
+	const lit: Record<Tone, string> = {
+		running: 'border-muted-foreground bg-secondary/50 ring-4 ring-muted-foreground/15',
+		muted: 'border-muted-foreground bg-secondary/50 ring-4 ring-muted-foreground/15',
+		red: 'border-lane-red-foreground ring-4 ring-lane-red-foreground/20',
+		yellow: 'border-lane-yellow-foreground ring-4 ring-lane-yellow-foreground/20',
+		green: 'border-lane-green-foreground bg-lane-green/40 ring-4 ring-lane-green-foreground/15'
 	};
 </script>
 
@@ -68,7 +77,7 @@
 		'flex w-full min-w-0 flex-col gap-1 rounded-2xl border px-3 py-2.5 text-left transition-colors',
 		cards[look.tone],
 		expanded && ['ring-2', rings[look.tone]],
-		highlighted && !expanded && 'shadow-md ring-2 ring-ring/45'
+		highlighted && !expanded && lit[look.tone]
 	)}
 >
 	<span class="flex w-full min-w-0 items-start gap-2">

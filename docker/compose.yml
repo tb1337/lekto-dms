@@ -1,0 +1,70 @@
+# Lekto in one container: API and worker, SQLite and the files on the volume `lekto-data`, with
+# Meilisearch for the search. The language model and the embeddings are outside (see .env).
+#
+#   cp .env.example .env              # once, then fill in the values of "every example"
+#   docker compose up -d
+#   docker compose ps                 # wait for "healthy"
+#
+# Then open http://localhost:8000/ and sign in as `admin` with LEKTO_ADMIN_PASSWORD. The port is
+# open on this machine only, over plain HTTP; for others put a proxy in front (compose.caddy.yml,
+# compose.traefik.yml or compose.nginx.yml). Operation, backup and updates: deploy/README.md.
+name: lekto
+
+services:
+  lekto:
+    image: ghcr.io/tb1337/lekto:latest
+    restart: unless-stopped
+    # The worker gets 30 s to finish its jobs, s6 waits up to 40 s: see deploy/README.md.
+    stop_grace_period: 60s
+    ports:
+      - 127.0.0.1:${HTTP_PORT:-8000}:8000
+    environment:
+      # The user of the Lekto processes and the owner of the volume's files.
+      PUID: 1000
+      PGID: 1000
+      # API and worker in this container.
+      LEKTO_ROLE: all
+      LEKTO_SECRET_KEY: ${LEKTO_SECRET_KEY:?set LEKTO_SECRET_KEY in .env}
+      LEKTO_ADMIN_USERNAME: admin
+      LEKTO_ADMIN_PASSWORD: ${LEKTO_ADMIN_PASSWORD:?set LEKTO_ADMIN_PASSWORD in .env}
+      # Plain HTTP on this machine; a proxy example sets it to true.
+      LEKTO_COOKIE_SECURE: "false"
+      LEKTO_MEILISEARCH_URL: http://meilisearch:7700
+      LEKTO_MEILISEARCH_API_KEY: ${MEILI_MASTER_KEY:?set MEILI_MASTER_KEY in .env}
+      LEKTO_LLM_BASE_URL: ${LEKTO_LLM_BASE_URL:-}
+      LEKTO_LLM_MODEL: ${LEKTO_LLM_MODEL:-}
+      LEKTO_LLM_API_KEY: ${LEKTO_LLM_API_KEY:-}
+      # On a CPU a document takes minutes.
+      LEKTO_LLM_TIMEOUT: "600"
+      LEKTO_EMBEDDING_BASE_URL: ${LEKTO_EMBEDDING_BASE_URL:-}
+      LEKTO_EMBEDDING_MODEL: ${LEKTO_EMBEDDING_MODEL:-}
+      LEKTO_EMBEDDING_API_KEY: ${LEKTO_EMBEDDING_API_KEY:-}
+      LEKTO_EMBEDDING_QUERY_PREFIX: "query:"
+      LEKTO_EMBEDDING_DIMENSIONS: 1024
+    extra_hosts:
+      # Reaches an Ollama on the host on Linux, too (built in on Docker Desktop and OrbStack).
+      - host.docker.internal:host-gateway
+    volumes:
+      - lekto-data:/data
+    depends_on:
+      meilisearch:
+        condition: service_healthy
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.54.3
+    restart: unless-stopped
+    environment:
+      MEILI_ENV: production
+      MEILI_NO_ANALYTICS: "true"
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?set MEILI_MASTER_KEY in .env}
+    volumes:
+      - meilisearch-data:/meili_data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  lekto-data:
+  meilisearch-data:

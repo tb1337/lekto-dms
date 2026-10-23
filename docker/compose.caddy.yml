@@ -1,0 +1,32 @@
+# Extension of compose.yml or compose.postgres.yml: Caddy in front, with a certificate from Let's
+# Encrypt by itself. Lekto is then reached only through Caddy (its own port is closed).
+#
+#   .env: DOMAIN (its DNS entry points to this machine; ports 80 and 443 open)
+#   docker compose -f compose.yml -f compose.caddy.yml up -d
+#
+# Caddy streams the events and replaces the X-Forwarded-For a client sends, so Lekto may trust
+# every address in front of it. Needs Docker Compose 2.24 or newer (!reset).
+services:
+  lekto:
+    ports: !reset []
+    environment:
+      LEKTO_COOKIE_SECURE: "true"
+      LEKTO_FORWARDED_ALLOW_IPS: "*"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    command: caddy reverse-proxy --from ${DOMAIN:?set DOMAIN in .env} --to lekto:8000
+    ports:
+      - 80:80
+      - 443:443
+      - 443:443/udp
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - lekto
+
+volumes:
+  caddy-data:
+  caddy-config:

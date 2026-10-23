@@ -35,7 +35,13 @@ data/
 # The settings of the development instance in the devcontainer (.devcontainer/README.md)
 .devcontainer/*.env
 
-# Secrets of the example stacks (deploy/create-secrets.sh)
+# Settings and secrets of the Compose examples, and what they keep next to them: the migration's
+# working folder, certificates for nginx, backups (deploy/README.md)
+docker/.env
+docker/migration/
+docker/certs/
+docker/backup/
+# Left from the examples before 0.6 (deploy/create-secrets.sh): keep them out of the repository.
 deploy/secrets/
 deploy/backup/
 

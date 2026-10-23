@@ -11,10 +11,11 @@ only way in.
 | `backend/` | Python package `lekto`: `core` (domain, ports, services), `adapters` (inbound, outbound), `composition` |
 | `web/` | Web UI: SvelteKit single-page app below `/ui`, client generated from `web/openapi.json` (see `web/README.md`) |
 | `migration/` | Paperless-ngx migration client: separate uv project `lekto_migration` (`plan`, `check`, `prepare`, `run`; see `migration/README.md`) |
-| `deploy/` | Runtime image files (s6-overlay services, `image/rootfs`), example Compose stacks (SQLite, Postgres + Garage), `test-image.sh`, `README.md` (operation, backup) |
+| `deploy/` | Runtime image files (s6-overlay services, `image/rootfs`), `test-image.sh`, `README.md` (operation, backup) |
+| `docker/` | Compose examples with the published images (`ghcr.io/tb1337/lekto:latest`): SQLite, Postgres, extensions (workers, S3, Ollama, Caddy, Traefik, nginx), migration; settings in `.env` (`.env.example`) |
 | `.devcontainer/` | Devcontainer: Compose services (Postgres, Garage, Meilisearch), the fixed credentials for tests and CI (in `compose.yml`), the development instance (`README.md`, `dev.local.env.example`, `dev-setup.sh`) |
 | `.vscode/tasks.json` | VS Code tasks that run the development instance from the devcontainer (start, stop, migrate, UI, reindex, render-pages, read-codes, migration) |
-| `Dockerfile` | Stages `base`, `deps`, `app`, `s6`, `web` (UI build), `dev` (devcontainer) and `runtime` (production image) |
+| `Dockerfile` | Stages `base`, `deps`, `app`, `s6`, `web` (UI build), `dev` (devcontainer) and `runtime` (production image); `migration/Dockerfile` builds `lekto-migration` |
 | `.idea/` | Design documents in German: `architektur.md` (binding), `umsetzungsplan.md` |
 
 ## Commands
@@ -54,7 +55,13 @@ Image (in the repository root; s6-overlay, `LEKTO_ROLE`, `PUID`/`PGID`; see `dep
 ```sh
 docker build --target runtime -t lekto:local .
 deploy/test-image.sh lekto:local     # starts it with SQLite: migration, health, user, roles, a PDF, stop
+docker build -t lekto-migration:local migration
 ```
+
+Publishing a release on GitHub runs `.github/workflows/release.yml`: it builds `lekto` and
+`lekto-migration` (amd64, arm64) with the version from the tag and pushes them to ghcr.io; the tags
+(version, `beta`/`stable`, `latest`) come from `.github/scripts/image_tags.py`
+(`python3 -m unittest discover -s .github/scripts`). The repository carries the version `0.0.0.dev0`.
 
 Migration client, in `migration/` (`migration/README.md`):
 

@@ -1,0 +1,26 @@
+# The migration from Paperless-ngx, once, with the image lekto-migration: together with the file
+# Lekto runs from, so that the client reaches it as http://lekto:8000. The plan, the state and
+# the reports stay in ./migration (see migration/README.md for the phases).
+#
+#   .env: LEKTO_MIGRATION_PAPERLESS_URL, LEKTO_MIGRATION_PAPERLESS_TOKEN, LEKTO_MIGRATION_LEKTO_TOKEN
+#   mkdir migration
+#   docker compose -f compose.yml -f compose.migration.yml run --rm migration plan
+#   docker compose -f compose.yml -f compose.migration.yml run --rm migration check
+#   docker compose -f compose.yml -f compose.migration.yml run --rm migration prepare
+#   docker compose -f compose.yml -f compose.migration.yml run --rm migration run
+#
+# The client runs as 1000:1000; for another owner of ./migration set `user`.
+services:
+  migration:
+    image: ghcr.io/tb1337/lekto-migration:latest
+    profiles: [migration]
+    environment:
+      LEKTO_MIGRATION_PAPERLESS_URL: ${LEKTO_MIGRATION_PAPERLESS_URL:?set LEKTO_MIGRATION_PAPERLESS_URL in .env}
+      LEKTO_MIGRATION_PAPERLESS_TOKEN: ${LEKTO_MIGRATION_PAPERLESS_TOKEN:?set LEKTO_MIGRATION_PAPERLESS_TOKEN in .env}
+      LEKTO_MIGRATION_LEKTO_URL: http://lekto:8000
+      LEKTO_MIGRATION_LEKTO_TOKEN: ${LEKTO_MIGRATION_LEKTO_TOKEN:?set LEKTO_MIGRATION_LEKTO_TOKEN in .env}
+    extra_hosts:
+      # Reaches a Paperless on the host on Linux, too.
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./migration:/work

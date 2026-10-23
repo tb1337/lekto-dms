@@ -35,11 +35,11 @@ from lekto.core.domain.pipeline import (
     ProcessingStatus,
 )
 from lekto.core.domain.reading import PageReading, PageWords, reading_to_json, readings_to_json
+from lekto.core.domain.reasons import written
 from lekto.core.domain.users import Role
 from lekto.core.domain.verdict import Thresholds
 from lekto.core.ports.llm import StructuredRequest
 from lekto.core.services.classification.nodes import (
-    NO_MODEL,
     ClassificationPolicy,
     FieldsNode,
     JudgeNode,
@@ -61,6 +61,8 @@ from tests import builders
 from tests.builders import NOW, SAMPLES, PlaceholderNode, incoming
 from tests.scans import BAD_TABLE, PAYSLIP, PAYSLIP_TEXT, ScanLine, hocr, scan
 from tests.unit.services.support import World
+
+NO_MODEL = "no language model is configured"
 
 INVOICE = """\
 # Stadtwerke Musterstadt GmbH
@@ -1162,7 +1164,9 @@ async def test_the_readings_are_those_of_the_latest_ocr_that_made_a_text(world: 
     await seed(world)
     document = await document_with(world)
     await record(world, document, Node.OCR, recognised(PageReading(1, 224, 23)))
-    await record(world, document, Node.OCR, NodeResult(outcome=Outcome.FAILED, reason="timeout"))
+    await record(
+        world, document, Node.OCR, NodeResult(outcome=Outcome.FAILED, reasons=(written("timeout"),))
+    )
     result = await judge(world, document, model(proposal()))
     assert isinstance(result, MetadataResult)
     check = checks(result.result)["document_date"]

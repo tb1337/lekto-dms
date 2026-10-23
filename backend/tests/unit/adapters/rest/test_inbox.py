@@ -65,7 +65,7 @@ def uncertain(contact: Contact) -> NodeResult:
     ]
     return NodeResult(
         outcome=Outcome.UNCERTAIN,
-        reason="contact, document_date",
+        reasons=(written("contact, document_date"),),
         model_version="fake-llm 1",
         input={"truncated": False},
         output={"fields": checks_to_json(checks)},

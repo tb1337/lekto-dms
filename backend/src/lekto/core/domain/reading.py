@@ -79,8 +79,9 @@ READING_VERSION = 1
 
 _LEADER = re.compile(r"[.\u00b7\u2026_\-\u2013\u2014]{3,}")  # dots, dashes, underscores
 
-NO_TEXT_REASON = "no text recognised: the pages are blank or hold only pictures"
-"""Why the parse node fails a document without any text."""
+NO_TEXT_REASON = because(ReasonCode.NO_TEXT).text
+"""Why the parse node fails a document without any text, in English (also in entries written
+before reasons had codes)."""
 
 
 @dataclass(frozen=True)

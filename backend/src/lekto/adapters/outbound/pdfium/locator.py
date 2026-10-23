@@ -29,6 +29,7 @@ from lekto.adapters.outbound.pdfium.layout import WORD_GAP
 from lekto.adapters.outbound.pdfium.library import LOCK
 from lekto.core.domain.errors import UnprocessableDocumentError
 from lekto.core.domain.locations import Box, Location, line_boxes
+from lekto.core.domain.reasons import ReasonCode, because
 
 log = logging.getLogger(__name__)
 
@@ -54,7 +55,9 @@ def _locate(pdf: Path, texts: list[str]) -> list[tuple[Location, ...]]:
         try:
             document = pypdfium2.PdfDocument(pdf)
         except pypdfium2.PdfiumError as error:
-            raise UnprocessableDocumentError(f"the PDF cannot be read: {error}") from None
+            raise UnprocessableDocumentError(
+                because(ReasonCode.PDF_UNREADABLE_DETAIL, detail=str(error))
+            ) from None
         try:
             for number in range(1, len(document) + 1):
                 _search_or_skip(document, number, texts, found)

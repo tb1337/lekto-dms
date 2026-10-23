@@ -27,8 +27,8 @@ from lekto.core.domain.classification import (
     TITLE,
     FieldCheck,
     checks_to_json,
-    field_id_of,
     field_key,
+    node_reasons,
 )
 from lekto.core.domain.documents import UNSET, Document, DocumentChanges, Unset
 from lekto.core.domain.errors import (
@@ -129,6 +129,7 @@ from lekto.core.services.classification.signals import (
     ABSTAINED,
     PROPOSAL,
     abstained,
+    abstained_reason,
     model_proposal,
     signals_of,
 )
@@ -151,7 +152,6 @@ _RAW_LENGTH = 4000  # characters of an unfit answer kept in the log
 _EARLIEST = date(1900, 1, 1)
 _LATEST_AHEAD = timedelta(days=366)
 
-NO_MODEL = "no language model is configured"
 JUDGE = "judge"
 """`model_version` of the judge's entry when the language model gave nothing."""
 
@@ -299,7 +299,7 @@ class _ModelStep:
     def _unfit(self, error: _UnfitAnswerError, input: JsonObject) -> NodeResult:
         return NodeResult(
             outcome=Outcome.FAILED,
-            reason=f"the model's answer does not fit the schema: {error}",
+            reasons=(because(ReasonCode.ANSWER_UNFIT, detail=str(error)),),
             model_version=_model_version(error.answers[-1]),
             input=input,
             output={
@@ -320,7 +320,7 @@ class LlmSignal(_ModelStep):
 
     async def run(self, document: Document) -> NodeResult:
         if self._model is None:
-            return abstained(NO_MODEL)
+            return abstained(because(ReasonCode.NO_LANGUAGE_MODEL))
         text = await _document_text(self._store, document.id)
         async with self._uow() as uow:
             contacts = await uow.contacts.list_all()
@@ -496,16 +496,14 @@ class JudgeNode:
         facts = await asyncio.to_thread(DocumentText.read, text)
         if proposal is None:
             silent = entries.get(Node.SIGNAL_LLM)
-            why = (
-                str(silent.result.output.get(ABSTAINED, "it did not run"))
-                if silent is not None
-                else "it did not run"
+            why = (None if silent is None else abstained_reason(silent.result.output)) or because(
+                ReasonCode.SIGNAL_DID_NOT_RUN
             )
             date_check = FieldCheck(
                 field=DOCUMENT_DATE,
                 outcome=Outcome.UNCERTAIN,
                 confidence=0,
-                reasons=(because(ReasonCode.DATE_NONE_FROM_MODEL, detail=why),),
+                reasons=(because(ReasonCode.DATE_NONE_FROM_MODEL, why=why.to_json()),),
             )
         else:
             date_check = _check_date(
@@ -567,7 +565,7 @@ class JudgeNode:
             # Without its proposal the judge is uncertain, and a person classifies.
             return NodeResult(
                 outcome=Outcome.FAILED,
-                reason="nothing recognised: no contact, document type or date",
+                reasons=(because(ReasonCode.NOTHING_RECOGNISED),),
                 model_version=model_version,
                 input=input,
                 output={CHECKS: checks_to_json([contact, kind, topic, tagged, date_check])},
@@ -596,7 +594,7 @@ class JudgeNode:
             output[PERSONS] = _persons_json(persons, public)
         result = NodeResult(
             outcome=Outcome.UNCERTAIN if uncertain else Outcome.OK,
-            reason="; ".join(_reason(check) for check in uncertain) or None,
+            reasons=node_reasons(uncertain),
             confidence=min(check.confidence for check in checks),
             model_version=model_version,
             input=input,
@@ -784,7 +782,7 @@ class FieldsNode(_ModelStep):
         uncertain = [check for check in checks if not check.ok]
         result = NodeResult(
             outcome=Outcome.UNCERTAIN if uncertain else Outcome.OK,
-            reason="; ".join(_reason(check) for check in uncertain) or None,
+            reasons=node_reasons(uncertain),
             confidence=min((check.confidence for check in checks), default=1.0),
             model_version=model_version,
             input=input,
@@ -1447,10 +1445,3 @@ def _answered(answers: Sequence[StructuredAnswer], answer: JsonValue) -> JsonObj
         "answer": answer,
         "tokens": tokens_of(item.usage for item in answers),
     }
-
-
-def _reason(check: FieldCheck) -> str:
-    """Reasons of field checks name the field already."""
-    if field_id_of(check.field) is not None:
-        return str(check.reason)
-    return f"{check.field}: {check.reason}"

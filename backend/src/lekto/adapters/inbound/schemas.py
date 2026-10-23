@@ -60,11 +60,22 @@ class ReasonOut(BaseModel):
     rule: str | None = Field(
         default=None, description="The rule the reason comes from, by its name."
     )
+    field: str | None = Field(
+        default=None,
+        description=(
+            "Among a node's reasons: the built-in field it is about (`contact`, "
+            "`document_type`, `topic`, `tags`, `document_date`, `title`, `space`, `review`)."
+        ),
+    )
 
     @classmethod
     def of(cls, reason: Reason) -> "ReasonOut":
         return cls(
-            code=reason.code, params=dict(reason.params), subject=reason.subject, rule=reason.rule
+            code=reason.code,
+            params=dict(reason.params),
+            subject=reason.subject,
+            rule=reason.rule,
+            field=reason.field,
         )
 
 

@@ -30,6 +30,7 @@ from lekto.core.domain.pipeline import (
     ProcessingHistory,
     ProcessingStatus,
 )
+from lekto.core.domain.reasons import written
 from tests import builders
 from tests.builders import FAILED, NOW, OK, UNCERTAIN
 
@@ -96,7 +97,7 @@ def test_node_result_needs_a_reason_unless_ok() -> None:
         with pytest.raises(ValidationError, match="reason"):
             NodeResult(outcome=outcome)
         with pytest.raises(ValidationError, match="reason"):
-            NodeResult(outcome=outcome, reason="  ")
+            NodeResult(outcome=outcome, reasons=(written("  "),))
 
 
 @pytest.mark.parametrize("confidence", [-0.1, 1.1])

@@ -20,6 +20,7 @@ from lekto.core.domain.exchanges import ModelCall
 from lekto.core.domain.json_value import JsonObject
 from lekto.core.domain.locations import Box, Location
 from lekto.core.domain.reading import PageReading, PageWords
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.ports.codes import CodeReading
 from lekto.core.ports.metadata import FileMetadata, MetadataEntry, MetadataSource
 from lekto.core.ports.ocr import OcrResult, VisionModel, VisionReading
@@ -217,4 +218,4 @@ class FakeTextLocator:
 def _check(data: bytes) -> None:
     kind = media_types.detect(data[: media_types.SNIFF_SIZE])
     if kind is None or (kind == media_types.PDF and not data.rstrip().endswith(b"%%EOF")):
-        raise UnprocessableDocumentError("the file is damaged or not a valid document")
+        raise UnprocessableDocumentError(because(ReasonCode.FILE_DAMAGED))

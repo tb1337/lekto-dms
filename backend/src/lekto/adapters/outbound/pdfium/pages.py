@@ -15,6 +15,7 @@ from lekto.adapters.outbound.imaging import flatten_on_white
 from lekto.adapters.outbound.pdfium.library import LOCK
 from lekto.core.domain import media_types
 from lekto.core.domain.errors import UnprocessableDocumentError
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.ports.pages import PREVIEW_FILE, RenderedPages
 
 DEFAULT_WIDTH = 1200
@@ -53,7 +54,7 @@ class PdfiumPageRenderer:
                         _save(_fit(image, self._preview_width), scratch / PREVIEW_FILE)
                     _save(_fit(image, self._width), scratch / f"{count}.webp")
             if count == 0:
-                raise UnprocessableDocumentError("the document has no pages")
+                raise UnprocessableDocumentError(because(ReasonCode.DOCUMENT_NO_PAGES))
             for file in scratch.iterdir():
                 file.replace(target / file.name)
         finally:
@@ -70,7 +71,9 @@ def _pdf_pages(source: Path) -> Iterator[Iterator[Image.Image]]:
             document = pypdfium2.PdfDocument(source)
             count = len(document)  # a library call too: under the lock
     except pypdfium2.PdfiumError as error:
-        raise UnprocessableDocumentError(f"the PDF cannot be read: {error}") from None
+        raise UnprocessableDocumentError(
+            because(ReasonCode.PDF_UNREADABLE_DETAIL, detail=str(error))
+        ) from None
 
     def pages() -> Iterator[Image.Image]:
         for index in range(count):
@@ -96,7 +99,9 @@ def _image_pages(source: Path) -> Iterator[Iterator[Image.Image]]:
     try:
         opened = Image.open(source)
     except (OSError, Image.DecompressionBombError) as error:
-        raise UnprocessableDocumentError(f"the image cannot be read: {error}") from None
+        raise UnprocessableDocumentError(
+            because(ReasonCode.IMAGE_UNREADABLE_DETAIL, detail=str(error))
+        ) from None
 
     def frames() -> Iterator[Image.Image]:
         try:
@@ -104,7 +109,9 @@ def _image_pages(source: Path) -> Iterator[Iterator[Image.Image]]:
                 upright = ImageOps.exif_transpose(frame) or frame
                 yield flatten_on_white(upright).convert("RGB")
         except OSError as error:
-            raise UnprocessableDocumentError(f"the image cannot be read: {error}") from None
+            raise UnprocessableDocumentError(
+                because(ReasonCode.IMAGE_UNREADABLE_DETAIL, detail=str(error))
+            ) from None
 
     try:
         yield frames()

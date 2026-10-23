@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -10,7 +11,7 @@ from lekto.core.domain.fields import FieldDefinition, FieldType, Money
 from lekto.core.domain.ids import ContactId, FieldId, RuleId, SpaceId, TagId, new_id
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.pipeline import Outcome
-from lekto.core.domain.reasons import ReasonCode, because, written
+from lekto.core.domain.reasons import Reason, ReasonCode, because, written
 from lekto.core.domain.rule_conditions import Facts, matches
 from lekto.core.domain.rule_planner import (
     Effect,
@@ -82,6 +83,10 @@ from tests.unit.domain.rules_support import (
 # --- combining actions ------------------------------------------------------------------------
 
 
+def texts(reasons: Sequence[Reason]) -> list[str]:
+    return [reason.text for reason in reasons]
+
+
 def test_conditions_see_the_state_before_rules_act() -> None:
     # A adds PAID; B acts on PAID: B does not act in the same run (loop protection).
     a = rule(AddTags(frozenset({PAID})))
@@ -142,7 +147,7 @@ def test_different_values_conflict_whatever_the_priority() -> None:
     assert contact.outcome is Outcome.UNCERTAIN
     assert contact.suggestion == str(ACME)
     assert result.uncertain
-    assert result.reasons[0].startswith("contact: rules set different values")
+    assert result.reasons[0].text.startswith("contact: rules set different values")
 
 
 def test_reasons_name_values_not_ids() -> None:
@@ -168,7 +173,7 @@ def test_reasons_name_values_not_ids() -> None:
         ],
         situation(doc(), definitions=DEFINITIONS),
     )
-    assert amounts.reasons == [
+    assert texts(amounts.reasons) == [
         "'amount': rules set different values ('a': 12.50 EUR, 'b': 13 EUR)",
         "'choice': rules set different values ('c': 'monthly', 'd': 'yearly')",
         "'period': rules set different values ('e': 2026-09, 'f': 2026-Q3)",
@@ -489,7 +494,7 @@ def test_global_rule_tags_sets_fields_and_forces_reviews() -> None:
 
     assert result.changes.tag_ids == frozenset({PAID})
     assert result.changes.fields == {PAID_FLAG.id: True}
-    assert result.reviews == ["rule 'Paid': check"]
+    assert texts(result.reviews) == ["rule 'Paid': check"]
 
 
 # --- order ------------------------------------------------------------------------------------
@@ -515,9 +520,12 @@ def test_reports_in_rule_order() -> None:
 def test_forced_review_on_arrival() -> None:
     result = run([rule(ForceReview("check the IBAN"), name="Bank")], situation(doc()))
 
-    assert result.reviews == ["rule 'Bank': check the IBAN"]
+    assert texts(result.reviews) == ["rule 'Bank': check the IBAN"]
     assert result.uncertain
-    assert result.reasons == ["review: rule 'Bank': check the IBAN", "rule 'Bank': check the IBAN"]
+    assert texts(result.reasons) == [
+        "review: rule 'Bank': check the IBAN",
+        "rule 'Bank': check the IBAN",
+    ]
 
 
 def test_forced_review_after_a_person_confirmed_it() -> None:
@@ -525,7 +533,7 @@ def test_forced_review_after_a_person_confirmed_it() -> None:
 
     result = run([confirmed, other], situation(doc(), reviewed=frozenset({confirmed.id})))
 
-    assert result.reviews == [f"rule '{other.definition.name}': new"]
+    assert texts(result.reviews) == [f"rule '{other.definition.name}': new"]
     assert notes(result) == [("review", "overruled"), ("review", "review")]
     assert result.uncertain
 
@@ -534,7 +542,7 @@ def test_forced_review_after_a_person_confirmed_it() -> None:
 def test_forced_review_only_on_arrival(mode: Mode) -> None:
     result = run([rule(ForceReview("check"))], situation(doc(), mode))
 
-    assert result.reviews == []
+    assert texts(result.reviews) == []
     assert notes(result) == [("review", "skipped")]
     assert not result.uncertain
 
@@ -689,7 +697,10 @@ def test_a_review_holds_where_its_reason_cannot_be_rendered() -> None:
         situation(doc()),
     )
 
-    assert result.reviews == ["rule 'a': check {{ contact }}", "rule 'b': from Rechnung 2026"]
+    assert texts(result.reviews) == [
+        "rule 'a': check {{ contact }}",
+        "rule 'b': from Rechnung 2026",
+    ]
 
 
 def title_pattern(template: str) -> Rule:

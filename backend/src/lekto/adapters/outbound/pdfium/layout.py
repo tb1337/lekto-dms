@@ -43,6 +43,7 @@ from lekto.adapters.outbound.pdfium.chars import (
 from lekto.adapters.outbound.pdfium.fixed_pitch import FixedPitchBlock, blocks_of, page_lines
 from lekto.adapters.outbound.pdfium.library import LOCK
 from lekto.core.domain.errors import UnprocessableDocumentError
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.ports.parser import ParseResult
 
 VERSION = 1
@@ -102,7 +103,9 @@ def read_pages(path: Path) -> list[Page]:
         try:
             document = pypdfium2.PdfDocument(path)
         except pypdfium2.PdfiumError as error:
-            raise UnprocessableDocumentError(f"the PDF cannot be read: {error}") from None
+            raise UnprocessableDocumentError(
+                because(ReasonCode.PDF_UNREADABLE_DETAIL, detail=str(error))
+            ) from None
         try:
             pages = []
             for number in range(1, len(document) + 1):

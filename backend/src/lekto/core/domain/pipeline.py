@@ -9,6 +9,7 @@ from uuid import UUID
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.ids import DocumentId
 from lekto.core.domain.json_value import JsonObject
+from lekto.core.domain.reasons import Reason, text_of
 from lekto.core.domain.validation import require_utc
 
 
@@ -119,10 +120,11 @@ class Lane(StrEnum):
 
 @dataclass(frozen=True, kw_only=True)
 class NodeResult:
-    """What a node decided. A reason is required unless the node went through cleanly."""
+    """What a node decided. A reason is required unless the node went through cleanly;
+    `reasons` carry their codes, `reason` gives them in English."""
 
     outcome: Outcome
-    reason: str | None = None
+    reasons: tuple[Reason, ...] = ()
     confidence: float | None = None  # 0..1, derived from verifiable facts where possible
     model_version: str | None = None
     input: JsonObject = field(default_factory=dict)
@@ -133,6 +135,11 @@ class NodeResult:
             raise ValidationError(f"a {self.outcome} node result needs a reason")
         if self.confidence is not None and not 0 <= self.confidence <= 1:
             raise ValidationError(f"confidence must be between 0 and 1, got {self.confidence}")
+
+    @property
+    def reason(self) -> str | None:
+        """The reasons in English (`Reason.text`), joined by "; "."""
+        return text_of(self.reasons)
 
 
 @dataclass(frozen=True, kw_only=True)

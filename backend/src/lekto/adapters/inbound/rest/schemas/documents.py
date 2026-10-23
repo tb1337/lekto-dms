@@ -9,7 +9,7 @@ from uuid import UUID
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, Json, field_validator
 
 from lekto.adapters.inbound.rest.schemas.spaces import MemberOut
-from lekto.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
+from lekto.adapters.inbound.schemas import FieldJson, ReasonOut, RuleReportOut, field_json
 from lekto.core.domain.documents import MAX_TITLE, Channel, Document
 from lekto.core.domain.exchanges import ModelCall, RunExchange
 from lekto.core.domain.imports import MAX_REVIEW_REASON, MAX_REVIEWS
@@ -536,7 +536,14 @@ class LogEntry(BaseModel):
     node: Node
     run: int
     outcome: Outcome
-    reason: str | None
+    reason: str | None = Field(description="Why, in English; several reasons joined by `; `.")
+    reasons: list[ReasonOut] = Field(
+        default_factory=list,
+        description=(
+            "The reasons with their codes, in the same order; for an entry written before they "
+            "had codes, one as written (`text`)."
+        ),
+    )
     confidence: float | None = Field(
         description=(
             "The judge's and the fields node's summary of their checks, not a probability: the "
@@ -558,6 +565,7 @@ class LogEntry(BaseModel):
             run=run.run,
             outcome=result.outcome,
             reason=result.reason,
+            reasons=[ReasonOut.of(reason) for reason in result.reasons],
             confidence=result.confidence,
             model_version=result.model_version,
             input=dict(result.input),

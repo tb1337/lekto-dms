@@ -6,7 +6,7 @@ processing log (output of the judge and the fields node), so what was proposed s
 after a person corrected it; the inbox and the rules (M7) read them from there.
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Self
@@ -302,6 +302,16 @@ class FieldCheck:
             )
         except (KeyError, ValueError) as error:
             raise ValidationError(f"invalid field check: {error}") from None
+
+
+def node_reasons(checks: Iterable[FieldCheck]) -> tuple[Reason, ...]:
+    """The reasons of `checks` as their node gives them: each about its built-in field
+    (`Reason.field`); a custom field's name it already (`Reason.subject`)."""
+    return tuple(
+        reason if field_id_of(check.field) is not None else reason.for_field(check.field)
+        for check in checks
+        for reason in check.reasons
+    )
 
 
 def checks_to_json(checks: list[FieldCheck]) -> list[JsonValue]:

@@ -58,6 +58,7 @@ from lekto.core.domain.pipeline import (
     NodeRun,
     Outcome,
 )
+from lekto.core.domain.reasons import Reason, ReasonCode, because
 from lekto.core.domain.rule_conditions import (
     TEXT_TARGET,
     Facts,
@@ -146,10 +147,16 @@ async def reachable_rules(
     return sorted(found.values(), key=lambda rule: rule.order)
 
 
-def back_and_forth(names: Sequence[str]) -> str:
+def back_and_forth(names: Sequence[str]) -> Reason:
     """Why a chain of moves stopped: the rules would file the document into a space it was
     in already in this chain (each space at most once)."""
-    return "rules move it back and forth: " + " → ".join(names)
+    return because(ReasonCode.RULES_BACK_AND_FORTH, spaces=list(names))
+
+
+def problem_output(problem: Reason) -> JsonObject:
+    """Why the rules' change did not apply, for a log entry's output: in English (`problem`)
+    and with its code (`problem_reason`)."""
+    return {"problem": problem.text, "problem_reason": problem.to_json()}
 
 
 # --- text and patterns ------------------------------------------------------------------------
@@ -678,13 +685,13 @@ async def apply_plan(
     rule_plan: RulePlan,
     definitions: Mapping[FieldId, FieldDefinition],
     now: datetime,
-) -> str | None:
+) -> Reason | None:
     """Apply the planned change and space; the reason if the change no longer fits (nothing
     is applied then)."""
     try:
         document.apply_changes(rule_plan.changes, definitions, now)
     except ValidationError as error:
-        return f"the rules' change does not fit: {error}"
+        return because(ReasonCode.RULES_CHANGE_UNFIT, detail=str(error))
     if rule_plan.space is not None and rule_plan.space != document.space_id:
         source = await uow.spaces.get(document.space_id)
         document.move_to(rule_plan.space, now)

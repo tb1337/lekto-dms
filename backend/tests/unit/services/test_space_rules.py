@@ -326,7 +326,8 @@ async def test_the_preview_shows_where_a_chain_stops_going_back(world: World) ->
     first, second = item.outcome.chain
     assert (first.space_id, first.moved_to) == (shared.id, annas.id)
     assert (second.space_id, second.moved_to, second.looped_to) == (annas.id, None, shared.id)
-    assert second.problem == "rules move it back and forth: tobi → Haushalt → anna → Haushalt"
+    assert second.problem is not None
+    assert second.problem.text == "rules move it back and forth: tobi → Haushalt → anna → Haushalt"
     assert item.outcome.space_id == annas.id
     del home
 

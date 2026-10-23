@@ -17229,7 +17229,18 @@
               }
             ],
             "title": "Problem",
-            "description": "Why the chain stopped, or why a change did not fit."
+            "description": "Why the chain stopped, or why a change did not fit, in English."
+          },
+          "problem_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReasonOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The same with its code."
           }
         },
         "type": "object",
@@ -22028,7 +22039,16 @@
                 "type": "null"
               }
             ],
-            "title": "Reason"
+            "title": "Reason",
+            "description": "Why, in English; several reasons joined by `; `."
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonOut"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "description": "The reasons with their codes, in the same order; for an entry written before they had codes, one as written (`text`)."
           },
           "confidence": {
             "anyOf": [
@@ -22654,6 +22674,14 @@
             ],
             "title": "Reason"
           },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonOut"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "description": "The reasons with their codes (`reason` in English)."
+          },
           "model_version": {
             "anyOf": [
               {
@@ -22824,7 +22852,16 @@
                 "type": "null"
               }
             ],
-            "title": "Reason"
+            "title": "Reason",
+            "description": "Why, in English; several reasons joined by `; `."
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonOut"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "description": "The reasons with their codes, in the same order."
           },
           "fields": {
             "items": {
@@ -23479,7 +23516,48 @@
           "title_empty",
           "title_yields",
           "value_empty",
-          "template_missing_value"
+          "template_missing_value",
+          "node_attempts_exhausted",
+          "node_crashed",
+          "file_not_pdf_or_image",
+          "file_damaged",
+          "file_not_processable",
+          "pdf_encrypted",
+          "pdf_unreadable",
+          "pdf_unreadable_detail",
+          "image_unreadable",
+          "image_unreadable_detail",
+          "document_no_pages",
+          "ocr_failed",
+          "text_unreadable",
+          "signature_dropped",
+          "colours_converted",
+          "not_pdfa",
+          "archive_not_pdfa",
+          "vision_read",
+          "vision_not_configured",
+          "no_text",
+          "answer_unfit",
+          "nothing_recognised",
+          "master_data_changed",
+          "metadata_unfit",
+          "taken_over",
+          "space_changed_meanwhile",
+          "rules_back_and_forth",
+          "rules_change_unfit",
+          "signal_did_not_run",
+          "no_language_model",
+          "no_document_text",
+          "no_classifier",
+          "classifier_unusable",
+          "classifier_untrained",
+          "neighbours_off",
+          "no_embedding_index",
+          "text_not_embedded",
+          "vector_misfit",
+          "no_uploader",
+          "index_unavailable",
+          "no_similar"
         ],
         "title": "ReasonCode"
       },
@@ -23521,6 +23599,18 @@
             ],
             "title": "Rule",
             "description": "The rule the reason comes from, by its name."
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field",
+            "description": "Among a node's reasons: the built-in field it is about (`contact`, `document_type`, `topic`, `tags`, `document_date`, `title`, `space`, `review`)."
           }
         },
         "type": "object",
@@ -26772,7 +26862,7 @@
     "spaces_disagree": {},
     "date_none": {},
     "date_none_from_model": {
-      "detail": "text"
+      "why": "reason"
     },
     "not_a_date": {
       "value": "text"
@@ -26919,6 +27009,80 @@
     "value_empty": {},
     "template_missing_value": {
       "path": "text"
-    }
+    },
+    "node_attempts_exhausted": {
+      "attempts": "number"
+    },
+    "node_crashed": {
+      "error": "text",
+      "detail": "text"
+    },
+    "file_not_pdf_or_image": {},
+    "file_damaged": {},
+    "file_not_processable": {},
+    "pdf_encrypted": {},
+    "pdf_unreadable": {},
+    "pdf_unreadable_detail": {
+      "detail": "text"
+    },
+    "image_unreadable": {},
+    "image_unreadable_detail": {
+      "detail": "text"
+    },
+    "document_no_pages": {},
+    "ocr_failed": {
+      "problem": "reason",
+      "detail": "text"
+    },
+    "text_unreadable": {},
+    "signature_dropped": {},
+    "colours_converted": {},
+    "not_pdfa": {
+      "detail": "text"
+    },
+    "archive_not_pdfa": {},
+    "vision_read": {
+      "model": "text",
+      "endpoint": "text"
+    },
+    "vision_not_configured": {},
+    "no_text": {},
+    "answer_unfit": {
+      "detail": "text"
+    },
+    "nothing_recognised": {},
+    "master_data_changed": {
+      "detail": "text"
+    },
+    "metadata_unfit": {
+      "detail": "text"
+    },
+    "taken_over": {},
+    "space_changed_meanwhile": {},
+    "rules_back_and_forth": {
+      "spaces": "path"
+    },
+    "rules_change_unfit": {
+      "detail": "text"
+    },
+    "signal_did_not_run": {},
+    "no_language_model": {},
+    "no_document_text": {},
+    "no_classifier": {},
+    "classifier_unusable": {
+      "detail": "text"
+    },
+    "classifier_untrained": {},
+    "neighbours_off": {},
+    "no_embedding_index": {},
+    "text_not_embedded": {
+      "detail": "text"
+    },
+    "vector_misfit": {},
+    "no_uploader": {},
+    "index_unavailable": {
+      "detail": "text"
+    },
+    "no_similar": {}
   }
 }

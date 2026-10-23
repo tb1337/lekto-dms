@@ -412,6 +412,8 @@ processing_log = Table(
     Column("run", Integer, nullable=False),
     Column("outcome", Text, nullable=False),
     Column("reason", Text, nullable=True),
+    # The reasons with their codes (`Reason.to_json`); null in entries from before them.
+    Column("reasons", json_type(), nullable=True),
     Column("confidence", Double, nullable=True),
     Column("model_version", Text, nullable=True),
     Column("input", json_type(), nullable=False),

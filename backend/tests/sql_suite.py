@@ -1162,7 +1162,9 @@ class MigrationSuite:
                     "event": await _read_all(connection, select(t.outbox.c.payload)),
                     "log": {
                         row.node: (row.model_version, row.input, row.output)
-                        for row in (await connection.execute(select(t.processing_log))).all()
+                        for row in (
+                            await connection.execute(select(_before_0038(t.processing_log)))
+                        ).all()
                     },
                 }
 
@@ -2314,6 +2316,23 @@ class MigrationSuite:
                 await connection.execute(select(_before_0037(t.jobs).c.id))
             ).scalars().all() == [job]
 
+    async def test_the_reasons_of_revision_0038_come_and_go(self, empty_database: Database) -> None:
+        """Revision 0038: log entries get their reasons with codes; the downgrade drops them."""
+        await migrate(empty_database, "0037")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        await migrate(empty_database)
+        async with empty_database.reading() as connection:
+            columns = await connection.run_sync(
+                lambda sync: {
+                    item["name"] for item in sa.inspect(sync).get_columns("processing_log")
+                }
+            )
+        assert {"reason", "reasons"} <= columns
+        await downgrade(empty_database, "0037")
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -2450,7 +2469,7 @@ async def _stored(database: Database, *, old: bool) -> dict[str, Any]:
         sa.column("value_text", sa.Text()),
     )
     documents = _before_0009(t.documents) if old else _lasting(_before_0021(t.documents))
-    log_table = _before_0009(t.processing_log) if old else t.processing_log
+    log_table = _before_0009(t.processing_log) if old else _before_0038(t.processing_log)
     async with database.reading() as connection:
         definition, scope, value = await _only_rows(connection, definitions, types, values)
         document, log = await _only_rows(connection, documents, log_table)
@@ -2476,7 +2495,7 @@ async def _stored(database: Database, *, old: bool) -> dict[str, Any]:
 async def _node_names(database: Database, *, old: bool) -> dict[str, Any]:
     """The rows of `test_steps_become_nodes_and_back`, under the old or new names."""
     documents = _before_0009(t.documents) if old else _lasting(_before_0021(t.documents))
-    log_table = _before_0009(t.processing_log) if old else t.processing_log
+    log_table = _before_0009(t.processing_log) if old else _before_0038(t.processing_log)
     async with database.reading() as connection:
         document, log = await _only_rows(connection, documents, log_table)
         job, event = await _only_rows(connection, _before_0037(t.jobs), t.outbox)
@@ -2520,12 +2539,25 @@ def _drawer(table: sa.TableClause) -> sa.TableClause:
 _INBOX_COLUMNS = frozenset({"new_at", "processing_baseline", "processing_decided"})
 
 
+def _before_0038(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0038 had it: no reasons with codes in the log."""
+    added = {"processing_log": {"reasons"}}
+    return sa.table(
+        table.name,
+        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+    )
+
+
 def _before_0037(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0037 had it: no coalesce key of a job."""
     added = {"jobs": {"coalesce_key"}}
     return sa.table(
         table.name,
-        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+        *(
+            sa.column(c.name, c.type)
+            for c in _before_0038(table).c
+            if c.name not in added.get(table.name, ())
+        ),
     )
 
 

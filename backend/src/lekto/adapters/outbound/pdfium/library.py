@@ -9,6 +9,7 @@ import pypdfium2
 import pypdfium2.raw as pdfium_c
 
 from lekto.core.domain.errors import UnprocessableDocumentError
+from lekto.core.domain.reasons import ReasonCode, because
 
 LOCK = threading.Lock()
 
@@ -19,7 +20,9 @@ def count_pages(path: Path) -> int:
         try:
             document = pypdfium2.PdfDocument(path)
         except pypdfium2.PdfiumError as error:
-            raise UnprocessableDocumentError(f"the PDF cannot be read: {error}") from None
+            raise UnprocessableDocumentError(
+                because(ReasonCode.PDF_UNREADABLE_DETAIL, detail=str(error))
+            ) from None
         try:
             return len(document)
         finally:

@@ -28,7 +28,7 @@ from lekto.core.services._access import field_definitions
 from lekto.core.services.classification.signals import abstained
 from lekto.core.services.pipeline import DeferredResult, MetadataResult, NodeExecutor
 
-REASON = "taken over from the source system"
+TAKEN_OVER = because(ReasonCode.TAKEN_OVER)
 MISSING: dict[str, ReasonCode] = {
     CONTACT: ReasonCode.SOURCE_LACKS_CONTACT,
     DOCUMENT_TYPE: ReasonCode.SOURCE_LACKS_DOCUMENT_TYPE,
@@ -66,7 +66,7 @@ class _ImportedStep:
         except ValidationError as error:
             return NodeResult(
                 outcome=Outcome.UNCERTAIN,
-                reason=f"the metadata of the source system no longer fits: {error}",
+                reasons=(because(ReasonCode.METADATA_UNFIT, detail=str(error)),),
             )
 
     def _apply(self, imported: ImportedMetadata, document: Document) -> NodeResult | DeferredResult:
@@ -78,7 +78,7 @@ class ImportedSignal(_ImportedStep):
     abstains, as one without its service does."""
 
     def _apply(self, imported: ImportedMetadata, document: Document) -> NodeResult:
-        return abstained(REASON, model_version=IMPORTED)
+        return abstained(TAKEN_OVER, model_version=IMPORTED)
 
 
 class ImportedJudgeNode(_ImportedStep):
@@ -137,10 +137,12 @@ def _lacking(imported: ImportedMetadata, document: Document) -> list[str]:
 
 def _result(reviews: list[_Review], output: JsonObject) -> NodeResult:
     if not reviews:
-        return NodeResult(outcome=Outcome.OK, reason=REASON, model_version=IMPORTED, output=output)
-    reason = "; ".join(dict.fromkeys(item.text for item, _ in reviews))
+        return NodeResult(
+            outcome=Outcome.OK, reasons=(TAKEN_OVER,), model_version=IMPORTED, output=output
+        )
+    reasons = tuple(dict.fromkeys(reason for reason, _ in reviews))
     return NodeResult(
-        outcome=Outcome.UNCERTAIN, reason=reason, model_version=IMPORTED, output=output
+        outcome=Outcome.UNCERTAIN, reasons=reasons, model_version=IMPORTED, output=output
     )
 
 

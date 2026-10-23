@@ -1,11 +1,31 @@
 """Errors raised by the core. Inbound adapters map them to their protocol (e.g. HTTP status)."""
 
 from datetime import timedelta
+from typing import TYPE_CHECKING
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from lekto.core.domain.reasons import Reason
 
 
 class DomainError(Exception):
-    """Base class for all errors of the core."""
+    """Base class for all errors of the core. Raised with a `Reason` (issue #83), its message is
+    the reason's English text and `reason` keeps the code; raised with a text, `reason` is that
+    text with the code `error`."""
+
+    def __init__(self, message: "str | Reason" = "", *args: object) -> None:
+        if isinstance(message, str):
+            super().__init__(message, *args)
+            self._reason: Reason | None = None
+        else:
+            super().__init__(message.text, *args)
+            self._reason = message
+
+    @property
+    def reason(self) -> "Reason":
+        from lekto.core.domain.reasons import ReasonCode, because
+
+        return self._reason or because(ReasonCode.ERROR, detail=str(self))
 
 
 class NotFoundError(DomainError):

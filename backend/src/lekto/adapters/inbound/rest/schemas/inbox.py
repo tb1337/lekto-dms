@@ -304,7 +304,10 @@ class OpenNodeOut(BaseModel):
 
     node: Node
     outcome: Outcome
-    reason: str | None
+    reason: str | None = Field(description="Why, in English; several reasons joined by `; `.")
+    reasons: list[ReasonOut] = Field(
+        default_factory=list, description="The reasons with their codes, in the same order."
+    )
     fields: list[FieldCheckOut] = Field(
         description=(
             "Uncertain fields of classification, field extraction and the rules (also "
@@ -318,6 +321,7 @@ class OpenNodeOut(BaseModel):
             node=item.node,
             outcome=item.outcome,
             reason=item.reason,
+            reasons=[ReasonOut.of(reason) for reason in item.reasons],
             fields=[FieldCheckOut.of(check) for check in item.fields],
         )
 
@@ -426,6 +430,9 @@ class NodeReviewOut(BaseModel):
     run: int
     outcome: Outcome
     reason: str | None
+    reasons: list[ReasonOut] = Field(
+        default_factory=list, description="The reasons with their codes (`reason` in English)."
+    )
     model_version: str | None = Field(examples=["qwen3:8b"])
     truncated: bool | None = Field(description="Whether a part of the text was left out.")
     fields: list[FieldCheckOut]
@@ -437,6 +444,7 @@ class NodeReviewOut(BaseModel):
             run=review.run,
             outcome=review.outcome,
             reason=review.reason,
+            reasons=[ReasonOut.of(reason) for reason in review.reasons],
             model_version=review.model_version,
             truncated=review.truncated,
             fields=[FieldCheckOut.of(check) for check in review.fields],

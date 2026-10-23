@@ -18,6 +18,7 @@ from lekto.composition.container import VISION_REQUEST_TIMEOUT
 from lekto.core.domain import media_types
 from lekto.core.domain.errors import LanguageModelError
 from lekto.core.domain.reading import words_at
+from lekto.core.domain.reasons import text_of as reasons_text
 from tests import probes
 from tests.builders import DEFAULT_SETTINGS, SAMPLES
 from tests.contracts.processing import OcrContract
@@ -149,7 +150,11 @@ async def test_text_in_a_font_without_a_character_map_is_read_from_the_image(
     result = await engine().make_archive(
         SAMPLES / "unmapped.pdf", target, media_type=media_types.PDF
     )
-    assert (result.read_again, result.pdfa, result.note) == (True, True, UNREADABLE_NOTE)
+    assert (result.read_again, result.pdfa, reasons_text(result.notes)) == (
+        True,
+        True,
+        UNREADABLE_NOTE.text,
+    )
     text = text_of(target)
     assert "Rechnung Nummer 4711" in " ".join(text.split())
     assert unreadable_share(text) == 0.0
@@ -176,7 +181,7 @@ async def test_a_signed_pdf_gets_its_archive_without_the_signature(tmp_path: Pat
     target = tmp_path / "archive.pdf"
     result = await engine().make_archive(SAMPLES / "signed.pdf", target, media_type=media_types.PDF)
     assert (result.pages, result.pdfa) == (1, True)
-    assert result.note is not None and "signature" in result.note
+    assert "signature" in (reasons_text(result.notes) or "")
     assert "Rechnung Nummer 4711" in " ".join(text_of(target).split())
     assert sorted(path.name for path in tmp_path.iterdir()) == ["archive.pdf"]
 

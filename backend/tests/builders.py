@@ -26,6 +26,7 @@ from lekto.core.domain.documents import Document, Sha256
 from lekto.core.domain.identity import Credential, check_new_password
 from lekto.core.domain.ids import DocumentId, SpaceId, UserId, new_id
 from lekto.core.domain.pipeline import Lane, Node, NodeResult, Outcome
+from lekto.core.domain.reasons import written
 from lekto.core.domain.search import IndexDocument, Visibility
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import Role, User
@@ -100,8 +101,8 @@ PASSWORD = "correct horse battery"
 TRUSTED_PROXY = "127.0.0.1"
 
 OK = NodeResult(outcome=Outcome.OK)
-UNCERTAIN = NodeResult(outcome=Outcome.UNCERTAIN, reason="new contact", confidence=0.4)
-FAILED = NodeResult(outcome=Outcome.FAILED, reason="OCR crashed")
+UNCERTAIN = NodeResult(outcome=Outcome.UNCERTAIN, reasons=(written("new contact"),), confidence=0.4)
+FAILED = NodeResult(outcome=Outcome.FAILED, reasons=(written("OCR crashed"),))
 
 
 class PlaceholderNode:

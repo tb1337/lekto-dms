@@ -9,6 +9,7 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import type { Changes, Headline, HeadlineTone } from '#lib/run-summary.ts';
+	import { MARK } from '#lib/step-look.ts';
 	import type { Counts } from '#lib/steps.ts';
 	import { cn } from '#lib/utils.ts';
 
@@ -51,9 +52,9 @@
 	// The counts in words, the number in bold: only what there is.
 	const tallies = $derived(
 		[
-			{ count: counts.done, label: m.run_count_done(), dot: 'bg-lane-green-foreground' },
-			{ count: counts.uncertain, label: m.run_count_uncertain(), dot: 'bg-lane-yellow-foreground' },
-			{ count: counts.failed, label: m.run_count_failed(), dot: 'bg-lane-red-foreground' },
+			{ count: counts.done, label: m.run_count_done(), dot: MARK.green },
+			{ count: counts.uncertain, label: m.run_count_uncertain(), dot: MARK.yellow },
+			{ count: counts.failed, label: m.run_count_failed(), dot: MARK.red },
 			{
 				count: counts.running,
 				label: counts.running === 1 ? m.run_count_running_one() : m.run_count_running(),
@@ -100,7 +101,7 @@
 		{#if headline.action === 'filing' || headline.action === 'review'}
 			<Button
 				href={reviewHref}
-				class="shrink-0 bg-lane-yellow-foreground text-lane-yellow hover:bg-lane-yellow-foreground/85"
+				class="shrink-0 bg-lane-yellow-mark text-lane-yellow-on-mark ring-1 ring-lane-yellow-mark-edge ring-inset hover:bg-lane-yellow-mark/85"
 			>
 				{headline.action === 'filing' ? m.processing_filing_link() : m.run_to_review()}
 			</Button>

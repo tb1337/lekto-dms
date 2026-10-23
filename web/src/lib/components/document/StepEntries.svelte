@@ -123,7 +123,7 @@
 			<Button
 				href={filingHref}
 				size="sm"
-				class="self-start bg-lane-yellow-foreground text-lane-yellow hover:bg-lane-yellow-foreground/85"
+				class="self-start bg-lane-yellow-mark text-lane-yellow-on-mark ring-1 ring-lane-yellow-mark-edge ring-inset hover:bg-lane-yellow-mark/85"
 			>
 				{m.processing_filing_link()}
 			</Button>

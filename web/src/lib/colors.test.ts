@@ -61,6 +61,19 @@ describe('colors', () => {
 		}
 	});
 
+	it.each(['light', 'dark'] as const)('keeps the lanes as marks visible in %s', (theme) => {
+		// The band writes on its marks; a mark stands out from the card by its edge.
+		const found = THEME_TOKENS[theme];
+		const card = parseHex(found.get('card')!);
+		for (const lane of ['green', 'yellow', 'red']) {
+			const mark = parseHex(found.get(`lane-${lane}-mark`)!);
+			const edge = parseHex(found.get(`lane-${lane}-mark-edge`)!);
+			const text = parseHex(found.get(`lane-${lane}-on-mark`)!);
+			expect(contrast(mark, text), lane).toBeGreaterThanOrEqual(4.5);
+			expect(contrast(edge, card), lane).toBeGreaterThanOrEqual(3);
+		}
+	});
+
 	it.each(['light', 'dark'] as const)('mixes against the colours of %s', (theme) => {
 		expect(THEME_TOKENS[theme].get('card')).toBe(THEMES[theme].card);
 		expect(THEME_TOKENS[theme].get('foreground')).toBe(THEMES[theme].text);

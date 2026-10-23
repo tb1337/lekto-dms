@@ -15,6 +15,7 @@
 	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import type { Node } from '#lib/pipeline.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { MARK, ON_MARK } from '#lib/step-look.ts';
 	import { PHASE_LABELS, type Phase } from '#lib/steps.ts';
 	import { cn } from '#lib/utils.ts';
 
@@ -38,9 +39,9 @@
 	} = $props();
 
 	const tones: Record<BandTone, string> = {
-		green: 'bg-lane-green-foreground/80',
-		yellow: 'bg-lane-yellow-foreground',
-		red: 'bg-lane-red-foreground',
+		green: MARK.green,
+		yellow: MARK.yellow,
+		red: MARK.red,
 		running: 'animate-pulse bg-lane-running-foreground/50',
 		waiting:
 			'border border-dashed border-muted-foreground/60 bg-[repeating-linear-gradient(45deg,var(--color-muted)_0_4px,transparent_4px_8px)]',
@@ -54,8 +55,9 @@
 		waiting: m.node_status_waiting
 	};
 
-	// A label inside a segment: dark on the coloured ones, the text colour on the pale running one.
-	const label = (tone: BandTone) => (tone === 'running' ? 'text-foreground' : 'text-card');
+	// A label inside a segment: the lane's text on its mark, the text colour on the pale running one.
+	const label = (tone: BandTone) =>
+		tone === 'green' || tone === 'yellow' || tone === 'red' ? ON_MARK[tone] : 'text-foreground';
 
 	let width = $state(0);
 	// Each phase keeps room for its name below the bar (wide) and a part of its own.
@@ -128,7 +130,7 @@
 							class={cn(
 								'flex min-h-0 w-full flex-1 items-center overflow-hidden rounded-[3px]',
 								tones[main.tone],
-								main.overruled && 'ring-1 ring-lane-yellow-foreground/70 ring-inset'
+								main.overruled && 'ring-2 ring-lane-yellow-mark ring-inset'
 							)}
 							title={title(main)}
 						>

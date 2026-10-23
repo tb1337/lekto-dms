@@ -5,6 +5,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { SIGNAL_NODES } from '#lib/signals.ts';
 	import type { CellKind, MatrixRow } from '#lib/signal-matrix.ts';
+	import { MARK } from '#lib/step-look.ts';
 	import { cn } from '#lib/utils.ts';
 
 	// "Wer hat was erkannt?" (from mock A, Tobi 23.10.2026): per property the value and what
@@ -14,7 +15,7 @@
 	let { rows, chips }: { rows: readonly MatrixRow[]; chips: boolean } = $props();
 
 	function mark(kind: CellKind, open: boolean): string {
-		const fill = open ? 'bg-lane-yellow-foreground' : 'bg-lane-green-foreground';
+		const fill = open ? MARK.yellow : MARK.green;
 		switch (kind) {
 			case 'names':
 				return cn('size-3.5 rounded-full', fill);
@@ -23,7 +24,7 @@
 			case 'other':
 				return 'size-3.5 rounded-full border-2 border-muted-foreground/70';
 			case 'contradicts':
-				return 'size-3.5 rounded-full border-2 border-lane-red-foreground';
+				return 'size-3.5 rounded-full border-2 border-lane-red-mark-edge';
 			case 'silent':
 				return 'size-3.5 rounded-full border-2 border-dashed border-muted-foreground/50';
 		}

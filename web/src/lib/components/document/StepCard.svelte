@@ -32,15 +32,15 @@
 	const cards: Record<Tone, string> = {
 		running: 'bg-card',
 		muted: 'border-dashed bg-card',
-		red: 'border-lane-red-foreground/30 bg-lane-red/40',
-		yellow: 'border-lane-yellow-foreground/25 bg-lane-yellow/25',
+		red: 'border-lane-red-mark-edge/40 bg-lane-red/40',
+		yellow: 'border-lane-yellow-mark-edge/40 bg-lane-yellow/25',
 		green: 'bg-card hover:bg-secondary/40'
 	};
 	const rings: Record<Tone, string> = {
 		running: 'ring-brand',
 		muted: 'ring-brand',
-		red: 'ring-lane-red-foreground/70',
-		yellow: 'ring-lane-yellow-foreground/70',
+		red: 'ring-lane-red-mark-edge',
+		yellow: 'ring-lane-yellow-mark-edge',
 		green: 'ring-brand'
 	};
 </script>

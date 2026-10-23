@@ -71,7 +71,10 @@
 				<span class="text-xs font-normal text-muted-foreground tabular-nums">{tab.count}</span>
 			{/if}
 			{#if tab.marker}
-				<span class="size-[7px] rounded-full bg-lane-yellow-foreground" aria-hidden="true"></span>
+				<span
+					class="size-[7px] rounded-full bg-lane-yellow-mark ring-1 ring-lane-yellow-mark-edge ring-inset"
+					aria-hidden="true"
+				></span>
 				<span class="sr-only">{tab.marker}</span>
 			{/if}
 		</a>

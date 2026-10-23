@@ -62,8 +62,8 @@
 		green: 'border-border',
 		running: 'border-border',
 		muted: 'border-border',
-		yellow: 'border-lane-yellow-foreground/30',
-		red: 'border-lane-red-foreground/30'
+		yellow: 'border-lane-yellow-mark-edge/40',
+		red: 'border-lane-red-mark-edge/40'
 	};
 	const tints: Record<Tone, string> = {
 		green: 'bg-secondary/40',

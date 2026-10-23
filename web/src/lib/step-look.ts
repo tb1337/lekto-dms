@@ -45,6 +45,21 @@ export const TONE_TEXT: Record<Tone, string> = {
 	muted: 'text-muted-foreground'
 };
 
+/** A lane as a filled mark (the band, the dots, the rail of the timeline): the lanes' own
+ * hues in light and dark, the light yellow with a darker edge to stand out from the card. */
+export const MARK: Record<'green' | 'yellow' | 'red', string> = {
+	green: 'bg-lane-green-mark',
+	yellow: 'bg-lane-yellow-mark ring-1 ring-lane-yellow-mark-edge ring-inset',
+	red: 'bg-lane-red-mark'
+};
+
+/** Text written on a lane's mark. */
+export const ON_MARK: Record<'green' | 'yellow' | 'red', string> = {
+	green: 'text-lane-green-on-mark',
+	yellow: 'text-lane-yellow-on-mark',
+	red: 'text-lane-red-on-mark'
+};
+
 /** A chip in a tone: its ground and text. */
 export const TONE_CHIP: Record<Tone, string> = {
 	green: 'bg-lane-green text-lane-green-foreground',

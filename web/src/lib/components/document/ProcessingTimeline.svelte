@@ -3,7 +3,7 @@
 	import StepCard from '#lib/components/document/StepCard.svelte';
 	import { m } from '#lib/paraglide/messages.js';
 	import type { Node } from '#lib/pipeline.ts';
-	import { stepLook, type Tone } from '#lib/step-look.ts';
+	import { MARK, stepLook, type Tone } from '#lib/step-look.ts';
 	import { PHASE_LABELS, type Phase, type Step } from '#lib/steps.ts';
 	import { cn } from '#lib/utils.ts';
 
@@ -59,16 +59,16 @@
 	});
 
 	const dots: Record<Line, string> = {
-		green: 'bg-lane-green-foreground',
-		yellow: 'bg-lane-yellow-foreground',
-		red: 'bg-lane-red-foreground',
+		green: MARK.green,
+		yellow: MARK.yellow,
+		red: MARK.red,
 		running: 'animate-pulse bg-lane-running-foreground',
 		waiting: 'border-2 border-dashed border-muted-foreground'
 	};
 	const rails: Record<Line, string> = {
-		green: 'bg-lane-green-foreground/60',
-		yellow: 'bg-lane-yellow-foreground/70',
-		red: 'bg-lane-red-foreground/70',
+		green: 'bg-lane-green-mark/60',
+		yellow: 'bg-lane-yellow-mark-edge/70',
+		red: 'bg-lane-red-mark/70',
 		running: 'bg-lane-running-foreground/50',
 		waiting: 'bg-muted-foreground/40'
 	};
@@ -76,8 +76,8 @@
 		green: 'border-border bg-secondary/40',
 		running: 'border-border bg-secondary/40',
 		muted: 'border-border bg-secondary/40',
-		yellow: 'border-lane-yellow-foreground/30 bg-lane-yellow/30',
-		red: 'border-lane-red-foreground/30 bg-lane-red/30'
+		yellow: 'border-lane-yellow-mark-edge/40 bg-lane-yellow/30',
+		red: 'border-lane-red-mark-edge/40 bg-lane-red/30'
 	};
 	const panelId = (node: Node) => `step-details-${node}`;
 </script>

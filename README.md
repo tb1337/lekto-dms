@@ -31,18 +31,20 @@ three lanes: green (done), yellow (confirm), red (intervene).
 
 ## Quick start
 
-**Run it with Docker** (the production shape: one image with API and worker under s6-overlay,
-plus Meilisearch, optionally Postgres and Garage): [deploy/README.md](deploy/README.md).
+**Run it with Docker** (the production shape: the image `ghcr.io/tb1337/lekto` with API and
+worker under s6-overlay, plus Meilisearch, optionally Postgres, S3, Ollama and a TLS proxy):
+the Compose examples in [docker/](docker/), operation in [deploy/README.md](deploy/README.md).
 
 ```sh
-docker build --target runtime -t lekto:local .
-cd deploy && ./create-secrets.sh && docker compose -f compose.sqlite.yml up -d --build
+cd docker
+cp .env.example .env               # fill in the secrets
+docker compose up -d
 ```
 
-Then open <http://localhost:8000/ui/> and sign in as `admin` with the password in
-`deploy/secrets/admin_password`. Point `LEKTO_LLM_BASE_URL` and `LEKTO_EMBEDDING_BASE_URL` at an
-Ollama or another OpenAI-compatible endpoint; without one, documents stop yellow for a person to
-classify and the search works with words only.
+Then open <http://localhost:8000/> and sign in as `admin` with `LEKTO_ADMIN_PASSWORD`. Point
+`LEKTO_LLM_BASE_URL` and `LEKTO_EMBEDDING_BASE_URL` in `.env` at an Ollama or another
+OpenAI-compatible endpoint (or add `compose.ollama.yml`); without one, documents stop yellow for a
+person to classify and the search works with words only.
 
 **Run it from the devcontainer** (development, or a personal instance on your machine): open the
 repository in VS Code, "Reopen in Container", run the task **Lekto: Set up dev instance**, fill
@@ -57,6 +59,7 @@ migration from Paperless: [.devcontainer/README.md](.devcontainer/README.md).
 | Document | Content |
 | --- | --- |
 | [backend/README.md](backend/README.md) | Architecture of the backend, every `LEKTO_` variable with default, role and meaning, the REST API, processing, classification, rules, search, webhooks, MCP, tests |
+| [docker/](docker/) | Compose examples with the published images: SQLite, Postgres, more workers, S3 (Garage), Ollama, Caddy, Traefik, nginx, the migration from Paperless-ngx; settings in `.env` |
 | [deploy/README.md](deploy/README.md) | The image: roles, user and volumes, health and logs, stopping, reverse proxy, backup and restore, updating |
 | [.devcontainer/README.md](.devcontainer/README.md) | Development and the development instance in the devcontainer: tasks, data separation, Ollama, memory, migration, backup |
 | [web/README.md](web/README.md) | The web UI: stack, commands, API client, CSP |

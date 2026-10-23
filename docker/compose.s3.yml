@@ -1,0 +1,123 @@
+# Extension of compose.postgres.yml: the files in S3 instead of the volume, so that API and workers
+# on several servers share them. Here a single-node Garage; with an S3 of your own (AWS, MinIO,
+# another Garage) leave out `garage` and `garage-init` and point the LEKTO_S3_* settings at it.
+#
+#   .env: GARAGE_RPC_SECRET, GARAGE_ADMIN_TOKEN, LEKTO_S3_ACCESS_KEY_ID, LEKTO_S3_SECRET_ACCESS_KEY
+#   docker compose -f compose.postgres.yml -f compose.s3.yml up -d
+#
+# Needs Docker Compose 2.23 or newer (configs with content).
+x-s3: &s3
+  LEKTO_STORAGE_TYPE: s3
+  LEKTO_S3_ENDPOINT_URL: http://garage:3900
+  LEKTO_S3_REGION: garage
+  LEKTO_S3_BUCKET: lekto
+  LEKTO_S3_ACCESS_KEY_ID: ${LEKTO_S3_ACCESS_KEY_ID:?set LEKTO_S3_ACCESS_KEY_ID in .env}
+  LEKTO_S3_SECRET_ACCESS_KEY: ${LEKTO_S3_SECRET_ACCESS_KEY:?set LEKTO_S3_SECRET_ACCESS_KEY in .env}
+
+services:
+  lekto:
+    environment: *s3
+    depends_on:
+      garage-init:
+        condition: service_completed_successfully
+
+  lekto-worker:
+    environment: *s3
+    depends_on:
+      garage-init:
+        condition: service_completed_successfully
+
+  garage:
+    image: dxflrs/garage:v2.4.1
+    restart: unless-stopped
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?set GARAGE_RPC_SECRET in .env}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:?set GARAGE_ADMIN_TOKEN in .env}
+    configs:
+      - source: garage
+        target: /etc/garage.toml
+    volumes:
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+
+  # Creates layout, access key and bucket once; safe to run on every start.
+  garage-init:
+    build:
+      dockerfile_inline: |
+        FROM alpine:3.24.2
+        RUN apk add --no-cache curl jq
+    restart: "no"
+    command: ["sh", "/garage-init"]
+    environment:
+      GARAGE_ADMIN_URL: http://garage:3903
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:?set GARAGE_ADMIN_TOKEN in .env}
+      LEKTO_S3_ACCESS_KEY_ID: ${LEKTO_S3_ACCESS_KEY_ID:?set LEKTO_S3_ACCESS_KEY_ID in .env}
+      LEKTO_S3_SECRET_ACCESS_KEY: ${LEKTO_S3_SECRET_ACCESS_KEY:?set LEKTO_S3_SECRET_ACCESS_KEY in .env}
+      LEKTO_S3_BUCKET: lekto
+    configs:
+      - source: garage-init
+        target: /garage-init
+    depends_on:
+      - garage
+
+configs:
+  garage:
+    content: |
+      metadata_dir = "/var/lib/garage/meta"
+      data_dir = "/var/lib/garage/data"
+      db_engine = "sqlite"
+      replication_factor = 1
+      rpc_bind_addr = "0.0.0.0:3901"
+      rpc_public_addr = "127.0.0.1:3901"
+
+      [s3_api]
+      s3_region = "garage"
+      api_bind_addr = "0.0.0.0:3900"
+
+      [admin]
+      api_bind_addr = "0.0.0.0:3903"
+
+  # A shell script inside a Compose file: every $ of the script is written $$.
+  garage-init:
+    content: |
+      set -eu
+      api() {
+        if [ -n "$${3:-}" ]; then
+          curl -fsS -X "$$1" -H "Authorization: Bearer $$GARAGE_ADMIN_TOKEN" \
+            -H "Content-Type: application/json" -d "$$3" "$$GARAGE_ADMIN_URL$$2"
+        else
+          curl -fsS -X "$$1" -H "Authorization: Bearer $$GARAGE_ADMIN_TOKEN" "$$GARAGE_ADMIN_URL$$2"
+        fi
+      }
+      exists() {
+        [ "$$(curl -sS -o /dev/null -w '%{http_code}' \
+          -H "Authorization: Bearer $$GARAGE_ADMIN_TOKEN" "$$GARAGE_ADMIN_URL$$1")" = 200 ]
+      }
+      tries=0
+      until api GET /v2/GetClusterStatus >/dev/null 2>&1; do
+        tries=$$((tries + 1)); [ "$$tries" -lt 60 ] || { echo "Garage is not ready" >&2; exit 1; }
+        sleep 1
+      done
+      layout=$$(api GET /v2/GetClusterLayout)
+      if [ "$$(echo "$$layout" | jq '.roles | length')" -eq 0 ]; then
+        node=$$(api GET /v2/GetClusterStatus | jq -r '.nodes[0].id')
+        version=$$(echo "$$layout" | jq '.version + 1')
+        api POST /v2/UpdateClusterLayout \
+          "{\"roles\": [{\"id\": \"$$node\", \"zone\": \"lekto\", \"capacity\": 1000000000000, \"tags\": []}]}" >/dev/null
+        api POST /v2/ApplyClusterLayout "{\"version\": $$version}" >/dev/null
+      fi
+      if ! exists "/v2/GetKeyInfo?id=$$LEKTO_S3_ACCESS_KEY_ID"; then
+        api POST /v2/ImportKey \
+          "{\"name\": \"lekto\", \"accessKeyId\": \"$$LEKTO_S3_ACCESS_KEY_ID\", \"secretAccessKey\": \"$$LEKTO_S3_SECRET_ACCESS_KEY\"}" >/dev/null
+      fi
+      if ! exists "/v2/GetBucketInfo?globalAlias=$$LEKTO_S3_BUCKET"; then
+        api POST /v2/CreateBucket "{\"globalAlias\": \"$$LEKTO_S3_BUCKET\"}" >/dev/null
+      fi
+      bucket=$$(api GET "/v2/GetBucketInfo?globalAlias=$$LEKTO_S3_BUCKET" | jq -r '.id')
+      api POST /v2/AllowBucketKey \
+        "{\"bucketId\": \"$$bucket\", \"accessKeyId\": \"$$LEKTO_S3_ACCESS_KEY_ID\", \"permissions\": {\"read\": true, \"write\": true, \"owner\": true}}" >/dev/null
+      echo "Garage is ready: bucket $$LEKTO_S3_BUCKET"
+
+volumes:
+  garage-meta:
+  garage-data:

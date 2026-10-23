@@ -1,0 +1,41 @@
+# Extension of compose.yml or compose.postgres.yml: a local Ollama for the language model and the
+# embeddings, so no document content leaves this machine. `ollama-models` pulls the two models of
+# .env.example at the first start (several GB).
+#
+#   .env: LEKTO_LLM_BASE_URL=http://ollama:11434/v1 and LEKTO_EMBEDDING_BASE_URL=http://ollama:11434/v1
+#   docker compose -f compose.yml -f compose.ollama.yml up -d
+#
+# On a CPU a document takes minutes. An NVIDIA GPU: uncomment `deploy` (needs the NVIDIA
+# Container Toolkit on the host).
+services:
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    environment:
+      # Ollama cuts longer prompts silently; Lekto's need 8192 tokens.
+      OLLAMA_CONTEXT_LENGTH: 8192
+    volumes:
+      - ollama-models:/root/.ollama
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  ollama-models:
+    image: ollama/ollama:latest
+    restart: "no"
+    entrypoint: ["sh", "-c"]
+    command:
+      - ollama pull "$$LLM" && ollama pull "$$EMBEDDING"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      LLM: ${LEKTO_LLM_MODEL:-qwen3:8b}
+      EMBEDDING: ${LEKTO_EMBEDDING_MODEL:-snowflake-arctic-embed2}
+    depends_on:
+      - ollama
+
+volumes:
+  ollama-models:

@@ -23,29 +23,47 @@ docker build --target runtime -t lekto:local .     # in the repository root
 deploy/test-image.sh lekto:local                   # a few minutes: starts, migrates, health, user, web UI, roles, stop
 ```
 
-Publishing the image comes with the release (M13); until then you build it yourself.
+Each release publishes the image on ghcr.io (`.github/workflows/release.yml`), for `amd64` and
+`arm64`, together with the migration client:
+
+| Image | Content |
+| --- | --- |
+| `ghcr.io/tb1337/lekto` | Lekto with API and worker (`LEKTO_ROLE`) |
+| `ghcr.io/tb1337/lekto-migration` | the migration client from Paperless-ngx ([migration/README.md](../migration/README.md)) |
+
+Tags: every release its version (`0.6.0`); `beta` the newest beta (a version below 1.0, or with a
+pre-release such as `1.2.0-beta.1`), `stable` the newest stable release, `latest` the newest stable
+release and, while there is none, the newest beta. The image knows its version (`LEKTO_VERSION`,
+set from the tag): the API description, the MCP server and the processing log name it. Building
+it yourself (above) is for development.
 
 ## Start an example stack
 
-Two Compose files, both with Meilisearch; the language model is outside (see
-[Language model](#language-model)).
+The Compose examples are in [docker/](../docker/), all with `ghcr.io/tb1337/lekto:latest` and
+Meilisearch; the language model is outside unless you add Ollama (see
+[Language model](#language-model)). Settings and secrets come from one file `docker/.env`
+(template `docker/.env.example`); the examples need Docker Compose 2.24 or newer.
 
-| File | Database | Files | Volumes |
-| --- | --- | --- | --- |
-| `compose.sqlite.yml` | SQLite | file system | `lekto-data` (`/data`), `meilisearch-data` |
-| `compose.postgres.yml` | Postgres 17 | Garage (S3) | `postgres-data`, `garage-meta`, `garage-data`, `meilisearch-data` |
+| File | What |
+| --- | --- |
+| `compose.yml` | one container (`LEKTO_ROLE=all`), SQLite and the files on the volume `lekto-data` |
+| `compose.postgres.yml` | Postgres; API and worker in containers of their own; the files on `lekto-data` |
+| `compose.workers.yml` | with `compose.postgres.yml`: three workers |
+| `compose.s3.yml` | with `compose.postgres.yml`: the files in Garage (S3), for several servers |
+| `compose.ollama.yml` | a local Ollama for the language model and the embeddings |
+| `compose.caddy.yml`, `compose.traefik.yml`, `compose.nginx.yml` | a TLS proxy in front (see [Reverse proxy](#reverse-proxy)) |
+| `compose.migration.yml` | the migration from Paperless-ngx with `lekto-migration` |
 
 ```sh
-cd deploy
-./create-secrets.sh                                    # once: ./secrets (not in the repository)
-docker compose -f compose.sqlite.yml up -d --build     # or compose.postgres.yml
-docker compose -f compose.sqlite.yml ps                # wait for "healthy"
+cd docker
+cp .env.example .env                                   # once; fill in the values
+docker compose up -d                                   # or: -f compose.postgres.yml (and extensions)
+docker compose ps                                      # wait for "healthy"
 ```
 
-Open <http://localhost:8000/api/v1/docs> (another port: `LEKTO_HTTP_PORT=8080 docker compose …`).
-Sign in as `admin`; the password is in `secrets/admin_password`. The stacks publish the port on
-`127.0.0.1` only and run over plain HTTP (`LEKTO_COOKIE_SECURE=false`): put a TLS proxy in front
-before anyone else uses it (see [Reverse proxy](#reverse-proxy)).
+Open <http://localhost:8000/> (another port: `HTTP_PORT` in `.env`). Sign in as `admin` with
+`LEKTO_ADMIN_PASSWORD`. Without a proxy the examples publish the port on `127.0.0.1` only and run
+over plain HTTP (`LEKTO_COOKIE_SECURE=false`): put a TLS proxy in front before anyone else uses it.
 
 ## Configuration
 
@@ -55,24 +73,23 @@ up` without `-d`, or `docker compose logs lekto`). A running container prints it
 configuration, secrets masked, with `docker compose exec lekto lekto-run lekto check`. The complete list is
 in [backend/README.md](../backend/README.md#configuration).
 
-**Secrets** are passed as files (Docker secrets): `LEKTO_<NAME>_FILE=/run/secrets/…`; the file's
-content is the value, and setting both `LEKTO_<NAME>` and `LEKTO_<NAME>_FILE` is an error. The files
-must be readable by `PUID`:`PGID`, because the services read them as that user.
-Pass secrets only this way: a secret in a plain `LEKTO_…` variable is also stored, readable by
-every process, in `/run/s6/container_environment` inside the container, and shows in `docker inspect`.
-`create-secrets.sh` writes them with random values (`openssl rand`), keeps files that exist, and
-gives Garage's two secrets the mode `0600` it insists on. By hand:
+**Secrets** come either as plain variables or as files. The examples in `docker/` pass them as
+variables from `.env`: simple, but such a value is also stored, readable by every process, in
+`/run/s6/container_environment` inside the container, and shows in `docker inspect`. Where others
+can inspect your containers, pass them as files (Docker secrets): `LEKTO_<NAME>_FILE=/run/secrets/…`;
+the file's content is the value, and setting both `LEKTO_<NAME>` and `LEKTO_<NAME>_FILE` is an
+error. The files must be readable by `PUID`:`PGID`, because the services read them as that user.
+Generate the values with `openssl`:
 
 ```sh
-openssl rand -base64 32 > secrets/lekto_secret_key   # LEKTO_SECRET_KEY: 32 random bytes, base64
+openssl rand -base64 32                              # LEKTO_SECRET_KEY: 32 random bytes, base64
 ```
 
 `LEKTO_SECRET_KEY` is required by every service (it encrypts TOTP and webhook secrets). Losing it
 means losing both. The key from `.devcontainer/compose.yml` is public and refused with secure cookies
 (the default; the example stacks run with `LEKTO_COOKIE_SECURE=false` and would take it, so never
-copy it). Meilisearch has no
-`*_FILE` variable: its key reaches it through `secrets/meilisearch.env`, the one secret that is an
-environment variable of a container (visible in `docker inspect` of Meilisearch, not of Lekto).
+copy it). Meilisearch has no `*_FILE` variable: its key is always an environment variable of its
+container (`MEILI_MASTER_KEY`).
 
 | Variable | Default | Notes |
 | --- | --- | --- |
@@ -104,8 +121,9 @@ Variables of the image itself (not `LEKTO_`, so not checked as settings): `PUID`
 Lekto talks to any OpenAI-compatible endpoint; the examples point at Ollama on the host
 (`host.docker.internal:11434`) and use `qwen3:8b` and `snowflake-arctic-embed2`. Change the address
 with `LEKTO_LLM_BASE_URL`, `LEKTO_EMBEDDING_BASE_URL` and the models with `LEKTO_LLM_MODEL`,
-`LEKTO_EMBEDDING_MODEL` in your shell (empty: none). Start Ollama with `OLLAMA_CONTEXT_LENGTH=8192`
-or more; it cuts longer prompts silently. On a CPU a document takes minutes (`LEKTO_LLM_TIMEOUT`
+`LEKTO_EMBEDDING_MODEL` in `docker/.env` (empty: none); `compose.ollama.yml` runs Ollama next to
+Lekto. Start Ollama with `OLLAMA_CONTEXT_LENGTH=8192` or more (the extension does); it cuts longer
+prompts silently. On a CPU a document takes minutes (`LEKTO_LLM_TIMEOUT`
 is 600 in the examples). Document content is sent to these endpoints; at start, a warning names
 every endpoint outside the local network.
 
@@ -201,6 +219,12 @@ session cookie is `Secure`). Then name the proxy: `LEKTO_FORWARDED_ALLOW_IPS` ta
 send); Lekto counts failed sign-ins per client address from that header, and refuses to start
 with secure cookies and without it. With OIDC set `LEKTO_PUBLIC_URL`.
 
+`docker/` has three ready extensions: `compose.caddy.yml` (certificate from Let's Encrypt by
+itself), `compose.traefik.yml` (labels, Let's Encrypt) and `compose.nginx.yml` (a certificate you
+bring). Each closes Lekto's own port, so that only the proxy reaches it, and then trusts every
+address in front (`LEKTO_FORWARDED_ALLOW_IPS=*`): all three replace what clients send in
+`X-Forwarded-For`.
+
 The web UI is at `/ui/` (`/` leads there). Lekto sets its cache headers: files below
 `/ui/_app/immutable/` carry a hash in their name and may be cached for a year, everything else
 (`no-cache`) is revalidated on every load, so an update shows at once. A proxy cache keeps these
@@ -265,55 +289,72 @@ still usable, and reprocessing the document renews it.
 Do not copy `lekto.db` while Lekto runs: with WAL, the content is partly in `lekto.db-wal`. Use
 SQLite's backup, which Python in the image provides (no `sqlite3` program needed):
 
+In `docker/`, with `compose.yml`:
+
 ```sh
 mkdir backup                       # a new, empty folder for each backup
 # -u is your PUID:PGID: SQLite needs write access to the volume for its shared-memory file.
-docker compose -f compose.sqlite.yml exec -u 1000:1000 lekto python -c "
+docker compose exec -u 1000:1000 lekto python -c "
 import sqlite3
 source = sqlite3.connect('/data/lekto.db')
 target = sqlite3.connect('/tmp/lekto-backup.db')
 source.backup(target)
 target.close()"
-docker compose -f compose.sqlite.yml cp lekto:/tmp/lekto-backup.db backup/lekto.db
-docker compose -f compose.sqlite.yml exec lekto rm /tmp/lekto-backup.db
-docker compose -f compose.sqlite.yml cp lekto:/data/objects backup/
+docker compose cp lekto:/tmp/lekto-backup.db backup/lekto.db
+docker compose exec lekto rm /tmp/lekto-backup.db
+docker compose cp lekto:/data/objects backup/
 ```
 
 Restore into an empty or existing stack (the database and the objects in the volume are replaced):
 
 ```sh
-docker compose -f compose.sqlite.yml down                    # keeps the volumes
-docker run --rm -v lekto-sqlite_lekto-data:/data -v "$PWD/backup:/backup:ro" alpine:3.24.2 sh -c '
+docker compose down                                          # keeps the volumes
+docker run --rm -v lekto_lekto-data:/data -v "$PWD/backup:/backup:ro" alpine:3.24.2 sh -c '
   rm -rf /data/lekto.db /data/lekto.db-wal /data/lekto.db-shm /data/objects &&
   cp /backup/lekto.db /data/lekto.db && cp -a /backup/objects /data/objects &&
   chown -R 1000:1000 /data'                                  # PUID:PGID
-docker compose -f compose.sqlite.yml up -d
-docker compose -f compose.sqlite.yml exec lekto lekto-run lekto reindex   # rebuild the search index
+docker compose up -d
+docker compose exec lekto lekto-run lekto reindex            # rebuild the search index
 ```
 
-### Postgres and Garage
+### Postgres
+
+In `docker/`, with `compose.postgres.yml` (`P` for short); the files lie on the volume
+`lekto-data` as with SQLite:
 
 ```sh
+P="-f compose.postgres.yml"
 mkdir -p backup
-docker compose -f compose.postgres.yml exec -T postgres pg_dump -U lekto -Fc lekto > backup/lekto.dump
-# Objects: Garage's two volumes, with Garage stopped (a consistent copy of its metadata).
-docker compose -f compose.postgres.yml stop garage
-docker run --rm -v lekto-postgres_garage-meta:/meta:ro -v lekto-postgres_garage-data:/data:ro \
-  -v "$PWD/backup:/backup" alpine:3.24.2 tar -C / -czf /backup/garage.tar.gz meta data
-docker compose -f compose.postgres.yml start garage
+docker compose $P exec -T postgres pg_dump -U lekto -Fc lekto > backup/lekto.dump
+docker compose $P cp lekto:/data/objects backup/
 ```
 
-Restore into a stack with the same Compose secrets (Garage's key, Postgres password):
+Restore into a stack with the same `.env` (the Postgres password):
 
 ```sh
-docker compose -f compose.postgres.yml down
-docker compose -f compose.postgres.yml up -d postgres
-docker compose -f compose.postgres.yml exec -T postgres pg_restore -U lekto -d lekto \
+docker compose $P down
+docker compose $P up -d postgres
+docker compose $P exec -T postgres pg_restore -U lekto -d lekto \
   --clean --if-exists --no-owner < backup/lekto.dump
-docker run --rm -v lekto-postgres_garage-meta:/meta -v lekto-postgres_garage-data:/data \
+docker run --rm -v lekto_lekto-data:/data -v "$PWD/backup:/backup:ro" alpine:3.24.2 sh -c '
+  rm -rf /data/objects && cp -a /backup/objects /data/objects && chown -R 1000:1000 /data'
+docker compose $P up -d
+docker compose $P exec lekto lekto-run lekto reindex
+```
+
+With `compose.s3.yml` the objects are in Garage's two volumes; copy them with Garage stopped
+(a consistent copy of its metadata), and restore them into a stack with the same `.env` (Garage's
+key):
+
+```sh
+P="-f compose.postgres.yml -f compose.s3.yml"
+docker compose $P stop garage
+docker run --rm -v lekto_garage-meta:/meta:ro -v lekto_garage-data:/data:ro \
+  -v "$PWD/backup:/backup" alpine:3.24.2 tar -C / -czf /backup/garage.tar.gz meta data
+docker compose $P start garage
+# restore: with the stack down
+docker run --rm -v lekto_garage-meta:/meta -v lekto_garage-data:/data \
   -v "$PWD/backup:/backup:ro" alpine:3.24.2 sh -c 'rm -rf /meta/* /data/* && tar -C / -xzf /backup/garage.tar.gz'
-docker compose -f compose.postgres.yml up -d
-docker compose -f compose.postgres.yml exec lekto lekto-run lekto reindex
 ```
 
 Another S3 server or an external Postgres: use its own tools (`pg_dump`, `rclone sync`); the order
@@ -321,8 +362,8 @@ stays the same. Test a restore before you need it.
 
 ## Updating
 
-Build or pull the new image and `docker compose up -d`: the API container migrates the database
-before it starts. A schema upgrade cannot be undone; back up first. With separate containers,
+`docker compose pull` and `docker compose up -d` (with the same `-f` files): the API container
+migrates the database before it starts. To stay on a version, use its tag instead of `latest`. A schema upgrade cannot be undone; back up first. With separate containers,
 update the API container first: a worker that starts waits for the schema, and a database that a
 newer image migrated is refused by an older one.
 
@@ -350,7 +391,8 @@ installation needs these steps once, with the containers stopped and a backup ma
 - **Configuration.** Rename every `PAPIQ_` variable to `LEKTO_`, the `_FILE` variants too. A
   variable still called `PAPIQ_…` is ignored: with SQLite, a missing path starts an empty
   database.
-- **Compose.** The example stacks now use the projects `lekto-sqlite` and `lekto-postgres`, the
+- **Compose.** (The examples of 0.5.0; since 0.6.0 they are in `docker/`, project `lekto`, settings
+  in `.env`.) The example stacks of 0.5.0 use the projects `lekto-sqlite` and `lekto-postgres`, the
   service `lekto`, the volume `lekto-data`, database, user and bucket `lekto`, the image
   `lekto:local` and the secret `secrets/lekto_secret_key` (`mv secrets/papiq_secret_key
   secrets/lekto_secret_key`). Compose names volumes after the project (`papiq-sqlite_papiq-data`):

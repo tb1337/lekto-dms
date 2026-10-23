@@ -1,0 +1,9 @@
+# Extension of compose.postgres.yml: three workers instead of one. They share the queue in
+# Postgres (each job goes to one worker) and the files on the volume, or in S3 with compose.s3.yml.
+# A worker on another server needs Postgres, S3 and Meilisearch reachable from there.
+#
+#   docker compose -f compose.postgres.yml -f compose.workers.yml up -d
+services:
+  lekto-worker:
+    deploy:
+      replicas: 3

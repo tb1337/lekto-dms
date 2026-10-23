@@ -1,0 +1,4 @@
+# The scripts of the workflows: the line length of the rest of the repository; the runners have
+# Python 3.12.
+line-length = 100
+target-version = "py312"

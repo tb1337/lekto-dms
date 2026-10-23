@@ -3,7 +3,7 @@
   "info": {
     "title": "Lekto DMS API",
     "description": "Lekto is a headless document management system; this API is the only way in.\n\nErrors are problem details (RFC 9457, `application/problem+json`).\n\nAuthentication: a session cookie from `POST /auth/login` (web UI; changing requests also send\nthe header `X-CSRF-Token`) or a personal API token as `Authorization: Bearer lekto_…`. Every\nendpoint needs one of them (401 without), except health and the sign-in endpoints: `POST\n/auth/login` and, below `/auth/oidc`, information, start and callback. A `read` token may only\nread (403). The own sign-in (password, sessions, TOTP, API tokens, provider links) and\ncreating users or resetting their sign-in need a session; a token gets 403 there. Documents\nand spaces the caller may not see are \"not found\" (404), the same as ones that do not exist.\n\nThe same services are available to AI clients over MCP (Streamable HTTP, stateless) at\n`/api/v1/mcp`, with the same API tokens as bearer; it is not part of this OpenAPI document.\nTools: `search`, `get_document`, `get_text`, `update_metadata` (needs a `read_write` token),\n`list_tags`.\n",
-    "version": "0.1.0"
+    "version": "0.0.0.dev0"
   },
   "paths": {
     "/api/v1/auth/login": {

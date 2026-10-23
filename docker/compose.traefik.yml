@@ -1,0 +1,47 @@
+# Extension of compose.yml or compose.postgres.yml: Traefik in front, configured by the labels of
+# the Lekto service, with a certificate from Let's Encrypt (HTTP challenge). Lekto is then reached
+# only through Traefik (its own port is closed). Already run a Traefik? Keep only the labels and
+# put Lekto into its network.
+#
+#   .env: DOMAIN (its DNS entry points to this machine; ports 80 and 443 open), ACME_EMAIL
+#   docker compose -f compose.yml -f compose.traefik.yml up -d
+#
+# Traefik streams the events and drops the X-Forwarded-For a client sends, so Lekto may trust
+# every address in front of it. Needs Docker Compose 2.24 or newer (!reset).
+services:
+  lekto:
+    ports: !reset []
+    environment:
+      LEKTO_COOKIE_SECURE: "true"
+      LEKTO_FORWARDED_ALLOW_IPS: "*"
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.lekto.rule: Host(`${DOMAIN:?set DOMAIN in .env}`)
+      traefik.http.routers.lekto.entrypoints: websecure
+      traefik.http.routers.lekto.tls.certresolver: letsencrypt
+      traefik.http.services.lekto.loadbalancer.server.port: "8000"
+
+  traefik:
+    image: traefik:v3
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?set ACME_EMAIL in .env}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-letsencrypt:/letsencrypt
+    depends_on:
+      - lekto
+
+volumes:
+  traefik-letsencrypt:

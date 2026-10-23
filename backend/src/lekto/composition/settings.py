@@ -512,13 +512,16 @@ def _missing(settings: Settings, selector: str, *names: str) -> list[str]:
 # development instance; they are no settings of Lekto itself.
 MIGRATION_PREFIX = ENV_PREFIX + "MIGRATION_"
 
+# The version the image sets from the tag of its release (`lekto.__version__`); no setting.
+VERSION_VARIABLE = ENV_PREFIX + "VERSION"
+
 
 def find_unknown_variables(environ: Mapping[str, str] | None = None) -> list[str]:
     """`LEKTO_` variables that match no setting; usually typos. The migration client's
-    `LEKTO_MIGRATION_*` are left alone."""
+    `LEKTO_MIGRATION_*` and the image's `LEKTO_VERSION` are left alone."""
     environ = os.environ if environ is None else environ
     secrets = {_env(name) + FILE_SUFFIX for name in _secret_fields(Settings)}
-    known = {_env(name) for name in Settings.model_fields} | secrets
+    known = {_env(name) for name in Settings.model_fields} | secrets | {VERSION_VARIABLE}
     return sorted(
         key
         for key in environ

@@ -40,7 +40,9 @@ const failed = (status: number, detail: string, spaceId: string | null = null) =
 			space_id: spaceId,
 			open_fields: null,
 			blocking_spaces: null,
-			second_factor_required: null
+			second_factor_required: null,
+			reason: null,
+			errors: null
 		},
 		null
 	);

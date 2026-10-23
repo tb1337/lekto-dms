@@ -5315,7 +5315,99 @@ export interface components {
 			| 'vector_misfit'
 			| 'no_uploader'
 			| 'index_unavailable'
-			| 'no_similar';
+			| 'no_similar'
+			| 'input_missing'
+			| 'input_too_short'
+			| 'input_too_long'
+			| 'input_too_few'
+			| 'input_too_many'
+			| 'input_too_small'
+			| 'input_above'
+			| 'input_too_large'
+			| 'input_below'
+			| 'input_choice'
+			| 'input_not_id'
+			| 'input_not_date'
+			| 'input_not_datetime'
+			| 'input_not_number'
+			| 'input_not_integer'
+			| 'input_not_boolean'
+			| 'input_not_text'
+			| 'input_not_list'
+			| 'input_not_object'
+			| 'input_unknown'
+			| 'input_pattern'
+			| 'input_invalid'
+			| 'in_use'
+			| 'name_taken'
+			| 'topic_carried'
+			| 'choices_in_use'
+			| 'values_outside_scope'
+			| 'title_pattern_uses_field'
+			| 'type_has_values'
+			| 'tag_has_children'
+			| 'tag_has_contacts'
+			| 'tag_has_types'
+			| 'topic_enabled_by'
+			| 'tag_used_by_rules'
+			| 'field_used_by_patterns'
+			| 'field_used_by_rules'
+			| 'field_key_taken'
+			| 'identifier_of_person'
+			| 'identifier_of_contact'
+			| 'profile_identifier_of_contact'
+			| 'name_of_contact'
+			| 'name_too_close'
+			| 'logo_uploaded'
+			| 'logo_type'
+			| 'logo_upload_type'
+			| 'training_needs_examples'
+			| 'rule_follows_type'
+			| 'personal_space_undeletable'
+			| 'space_not_empty'
+			| 'space_name_taken'
+			| 'no_write_access_to_space'
+			| 'username_taken'
+			| 'last_admin'
+			| 'user_deletion_blocked'
+			| 'display_name_taken'
+			| 'username_of_other'
+			| 'lenses_limit'
+			| 'webhooks_limit'
+			| 'open_fields'
+			| 'duplicate_of'
+			| 'duplicate_unseen'
+			| 'no_text_yet'
+			| 'no_structure_yet'
+			| 'being_processed'
+			| 'only_failed_retried'
+			| 'receive_not_repeatable'
+			| 'not_waiting_for_confirmation'
+			| 'still_running'
+			| 'no_text_to_extract'
+			| 'no_vision_model'
+			| 'cannot_skip'
+			| 'uncertain_before_filing'
+			| 'invalid_credentials'
+			| 'invalid_one_time_code'
+			| 'second_factor_required'
+			| 'account_inactive'
+			| 'authentication_required'
+			| 'session_expired'
+			| 'token_invalid'
+			| 'wrong_password'
+			| 'totp_already_on'
+			| 'no_totp_setup'
+			| 'totp_off'
+			| 'code_invalid'
+			| 'read_only_token'
+			| 'csrf_missing'
+			| 'session_needed'
+			| 'oidc_mismatch'
+			| 'oidc_relink'
+			| 'oidc_linked_elsewhere'
+			| 'oidc_no_account'
+			| 'oidc_password_first';
 		/**
 		 * ReasonOut
 		 * @description A reason with its code: a client translates `code` with `params`; the English text
@@ -6816,6 +6908,26 @@ export interface components {
 			[key: string]: unknown;
 		};
 		/**
+		 * InputErrorOut
+		 * @description What is wrong with one part of a request.
+		 */
+		InputErrorOut: {
+			/**
+			 * Field
+			 * @description The part of the body or query, its path joined by `.` (`name`, `fields.<id>`, `body` for the whole).
+			 * @example name
+			 */
+			field: string;
+			/**
+			 * Message
+			 * @description In English.
+			 * @example String should have at most 200 characters
+			 */
+			message: string;
+			/** @description The same with its code. */
+			reason: components['schemas']['ReasonOut'];
+		};
+		/**
 		 * Problem
 		 * @description What went wrong. `type` is `about:blank`: `title` and `status` say it all.
 		 */
@@ -6871,6 +6983,17 @@ export interface components {
 			 * @default null
 			 */
 			second_factor_required: boolean | null;
+			/**
+			 * @description `detail` with its code, where the error has one (issue #83): a client translates `code` with `params`; without it, `detail` stands as it is.
+			 * @default null
+			 */
+			reason: components['schemas']['ReasonOut'] | null;
+			/**
+			 * Errors
+			 * @description A request that does not fit (422): what is wrong with each part.
+			 * @default null
+			 */
+			errors: components['schemas']['InputErrorOut'][] | null;
 		};
 	};
 	responses: never;

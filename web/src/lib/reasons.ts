@@ -8,6 +8,7 @@ import type { components } from '#lib/api/schema.ts';
 import { fieldLabel } from '#lib/describe.ts';
 import { formatDate, formatNumber, getLocale, regionalLocale } from '#lib/i18n.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
+import { NODE_LABELS } from '#lib/node-labels.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 export type Reason = components['schemas']['ReasonOut'];
@@ -15,7 +16,17 @@ export type ReasonCode = components['schemas']['ReasonCode'];
 
 /** How the API writes a parameter (`x-reasons`); a parameter without one is text. */
 export type ReasonKind =
-	'number' | 'percent' | 'date' | 'value' | 'names' | 'fields' | 'rule_values' | 'path' | 'reason';
+	| 'number'
+	| 'percent'
+	| 'date'
+	| 'value'
+	| 'names'
+	| 'fields'
+	| 'rule_values'
+	| 'path'
+	| 'reason'
+	| 'list'
+	| 'nodes';
 
 /** A message of `#lib/paraglide/messages.js`, whatever it takes. */
 type Message = (inputs: never) => string;
@@ -173,7 +184,102 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	vector_misfit: entry(m.reason_vector_misfit),
 	no_uploader: entry(m.reason_no_uploader),
 	index_unavailable: entry(m.reason_index_unavailable),
-	no_similar: entry(m.reason_no_similar)
+	no_similar: entry(m.reason_no_similar),
+	input_missing: entry(m.reason_input_missing),
+	input_too_short: entry(m.reason_input_too_short, { min: 'number' }),
+	input_too_long: entry(m.reason_input_too_long, { max: 'number' }),
+	input_too_few: entry(m.reason_input_too_few, { min: 'number' }),
+	input_too_many: entry(m.reason_input_too_many, { max: 'number' }),
+	input_too_small: entry(m.reason_input_too_small, { min: 'number' }),
+	input_above: entry(m.reason_input_above, { min: 'number' }),
+	input_too_large: entry(m.reason_input_too_large, { max: 'number' }),
+	input_below: entry(m.reason_input_below, { max: 'number' }),
+	input_choice: entry(m.reason_input_choice),
+	input_not_id: entry(m.reason_input_not_id),
+	input_not_date: entry(m.reason_input_not_date),
+	input_not_datetime: entry(m.reason_input_not_datetime),
+	input_not_number: entry(m.reason_input_not_number),
+	input_not_integer: entry(m.reason_input_not_integer),
+	input_not_boolean: entry(m.reason_input_not_boolean),
+	input_not_text: entry(m.reason_input_not_text),
+	input_not_list: entry(m.reason_input_not_list),
+	input_not_object: entry(m.reason_input_not_object),
+	input_unknown: entry(m.reason_input_unknown),
+	input_pattern: entry(m.reason_input_pattern),
+	input_invalid: entry(m.reason_input_invalid),
+	in_use: entry(m.reason_in_use),
+	name_taken: entry(m.reason_name_taken),
+	topic_carried: entry(m.reason_topic_carried),
+	choices_in_use: entry(m.reason_choices_in_use, { choices: 'list' }),
+	values_outside_scope: entry(m.reason_values_outside_scope),
+	title_pattern_uses_field: entry(m.reason_title_pattern_uses_field),
+	type_has_values: entry(m.reason_type_has_values),
+	tag_has_children: entry(m.reason_tag_has_children),
+	tag_has_contacts: entry(m.reason_tag_has_contacts),
+	tag_has_types: entry(m.reason_tag_has_types),
+	topic_enabled_by: entry(m.reason_topic_enabled_by, { contacts: 'list' }),
+	tag_used_by_rules: entry(m.reason_tag_used_by_rules, { rules: 'list' }),
+	field_used_by_patterns: entry(m.reason_field_used_by_patterns, { types: 'list' }),
+	field_used_by_rules: entry(m.reason_field_used_by_rules, { rules: 'list' }),
+	field_key_taken: entry(m.reason_field_key_taken),
+	identifier_of_person: entry(m.reason_identifier_of_person),
+	identifier_of_contact: entry(m.reason_identifier_of_contact),
+	profile_identifier_of_contact: entry(m.reason_profile_identifier_of_contact),
+	name_of_contact: entry(m.reason_name_of_contact),
+	name_too_close: entry(m.reason_name_too_close),
+	logo_uploaded: entry(m.reason_logo_uploaded),
+	logo_type: entry(m.reason_logo_type),
+	logo_upload_type: entry(m.reason_logo_upload_type),
+	training_needs_examples: entry(m.reason_training_needs_examples, {
+		confirmed: 'number',
+		needed: 'number'
+	}),
+	rule_follows_type: entry(m.reason_rule_follows_type),
+	personal_space_undeletable: entry(m.reason_personal_space_undeletable),
+	space_not_empty: entry(m.reason_space_not_empty),
+	space_name_taken: entry(m.reason_space_name_taken),
+	no_write_access_to_space: entry(m.reason_no_write_access_to_space),
+	username_taken: entry(m.reason_username_taken),
+	last_admin: entry(m.reason_last_admin),
+	user_deletion_blocked: entry(m.reason_user_deletion_blocked, { spaces: 'list' }),
+	display_name_taken: entry(m.reason_display_name_taken),
+	username_of_other: entry(m.reason_username_of_other),
+	lenses_limit: entry(m.reason_lenses_limit, { max: 'number' }),
+	webhooks_limit: entry(m.reason_webhooks_limit, { max: 'number' }),
+	open_fields: entry(m.reason_open_fields, { fields: 'fields' }),
+	duplicate_of: entry(m.reason_duplicate_of),
+	duplicate_unseen: entry(m.reason_duplicate_unseen),
+	no_text_yet: entry(m.reason_no_text_yet),
+	no_structure_yet: entry(m.reason_no_structure_yet),
+	being_processed: entry(m.reason_being_processed),
+	only_failed_retried: entry(m.reason_only_failed_retried),
+	receive_not_repeatable: entry(m.reason_receive_not_repeatable),
+	not_waiting_for_confirmation: entry(m.reason_not_waiting_for_confirmation),
+	still_running: entry(m.reason_still_running, { nodes: 'nodes' }),
+	no_text_to_extract: entry(m.reason_no_text_to_extract),
+	no_vision_model: entry(m.reason_no_vision_model),
+	cannot_skip: entry(m.reason_cannot_skip, { nodes: 'nodes' }),
+	uncertain_before_filing: entry(m.reason_uncertain_before_filing),
+	invalid_credentials: entry(m.reason_invalid_credentials),
+	invalid_one_time_code: entry(m.reason_invalid_one_time_code),
+	second_factor_required: entry(m.reason_second_factor_required),
+	account_inactive: entry(m.reason_account_inactive),
+	authentication_required: entry(m.reason_authentication_required),
+	session_expired: entry(m.reason_session_expired),
+	token_invalid: entry(m.reason_token_invalid),
+	wrong_password: entry(m.reason_wrong_password),
+	totp_already_on: entry(m.reason_totp_already_on),
+	no_totp_setup: entry(m.reason_no_totp_setup),
+	totp_off: entry(m.reason_totp_off),
+	code_invalid: entry(m.reason_code_invalid),
+	read_only_token: entry(m.reason_read_only_token),
+	csrf_missing: entry(m.reason_csrf_missing),
+	session_needed: entry(m.reason_session_needed),
+	oidc_mismatch: entry(m.reason_oidc_mismatch),
+	oidc_relink: entry(m.reason_oidc_relink),
+	oidc_linked_elsewhere: entry(m.reason_oidc_linked_elsewhere),
+	oidc_no_account: entry(m.reason_oidc_no_account),
+	oidc_password_first: entry(m.reason_oidc_password_first)
 };
 
 function listLocale(): string {
@@ -225,6 +331,17 @@ function write(value: unknown, kind: ReasonKind | undefined, options: ReasonOpti
 				.join(', ');
 		case 'path':
 			return items(value).map(String).join(' → ');
+		case 'list':
+			return new Intl.ListFormat(listLocale(), { type: 'conjunction' }).format(
+				items(value).map((name) => quoted(String(name)))
+			);
+		case 'nodes':
+			return new Intl.ListFormat(listLocale(), { type: 'conjunction' }).format(
+				items(value).map((node) => {
+					const label = NODE_LABELS[String(node) as keyof typeof NODE_LABELS];
+					return label ? label() : String(node);
+				})
+			);
 		case 'reason':
 			return nested(value, options);
 		default:

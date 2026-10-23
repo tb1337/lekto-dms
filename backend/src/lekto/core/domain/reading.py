@@ -36,6 +36,7 @@ from lekto.core.domain.json_value import (
     as_text,
 )
 from lekto.core.domain.locations import Box, Location
+from lekto.core.domain.reasons import Reason, ReasonCode, because
 
 # Fewer words say too little about a page: a blank back side, a page number.
 MIN_WORDS = 10
@@ -251,10 +252,14 @@ class PageReading:
         where content was not counted (read before, or by the vision language model)."""
         return self.counted[0] >= MIN_WORDS and self.share >= threshold
 
-    def describe(self) -> str:
+    def describe(self) -> Reason:
         """Why the page counts as poorly read, for a check's reason."""
-        words = "words" if self.content is None else "content words"
-        return f"page {self.page} was poorly read ({self.share:.0%} of its {words} unsure)"
+        code = (
+            ReasonCode.PAGE_POORLY_READ
+            if self.content is None
+            else ReasonCode.PAGE_POORLY_READ_CONTENT
+        )
+        return because(code, page=self.page, share=round(self.share, 4))
 
     def to_json(self) -> JsonObject:
         output: JsonObject = {"page": self.page, "words": self.words, "unsure": self.unsure}
@@ -439,11 +444,10 @@ class Surroundings:
         words around it unsure."""
         return bool(self.words) and self.unsure >= SURROUNDING_POOR
 
-    def describe(self) -> str:
+    def describe(self) -> Reason:
         """Why the value's place counts as poorly read, for a check's reason."""
-        return (
-            f"the text around the value was poorly read ({self.unsure} of {len(self.words)}"
-            " content words unsure)"
+        return because(
+            ReasonCode.SURROUNDINGS_POORLY_READ, unsure=self.unsure, words=len(self.words)
         )
 
 

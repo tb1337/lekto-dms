@@ -83,6 +83,7 @@ from lekto.core.domain.reading import (
     value_words,
     words_at,
 )
+from lekto.core.domain.reasons import Reason, ReasonCode, because
 from lekto.core.domain.sorting import sort_key
 from lekto.core.domain.text import Shortened, shorten
 from lekto.core.domain.validation import name_key
@@ -504,7 +505,7 @@ class JudgeNode:
                 field=DOCUMENT_DATE,
                 outcome=Outcome.UNCERTAIN,
                 confidence=0,
-                reason=f"no date recognised: the language model gave none ({why})",
+                reasons=(because(ReasonCode.DATE_NONE_FROM_MODEL, detail=why),),
             )
         else:
             date_check = _check_date(
@@ -742,7 +743,10 @@ class FieldsNode(_ModelStep):
             for definition in definitions
         ]
         checks = [
-            replace(check, reason=f"'{definition.name}' was not read: {NO_MODEL}")
+            replace(
+                check,
+                reasons=(because(ReasonCode.FIELD_NOT_READ_NO_MODEL, field=definition.name),),
+            )
             if definition.id in unread and not check.ok
             else check
             for check, definition in zip(checks, definitions, strict=True)
@@ -824,7 +828,10 @@ def _check_date(
     common = _common(field, proposal)
     if proposal.value is None:
         return FieldCheck(
-            outcome=Outcome.UNCERTAIN, confidence=0, reason="no date recognised", **common
+            outcome=Outcome.UNCERTAIN,
+            confidence=0,
+            reasons=(because(ReasonCode.DATE_NONE),),
+            **common,
         )
     value = (
         read_date(proposal.value, facts, received=received)
@@ -835,16 +842,25 @@ def _check_date(
         return FieldCheck(
             outcome=Outcome.UNCERTAIN,
             confidence=0,
-            reason=f"{proposal.value!r} is not a date",
+            reasons=(because(ReasonCode.NOT_A_DATE, value=_raw(proposal.value)),),
             **common,
         )
     common["quote_shows_value"] = _quoted(proposal, lambda quote: quote.has_date(value))
     if not _EARLIEST <= value <= today + _LATEST_AHEAD:
         return FieldCheck(
-            outcome=Outcome.UNCERTAIN, confidence=0, reason=f"{value} is not plausible", **common
+            outcome=Outcome.UNCERTAIN,
+            confidence=0,
+            reasons=(because(ReasonCode.DATE_IMPLAUSIBLE, date=value.isoformat()),),
+            **common,
         )
     return _verified(
-        common, value.isoformat(), proposal, facts, facts.has_date(value), "date", literal=True
+        common,
+        value.isoformat(),
+        proposal,
+        facts,
+        facts.has_date(value),
+        because(ReasonCode.DATE_NOT_IN_TEXT),
+        literal=True,
     )
 
 
@@ -855,7 +871,7 @@ def _set_by_hand(definition: FieldDefinition) -> FieldCheck:
         field=field_key(definition.id),
         outcome=Outcome.OK,
         confidence=1,
-        reason=f"'{definition.name}' is set by hand",
+        reasons=(because(ReasonCode.FIELD_SET_BY_HAND, field=definition.name),),
     )
 
 
@@ -883,7 +899,7 @@ def _check_field(
         return FieldCheck(
             outcome=Outcome.UNCERTAIN,
             confidence=0,
-            reason=f"'{definition.name}' was not found",
+            reasons=(because(ReasonCode.FIELD_NOT_FOUND, field=definition.name),),
             **common,
         )
     if definition.data_type is FieldType.PERIOD:
@@ -895,17 +911,16 @@ def _check_field(
                 check,
                 outcome=Outcome.UNCERTAIN,
                 confidence=0,
-                reason="the same date as the document date",
+                reasons=(because(ReasonCode.SAME_AS_DOCUMENT_DATE),),
                 suggestion=check.value,
                 value=None,
             )
         if check.ok:
             return check
-        reason = check.reason or "invalid"
         return FieldCheck(
             outcome=Outcome.UNCERTAIN,
             confidence=check.confidence,
-            reason=f"'{definition.name}': {reason}",
+            reasons=_about(check.reasons, definition.name),
             suggestion=check.suggestion,
             quote_shows_value=check.quote_shows_value,
             **common,
@@ -915,23 +930,25 @@ def _check_field(
             definition, proposal.value, facts, language, default_currency, received
         )
     except ValidationError:
-        return FieldCheck(
-            outcome=Outcome.UNCERTAIN,
-            confidence=0,
-            reason=f"{proposal.value!r} is not a valid value of '{definition.name}' "
-            f"({definition.data_type})",
-            **common,
+        invalid = because(
+            ReasonCode.VALUE_INVALID,
+            value=_raw(proposal.value),
+            field=definition.name,
+            type=definition.data_type.value,
         )
+        return FieldCheck(outcome=Outcome.UNCERTAIN, confidence=0, reasons=(invalid,), **common)
     common["quote_shows_value"] = _quoted(proposal, lambda quote: _literally(value, quote))
-    shown, what = _shown(definition, value, proposal, facts, default_currency)
+    shown, unshown = _shown(definition, value, proposal, facts, default_currency)
     literal = definition.data_type in _LITERAL
-    check = _verified(common, field_to_json(value), proposal, facts, shown, what, literal=literal)
+    check = _verified(
+        common, field_to_json(value), proposal, facts, shown, unshown, literal=literal
+    )
     if check.ok:
         return check
     return FieldCheck(
         outcome=Outcome.UNCERTAIN,
         confidence=check.confidence,
-        reason=f"'{definition.name}': {check.reason}",
+        reasons=_about(check.reasons, definition.name),
         suggestion=check.suggestion,
         **common,
     )
@@ -967,10 +984,11 @@ def _check_period(
     common = _common(field_key(definition.id), proposal)
     read = _read_period(proposal.value, document_date, received)
     if read is None:
+        not_a_period = because(ReasonCode.NOT_A_PERIOD, value=_raw(proposal.value))
         return FieldCheck(
             outcome=Outcome.UNCERTAIN,
             confidence=0,
-            reason=f"'{definition.name}': {proposal.value!r} is not a period",
+            reasons=(not_a_period.about(definition.name),),
             **common,
         )
     period, yearless = read
@@ -983,29 +1001,36 @@ def _check_period(
             shows, yearless = True, True
     common["quote_shows_value"] = shows
     if not (period.start >= _EARLIEST and period.end <= today + _LATEST_AHEAD):
+        implausible = because(ReasonCode.PERIOD_IMPLAUSIBLE, period=str(period))
         return FieldCheck(
             outcome=Outcome.UNCERTAIN,
             confidence=0,
-            reason=f"'{definition.name}': {period} is not plausible",
+            reasons=(implausible.about(definition.name),),
             **common,
         )
     in_text = facts.has_period(period, document_date if yearless else None)
     check = _verified(
-        common, field_to_json(period), proposal, facts, in_text, "period", literal=True
+        common,
+        field_to_json(period),
+        proposal,
+        facts,
+        in_text,
+        because(ReasonCode.PERIOD_NOT_IN_TEXT),
+        literal=True,
     )
     if check.ok and yearless:
-        reason = "no year given; the year of the document date is assumed"
+        reasons: tuple[Reason, ...] = (because(ReasonCode.PERIOD_NO_YEAR),)
     elif check.ok and period.kind is PeriodKind.DAY and period.start == document_date:
-        reason = "the same day as the document date"
+        reasons = (because(ReasonCode.SAME_DAY_AS_DOCUMENT_DATE),)
     elif check.ok:
         return check
     else:
-        reason = check.reason or "invalid"
+        reasons = check.reasons
     return replace(
         check,
         outcome=Outcome.UNCERTAIN,
         confidence=0,
-        reason=f"'{definition.name}': {reason}",
+        reasons=_about(reasons, definition.name),
         suggestion=check.value if check.ok else check.suggestion,
         value=None,
     )
@@ -1032,27 +1057,29 @@ def _shown(
     proposal: Proposal,
     facts: DocumentText,
     default_currency: str | None,
-) -> tuple[bool, str]:
-    """Whether the text shows the value, and what was looked for. Yes/no and choice values
+) -> tuple[bool, Reason]:
+    """Whether the text shows the value, and why not if it does not. Yes/no and choice values
     are not written as such; for them a quoted passage of some length must be in the text. An
     amount in a text that shows no currency at all (a pay slip's bare numbers) is in the
     default currency."""
     match value:
         case Money():
             if not facts.has_number(value.amount):
-                return False, "amount"
+                return False, because(ReasonCode.AMOUNT_NOT_IN_TEXT)
+            currency = because(ReasonCode.CURRENCY_NOT_IN_TEXT, currency=value.currency)
             if not facts.currencies and default_currency is not None:
-                return value.currency == default_currency, f"currency {value.currency}"
-            return facts.has_currency(value.currency), f"currency {value.currency}"
+                return value.currency == default_currency, currency
+            return facts.has_currency(value.currency), currency
         case Decimal():
-            return facts.has_number(value), "number"
+            return facts.has_number(value), because(ReasonCode.NUMBER_NOT_IN_TEXT)
         case Url():
-            return facts.contains(value.value), "link"
+            return facts.contains(value.value), because(ReasonCode.LINK_NOT_IN_TEXT)
         case str() if definition.data_type is FieldType.TEXT:
-            return facts.contains(value), "text"
+            return facts.contains(value), because(ReasonCode.TEXT_NOT_IN_TEXT)
         case _:
             evidence = (proposal.evidence or "").strip()
-            return len(evidence) >= _SHORTEST_EVIDENCE, "quoted passage"
+            short = because(ReasonCode.QUOTE_TOO_SHORT if evidence else ReasonCode.QUOTE_MISSING)
+            return len(evidence) >= _SHORTEST_EVIDENCE, short
 
 
 def _quoted(proposal: Proposal, shows: Callable[[DocumentText], bool]) -> bool | None:
@@ -1176,12 +1203,12 @@ def _readable(
         unsure = [word.confidence for *_, value in places for word in value or () if word.unsure]
         if not unsure:
             return check
-        reason = f"the value was read unsure ({min(unsure)}%)"
+        reason = because(ReasonCode.VALUE_READ_UNSURE, unsure=min(unsure))
     return replace(
         check,
         outcome=Outcome.UNCERTAIN,
         confidence=0,
-        reason=reason if name is None else f"'{name}': {reason}",
+        reasons=(reason if name is None else reason.about(name),),
         suggestion=check.value,
         value=None,
     )
@@ -1245,7 +1272,7 @@ where they are not found)."""
 
 def _poorly_read(
     places: Sequence[_Place], pages: Sequence[PageReading], threshold: float
-) -> str | None:
+) -> Reason | None:
     """Why a value stands in a poorly read place, at any of its quote's places; None if it
     does not. A place is the content around the value's words there, or, without them or with
     too few words around, the page; without places, any recognised page. A page whose
@@ -1273,6 +1300,16 @@ def _poorly_read(
     return None
 
 
+def _about(reasons: Sequence[Reason], name: str) -> tuple[Reason, ...]:
+    """`reasons` about the custom field `name` (`Reason.subject`)."""
+    return tuple(reason.about(name) for reason in reasons)
+
+
+def _raw(value: JsonValue) -> JsonValue:
+    """A value as the model gave it, for a reason: text as it is, anything else as JSON text."""
+    return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+
+
 def _common(field: str, proposal: Proposal) -> dict[str, Any]:
     return {"field": field, "proposed": proposal.value, "evidence": proposal.evidence}
 
@@ -1283,28 +1320,29 @@ def _verified(
     proposal: Proposal,
     facts: DocumentText,
     shown: bool,
-    what: str,
+    unshown: Reason,
     *,
     literal: bool,
 ) -> FieldCheck:
     """The check of a value read from the text: the quoted passage must appear in it, and the
-    text must show the value (`shown`). A `literal` value (an amount, number, date, text or
-    link) also needs a quoted passage that shows it: elsewhere in the text the same digits
-    may stand for anything, on a broken scan a lone fragment (`620` for 620,00 €)."""
+    text must show the value (`shown`; why not: `unshown`). A `literal` value (an amount,
+    number, date, text or link) also needs a quoted passage that shows it: elsewhere in the
+    text the same digits may stand for anything, on a broken scan a lone fragment (`620` for
+    620,00 €)."""
     if proposal.evidence is not None and not facts.contains(proposal.evidence):
-        reason = "the quoted passage does not appear in the text"
+        reason = because(ReasonCode.QUOTE_NOT_IN_TEXT)
     elif literal and common["quote_shows_value"] is None:
-        reason = "no quoted passage"
+        reason = because(ReasonCode.QUOTE_MISSING)
     elif literal and not common["quote_shows_value"]:
-        reason = "the quoted passage does not show the value"
+        reason = because(ReasonCode.QUOTE_WITHOUT_VALUE)
     elif not shown:
-        reason = f"the {what} does not appear in the text"
+        reason = unshown
     else:
         return FieldCheck(outcome=Outcome.OK, confidence=1, value=value, **common)
     return FieldCheck(
         outcome=Outcome.UNCERTAIN,
         confidence=0,
-        reason=reason,
+        reasons=(reason,),
         suggestion=value,
         **common,
     )

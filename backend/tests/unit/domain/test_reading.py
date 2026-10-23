@@ -142,10 +142,10 @@ def test_a_page_reading_counts_content_and_decides_by_it() -> None:
     # Read before content was counted: all words, as before.
     old = PageReading(2, words=22, unsure=4)
     assert old.poor(0.08)
-    assert old.describe() == "page 2 was poorly read (18% of its words unsure)"
+    assert old.describe().text == "page 2 was poorly read (18% of its words unsure)"
     broken = PageReading(1, words=60, unsure=20, content=50, content_unsure=6)
     assert broken.poor(0.08)
-    assert broken.describe() == "page 1 was poorly read (12% of its content words unsure)"
+    assert broken.describe().text == "page 1 was poorly read (12% of its content words unsure)"
 
 
 def test_too_few_content_words_say_nothing_about_a_page() -> None:
@@ -311,7 +311,7 @@ def test_an_amount_inside_a_badly_read_table_stands_in_a_poorly_read_place() -> 
     assert not amount.unsure  # the value itself was read sure
     place = surroundings(words, [amount])
     assert place is not None and place.poor()
-    assert place.describe() == (
+    assert place.describe().text == (
         f"the text around the value was poorly read ({place.unsure} of 20 content words unsure)"
     )
     # On the pay slip with its table read well, fewer words around it are unsure.

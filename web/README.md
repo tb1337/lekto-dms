@@ -269,6 +269,7 @@ cd web && pnpm gen:api   # writes src/lib/api/schema.ts
 | `src/lib/components/templates` | The template field, the template editor (sheet), the reference document picker  |
 | `src/lib/templates`            | Liquid colours and completions, the CodeMirror editor, the values templates see |
 | `src/lib/i18n.ts`              | Language switch, date, number and money formats                                 |
+| `src/lib/reasons.ts`           | The API's reasons with codes in the user's language (`reason_<code>` messages)  |
 | `src/lib/periods.ts`           | Periods in ISO 8601 (`2026-Q2`, `2026-W17`), read also in German forms          |
 | `src/lib/listing.ts`           | Sort and grid or list of the document view, remembered in this browser          |
 | `src/lib/scope.svelte.ts`      | An admin's choice to include all users, remembered in this browser              |

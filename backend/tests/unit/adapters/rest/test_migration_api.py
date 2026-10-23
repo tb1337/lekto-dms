@@ -440,6 +440,10 @@ async def test_what_the_source_system_lacks_a_person_decides(api: Api) -> None:
         "no contact in the source system; no document type in the source system"
     )
     assert [field["field"] for field in open["fields"]] == ["contact", "document_type"]
+    assert [field["reasons"] for field in open["fields"]] == [
+        [{"code": "source_lacks_contact", "params": {}, "subject": None, "rule": None}],
+        [{"code": "source_lacks_document_type", "params": {}, "subject": None, "rule": None}],
+    ]
 
     changes = {"contact_id": data["contact"]["id"], "document_type_id": data["type"]["id"]}
     confirmed = await api.client.post(

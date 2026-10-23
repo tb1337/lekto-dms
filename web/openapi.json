@@ -19900,7 +19900,15 @@
               }
             ],
             "title": "Reason",
-            "description": "Why the field is uncertain (for the topic: why it was not set)."
+            "description": "Why the field is uncertain (for the topic: why it was not set), in English; several reasons are joined by `; `."
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonOut"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "description": "The reasons with their codes, in the same order."
           },
           "proposed": {
             "title": "Proposed",
@@ -23376,6 +23384,153 @@
           }
         ]
       },
+      "ReasonCode": {
+        "type": "string",
+        "enum": [
+          "text",
+          "error",
+          "signals_disagree",
+          "only_suggested",
+          "one_signal_only",
+          "only_identifier",
+          "contact_is_recipient",
+          "contact_identifiers_several",
+          "contact_new_proposed",
+          "contact_none",
+          "contact_none_no_model",
+          "contact_not_in_text",
+          "sender_not_a_contact",
+          "sender_matches_several",
+          "sender_only_similar",
+          "type_new_proposed",
+          "type_none",
+          "topic_without_contact",
+          "topic_none",
+          "topic_contact_suggested",
+          "space_chosen_by_person",
+          "space_named_unseen",
+          "space_stays_for_named",
+          "space_shows_more",
+          "space_hand_over",
+          "space_uploader_unseen",
+          "space_other",
+          "spaces_disagree",
+          "date_none",
+          "date_none_from_model",
+          "not_a_date",
+          "date_implausible",
+          "same_as_document_date",
+          "not_a_period",
+          "period_implausible",
+          "period_no_year",
+          "same_day_as_document_date",
+          "field_set_by_hand",
+          "field_by_hand_missing",
+          "field_not_found",
+          "field_not_read_no_model",
+          "value_invalid",
+          "quote_not_in_text",
+          "quote_missing",
+          "quote_without_value",
+          "quote_too_short",
+          "date_not_in_text",
+          "period_not_in_text",
+          "amount_not_in_text",
+          "currency_not_in_text",
+          "number_not_in_text",
+          "link_not_in_text",
+          "text_not_in_text",
+          "value_read_unsure",
+          "page_poorly_read",
+          "page_poorly_read_content",
+          "surroundings_poorly_read",
+          "source_lacks_contact",
+          "source_lacks_document_type",
+          "source_lacks_document_date",
+          "field_does_not_apply",
+          "field_gone",
+          "contact_gone",
+          "document_type_gone",
+          "topic_gone",
+          "tag_gone",
+          "space_gone",
+          "tag_is_group",
+          "rule_other_space",
+          "space_no_right_any_more",
+          "space_no_right",
+          "space_widens_unconfirmed",
+          "space_widens_needs_confirmed",
+          "review_on_arrival_only",
+          "review_confirmed",
+          "rules_disagree",
+          "value_other_not_accepted",
+          "person_decided_field",
+          "rule_value_on_unconfirmed",
+          "model_value_other",
+          "rules_value_on_unconfirmed",
+          "rules_model_value_other",
+          "topic_person_chose",
+          "topic_no_contact",
+          "topic_not_enabled",
+          "tag_added_and_removed",
+          "tag_removed_by_person",
+          "tag_set_by_person",
+          "tag_above_kept",
+          "title_empty",
+          "title_yields",
+          "value_empty",
+          "template_missing_value"
+        ],
+        "title": "ReasonCode"
+      },
+      "ReasonOut": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ReasonCode"
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params",
+            "examples": [
+              {
+                "contact": "Stadtwerke"
+              }
+            ]
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject",
+            "description": "The custom field the reason is about, by its name (put before the text)."
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule",
+            "description": "The rule the reason comes from, by its name."
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "params"
+        ],
+        "title": "ReasonOut",
+        "description": "A reason with its code: a client translates `code` with `params`; the English text\nstands beside it (`reason`). The codes, their parameters and how each parameter is written\nare in the OpenAPI document (`x-reasons`). `text` is a reason as written: by a person, or\nfrom before reasons had codes (its `params` hold the `text`)."
+      },
       "RecoveryCodes": {
         "properties": {
           "recovery_codes": {
@@ -23979,14 +24134,24 @@
           },
           "reason": {
             "type": "string",
-            "title": "Reason"
+            "title": "Reason",
+            "description": "Why, in English."
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonOut"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "description": "Why, with its code (one reason)."
           }
         },
         "type": "object",
         "required": [
           "field",
           "kind",
-          "reason"
+          "reason",
+          "reasons"
         ],
         "title": "RuleNoteOut"
       },
@@ -26542,6 +26707,218 @@
         "scheme": "bearer",
         "description": "Personal API token (`lekto_…`); scope `read` allows reading only."
       }
+    }
+  },
+  "x-reasons": {
+    "text": {
+      "text": "text"
+    },
+    "error": {
+      "detail": "text"
+    },
+    "signals_disagree": {
+      "names": "names"
+    },
+    "only_suggested": {
+      "name": "text"
+    },
+    "one_signal_only": {
+      "name": "text"
+    },
+    "only_identifier": {
+      "name": "text"
+    },
+    "contact_is_recipient": {
+      "contact": "text"
+    },
+    "contact_identifiers_several": {},
+    "contact_new_proposed": {
+      "sender": "text"
+    },
+    "contact_none": {},
+    "contact_none_no_model": {},
+    "contact_not_in_text": {
+      "contact": "text"
+    },
+    "sender_not_a_contact": {
+      "sender": "text",
+      "contact": "text"
+    },
+    "sender_matches_several": {
+      "sender": "text"
+    },
+    "sender_only_similar": {
+      "sender": "text",
+      "contact": "text"
+    },
+    "type_new_proposed": {
+      "type": "text"
+    },
+    "type_none": {},
+    "topic_without_contact": {},
+    "topic_none": {
+      "contact": "text"
+    },
+    "topic_contact_suggested": {
+      "contact": "text"
+    },
+    "space_chosen_by_person": {},
+    "space_named_unseen": {},
+    "space_stays_for_named": {},
+    "space_shows_more": {},
+    "space_hand_over": {},
+    "space_uploader_unseen": {},
+    "space_other": {},
+    "spaces_disagree": {},
+    "date_none": {},
+    "date_none_from_model": {
+      "detail": "text"
+    },
+    "not_a_date": {
+      "value": "text"
+    },
+    "date_implausible": {
+      "date": "date"
+    },
+    "same_as_document_date": {},
+    "not_a_period": {
+      "value": "text"
+    },
+    "period_implausible": {
+      "period": "text"
+    },
+    "period_no_year": {},
+    "same_day_as_document_date": {},
+    "field_set_by_hand": {
+      "field": "text"
+    },
+    "field_by_hand_missing": {
+      "field": "text"
+    },
+    "field_not_found": {
+      "field": "text"
+    },
+    "field_not_read_no_model": {
+      "field": "text"
+    },
+    "value_invalid": {
+      "value": "text",
+      "field": "text",
+      "type": "text"
+    },
+    "quote_not_in_text": {},
+    "quote_missing": {},
+    "quote_without_value": {},
+    "quote_too_short": {},
+    "date_not_in_text": {},
+    "period_not_in_text": {},
+    "amount_not_in_text": {},
+    "currency_not_in_text": {
+      "currency": "text"
+    },
+    "number_not_in_text": {},
+    "link_not_in_text": {},
+    "text_not_in_text": {},
+    "value_read_unsure": {
+      "unsure": "number"
+    },
+    "page_poorly_read": {
+      "page": "number",
+      "share": "percent"
+    },
+    "page_poorly_read_content": {
+      "page": "number",
+      "share": "percent"
+    },
+    "surroundings_poorly_read": {
+      "unsure": "number",
+      "words": "number"
+    },
+    "source_lacks_contact": {},
+    "source_lacks_document_type": {},
+    "source_lacks_document_date": {},
+    "field_does_not_apply": {
+      "field": "text"
+    },
+    "field_gone": {},
+    "contact_gone": {
+      "id": "text"
+    },
+    "document_type_gone": {
+      "id": "text"
+    },
+    "topic_gone": {
+      "id": "text"
+    },
+    "tag_gone": {
+      "id": "text"
+    },
+    "space_gone": {
+      "id": "text"
+    },
+    "tag_is_group": {
+      "tag": "text"
+    },
+    "rule_other_space": {},
+    "space_no_right_any_more": {
+      "space": "text"
+    },
+    "space_no_right": {
+      "space": "text"
+    },
+    "space_widens_unconfirmed": {
+      "space": "text",
+      "fields": "fields"
+    },
+    "space_widens_needs_confirmed": {
+      "space": "text",
+      "fields": "fields"
+    },
+    "review_on_arrival_only": {},
+    "review_confirmed": {},
+    "rules_disagree": {
+      "values": "rule_values"
+    },
+    "value_other_not_accepted": {
+      "value": "value"
+    },
+    "person_decided_field": {},
+    "rule_value_on_unconfirmed": {
+      "value": "value"
+    },
+    "model_value_other": {
+      "value": "value"
+    },
+    "rules_value_on_unconfirmed": {
+      "value": "value"
+    },
+    "rules_model_value_other": {
+      "value": "value"
+    },
+    "topic_person_chose": {
+      "topic": "text"
+    },
+    "topic_no_contact": {},
+    "topic_not_enabled": {
+      "topic": "text"
+    },
+    "tag_added_and_removed": {
+      "tag": "text"
+    },
+    "tag_removed_by_person": {
+      "tag": "text"
+    },
+    "tag_set_by_person": {
+      "tag": "text"
+    },
+    "tag_above_kept": {
+      "tag": "text"
+    },
+    "title_empty": {},
+    "title_yields": {},
+    "value_empty": {},
+    "template_missing_value": {
+      "path": "text"
     }
   }
 }

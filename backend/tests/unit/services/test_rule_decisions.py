@@ -4,6 +4,7 @@ a confirmed review) is not undone by rules later in the processing run."""
 from lekto.core.domain.classification import FieldCheck, checks_to_json
 from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.pipeline import PERSON_SPACE, RULES, Lane, NodeResult, Outcome
+from lekto.core.domain.reasons import ReasonCode, because, written
 from lekto.core.domain.rule_planner import Note, NoteKind
 from lekto.core.domain.rules import ForceReview, RemoveTags, SetSpace, Trigger
 from lekto.core.domain.spaces import SpaceRole
@@ -27,7 +28,7 @@ class UnsureOfTheContact:
 
     async def run(self, document: Document) -> MetadataResult:
         check = FieldCheck(
-            field="contact", outcome=Outcome.UNCERTAIN, confidence=0.2, reason="unsure"
+            field="contact", outcome=Outcome.UNCERTAIN, confidence=0.2, reasons=(written("unsure"),)
         )
         result = NodeResult(
             outcome=Outcome.UNCERTAIN,
@@ -78,7 +79,7 @@ async def test_a_change_rule_leaves_the_space_the_owner_moved_the_document_into(
 
     assert change.rules is not None
     assert [note for report in change.rules.plan.reports for note in report.notes] == [
-        Note("space", NoteKind.OVERRULED, "a person decided this field")
+        Note("space", NoteKind.OVERRULED, because(ReasonCode.PERSON_DECIDED_FIELD))
     ]
     assert (await r.stored(document)).space_id == mine.id
 

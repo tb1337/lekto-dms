@@ -924,7 +924,13 @@ async def test_verified_fields_are_applied(world: World) -> None:
         (
             {"a1": {"value": True, "evidence": None}},
             "Bezahlt",
-            "'Bezahlt': the quoted passage does not appear in the text",
+            "'Bezahlt': no quoted passage",
+            True,
+        ),
+        (
+            {"a1": {"value": True, "evidence": "Nr."}},
+            "Bezahlt",
+            "'Bezahlt': the quoted passage is too short to show the value",
             True,
         ),
         (

@@ -16,7 +16,7 @@ const item = (id: string, conflict = false): PreviewItem => ({
 	title: id,
 	changes: [{ field: 'tags', old: [], new: ['t'] }],
 	conflicts: conflict
-		? [{ field: 'contact', kind: 'conflict', reason: 'has another contact' }]
+		? [{ field: 'contact', kind: 'conflict', reason: 'has another contact', reasons: [] }]
 		: [],
 	notes: [],
 	outcome: { space_id: 's0', chain: [] },
@@ -100,7 +100,15 @@ const report = (
 	name: string,
 	applied: { field: string; old: unknown; new: unknown }[],
 	notes: { field: string; kind: 'refused' | 'skipped'; reason: string }[] = []
-) => ({ rule_id: name, version: 1, name, scope: 'space' as const, applied, notes });
+) => ({
+	rule_id: name,
+	version: 1,
+	name,
+	scope: 'space' as const,
+	applied,
+	// Without codes: the chain shows the API's text as it is (`reasons.test.ts` translates).
+	notes: notes.map((note) => ({ ...note, reasons: [] }))
+});
 
 describe('the chain of a rule applied to a document', () => {
 	it('names each space it enters and what its rules do there', () => {

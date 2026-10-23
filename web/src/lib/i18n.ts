@@ -1,7 +1,8 @@
 /**
  * Language of the UI and formats of dates and numbers. Paraglide picks the language: the choice
  * stored in this browser, else the browser's language, else English. Texts live in
- * `messages/{de,en}.json`; texts of the API (problem details) stay as the API sends them.
+ * `messages/{de,en}.json`; reasons the API gives with a code are translated (`reasons.ts`),
+ * its other texts (problem details) stay as the API sends them.
  */
 import { getLocale, locales, setLocale, type Locale } from '#lib/paraglide/runtime.js';
 

@@ -1178,6 +1178,15 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
   file that lies in Lekto already is `409`, with `existing_document_id` if the caller may read
   that document; without it, the file lies in a space the caller cannot see. Moving,
   confirming and rules never meet a duplicate.
+- Reasons come with codes (issue #83, `core/domain/reasons.py`): beside the English text
+  (`reason`), a check (`FieldCheckOut`) and a rule's note (`RuleNoteOut`) carry `reasons`, each
+  a `code` with its `params`, the custom field it is about (`subject`) and the rule it comes
+  from (`rule`). The OpenAPI document lists every code with its parameters and how each is
+  written (`x-reasons`: `text`, `number`, `percent` (0 to 1), `date`, `value` (a field's value
+  as a reason shows it: true or false for yes or no, null for none), `names`, `fields` (check
+  fields), `rule_values`). `text` is a reason as written (a person's, or one stored before
+  codes); the log keeps the English text beside the codes, and an entry from before has the
+  text only. Clients translate the codes they know and show the text for the others.
 - Errors are problem details (RFC 9457, `application/problem+json`) and documented per endpoint.
   Filing into a space without edit rights (upload, move, confirm, a rule that sets the space)
   is `403` with `space_id`, the space that was refused.

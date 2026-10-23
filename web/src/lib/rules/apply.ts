@@ -7,6 +7,7 @@ import type { components } from '#lib/api/schema.ts';
 import { describeValue, fieldLabel } from '#lib/describe.ts';
 import { spaceLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { reasonsText } from '#lib/reasons.ts';
 
 export type PreviewItem = components['schemas']['ApplyPreviewItemOut'];
 export type Application = components['schemas']['RuleApplicationOut'];
@@ -112,9 +113,11 @@ export function chainLines(
 			}
 			for (const note of report.notes.filter((entry) => CHAIN_NOTES.has(entry.kind))) {
 				const field = fieldLabel(note.field, lookup);
-				lines.push(
-					m.rule_chain_note({ field, reason: note.reason, rule: report.name, space: here })
-				);
+				const reason =
+					reasonsText(note.reasons, note.reason, {
+						field: (name) => fieldLabel(name, lookup)
+					}) ?? note.reason;
+				lines.push(m.rule_chain_note({ field, reason, rule: report.name, space: here }));
 			}
 		}
 		if (step.moved_to !== null) {

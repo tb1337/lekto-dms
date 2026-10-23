@@ -28,6 +28,7 @@ from lekto.core.domain.fields import (
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.labels import LabelCheck, LabelOutcome
 from lekto.core.domain.pipeline import Outcome
+from lekto.core.domain.reasons import written
 from tests.builders import NOW
 
 
@@ -38,7 +39,7 @@ def test_field_check_round_trip() -> None:
             field="document_date",
             outcome=Outcome.UNCERTAIN,
             confidence=0,
-            reason="the date does not appear in the text",
+            reasons=(written("the date does not appear in the text"),),
             proposed="2026-03-31",
             evidence="31.03.",
             suggestion="2026-03-31",
@@ -63,7 +64,7 @@ def test_field_check_rules() -> None:
     with pytest.raises(ValidationError, match="needs a reason"):
         FieldCheck(field="contact", outcome=Outcome.UNCERTAIN, confidence=0)
     with pytest.raises(ValidationError, match="OK or uncertain"):
-        FieldCheck(field="contact", outcome=Outcome.FAILED, confidence=0, reason="x")
+        FieldCheck(field="contact", outcome=Outcome.FAILED, confidence=0, reasons=(written("x"),))
     with pytest.raises(ValidationError, match="between 0 and 1"):
         FieldCheck(field="contact", outcome=Outcome.OK, confidence=2)
     with pytest.raises(ValidationError):

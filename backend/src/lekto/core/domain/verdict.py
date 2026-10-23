@@ -80,6 +80,7 @@ from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.master_data import Contact, DocumentType, Tag
 from lekto.core.domain.names import best_match, match_key, mentions, related
 from lekto.core.domain.pipeline import Node, Outcome
+from lekto.core.domain.reasons import Reason, ReasonCode, because
 from lekto.core.domain.sorting import sort_key
 from lekto.core.domain.tag_tree import TagTree
 from lekto.core.domain.validation import name_key
@@ -411,7 +412,7 @@ def judge_contact(
         field=CONTACT,
         outcome=Outcome.UNCERTAIN,
         confidence=min(score, _UNSURE),
-        reason=_contact_reason(view, top, signals.model is None),
+        reasons=(_contact_reason(view, top, signals.model is None),),
         proposed=view.sender,
         evidence=view.quote,
         suggestion=None if top is None else str(top),
@@ -485,36 +486,35 @@ def _contact_view(
     )
 
 
-def _disagreeing(names: Iterable[str]) -> str:
+def _disagreeing(names: Iterable[str]) -> Reason:
     """The reason when more than one value is named."""
-    return "the signals disagree: " + " or ".join(f"'{name}'" for name in names)
+    return because(ReasonCode.SIGNALS_DISAGREE, names=list(names))
 
 
-def _contact_reason(view: _ContactView, top: ContactId | None, no_model: bool) -> str:
+def _contact_reason(view: _ContactView, top: ContactId | None, no_model: bool) -> Reason:
     names, namers = view.names, view.ranking.namers
     if len(namers) > 1 and (top is None or view.contradicted(top)):
         return _disagreeing(names[id].name for id in namers)
     if top is not None and view.recipient == top:
-        return f"'{names[top].name}' is the recipient, not the sender"
+        return because(ReasonCode.CONTACT_IS_RECIPIENT, contact=names[top].name)
     if len(view.facts.identifiers) > 1:
-        return "identifiers of several contacts stand in the text"
+        return because(ReasonCode.CONTACT_IDENTIFIERS_SEVERAL)
     if top is None:
         if view.sender:
-            return f"no contact matches '{view.sender}'; a new contact is proposed"
-        silent = " (the language model did not answer)" if no_model else ""
-        return f"no contact recognised{silent}"
+            return because(ReasonCode.CONTACT_NEW_PROPOSED, sender=view.sender)
+        return because(ReasonCode.CONTACT_NONE_NO_MODEL if no_model else ReasonCode.CONTACT_NONE)
     name = names[top].name
     if view.sender and view.matched is None:
-        return f"'{view.sender}' is no contact, and only other signals point to '{name}'"
+        return because(ReasonCode.SENDER_NOT_A_CONTACT, sender=view.sender, contact=name)
     if top not in namers:
         if top == view.matched and view.match_score >= view.thresholds.accept:
-            return f"'{view.sender}' matches several contacts"
+            return because(ReasonCode.SENDER_MATCHES_SEVERAL, sender=view.sender)
         if top == view.matched:
-            return f"'{view.sender}' is only similar to the contact '{name}'"
-        return f"'{name}' is only suggested: no signal is sure of it"
+            return because(ReasonCode.SENDER_ONLY_SIMILAR, sender=view.sender, contact=name)
+        return because(ReasonCode.ONLY_SUGGESTED, name=name)
     if not view.hard(top):
-        return f"the contact '{name}' does not appear in the text"
-    return f"only one signal names '{name}'"
+        return because(ReasonCode.CONTACT_NOT_IN_TEXT, contact=name)
+    return because(ReasonCode.ONE_SIGNAL_ONLY, name=name)
 
 
 def _quote_names(quote: str | None, contact: Contact | None, sender: str | None) -> bool | None:
@@ -586,7 +586,7 @@ def judge_type(
         field=DOCUMENT_TYPE,
         outcome=Outcome.UNCERTAIN,
         confidence=min(probabilities.get(top, 0.0) if top else 0.0, _UNSURE),
-        reason=_type_reason(names, namers, top, new),
+        reasons=(_type_reason(names, namers, top, new),),
         proposed=proposed,
         suggestion=None if top is None else str(top),
         new_name=new,
@@ -599,16 +599,16 @@ def _type_reason(
     namers: Mapping[DocumentTypeId, tuple[str, ...]],
     top: DocumentTypeId | None,
     new: str | None,
-) -> str:
+) -> Reason:
     if len(namers) > 1:
         return _disagreeing(names[id].name for id in namers)
     if top is not None and top in namers:
-        return f"only one signal names '{names[top].name}'"
+        return because(ReasonCode.ONE_SIGNAL_ONLY, name=names[top].name)
     if new:
-        return f"no document type fits; a new type '{new}' is proposed"
+        return because(ReasonCode.TYPE_NEW_PROPOSED, type=new)
     if top is not None:
-        return f"'{names[top].name}' is only suggested: no signal is sure of it"
-    return "no document type recognised"
+        return because(ReasonCode.ONLY_SUGGESTED, name=names[top].name)
+    return because(ReasonCode.TYPE_NONE)
 
 
 # --- tags -------------------------------------------------------------------------------------
@@ -715,7 +715,7 @@ def judge_topic(
             field=TOPIC,
             outcome=Outcome.OK,
             confidence=1.0,
-            reason="no contact: a topic is one of a contact's",
+            reasons=(because(ReasonCode.TOPIC_WITHOUT_CONTACT),),
             proposed=proposed,
         )
     names = {tag.id: tag for tag in tags if tag.is_topic_target and tag.id in owner.topic_ids}
@@ -761,23 +761,23 @@ def judge_topic(
         reason = _disagreeing(names[id].name for id in ranked if id in named)
         suggestion = None
     elif top is None:
-        reason = f"no topic of '{owner.name}' recognised"
+        reason = because(ReasonCode.TOPIC_NONE, contact=owner.name)
         suggestion = None
     else:
         suggestion = str(top)
         if not green:
-            reason = f"the contact '{owner.name}' is only suggested"
+            reason = because(ReasonCode.TOPIC_CONTACT_SUGGESTED, contact=owner.name)
         elif top in namers:
-            reason = f"only one signal names '{names[top].name}'"
+            reason = because(ReasonCode.ONE_SIGNAL_ONLY, name=names[top].name)
         elif top in evidence:
-            reason = f"only an identifier points to '{names[top].name}'"
+            reason = because(ReasonCode.ONLY_IDENTIFIER, name=names[top].name)
         else:
-            reason = f"'{names[top].name}' is only suggested: no signal is sure of it"
+            reason = because(ReasonCode.ONLY_SUGGESTED, name=names[top].name)
     return FieldCheck(
         field=TOPIC,
         outcome=Outcome.OK,
         confidence=1.0,
-        reason=reason,
+        reasons=(reason,),
         proposed=proposed,
         suggestion=suggestion,
         candidates=listed,
@@ -810,8 +810,8 @@ class SpaceChoice:
     uploader: UserId | None = None
 
 
-_NAMED_UNSEEN = "names someone who would not see it there"
-_STAYS_FOR_NAMED = "stays: the space the signals name leaves out someone it names"
+_NAMED_UNSEEN = because(ReasonCode.SPACE_NAMED_UNSEEN)
+_STAYS_FOR_NAMED = because(ReasonCode.SPACE_STAYS_FOR_NAMED)
 
 
 def recipient_persons(
@@ -877,7 +877,10 @@ def judge_space(
     names = choice.options
     if choice.locked:
         return FieldCheck(
-            field=SPACE, outcome=Outcome.OK, confidence=1.0, reason="a person chose the space"
+            field=SPACE,
+            outcome=Outcome.OK,
+            confidence=1.0,
+            reasons=(because(ReasonCode.SPACE_CHOSEN_BY_PERSON),),
         )
     named = _Persons.of(persons or {}, choice.uploader)
     backed = named.backed(names)
@@ -929,16 +932,16 @@ def judge_space(
         unseen = tuple(str(user) for user in named.unseen(names[where])) if where in names else ()
         if not unseen:
             return check
-        reason = check.reason or _NAMED_UNSEEN
-        return replace(check, reason=reason, unseen_by=unseen)
+        reasons = check.reasons or (_NAMED_UNSEEN,)
+        return replace(check, reasons=reasons, unseen_by=unseen)
 
-    def suggested(target: SpaceId, why: str, confidence: float) -> FieldCheck:
+    def suggested(target: SpaceId, why: tuple[Reason, ...], confidence: float) -> FieldCheck:
         return leading(
             FieldCheck(
                 field=SPACE,
                 outcome=Outcome.UNCERTAIN,
                 confidence=min(confidence, _UNSURE),
-                reason=why,
+                reasons=why,
                 suggestion=str(target) if target != current else None,
                 candidates=listed,
             ),
@@ -955,19 +958,20 @@ def judge_space(
                 field=SPACE,
                 outcome=Outcome.OK,
                 confidence=1.0,
-                reason=_STAYS_FOR_NAMED,
+                reasons=(_STAYS_FOR_NAMED,),
                 candidates=listed,
             )
         if backed is not None and backed != landing:
             target, why = backed, _moving_why(names[backed], seeing, choice.uploader)
-            return suggested(target, f"{_NAMED_UNSEEN}; {why or 'suggests another space'}", 1.0)
+            other = why or because(ReasonCode.SPACE_OTHER)
+            return suggested(target, (_NAMED_UNSEEN, other), 1.0)
         if chosen is not None:
-            return suggested(chosen, _NAMED_UNSEEN, 1.0)
+            return suggested(chosen, (_NAMED_UNSEEN,), 1.0)
     if addressed and chosen is None and by_model is not None and by_model != current:
         # The model and its recipient name the same person: a hand-over to suggest, even
         # against similar documents that all stayed with the uploader (there was no one else).
         why = _moving_why(names[by_model], seeing, choice.uploader)
-        return suggested(by_model, why or _HANDING_OVER, thresholds.accept)
+        return suggested(by_model, (why or _HANDING_OVER,), thresholds.accept)
     if chosen is None or chosen == current:
         top = next((id for id in ranked if id != current), None)
         return leading(
@@ -975,7 +979,7 @@ def judge_space(
                 field=SPACE,
                 outcome=Outcome.OK,
                 confidence=1.0,
-                reason="the signals name different spaces" if len(namers) > 1 else None,
+                reasons=(because(ReasonCode.SPACES_DISAGREE),) if len(namers) > 1 else (),
                 suggestion=None if chosen is not None or top is None else str(top),
                 candidates=listed,
             ),
@@ -998,10 +1002,10 @@ def judge_space(
             ),
             chosen,
         )
-    return suggested(chosen, why, confidence)
+    return suggested(chosen, (why,), confidence)
 
 
-_HANDING_OVER = "suggests handing it over into another user's personal space"
+_HANDING_OVER = because(ReasonCode.SPACE_HAND_OVER)
 
 
 def _addressed(target: SpaceOption, recipients: frozenset[UserId], uploader: UserId | None) -> bool:
@@ -1017,16 +1021,16 @@ def _addressed(target: SpaceOption, recipients: frozenset[UserId], uploader: Use
 
 def _moving_why(
     target: SpaceOption, seeing: frozenset[UserId], uploader: UserId | None
-) -> str | None:
+) -> Reason | None:
     """Why a move into `target` needs a person (None: the judge may make it): it shows the
     document to more people than those `seeing` it now, hands it over into another user's
     personal space, or leaves its uploader without it."""
     if target.members - seeing:
-        return "suggests another space, which shows it to more people"
+        return because(ReasonCode.SPACE_SHOWS_MORE)
     if target.personal_of is not None and target.personal_of != uploader:
         return _HANDING_OVER
     if uploader is not None and uploader not in target.members:
-        return "suggests a space its uploader does not see"
+        return because(ReasonCode.SPACE_UPLOADER_UNSEEN)
     return None
 
 

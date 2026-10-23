@@ -59,6 +59,7 @@
 	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { reasonsText } from '#lib/reasons.ts';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { fieldId, initialValue, isRuleField, type ReviewValue } from '#lib/review.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -678,7 +679,7 @@
 			{#each ruleNotes as note (note.field)}
 				<p class="rounded-xl border bg-card px-4 py-3 text-sm">
 					<span class="font-medium">{fieldLabel(note.field, lookup)}:</span>
-					{note.reason}
+					{reasonsText(note.reasons, note.reason, { field: (name) => fieldLabel(name, lookup) })}
 				</p>
 			{/each}
 		{/if}

@@ -10,6 +10,7 @@ from lekto.core.domain.fields import FieldDefinition, FieldType, Money
 from lekto.core.domain.ids import ContactId, FieldId, RuleId, SpaceId, TagId, new_id
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.pipeline import Outcome
+from lekto.core.domain.reasons import ReasonCode, because, written
 from lekto.core.domain.rule_conditions import Facts, matches
 from lekto.core.domain.rule_planner import (
     Effect,
@@ -320,7 +321,7 @@ def test_unconfirmed_contact_does_not_file_into_a_shared_space() -> None:
 
     assert result.space is None
     assert notes(result) == [("space", "refused")]
-    assert "only with a confirmed contact" in result.reports[0].notes[0].reason
+    assert "only with a confirmed contact" in result.reports[0].notes[0].reason.text
     contact = check(result, "contact")
     assert contact.outcome is Outcome.UNCERTAIN
     assert contact.suggestion == str(ACME)
@@ -392,7 +393,7 @@ def test_a_rule_of_another_space_does_not_move_the_document() -> None:
 
     assert result.space is None
     assert notes(result) == [("space", "refused")]
-    assert result.reports[0].notes[0].reason == "the rule belongs to another space"
+    assert result.reports[0].notes[0].reason == because(ReasonCode.RULE_OTHER_SPACE)
 
 
 def test_whoever_saved_the_rule_must_be_allowed_to_file() -> None:
@@ -575,7 +576,7 @@ def test_retroactive_conflict_with_an_existing_value() -> None:
     assert accepted.changes.contact_id == ACME
     assert refused.changes.contact_id is UNSET
     assert notes(refused) == [("contact", "conflict")]
-    assert "not accepted" in refused.reports[0].notes[0].reason
+    assert "not accepted" in refused.reports[0].notes[0].reason.text
     assert empty.changes.contact_id == ACME
     assert not refused.uncertain and refused.checks == []
 
@@ -634,7 +635,9 @@ def test_a_missing_value_leaves_the_title() -> None:
     result = run([rule(SetTitle("Invoice {{ contact }}"))], situation(doc()))
 
     assert result.changes.title is UNSET
-    assert result.reports[0].notes == [Note("title", NoteKind.SKIPPED, "contact has no value")]
+    assert result.reports[0].notes == [
+        Note("title", NoteKind.SKIPPED, because(ReasonCode.TEMPLATE_MISSING_VALUE, path="contact"))
+    ]
     assert check_or_none(result, "title") is None  # nothing to decide: not yellow
 
 
@@ -871,7 +874,7 @@ def test_a_rule_sets_a_topic_the_contact_enables() -> None:
         assert result.changes.topic_id is UNSET
         assert notes(result) == [("topic", "skipped")]
     skipped = run([rule(SetTopic(insurance))], where(doc(contact_id=ACME)))
-    assert skipped.reports[0].notes[0].reason == (
+    assert skipped.reports[0].notes[0].reason.text == (
         "its contact does not enable the topic 'Insurance'"
     )
     # Global rules set it too.
@@ -926,10 +929,12 @@ def test_the_rules_that_forced_a_review_read_back_from_the_log() -> None:
             1,
             "Check",
             RuleScope.SPACE,
-            notes=[Note("review", NoteKind.REVIEW, "look at it")],
+            notes=[Note("review", NoteKind.REVIEW, written("look at it"))],
         ),
-        RuleReport(quiet, 1, "Tag", RuleScope.SPACE, notes=[Note("tags", NoteKind.SKIPPED, "x")]),
+        RuleReport(
+            quiet, 1, "Tag", RuleScope.SPACE, notes=[Note("tags", NoteKind.SKIPPED, written("x"))]
+        ),
     ]
-    written = RulePlan(DocumentChanges(), None, reports, [], []).to_json()
-    assert reviewing_rules(written) == {reviewing}
+    stored = RulePlan(DocumentChanges(), None, reports, [], []).to_json()
+    assert reviewing_rules(stored) == {reviewing}
     assert reviewing_rules(None) == set()

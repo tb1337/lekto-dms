@@ -22,6 +22,7 @@ from lekto.core.domain.ids import ContactId, SpaceId, UserId
 from lekto.core.domain.inbox import Confirmation
 from lekto.core.domain.master_data import Assignment, Contact
 from lekto.core.domain.pipeline import PERSON, Lane, Node, NodeResult, Outcome, ProcessingStatus
+from lekto.core.domain.reasons import written
 from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.services.inbox import OpenNode, decide, field_checks
@@ -49,12 +50,17 @@ def classified(contact: Contact) -> NodeResult:
             field="contact",
             outcome=Outcome.UNCERTAIN,
             confidence=0.8,
-            reason="similar",
+            reasons=(written("similar"),),
             proposed="Stadtwerk",
             suggestion=str(contact.id),
         ),
         FieldCheck(field="tags", outcome=Outcome.OK, confidence=1, value=[]),
-        FieldCheck(field="document_date", outcome=Outcome.UNCERTAIN, confidence=0, reason=UNSURE),
+        FieldCheck(
+            field="document_date",
+            outcome=Outcome.UNCERTAIN,
+            confidence=0,
+            reasons=(written(UNSURE),),
+        ),
     ]
     return NodeResult(
         outcome=Outcome.UNCERTAIN,
@@ -70,7 +76,7 @@ def extracted(amount: FieldDefinition) -> NodeResult:
         field=field_key(amount.id),
         outcome=Outcome.UNCERTAIN,
         confidence=0,
-        reason=UNSURE,
+        reasons=(written(UNSURE),),
         proposed={"amount": "84.20", "currency": "EUR"},
         suggestion={"amount": "84.20", "currency": "EUR"},
     )
@@ -545,7 +551,7 @@ def test_suggestions_that_do_not_fit_are_refused() -> None:
         field="contact",
         outcome=Outcome.UNCERTAIN,
         confidence=0.8,
-        reason="similar",
+        reasons=(written("similar"),),
         suggestion="not an id",
     )
     open = [OpenNode(Node.JUDGE, Outcome.UNCERTAIN, "x", (check,))]
@@ -565,7 +571,7 @@ def test_suggestions_that_do_not_fit_are_refused() -> None:
 def test_fields_of_removed_fields_need_no_decision() -> None:
     gone = FieldDefinition.create(name="Alt", data_type=FieldType.TEXT, now=NOW)
     check = FieldCheck(
-        field=field_key(gone.id), outcome=Outcome.UNCERTAIN, confidence=0, reason="x"
+        field=field_key(gone.id), outcome=Outcome.UNCERTAIN, confidence=0, reasons=(written("x"),)
     )
     open = [OpenNode(Node.FIELDS, Outcome.UNCERTAIN, "x", (check,))]
     decision = decide(open, DOCUMENT, DocumentChanges(), accept_suggestions=False, definitions={})

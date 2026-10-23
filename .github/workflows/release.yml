@@ -1,0 +1,176 @@
+---
+name: Release
+
+# The images of a release, published on ghcr.io when the release is published: `lekto` (all
+# roles) and `lekto-migration` (the migration client). The CI checked code and image before the
+# merge, so nothing is tested again and no layer cache is used: each image and architecture
+# builds on a runner of its own and is pushed by digest, then one manifest per image gets the
+# tags (`.github/scripts/image_tags.py`: the version, `beta` or `stable`, `latest`).
+# By hand (`workflow_dispatch`) the images of a published release are built again.
+
+# yamllint disable-line rule:truthy
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag of a published release (e.g. v0.6.0)"
+        required: true
+
+permissions:
+  contents: read
+
+# One release at a time: the channel tags must not race.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  tags:
+    name: 🏷️ Tags
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.tags.outputs.version }}
+      tags: ${{ steps.tags.outputs.tags }}
+      revision: ${{ steps.revision.outputs.revision }}
+    steps:
+      - name: ⤵️ Check out the release
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+      - name: 🔖 Revision
+        id: revision
+        run: echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: 🏷️ Which tags the images get
+        id: tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          draft=$(gh release view "$TAG" --json isDraft --jq .isDraft)
+          if [ "$draft" != "false" ]; then
+            echo "::error::$TAG is no published release"
+            exit 1
+          fi
+          gh release list --exclude-drafts --limit 1000 --json tagName --jq '.[].tagName' \
+            | python3 .github/scripts/image_tags.py "$TAG" | tee -a "$GITHUB_OUTPUT"
+
+  build:
+    name: 🏗️ ${{ matrix.image.name }} (${{ matrix.platform.arch }})
+    needs: tags
+    runs-on: ${{ matrix.platform.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        image:
+          - name: lekto
+            context: .
+            file: Dockerfile
+            target: runtime
+          - name: lekto-migration
+            context: migration
+            file: migration/Dockerfile
+            target: ""
+        platform:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: ⤵️ Check out the release
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+      - name: 🏗️ Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.4.1
+      - name: 🔑 Log in to the registry
+        uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 🚀 Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.file }}
+          target: ${{ matrix.image.target }}
+          platforms: linux/${{ matrix.platform.arch }}
+          build-args: LEKTO_VERSION=${{ needs.tags.outputs.version }}
+          labels: |
+            org.opencontainers.image.revision=${{ needs.tags.outputs.revision }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ matrix.image.name }},push-by-digest=true,name-canonical=true,push=true
+      - name: 📤 Keep the digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+      - name: ⬆️ Upload the digest
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: digests-${{ matrix.image.name }}-${{ matrix.platform.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: 📦 ${{ matrix.image }}
+    needs: [tags, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [lekto, lekto-migration]
+    steps:
+      - name: ⬇️ Download the digests
+        uses: actions/download-artifact@v8.0.1
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ matrix.image }}-*
+          merge-multiple: true
+      - name: 🏗️ Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.4.1
+      - name: 🔑 Log in to the registry
+        uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 🚀 One manifest with the tags
+        working-directory: /tmp/digests
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ matrix.image }}
+          TAGS: ${{ needs.tags.outputs.tags }}
+        run: |
+          args=()
+          for tag in $TAGS; do args+=(-t "$IMAGE:$tag"); done
+          refs=()
+          for digest in *; do refs+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create "${args[@]}" "${refs[@]}"
+      - name: 🔍 Inspect
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ matrix.image }}
+          VERSION: ${{ needs.tags.outputs.version }}
+          TAGS: ${{ needs.tags.outputs.tags }}
+        run: |
+          docker buildx imagetools inspect "$IMAGE:$VERSION"
+          {
+            echo "### \`$IMAGE\`"
+            for tag in $TAGS; do echo "- \`$IMAGE:$tag\`"; done
+          } >> "$GITHUB_STEP_SUMMARY"

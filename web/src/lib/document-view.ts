@@ -11,24 +11,46 @@ export type Review = components['schemas']['ReviewOut'];
 export type Place = components['schemas']['LocationOut'];
 export type Box = components['schemas']['BoxOut'];
 
-export const TABS = ['document', 'metadata', 'log'] as const;
+export const TABS = ['document', 'properties', 'processing'] as const;
 export type Tab = (typeof TABS)[number];
 
 /** What the tabs read of a URL (SvelteKit's `page.url` is a read-only one). */
 type Address = { pathname: string; search: string; searchParams: Pick<URLSearchParams, 'get'> };
 
+/** The tabs of before 0.6 by the names they have now. */
+const RENAMED: Record<string, Tab> = { metadata: 'properties', log: 'processing' };
+
 /** The tab a URL names (`?tab=`); the document without one, and for the links of before
  * (`?tab=details`, `?tab=content`). */
 export function tabOf(url: Address): Tab {
 	const tab = url.searchParams.get('tab') ?? '';
+	if (Object.hasOwn(RENAMED, tab)) return RENAMED[tab];
 	return (TABS as readonly string[]).includes(tab) ? (tab as Tab) : 'document';
 }
 
-/** The URL of `tab`, keeping the other parameters (`from=inbox`, the view). */
+/** The URL of `tab`, keeping the other parameters (`from=inbox`, the view); the step of the
+ * processing tab (`?step=`) only stays there. */
 export function tabHref(url: Address, tab: Tab): string {
 	const params = new URLSearchParams(url.search);
 	if (tab === 'document') params.delete('tab');
 	else params.set('tab', tab);
+	if (tab !== 'processing') params.delete('step');
+	return hrefOf(url, params);
+}
+
+/** The step of the processing tab a URL names (`?step=`); null for none, or one not in `nodes`. */
+export function stepOf(url: Address, nodes: readonly string[]): string | null {
+	const step = url.searchParams.get('step');
+	return step !== null && nodes.includes(step) ? step : null;
+}
+
+/** The URL of the processing tab showing `step` (none: the list of steps), keeping the other
+ * parameters. */
+export function stepHref(url: Address, step: string | null): string {
+	const params = new URLSearchParams(url.search);
+	params.set('tab', 'processing');
+	if (step === null) params.delete('step');
+	else params.set('step', step);
 	return hrefOf(url, params);
 }
 
@@ -68,12 +90,34 @@ export function viewOf(url: Address): View {
 	};
 }
 
-/** The URL of the document tab showing `view`, keeping the other parameters. */
+/** The URL of the document tab showing `view`, keeping the other parameters but the step of the
+ * processing tab. */
 export function viewHref(url: Address, view: View): string {
 	const params = new URLSearchParams(url.search);
 	params.delete('tab');
+	params.delete('step');
 	params.set('left', view.left);
 	params.set('right', view.right);
+	return hrefOf(url, params);
+}
+
+/** The page a URL asks the document tab to show (`?page=`, from a page image of the processing
+ * view); null for none. */
+export function pageOf(url: Address): number | null {
+	const page = Number(url.searchParams.get('page') ?? '');
+	return Number.isInteger(page) && page >= 1 ? page : null;
+}
+
+/** The URL of the document tab showing the pages at page `number` (null: the link forgets the
+ * page it asked for), the other pane as it is. */
+export function pageHref(url: Address, number: number | null): string {
+	const params = new URLSearchParams(url.search);
+	params.delete('tab');
+	params.delete('step');
+	params.set('left', 'pages');
+	params.set('right', viewOf(url).right);
+	if (number === null) params.delete('page');
+	else params.set('page', String(number));
 	return hrefOf(url, params);
 }
 

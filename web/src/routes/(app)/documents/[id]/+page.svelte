@@ -15,8 +15,8 @@
 	import DocumentFacts from '#lib/components/document/DocumentFacts.svelte';
 	import DocumentFiles from '#lib/components/document/DocumentFiles.svelte';
 	import DocumentForm from '#lib/components/document/DocumentForm.svelte';
-	import DocumentLog from '#lib/components/document/DocumentLog.svelte';
 	import DocumentHeader from '#lib/components/document/DocumentHeader.svelte';
+	import DocumentProcessing from '#lib/components/document/DocumentProcessing.svelte';
 	import DocumentText from '#lib/components/document/DocumentText.svelte';
 	import PageImages from '#lib/components/document/PageImages.svelte';
 	import PdfViewer from '#lib/components/PdfViewer.svelte';
@@ -33,6 +33,8 @@
 		type InboxPlace,
 		LEFT,
 		type Left,
+		pageHref,
+		pageOf,
 		type Right,
 		tabHref,
 		tabOf,
@@ -69,8 +71,8 @@
 	type Document = components['schemas']['DocumentDetails'];
 
 	// One view for every document, from the inbox and from the list: the document (on the left
-	// its pages or its text, on the right its details or its facts), its files (metadata) and
-	// the processing (log). The view of the document tab is in the link; without one, the pages
+	// its pages or its text, on the right its details or its facts), its properties (the file
+	// passport) and its processing. The view of the document tab is in the link; without one, the pages
 	// and the details: the browser remembers none (Tobi, 21.10.2026).
 	const id = $derived(page.params.id ?? '');
 	const tab = $derived(tabOf(page.url));
@@ -351,6 +353,18 @@
 		});
 	});
 
+	// A page a link asks for (`?page=`, a page image of the processing view): shown in the pages
+	// once they are laid out, then the link forgets it.
+	$effect(() => {
+		const wanted = pageOf(page.url);
+		if (tab !== 'document' || document === null || wanted === null) return;
+		untrack(() => {
+			const place: Place = { page: wanted, boxes: [] };
+			for (const wait of [300, 900, 1800]) setTimeout(() => viewer?.reveal(place), wait);
+			void goto(pageHref(page.url, null), { replace: true, reset: false });
+		});
+	});
+
 	/** Show `view` in the document tab; a switch, not a step back in the history. */
 	function show(next: View) {
 		return goto(viewHref(page.url, next), { replace: true, reset: false });
@@ -372,8 +386,8 @@
 
 	const tabs: { tab: Tab; label: () => string }[] = [
 		{ tab: 'document', label: m.tab_document },
-		{ tab: 'metadata', label: m.tab_metadata },
-		{ tab: 'log', label: m.tab_log }
+		{ tab: 'properties', label: m.tab_properties },
+		{ tab: 'processing', label: m.tab_processing }
 	];
 	const attention = $derived(
 		document?.processing.nodes.some(
@@ -438,7 +452,7 @@
 				key: entry.tab,
 				href: tabHref(page.url, entry.tab),
 				label: entry.label(),
-				marker: entry.tab === 'log' && attention ? m.tab_log_attention() : undefined
+				marker: entry.tab === 'processing' && attention ? m.tab_processing_attention() : undefined
 			}))}
 			current={tab}
 		/>
@@ -590,11 +604,11 @@
 					{/if}
 				</div>
 			</div>
-		{:else if tab === 'metadata'}
+		{:else if tab === 'properties'}
 			<DocumentFiles documentId={id} document={document ?? undefined} {editable} onchanged={load} />
-		{:else if tab === 'log'}
+		{:else if tab === 'processing'}
 			<div class="lg:min-h-0 lg:flex-1">
-				<DocumentLog
+				<DocumentProcessing
 					{document}
 					{graph}
 					manageable={editable}

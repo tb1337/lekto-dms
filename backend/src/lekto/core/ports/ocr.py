@@ -44,6 +44,9 @@ class OcrResult:
     read_again: bool = False
     # Every page was read by the vision language model (`make_archive` with `vision`).
     vision: VisionReading | None = None
+    # The colours were converted to RGB to make the archive PDF/A (a colour space PDF/A cannot
+    # hold); `note` says so too.
+    rgb: bool = False
 
 
 class Ocr(Protocol):

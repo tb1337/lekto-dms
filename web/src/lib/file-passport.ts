@@ -6,8 +6,10 @@
  * Metadata is someone else's text: whatever cannot be read is left out.
  */
 import type { components } from '#lib/api/schema.ts';
+import { formatNumber } from '#lib/i18n.ts';
 
 type Files = components['schemas']['DocumentFilesOut'];
+type Stored = components['schemas']['StoredFileOut'];
 /** What the life needs of the document itself: its lane, its confirmation, its processing. */
 export type Reviewed = Pick<
 	components['schemas']['DocumentDetails'],
@@ -15,6 +17,24 @@ export type Reviewed = Pick<
 >;
 type Metadata = NonNullable<components['schemas']['StoredFileOut']['metadata']>;
 type Entry = Metadata['entries'][number];
+
+/** A size as people read it: bytes, kB, MB (decimal, as file managers show them). */
+export function fileSize(bytes: number): string {
+	const [value, unit] =
+		bytes < 1000
+			? [bytes, 'byte']
+			: bytes < 1_000_000
+				? [bytes / 1000, 'kilobyte']
+				: [bytes / 1_000_000, 'megabyte'];
+	return formatNumber(value, { style: 'unit', unit, maximumFractionDigits: 1 });
+}
+
+/** What a file is, in a word: PDF, PDF/A-2B, JPEG; nothing without its metadata. */
+export function fileKind(file: Stored): string {
+	const metadata = file.metadata;
+	if (!metadata) return '';
+	return metadata.pdfa ? `PDF/A-${metadata.pdfa}` : metadata.format;
+}
 
 /** The value of the first of `keys` the entries have (keys compared regardless of case). */
 export function entryValue(entries: readonly Entry[], ...keys: string[]): string | null {

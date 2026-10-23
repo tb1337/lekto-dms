@@ -1,5 +1,6 @@
 <script lang="ts">
 	import InfoTip from '#lib/components/InfoTip.svelte';
+	import { formatDuration } from '#lib/duration.ts';
 	import { formatNumber } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { speed, type Usage } from '#lib/usage.ts';
@@ -14,15 +15,7 @@
 	}: { usage: Usage; model: string | null; id: string; pages?: boolean } = $props();
 
 	const count = (value: number | null) => (value === null ? '–' : formatNumber(value));
-	const seconds = (value: number | null) =>
-		value === null
-			? '–'
-			: formatNumber(value, {
-					style: 'unit',
-					unit: 'second',
-					unitDisplay: 'narrow',
-					maximumFractionDigits: 2
-				});
+	const seconds = (value: number | null) => (value === null ? '–' : formatDuration(value));
 	function timed(duration: number | null, tokens: number | null): string {
 		const rate = speed(tokens, duration);
 		return rate === null

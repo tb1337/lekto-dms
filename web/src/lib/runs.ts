@@ -4,7 +4,13 @@
  * again; the nodes before keep what they did in an earlier run, and a run works with that.
  */
 import type { components } from '#lib/api/schema.ts';
-import { descendants, type GraphNode, type Node, type NodeState } from '#lib/pipeline.ts';
+import {
+	descendants,
+	type GraphNode,
+	type Node,
+	type NodeState,
+	type Processing
+} from '#lib/pipeline.ts';
 import { usageOf } from '#lib/usage.ts';
 
 type LogEntry = components['schemas']['LogEntry'];
@@ -125,4 +131,57 @@ export function runTokens(
 		output += usage.output ?? 0;
 	}
 	return any ? { input, output } : null;
+}
+
+export interface Glance {
+	status: ProcessingStatus;
+	/** When it began; null while nothing tells. */
+	started: string | null;
+	/** When it ended; null while it runs. */
+	finished: string | null;
+}
+
+/**
+ * A run at a glance: how it stands or ended, when it began and ended, by its entries; without
+ * the log (`entries` null) the current run by the states of its nodes.
+ */
+export function glance(
+	entries: readonly LogEntry[] | null,
+	graph: readonly GraphNode[],
+	processing: Processing,
+	run: number
+): Glance {
+	const current = run === processing.run;
+	const status = current ? processing.status : pastStatus(entries ?? [], graph, run);
+	let started: string | null;
+	let finished: string | null;
+	if (entries === null) {
+		const times = (pick: (state: NodeState) => string | null) =>
+			processing.nodes
+				.map(pick)
+				.filter((value): value is string => value !== null)
+				.sort();
+		started = times((state) => state.started_at)[0] ?? null;
+		finished = times((state) => state.finished_at).at(-1) ?? null;
+	} else {
+		const span = runSpan(entries, run);
+		const running = current
+			? processing.nodes
+					.filter((state) => state.status === 'running')
+					.map((state) => state.started_at)
+			: [];
+		started =
+			[span?.started, ...running]
+				.filter((value): value is string => typeof value === 'string')
+				.sort()[0] ?? null;
+		finished = span?.finished ?? null;
+	}
+	return { status, started, finished: status === 'processing' ? null : finished };
+}
+
+/** How long a run took, in seconds; null while it runs or nothing tells. */
+export function glanceSeconds(value: Glance): number | null {
+	return value.started && value.finished
+		? (new Date(value.finished).getTime() - new Date(value.started).getTime()) / 1000
+		: null;
 }

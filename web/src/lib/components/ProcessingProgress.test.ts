@@ -27,7 +27,7 @@ const PROCESSING = {
 
 describe('ProcessingProgress', () => {
 	it('shows a segment per node, what runs, and how far it is', () => {
-		render(ProcessingProgress, { processing: PROCESSING, href: '/ui/documents/d?tab=log' });
+		render(ProcessingProgress, { processing: PROCESSING, href: '/ui/documents/d?tab=processing' });
 		const bar = screen.getByRole('progressbar', { name: m.processing_progress() });
 		expect([bar.getAttribute('aria-valuenow'), bar.getAttribute('aria-valuemax')]).toEqual([
 			'3',
@@ -37,7 +37,7 @@ describe('ProcessingProgress', () => {
 		expect(bar.children[1].className).toContain('animate-pulse');
 		expect(bar.children[1].getAttribute('title')).toContain(m.node_status_running());
 		expect(screen.getByRole('status').textContent).toContain('3');
-		expect(screen.getByRole('link').getAttribute('href')).toBe('/ui/documents/d?tab=log');
+		expect(screen.getByRole('link').getAttribute('href')).toBe('/ui/documents/d?tab=processing');
 	});
 
 	it('is a thin bar alone where it is small', () => {

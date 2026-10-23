@@ -10,7 +10,7 @@ import { documentHref } from '#lib/candidates.ts';
 import { describeValue, fieldLabel } from '#lib/describe.ts';
 import { formatNumber } from '#lib/i18n.ts';
 import { IDENTIFIER_KINDS, kindLabel, type IdentifierKind } from '#lib/identifiers.ts';
-import { strengthLabel, type Strength } from '#lib/facts.ts';
+import type { Strength } from '#lib/facts.ts';
 import { userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 
@@ -35,25 +35,25 @@ export interface SummaryRow {
 
 type Json = Record<string, unknown>;
 
-const object = (value: unknown): Json =>
+export const object = (value: unknown): Json =>
 	value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Json) : {};
-const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
-const text = (value: unknown): string | null =>
+export const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+export const text = (value: unknown): string | null =>
 	typeof value === 'string' && value.trim() !== '' ? value : null;
-const percent = (value: unknown) =>
+export const percent = (value: unknown) =>
 	formatNumber(typeof value === 'number' ? value : 0, {
 		style: 'percent',
 		maximumFractionDigits: 0
 	});
 
-function kind(value: unknown): string {
+export function kind(value: unknown): string {
 	const name = String(value);
 	return (IDENTIFIER_KINDS as readonly string[]).includes(name)
 		? kindLabel(name as IdentifierKind)
 		: name;
 }
 
-function named(id: unknown, lookup: Lookup | null): string {
+export function named(id: unknown, lookup: Lookup | null): string {
 	return typeof id === 'string' ? describeValue(id, lookup) : m.value_unset();
 }
 
@@ -67,19 +67,29 @@ function ranked(value: unknown, lookup: Lookup | null, count = 3): SummaryItem[]
 		});
 }
 
-/** The persons an entry names, by name, with the strength of the evidence. */
-function persons(value: unknown, lookup: Lookup | null): SummaryItem[] {
-	return list(value).map((item) => {
-		const found = object(item);
-		const strength = String(found.strength ?? '');
-		const label = ['hard', 'medium', 'weak'].includes(strength)
-			? strengthLabel(strength as Strength)
-			: strength;
-		return { text: `${person(found.user_id, lookup)} · ${label}` };
-	});
+const WITH_STRENGTH: Record<Strength, (inputs: { name: string }) => string> = {
+	hard: m.signal_person_hard,
+	medium: m.signal_person_medium,
+	weak: m.signal_person_weak
+};
+
+/** A person an entry names, with the strength of the evidence in brackets: "Anna Leider
+ * (sicher belegt)". */
+export function personWithStrength(item: unknown, lookup: Lookup | null): string {
+	const found = object(item);
+	const name = person(found.user_id, lookup);
+	const strength = String(found.strength ?? '');
+	return Object.hasOwn(WITH_STRENGTH, strength)
+		? WITH_STRENGTH[strength as Strength]({ name })
+		: name;
 }
 
-function person(id: unknown, lookup: Lookup | null): string {
+/** The persons an entry names, by name, with the strength of the evidence. */
+function persons(value: unknown, lookup: Lookup | null): SummaryItem[] {
+	return list(value).map((item) => ({ text: personWithStrength(item, lookup) }));
+}
+
+export function person(id: unknown, lookup: Lookup | null): string {
 	const user = lookup?.users.find((entry) => entry.id === id);
 	return user ? userLabel(user) : m.space_named_someone();
 }

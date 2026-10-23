@@ -53,7 +53,7 @@ function documentRoutes(id: string, current: () => Document): Parameters<typeof 
 		[`GET /api/v1/documents/${id}`]: () => current(),
 		[`GET /api/v1/documents/${id}/review`]: () => ({ document: current(), open: [], nodes: [] }),
 		[`GET /api/v1/documents/${id}/reading`]: () => ({ vision: false, pages: [], advice: null }),
-		// The metadata tab says so; the test looks at seen.
+		// The properties tab says so; the test looks at seen.
 		[`GET /api/v1/documents/${id}/files`]: () =>
 			json({ type: 'about:blank', title: 'Not Found', status: 404 }, 404)
 	};
@@ -74,7 +74,7 @@ const seen = (api: ReturnType<typeof fakeApi>) =>
 	calls(api).filter((call) => call === 'PUT /api/v1/documents/doc-1/seen');
 
 beforeEach(() => {
-	goTo('/ui/documents/doc-1?tab=metadata', { id: 'doc-1' });
+	goTo('/ui/documents/doc-1?tab=properties', { id: 'doc-1' });
 	vi.mocked(goto).mockClear();
 	session.start({
 		user: { id: OWNER, username: 'tobi', role: 'user' },
@@ -130,7 +130,7 @@ describe('the document view and seen', () => {
 	});
 
 	it('reports seen of a document opened from the inbox once the inbox is known', async () => {
-		goTo('/ui/documents/doc-1?from=inbox&tab=metadata', { id: 'doc-1' });
+		goTo('/ui/documents/doc-1?from=inbox&tab=properties', { id: 'doc-1' });
 		const api = serve(() => documentOf({ lane: 'green' }), {
 			'GET /api/v1/inbox': () => ({
 				items: [inboxItem('new', { id: 'doc-0' }), inboxItem('new', { id: 'doc-1' })],
@@ -298,6 +298,18 @@ describe('the document tab', () => {
 			replace: true,
 			reset: false
 		});
+	});
+
+	it('shows a page a link of the processing view asks for, then forgets it', async () => {
+		goTo('/ui/documents/doc-1?left=pages&right=form&page=2', { id: 'doc-1' });
+		serve(() => documentOf({ lane: 'green' }));
+		render(Page);
+		await waitFor(() =>
+			expect(goto).toHaveBeenCalledWith('/ui/documents/doc-1?left=pages&right=form', {
+				replace: true,
+				reset: false
+			})
+		);
 	});
 
 	it('marks the quote of a field in the text while the field is hovered', async () => {

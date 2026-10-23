@@ -8,8 +8,12 @@ import {
 	neighbours,
 	nextDecision,
 	type InboxPlace,
+	pageHref,
+	pageOf,
 	placesApply,
 	provenance,
+	stepHref,
+	stepOf,
 	tabHref,
 	tabOf,
 	viewerSources,
@@ -41,20 +45,55 @@ const place = { page: 2, boxes: [{ x: 0.1, y: 0.5, width: 0.2, height: 0.02 }] }
 describe('tabs', () => {
 	it('come from the URL, the document without one', () => {
 		expect(tabOf(new URL('http://lekto/ui/documents/1'))).toBe('document');
-		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=log'))).toBe('log');
+		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=processing'))).toBe('processing');
+		// The tabs of before 0.6 by their names of now.
+		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=log'))).toBe('processing');
+		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=metadata'))).toBe('properties');
 		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=nonsense'))).toBe('document');
+		// Names an object has by itself are no tabs.
+		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=toString'))).toBe('document');
+		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=constructor'))).toBe('document');
 		// The tabs of before are the document's.
 		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=content'))).toBe('document');
 	});
 
 	it('keep the other parameters', () => {
-		const url = new URL('http://lekto/ui/documents/1?from=inbox&tab=log&left=text&right=form');
-		expect(tabHref(url, 'metadata')).toBe(
-			'/ui/documents/1?from=inbox&tab=metadata&left=text&right=form'
+		const url = new URL(
+			'http://lekto/ui/documents/1?from=inbox&tab=processing&left=text&right=form'
+		);
+		expect(tabHref(url, 'properties')).toBe(
+			'/ui/documents/1?from=inbox&tab=properties&left=text&right=form'
 		);
 		expect(tabHref(url, 'document')).toBe('/ui/documents/1?from=inbox&left=text&right=form');
-		expect(tabHref(new URL('http://lekto/ui/documents/1?tab=log'), 'document')).toBe(
+		expect(tabHref(new URL('http://lekto/ui/documents/1?tab=processing'), 'document')).toBe(
 			'/ui/documents/1'
+		);
+	});
+
+	it('keep the step only on the processing tab', () => {
+		const url = new URL('http://lekto/ui/documents/1?tab=processing&step=judge');
+		expect(tabHref(url, 'document')).toBe('/ui/documents/1');
+		expect(tabHref(url, 'properties')).toBe('/ui/documents/1?tab=properties');
+		expect(tabHref(url, 'processing')).toBe('/ui/documents/1?tab=processing&step=judge');
+		expect(viewHref(url, { left: 'pages', right: 'form' })).toBe(
+			'/ui/documents/1?left=pages&right=form'
+		);
+	});
+});
+
+describe('the step of the processing tab', () => {
+	it('comes from the URL when the graph knows it', () => {
+		const url = new URL('http://lekto/ui/documents/1?tab=processing&step=judge');
+		expect(stepOf(url, ['ocr', 'judge'])).toBe('judge');
+		expect(stepOf(url, ['ocr'])).toBeNull();
+		expect(stepOf(new URL('http://lekto/ui/documents/1?tab=processing'), ['ocr'])).toBeNull();
+	});
+
+	it('goes into the link of the processing tab, keeping the other parameters', () => {
+		const url = new URL('http://lekto/ui/documents/1?from=inbox&tab=processing');
+		expect(stepHref(url, 'ocr')).toBe('/ui/documents/1?from=inbox&tab=processing&step=ocr');
+		expect(stepHref(new URL('http://lekto/ui/documents/1?step=ocr&tab=processing'), null)).toBe(
+			'/ui/documents/1?tab=processing'
 		);
 	});
 });
@@ -73,6 +112,18 @@ describe('the view of the document tab', () => {
 		expect(viewOf(at('?tab=details'))).toEqual({ left: 'pages', right: 'form' });
 		expect(viewOf(at('?tab=content&right=form'))).toEqual({ left: 'text', right: 'form' });
 		expect(viewOf(at('?left=nonsense&right=facts'))).toEqual({ left: 'pages', right: 'facts' });
+	});
+
+	it('shows a page a link asks for, then forgets it', () => {
+		const url = new URL('http://lekto/ui/documents/1?from=inbox&tab=processing&step=pages');
+		const href = pageHref(url, 3);
+		expect(href).toBe('/ui/documents/1?from=inbox&left=pages&right=form&page=3');
+		expect(pageOf(new URL(`http://lekto${href}`))).toBe(3);
+		expect(pageHref(new URL(`http://lekto${href}`), null)).toBe(
+			'/ui/documents/1?from=inbox&left=pages&right=form'
+		);
+		expect(pageOf(new URL('http://lekto/ui/documents/1?page=0'))).toBeNull();
+		expect(pageOf(new URL('http://lekto/ui/documents/1?page=x'))).toBeNull();
 	});
 
 	it('is linked, leaving a tab of before behind', () => {

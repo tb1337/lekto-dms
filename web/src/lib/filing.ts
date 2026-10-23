@@ -114,7 +114,13 @@ function lostReaders(target: string, current: string, lookup: Lookup): string[] 
 		.map((member) => userLabel(member));
 }
 
-function title(kind: FilingKind, target: string, lookup: Lookup, viewer: Viewer): string {
+/** What a choice reads as: "Übergeben an Anna Leider", "Nach Haushalt", "In Tobi lassen". */
+export function choiceTitle(
+	kind: FilingKind,
+	target: string,
+	lookup: Lookup,
+	viewer: Viewer
+): string {
 	if (kind === 'hand_over') {
 		const receiver = receiverOf(target, lookup, viewer);
 		return m.move_hand_over({ name: receiver ? userLabel(receiver) : m.space_unseen() });
@@ -214,7 +220,7 @@ export function openFiling(
 		return {
 			value,
 			kind,
-			title: title(kind, value, lookup, viewer),
+			title: choiceTitle(kind, value, lookup, viewer),
 			chips: filingChips(sources, lookup, value),
 			consequence: consequence(kind, value, current, lookup, viewer),
 			choosable: choosable.has(value),

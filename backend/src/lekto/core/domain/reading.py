@@ -516,9 +516,10 @@ def vision_advice(
 
 @dataclass(frozen=True, kw_only=True)
 class OcrOutput:
-    """What the OCR node logs: the archive and its pages, whether it is PDF/A, the engine's
-    note, how each recognised page was read, whether another OCR's text layer was replaced, and
-    a vision model's run (`vision`: model, endpoint, prompt, calls; `tokens` per call)."""
+    """What the OCR node logs: the archive and its pages, whether it is PDF/A and its colours
+    were converted to RGB for that (`rgb`), the engine's note, how each recognised page was read,
+    whether another OCR's text layer was replaced, and a vision model's run (`vision`: model,
+    endpoint, prompt, calls; `tokens` per call)."""
 
     archive: str
     pages: int
@@ -528,6 +529,7 @@ class OcrOutput:
     read_again: bool = False
     vision: JsonObject | None = None
     tokens: tuple[JsonValue, ...] = ()
+    rgb: bool = False
 
     def to_json(self) -> JsonObject:
         output: JsonObject = {"archive": self.archive, "pages": self.pages, "pdfa": self.pdfa}
@@ -537,6 +539,8 @@ class OcrOutput:
             output["readings"] = readings_to_json(self.readings)
         if self.read_again:
             output["read_again"] = True
+        if self.rgb:
+            output["rgb"] = True
         if self.vision is not None:
             output["vision"] = self.vision
             output["tokens"] = list(self.tokens)
@@ -554,4 +558,5 @@ class OcrOutput:
             read_again=as_bool(data.get("read_again")) is True,
             vision=as_object(data.get("vision")),
             tokens=tuple(as_list(data.get("tokens"))),
+            rgb=as_bool(data.get("rgb")) is True,
         )

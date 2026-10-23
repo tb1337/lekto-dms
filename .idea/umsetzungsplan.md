@@ -1471,6 +1471,38 @@ PR mit Label `enhancement` nach `release/0.5.0`, nach Paket 3.
 
 - `release/0.5.0` → `main` als Draft-PR mit `skip-changelog`; gemergt auf Tobis Wort, danach die Notes prüfen (beim Ändern eines Entwurfs `tag_name` mitschicken).
 
+### Zwischenschritt: Verarbeitung auf einen Blick
+
+**Anlass (Tobi, 22./23.10.2026):** „Metadaten“ ist nicht der richtige Name des Dateipasses, „Protokoll“ nicht der der Verarbeitung; das Protokoll soll hübscher und smarter werden. Entschieden: Reiter Dokument · Eigenschaften · Verarbeitung. Von drei Entwürfen (A neu gedacht mit Signal-Matrix und Zeitstrahl, B Zeitleiste, C Übersicht und Detail) wurde C in der Nacht 22./23.10. gebaut und am Morgen verworfen („sah im Mock besser aus, als es sich in echt anfühlt“); gewählt dann D, eine Mischung aus der Ansicht davor und A, mit der Läufe-Box oben rechts wie zuvor, „Wer hat was erkannt?“ (am Desktop ohne Ergebnisspalte) und am Handy der Zeitleiste aus A; die Seite scrollt am Desktop nicht. Ergebnis in `architektur.md` › Schnittstellen › Web-UI › Verarbeitung.
+
+**Umsetzung (23.10.2026, Branch `enhancement/processing-overview` von main 5b4d47e; der Bau von C liegt auf `enhancement/processing-view`):**
+
+- **Backend:** Die Texterkennung vermerkt `rgb: true` im Protokoll, wenn Ghostscript die Farben für PDF/A nach RGB umrechnete (`OcrResult.rgb`, `OcrOutput.rgb`).
+- **Reiter:** `?tab=properties` und `?tab=processing`; Links mit `metadata` und `log` öffnen den passenden Reiter. Der offene Schritt steht in `?step=`; andere Reiter lassen ihn fallen.
+- **Web:** `DocumentProcessing` (Laden, Live, Lauf und offener Schritt) mit `ProcessingSummary` (Kopf, Zahlen, „Seit Lauf N“), `ProcessingBand`, `ProcessingGraph` (Desktop) und `ProcessingTimeline` (schmaler), `StepCard`, `StepEntries` (was ein Schritt tat, wie im Protokoll davor), `ProcessingRuns` (die Box wie zuvor) und `SignalMatrix`. Reine Module: `steps.ts` (Phasen, Dauer einer Phase, was hält, Zahlen), `band.ts` (das Laufband), `run-summary.ts` (Satz, Hilfe, Änderungen seit dem Lauf davor), `signal-matrix.ts` (Marken aus den Kandidaten des Urteils), `step-summary.ts` (die eine Zeile je Schritt), `duration.ts` (Dauern ohne Leerzeichen, auch in den Token-Zahlen), `desktop.svelte.ts` (ab `lg`). `DocumentLog` ist weg; `TokenInfo`, `SignalSummary` und `PromptDialog` bleiben.
+- **Ursache gefunden:** Die Seite scrollte am Desktop trotz scrollender Spalte, weil ein absolut gesetzter Text für Screenreader (`sr-only` im Kopf der Matrix) nicht in der Spalte, sondern im Fenster lag; die Spalten sind jetzt positioniert.
+- **Prüfung:** Backend und Web grün; Sichtprüfung im Browser an einer Prüfinstanz mit erfundenen Daten (SQLite, ein falsches Modell, drei Läufe, der letzte hält vor der Ablage), Desktop hell und dunkel ohne Scrollen der Seite, Tablet und Handy.
+
+**Offen für Tobi:**
+
+1. Die Gründe (`reason`) und das „Enthalten“ der Signale bleiben englisch, wie sie im Protokoll stehen; der Kopf nennt sie nach einem Fehler so.
+2. Phasen-Überschriften grau statt in den Farben des Mocks (Gelb hieße sonst „unsicher“); das Band färbt nach Ergebnis.
+3. Die Matrix lässt die Tags aus (ein Wert je Merkmal passt nicht zu mehreren Tags) und das Datum (dafür nennen die Signale keine Kandidaten).
+4. „Seit Lauf N“ vergleicht nur Werte, die in beiden Läufen entschieden sind; Felder als Zahl („2 Felder geändert“), nicht einzeln.
+5. Offen ist zunächst der Schritt, der den aktuellen Lauf hält; geschlossen bleibt er zu, bis ein anderer Lauf oder ein anderes Dokument kommt.
+6. Schmaler als `lg` (64rem, auch Tablets) die Zeitleiste statt der Spalten.
+7. Laufband nach einer Bestätigung: Brauchte der Lauf selbst unter einer Sekunde (nur Regeln und Ablage), stehen alle Schritte gleich breit, die übernommenen gedämpft – sonst füllte ein Schritt von 0 Sekunden die Leiste. Mit Zeiten behält eine ganz übernommene Phase einen kleinen Teil (8 %, mindestens Platz für ihren Namen), ein übernommener Schritt neben denen des Laufs 10 Pixel, ein Schritt von 0 Sekunden 4 Pixel.
+
+**Rückmeldung (Tobi, 23.10.2026) und Umsetzung:**
+
+- **Band und Schritte verbunden:** Jeder Abschnitt des Laufbands ist ein Knopf seines Schritts. Zeigen oder Fokus hebt die Karte des Schritts hervor; das Zeigen auf eine Karte hebt ihren Abschnitt hervor. Erst hob das Band den Abschnitt an und nannte ihn über der Leiste; das überdeckte die Nachbarn und ließ Schrift verschwinden (Tobi). Jetzt nach dem Mock „Farben und Zeigen“: Scheinwerfer (die anderen Abschnitte treten zurück), ein Rahmen in der Farbe des Abschnitts, eine Klammer unter genau seiner Spanne und eine feste Lesezeile (Stand, Name, Dauer, Uhrzeit von–bis, was er tat; ohne Zeigen der Hinweis und die Spanne des Laufs); die Überschrift seiner Phase tritt hervor, seine Karte leuchtet im selben Ton. Ein Klick auf den Abschnitt öffnet den Schritt wie ein Klick auf die Karte (am Handy klappt die Karte auf und rückt ins Bild).
+- **Farben:** Das Band, die Marken der Matrix, die Linie der Zeitleiste und die Zählpunkte füllten mit den Textfarben der Ampel; im hellen Layout wurde Gelb dadurch dunkelbraun, Grün ein eigener Ton. Auch eigene Marken-Farben (dunkle Flächen im hellen Layout) gefielen nicht (Tobi). Jetzt das Schema der Ampel-Chips überall in der Ansicht (`step-look.ts`: `MARK`, `DOT`, `STRIPE`, `LIT_RING`, `YELLOW_ACTION`): der Grund der Lane (`--lane-*`), Schrift und Rand in ihrer Schriftfarbe (`--lane-*-foreground`); dünne Streifen in der Schriftfarbe, abgeschwächt. Kleine Marken (Matrix, Zählpunkte, Zeitleiste) sind flache Formen mit schlichtem Rand – Kreis nennt, Quadrat Beleg im Text, Raute widerspricht, Ringe für anderes ohne Beleg und Schweigen – ohne Häkchen und ohne Schattierung. Ein Test hält die Schriftfarben der Lanes 3:1 zur Karte, weil der Rand die blassen Gründe trägt. Der Punkt am Reiter und der Knopf zur Ablage-Frage folgen dem Schema.
+- **Infobox Texterkennung:** Original und Archiv nebeneinander (Format, PDF/A, Größe, Seiten; aus `/files`, nur für den letzten Lauf, weil die Dateien die heutigen sind), Hinweise (Farben umgerechnet, fremde Textschicht ersetzt, VLM mit Zahl der Aufrufe, kein PDF/A) und „Wie gut jede Seite gelesen wurde“ als Säulen des Anteils unsicherer Wörter mit Wortzahl; schwach gelesene Seiten (`/reading`) gelb.
+- **Infobox Seiten:** die Seitenbilder als Leiste; jedes führt zur Seite im Reiter Dokument (`?page=N`, der Reiter zeigt die Seite und vergisst den Parameter).
+- **Infobox Auslesen:** Zeichen gesamt, je Seite im Schnitt und als Säulen je Seite (aus dem Text, die Seiten getrennt durch den Seitenvorschub; nur für den letzten Lauf und bis 400.000 Zeichen), „Text ansehen“.
+- **Klassifikator und Ähnliche Dokumente:** wie in Entwurf B – je Art (Kontakte, Typen, Themen, Spaces) die besten drei mit Balken und Prozent, die Schwelle aus den Kandidaten des Urteils als Strich; die ähnlichen Dokumente als Zeilen mit Link, was sie tragen, und Balken der Ähnlichkeit. Titel der ähnlichen Dokumente gibt es ohne eine Anfrage je Dokument nicht; sie heißen weiter „Dokument N“.
+- **Fakten im Text:** genannte Kontakte als Chips, Kennungen als „Personalnummer 20417 → Schwälmer Brotladen“; Personen überall als „Anna Leider (genannt)“, „(wahrscheinlich)“, „(sicher belegt)“ – „genannt“ ist die schwächste Stufe (nur der Name steht im Text).
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

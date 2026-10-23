@@ -61,6 +61,17 @@ describe('colors', () => {
 		}
 	});
 
+	it.each(['light', 'dark'] as const)('keeps the lanes as marks visible in %s', (theme) => {
+		// The marks of the processing view are drawn like the lane chips (ground and text of the
+		// lane); a pale ground stands out from the card by an edge in the lane's text colour.
+		const found = THEME_TOKENS[theme];
+		const card = parseHex(found.get('card')!);
+		for (const lane of ['green', 'yellow', 'red']) {
+			const edge = parseHex(found.get(`lane-${lane}-foreground`)!);
+			expect(contrast(edge, card), lane).toBeGreaterThanOrEqual(3);
+		}
+	});
+
 	it.each(['light', 'dark'] as const)('mixes against the colours of %s', (theme) => {
 		expect(THEME_TOKENS[theme].get('card')).toBe(THEMES[theme].card);
 		expect(THEME_TOKENS[theme].get('foreground')).toBe(THEMES[theme].text);

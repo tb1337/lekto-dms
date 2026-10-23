@@ -20,6 +20,8 @@
 	import { describeError } from '#lib/errors.ts';
 	import { events } from '#lib/events.svelte.ts';
 	import {
+		fileKind,
+		fileSize,
 		fingerprint,
 		gapOf,
 		lifeOf,
@@ -144,31 +146,13 @@
 		);
 	});
 
-	/** A size as people read it: bytes, kB, MB (decimal, as file managers show them). */
-	function size(bytes: number): string {
-		const [value, unit] =
-			bytes < 1000
-				? [bytes, 'byte']
-				: bytes < 1_000_000
-					? [bytes / 1000, 'kilobyte']
-					: [bytes / 1_000_000, 'megabyte'];
-		return formatNumber(value, { style: 'unit', unit, maximumFractionDigits: 1 });
-	}
-
 	const when = (value: Date | string) =>
 		formatDate(value, { dateStyle: 'medium', timeStyle: 'short' });
-
-	/** What a file is, in a word: PDF, PDF/A-2B, JPEG. */
-	function kind(file: Stored): string {
-		const metadata = file.metadata;
-		if (!metadata) return '';
-		return metadata.pdfa ? `PDF/A-${metadata.pdfa}` : metadata.format;
-	}
 
 	function stepNote(step: Step): string {
 		if (step.kind === 'created' || step.kind === 'changed') return m.files_step_sender();
 		if (step.kind === 'archived' && files?.archive)
-			return m.files_step_as({ format: kind(files.archive) });
+			return m.files_step_as({ format: fileKind(files.archive) });
 		if (step.kind === 'confirmed')
 			return step.takenOver ? m.files_step_taken_over() : m.files_step_by_hand();
 		if (step.kind === 'added' && document?.channel === 'migration')
@@ -233,7 +217,7 @@
 							<span
 								class="rounded-full bg-lane-green px-2 py-0.5 text-[11.5px] font-semibold text-lane-green-foreground"
 							>
-								{kind(file)}
+								{fileKind(file)}
 							</span>
 						{/if}
 						{#if metadata.width && metadata.height}
@@ -257,7 +241,7 @@
 		<dl class="grid grid-cols-3 border-y">
 			<div class="flex flex-col gap-0.5 px-4 py-2.5">
 				<dt class="order-last text-[11.5px] text-muted-foreground">{m.files_size()}</dt>
-				<dd class="text-base font-semibold tabular-nums">{size(file.size)}</dd>
+				<dd class="text-base font-semibold tabular-nums">{fileSize(file.size)}</dd>
 			</div>
 			<div class="flex flex-col gap-0.5 border-l px-4 py-2.5">
 				<dt class="order-last text-[11.5px] text-muted-foreground">{m.files_pages()}</dt>

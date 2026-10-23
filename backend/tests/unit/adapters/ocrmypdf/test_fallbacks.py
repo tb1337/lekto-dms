@@ -160,7 +160,7 @@ async def convert(runs: Runs, tmp_path: Path) -> tuple[OcrResult, Path]:
 async def test_a_clean_run_is_pdfa_without_a_note(runs: Runs, tmp_path: Path) -> None:
     runs.outcomes = [(0, "")]
     result, target = await convert(runs, tmp_path)
-    assert (result.pdfa, result.note, result.pages) == (True, None, 1)
+    assert (result.pdfa, result.note, result.pages, result.rgb) == (True, None, 1, False)
     assert [options(call) for call in runs.calls] == [("pdfa", False)]
     assert target.exists() and [p.name for p in tmp_path.iterdir()] == ["archive.pdf"]
 
@@ -234,7 +234,7 @@ async def test_a_colour_space_pdfa_cannot_hold_is_converted_to_rgb(
 ) -> None:
     runs.outcomes = [(1, COLOUR), (0, "")]
     result, _ = await convert(runs, tmp_path)
-    assert (result.pdfa, result.note) == (True, COLOUR_NOTE)
+    assert (result.pdfa, result.note, result.rgb) == (True, COLOUR_NOTE, True)
     assert [options(call) for call in runs.calls] == [("pdfa", False), ("pdfa", False)]
     assert [converts_colours(call) for call in runs.calls] == [False, True]
 
@@ -256,7 +256,7 @@ async def test_a_colour_space_that_converting_cannot_fix_falls_back_to_a_plain_p
 ) -> None:
     runs.outcomes = [(1, COLOUR), (1, COLOUR), (0, "")]
     result, _ = await convert(runs, tmp_path)
-    assert result.pdfa is False
+    assert (result.pdfa, result.rgb) == (False, False)
     assert result.note == "not PDF/A: the colour space of the file cannot be represented in PDF/A"
     assert [options(call) for call in runs.calls] == [
         ("pdfa", False),

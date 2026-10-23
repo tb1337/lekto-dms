@@ -33,8 +33,7 @@ data/
 .DS_Store
 
 # The settings of the development instance in the devcontainer (.devcontainer/README.md)
-.devcontainer/dev.local.env
-.devcontainer/prod.env
+.devcontainer/*.env
 
 # Secrets of the example stacks (deploy/create-secrets.sh)
 deploy/secrets/
@@ -42,6 +41,7 @@ deploy/backup/
 
 # Migration client: local state and reports of a run
 migration-state.sqlite*
+migration-plan.yaml
 migration-reports/
 
 # pnpm store created by runs from the repository root

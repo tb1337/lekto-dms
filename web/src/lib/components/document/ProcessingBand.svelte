@@ -16,7 +16,7 @@
 	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import type { Node } from '#lib/pipeline.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { MARK, ON_MARK } from '#lib/step-look.ts';
+	import { MARK, ON_MARK, STRIPE } from '#lib/step-look.ts';
 	import { PHASE_LABELS, type Phase } from '#lib/steps.ts';
 	import { cn } from '#lib/utils.ts';
 
@@ -24,15 +24,19 @@
 	// their duration and colour, the steps that ran beside the longest one as thin stripes below
 	// it, the steps an earlier run did muted. Wide, the phases' names stand below their part of
 	// the bar; narrow, in one line. A label stands inside a segment only where it fits whole.
-	// Each segment is a button for its step (Tobi, 23.10.2026): pointing at it or focusing it
-	// lights it up, with its name, time and state above the bar, and lights up the step's card;
-	// a card pointed at lights up its segment (`highlighted`); a click opens the step.
+	// The colours are the lane chips' (Tobi, 23.10.2026). Each segment is a button for its step:
+	// pointed at or focused, here or at its card (`highlighted`), it stays lit while the others
+	// step back, a ring in its colour around it, a bracket below it spanning it, and the reading
+	// line under the bar tells what it did; nothing grows or covers a neighbour. A click opens
+	// the step.
 	let {
 		phases,
 		run,
 		wide,
 		phaseDuration,
 		noteOf,
+		reading,
+		idle = null,
 		highlighted = null,
 		expanded = null,
 		onhighlight,
@@ -42,8 +46,12 @@
 		run: number;
 		wide: boolean;
 		phaseDuration: (phase: Phase) => string | null;
-		/** How a step that did not end OK by itself came to count as OK, for its tooltip. */
+		/** How a step that did not end OK by itself came to count as OK, for its words. */
 		noteOf: (node: Node) => string | null;
+		/** What the reading line tells of a step besides its name, state and time. */
+		reading: (node: Node) => string | null;
+		/** The reading line while no step is lit. */
+		idle?: string | null;
 		/** The step pointed at or focused, here or at its card. */
 		highlighted?: Node | null;
 		/** The step whose details are open. */
@@ -56,10 +64,44 @@
 		green: MARK.green,
 		yellow: MARK.yellow,
 		red: MARK.red,
-		running: 'animate-pulse bg-lane-running-foreground/50',
+		running: 'animate-pulse bg-lane-running ring-1 ring-inset ring-lane-running-foreground/35',
 		waiting:
 			'border border-dashed border-muted-foreground/60 bg-[repeating-linear-gradient(45deg,var(--color-muted)_0_4px,transparent_4px_8px)]',
+		carried: 'bg-muted ring-1 ring-inset ring-border'
+	};
+	const stripes: Record<BandTone, string> = {
+		green: STRIPE.green,
+		yellow: STRIPE.yellow,
+		red: STRIPE.red,
+		running: 'animate-pulse bg-lane-running-foreground/50',
+		waiting: 'bg-muted-foreground/30',
 		carried: 'bg-muted-foreground/25'
+	};
+	// The ring of the lit segment, in its colour.
+	const rings: Record<BandTone, string> = {
+		green: 'ring-lane-green-foreground',
+		yellow: 'ring-lane-yellow-foreground',
+		red: 'ring-lane-red-foreground',
+		running: 'ring-lane-running-foreground',
+		waiting: 'ring-muted-foreground',
+		carried: 'ring-muted-foreground'
+	};
+	const brackets: Record<BandTone, string> = {
+		green: 'border-lane-green-foreground',
+		yellow: 'border-lane-yellow-foreground',
+		red: 'border-lane-red-foreground',
+		running: 'border-lane-running-foreground',
+		waiting: 'border-muted-foreground',
+		carried: 'border-muted-foreground'
+	};
+	// The state in the reading line, as the chip of its lane.
+	const chips: Record<BandTone, string> = {
+		green: 'bg-lane-green text-lane-green-foreground',
+		yellow: 'bg-lane-yellow text-lane-yellow-foreground',
+		red: 'bg-lane-red text-lane-red-foreground',
+		running: 'bg-lane-running text-lane-running-foreground',
+		waiting: 'bg-muted text-muted-foreground',
+		carried: 'bg-muted text-muted-foreground'
 	};
 	const words: Record<Exclude<BandTone, 'carried'>, () => string> = {
 		green: m.outcome_ok,
@@ -69,7 +111,7 @@
 		waiting: m.node_status_waiting
 	};
 
-	// A label inside a segment: the lane's text on its mark, the text colour on the pale running one.
+	// A label inside a segment: the chip's text on its ground, the text colour on the running one.
 	const label = (tone: BandTone) =>
 		tone === 'green' || tone === 'yellow' || tone === 'red' ? ON_MARK[tone] : 'text-foreground';
 
@@ -123,16 +165,22 @@
 
 	const steps = $derived(phases.flatMap((phase) => phase.groups.flatMap((group) => group.steps)));
 	const lit = $derived(steps.find((step) => step.node === highlighted) ?? null);
+	const litPhase = $derived(
+		lit === null
+			? null
+			: (phases.find((phase) =>
+					phase.groups.some((group) => group.steps.some((step) => step.node === lit.node))
+				)?.phase ?? null)
+	);
 
-	// The label above the lit segment: over its middle, or flush with its edge near the ends of
-	// the bar, so that it is never cut.
+	// The bracket below the lit segment: exactly its span.
 	let frame = $state<HTMLElement | null>(null);
-	let tip = $state<{ x: number; align: 'start' | 'center' | 'end' } | null>(null);
+	let span = $state<{ left: number; width: number } | null>(null);
 	$effect(() => {
 		const node = lit?.node;
 		void width;
 		if (!node || !frame) {
-			tip = null;
+			span = null;
 			return;
 		}
 		void tick().then(() => {
@@ -140,10 +188,7 @@
 			if (!frame || !segment) return;
 			const outer = frame.getBoundingClientRect();
 			const own = segment.getBoundingClientRect();
-			const middle = own.left + own.width / 2 - outer.left;
-			if (middle < outer.width * 0.2) tip = { x: own.left - outer.left, align: 'start' };
-			else if (middle > outer.width * 0.8) tip = { x: own.right - outer.left, align: 'end' };
-			else tip = { x: middle, align: 'center' };
+			span = { left: own.left - outer.left, width: own.width };
 		});
 	});
 </script>
@@ -154,15 +199,17 @@
 		type="button"
 		data-band-node={step.node}
 		data-lit={on ? '' : undefined}
-		aria-label={title(step)}
+		aria-label={[title(step), reading(step.node)].filter(Boolean).join(' · ')}
 		aria-expanded={step.node === expanded}
 		class={cn(
-			'relative flex min-w-0 items-center overflow-hidden rounded-[3px] outline-none motion-safe:transition-[transform,box-shadow] motion-safe:duration-150',
+			'relative flex min-w-0 items-center overflow-hidden rounded-[3px] outline-none motion-safe:transition-opacity motion-safe:duration-150',
 			'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
-			stripe ? 'h-[3px] shrink-0' : 'min-h-0 w-full flex-1',
-			tones[step.tone],
-			step.overruled && 'ring-2 ring-lane-yellow-mark ring-inset',
-			on && ['z-10 shadow-md', stripe ? 'scale-y-[2.5]' : 'scale-y-[1.35]']
+			stripe
+				? ['h-[3px] shrink-0', stripes[step.tone]]
+				: ['min-h-0 w-full flex-1', tones[step.tone]],
+			!stripe && step.overruled && 'ring-2 ring-lane-yellow-foreground/60 ring-inset',
+			lit !== null && !on && 'opacity-35',
+			on && !stripe && ['ring-2 ring-inset', rings[step.tone]]
 		)}
 		style:width={stripe ? `${step.share * 100}%` : undefined}
 		onmouseenter={() => onhighlight(step.node)}
@@ -174,9 +221,9 @@
 		{#if text}
 			<span
 				class={cn(
-					'px-2 text-[11px] font-semibold whitespace-nowrap',
-					label(step.tone),
-					on && 'opacity-0'
+					'px-2 text-[11px] whitespace-nowrap',
+					on ? 'font-bold' : 'font-semibold',
+					label(step.tone)
 				)}
 				aria-hidden="true"
 			>
@@ -186,20 +233,7 @@
 	</button>
 {/snippet}
 
-<div class="relative flex flex-col gap-2" bind:this={frame}>
-	{#if lit && tip}
-		<span
-			class={cn(
-				'pointer-events-none absolute -top-2 z-20 -translate-y-full rounded-md border bg-popover px-2 py-1 text-xs whitespace-nowrap text-popover-foreground shadow-md',
-				tip.align === 'center' && '-translate-x-1/2',
-				tip.align === 'end' && '-translate-x-full'
-			)}
-			style:left={`${tip.x}px`}
-			aria-hidden="true"
-		>
-			{title(lit)}
-		</span>
-	{/if}
+<div class="relative flex flex-col" bind:this={frame}>
 	<div
 		role="group"
 		aria-label={description}
@@ -225,15 +259,65 @@
 			</span>
 		{/each}
 	</div>
+	<!-- The bracket below the lit segment, and the reading line it points at: their room is
+	     always kept, so that nothing moves when a step lights up. -->
+	<div class="relative h-2.5" aria-hidden="true">
+		{#if lit && span}
+			<span
+				data-band-bracket
+				class={cn(
+					'absolute top-[3px] h-1.5 rounded-b border-[1.5px] border-t-0',
+					brackets[lit.tone]
+				)}
+				style:left={`${span.left}px`}
+				style:width={`${span.width}px`}
+			>
+				<span
+					class={cn(
+						'absolute top-full left-1/2 h-1 w-0 -translate-x-1/2 border-l-[1.5px]',
+						brackets[lit.tone]
+					)}
+				></span>
+			</span>
+		{/if}
+	</div>
+	<p
+		data-band-reading
+		class="flex h-6 min-w-0 items-center gap-2 overflow-hidden text-[13px] whitespace-nowrap text-muted-foreground"
+		aria-hidden="true"
+	>
+		{#if lit}
+			<span class={cn('shrink-0 rounded-full px-2 py-px text-xs font-semibold', chips[lit.tone])}>
+				{word(lit)}
+			</span>
+			<strong class="shrink-0 font-semibold text-foreground">{NODE_LABELS[lit.node]()}</strong>
+			{#if duration(lit)}<span class="shrink-0 tabular-nums">· {duration(lit)}</span>{/if}
+			{#if reading(lit.node)}
+				<span class="min-w-0 truncate text-foreground/85">· {reading(lit.node)}</span>
+			{/if}
+		{:else if idle}
+			<span class="truncate">{idle}</span>
+		{/if}
+	</p>
 	{#if wide}
 		<div
-			class="grid gap-1 text-[11px] text-muted-foreground"
+			class="mt-1.5 grid gap-1 text-[11px] text-muted-foreground"
 			style:grid-template-columns={columns}
 			aria-hidden="true"
 		>
 			{#each phases as phase (phase.phase)}
-				<span class="flex min-w-0 flex-col">
-					<span class="font-semibold tracking-wider whitespace-nowrap uppercase">
+				<span
+					class={cn(
+						'flex min-w-0 flex-col motion-safe:transition-opacity',
+						litPhase !== null && (litPhase === phase.phase ? 'text-foreground' : 'opacity-50')
+					)}
+				>
+					<span
+						class={cn(
+							'tracking-wider whitespace-nowrap uppercase',
+							litPhase === phase.phase ? 'font-bold' : 'font-semibold'
+						)}
+					>
 						{PHASE_LABELS[phase.phase]()}
 					</span>
 					<span class="wrap-break-word tabular-nums">{phaseNote(phase)}</span>
@@ -241,7 +325,10 @@
 			{/each}
 		</div>
 	{:else}
-		<p class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground" aria-hidden="true">
+		<p
+			class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground"
+			aria-hidden="true"
+		>
 			{#each phases as phase (phase.phase)}
 				<span class="whitespace-nowrap tabular-nums">
 					{PHASE_LABELS[phase.phase]()}

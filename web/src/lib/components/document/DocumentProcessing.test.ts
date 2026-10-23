@@ -245,15 +245,27 @@ describe('DocumentProcessing', () => {
 		const segment = within(band).getByRole('button', {
 			name: new RegExp(`^${m.node_signal_llm()}`)
 		});
+		const reading = () => container.querySelector('[data-band-reading]')?.textContent ?? '';
+		// Without a step lit, the reading line tells the run's span.
+		expect(reading()).toContain(m.run_band_span({ run: 1, start: '§', end: '§' }).split('§')[0]);
 		await userEvent.hover(segment);
-		// The card lights up, the segment too, and its name, time and state stand above the bar.
+		// The card lights up, the segment too while the others step back, a bracket spans it, and
+		// the reading line tells its state, name, time and what it did; nothing grows.
 		expect(card(container, 'signal_llm').hasAttribute('data-highlighted')).toBe(true);
 		expect(segment.hasAttribute('data-lit')).toBe(true);
-		await waitFor(() =>
-			expect(container.textContent).toContain(`${m.node_signal_llm()} · 6s · ${m.outcome_ok()}`)
-		);
+		expect(segment.className).not.toMatch(/scale-/);
+		const others = within(band)
+			.getAllByRole('button')
+			.filter((other) => other !== segment);
+		expect(others.every((other) => other.className.includes('opacity-35'))).toBe(true);
+		await waitFor(() => expect(container.querySelector('[data-band-bracket]')).not.toBeNull());
+		expect(reading()).toContain(m.outcome_ok());
+		expect(reading()).toContain(`${m.node_signal_llm()} · 6s`);
+		expect(reading()).toContain('Schwälmer Brotladen');
+		expect(reading()).toContain('→');
 		await userEvent.unhover(segment);
 		expect(card(container, 'signal_llm').hasAttribute('data-highlighted')).toBe(false);
+		expect(container.querySelector('[data-band-bracket]')).toBeNull();
 		// Pointing at a card lights up its segment.
 		await userEvent.hover(card(container, 'ocr'));
 		const ocr = within(band).getByRole('button', { name: new RegExp(`^${m.node_ocr()}`) });

@@ -306,6 +306,36 @@
 	const phaseDurationOf = (phase: string) =>
 		phaseDuration(groups.find((group) => group.phase === phase)?.steps ?? []);
 
+	const time = (value: string) => formatDate(value, { timeStyle: 'medium' });
+
+	/** The band's reading line for a step: when it ran (in its own run, for a step kept from an
+	 * earlier one) and what it did. */
+	function readingOf(node: Node): string | null {
+		const step = steps.find((entry) => entry.node === node);
+		if (!step) return null;
+		const entry = step.done.entries.at(-1);
+		const started = entry?.started_at ?? step.state?.started_at ?? null;
+		const finished = entry
+			? new Date(new Date(entry.started_at).getTime() + entry.duration_ms).toISOString()
+			: (step.state?.finished_at ?? null);
+		const when = started
+			? finished
+				? `${time(started)} → ${time(finished)}`
+				: `${time(started)} →`
+			: null;
+		return [when, summaryOf(step)].filter(Boolean).join(' · ') || null;
+	}
+
+	// The reading line while no step is lit: how to light one (with a pointer), and the run's span.
+	const idle = $derived.by(() => {
+		const span = shown.started
+			? shown.finished
+				? m.run_band_span({ run: shownRun, start: time(shown.started), end: time(shown.finished) })
+				: m.run_band_since({ run: shownRun, start: time(shown.started) })
+			: null;
+		return [wide ? m.run_band_hint() : null, span].filter(Boolean).join(' · ') || null;
+	});
+
 	// The nodes that work with the language model's answer when they do not ask it themselves:
 	// the judge always, the fields for the fields the model was asked about.
 	const ANSWERED: readonly Node[] = ['judge', 'fields'];
@@ -401,6 +431,8 @@
 				{wide}
 				phaseDuration={phaseDurationOf}
 				{noteOf}
+				reading={readingOf}
+				{idle}
 				{highlighted}
 				expanded={selected}
 				onhighlight={highlight}

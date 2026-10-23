@@ -251,6 +251,14 @@ class MemoryUnitOfWork:
                         and other.status.is_active
                     ):
                         raise ConflictError(f"an active job with key {job.dedup_key} exists")
+            if job.coalesce_key is not None:
+                for other in self._db.jobs.values():
+                    if (
+                        other.id not in self._jobs
+                        and other.id not in self._purged_jobs
+                        and other.coalesce_key == job.coalesce_key
+                    ):
+                        raise ConflictError(f"a queued job with key {job.coalesce_key} exists")
 
     # --- rows -----------------------------------------------------------------------------------
     # A table holds rows of its own kind only: those of `Table[E]` are `E`.
@@ -624,9 +632,16 @@ class MemoryJobQueue:
         *,
         run_at: datetime,
         dedup_key: str | None = None,
+        coalesce_key: str | None = None,
     ) -> JobId | None:
+        if dedup_key is not None and coalesce_key is not None:
+            raise ValueError("a job has a dedup key or a coalesce key, not both")
         if dedup_key is not None and any(
             job.dedup_key == dedup_key and job.status.is_active for job in self._all()
+        ):
+            return None
+        if coalesce_key is not None and any(
+            job.coalesce_key == coalesce_key for job in self._all()
         ):
             return None
         job = Job(
@@ -634,6 +649,7 @@ class MemoryJobQueue:
             kind=kind,
             payload=copy.deepcopy(dict(payload)),
             dedup_key=dedup_key,
+            coalesce_key=coalesce_key,
             status=JobStatus.QUEUED,
             attempts=0,
             run_at=require_utc(run_at, "run_at"),
@@ -661,7 +677,11 @@ class MemoryJobQueue:
             return None
         job = min(due, key=lambda job: (job.run_at, job.id))
         claimed = dataclasses.replace(
-            job, status=JobStatus.RUNNING, attempts=job.attempts + 1, locked_until=now + lease
+            job,
+            status=JobStatus.RUNNING,
+            attempts=job.attempts + 1,
+            locked_until=now + lease,
+            coalesce_key=None,
         )
         self._write(claimed)
         return copy.deepcopy(claimed)

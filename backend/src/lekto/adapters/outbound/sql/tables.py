@@ -546,6 +546,8 @@ jobs = Table(
     Column("run_at", UtcDateTime, nullable=False),
     Column("locked_until", UtcDateTime, nullable=True),
     Column("last_error", Text, nullable=True),
+    # Set only while the job is queued: claiming clears it (`Job.coalesce_key`).
+    Column("coalesce_key", Text, nullable=True),
     Index(None, "status", "run_at"),
     # Claims of running jobs whose lease ran out.
     Index(None, "status", "locked_until"),
@@ -558,6 +560,8 @@ Index(
     sqlite_where=jobs.c.status.in_(ACTIVE_JOB_STATUSES),
     postgresql_where=jobs.c.status.in_(ACTIVE_JOB_STATUSES),
 )
+# At most one queued job per coalesce key (only queued jobs carry one).
+Index("uq_jobs_coalesce_key", jobs.c.coalesce_key, unique=True)
 
 # Committed domain events. `seq` follows commit order (see `unit_of_work`); on SQLite,
 # AUTOINCREMENT keeps it from reusing the numbers of deleted rows.

@@ -25,6 +25,9 @@ class Job:
 
     `dedup_key`: while a job with this key is queued or running, enqueueing another one with the
     same key does nothing.
+    `coalesce_key`: while a job with this key is queued, enqueueing another one with the same key
+    does nothing; claiming the job clears it, so a change that comes after its work has begun
+    queues a new job. For work that reads the current state when it runs (the search index).
     """
 
     id: JobId
@@ -37,6 +40,7 @@ class Job:
     locked_until: datetime | None = None
     last_error: str | None = None
     releases: int = 0  # claims given back unfinished (`JobQueue.release`)
+    coalesce_key: str | None = None
 
     @property
     def tries(self) -> int:

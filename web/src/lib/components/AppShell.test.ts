@@ -23,10 +23,12 @@ function signIn(role: User['role']) {
 	});
 }
 
-afterEach(() => {
+afterEach(async () => {
 	session.clear();
 	phone.override(null);
 	scope.set(false);
+	// The shell reacts to the reach in an effect: let it run while the spies still stand.
+	await tick();
 	inbox.summary = null;
 	vi.restoreAllMocks();
 });

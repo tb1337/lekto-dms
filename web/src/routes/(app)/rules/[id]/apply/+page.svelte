@@ -90,9 +90,17 @@
 		accepted.clear();
 	}
 
+	// The request in flight: a second call joins it instead of starting another.
+	let pending: Promise<void> | null = null;
+
 	/** The next page with at least one document, or the end. Pages may be empty midway. */
-	async function more(): Promise<void> {
-		if (loading || complete) return;
+	function more(): Promise<void> {
+		pending ??= nextPage().finally(() => (pending = null));
+		return pending;
+	}
+
+	async function nextPage(): Promise<void> {
+		if (complete) return;
 		loading = true;
 		previewError = null;
 		try {

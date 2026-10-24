@@ -31,6 +31,7 @@ from lekto.core.domain.identifiers import (
     IdentifierSource,
 )
 from lekto.core.domain.ids import ContactId, DocumentTypeId, TagId, new_id
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.validation import name_key, require_name, require_utc
 
 MAX_ALIASES = 100
@@ -116,14 +117,14 @@ class MasterData:
 def _groups(group_ids: Iterable[TagId]) -> frozenset[TagId]:
     groups = frozenset(group_ids)
     if len(groups) > MAX_GROUPS:
-        raise ValidationError(f"at most {MAX_GROUPS} groups")
+        raise ValidationError(because(ReasonCode.TOO_MANY_GROUPS, max=MAX_GROUPS))
     return groups
 
 
 def _topics(topic_ids: Iterable[TagId]) -> frozenset[TagId]:
     topics = frozenset(topic_ids)
     if len(topics) > MAX_TOPICS:
-        raise ValidationError(f"a contact enables at most {MAX_TOPICS} topics")
+        raise ValidationError(because(ReasonCode.TOO_MANY_TOPICS, max=MAX_TOPICS))
     return topics
 
 
@@ -320,7 +321,7 @@ class Contact(MasterData):
         for item in self.identifiers if identifiers is None else identifiers:
             if item.topic_id is not None and item.topic_id not in self.topic_ids:
                 raise ValidationError(
-                    f"the topic of the identifier '{item.value}' is none the contact enables"
+                    because(ReasonCode.IDENTIFIER_TOPIC_NOT_ENABLED, value=item.value)
                 )
 
 
@@ -460,9 +461,9 @@ class Tag(MasterData):
 
     def _check(self) -> None:
         if self.parent_id == self.id:
-            raise ValidationError("a tag cannot be its own parent")
+            raise ValidationError(because(ReasonCode.TAG_OWN_PARENT))
         if self.scope.is_group and self.assignment is not Assignment.MANUAL:
-            raise ValidationError("groups are set by hand only (assignment 'manual')")
+            raise ValidationError(because(ReasonCode.GROUPS_MANUAL))
 
 
 _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
@@ -482,12 +483,12 @@ def _aliases(name: str, aliases: Iterable[str]) -> list[str]:
         alias = require_name(one_line(alias), "alias")
         key = name_key(alias)
         if key == name_key(name):
-            raise ValidationError(f"the alias '{alias}' is the contact's name")
+            raise ValidationError(because(ReasonCode.ALIAS_IS_NAME, alias=alias))
         if key not in keys:
             keys.add(key)
             result.append(alias)
     if len(result) > MAX_ALIASES:
-        raise ValidationError(f"a contact has at most {MAX_ALIASES} aliases")
+        raise ValidationError(because(ReasonCode.CONTACT_TOO_MANY_ALIASES, max=MAX_ALIASES))
     return result
 
 
@@ -507,15 +508,13 @@ def _identifiers(identifiers: Iterable[Identifier]) -> list[Identifier]:
         if item.user_id is not None and (
             item.kind not in NAMING_KINDS or item.source is not IdentifierSource.MANUAL
         ):
-            raise ValidationError(
-                "only a customer or personnel number entered by hand names the user it belongs to"
-            )
+            raise ValidationError(because(ReasonCode.ONLY_NUMBERS_NAME_USERS))
         if item.key not in seen:
             seen.add(item.key)
             result.append(item)
     result.sort(key=lambda item: (_SOURCE_ORDER[item.source], _KIND_ORDER[item.kind], item.value))
     if sum(item.counts for item in result) > MAX_IDENTIFIERS:
-        raise ValidationError(f"a contact has at most {MAX_IDENTIFIERS} identifiers")
+        raise ValidationError(because(ReasonCode.CONTACT_TOO_MANY_IDENTIFIERS, max=MAX_IDENTIFIERS))
     return result
 
 
@@ -528,7 +527,7 @@ def _title_pattern(pattern: str | None) -> str | None:
         return None
     pattern = one_line(pattern).strip()
     if len(pattern) > MAX_TITLE_PATTERN:
-        raise ValidationError(f"a title pattern is at most {MAX_TITLE_PATTERN} characters")
+        raise ValidationError(because(ReasonCode.TITLE_PATTERN_TOO_LONG, max=MAX_TITLE_PATTERN))
     return pattern
 
 
@@ -536,5 +535,5 @@ def checked_description(description: str | None) -> str | None:
     """A description without surrounding space, None if empty; ValidationError if too long."""
     text = (description or "").strip()
     if len(text) > MAX_DESCRIPTION:
-        raise ValidationError(f"description must not be longer than {MAX_DESCRIPTION} characters")
+        raise ValidationError(because(ReasonCode.DESCRIPTION_TOO_LONG, max=MAX_DESCRIPTION))
     return text or None

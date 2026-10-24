@@ -113,17 +113,15 @@ def _check_fields(lens: Lens, definitions: dict[FieldId, FieldDefinition]) -> No
     its sort field one a list sorts by."""
     for id in lens.card_field_ids:
         if id not in definitions:
-            raise ValidationError(f"card_field_ids: no field {id}")
+            raise ValidationError(because(ReasonCode.CARD_FIELD_UNKNOWN, id=str(id)))
     due = None if lens.due_field_id is None else definitions.get(lens.due_field_id)
     if lens.due_field_id is not None and (due is None or due.data_type is not FieldType.DATE):
-        raise ValidationError("due_field_id: not a date field")
+        raise ValidationError(because(ReasonCode.DUE_FIELD_NOT_DATE))
     sorted_by = None if lens.sort_field_id is None else definitions.get(lens.sort_field_id)
     if lens.sort_field_id is not None and (
         sorted_by is None or sorted_by.data_type not in SORTABLE_TYPES
     ):
-        raise ValidationError(
-            "sort_field_id: not a field a list sorts by (date, period, number or amount)"
-        )
+        raise ValidationError(because(ReasonCode.SORT_FIELD_INVALID))
 
 
 @dataclass(frozen=True)

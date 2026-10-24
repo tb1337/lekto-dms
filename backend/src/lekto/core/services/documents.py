@@ -186,9 +186,7 @@ async def _check_sortable(uow: UnitOfWork, order: DocumentOrder) -> None:
         return
     definition = await uow.fields.find(order.field)
     if definition is None or definition.data_type not in SORTABLE_TYPES:
-        raise ValidationError(
-            "sort_field_id: not a field a list sorts by (date, period, number or amount)"
-        )
+        raise ValidationError(because(ReasonCode.SORT_FIELD_INVALID))
 
 
 async def _position(

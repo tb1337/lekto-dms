@@ -10,6 +10,7 @@ from typing import Self
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.ids import SpaceId, UserId, new_id
 from lekto.core.domain.master_data import checked_description
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.validation import require_name, require_utc
 
 PERSONAL_SPACE_NAME = "Personal"
@@ -92,7 +93,7 @@ class Space:
 
     def rename(self, name: str) -> None:
         if self.is_personal:
-            raise ValidationError("a personal space keeps its name")
+            raise ValidationError(because(ReasonCode.PERSONAL_SPACE_NAME))
         self.name = require_name(name, "space name")
 
     def describe(self, description: str | None) -> None:
@@ -117,6 +118,6 @@ class Space:
     def _check_members(self, members: Mapping[UserId, SpaceRole]) -> None:
         if self.personal_of is not None:
             if members.get(self.personal_of) is not SpaceRole.EDIT:
-                raise ValidationError("the user of a personal space always edits it")
+                raise ValidationError(because(ReasonCode.PERSONAL_SPACE_EDITOR))
         elif not any(role.can_edit for role in members.values()):
-            raise ValidationError("a space keeps at least one editor")
+            raise ValidationError(because(ReasonCode.SPACE_NEEDS_EDITOR))

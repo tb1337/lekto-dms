@@ -7,6 +7,7 @@ from functools import lru_cache
 import regex
 
 from lekto.core.domain.errors import PatternTimeoutError, ValidationError
+from lekto.core.domain.reasons import ReasonCode, because
 
 
 @lru_cache(maxsize=512)
@@ -15,7 +16,9 @@ def _compile(pattern: str, case_sensitive: bool) -> "regex.Pattern[str]":
     try:
         return regex.compile(pattern, flags)
     except regex.error as error:
-        raise ValidationError(f"invalid pattern {pattern!r}: {error}") from None
+        raise ValidationError(
+            because(ReasonCode.PATTERN_INVALID, pattern=pattern, detail=str(error))
+        ) from None
 
 
 class RegexPatternMatcher:

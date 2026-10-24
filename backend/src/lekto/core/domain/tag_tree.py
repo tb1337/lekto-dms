@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from lekto.core.domain.errors import NotFoundError, ValidationError
 from lekto.core.domain.ids import TagId
 from lekto.core.domain.master_data import Tag, TagScope
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.sorting import sort_key
 
 MAX_LEVELS = 5
@@ -54,7 +55,14 @@ class TagTree:
         ValidationError if it is of another scope."""
         tag = self.get(id)
         if tag.scope is not scope:
-            raise ValidationError(f"'{tag.name}' is a {tag.scope.label}, not a {scope.label}")
+            raise ValidationError(
+                because(
+                    ReasonCode.TAG_WRONG_SCOPE,
+                    tag=tag.name,
+                    scope=tag.scope.label,
+                    expected=scope.label,
+                )
+            )
         return tag
 
     def of_scope(self, scope: TagScope) -> list[Tag]:
@@ -139,17 +147,14 @@ class TagTree:
             return
         parent = self.get(parent_id)
         if parent.scope is not tag.scope:
-            raise ValidationError(
-                f"'{parent.name}' is a tag of another scope ({parent.scope}): a parent tag has "
-                f"the scope of its children ({tag.scope})"
-            )
+            raise ValidationError(because(ReasonCode.TAG_PARENT_OTHER_SCOPE, parent=parent.name))
         if parent.id == tag.id or parent.id in {item.id for item in self.descendants(tag.id)}:
             raise ValidationError(
-                f"'{tag.name}' cannot go under '{parent.name}', which is below it"
+                because(ReasonCode.TAG_UNDER_OWN_CHILD, tag=tag.name, parent=parent.name)
             )
         height = self.height(tag.id) if tag.id in self.tags else 1
         if self.depth(parent.id) + height > MAX_LEVELS:
-            raise ValidationError(f"tags are nested at most {MAX_LEVELS} levels deep")
+            raise ValidationError(because(ReasonCode.TAG_TOO_DEEP, max=MAX_LEVELS))
 
     def normalise(self, ids: Iterable[TagId]) -> frozenset[TagId]:
         """`ids` without the ancestors of others among them: a child and its parent set

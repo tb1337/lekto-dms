@@ -32,6 +32,7 @@ from lekto.core.domain.ids import (
     UserId,
     new_id,
 )
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.validation import (
     MAX_URL_LENGTH,
     has_control_characters,
@@ -66,11 +67,11 @@ def check_new_password(password: str, username: str) -> str:
     and not the username. No rules on character classes."""
     normalized = normalize_password(password)
     if len(normalized) < PASSWORD_MIN_LENGTH:
-        raise ValidationError(f"the password must have at least {PASSWORD_MIN_LENGTH} characters")
+        raise ValidationError(because(ReasonCode.PASSWORD_TOO_SHORT, min=PASSWORD_MIN_LENGTH))
     if len(normalized) > PASSWORD_MAX_LENGTH:
-        raise ValidationError(f"the password must have at most {PASSWORD_MAX_LENGTH} characters")
+        raise ValidationError(because(ReasonCode.PASSWORD_TOO_LONG, max=PASSWORD_MAX_LENGTH))
     if name_key(normalized) == name_key(username):
-        raise ValidationError("the password must not be the username")
+        raise ValidationError(because(ReasonCode.PASSWORD_IS_USERNAME))
     return normalized
 
 
@@ -252,7 +253,7 @@ class ApiToken:
         expires_at: datetime | None = None,
     ) -> tuple[Self, str]:
         if expires_at is not None and require_utc(expires_at, "expires_at") <= now:
-            raise ValidationError("the expiry must be in the future")
+            raise ValidationError(because(ReasonCode.EXPIRY_IN_PAST))
         token = new_token(API_TOKEN_PREFIX)
         api_token = cls(
             id=ApiTokenId(new_id()),

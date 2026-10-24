@@ -152,7 +152,7 @@ def received_at(value: datetime, now: datetime) -> datetime:
     system): in UTC and not in the future."""
     value = require_utc(value, RECEIPT)
     if value > now:
-        raise ValidationError(f"{RECEIPT}: not in the future")
+        raise ValidationError(because(ReasonCode.RECEIPT_IN_FUTURE))
     return value
 
 
@@ -188,7 +188,7 @@ def checked_fields(
         if raw is None:
             continue
         if not definition.applies_to(document_type_id):
-            raise ValidationError(f"field '{definition.name}' does not apply to this document type")
+            raise ValidationError(because(ReasonCode.FIELD_NOT_FOR_TYPE, field=definition.name))
         checked[field_id] = definition.validate(raw)
     return checked
 

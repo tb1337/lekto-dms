@@ -3,7 +3,9 @@ import { m } from '#lib/paraglide/messages.js';
 import {
 	byId,
 	foreignSpace,
+	holderOf,
 	spaceLabel,
+	spaceNameFor,
 	spaceOptions,
 	userChoice,
 	userLabel,
@@ -44,6 +46,18 @@ describe('spaces by name', () => {
 		expect(spaceLabel(mine, users, 'u1')).toBe(m.space_personal());
 		expect(spaceLabel(mine, users, 'u2')).toBe('tobi');
 		expect(spaceLabel(house, users, 'u1')).toBe('Haushalt');
+	});
+
+	it('names a space the caller sees, another user by that user, the rest as unseen', () => {
+		const lookup = { spaces: [mine, house], users };
+		expect(spaceNameFor('house', lookup, 'u1')).toBe('Haushalt');
+		expect(spaceNameFor('mine', lookup, 'u1')).toBe(m.space_personal());
+		// bob's personal space is no space of tobi's, yet named by its user.
+		expect(spaceNameFor('bobs', lookup, 'u1')).toBe('bob');
+		expect(spaceNameFor('gone', lookup, 'u1')).toBe(m.space_unseen());
+		expect(spaceNameFor('gone', lookup, 'u1', '')).toBe('');
+		expect(spaceNameFor('house', null, 'u1')).toBe(m.space_unseen());
+		expect(holderOf(users, 'anna')?.username).toBe('anna');
 	});
 
 	it('names a space only where the caller is no member (an admin looking at others)', () => {

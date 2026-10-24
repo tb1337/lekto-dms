@@ -6,7 +6,7 @@
  */
 import type { components } from '#lib/api/schema.ts';
 import { formatPercent } from '#lib/i18n.ts';
-import { spaceLabel, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+import { holderOf, spaceNameFor, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { knownSpace, newReaders } from '#lib/space-suggestion.ts';
 
@@ -65,7 +65,7 @@ export function openSpaceCheck(open: readonly OpenNode[]): Check | null {
 /** The user whose personal space `target` is, unless the caller is a member of it (then it is
  * one of their spaces); null for any other space. */
 function receiverOf(target: string, lookup: Lookup, viewer: Viewer) {
-	const holder = lookup.users.find((user) => user.personal_space_id === target);
+	const holder = holderOf(lookup.users, target);
 	if (!holder || holder.id === viewer.id) return null;
 	const space = lookup.spaces.find((entry) => entry.id === target);
 	if (space?.members.some((member) => member.user_id === viewer.id)) return null;
@@ -85,17 +85,13 @@ export function filingKind(
 
 /** The space's name for the caller; a space they cannot tell stays unnamed. */
 export function spaceName(target: string, lookup: Lookup, viewer: Viewer): string {
-	const space = lookup.spaces.find((entry) => entry.id === target);
-	if (space) return spaceLabel(space, lookup.users, viewer.id);
-	const holder = lookup.users.find((user) => user.personal_space_id === target);
-	if (holder) return holder.id === viewer.id ? m.space_personal() : userLabel(holder);
-	return m.space_unseen();
+	return spaceNameFor(target, lookup, viewer.id);
 }
 
 /** Whose personal space `target` is, by name, unless it is the caller's own; null for a shared
  * space. The space of another person reads as theirs: "Bei Anna Leider lassen", "Zu Anna Leider". */
 function personOf(target: string, lookup: Lookup, viewer: Viewer): string | null {
-	const holder = lookup.users.find((user) => user.personal_space_id === target);
+	const holder = holderOf(lookup.users, target);
 	return holder && holder.id !== viewer.id ? userLabel(holder) : null;
 }
 
@@ -168,7 +164,7 @@ export function filingChips(
 	for (const source of sources) {
 		if (source.signal === 'signal_llm') {
 			if (source.recipient) {
-				const holder = lookup.users.find((user) => user.personal_space_id === target);
+				const holder = holderOf(lookup.users, target);
 				if (holder)
 					chips.push({ text: m.filing_chip_recipient({ name: userLabel(holder) }), strong: true });
 			}

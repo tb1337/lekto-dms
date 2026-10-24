@@ -2,7 +2,7 @@
 import { isIsoDay } from '#lib/dates.ts';
 import { isMoney, isPeriod } from '#lib/fields.ts';
 import { formatDate, formatMoney } from '#lib/i18n.ts';
-import { spaceLabel, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+import { spaceNameFor, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { writePeriod } from '#lib/periods.ts';
 import { session } from '#lib/session.svelte.ts';
@@ -42,11 +42,9 @@ export function describeValue(value: unknown, lookup: Lookup | null): string {
 			(entry) => entry.id === text
 		);
 		if (named) return named.name;
-		const space = lookup.spaces.find((entry) => entry.id === text);
-		if (space) return spaceLabel(space, lookup.users, session.user?.id);
-		// Another user's personal space the caller is no member of: named by its user.
-		const holder = lookup.users.find((entry) => entry.personal_space_id === text);
-		if (holder) return holder.id === session.user?.id ? m.space_personal() : userLabel(holder);
+		// A space, also another user's personal one the caller is no member of.
+		const space = spaceNameFor(text, lookup, session.user?.id, '');
+		if (space) return space;
 		const user = lookup.users.find((entry) => entry.id === text);
 		if (user) return userLabel(user);
 	}

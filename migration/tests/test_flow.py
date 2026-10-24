@@ -620,3 +620,19 @@ async def test_a_group_of_the_same_name_is_no_tag(setup: Setup) -> None:
     assert await setup.migrate() == 0
     tags = [t for t in setup.lekto.tags.values() if t["name"] == "tax"]
     assert sorted(t.get("scope", "document") for t in tags) == ["contact", "document"]
+
+
+async def test_reviews_go_with_their_codes_where_lekto_takes_them(setup: Setup) -> None:
+    assert await setup.run("plan") == 0
+    setup.edit("tags", "tax", "{to: tag, name: tax, create: true, review: true}")
+
+    def reviews() -> list[dict[str, Any]]:
+        return [
+            review
+            for upload in setup.lekto.uploads
+            for review in json.loads(upload.get("metadata", "{}")).get("review", [])
+        ]
+
+    setup.lekto.review_codes = False  # a Lekto from before the codes refuses them
+    assert await setup.migrate() == 0, setup.messages
+    assert reviews() and all("code" not in review for review in reviews())

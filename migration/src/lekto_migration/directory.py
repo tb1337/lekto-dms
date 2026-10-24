@@ -24,6 +24,7 @@ class Directory:
     fields: dict[str, dict[str, Any]] = field(default_factory=dict)
     spaces: list[dict[str, Any]] = field(default_factory=list)
     read: bool = False  # False: no Lekto was read (a plan without a Lekto key); all is new
+    review_codes: bool = False  # Lekto takes the codes of reviews' reasons (issue #83)
 
     @classmethod
     async def of(cls, lekto: Lekto | None, admin: dict[str, Any] | None = None) -> "Directory":
@@ -44,6 +45,7 @@ class Directory:
         # Every space: the list follows the reach an admin asks for (`all_users`).
         directory.spaces = await lekto.items("/spaces", params={"all_users": "true"})
         directory.users.setdefault(norm(directory.admin["username"]), directory.admin)
+        directory.review_codes = await lekto.takes_review_codes()
         return directory
 
     def _store(self, to: str) -> dict[str, dict[str, Any]] | None:

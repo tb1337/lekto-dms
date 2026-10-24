@@ -104,6 +104,16 @@ class Lekto:
             params["cursor"] = cursor
         return await self._object("GET", "/documents", params=params)
 
+    async def takes_review_codes(self) -> bool:
+        """Whether Lekto takes the code of a review's reason with an upload
+        (`ImportedReviewIn.code`, issue #83); an older Lekto refuses it."""
+        try:
+            document = await self._object("GET", "/openapi.json")
+        except ApiError:
+            return False
+        schemas = (document.get("components") or {}).get("schemas") or {}
+        return "code" in ((schemas.get("ImportedReviewIn") or {}).get("properties") or {})
+
     async def document(self, id: str) -> dict[str, Any]:
         return await self._object("GET", f"/documents/{id}")
 

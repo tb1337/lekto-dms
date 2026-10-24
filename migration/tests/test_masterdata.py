@@ -282,6 +282,13 @@ async def test_resolved_documents_carry_lekto_ids() -> None:
     assert {"reason": "Count it", "field": f"field:{count}"} in ten.review
     reasons = [r["reason"] for r in ten.review]
     assert "Paperless correspondent 'ACME Energy': to be checked in Lekto" in reasons
+    # The default reason goes with its code, a reason the plan writes as it is.
+    coded = next(r for r in ten.review if r["reason"].startswith("Paperless correspondent"))
+    assert (coded["code"], coded["params"]) == (
+        "paperless_correspondent_review",
+        {"name": "ACME Energy"},
+    )
+    assert "code" not in next(r for r in ten.review if r["reason"] == "Count it")
     assert "topic_id" not in ten.metadata() and ten.metadata()["review"] == ten.review
     shared = resolve(expected[13], directory)
     space = next(s for s in lekto.spaces.values() if s["name"].startswith("Geteilt"))

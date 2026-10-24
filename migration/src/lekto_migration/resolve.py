@@ -22,7 +22,7 @@ class Resolved:
     uploader_id: str
     space_id: str | None  # None: the uploader's personal space
     values: dict[str, Any]
-    review: list[dict[str, str | None]] = field(default_factory=list)
+    review: list[dict[str, Any]] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
@@ -75,13 +75,16 @@ def resolve(item: Expected, directory: Directory) -> Resolved:
         "fields": fields,
         "created_at": item.created_at,
     }
-    review: list[dict[str, str | None]] = []
+    review: list[dict[str, Any]] = []
     for reason, field_name in item.review:
         check = field_name
         if field_name is not None and field_name.startswith("field:"):
             field_id = id_of("field", field_name.removeprefix("field:"))
             check = None if field_id is None else f"field:{field_id}"
-        review.append({"reason": reason[:MAX_REVIEW_REASON], "field": check})
+        entry: dict[str, Any] = {"reason": reason.text[:MAX_REVIEW_REASON], "field": check}
+        if reason.code is not None and directory.review_codes:
+            entry |= {"code": reason.code, "params": {"name": reason.name}}
+        review.append(entry)
     resolved = Resolved(str(uploader["id"]), space_id, values, review, missing)
     _fit(resolved)
     return resolved

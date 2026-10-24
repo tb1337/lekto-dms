@@ -7,6 +7,7 @@ import pytest
 
 from lekto_migration import plan as plans
 from lekto_migration.expect import Context, coerce, expect, field_infos
+from lekto_migration.plan import Review
 from tests.world import NOW, World
 
 
@@ -107,9 +108,12 @@ def test_a_drop_with_a_review_opens_the_field_in_the_inbox(world: World) -> None
     world.set("correspondents", "ACME Energy", "{review: Resolve the contact}")
     ten = world.expect(10)
     assert ten.contact is None
-    assert ten.review == (("Resolve the contact", "contact"),)
+    assert ten.review == ((Review("Resolve the contact"), "contact"),)
     world.set("users", "tobias", "{to: user, name: tobias, review: true}")
-    assert ("Paperless user 'tobias': to be checked in Lekto", None) in world.expect(10).review
+    tobias = Review(
+        "Paperless user 'tobias': to be checked in Lekto", "paperless_user_review", "tobias"
+    )
+    assert (tobias, None) in world.expect(10).review
     assert world.expect(14).review == ()  # no owner: not tobias' document
 
 

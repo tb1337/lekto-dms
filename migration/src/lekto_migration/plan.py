@@ -147,6 +147,29 @@ class Target:
         return TAG_SCOPES.get(self.to)
 
 
+# The codes Lekto gives the default reasons of `review: true` (issue #83), by section; Lekto
+# translates them, a reason the plan writes stays as written.
+REVIEW_CODES: Mapping[str, str] = {
+    "users": "paperless_user_review",
+    "correspondents": "paperless_correspondent_review",
+    "document_types": "paperless_document_type_review",
+    "tags": "paperless_tag_review",
+    "custom_fields": "paperless_custom_field_review",
+    "storage_paths": "paperless_storage_path_review",
+    ASN: "paperless_asn_review",
+}
+
+
+@dataclass(frozen=True)
+class Review:
+    """Why a person should look at a document in Lekto: as the plan writes it, or the default
+    reason with its code (`code`) and the Paperless object's name (`name`)."""
+
+    text: str
+    code: str | None = None
+    name: str | None = None
+
+
 @dataclass(frozen=True)
 class Entry:
     """What becomes of one Paperless object. No targets: it is not taken over (`drop`).
@@ -163,11 +186,14 @@ class Entry:
     def dropped(self) -> bool:
         return not self.targets and not self.values
 
-    def review_reason(self) -> str | None:
+    def review_reason(self) -> Review | None:
         if self.review is None:
             return None
+        if self.review:
+            return Review(self.review)
         kind = SECTIONS.get(self.section, "archive serial number")
-        return self.review or f"Paperless {kind} '{self.source}': to be checked in Lekto"
+        text = f"Paperless {kind} '{self.source}': to be checked in Lekto"
+        return Review(text, REVIEW_CODES.get(self.section, REVIEW_CODES[ASN]), self.source)
 
 
 @dataclass(frozen=True)

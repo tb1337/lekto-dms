@@ -30,7 +30,17 @@ from lekto_migration.mapping import (
     select_options,
 )
 from lekto_migration.paperless import Snapshot
-from lekto_migration.plan import ASN, MEMBERS, NATURAL, SECTIONS, Entry, Plan, Target, norm
+from lekto_migration.plan import (
+    ASN,
+    MEMBERS,
+    NATURAL,
+    SECTIONS,
+    Entry,
+    Plan,
+    Review,
+    Target,
+    norm,
+)
 
 SUPPORTED = ("application/pdf", "image/jpeg", "image/png", "image/tiff")
 NAME_LIMIT = 200
@@ -87,7 +97,7 @@ class Expected:
     document_date: str | None = None
     created_at: str | None = None
     fields: dict[str, Any] = field(default_factory=dict)  # Lekto field name -> value (JSON)
-    review: tuple[tuple[str, str | None], ...] = ()  # (reason, `contact`, ..., `field:<name>`)
+    review: tuple[tuple[Review, str | None], ...] = ()  # (reason, `contact`, ..., `field:<name>`)
     sources: dict[str, str] = field(default_factory=dict)  # what -> where it came from
     notes: list[str] = field(default_factory=list)
 
@@ -194,7 +204,7 @@ class _Collected:
 
     single: dict[str, list[_Candidate]] = field(default_factory=dict)
     many: dict[str, set[str]] = field(default_factory=lambda: {k: set() for k in GROUPS.values()})
-    reviews: dict[tuple[str, str | None], None] = field(default_factory=dict)
+    reviews: dict[tuple[Review, str | None], None] = field(default_factory=dict)
 
     def offer(self, kind: str, value: Any, source: str, natural: bool, override: bool) -> None:
         self.single.setdefault(kind, []).append(_Candidate(value, source, natural, override))

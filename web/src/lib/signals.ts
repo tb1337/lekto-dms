@@ -9,7 +9,7 @@ import type { components } from '#lib/api/schema.ts';
 import { documentHref } from '#lib/candidates.ts';
 import { describeValue, fieldLabel } from '#lib/describe.ts';
 import { formatNumber, formatPercent } from '#lib/i18n.ts';
-import { IDENTIFIER_KINDS, kindLabel, type IdentifierKind } from '#lib/identifiers.ts';
+import { labelOfKind } from '#lib/identifiers.ts';
 import type { Strength } from '#lib/facts.ts';
 import { userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
@@ -43,12 +43,105 @@ export const list = (value: unknown): unknown[] => (Array.isArray(value) ? value
 export const text = (value: unknown): string | null =>
 	typeof value === 'string' && value.trim() !== '' ? value : null;
 export const percent = (value: unknown) => formatPercent(typeof value === 'number' ? value : 0);
+export const count = (value: unknown) => (typeof value === 'number' ? value : 0);
 
-export function kind(value: unknown): string {
-	const name = String(value);
-	return (IDENTIFIER_KINDS as readonly string[]).includes(name)
-		? kindLabel(name as IdentifierKind)
-		: name;
+export const kind = (value: unknown): string => labelOfKind(String(value));
+
+/** `kind value` of an identifier the text names: "Personalnummer 20417". */
+export function identifierText(found: Json): string {
+	return `${kind(found.kind)} ${String(found.value ?? '')}`;
+}
+
+/** The contacts the facts signal found by name or alias. */
+export function namedContacts(output: Json): string[] {
+	return list(output.named)
+		.map((item) => text(object(item).name))
+		.filter((name): name is string => name !== null);
+}
+
+/** The classes a signal ranks, as `[id, probability]` pairs in the log, the first `count`. */
+export function rankedPairs(value: unknown, count = 3): { id: unknown; probability: unknown }[] {
+	return list(value)
+		.slice(0, count)
+		.map((pair) => {
+			const [id, probability] = list(pair);
+			return { id, probability };
+		});
+}
+
+export interface PageBar {
+	page: number;
+	words: number;
+	/** The share of unsure words, 0..1. */
+	unsure: number;
+	label: string;
+	/** The log's line for the page: unsure words of all, and of the content where counted. */
+	text: string;
+}
+
+/** How well the OCR read each page it recognised; none where pages had text of their own. */
+export function pageBars(output: Json): PageBar[] {
+	return list(output.readings)
+		.map(object)
+		.map((page) => {
+			const words = count(page.words);
+			const unsure = words > 0 ? count(page.unsure) / words : 0;
+			const content = typeof page.content === 'number' ? page.content : null;
+			const values = {
+				page: String(page.page),
+				unsure: percent(unsure),
+				words: formatNumber(words)
+			};
+			return {
+				page: count(page.page),
+				words,
+				unsure,
+				label: percent(unsure),
+				text:
+					content === null
+						? m.log_reading_page(values)
+						: m.log_reading_page_content({
+								...values,
+								content_unsure: percent(content > 0 ? count(page.content_unsure) / content : 0),
+								content: formatNumber(content)
+							})
+			};
+		});
+}
+
+export interface Neighbour {
+	title: string;
+	href: string | null;
+	/** Contact, type, topic and space of the document, by name. */
+	parts: string[];
+	/** The same in one line. */
+	about: string;
+	/** 0..1; null if the entry has none. */
+	similarity: number | null;
+	/** The similarity with two decimals; null if the entry has none. */
+	label: string | null;
+}
+
+/** The similar documents, the most similar first, as the signal found them. */
+export function neighbourList(output: Json, lookup: Lookup | null): Neighbour[] {
+	return list(output.neighbours).map((item, index) => {
+		const found = object(item);
+		const score = typeof found.score === 'number' ? found.score : null;
+		const parts = [found.contact_id, found.document_type_id, found.topic_id, found.space_id]
+			.filter((id) => typeof id === 'string')
+			.map((id) => named(id, lookup));
+		return {
+			title: m.signal_document({ number: index + 1 }),
+			href: typeof found.document_id === 'string' ? documentHref(found.document_id) : null,
+			parts,
+			about: parts.join(' · '),
+			similarity: score === null ? null : Math.min(1, Math.max(0, score)),
+			label:
+				score === null
+					? null
+					: formatNumber(score, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+		};
+	});
 }
 
 export function named(id: unknown, lookup: Lookup | null): string {
@@ -57,12 +150,9 @@ export function named(id: unknown, lookup: Lookup | null): string {
 
 /** Ranked classes as `[id, probability]` pairs, at most `count`. */
 function ranked(value: unknown, lookup: Lookup | null, count = 3): SummaryItem[] {
-	return list(value)
-		.slice(0, count)
-		.map((pair) => {
-			const [id, probability] = list(pair);
-			return { text: `${named(id, lookup)} ${percent(probability)}` };
-		});
+	return rankedPairs(value, count).map(({ id, probability }) => ({
+		text: `${named(id, lookup)} ${percent(probability)}`
+	}));
 }
 
 const WITH_STRENGTH: Record<Strength, (inputs: { name: string }) => string> = {
@@ -119,33 +209,8 @@ function row(label: string, items: SummaryItem[]): SummaryRow {
 /** How well the OCR read each page it recognised, of all words and of the content where it
  * was counted; none where pages had text of their own. */
 function readings(output: Json): SummaryRow[] {
-	const pages = list(output.readings).map(object);
-	if (pages.length === 0) return [];
-	const count = (value: unknown) => (typeof value === 'number' ? value : 0);
-	const items = pages.map((page) => {
-		const words = count(page.words);
-		const share = percent(words > 0 ? count(page.unsure) / words : 0);
-		if (typeof page.content !== 'number') {
-			return {
-				text: m.log_reading_page({
-					page: String(page.page),
-					unsure: share,
-					words: formatNumber(words)
-				})
-			};
-		}
-		const content = page.content;
-		return {
-			text: m.log_reading_page_content({
-				page: String(page.page),
-				unsure: share,
-				words: formatNumber(words),
-				content_unsure: percent(content > 0 ? count(page.content_unsure) / content : 0),
-				content: formatNumber(content)
-			})
-		};
-	});
-	return [{ label: m.log_reading(), items }];
+	const items = pageBars(output).map(({ text }) => ({ text }));
+	return items.length === 0 ? [] : [{ label: m.log_reading(), items }];
 }
 
 const LABEL_TEXTS: Record<string, (inputs: { label: string }) => string> = {
@@ -242,27 +307,10 @@ export function signalSummary(entry: LogEntry, lookup: Lookup | null): SummaryRo
 			return [
 				row(
 					m.signal_neighbours(),
-					list(output.neighbours).map((item, index) => {
-						const found = object(item);
-						const about = [found.contact_id, found.document_type_id, found.topic_id, found.space_id]
-							.filter((id) => typeof id === 'string')
-							.map((id) => named(id, lookup));
-						const title = m.signal_document({ number: index + 1 });
-						const said = about.length > 0 ? `${title}: ${about.join(', ')}` : title;
-						const alike =
-							typeof found.score === 'number'
-								? m.signal_similarity({
-										similarity: formatNumber(found.score, {
-											minimumFractionDigits: 2,
-											maximumFractionDigits: 2
-										})
-									})
-								: null;
-						return {
-							text: alike ? `${said} · ${alike}` : said,
-							href:
-								typeof found.document_id === 'string' ? documentHref(found.document_id) : undefined
-						};
+					neighbourList(output, lookup).map(({ title, parts, label, href }) => {
+						const said = parts.length > 0 ? `${title}: ${parts.join(', ')}` : title;
+						const alike = label === null ? null : m.signal_similarity({ similarity: label });
+						return { text: alike ? `${said} · ${alike}` : said, href: href ?? undefined };
 					})
 				)
 			];
@@ -270,7 +318,7 @@ export function signalSummary(entry: LogEntry, lookup: Lookup | null): SummaryRo
 			return [
 				row(
 					m.signal_named(),
-					list(output.named).map((item) => ({ text: String(object(item).name ?? '') }))
+					namedContacts(output).map((name) => ({ text: name }))
 				),
 				row(
 					m.signal_identifiers(),
@@ -279,16 +327,13 @@ export function signalSummary(entry: LogEntry, lookup: Lookup | null): SummaryRo
 						const topic =
 							typeof found.topic_id === 'string' ? ` · ${named(found.topic_id, lookup)}` : '';
 						return {
-							text: `${kind(found.kind)} ${String(found.value ?? '')}: ${named(found.contact_id, lookup)}${topic}`
+							text: `${identifierText(found)}: ${named(found.contact_id, lookup)}${topic}`
 						};
 					})
 				),
 				row(
 					m.signal_unknown_identifiers(),
-					list(output.unknown_identifiers).map((item) => {
-						const found = object(item);
-						return { text: `${kind(found.kind)} ${String(found.value ?? '')}` };
-					})
+					list(output.unknown_identifiers).map((item) => ({ text: identifierText(object(item)) }))
 				),
 				...('persons' in output ? [row(m.facts_persons(), persons(output.persons, lookup))] : [])
 			];

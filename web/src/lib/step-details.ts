@@ -6,12 +6,24 @@
  * details are the rows of `signalSummary`.
  */
 import type { components } from '#lib/api/schema.ts';
-import { documentHref } from '#lib/candidates.ts';
+import { PAGE_BREAK } from '#lib/facts.ts';
 import { formatNumber } from '#lib/i18n.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import type { Node } from '#lib/pipeline.ts';
-import { kind, list, named, object, percent, personWithStrength, text } from '#lib/signals.ts';
+import {
+	count,
+	identifierText,
+	list,
+	named,
+	namedContacts,
+	object,
+	percent,
+	personWithStrength,
+	rankedPairs,
+	text
+} from '#lib/signals.ts';
+export { neighbourList, pageBars, type Neighbour, type PageBar } from '#lib/signals.ts';
 import { own } from '#lib/utils.ts';
 
 type LogEntry = components['schemas']['LogEntry'];
@@ -34,47 +46,6 @@ export function drawsFacts(entry: LogEntry): boolean {
 }
 
 const share = (value: unknown) => (typeof value === 'number' ? Math.min(1, Math.max(0, value)) : 0);
-const count = (value: unknown) => (typeof value === 'number' ? value : 0);
-
-export interface PageBar {
-	page: number;
-	words: number;
-	/** The share of unsure words, 0..1. */
-	unsure: number;
-	label: string;
-	/** The log's line for the page: unsure words of all, and of the content where counted. */
-	text: string;
-}
-
-/** How well the OCR read each page it recognised; none where pages had text of their own. */
-export function pageBars(output: Json): PageBar[] {
-	return list(output.readings)
-		.map(object)
-		.map((page) => {
-			const words = count(page.words);
-			const unsure = words > 0 ? count(page.unsure) / words : 0;
-			const content = typeof page.content === 'number' ? page.content : null;
-			const values = {
-				page: String(page.page),
-				unsure: percent(unsure),
-				words: formatNumber(words)
-			};
-			return {
-				page: count(page.page),
-				words,
-				unsure,
-				label: percent(unsure),
-				text:
-					content === null
-						? m.log_reading_page(values)
-						: m.log_reading_page_content({
-								...values,
-								content_unsure: percent(content > 0 ? count(page.content_unsure) / content : 0),
-								content: formatNumber(content)
-							})
-			};
-		});
-}
 
 /** What the text recognition noted besides the reason: colours converted for PDF/A, another
  * OCR's text replaced, the vision model that read the pages. */
@@ -92,7 +63,7 @@ export function ocrNotes(output: Json): string[] {
 /** The characters on each page of a text whose pages stand apart by a form feed on a line of
  * its own (`/documents/{id}/text`). */
 export function pageCharacters(value: string): number[] {
-	return value.split(/\n?\f\n?/).map((page) => page.length);
+	return value.split(PAGE_BREAK).map((page) => page.length);
 }
 
 /** The kinds of classes the classifier ranks, as the verdict names its fields. */
@@ -163,44 +134,12 @@ export function classifierRanks(
 		kind,
 		label: RANK_LABELS[kind](),
 		threshold: thresholds[kind] ?? null,
-		ranks: list(output[kind])
-			.slice(0, 3)
-			.map((pair) => {
-				const [id, probability] = list(pair);
-				return { name: named(id, lookup), share: share(probability), label: percent(probability) };
-			})
+		ranks: rankedPairs(output[kind]).map(({ id, probability }) => ({
+			name: named(id, lookup),
+			share: share(probability),
+			label: percent(probability)
+		}))
 	}));
-}
-
-export interface Neighbour {
-	title: string;
-	href: string | null;
-	/** Contact, type, topic and space of the document, by name. */
-	about: string;
-	/** 0..1; null if the entry has none. */
-	similarity: number | null;
-	label: string | null;
-}
-
-/** The similar documents, the most similar first, as the signal found them. */
-export function neighbourList(output: Json, lookup: Lookup | null): Neighbour[] {
-	return list(output.neighbours).map((item, index) => {
-		const found = object(item);
-		const score = typeof found.score === 'number' ? found.score : null;
-		return {
-			title: m.signal_document({ number: index + 1 }),
-			href: typeof found.document_id === 'string' ? documentHref(found.document_id) : null,
-			about: [found.contact_id, found.document_type_id, found.topic_id, found.space_id]
-				.filter((id) => typeof id === 'string')
-				.map((id) => named(id, lookup))
-				.join(' · '),
-			similarity: score === null ? null : share(score),
-			label:
-				score === null
-					? null
-					: formatNumber(score, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-		};
-	});
 }
 
 export interface Facts {
@@ -216,20 +155,20 @@ export interface Facts {
 
 /** What the facts signal found in the text. */
 export function factsOf(output: Json, lookup: Lookup | null): Facts {
-	const identifier = (found: Json) => `${kind(found.kind)} ${String(found.value ?? '')}`;
 	return {
-		named: list(output.named)
-			.map((item) => text(object(item).name))
-			.filter((name): name is string => name !== null),
+		named: namedContacts(output),
 		identifiers: list(output.identifiers)
 			.map(object)
 			.map((found) => {
-				const values = { identifier: identifier(found), contact: named(found.contact_id, lookup) };
+				const values = {
+					identifier: identifierText(found),
+					contact: named(found.contact_id, lookup)
+				};
 				return typeof found.topic_id === 'string'
 					? m.details_identifier_topic({ ...values, topic: named(found.topic_id, lookup) })
 					: m.details_identifier(values);
 			}),
-		unknown: list(output.unknown_identifiers).map((item) => identifier(object(item))),
+		unknown: list(output.unknown_identifiers).map((item) => identifierText(object(item))),
 		persons: list(output.persons).map((item) => personWithStrength(item, lookup))
 	};
 }

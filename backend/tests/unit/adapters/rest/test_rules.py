@@ -48,6 +48,23 @@ async def test_a_rule_is_created_changed_disabled_and_deleted(api: Api) -> None:
     assert listed.json() == []
 
 
+async def test_a_rule_is_created_and_changed_switched_off(api: Api) -> None:
+    """Issue #73: the editor saves a rule switched off in one request."""
+    owner = await api.user()
+    body = {
+        "name": "Scan",
+        "conditions": {"all": [{"field": "channel", "op": "is", "value": "web"}]},
+        "actions": [{"type": "set_title", "template": "Scan"}],
+    }
+    rule = await post(api, "/rules", {**body, "enabled": False}, auth(owner))
+    assert rule["enabled"] is False
+    url = f"{PREFIX}/rules/{rule['id']}"
+    await api.client.patch(url, json={"enabled": True}, headers=auth(owner))
+    changed = await api.client.put(url, json={**body, "enabled": False}, headers=auth(owner))
+    assert changed.status_code == 200, changed.text
+    assert (changed.json()["enabled"], changed.json()["version"]) == (False, 2)
+
+
 async def test_a_rule_moves_into_another_space_with_a_change(api: Api) -> None:
     """Tobi, 22.10.2026: the space of a rule is changed with its content; the versions name
     where it belonged."""

@@ -142,10 +142,18 @@ export const KINDS: Record<SimpleKind, KindOps> = {
 		filter: 'type',
 		list: (options) => unwrap(api.GET('/api/v1/document-types', listQuery(options))),
 		get: (id) => unwrap(api.GET('/api/v1/document-types/{id}', path(id))),
-		create: ({ name, description, title_pattern, group_ids, icon }) =>
+		// With its fields, in one request: all or nothing (issue #73).
+		create: ({ name, description, title_pattern, group_ids, icon, fields }) =>
 			unwrap(
 				api.POST('/api/v1/document-types', {
-					body: { name, description, title_pattern, group_ids, icon }
+					body: {
+						name,
+						description,
+						title_pattern,
+						group_ids,
+						icon,
+						fields: (fields ?? []).map(({ id, required }) => ({ field_id: id, required }))
+					}
 				})
 			),
 		change: (id, { name, description, title_pattern, group_ids, icon }) =>

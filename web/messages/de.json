@@ -961,7 +961,6 @@
 	"rule_apply_failed": "Abgebrochen: {error}",
 	"rule_apply_skipped": "Übersprungen",
 	"rule_subgroup": "Gruppe",
-	"rule_left_off": "Die Änderung ist fehlgeschlagen, die Regel bleibt ausgeschaltet.",
 	"header_search_label": "Dokumente durchsuchen",
 	"header_search_placeholder": "Dokumente durchsuchen …",
 	"source_derived": "Abgeleitet aus",

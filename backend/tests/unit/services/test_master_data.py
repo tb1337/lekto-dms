@@ -10,7 +10,7 @@ from lekto.core.domain.errors import (
 from lekto.core.domain.events import DocumentUpdated
 from lekto.core.domain.fields import FieldType
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
-from lekto.core.domain.ids import ContactId, DocumentTypeId, TagId, new_id
+from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId, new_id
 from lekto.core.domain.master_data import Assignment, Contact, TagScope
 from lekto.core.domain.rules import (
     AddTags,
@@ -591,3 +591,29 @@ async def test_tags_and_types_carry_icons_and_colours(world: World) -> None:
     user = await world.user()
     with pytest.raises(PermissionDeniedError):
         await service.change_tag(user.id, tag.id, icon="house")
+
+
+async def test_a_document_type_comes_with_its_fields_or_not_at_all(world: World) -> None:
+    """Issue #73: a new type and its fields in one transaction; its pattern may name them."""
+    admin = await world.user(role=Role.ADMIN)
+    service = world.master_data
+    other = await service.create_document_type(admin.id, "Brief")
+    amount = await service.create_field(
+        admin.id, "Betrag", FieldType.AMOUNT, document_type_ids=[other.id]
+    )
+    invoice = await service.create_document_type(
+        admin.id, "Rechnung", title_pattern="Rechnung {{ field.betrag }}", fields={amount.id: True}
+    )
+    async with world.uow() as uow:
+        stored = await uow.fields.get(amount.id)
+    assert stored.document_type_ids == frozenset({other.id, invoice.id})
+    assert stored.is_required_for(invoice.id) and not stored.is_required_for(other.id)
+    # A field that does not exist, or a pattern naming a field it does not get: nothing is made.
+    with pytest.raises(NotFoundError):
+        await service.create_document_type(admin.id, "Mahnung", fields={FieldId(new_id()): False})
+    with pytest.raises(ValidationError, match=r"field\.betrag"):
+        await service.create_document_type(
+            admin.id, "Mahnung", title_pattern="{{ field.betrag }}", fields={}
+        )
+    async with world.uow() as uow:
+        assert await uow.document_types.find_by_name("Mahnung") is None

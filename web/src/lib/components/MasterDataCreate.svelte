@@ -48,16 +48,8 @@
 	}
 
 	async function submit(values: Values) {
+		// A document type comes with its fields, in the same request.
 		const made = await KINDS[request.kind].create(values);
-		// A document type's fields, after the type: it needs its id first.
-		if (values.fields) {
-			await unwrap(
-				api.PUT('/api/v1/document-types/{id}/fields', {
-					params: { path: { id: made.id } },
-					body: { fields: values.fields.map(({ id, required }) => ({ field_id: id, required })) }
-				})
-			);
-		}
 		toast.success(m.master_created());
 		masterDataDialogs.saved();
 		masterDataDialogs.finish(made, request);

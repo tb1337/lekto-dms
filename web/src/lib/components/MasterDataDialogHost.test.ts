@@ -186,6 +186,38 @@ describe('MasterDataDialogHost', () => {
 	});
 });
 
+describe('saving', () => {
+	it('creates a document type with its fields in one request', async () => {
+		// Issue #73: a type and its fields are all or nothing; no second request.
+		fetchMock.mockImplementation(async (request) => {
+			const path = new URL(request.url).pathname;
+			if (path === '/api/v1/document-types' && request.method === 'POST') {
+				return json({ id: 'new', name: 'Rechnung', created_at: '2026-10-24T12:00:00Z' }, 201);
+			}
+			if (path === '/api/v1/fields' || path === '/api/v1/rules') return json([]);
+			if (path === '/api/v1/tags') return json(TAGS);
+			return json({ used: [], rendered: null, missing: null, error: null });
+		});
+		const user = userEvent.setup();
+		render(WithDialogs);
+		masterDataDialogs.open('document-types');
+		await user.type(await screen.findByLabelText(m.field_name()), 'Rechnung');
+		await user.click(screen.getByRole('button', { name: m.create() }));
+		await waitFor(() => expect(fetchMock.mock.calls.some(([r]) => r.method === 'POST')).toBe(true));
+		const changing = fetchMock.mock.calls
+			.map(([request]) => request)
+			.filter((request) => request.method !== 'GET');
+		const sent = changing.map((request) => `${request.method} ${new URL(request.url).pathname}`);
+		expect(sent.filter((call) => !call.endsWith('/templates/preview'))).toEqual([
+			'POST /api/v1/document-types'
+		]);
+		const post = changing.find(
+			(request) => request.method === 'POST' && request.url.endsWith('/document-types')
+		)!;
+		expect(await post.clone().json()).toMatchObject({ name: 'Rechnung', fields: [] });
+	});
+});
+
 describe('tabs', () => {
 	it('shows a contact’s identifiers in a tab of their own, counted', async () => {
 		const user = userEvent.setup();

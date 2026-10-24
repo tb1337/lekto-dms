@@ -522,6 +522,7 @@
 					bind:value={titlePattern}
 					label={m.master_title_pattern()}
 					documentType={initial?.id ?? null}
+					extraFields={initial ? [] : assigned.map((item) => item.id)}
 				/>
 				{#if ruleHref}
 					<a

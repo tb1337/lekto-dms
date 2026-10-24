@@ -460,3 +460,20 @@ async def test_a_rule_moves_between_spaces_and_global(world: World) -> None:
     ]
     # Without a scope it stays where it is.
     assert (await r.rules.change(r.admin.id, rule.id, title)).space_id == back.space_id
+
+
+async def test_a_rule_is_saved_switched_off_in_one_go(world: World) -> None:
+    """Issue #73: the editor saves new and changed rules switched off, to try them first; one
+    transaction, so a rule never runs in between."""
+    r = await rule_world(world)
+    owner = await world.user()
+    title = definition("Title", channel_api(), SetTitle("Scan"))
+    created = await r.rules.create(owner.id, RuleScope.SPACE, title, enabled=False)
+    assert not created.enabled
+    assert not (await r.rules.get(owner.id, created.id)).enabled
+    on = await r.rules.set_enabled(owner.id, created.id, True)
+    changed = await r.rules.change(owner.id, on.id, title, enabled=False)
+    assert (changed.enabled, changed.current.number) == (False, 2)
+    # Without `enabled` it stays as it is; with True it is switched on with the change.
+    assert not (await r.rules.change(owner.id, on.id, title)).enabled
+    assert (await r.rules.change(owner.id, on.id, title, enabled=True)).enabled

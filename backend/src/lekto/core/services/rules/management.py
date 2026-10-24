@@ -150,9 +150,11 @@ class RuleService:
         definition: RuleDefinition,
         *,
         space: SpaceId | None = None,
+        enabled: bool = True,
     ) -> Rule:
         """A global rule needs an admin; a space rule belongs to `space`, which the caller
-        edits (None: the caller's personal space)."""
+        edits (None: the caller's personal space). `enabled=False`: saved switched off, in the
+        same transaction (to try it first; it never runs before it is switched on)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             space = await _place(uow, user, scope, space)
@@ -163,6 +165,8 @@ class RuleService:
                 by=user.id,
                 now=self._clock.now(),
             )
+            if not enabled:
+                rule.disable(self._clock.now())
             await check_references(uow, rule.definition, author=user)
             check_patterns(self._patterns, rule.definition)
             await check_templates(uow, self._templates, rule.definition)
@@ -227,11 +231,13 @@ class RuleService:
         *,
         scope: RuleScope | None = None,
         space: SpaceId | None = None,
+        enabled: bool | None = None,
     ) -> Rule:
         """A new version. With `scope` the rule moves (Tobi, 22.10.2026): into the space
         `space`, which the caller edits (None: the caller's personal space), or, by an admin,
         to global; whoever moves it may change it where it is, too. Without `scope` it stays
-        where it is."""
+        where it is. `enabled`: switched on or off with it, in the same transaction (None: as
+        it was); the new version is checked either way."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             rule = await _managed_rule(uow, user, id)
@@ -245,6 +251,10 @@ class RuleService:
             await check_references(uow, definition, author=user)
             check_patterns(self._patterns, definition)
             await check_templates(uow, self._templates, definition)
+            if enabled is True:
+                rule.enable(self._clock.now())
+            elif enabled is False:
+                rule.disable(self._clock.now())
             await uow.rules.update(rule)
             await uow.commit()
         return rule

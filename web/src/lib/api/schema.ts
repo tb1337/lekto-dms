@@ -3368,7 +3368,10 @@ export interface components {
 			name: string;
 			/** Description */
 			description?: string | null;
-			/** Title Pattern */
+			/**
+			 * Title Pattern
+			 * @description May name the global fields and those in `fields`.
+			 */
 			title_pattern?: string | null;
 			/**
 			 * Group Ids
@@ -3377,6 +3380,11 @@ export interface components {
 			group_ids?: string[];
 			/** Icon */
 			icon?: string | null;
+			/**
+			 * Fields
+			 * @description The fields of the type besides the global ones, each once, required or optional: set with it in one transaction (as `PUT /document-types/{id}/fields`).
+			 */
+			fields?: components['schemas']['FieldAssignmentIn'][];
 		};
 		/** DocumentTypeOut */
 		DocumentTypeOut: {
@@ -5839,6 +5847,11 @@ export interface components {
 			 * @description With `scope: space`: the space the rule moves into.
 			 */
 			space_id?: string | null;
+			/**
+			 * Enabled
+			 * @description Switched on or off with the change, in one transaction (the editor saves a change switched off, to try it first); left out: as it was.
+			 */
+			enabled?: boolean | null;
 		};
 		/**
 		 * RuleCreate
@@ -5919,6 +5932,12 @@ export interface components {
 			 * @description The space a space rule belongs to; none for a global rule.
 			 */
 			space_id?: string | null;
+			/**
+			 * Enabled
+			 * @description false: saved switched off (to try it first); it never runs before it is switched on.
+			 * @default true
+			 */
+			enabled: boolean;
 		};
 		/** RuleEffectOut */
 		RuleEffectOut: {

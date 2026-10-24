@@ -12,12 +12,14 @@
 	// A template (Liquid) of a rule or a title pattern in a small field: coloured, with completion
 	// after `{{`, `{%` and `|`, red with the reason when the server finds it invalid, and a button
 	// to the template editor. `documentType`: undefined for a rule (every field), null for a type
-	// not saved yet (the fields for every type), else that type's fields.
+	// not saved yet (the fields for every type, and `extraFields`: those it is created with),
+	// else that type's fields.
 	let {
 		id,
 		value = $bindable(''),
 		label,
 		documentType = undefined,
+		extraFields = [],
 		invalid = false,
 		maxlength = 500
 	}: {
@@ -25,6 +27,8 @@
 		value?: string;
 		label?: string;
 		documentType?: string | null;
+		/** Ids of fields the template may use besides `documentType`'s. */
+		extraFields?: readonly string[];
 		invalid?: boolean;
 		maxlength?: number;
 	} = $props();
@@ -33,7 +37,11 @@
 	let error = $state<string | null>(null);
 	let editing = $state(false);
 
-	const usable = $derived(usableFields(fields, documentType));
+	const usable = $derived(
+		fields.filter(
+			(field) => usableFields([field], documentType).length > 0 || extraFields.includes(field.id)
+		)
+	);
 
 	$effect(() => {
 		void unwrap(api.GET('/api/v1/fields')).then(

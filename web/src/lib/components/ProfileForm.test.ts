@@ -21,8 +21,36 @@ const stored = {
 	aliases: ['Anna Sample'],
 	birth_date: '1980-06-15',
 	email: 'anna@mail.example',
-	identifiers: [{ kind: 'tax_id', value: '12345678911' }]
+	identifiers: [{ kind: 'tax_id', value: '12345678911' }],
+	numbers: [
+		{
+			contact_id: 'employer',
+			kind: 'personnel_number',
+			value: '12345',
+			source: 'manual',
+			topic_id: null
+		},
+		{
+			contact_id: 'insurer',
+			kind: 'customer_number',
+			value: 'K2002',
+			source: 'learned',
+			topic_id: null
+		},
+		{
+			contact_id: 'insurer',
+			kind: 'customer_number',
+			value: 'K3003',
+			source: 'learned',
+			topic_id: null
+		}
+	]
 };
+
+const contacts = [
+	{ id: 'employer', name: 'Employer', topic_ids: [] },
+	{ id: 'insurer', name: 'Insurer', topic_ids: [] }
+];
 
 beforeEach(() => {
 	session.start({
@@ -41,6 +69,7 @@ beforeEach(() => {
 			return json({ ...stored, ...body });
 		}
 		if (path.endsWith('/profile')) return json(stored);
+		if (path.endsWith('/contacts')) return json(contacts);
 		return json([]);
 	});
 	vi.stubGlobal('fetch', fetchMock);
@@ -72,9 +101,30 @@ describe('ProfileForm', () => {
 					aliases: ['Anna Muster'],
 					birth_date: '1980-06-15',
 					email: 'anna@mail.example',
-					identifiers: [{ kind: 'tax_id', value: '12345678911' }]
+					identifiers: [{ kind: 'tax_id', value: '12345678911' }],
+					numbers: [{ contact_id: 'employer', kind: 'personnel_number', value: '12345' }],
+					declined_numbers: []
 				}
 			}
+		]);
+	});
+
+	it('takes over a number found for the user and declines another as not theirs', async () => {
+		render(ProfileForm);
+		await screen.findByText('K2002');
+		expect(screen.getAllByText('Insurer')).toHaveLength(2);
+		await userEvent.click(screen.getByRole('button', { name: /K2002/ }));
+		await userEvent.click(screen.getByRole('button', { name: m.identifier_keep() }));
+		await userEvent.click(screen.getByRole('button', { name: /K3003/ }));
+		await userEvent.click(screen.getByRole('button', { name: m.number_not_mine() }));
+		await userEvent.click(screen.getByRole('button', { name: m.save() }));
+		const body = sent[0].body as Record<string, unknown>;
+		expect(body.numbers).toEqual([
+			{ contact_id: 'employer', kind: 'personnel_number', value: '12345' },
+			{ contact_id: 'insurer', kind: 'customer_number', value: 'K2002' }
+		]);
+		expect(body.declined_numbers).toEqual([
+			{ contact_id: 'insurer', kind: 'customer_number', value: 'K3003' }
 		]);
 	});
 

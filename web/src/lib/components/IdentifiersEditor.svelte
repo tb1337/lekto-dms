@@ -20,7 +20,13 @@
 		NAMING_KINDS,
 		row
 	} from '#lib/identifiers.ts';
-	import { type Tag, userChoice, userName, type UserName } from '#lib/masterdata.svelte.ts';
+	import {
+		type Contact,
+		type Tag,
+		userChoice,
+		userName,
+		type UserName
+	} from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { pathLabel } from '#lib/tags.ts';
@@ -33,7 +39,9 @@
 	// in the value closes the line. A search finds them by value, kind and topic; a new one
 	// opens empty. `errors` (by row key) show in their open line. `kinds`: those offered (a
 	// person's in the profile); `withUsers`: a customer or personnel number may name the user it
-	// belongs to (the contact dialog).
+	// belongs to (the contact dialog). `contacts`: the lines are a user's numbers at these
+	// contacts (the profile, issue #82): each names its contact, offers the topics that contact
+	// enables, and a learned one is taken over or declined as not theirs.
 	let {
 		rows = $bindable(),
 		topics = [],
@@ -41,7 +49,8 @@
 		errors = {},
 		hint,
 		kinds: offered = IDENTIFIER_KINDS,
-		withUsers = false
+		withUsers = false,
+		contacts
 	}: {
 		rows: IdentifierRow[];
 		topics?: readonly Tag[];
@@ -51,6 +60,7 @@
 		hint?: string;
 		kinds?: readonly IdentifierKind[];
 		withUsers?: boolean;
+		contacts?: readonly Pick<Contact, 'id' | 'name' | 'topic_ids'>[];
 	} = $props();
 
 	const uid = $props.id();
@@ -72,9 +82,9 @@
 			})
 			.catch(() => {});
 	});
-	const topicOptions = $derived([
-		{ value: '', label: m.topic_none() },
-		...topics.map((topic) => ({ value: topic.id, label: pathLabel(topic) }))
+	const contactOptions = $derived([
+		{ value: '', label: m.number_contact_choose() },
+		...(contacts ?? []).map((contact) => ({ value: contact.id, label: contact.name }))
 	]);
 	const compact = (text: string) => text.replace(/\s+/g, '').toLocaleLowerCase();
 	const shown = $derived.by(() => {
@@ -82,7 +92,9 @@
 		if (wanted === '') return rows;
 		return rows.filter((item) =>
 			compact(
-				`${item.value} ${kindLabel(item.kind)} ${topicOf(item.topic_id)?.name ?? ''}`
+				`${item.value} ${kindLabel(item.kind)} ${topicOf(item.topic_id)?.name ?? ''} ${
+					contactOf(item)?.name ?? ''
+				}`
 			).includes(wanted)
 		);
 	});
@@ -99,6 +111,28 @@
 		return topics.find((topic) => topic.id === id) ?? null;
 	}
 
+	function contactOf(item: IdentifierRow): Pick<Contact, 'id' | 'name' | 'topic_ids'> | null {
+		return contacts?.find((contact) => contact.id === item.contact_id) ?? null;
+	}
+
+	/** The topics a line may point to: those its contact enables, for a user's number. */
+	function topicsFor(item: IdentifierRow): readonly Tag[] {
+		if (!contacts) return topics;
+		const enabled = contactOf(item)?.topic_ids ?? [];
+		return topics.filter((topic) => enabled.includes(topic.id));
+	}
+
+	function topicChoices(item: IdentifierRow) {
+		const own = topicsFor(item);
+		const options = [
+			{ value: '', label: m.topic_none() },
+			...own.map((topic) => ({ value: topic.id, label: pathLabel(topic) }))
+		];
+		return item.topic_id === '' || own.some((topic) => topic.id === item.topic_id)
+			? options
+			: [...options, { value: item.topic_id, label: m.topic_not_enabled() }];
+	}
+
 	function indexOf(item: IdentifierRow): number {
 		return rows.findIndex((other) => other.key === item.key);
 	}
@@ -113,7 +147,7 @@
 	}
 
 	async function add() {
-		const fresh = row();
+		const fresh = row(offered[0]);
 		query = '';
 		rows = [...rows, fresh];
 		opened = fresh.key;
@@ -198,6 +232,11 @@
 								]}
 								aria-hidden="true"
 							/>
+							{#if contacts}
+								<span class="max-w-[40%] shrink-0 truncate text-sm">
+									{contactOf(item)?.name ?? m.number_contact_none()}
+								</span>
+							{/if}
 							<span
 								class={[
 									'min-w-0 flex-1 truncate',
@@ -239,10 +278,22 @@
 					{#if open}
 						<div id="{uid}-{item.key}" class="border-t bg-secondary/30 px-3 py-3 sm:pl-10">
 							{#if item.source === 'manual'}
+								{#if contacts}
+									<div class="mb-2 grid items-center gap-2 sm:grid-cols-[12.5rem_minmax(0,1fr)]">
+										<span class="text-sm text-muted-foreground">{m.number_contact()}</span>
+										<Select
+											bind:value={rows[index].contact_id}
+											options={contactOptions}
+											aria-label={m.number_contact()}
+											class="h-10"
+										/>
+									</div>
+								{/if}
+								{@const ownTopics = topicsFor(item)}
 								<div
 									class={[
 										'grid gap-2',
-										topics.length > 0
+										ownTopics.length > 0 || item.topic_id !== ''
 											? 'sm:grid-cols-[12.5rem_minmax(0,1fr)_9.5rem]'
 											: 'sm:grid-cols-[12.5rem_minmax(0,1fr)]'
 									]}
@@ -262,12 +313,10 @@
 										class="h-10 font-mono"
 										onkeydown={closeOnEnter}
 									/>
-									{#if topics.length > 0}
+									{#if ownTopics.length > 0 || item.topic_id !== ''}
 										<Select
 											bind:value={rows[index].topic_id}
-											options={topic || item.topic_id === ''
-												? topicOptions
-												: [...topicOptions, { value: item.topic_id, label: m.topic_not_enabled() }]}
+											options={topicChoices(item)}
 											aria-label={m.identifier_topic()}
 											class="h-10"
 										/>
@@ -290,9 +339,15 @@
 							{:else}
 								<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
 									<p class="min-w-48 flex-1 text-sm text-muted-foreground">
-										{item.source === 'learned'
-											? m.identifier_learned_note()
-											: m.identifier_rejected_note()}
+										{#if contacts}
+											{item.source === 'learned'
+												? m.number_learned_note()
+												: m.number_declined_note()}
+										{:else}
+											{item.source === 'learned'
+												? m.identifier_learned_note()
+												: m.identifier_rejected_note()}
+										{/if}
 									</p>
 									{#if item.source === 'learned'}
 										<Button
@@ -309,7 +364,16 @@
 											size="sm"
 											onclick={() => become(item, 'rejected')}
 										>
-											{m.identifier_reject()}
+											{contacts ? m.number_not_mine() : m.identifier_reject()}
+										</Button>
+									{:else if contacts}
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											onclick={() => become(item, 'learned')}
+										>
+											{m.number_undo()}
 										</Button>
 									{:else}
 										<Button type="button" variant="outline" size="sm" onclick={() => drop(item)}>

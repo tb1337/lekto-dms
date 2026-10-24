@@ -21,7 +21,7 @@
 	import { describeError } from '#lib/errors.ts';
 	import { coalesced } from '#lib/coalesce.ts';
 	import { events } from '#lib/events.svelte.ts';
-	import { formatDate } from '#lib/i18n.ts';
+	import { formatTime } from '#lib/i18n.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -314,7 +314,7 @@
 	const phaseDurationOf = (phase: string) =>
 		phaseDuration(groups.find((group) => group.phase === phase)?.steps ?? []);
 
-	const time = (value: string) => formatDate(value, { timeStyle: 'medium' });
+	const time = formatTime;
 
 	/** The band's reading line for a step: when it ran (in its own run, for a step kept from an
 	 * earlier one) and what it did. */
@@ -376,7 +376,7 @@
 			title: m.prompt_title({ node: NODE_LABELS[asked.node]() }),
 			meta: [
 				entry.model_version,
-				formatDate(entry.started_at, { timeStyle: 'medium' }),
+				formatTime(entry.started_at),
 				m.log_run({ run: asked.exchange.run })
 			]
 				.filter(Boolean)

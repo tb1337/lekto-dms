@@ -1,5 +1,4 @@
 <script lang="ts">
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Play from '@lucide/svelte/icons/play';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -11,6 +10,7 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
+	import BackLink from '#lib/components/BackLink.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import RuleView from '#lib/components/rules/RuleView.svelte';
 	import TitlePatternBadge from '#lib/components/rules/TitlePatternBadge.svelte';
@@ -18,15 +18,17 @@
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import { Switch } from '#lib/components/ui/switch/index.ts';
-	import { describeError, reportError } from '#lib/errors.ts';
+	import { reportError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
-	import { loadLookup, spaceLabel, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { userName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { reasonsText } from '#lib/reasons.ts';
 	import { canApplyRule, canChangeRule } from '#lib/permissions.ts';
-	import { moves, placeLabel } from '#lib/rules/places.ts';
+	import { RuleLoader } from '#lib/rules/page.svelte.ts';
+	import { moves, placeLabel, placeOf } from '#lib/rules/places.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import { onChange } from '#lib/watch.svelte.ts';
 
 	type Rule = components['schemas']['RuleOut'];
 	type Version = components['schemas']['RuleVersionOut'];
@@ -34,44 +36,49 @@
 	const id = $derived(page.params.id ?? '');
 	let rule = $state<Rule | null>(null);
 	let versions = $state<Version[]>([]);
-	let lookup = $state<Lookup | null>(null);
-	let problem = $state<string | null>(null);
+	const loader = new RuleLoader();
+	const lookup = $derived(loader.lookup);
+	const problem = $derived(loader.problem);
 	let removing = $state(false);
 	let busy = $state(false);
 
-	const userName = (user: string | null) => {
-		const found = lookup?.users.find((entry) => entry.id === user);
-		return found ? userLabel(found) : m.rule_unknown();
-	};
-	const placeName = $derived.by(() => {
-		if (!rule || rule.scope === 'global') return m.rule_global();
-		const space = lookup?.spaces.find((entry) => entry.id === rule?.space_id);
-		return space ? spaceLabel(space, lookup?.users ?? [], session.user?.id) : m.rule_unknown();
-	});
 	const spaces = $derived(lookup?.spaces ?? []);
+	const users = $derived(lookup?.users ?? []);
+	const placeName = $derived(
+		rule ? placeLabel(placeOf(rule), spaces, users, session.user?.id, m.rule_global) : ''
+	);
 	const moved = $derived(moves(versions));
-	const placed = (place: string) =>
-		placeLabel(place, spaces, lookup?.users ?? [], session.user?.id);
+	const placed = (place: string) => placeLabel(place, spaces, users, session.user?.id);
 
-	// Again after a master data dialog saved: a title pattern's rule follows its type.
-	$effect(() => {
+	/** The rule and its versions; `fresh` loads the names they show anew as well. */
+	function load(fresh = false) {
 		const wanted = id;
-		void masterDataDialogs.changed;
-		if (untrack(() => rule)?.id !== wanted) rule = null;
-		Promise.all([
-			unwrap(api.GET('/api/v1/rules/{id}', { params: { path: { id: wanted } } })),
-			unwrap(api.GET('/api/v1/rules/{id}/versions', { params: { path: { id: wanted } } })),
-			untrack(() => lookup) ?? loadLookup()
-		]).then(
-			([found, history, loaded]) => {
-				if (wanted !== id) return;
-				[rule, versions, lookup, problem] = [found, [...history].reverse(), loaded, null];
+		if (rule?.id !== wanted) rule = null;
+		return loader.load(
+			() =>
+				Promise.all([
+					unwrap(api.GET('/api/v1/rules/{id}', { params: { path: { id: wanted } } })),
+					unwrap(api.GET('/api/v1/rules/{id}/versions', { params: { path: { id: wanted } } }))
+				]),
+			([found, history]) => {
+				rule = found;
+				versions = [...history].reverse();
 			},
-			(error) => {
-				if (wanted === id) problem = describeError(error);
-			}
+			{ fresh }
 		);
+	}
+
+	$effect(() => {
+		void id;
+		untrack(() => void load());
 	});
+
+	// Again after a master data dialog saved: a title pattern's rule follows its type, and the
+	// types, tags and contacts the rule names may have been renamed.
+	onChange(
+		() => masterDataDialogs.changed,
+		() => void load(true)
+	);
 
 	async function switchRule(enabled: boolean) {
 		if (!rule) return;
@@ -98,13 +105,7 @@
 <svelte:head><title>{rule?.name ?? m.nav_rules()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-6">
-	<a
-		href="{BASE}/rules"
-		class="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-	>
-		<ArrowLeft class="size-4" aria-hidden="true" />
-		{m.nav_rules()}
-	</a>
+	<BackLink href="{BASE}/rules" label={m.nav_rules()} />
 
 	{#if problem}
 		<p class="text-destructive" role="alert">{problem}</p>
@@ -197,7 +198,7 @@
 						<span class="text-muted-foreground">
 							{m.rule_version_meta({
 								date: formatDate(version.created_at, { dateStyle: 'medium', timeStyle: 'short' }),
-								user: userName(version.created_by)
+								user: userName(users, version.created_by)
 							})}
 						</span>
 						{#if moved.get(version.version)}

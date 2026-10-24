@@ -772,6 +772,23 @@ describe('DocumentForm', () => {
 			expect(onmove).toHaveBeenCalled();
 		});
 
+		it('offers no move while there is nowhere to move the document', () => {
+			// The caller edits the document's space only and nobody else has a personal space.
+			const alone = {
+				...household,
+				spaces: [household.spaces[1]],
+				users: [household.users[0]]
+			} as unknown as Lookup;
+			const decided = { ...documentOf('completed', 'green'), space_id: SPACE } as Document;
+			render(
+				DocumentForm,
+				props({ document: decided, review: null, lookup: alone, onmove: vi.fn() })
+			);
+			const calm = screen.getByTestId('filing-calm');
+			const move = within(calm).getByRole('button', { name: m.filing_move_action() });
+			expect((move as HTMLButtonElement).disabled).toBe(true);
+		});
+
 		it('names readers of a document that is not green yet as reading it once it is', () => {
 			render(
 				DocumentForm,

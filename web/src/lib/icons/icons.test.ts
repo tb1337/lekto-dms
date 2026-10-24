@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CURATED, CURATED_NAMES } from './curated.ts';
 import { CURATED_MODULE_NAMES, curatedModule } from './curated-modules.ts';
+import { iconLabel } from './labels.ts';
 import { loadIcon as loadAny } from './load.ts';
 import { ICON_NAMES, isIcon, loadIcon } from './lucide.ts';
 import { SEARCH_LIMIT, searchIcons } from './search.ts';
@@ -31,6 +32,12 @@ describe('icons', () => {
 		expect(await loadAny('piggy-bank')).toBe(await loadIcon('piggy-bank'));
 		expect(await loadAny('rocket')).toBe(await loadIcon('rocket'));
 		expect(await loadAny('no-such-icon')).toBeNull();
+	});
+
+	it('are labelled by their first word, a name the map lacks by itself', () => {
+		expect(iconLabel('house')).toBe(`${EN.house.split(' ')[0]} (house)`);
+		expect(iconLabel('constructor')).toBe('constructor');
+		expect(iconLabel('no-such-icon')).toBe('no-such-icon');
 	});
 
 	it('are found by words in either language, then by their name', () => {

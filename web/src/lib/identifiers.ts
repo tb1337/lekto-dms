@@ -31,6 +31,13 @@ export const PERSON_KINDS: readonly IdentifierKind[] = [
 /** The kinds of a contact's identifiers that may name the user they belong to. */
 export const NAMING_KINDS: readonly IdentifierKind[] = ['customer_number', 'personnel_number'];
 
+/** The label of a kind as the log or a candidate names it; a kind this UI does not know stays
+ * as written. */
+export function labelOfKind(kind: string): string {
+	const known: readonly string[] = [...IDENTIFIER_KINDS, ...PERSON_KINDS];
+	return known.includes(kind) ? kindLabel(kind as IdentifierKind) : kind;
+}
+
 export function kindLabel(kind: IdentifierKind): string {
 	switch (kind) {
 		case 'iban':

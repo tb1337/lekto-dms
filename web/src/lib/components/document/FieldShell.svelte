@@ -2,7 +2,7 @@
 	import Lightbulb from '@lucide/svelte/icons/lightbulb';
 	import SearchX from '@lucide/svelte/icons/search-x';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
-	import type { Snippet } from 'svelte';
+	import { tick, type Snippet } from 'svelte';
 	import { chosen } from '#lib/candidates.ts';
 	import type { Candidate } from '#lib/candidates.ts';
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
@@ -92,6 +92,28 @@
 	const hintId = $derived(`${inputId}-hint`);
 	const sources = $derived(check && applies ? chosen(check) : []);
 	const pick = $derived(onpick ? (value: unknown) => onpick(key, value) : undefined);
+
+	// The mark stays while the field holds the focus: the pointer leaving changes nothing then,
+	// and the focus leaving only counts once it is neither in the field nor in a list the field
+	// opened (a popover stands outside the field in the page; its trigger says it is open).
+	function holdsFocus(shell: HTMLElement): boolean {
+		return (
+			shell.contains(window.document.activeElement) ||
+			shell.querySelector('[aria-expanded="true"]') !== null
+		);
+	}
+
+	function leave(event: MouseEvent) {
+		if (!holdsFocus(event.currentTarget as HTMLElement)) onfocus(null);
+	}
+
+	async function blur(event: FocusEvent) {
+		const shell = event.currentTarget as HTMLElement;
+		if (event.relatedTarget instanceof Node && shell.contains(event.relatedTarget)) return;
+		// Where the focus went is settled a moment later (a popover takes it as it opens).
+		await tick();
+		if (!holdsFocus(shell)) onfocus(null);
+	}
 </script>
 
 <!-- Before a proposed contact its logo or initials, before a proposed type its icon. -->
@@ -133,9 +155,9 @@
 	aria-describedby={hint ? hintId : undefined}
 	data-field={key}
 	onmouseenter={() => onfocus(key)}
-	onmouseleave={() => onfocus(null)}
+	onmouseleave={leave}
 	onfocusin={() => onfocus(key)}
-	onfocusout={() => onfocus(null)}
+	onfocusout={blur}
 	class={cn(
 		card
 			? 'my-1 flex flex-col gap-2.5 rounded-2xl border border-lane-yellow-foreground/25 bg-lane-yellow/25 p-3.5 transition-shadow'

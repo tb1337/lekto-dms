@@ -8,6 +8,7 @@
 	import ConditionGroup from '#lib/components/rules/ConditionGroup.svelte';
 	import ConditionRow from '#lib/components/rules/ConditionRow.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
+	import * as Field from '#lib/components/ui/field/index.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import {
@@ -130,7 +131,7 @@
 		{/if}
 	{/each}
 
-	{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+	{#if error}<Field.Error>{error}</Field.Error>{/if}
 
 	<div class="flex flex-wrap gap-2">
 		<Button

@@ -57,12 +57,17 @@ class Inbox {
 		return this.summary?.open ?? 0;
 	}
 
+	/** Fetch the summary again; while the server cannot be reached the last one stays. */
 	async refresh(): Promise<void> {
 		const request = ++this.#request;
-		const { data } = await api.GET('/api/v1/inbox/summary', {
-			params: { query: { all_users: scope.query } }
-		});
-		if (data && request === this.#request) this.summary = data;
+		try {
+			const { data } = await api.GET('/api/v1/inbox/summary', {
+				params: { query: { all_users: scope.query } }
+			});
+			if (data && request === this.#request) this.summary = data;
+		} catch {
+			// Offline (fetch rejects): the counter keeps what it showed until the next refresh.
+		}
 	}
 
 	#later(wait = 500): void {

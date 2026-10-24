@@ -4,6 +4,7 @@ import { WORDS as DE } from '#lib/icons/words.de.ts';
 import { WORDS as EN } from '#lib/icons/words.en.ts';
 import { getLocale } from '#lib/i18n.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { own } from '#lib/utils.ts';
 
 export const AREA_LABELS: Record<IconArea, () => string> = {
 	documents: m.icon_area_documents,
@@ -21,6 +22,6 @@ export const AREA_LABELS: Record<IconArea, () => string> = {
 
 /** The first search word of an icon offered first, in the language; else its Lucide name. */
 export function iconLabel(name: string): string {
-	const words = (getLocale() === 'de' ? DE : EN)[name];
+	const words = own(getLocale() === 'de' ? DE : EN, name);
 	return words ? `${words.split(' ')[0]} (${name})` : name;
 }

@@ -1,5 +1,4 @@
 <script lang="ts">
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import { onDestroy, untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
@@ -10,12 +9,14 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
+	import BackLink from '#lib/components/BackLink.svelte';
+	import EmptyNote from '#lib/components/EmptyNote.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import RuleEffects from '#lib/components/rules/RuleEffects.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { Progress } from '#lib/components/ui/progress/index.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
-	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { reasonsText } from '#lib/reasons.ts';
 	import { canApplyRule, canChangeRule } from '#lib/permissions.ts';
@@ -28,6 +29,7 @@
 		type Application,
 		type PreviewItem
 	} from '#lib/rules/apply.ts';
+	import { RuleLoader } from '#lib/rules/page.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 
 	type Rule = components['schemas']['RuleOut'];
@@ -38,8 +40,9 @@
 	const saved = $derived(page.url.searchParams.get('saved') === '1');
 
 	let rule = $state<Rule | null>(null);
-	let lookup = $state<Lookup | null>(null);
-	let problem = $state<string | null>(null);
+	const loader = new RuleLoader();
+	const lookup = $derived(loader.lookup);
+	const problem = $derived(loader.problem);
 	let items = $state<PreviewItem[]>([]);
 	let version = $state<number | null>(null);
 	let cursor = $state<string | null>(null);
@@ -63,24 +66,20 @@
 
 	$effect(() => {
 		const wanted = id;
-		Promise.all([
-			unwrap(api.GET('/api/v1/rules/{id}', { params: { path: { id: wanted } } })),
-			untrack(() => lookup) ?? loadLookup()
-		]).then(
-			([found, loaded]) => {
-				if (wanted !== id) return;
-				// Only who may apply the rule gets its preview (the API refuses the others).
-				if (!canApplyRule(found, session.user, loaded.spaces)) {
-					[rule, lookup, problem] = [found, loaded, m.error_forbidden()];
-					return;
+		untrack(() =>
+			loader.load(
+				() => unwrap(api.GET('/api/v1/rules/{id}', { params: { path: { id: wanted } } })),
+				(found, loaded) => {
+					rule = found;
+					// Only who may apply the rule gets its preview (the API refuses the others).
+					if (!canApplyRule(found, session.user, loaded.spaces)) {
+						loader.problem = m.error_forbidden();
+						return;
+					}
+					restart();
+					void more();
 				}
-				[rule, lookup, problem] = [found, loaded, null];
-				restart();
-				void more();
-			},
-			(error) => {
-				if (wanted === id) problem = describeError(error);
-			}
+			)
 		);
 	});
 
@@ -93,9 +92,17 @@
 		accepted.clear();
 	}
 
+	// The request in flight: a second call joins it instead of starting another.
+	let pending: Promise<void> | null = null;
+
 	/** The next page with at least one document, or the end. Pages may be empty midway. */
-	async function more(): Promise<void> {
-		if (loading || complete) return;
+	function more(): Promise<void> {
+		pending ??= nextPage().finally(() => (pending = null));
+		return pending;
+	}
+
+	async function nextPage(): Promise<void> {
+		if (complete) return;
 		loading = true;
 		previewError = null;
 		try {
@@ -188,13 +195,7 @@
 >
 
 <div class="flex flex-col gap-6">
-	<a
-		href="{BASE}/rules/{id}"
-		class="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-	>
-		<ArrowLeft class="size-4" aria-hidden="true" />
-		{rule?.name ?? m.nav_rules()}
-	</a>
+	<BackLink href="{BASE}/rules/{id}" label={rule?.name ?? m.nav_rules()} />
 	<h1 class="text-[1.75rem] font-semibold tracking-tight break-words">
 		{m.rule_apply_title({ name: rule?.name ?? '' })}
 	</h1>
@@ -327,18 +328,11 @@
 				{/each}
 			</ul>
 		{:else if complete}
-			<p
-				class="rounded-2xl border border-dashed bg-card px-6 py-16 text-center text-muted-foreground"
-			>
-				{m.rule_preview_nothing()}
-			</p>
+			<EmptyNote>{m.rule_preview_nothing()}</EmptyNote>
 		{/if}
 
 		{#if previewError}
-			<div class="flex flex-col items-start gap-3" role="alert">
-				<p class="text-destructive">{previewError}</p>
-				<Button variant="outline" onclick={() => void more()}>{m.retry()}</Button>
-			</div>
+			<LoadProblem problem={previewError} onretry={() => void more()} />
 		{:else if loading && items.length === 0}
 			<p class="text-muted-foreground">{m.loading()}</p>
 		{/if}

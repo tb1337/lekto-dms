@@ -1,7 +1,7 @@
-import { render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { userEvent } from '@testing-library/user-event';
 import { createRawSnippet } from 'svelte';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { FieldEvidence } from '#lib/document-view.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
@@ -56,5 +56,53 @@ describe('a field with the pages of its quote', () => {
 		await rerender({ ...props, evidence: on([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) });
 		expect(chips()).toHaveLength(6);
 		expect(screen.getByRole('button', { name: m.source_more({ count: 6 }) })).toBeTruthy();
+	});
+});
+
+describe('the mark of a field', () => {
+	const props = {
+		key: 'field:amount',
+		label: 'Betrag',
+		inputId: 'field-amount',
+		lookup,
+		onjump: () => {}
+	};
+
+	it('stays while the field holds the focus, and goes once the focus leaves it', async () => {
+		const onfocus = vi.fn();
+		render(FieldShell, { ...props, onfocus, children: input });
+		const field = screen.getByRole('textbox');
+		const shell = screen.getByRole('group');
+		field.focus();
+		expect(onfocus).toHaveBeenLastCalledWith('field:amount');
+		onfocus.mockClear();
+		await fireEvent.mouseLeave(shell);
+		expect(onfocus).not.toHaveBeenCalled();
+		field.blur();
+		await waitFor(() => expect(onfocus).toHaveBeenLastCalledWith(null));
+	});
+
+	it('stays while a list the field opened holds the focus', async () => {
+		const onfocus = vi.fn();
+		const trigger = createRawSnippet(() => ({
+			render: () => '<button id="field-amount" aria-expanded="true">Open</button>'
+		}));
+		render(FieldShell, { ...props, onfocus, children: trigger });
+		const outside = window.document.createElement('button');
+		window.document.body.append(outside);
+		const button = screen.getByRole('button', { name: 'Betrag' });
+		button.focus();
+		onfocus.mockClear();
+		// The popover stands outside the field in the page and takes the focus.
+		outside.focus();
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(onfocus).not.toHaveBeenCalled();
+		await fireEvent.mouseLeave(screen.getByRole('group'));
+		expect(onfocus).not.toHaveBeenCalled();
+		// Closed: the focus is elsewhere, the mark goes.
+		button.setAttribute('aria-expanded', 'false');
+		await fireEvent.mouseLeave(screen.getByRole('group'));
+		expect(onfocus).toHaveBeenLastCalledWith(null);
+		outside.remove();
 	});
 });

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import Workflow from '@lucide/svelte/icons/workflow';
+	import { api } from '#lib/api/client.ts';
 	import AssignmentList, { type Assignment } from '#lib/components/AssignmentList.svelte';
 	import ColorPicker from '#lib/components/ColorPicker.svelte';
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
@@ -20,8 +21,15 @@
 	import { Textarea } from '#lib/components/ui/textarea/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { changesOf, type IdentifierRow, refusedRow, rowsOf } from '#lib/identifiers.ts';
+	import { latest } from '#lib/latest.ts';
 	import { type Extra, type Item, type Values } from '#lib/masterdata-api.ts';
-	import type { Contact, FieldDefinition, Tag, TagScope } from '#lib/masterdata.svelte.ts';
+	import type {
+		Contact,
+		FieldDefinition,
+		Tag,
+		TagScope,
+		UserName
+	} from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { below, ofScope, pathLabel } from '#lib/tags.ts';
@@ -111,7 +119,6 @@
 	let color = $state<string | null>(null);
 	// A tag's scope: as given, or as chosen for a new one.
 	let kind = $state<TagScope | null>(null);
-	let error = $state<string | null>(null);
 	const groupScope = $derived<TagScope | null>(
 		extra === 'aliases' ? 'contact' : extra === 'description' ? 'document_type' : null
 	);
@@ -132,7 +139,6 @@
 	});
 	const typed = $derived((fields ?? []).filter((field) => field.document_type_ids !== null));
 	const everywhere = $derived((fields ?? []).filter((field) => field.document_type_ids === null));
-	let busy = $state(false);
 	// A contact and a document type are long: their identifiers or fields stand in a tab of
 	// their own (Tobi, 20.10.2026); a tag's editor is short and has none.
 	let tab = $state('general');
@@ -140,6 +146,21 @@
 	// refuses): saving then opens its tab and its line.
 	let openedIdentifier = $state<number | null>(null);
 	let identifierErrors = $state<Record<number, string>>({});
+	// The users a customer or personnel number may belong to: fetched once each time the dialog
+	// opens for a contact, not on every switch to the identifiers tab. Without the list, a number
+	// still shows whose it is by id.
+	let users = $state<UserName[]>([]);
+	const beginUsers = latest();
+	$effect(() => {
+		if (!open || extra !== 'aliases') return;
+		const current = beginUsers();
+		void api
+			.GET('/api/v1/users')
+			.then(({ data }) => {
+				if (current() && Array.isArray(data)) users = data;
+			})
+			.catch(() => {});
+	});
 	const tabs = $derived.by(() => {
 		const general = { value: 'general', label: m.master_tab_general() };
 		if (extra === 'aliases') {
@@ -197,7 +218,6 @@
 						required: field.required_document_type_ids.includes(id)
 					}))
 			: [];
-		error = null;
 	}
 
 	/** A new tag becomes one of `next`: no parent yet, shown and set as that kind's are. */
@@ -208,11 +228,8 @@
 		shown = next === 'document' || next === 'topic';
 	}
 
-	async function submit(event: SubmitEvent) {
-		event.preventDefault();
-		if (busy || (extra === 'tag' && kind === null)) return;
-		busy = true;
-		error = null;
+	/** Save; a refused identifier opens its tab and its line, the shell shows the error too. */
+	async function submit() {
 		identifierErrors = {};
 		try {
 			await onsubmit({
@@ -231,17 +248,14 @@
 				color,
 				scope: kind
 			});
-			open = false;
 		} catch (problem) {
-			error = describeError(problem);
 			const refused = refusedRow(problem, identifiers);
 			if (refused) {
-				identifierErrors = { [refused.key]: error };
+				identifierErrors = { [refused.key]: describeError(problem) };
 				openedIdentifier = refused.key;
 				tab = 'identifiers';
 			}
-		} finally {
-			busy = false;
+			throw problem;
 		}
 	}
 </script>
@@ -258,10 +272,8 @@
 	{title}
 	{shortTitle}
 	{submitLabel}
-	{busy}
 	disabled={name.trim() === '' || (extra === 'tag' && kind === null)}
-	{error}
-	onsubmit={submit}
+	action={submit}
 	ondelete={initial && ondelete ? ondelete : undefined}
 	deleteTitle={m.master_delete({ name: initial?.name ?? '' })}
 	{deleteDescription}
@@ -544,7 +556,7 @@
 			topics={enabledTopics}
 			errors={identifierErrors}
 			hint={m.master_identifiers_hint()}
-			withUsers
+			{users}
 		/>
 	{:else if part === 'fields'}
 		{#if fields}

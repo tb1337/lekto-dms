@@ -1,11 +1,45 @@
+<script lang="ts" module>
+	import { chipStyle, isHex } from '#lib/colors.ts';
+	import { cn } from '#lib/utils.ts';
+
+	/** The shape and colours of a chip: round for a tag, square for a topic, outlined for a
+	 * group; in `color` where it has one (`chipStyle` sets the variables). An own colour may be
+	 * close to the card (white in light, black in dark): with `ring`, a faint ring keeps a tag's
+	 * shape. */
+	export function chipLook(
+		kind: 'tag' | 'topic' | 'group',
+		color: string | null | undefined,
+		ring = true
+	): string {
+		const coloured = chipStyle(color) !== null;
+		return cn(
+			'inline-flex max-w-full min-w-0 items-center gap-1',
+			kind === 'topic' ? 'rounded-md border' : 'rounded-full',
+			!coloured &&
+				(kind === 'topic'
+					? 'border-primary/25 bg-primary/10'
+					: kind === 'group'
+						? 'border bg-background'
+						: 'bg-secondary'),
+			coloured &&
+				(kind === 'group'
+					? 'border border-(--chip-fg)/45 bg-background text-(--chip-fg)'
+					: cn(
+							'bg-(--chip-bg) font-medium text-(--chip-fg)',
+							kind === 'topic' && 'border-(--chip-fg)/25'
+						)),
+			isHex(color) && 'chip-own',
+			isHex(color) && kind === 'tag' && ring && 'ring-1 ring-(--chip-fg)/15 ring-inset'
+		);
+	}
+</script>
+
 <script lang="ts">
 	import X from '@lucide/svelte/icons/x';
 	import LucideIcon from '#lib/components/LucideIcon.svelte';
 	import * as Popover from '#lib/components/ui/popover/index.ts';
-	import { chipStyle, isHex } from '#lib/colors.ts';
 	import type { Tag } from '#lib/masterdata.svelte.ts';
 	import { pathLabel } from '#lib/tags.ts';
-	import { cn } from '#lib/utils.ts';
 
 	// A tag as a chip: its icon and own name in its colour, the path as tooltip and, where
 	// `interactive`, on a tap (a phone has no hover); a group outlined, a topic square (tags are
@@ -40,18 +74,8 @@
 
 <span
 	class={cn(
-		'inline-flex max-w-full min-w-0 items-center gap-1',
-		topic ? 'rounded-md border' : 'rounded-full',
-		!coloured &&
-			(topic ? 'border-primary/25 bg-primary/10' : group ? 'border bg-background' : 'bg-secondary'),
-		coloured &&
-			(group
-				? 'border border-(--chip-fg)/45 bg-background text-(--chip-fg)'
-				: cn('bg-(--chip-bg) font-medium text-(--chip-fg)', topic && 'border-(--chip-fg)/25')),
-		isHex(tag.color) && 'chip-own',
-		// An own colour may be close to the card (white in light, black in dark): a faint ring
-		// keeps the chip's shape (on an image the glass's edge does).
-		isHex(tag.color) && !group && !topic && !onImage && 'ring-1 ring-(--chip-fg)/15 ring-inset',
+		// On an image the glass's edge keeps the shape, not the faint ring.
+		chipLook(topic ? 'topic' : group ? 'group' : 'tag', tag.color, !onImage),
 		// On an image: the same ground, 82 % of it, on glass.
 		onImage &&
 			cn(

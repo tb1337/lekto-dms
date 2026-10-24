@@ -6,12 +6,12 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import FormDialog from '#lib/components/FormDialog.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import SecretDialog from '#lib/components/SecretDialog.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
-	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
@@ -28,8 +28,6 @@
 	let name = $state('');
 	let scope = $state<Scope>('read');
 	let expires = $state('');
-	let error = $state<string | null>(null);
-	let busy = $state(false);
 	let created = $state<string | null>(null);
 	let revoking = $state<Token | null>(null);
 
@@ -48,33 +46,22 @@
 		name = '';
 		scope = 'read';
 		expires = '';
-		error = null;
 		creating = true;
 	}
 
-	async function create(event: SubmitEvent) {
-		event.preventDefault();
-		busy = true;
-		error = null;
-		try {
-			const token = await unwrap(
-				api.POST('/api/v1/auth/tokens', {
-					body: {
-						name: name.trim(),
-						scope,
-						// The token works through the end of the chosen day, in this browser's zone.
-						expires_at: expires ? new Date(`${expires}T23:59:59`).toISOString() : null
-					}
-				})
-			);
-			creating = false;
-			created = token.token;
-			await load();
-		} catch (failure) {
-			error = describeError(failure);
-		} finally {
-			busy = false;
-		}
+	async function create() {
+		const token = await unwrap(
+			api.POST('/api/v1/auth/tokens', {
+				body: {
+					name: name.trim(),
+					scope,
+					// The token works through the end of the chosen day, in this browser's zone.
+					expires_at: expires ? new Date(`${expires}T23:59:59`).toISOString() : null
+				}
+			})
+		);
+		created = token.token;
+		await load();
 	}
 
 	async function revoke() {
@@ -143,39 +130,33 @@
 	</Card.Content>
 </Card.Root>
 
-<Dialog.Root bind:open={creating}>
-	<Dialog.Content>
-		<form class="flex flex-col gap-4" onsubmit={create} novalidate>
-			<Dialog.Header><Dialog.Title>{m.token_new()}</Dialog.Title></Dialog.Header>
-			<Field.Field>
-				<Field.Label for="token-name">{m.field_name()}</Field.Label>
-				<Input id="token-name" bind:value={name} maxlength={100} required />
-			</Field.Field>
-			<Field.Field>
-				<Field.Label for="token-scope">{m.token_scope()}</Field.Label>
-				<Select
-					id="token-scope"
-					value={scope}
-					onchange={(value) => (scope = value as Scope)}
-					options={scopes}
-				/>
-				<Field.Description>{m.token_scope_hint()}</Field.Description>
-			</Field.Field>
-			<Field.Field>
-				<Field.Label for="token-expires">{m.token_expires_on()}</Field.Label>
-				<Input id="token-expires" type="date" min={today} bind:value={expires} />
-				<Field.Description>{m.token_expires_hint()}</Field.Description>
-			</Field.Field>
-			{#if error}<p role="alert" class="text-sm text-destructive">{error}</p>{/if}
-			<Dialog.Footer>
-				<Button type="button" variant="ghost" onclick={() => (creating = false)}>
-					{m.cancel()}
-				</Button>
-				<Button type="submit" disabled={busy || name.trim() === ''}>{m.token_create()}</Button>
-			</Dialog.Footer>
-		</form>
-	</Dialog.Content>
-</Dialog.Root>
+<FormDialog
+	bind:open={creating}
+	title={m.token_new()}
+	submitLabel={m.token_create()}
+	disabled={name.trim() === ''}
+	action={create}
+>
+	<Field.Field>
+		<Field.Label for="token-name">{m.field_name()}</Field.Label>
+		<Input id="token-name" bind:value={name} maxlength={100} required />
+	</Field.Field>
+	<Field.Field>
+		<Field.Label for="token-scope">{m.token_scope()}</Field.Label>
+		<Select
+			id="token-scope"
+			value={scope}
+			onchange={(value) => (scope = value as Scope)}
+			options={scopes}
+		/>
+		<Field.Description>{m.token_scope_hint()}</Field.Description>
+	</Field.Field>
+	<Field.Field>
+		<Field.Label for="token-expires">{m.token_expires_on()}</Field.Label>
+		<Input id="token-expires" type="date" min={today} bind:value={expires} />
+		<Field.Description>{m.token_expires_hint()}</Field.Description>
+	</Field.Field>
+</FormDialog>
 
 <SecretDialog
 	secret={created}

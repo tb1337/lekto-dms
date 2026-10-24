@@ -1,29 +1,33 @@
 <script lang="ts">
 	import CheckCheck from '@lucide/svelte/icons/check-check';
 	import Upload from '@lucide/svelte/icons/upload';
-	import { onMount, untrack } from 'svelte';
+	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import { ApiError } from '#lib/api/problem.ts';
+	import EmptyNote from '#lib/components/EmptyNote.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import InboxRow from '#lib/components/InboxRow.svelte';
 	import TabBar from '#lib/components/TabBar.svelte';
 	import UploadDialog from '#lib/components/UploadDialog.svelte';
 	import UploadSummary from '#lib/components/UploadSummary.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
+	import { coalesced } from '#lib/coalesce.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
 	import { events } from '#lib/events.svelte.ts';
 	import { inbox, type InboxSummary } from '#lib/inbox.svelte.ts';
 	import { inboxTabHref, inboxTabOf, type InboxItem, type InboxTab } from '#lib/inbox-view.ts';
 	import { readDrop } from '#lib/intake.ts';
-	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { PageLookup } from '#lib/lookup.svelte.ts';
 	import { PagedList } from '#lib/paging.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { scope } from '#lib/scope.svelte.ts';
 	import { uploads } from '#lib/upload.svelte.ts';
+	import { onChange } from '#lib/watch.svelte.ts';
 
 	// The inbox, the way in: documents come here by the upload button (with the dialog) or by
 	// dropping files and folders on the page (at once into the personal space; not on a phone),
@@ -32,7 +36,8 @@
 	// decide, new ones (green by themselves) calmly with "seen", and what left in the last 14
 	// days. Live: events refresh the list (progress too) and the counts.
 	const tab = $derived(inboxTabOf(page.url.searchParams));
-	let lookup = $state<Lookup | null>(null);
+	// The names the rows show; without them the rows stand as they are.
+	const lookup = new PageLookup();
 	// The document whose row runs an action.
 	let busy = $state<string | null>(null);
 	let askAll = $state(false);
@@ -89,32 +94,18 @@
 	});
 
 	// Again when an admin switches the reach: names of spaces follow it.
-	let reachBefore = scope.allUsers;
-	$effect(() => {
-		const reach = scope.allUsers;
-		if (reach === reachBefore) return;
-		reachBefore = reach;
-		untrack(() =>
-			loadLookup().then(
-				(value) => (lookup = value),
-				() => {}
-			)
-		);
-	});
+	onChange(
+		() => scope.allUsers,
+		() => void lookup.load()
+	);
 
 	onMount(() => {
-		loadLookup().then(
-			(value) => (lookup = value),
-			() => {}
-		);
-		let timer: ReturnType<typeof setTimeout> | undefined;
+		void lookup.load();
 		// Events are thin: fetch the list again, at most once in a while.
-		const stop = events.subscribe(() => {
-			clearTimeout(timer);
-			timer = setTimeout(() => void list.refresh(), 400);
-		});
+		const refresh = coalesced(() => void list.refresh(), 400);
+		const stop = events.subscribe(refresh);
 		return () => {
-			clearTimeout(timer);
+			refresh.cancel();
 			stop();
 		};
 	});
@@ -215,25 +206,20 @@
 	</div>
 
 	{#if list.error}
-		<div class="flex flex-col items-start gap-3" role="alert">
-			<p class="text-destructive">{describeError(list.error)}</p>
-			<Button variant="outline" class="h-11 sm:h-9" onclick={() => list.reload()}>
-				{m.retry()}
-			</Button>
-		</div>
+		<LoadProblem
+			problem={describeError(list.error)}
+			onretry={() => list.reload()}
+			buttonClass="h-11 sm:h-9"
+		/>
 	{:else if list.empty}
-		<p
-			class="rounded-2xl border border-dashed bg-card px-6 py-16 text-center text-muted-foreground"
-		>
-			{EMPTY[tab ?? 'all']()}
-		</p>
+		<EmptyNote>{EMPTY[tab ?? 'all']()}</EmptyNote>
 	{:else}
 		<ul class="flex flex-col gap-2" aria-busy={list.loading}>
 			{#each list.items as item (item.document.id)}
 				<li>
 					<InboxRow
 						{item}
-						{lookup}
+						lookup={lookup.value}
 						busy={busy === item.document.id}
 						onseen={(id) => mark(id, true)}
 						onunseen={(id) => mark(id, false)}

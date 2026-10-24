@@ -20,6 +20,7 @@
 	import * as Popover from '#lib/components/ui/popover/index.ts';
 	import { Switch } from '#lib/components/ui/switch/index.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { matchesWords, searchWords } from '#lib/picking.ts';
 	import { cn } from '#lib/utils.ts';
 
 	// What belongs to an item of master data, out of many: the assigned ones as rows (name,
@@ -50,12 +51,8 @@
 	const free = $derived(
 		candidates.filter((candidate) => !assigned.some((item) => item.id === candidate.id))
 	);
-	const shown = $derived.by(() => {
-		const words = query.trim().toLocaleLowerCase();
-		return words === ''
-			? free
-			: free.filter((candidate) => candidate.name.toLocaleLowerCase().includes(words));
-	});
+	const words = $derived(searchWords(query));
+	const shown = $derived(free.filter((candidate) => matchesWords(candidate.name, words)));
 
 	function add(id: string) {
 		onchange([...assigned, { id, required: false }]);

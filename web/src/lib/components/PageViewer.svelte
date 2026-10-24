@@ -182,6 +182,8 @@
 	}
 
 	function keydown(event: KeyboardEvent) {
+		// Ctrl/⌘ + and − zoom the browser; Alt + a key is a shortcut of the system or the browser.
+		if (event.ctrlKey || event.metaKey || event.altKey) return;
 		if (event.key === '+' || event.key === '=') void zoomTo(zoom * 1.25, center());
 		else if (event.key === '-') void zoomTo(zoom / 1.25, center());
 		else if (event.key === '0') choose('two');

@@ -1,13 +1,33 @@
 /**
- * The processing graph (`GET /pipeline`) and what it says about a document's nodes
+ * The processing graph (`GET /pipeline`, asked once) and what it says about a document's nodes
  * (`processing.nodes`): which nodes a reprocessing may start from, and what comes after a node.
  */
+import { api } from '#lib/api/client.ts';
+import { unwrap } from '#lib/api/call.ts';
 import type { components } from '#lib/api/schema.ts';
 
+export type Pipeline = components['schemas']['PipelineOut'];
 export type Node = components['schemas']['Node'];
 export type GraphNode = components['schemas']['GraphNodeOut'];
 export type NodeState = components['schemas']['NodeStateOut'];
 export type Processing = components['schemas']['Processing'];
+
+let asked: Promise<Pipeline> | null = null;
+
+/** The graph and what the installation has (vision, logos, the search by meaning), asked of
+ * the API once for the session; a request that failed is asked again next time. */
+export function pipeline(): Promise<Pipeline> {
+	asked ??= unwrap(api.GET('/api/v1/pipeline')).catch((error: unknown) => {
+		asked = null;
+		throw error;
+	});
+	return asked;
+}
+
+/** For tests: ask again. */
+export function forgetPipeline(): void {
+	asked = null;
+}
 
 /** The nodes that depend on `node`, directly or through others. */
 export function descendants(graph: readonly GraphNode[], node: Node): Set<Node> {

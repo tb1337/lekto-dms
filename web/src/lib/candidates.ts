@@ -4,7 +4,7 @@
  */
 import type { components } from '#lib/api/schema.ts';
 import { BASE } from '#lib/base.ts';
-import { formatNumber } from '#lib/i18n.ts';
+import { formatNumber, formatPercent } from '#lib/i18n.ts';
 import { IDENTIFIER_KINDS, kindLabel, type IdentifierKind } from '#lib/identifiers.ts';
 import { m } from '#lib/paraglide/messages.js';
 
@@ -24,8 +24,7 @@ export interface SourceChip {
 	documents: string[];
 }
 
-const percent = (value: number) =>
-	formatNumber(value, { style: 'percent', maximumFractionDigits: 0 });
+const percent = formatPercent;
 const similarity = (value: number) =>
 	formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const given = (value: number | null | undefined): value is number =>

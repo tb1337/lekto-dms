@@ -50,9 +50,19 @@ export function formatDate(
 	return new Intl.DateTimeFormat(formatLocale(), options).format(date);
 }
 
+/** The time of day of a moment, to the second (`14:05:09`). */
+export function formatTime(value: Date | string): string {
+	return formatDate(value, { timeStyle: 'medium' });
+}
+
 /** A number in the user's format. */
 export function formatNumber(value: number, options?: Intl.NumberFormatOptions): string {
 	return new Intl.NumberFormat(formatLocale(), options).format(value);
+}
+
+/** A share (0 to 1) as whole percent (`87 %`). */
+export function formatPercent(value: number): string {
+	return formatNumber(value, { style: 'percent', maximumFractionDigits: 0 });
 }
 
 /**

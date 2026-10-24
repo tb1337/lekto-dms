@@ -6,7 +6,7 @@
  */
 import type { components } from '#lib/api/schema.ts';
 import { fieldLabel } from '#lib/describe.ts';
-import { formatDate, formatNumber, getLocale, regionalLocale } from '#lib/i18n.ts';
+import { formatDate, formatNumber, formatPercent, getLocale, regionalLocale } from '#lib/i18n.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { NODE_LABELS } from '#lib/node-labels.ts';
 import { m } from '#lib/paraglide/messages.js';
@@ -499,7 +499,7 @@ function write(value: unknown, kind: ReasonKind | undefined, options: ReasonOpti
 		case 'number':
 			return formatNumber(Number(value));
 		case 'percent':
-			return formatNumber(Number(value), { style: 'percent', maximumFractionDigits: 0 });
+			return formatPercent(Number(value));
 		case 'date':
 			return formatDate(String(value));
 		case 'value':

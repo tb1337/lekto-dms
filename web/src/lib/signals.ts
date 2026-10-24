@@ -8,7 +8,7 @@
 import type { components } from '#lib/api/schema.ts';
 import { documentHref } from '#lib/candidates.ts';
 import { describeValue, fieldLabel } from '#lib/describe.ts';
-import { formatNumber } from '#lib/i18n.ts';
+import { formatNumber, formatPercent } from '#lib/i18n.ts';
 import { IDENTIFIER_KINDS, kindLabel, type IdentifierKind } from '#lib/identifiers.ts';
 import type { Strength } from '#lib/facts.ts';
 import { userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
@@ -42,11 +42,7 @@ export const object = (value: unknown): Json =>
 export const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 export const text = (value: unknown): string | null =>
 	typeof value === 'string' && value.trim() !== '' ? value : null;
-export const percent = (value: unknown) =>
-	formatNumber(typeof value === 'number' ? value : 0, {
-		style: 'percent',
-		maximumFractionDigits: 0
-	});
+export const percent = (value: unknown) => formatPercent(typeof value === 'number' ? value : 0);
 
 export function kind(value: unknown): string {
 	const name = String(value);

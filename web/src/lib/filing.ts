@@ -5,7 +5,7 @@
  * the start; a disagreement chooses nothing, the person decides.
  */
 import type { components } from '#lib/api/schema.ts';
-import { formatNumber } from '#lib/i18n.ts';
+import { formatPercent } from '#lib/i18n.ts';
 import { spaceLabel, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { knownSpace, newReaders } from '#lib/space-suggestion.ts';
@@ -52,9 +52,6 @@ export interface Filing {
 	lead: string;
 	options: FilingOption[];
 }
-
-const percent = (value: number) =>
-	formatNumber(value, { style: 'percent', maximumFractionDigits: 0 });
 
 /** The open `space` check among the open nodes; null without one. */
 export function openSpaceCheck(open: readonly OpenNode[]): Check | null {
@@ -183,7 +180,7 @@ export function filingChips(
 			});
 		} else if (source.signal === 'signal_classifier') {
 			chips.push({
-				text: m.filing_chip_classifier({ score: percent(source.score ?? 0) }),
+				text: m.filing_chip_classifier({ score: formatPercent(source.score ?? 0) }),
 				strong: source.names
 			});
 		}

@@ -47,7 +47,12 @@ export class SearchNote {
 	answered(query: string, answer: SearchAnswer): void {
 		if (this.#pinned === query) return; // by words as asked: the hint stays as it was
 		clearTimeout(this.#pendingTimer);
-		if (answer.mode !== 'words' || !answer.reason) {
+		// Without embeddings there is no meaning to speak of.
+		if (
+			answer.mode !== 'words' ||
+			!answer.reason ||
+			answer.reason.code === 'search_no_embeddings'
+		) {
 			this.shown = null;
 			return;
 		}

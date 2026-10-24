@@ -1650,7 +1650,7 @@ export interface paths {
 		};
 		/**
 		 * The processing graph
-		 * @description The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Lekto; `processing.nodes` of a document names the state of each node. `vision` names the vision language model documents can be read with, if one is configured; `logo_fetch` says whether Lekto fetches the logos of contacts from their websites.
+		 * @description The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Lekto; `processing.nodes` of a document names the state of each node. `vision` names the vision language model documents can be read with, if one is configured; `logo_fetch` says whether Lekto fetches the logos of contacts from their websites; `meaning_search` whether the search takes the meaning into account.
 		 */
 		get: operations['pipeline_api_v1_pipeline_get'];
 		put?: never;
@@ -5076,6 +5076,7 @@ export interface components {
 		 * PipelineOut
 		 * @example {
 		 *       "logo_fetch": false,
+		 *       "meaning_search": true,
 		 *       "nodes": [
 		 *         {
 		 *           "node": "receive",
@@ -5126,6 +5127,11 @@ export interface components {
 			 * @description Whether Lekto fetches the logos of contacts from their websites (`LEKTO_LOGO_FETCH`; `POST /contacts/{id}/logo/fetch`).
 			 */
 			logo_fetch: boolean;
+			/**
+			 * Meaning Search
+			 * @description Whether the search takes the meaning into account besides the words (a search index and embeddings are set up): only then does a client say how a search searched (`mode`, `reason`) and warm the model (`POST /documents/search/warm`).
+			 */
+			meaning_search: boolean;
 		};
 		/** Processing */
 		Processing: {

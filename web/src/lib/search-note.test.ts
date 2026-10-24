@@ -33,6 +33,9 @@ describe('search note', () => {
 		expect(note.ratio('Strom')).toBeUndefined();
 		note.answered('Strom', { mode: 'hybrid', reason: null, meaning_pending: false });
 		expect(note.about('Strom')).toBeNull();
+		const off = { code: 'search_no_embeddings', params: {} } as const;
+		note.answered('Strom', { mode: 'words', reason: off, meaning_pending: false });
+		expect(note.about('Strom')).toBeNull(); // no meaning to speak of
 	});
 
 	it('stops promising the meaning after a while, and tells when an answer takes long', () => {

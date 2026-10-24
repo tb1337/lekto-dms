@@ -5,7 +5,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { BASE } from '#lib/base.ts';
 	import { openLens } from '#lib/open-lens.svelte.ts';
-	import { warmSearch } from '#lib/search-warm.ts';
+	import { warmSearch } from '#lib/meaning-search.ts';
 	import { cn } from '#lib/utils.ts';
 
 	// The search field of the header: Enter searches the documents with the words (and, in the

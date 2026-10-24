@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
 import { events } from '#lib/events.svelte.ts';
 import { formatDate } from '#lib/i18n.ts';
+import { forgetMeaningSearch } from '#lib/meaning-search.ts';
 import { rememberLayout } from '#lib/listing.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
@@ -38,6 +39,7 @@ vi.mock('$app/state', () => ({
 }));
 
 beforeEach(() => {
+	forgetMeaningSearch();
 	state.url = new URL('http://lekto/ui/documents');
 	session.start({
 		user: { id: OWNER, username: 'tobi', role: 'user' },
@@ -338,6 +340,12 @@ describe('the archive page', () => {
 		state.url = new URL('http://lekto/ui/documents?q=Weihnachten');
 		let first = true;
 		const api = fakeApi({
+			'GET /api/v1/pipeline': () => ({
+				nodes: [],
+				vision: null,
+				logo_fetch: false,
+				meaning_search: true
+			}),
 			'GET /api/v1/documents/search': () => {
 				const pending = first;
 				first = false;
@@ -383,6 +391,36 @@ describe('the archive page', () => {
 		expect(searches[0]).not.toContain('semantic_ratio');
 		expect(searches.at(-1)).not.toContain('semantic_ratio');
 		events.stop();
+	});
+
+	it('shows nothing of the meaning where the installation has no search by it', async () => {
+		state.url = new URL('http://lekto/ui/documents?q=Strom');
+		const api = fakeApi({
+			'GET /api/v1/pipeline': () => ({
+				nodes: [],
+				vision: null,
+				logo_fetch: false,
+				meaning_search: false
+			}),
+			'GET /api/v1/documents/search': () => ({
+				items: [],
+				estimated_total: 0,
+				next_offset: null,
+				semantic: false,
+				mode: 'words',
+				reason: { code: 'search_no_embeddings', params: {} },
+				meaning_pending: false
+			})
+		});
+		vi.stubGlobal('fetch', api);
+		const user = userEvent.setup();
+		render(Page);
+		expect(await screen.findByText(m.search_none())).toBeTruthy();
+		const [field] = screen.getAllByRole('searchbox', { name: m.documents_search_label() });
+		await user.type(field, 'x');
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(screen.queryByText(m.reason_search_no_embeddings(), { exact: false })).toBeNull();
+		expect(calls(api).some((call) => call.includes('/search/warm'))).toBe(false);
 	});
 
 	it('takes no lane from an older link', async () => {

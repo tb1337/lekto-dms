@@ -63,7 +63,7 @@
 	import { PagedList } from '#lib/paging.svelte.ts';
 	import { reasonText } from '#lib/reasons.ts';
 	import { SearchNote } from '#lib/search-note.svelte.ts';
-	import { warmSearch } from '#lib/search-warm.ts';
+	import { meaningSearch, warmSearch } from '#lib/meaning-search.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -207,8 +207,10 @@
 		}
 	}
 
-	// How the search searched: by words alone and why, the meaning still being made or ready.
+	// How the search searched: by words alone and why, the meaning still being made or ready;
+	// nothing of it where the installation has no search by meaning.
 	const searchNote = new SearchNote();
+	let meaning = $state(false);
 
 	const list = new PagedList<Item>(async (after) => {
 		const base = apiQuery(filters, scope.allUsers);
@@ -254,13 +256,13 @@
 	const shownCount = $derived(searching ? list.total : (facets?.total ?? null));
 
 	// While a search waits for its first page, the hint says when it takes long.
-	$effect(() => searchNote.waiting(searching && list.loading && !list.loaded));
+	$effect(() => searchNote.waiting(meaning && searching && list.loading && !list.loaded));
 	// The index is not reachable: the list without words still works.
 	const indexDown = $derived(
 		list.error instanceof ApiError &&
 			list.error.problem?.reason?.code === 'search_index_unavailable'
 	);
-	const note = $derived(searching ? searchNote.about(query) : null);
+	const note = $derived(meaning && searching ? searchNote.about(query) : null);
 
 	// Reload when the words, filters or sort change, and after a reconnect of the event stream.
 	$effect(() => {
@@ -291,6 +293,7 @@
 			(error) => (lookupError = describeError(error))
 		);
 		void loadLenses();
+		void meaningSearch().then((value) => (meaning = value));
 		// Opened from the search icon of a narrow header: the field takes the focus.
 		if (location.hash === '#search') {
 			void tick().then(() => {
@@ -643,7 +646,7 @@ row of filters, on a desktop narrow by the title. -->
 				{/if}
 			</div>
 
-			{#if searching && searchNote.slow}
+			{#if meaning && searching && searchNote.slow}
 				<p class="text-sm text-muted-foreground" aria-live="polite">{m.search_slow()}</p>
 			{:else if note}
 				<div

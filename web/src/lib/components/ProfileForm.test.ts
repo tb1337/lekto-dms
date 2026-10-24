@@ -88,9 +88,10 @@ describe('ProfileForm', () => {
 		expect(screen.getByText('Anna Sample')).toBeTruthy();
 		expect(screen.getByText('12345678911')).toBeTruthy();
 		await userEvent.click(
-			screen.getByRole('button', { name: m.profile_alias_remove({ name: 'Anna Sample' }) })
+			screen.getByRole('button', { name: m.alias_remove({ name: 'Anna Sample' }) })
 		);
-		await userEvent.type(screen.getByLabelText(m.profile_aliases()), 'Anna Muster{Enter}');
+		await userEvent.click(screen.getByRole('button', { name: m.profile_alias_chip() }));
+		await userEvent.type(screen.getByLabelText(m.profile_alias_input()), 'Anna Muster{Enter}');
 		await userEvent.clear(name);
 		await userEvent.click(screen.getByRole('button', { name: m.save() }));
 		expect(sent).toEqual([

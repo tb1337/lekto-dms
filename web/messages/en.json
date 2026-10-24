@@ -436,6 +436,8 @@
 	"profile_aliases_hint": "A maiden name, for example: Lekto recognises the person by it in documents.",
 	"profile_alias_add": "Add",
 	"profile_alias_remove": "Remove {name}",
+	"profile_alias_chip": "Name",
+	"profile_alias_input": "New name",
 	"profile_birth_date": "Birth date",
 	"profile_email": "E-mail",
 	"profile_identifiers": "Own numbers",

@@ -436,6 +436,8 @@
 	"profile_aliases_hint": "Etwa ein Geburtsname: Lekto erkennt die Person daran in Dokumenten.",
 	"profile_alias_add": "Hinzufügen",
 	"profile_alias_remove": "{name} entfernen",
+	"profile_alias_chip": "Name",
+	"profile_alias_input": "Neuer Name",
 	"profile_birth_date": "Geburtsdatum",
 	"profile_email": "E-Mail",
 	"profile_identifiers": "Eigene Nummern",

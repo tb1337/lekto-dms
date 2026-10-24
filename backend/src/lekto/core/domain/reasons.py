@@ -223,6 +223,9 @@ class ReasonCode(StrEnum):
     LOGO_TYPE = "logo_type"
     LOGO_UPLOAD_TYPE = "logo_upload_type"
     TRAINING_NEEDS_EXAMPLES = "training_needs_examples"
+    JOB_NOT_FAILED = "job_not_failed"
+    JOB_ALREADY_QUEUED = "job_already_queued"
+    JOB_RETRY_IN_DOCUMENT = "job_retry_in_document"
     RULE_FOLLOWS_TYPE = "rule_follows_type"
     PERSONAL_SPACE_UNDELETABLE = "personal_space_undeletable"
     SPACE_NOT_EMPTY = "space_not_empty"
@@ -620,6 +623,11 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.LOGO_UPLOAD_TYPE: "a logo is a PNG, JPEG or WebP image",
     ReasonCode.TRAINING_NEEDS_EXAMPLES: (
         "{confirmed:number} confirmed documents or decided spaces; training needs {needed:number}"
+    ),
+    ReasonCode.JOB_NOT_FAILED: "only a failed job can be tried again",
+    ReasonCode.JOB_ALREADY_QUEUED: "the same work is queued or running already",
+    ReasonCode.JOB_RETRY_IN_DOCUMENT: (
+        "a failed processing step is tried again at its document, which then goes on"
     ),
     ReasonCode.RULE_FOLLOWS_TYPE: (
         "the rule of the title pattern of '{type}' follows the document type: change the pattern "

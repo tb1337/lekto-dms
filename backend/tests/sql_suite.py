@@ -131,7 +131,7 @@ class SqlAdapterSuite(ServicesOverPersistence):
                     return claimed
                 claimed.append(job)
                 async with uow_factory() as uow:
-                    await uow.jobs.complete(job)
+                    await uow.jobs.complete(job, now=NOW)
                     await uow.commit()
 
         results = await asyncio.gather(*(worker() for _ in range(6)))
@@ -366,7 +366,7 @@ class MigrationSuite:
                 },
             ),
             (
-                t.jobs,
+                _before_0041(t.jobs),
                 {
                     "id": new_id(),
                     "kind": "pipeline.step",
@@ -445,7 +445,7 @@ class MigrationSuite:
                 {"document_id": ids["document"], "step": "receive", "input": {}, "output": {}},
             ),
             (
-                t.jobs,
+                _before_0041(t.jobs),
                 {
                     "id": new_id(),
                     "kind": "pipeline.step",
@@ -784,7 +784,7 @@ class MigrationSuite:
                 {"document_id": ids["done"], "node": "classify", "input": {}, "output": {}},
             ),
             (
-                t.jobs,
+                _before_0041(t.jobs),
                 {
                     "id": new_id(),
                     "kind": "pipeline.node",
@@ -2406,6 +2406,46 @@ class MigrationSuite:
             kept = await _read_all(connection, select(before.c.value, before.c.user_id))
         assert sorted(kept) == [("K0815", None), ("K1", None)]
 
+    async def test_the_job_times_of_revision_0041_come_and_go(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0041: jobs keep when they started and finished and what they did; those
+        from before have none. The downgrade drops the three and keeps the jobs."""
+        await migrate(empty_database, "0040")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        job = new_id()
+        await _insert(
+            empty_database,
+            [
+                (
+                    _before_0041(t.jobs),
+                    {
+                        "id": job,
+                        "kind": "search.index",
+                        "payload": {},
+                        "status": "done",
+                        "attempts": 1,
+                        "run_at": NOW,
+                    },
+                )
+            ],
+        )
+        await migrate(empty_database)
+        jobs = t.jobs
+        async with empty_database.reading() as connection:
+            rows = await _read_all(
+                connection,
+                select(jobs.c.id, jobs.c.started_at, jobs.c.finished_at, jobs.c.result),
+            )
+        assert rows == [(job, None, None, None)]
+        await downgrade(empty_database, "0040")
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+            assert (
+                await connection.execute(select(_before_0041(t.jobs).c.id))
+            ).scalars().all() == [job]
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -2612,13 +2652,26 @@ def _drawer(table: sa.TableClause) -> sa.TableClause:
 _INBOX_COLUMNS = frozenset({"new_at", "processing_baseline", "processing_decided"})
 
 
+def _before_0041(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0041 had it: no times or result of a job."""
+    added = {"jobs": {"started_at", "finished_at", "result"}}
+    return sa.table(
+        table.name,
+        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+    )
+
+
 def _before_0040(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0040 had it: no spaces a learned identifier was learned
     in."""
     added = {"contact_identifiers": {"learned_in"}}
     return sa.table(
         table.name,
-        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+        *(
+            sa.column(c.name, c.type)
+            for c in _before_0041(table).c
+            if c.name not in added.get(table.name, ())
+        ),
     )
 
 

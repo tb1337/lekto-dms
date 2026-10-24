@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 from typing import Protocol
 
 from lekto.core.domain.ids import JobId
-from lekto.core.domain.jobs import Job
-from lekto.core.domain.json_value import JsonValue
+from lekto.core.domain.jobs import FinishedJob, Job, JobOverview, JobState
+from lekto.core.domain.json_value import JsonObject, JsonValue
 
 
 class JobQueue(Protocol):
@@ -49,7 +49,9 @@ class JobQueue(Protocol):
         to take longer than the lease it was claimed with."""
         ...
 
-    async def complete(self, job: Job) -> None: ...
+    async def complete(self, job: Job, *, now: datetime, result: JsonObject | None = None) -> None:
+        """The job is done (`finished_at` = `now`); `result` says what it did, if anything."""
+        ...
 
     async def reschedule(self, job: Job, *, run_at: datetime, error: str) -> None:
         """Release the job to run again at `run_at`, e.g. after a failed attempt."""
@@ -61,12 +63,44 @@ class JobQueue(Protocol):
         leaves it out."""
         ...
 
-    async def fail(self, job: Job, *, error: str) -> None:
-        """Give the job up; it will not run again."""
+    async def fail(self, job: Job, *, now: datetime, error: str) -> None:
+        """Give the job up (`finished_at` = `now`); it will not run again unless `retry`."""
+        ...
+
+    async def retry(self, job: JobId, *, now: datetime) -> Job:
+        """Queue a failed job again, due at `now`, as if it were new: no attempts, no claim,
+        no times; its last error stays. NotFoundError if it does not exist, ConflictError if it
+        did not fail or another queued or running job has its dedup key."""
         ...
 
     async def get(self, job: JobId) -> Job:
         """NotFoundError if the job does not exist."""
+        ...
+
+    async def overview(self, *, now: datetime) -> JobOverview:
+        """How many jobs of each kind stand in each state at `now` (kinds and states without
+        jobs left out), and when a worker last claimed one."""
+        ...
+
+    async def find(
+        self,
+        *,
+        now: datetime,
+        states: Collection[JobState],
+        kind: str | None = None,
+        offset: int = 0,
+        limit: int,
+    ) -> list[Job]:
+        """The jobs in `states` at `now` (of `kind`): running ones first, longest running
+        first; then due and planned ones by when they are due; then failed and done ones,
+        latest finished first. Ties by id."""
+        ...
+
+    async def finished(
+        self, *, since: datetime, kinds: Collection[str] | None = None
+    ) -> list[FinishedJob]:
+        """The done jobs (of `kinds`) that finished at `since` or later, with their times; jobs
+        from before revision 0041 have none and are left out."""
         ...
 
     async def purge(self, *, before: datetime) -> int:

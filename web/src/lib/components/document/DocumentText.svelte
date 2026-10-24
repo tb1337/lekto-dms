@@ -5,6 +5,7 @@
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import { ApiError } from '#lib/api/problem.ts';
+	import { copyText } from '#lib/clipboard.ts';
 	import PaneHead from '#lib/components/document/PaneHead.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
@@ -159,13 +160,16 @@
 	// what is shown stops short.
 	async function copy() {
 		if (text === null) return;
-		try {
-			const whole = text.length < total ? (await readText(documentId, Infinity)).text : text;
-			await navigator.clipboard.writeText(whole);
-			toast.success(m.content_copied());
-		} catch (error) {
-			toast.error(describeError(error));
+		let whole = text;
+		if (text.length < total) {
+			try {
+				whole = (await readText(documentId, Infinity)).text;
+			} catch (error) {
+				toast.error(describeError(error));
+				return;
+			}
 		}
+		await copyText(whole);
 	}
 </script>
 

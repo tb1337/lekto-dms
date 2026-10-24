@@ -1,11 +1,10 @@
 <script lang="ts">
 	import Copy from '@lucide/svelte/icons/copy';
-	import { toast } from 'svelte-sonner';
 	import type { components } from '#lib/api/schema.ts';
+	import { copyText } from '#lib/clipboard.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import Segmented from '#lib/components/Segmented.svelte';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
-	import { describeError } from '#lib/errors.ts';
 	import { formatNumber } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { splitInput } from '#lib/usage.ts';
@@ -46,14 +45,7 @@
 		return m.prompt_input({ characters, tokens: formatNumber(part === 'system' ? system : user) });
 	});
 
-	async function copy() {
-		try {
-			await navigator.clipboard.writeText(body);
-			toast.success(m.content_copied());
-		} catch (error) {
-			toast.error(describeError(error));
-		}
-	}
+	const copy = () => copyText(body);
 
 	const parts: { part: Part; label: () => string }[] = [
 		{ part: 'system', label: m.prompt_system },

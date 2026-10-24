@@ -1032,6 +1032,7 @@
 	"content_page": "Seite {page}",
 	"content_copy": "Kopieren",
 	"content_copied": "Kopiert.",
+	"copy_failed": "Kopieren nicht möglich. Markiere den Text und kopiere ihn selbst.",
 	"tokens_details": "Token-Details",
 	"tokens_input": "Eingabe-Tokens",
 	"tokens_output": "Ausgabe-Tokens",

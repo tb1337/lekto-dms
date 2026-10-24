@@ -1032,6 +1032,7 @@
 	"content_page": "Page {page}",
 	"content_copy": "Copy",
 	"content_copied": "Copied.",
+	"copy_failed": "Could not copy. Select the text and copy it yourself.",
 	"tokens_details": "Token details",
 	"tokens_input": "Input tokens",
 	"tokens_output": "Output tokens",

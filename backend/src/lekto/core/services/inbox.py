@@ -66,7 +66,7 @@ from lekto.core.domain.pipeline import (
     Outcome,
     ProcessingHistory,
 )
-from lekto.core.domain.reasons import Reason, text_of
+from lekto.core.domain.reasons import Action, Reason, text_of
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
@@ -452,7 +452,7 @@ class InboxService:
         a document that is no longer done (seen marks taken back)."""
         limit = max(1, min(limit, PAGE_LIMIT))
         async with self._uow() as uow:
-            user = await load_lister(uow, actor, all_users, "see the inboxes of all users")
+            user = await load_lister(uow, actor, all_users, Action.SEE_ALL_INBOXES)
             since = self._clock.now() - DONE_PERIOD
             entries = await uow.inbox.query(
                 actor,
@@ -491,7 +491,7 @@ class InboxService:
         """How many documents stand under each tab of the caller's inbox (with `all_users`,
         admins only: every user's), and the worst lane among the open ones."""
         async with self._uow() as uow:
-            await load_lister(uow, actor, all_users, "see the inboxes of all users")
+            await load_lister(uow, actor, all_users, Action.SEE_ALL_INBOXES)
             counts = await uow.inbox.count(
                 actor,
                 editor=None if all_users else actor,
@@ -529,7 +529,7 @@ class InboxService:
         """Mark everything new in the caller's inbox (with `all_users`, admins only: in every
         user's) as seen by them; returns how many documents."""
         async with self._uow() as uow:
-            await load_lister(uow, actor, all_users, "see the inboxes of all users")
+            await load_lister(uow, actor, all_users, Action.SEE_ALL_INBOXES)
             count = await uow.inbox.mark_all_seen(
                 actor, editor=None if all_users else actor, at=self._clock.now()
             )

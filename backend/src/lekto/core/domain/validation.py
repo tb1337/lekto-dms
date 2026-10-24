@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.reasons import ReasonCode, because
 
 MAX_NAME = 200
 """Characters of a name: contacts, types, tags, fields, spaces, rules, aliases, choices. The
@@ -21,9 +22,9 @@ def require_name(value: str, what: str = "name", *, max_length: int | None = MAX
     no limit, for values that are not names of Lekto's own, such as file names)."""
     name = value.strip()
     if not name:
-        raise ValidationError(f"{what} must not be empty")
+        raise ValidationError(because(ReasonCode.NAME_EMPTY, what=what))
     if max_length is not None and len(name) > max_length:
-        raise ValidationError(f"{what} must have at most {max_length} characters")
+        raise ValidationError(because(ReasonCode.NAME_TOO_LONG, what=what, max=max_length))
     return name
 
 

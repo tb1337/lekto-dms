@@ -1198,7 +1198,14 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
   with a `Reason`; one raised with a text has none). A request that does not fit (422) lists
   each part in `errors` (`field`: its path joined by `.`; `message` in English; `reason` with
   an `input_*` code from Pydantic's error type, `input_invalid` with the message for the rest);
-  `detail` joins them as `field: message; ...` as before.
+  `detail` joins them as `field: message; ...` as before. Codes also for what is not found
+  (`not_found` with the kind of thing), names that are empty or too long, and what only some
+  may do (`admins_only`, `editors_only`, `admins_cannot` with an `action`); a rule disabled
+  automatically keeps why with its code (`RuleOut.disabled_reasons`, `rules.disabled_reasons`
+  since revision 0039), a rule application each skipped document's reason
+  (`SkippedOut.reasons`). Still as text: the domain's own value checks the UI makes before it
+  sends, the messages of the template engine, and the upload's size and type (the UI words them
+  itself).
   Filing into a space without edit rights (upload, move, confirm, a rule that sets the space)
   is `403` with `space_id`, the space that was refused.
 - Documents and spaces the caller may not see are `404` with the same answer as missing ones;

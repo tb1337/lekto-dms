@@ -470,6 +470,8 @@ rules = Table(
     Column("current_version", Integer, nullable=False),
     Column("enabled", Boolean, nullable=False),
     Column("disabled_reason", Text, nullable=True),
+    # The same with its code (`Reason.to_json`, a list of one); null before revision 0039.
+    Column("disabled_reasons", json_type(), nullable=True),
     Column("deleted_at", UtcDateTime, nullable=True),
     Column("created_at", UtcDateTime, nullable=False),
     Column("updated_at", UtcDateTime, nullable=False),

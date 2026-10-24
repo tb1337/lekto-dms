@@ -8,6 +8,7 @@ from lekto.adapters.outbound.memory.database import RULE_APPLICATIONS, RULE_VERS
 from lekto.adapters.outbound.memory.rows import _REMOVED, MemoryRepository, _copy
 from lekto.core.domain.errors import NotFoundError
 from lekto.core.domain.ids import RuleApplicationId, RuleId, SpaceId, UserId
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.rules import Rule, RuleApplication, RuleScope, RuleVersion
 
 if TYPE_CHECKING:
@@ -68,7 +69,11 @@ class MemoryRuleRepository(MemoryRepository[RuleId, Rule]):
         await self.get(id)
         row = await self._versions.find(version_row_id(id, number))
         if row is None:
-            raise NotFoundError(f"version {number} of rule", id)
+            raise NotFoundError(
+                "rule version",
+                id,
+                because(ReasonCode.RULE_VERSION_NOT_FOUND, number=number, id=str(id)),
+            )
         return row.item
 
     async def remove_for_space(self, space: SpaceId) -> int:

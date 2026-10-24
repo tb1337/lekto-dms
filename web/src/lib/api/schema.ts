@@ -5414,7 +5414,31 @@ export interface components {
 			| 'oidc_relink'
 			| 'oidc_linked_elsewhere'
 			| 'oidc_no_account'
-			| 'oidc_password_first';
+			| 'oidc_password_first'
+			| 'not_found'
+			| 'page_not_found'
+			| 'file_not_found'
+			| 'rule_version_not_found'
+			| 'name_empty'
+			| 'name_too_long'
+			| 'admins_only'
+			| 'editors_only'
+			| 'admins_cannot'
+			| 'no_write_access_to_document'
+			| 'session_needed_create_user'
+			| 'session_needed_role'
+			| 'session_needed_profile'
+			| 'profile_own_only'
+			| 'personal_space_describe'
+			| 'space_manage'
+			| 'space_members_personal'
+			| 'space_members'
+			| 'space_rule_apply'
+			| 'rule_disabled_deleted'
+			| 'rule_disabled_personal_space'
+			| 'rule_disabled_choice'
+			| 'skip_changed_meanwhile'
+			| 'skip_not_available';
 		/**
 		 * ReasonOut
 		 * @description A reason with its code: a client translates `code` with `params`; the English text
@@ -5811,9 +5835,14 @@ export interface components {
 			enabled: boolean;
 			/**
 			 * Disabled Reason
-			 * @description Why the rule was disabled automatically, e.g. a contact it uses was deleted.
+			 * @description Why the rule was disabled automatically, e.g. a contact it uses was deleted, in English.
 			 */
 			disabled_reason: string | null;
+			/**
+			 * Disabled Reasons
+			 * @description The same with its code (one, or none).
+			 */
+			disabled_reasons?: components['schemas']['ReasonOut'][];
 			/**
 			 * Managed By Document Type Id
 			 * @description The document type whose title pattern this rule is: it follows the type and is read-only (changing, switching or deleting it is 409); None for other rules.
@@ -6096,8 +6125,16 @@ export interface components {
 			 * Format: uuid
 			 */
 			document_id: string;
-			/** Reason */
+			/**
+			 * Reason
+			 * @description Why, in English.
+			 */
 			reason: string;
+			/**
+			 * Reasons
+			 * @description The same with its code.
+			 */
+			reasons?: components['schemas']['ReasonOut'][];
 		};
 		/** SnippetSegment */
 		SnippetSegment: {

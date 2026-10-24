@@ -24,7 +24,7 @@ from lekto.core.domain.permissions import (
     space_role,
 )
 from lekto.core.domain.pipeline import Node, NodeRun
-from lekto.core.domain.reasons import ReasonCode, because
+from lekto.core.domain.reasons import Action, ReasonCode, because
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
 from lekto.core.ports.unit_of_work import UnitOfWork
@@ -45,20 +45,20 @@ async def field_definitions(uow: UnitOfWork) -> dict[FieldId, FieldDefinition]:
     return {item.id: item for item in await uow.fields.list_all()}
 
 
-def admin_only(user: User, action: str) -> None:
+def admin_only(user: User, action: Action) -> None:
     """PermissionDeniedError ("only admins <action>") unless `user` is an active admin."""
     if not user.is_active_admin:
-        raise PermissionDeniedError(f"only admins {action}")
+        raise PermissionDeniedError(because(ReasonCode.ADMINS_ONLY, action=action.value))
 
 
-async def require_admin(uow: UnitOfWork, actor: UserId, action: str) -> User:
+async def require_admin(uow: UnitOfWork, actor: UserId, action: Action) -> User:
     """The caller, if an active admin (`admin_only`)."""
     user = await load_actor(uow, actor)
     admin_only(user, action)
     return user
 
 
-async def load_lister(uow: UnitOfWork, actor: UserId, all_users: bool, action: str) -> User:
+async def load_lister(uow: UnitOfWork, actor: UserId, all_users: bool, action: Action) -> User:
     """The caller of a list; with `all_users` (every user's instead of their own or their
     reach), only an active admin (`admin_only`, "only admins <action>")."""
     user = await load_actor(uow, actor)
@@ -82,19 +82,19 @@ async def writable_document(uow: UnitOfWork, user: User, id: DocumentId) -> tupl
     they cannot read it, PermissionDeniedError if they only read it."""
     document, space = await readable_document(uow, user, id)
     if not can_edit_document(user, document, space):
-        raise PermissionDeniedError(f"no write access to document {id}")
+        raise PermissionDeniedError(because(ReasonCode.NO_WRITE_ACCESS_TO_DOCUMENT, id=str(id)))
     return document, space
 
 
 async def controllable_document(
-    uow: UnitOfWork, user: User, id: DocumentId, action: str
+    uow: UnitOfWork, user: User, id: DocumentId, action: Action
 ) -> tuple[Document, Space]:
     """The document and its space, if `user` edits it (`can_edit_document`: an editor of its
     space or an admin); NotFoundError if they cannot read it, PermissionDeniedError ("only
     editors and admins <action>") if they only read it."""
     document, space = await readable_document(uow, user, id)
     if not can_edit_document(user, document, space):
-        raise PermissionDeniedError(f"only editors and admins {action}")
+        raise PermissionDeniedError(because(ReasonCode.EDITORS_ONLY, action=action.value))
     return document, space
 
 

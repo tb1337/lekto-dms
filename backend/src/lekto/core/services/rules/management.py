@@ -28,7 +28,7 @@ from lekto.core.domain.errors import (
 from lekto.core.domain.fields import FieldDefinition, FieldType
 from lekto.core.domain.ids import DocumentId, DocumentTypeId, RuleId, SpaceId, UserId
 from lekto.core.domain.permissions import space_role
-from lekto.core.domain.reasons import ReasonCode, because
+from lekto.core.domain.reasons import Action, ReasonCode, because
 from lekto.core.domain.rules import (
     ForceReview,
     Rule,
@@ -106,7 +106,7 @@ class RuleService:
         are applied; with `space`, only that space's (an admin's for any space). `all_users`:
         the rules of every space instead of the caller's (admins only)."""
         async with self._uow() as uow:
-            user = await load_lister(uow, actor, all_users, "list the rules of all users")
+            user = await load_lister(uow, actor, all_users, Action.LIST_ALL_RULES)
             edited = None if all_users else await _edited_spaces(uow, user)
             if space is not None:
                 anyone = edited is None or user.is_active_admin
@@ -415,7 +415,9 @@ async def _managed_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
     if user.is_active_admin:
         return rule
     if rule.scope is RuleScope.GLOBAL:
-        raise PermissionDeniedError("only admins change global rules")
+        raise PermissionDeniedError(
+            because(ReasonCode.ADMINS_ONLY, action=Action.CHANGE_GLOBAL_RULES.value)
+        )
     return rule  # visible: the caller edits its space
 
 
@@ -432,7 +434,7 @@ async def _place(
     """Where a rule of `scope` the user makes or moves belongs: global (admins only, no space)
     or the space `space`, which they edit (None: their personal space)."""
     if scope is RuleScope.GLOBAL:
-        admin_only(user, "make global rules")
+        admin_only(user, Action.MAKE_GLOBAL_RULES)
         if space is not None:
             raise ValidationError("space_id: a global rule belongs to no space")
         return None
@@ -456,7 +458,9 @@ async def _edited_space(uow: UnitOfWork, user: User, id: SpaceId) -> None:
     if space is None or role is None:
         raise NotFoundError("space", id)
     if not role.can_edit:
-        raise PermissionDeniedError(f"only editors and admins make the rules of space {id}")
+        raise PermissionDeniedError(
+            because(ReasonCode.EDITORS_ONLY, action=Action.MAKE_SPACE_RULES.value)
+        )
 
 
 async def _edited_spaces(uow: UnitOfWork, user: User) -> list[SpaceId]:

@@ -22,6 +22,7 @@
 	import { formatDate } from '#lib/i18n.ts';
 	import { loadLookup, spaceLabel, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { reasonsText } from '#lib/reasons.ts';
 	import { canApplyRule, canChangeRule } from '#lib/permissions.ts';
 	import { moves, placeLabel } from '#lib/rules/places.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -131,7 +132,9 @@
 				</span>
 				{#if rule.disabled_reason}
 					<span class="text-sm text-destructive">
-						{m.rule_disabled_reason({ reason: rule.disabled_reason })}
+						{m.rule_disabled_reason({
+							reason: reasonsText(rule.disabled_reasons, rule.disabled_reason) ?? ''
+						})}
 					</span>
 				{/if}
 				{#if rule.managed_by_document_type_id}

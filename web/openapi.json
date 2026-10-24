@@ -23656,7 +23656,31 @@
           "oidc_relink",
           "oidc_linked_elsewhere",
           "oidc_no_account",
-          "oidc_password_first"
+          "oidc_password_first",
+          "not_found",
+          "page_not_found",
+          "file_not_found",
+          "rule_version_not_found",
+          "name_empty",
+          "name_too_long",
+          "admins_only",
+          "editors_only",
+          "admins_cannot",
+          "no_write_access_to_document",
+          "session_needed_create_user",
+          "session_needed_role",
+          "session_needed_profile",
+          "profile_own_only",
+          "personal_space_describe",
+          "space_manage",
+          "space_members_personal",
+          "space_members",
+          "space_rule_apply",
+          "rule_disabled_deleted",
+          "rule_disabled_personal_space",
+          "rule_disabled_choice",
+          "skip_changed_meanwhile",
+          "skip_not_available"
         ],
         "title": "ReasonCode"
       },
@@ -24461,7 +24485,15 @@
               }
             ],
             "title": "Disabled Reason",
-            "description": "Why the rule was disabled automatically, e.g. a contact it uses was deleted."
+            "description": "Why the rule was disabled automatically, e.g. a contact it uses was deleted, in English."
+          },
+          "disabled_reasons": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonOut"
+            },
+            "type": "array",
+            "title": "Disabled Reasons",
+            "description": "The same with its code (one, or none)."
           },
           "managed_by_document_type_id": {
             "anyOf": [
@@ -25032,7 +25064,16 @@
           },
           "reason": {
             "type": "string",
-            "title": "Reason"
+            "title": "Reason",
+            "description": "Why, in English."
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonOut"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "description": "The same with its code."
           }
         },
         "type": "object",
@@ -27471,6 +27512,70 @@
     "oidc_relink": {},
     "oidc_linked_elsewhere": {},
     "oidc_no_account": {},
-    "oidc_password_first": {}
+    "oidc_password_first": {},
+    "not_found": {
+      "kind": "thing",
+      "id": "text"
+    },
+    "page_not_found": {
+      "page": "number",
+      "id": "text"
+    },
+    "file_not_found": {
+      "file": "thing",
+      "id": "text"
+    },
+    "rule_version_not_found": {
+      "number": "number",
+      "id": "text"
+    },
+    "name_empty": {
+      "what": "thing"
+    },
+    "name_too_long": {
+      "what": "thing",
+      "max": "number"
+    },
+    "admins_only": {
+      "action": "action"
+    },
+    "editors_only": {
+      "action": "action"
+    },
+    "admins_cannot": {
+      "action": "action"
+    },
+    "no_write_access_to_document": {
+      "id": "text"
+    },
+    "session_needed_create_user": {},
+    "session_needed_role": {},
+    "session_needed_profile": {},
+    "profile_own_only": {},
+    "personal_space_describe": {
+      "id": "text"
+    },
+    "space_manage": {
+      "id": "text"
+    },
+    "space_members_personal": {
+      "id": "text"
+    },
+    "space_members": {
+      "id": "text"
+    },
+    "space_rule_apply": {},
+    "rule_disabled_deleted": {
+      "kind": "thing",
+      "name": "text"
+    },
+    "rule_disabled_personal_space": {
+      "user": "text"
+    },
+    "rule_disabled_choice": {
+      "field": "text"
+    },
+    "skip_changed_meanwhile": {},
+    "skip_not_available": {}
   }
 }

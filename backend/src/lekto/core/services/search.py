@@ -17,6 +17,7 @@ from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import EmbeddingsError, ValidationError
 from lekto.core.domain.ids import SpaceId, UserId
 from lekto.core.domain.permissions import Reach, document_access, reach_access
+from lekto.core.domain.reasons import Action
 from lekto.core.domain.search import Segment, Visibility
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.ports.embeddings import Embeddings
@@ -108,7 +109,7 @@ class SearchService:
         if order is not None and order.key is SortKey.FIELD:
             raise ValidationError("sort: the search cannot sort by a field")
         async with self._uow() as uow:
-            user = await load_lister(uow, actor, all_users, "search the documents of all users")
+            user = await load_lister(uow, actor, all_users, Action.SEARCH_ALL_DOCUMENTS)
             spaces = await uow.spaces.list_accessible(actor)
             filter = await expanded(uow, filter)
         if offset >= MAX_HITS:

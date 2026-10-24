@@ -26,7 +26,9 @@ export type ReasonKind =
 	| 'path'
 	| 'reason'
 	| 'list'
-	| 'nodes';
+	| 'nodes'
+	| 'thing'
+	| 'action';
 
 /** A message of `#lib/paraglide/messages.js`, whatever it takes. */
 type Message = (inputs: never) => string;
@@ -286,7 +288,107 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	oidc_relink: entry(m.reason_oidc_relink),
 	oidc_linked_elsewhere: entry(m.reason_oidc_linked_elsewhere),
 	oidc_no_account: entry(m.reason_oidc_no_account),
-	oidc_password_first: entry(m.reason_oidc_password_first)
+	oidc_password_first: entry(m.reason_oidc_password_first),
+	not_found: entry(m.reason_not_found, { kind: 'thing' }),
+	page_not_found: entry(m.reason_page_not_found, { page: 'number' }),
+	file_not_found: entry(m.reason_file_not_found, { file: 'thing' }),
+	rule_version_not_found: entry(m.reason_rule_version_not_found, { number: 'number' }),
+	name_empty: entry(m.reason_name_empty, { what: 'thing' }),
+	name_too_long: entry(m.reason_name_too_long, { what: 'thing', max: 'number' }),
+	admins_only: entry(m.reason_admins_only, { action: 'action' }),
+	editors_only: entry(m.reason_editors_only, { action: 'action' }),
+	admins_cannot: entry(m.reason_admins_cannot, { action: 'action' }),
+	no_write_access_to_document: entry(m.reason_no_write_access_to_document),
+	session_needed_create_user: entry(m.reason_session_needed_create_user),
+	session_needed_role: entry(m.reason_session_needed_role),
+	session_needed_profile: entry(m.reason_session_needed_profile),
+	profile_own_only: entry(m.reason_profile_own_only),
+	personal_space_describe: entry(m.reason_personal_space_describe),
+	space_manage: entry(m.reason_space_manage),
+	space_members_personal: entry(m.reason_space_members_personal),
+	space_members: entry(m.reason_space_members),
+	space_rule_apply: entry(m.reason_space_rule_apply),
+	rule_disabled_deleted: entry(m.reason_rule_disabled_deleted, { kind: 'thing' }),
+	rule_disabled_personal_space: entry(m.reason_rule_disabled_personal_space),
+	rule_disabled_choice: entry(m.reason_rule_disabled_choice),
+	skip_changed_meanwhile: entry(m.reason_skip_changed_meanwhile),
+	skip_not_available: entry(m.reason_skip_not_available)
+};
+
+/** The nouns the API names things by (the kind `thing`), in the user's language. */
+const THINGS: Record<string, () => string> = {
+	document: m.thing_document,
+	contact: m.thing_contact,
+	'document type': m.thing_document_type,
+	tag: m.thing_tag,
+	field: m.thing_field,
+	space: m.thing_space,
+	user: m.thing_user,
+	profile: m.thing_profile,
+	rule: m.thing_rule,
+	'rule version': m.thing_rule_version,
+	'rule application': m.thing_rule_application,
+	webhook: m.thing_webhook,
+	'webhook delivery': m.thing_webhook_delivery,
+	lens: m.thing_lens,
+	job: m.thing_job,
+	object: m.thing_object,
+	credential: m.thing_credential,
+	session: m.thing_session,
+	'external identity': m.thing_external_identity,
+	'classifier model': m.thing_classifier_model,
+	'personal space of user': m.thing_personal_space_of_user,
+	'logo of contact': m.thing_logo_of_contact,
+	'identity provider': m.thing_identity_provider,
+	original: m.thing_original,
+	archive: m.thing_archive,
+	preview: m.thing_preview,
+	page: m.thing_page,
+	name: m.thing_name,
+	title: m.thing_title,
+	'space name': m.thing_space_name,
+	'webhook name': m.thing_webhook_name,
+	username: m.thing_username,
+	'token name': m.thing_token_name,
+	'rule name': m.thing_rule_name,
+	'lens name': m.thing_lens_name,
+	'display name': m.thing_display_name,
+	alias: m.thing_alias,
+	choice: m.thing_choice,
+	subject: m.thing_subject,
+	issuer: m.thing_issuer,
+	'original filename': m.thing_original_filename,
+	'media type': m.thing_media_type
+};
+
+/** What only some may do (the kind `action`, the API's `Action`), in the user's language. */
+const ACTIONS: Record<string, () => string> = {
+	manage_users: m.action_manage_users,
+	change_master_data: m.action_change_master_data,
+	see_all_inboxes: m.action_see_all_inboxes,
+	count_all_documents: m.action_count_all_documents,
+	list_all_documents: m.action_list_all_documents,
+	search_all_documents: m.action_search_all_documents,
+	list_all_rules: m.action_list_all_rules,
+	list_all_spaces: m.action_list_all_spaces,
+	train_classifier: m.action_train_classifier,
+	see_classifier: m.action_see_classifier,
+	rebuild_index: m.action_rebuild_index,
+	reparse_all: m.action_reparse_all,
+	make_global_rules: m.action_make_global_rules,
+	change_global_rules: m.action_change_global_rules,
+	make_space_rules: m.action_make_space_rules,
+	change_unconfirmed: m.action_change_unconfirmed,
+	give_upload_metadata: m.action_give_upload_metadata,
+	upload_for_others: m.action_upload_for_others,
+	control_processing: m.action_control_processing,
+	read_processing_log: m.action_read_processing_log,
+	read_exchanges: m.action_read_exchanges,
+	review_document: m.action_review_document,
+	move_document: m.action_move_document,
+	delete_document: m.action_delete_document,
+	reset_own_password: m.action_reset_own_password,
+	turn_off_own_totp: m.action_turn_off_own_totp
 };
 
 function listLocale(): string {
@@ -342,6 +444,10 @@ function write(value: unknown, kind: ReasonKind | undefined, options: ReasonOpti
 			return new Intl.ListFormat(listLocale(), { type: 'conjunction' }).format(
 				items(value).map((name) => quoted(String(name)))
 			);
+		case 'thing':
+			return THINGS[String(value)]?.() ?? String(value);
+		case 'action':
+			return ACTIONS[String(value)]?.() ?? String(value);
 		case 'nodes':
 			return new Intl.ListFormat(listLocale(), { type: 'conjunction' }).format(
 				items(value).map((node) => {

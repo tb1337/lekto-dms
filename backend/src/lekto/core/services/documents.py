@@ -45,7 +45,7 @@ from lekto.core.domain.permissions import (
     space_role,
 )
 from lekto.core.domain.pipeline import Node, NodeRun
-from lekto.core.domain.reasons import ReasonCode, because
+from lekto.core.domain.reasons import Action, ReasonCode, because
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.text_places import TextPlaces
 from lekto.core.domain.users import User
@@ -447,7 +447,7 @@ class DocumentService:
         arrival, or if the order is by a field that is missing or of a type no list sorts by."""
         limit = max(1, min(limit, PAGE_LIMIT))
         async with self._uow() as uow:
-            user = await load_lister(uow, actor, all_users, "list the documents of all users")
+            user = await load_lister(uow, actor, all_users, Action.LIST_ALL_DOCUMENTS)
             await _check_sortable(uow, order)
             position = await _position(uow, user, order, after, everyone=all_users)
             filter = await expanded(uow, filter)
@@ -500,10 +500,14 @@ class DocumentService:
                 key, info = preview_key(id), FileInfo(PAGE_MEDIA_TYPE, f"{stem}.webp")
             case DocumentFile.PAGE:
                 if document.page_count is None or not 1 <= page <= document.page_count:
-                    raise NotFoundError(f"page {page} of document", id)
+                    raise NotFoundError(
+                        "page", id, because(ReasonCode.PAGE_NOT_FOUND, page=page, id=str(id))
+                    )
                 key, info = page_key(id, page), FileInfo(PAGE_MEDIA_TYPE, f"{stem}-{page}.webp")
         if not await store.exists(key):
-            raise NotFoundError(f"{file.value} of document", id)
+            raise NotFoundError(
+                file.value, id, because(ReasonCode.FILE_NOT_FOUND, file=file.value, id=str(id))
+            )
         await store.download(key, target)
         return info
 
@@ -541,7 +545,7 @@ class DocumentService:
         its filter finds: the documents with it or a tag below it (each once), a group those
         whose contact or type is in it or a group below it (`_tags.tag_counts`)."""
         async with self._uow() as uow:
-            await load_lister(uow, actor, all_users, "count the documents of all users")
+            await load_lister(uow, actor, all_users, Action.COUNT_ALL_DOCUMENTS)
             user = None if all_users else actor
             if by is CountBy.TAG:
                 return await tag_counts(uow, user)
@@ -558,7 +562,7 @@ class DocumentService:
         tag, topic or group counts the documents with it or one below it, each once, as its
         filter finds them."""
         async with self._uow() as uow:
-            await load_lister(uow, actor, all_users, "count the documents of all users")
+            await load_lister(uow, actor, all_users, Action.COUNT_ALL_DOCUMENTS)
             user = None if all_users else actor
             tree = await tag_tree(uow)
             found: dict[DocumentFilter, list[FacetRow]] = {}
@@ -640,7 +644,7 @@ class DocumentService:
         documents the caller may not read are left out (`_access.readable_log`)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            await controllable_document(uow, user, id, f"read the processing log of {id}")
+            await controllable_document(uow, user, id, Action.READ_PROCESSING_LOG)
             return await readable_log(uow, user, await uow.processing_log.list_for(id))
 
     async def exchanges(self, actor: UserId, id: DocumentId, node: Node) -> list[RunExchange]:
@@ -652,7 +656,7 @@ class DocumentService:
         store = self._object_store
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            await controllable_document(uow, user, id, f"read the model exchanges of {id}")
+            await controllable_document(uow, user, id, Action.READ_EXCHANGES)
         for key in (exchanges_key(id, node), legacy_exchanges_key(id, node)):
             if key is None:
                 continue
@@ -668,7 +672,7 @@ class DocumentService:
         checked."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, _ = await controllable_document(uow, user, id, f"review document {id}")
+            document, _ = await controllable_document(uow, user, id, Action.REVIEW_DOCUMENT)
             access = await access_to(uow, user, document)
             log = await readable_log(uow, user, await uow.processing_log.list_for(id))
         return Review(document, access, open_nodes(document, log), node_reviews(log))
@@ -711,7 +715,7 @@ class DocumentService:
             user = await load_actor(uow, actor)
             document, _ = await writable_document(uow, user, id)
             if not confirm:
-                admin_only(user, "change a document without confirming it")
+                admin_only(user, Action.CHANGE_UNCONFIRMED)
                 if document.channel is not Channel.MIGRATION:
                     raise ValidationError(
                         "only a document taken over from another system (channel "
@@ -764,7 +768,7 @@ class DocumentService:
         if self._rules is not None:
             async with self._uow() as uow:
                 user = await load_actor(uow, actor)
-                document, _ = await controllable_document(uow, user, id, f"move document {id}")
+                document, _ = await controllable_document(uow, user, id, Action.MOVE_DOCUMENT)
                 entering = await uow.spaces.find(space)
                 arriving = (
                     []
@@ -774,7 +778,7 @@ class DocumentService:
             prepared = await self._rules.prepare(arriving, document)
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, source = await controllable_document(uow, user, id, f"move document {id}")
+            document, source = await controllable_document(uow, user, id, Action.MOVE_DOCUMENT)
             target = await uow.spaces.find(space)
             if target is None or not (space_role(user, target) or can_hand_over(user, target)):
                 raise NotFoundError("space", space)
@@ -803,7 +807,7 @@ class DocumentService:
         (derivatives, and the original unless another document has the same file)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, _ = await controllable_document(uow, user, id, f"delete document {id}")
+            document, _ = await controllable_document(uow, user, id, Action.DELETE_DOCUMENT)
             document.delete(self._clock.now(), await _readers(uow, document))
             await uow.documents.remove(id)
             await uow.outbox.add(document.pull_events())

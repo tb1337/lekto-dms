@@ -148,6 +148,15 @@ async def test_deleting_a_contact_disables_the_rules_that_use_it(api: Api) -> No
     current = (await api.client.get(f"{PREFIX}/rules/{rule['id']}", headers=auth(owner))).json()
     assert current["enabled"] is False
     assert current["disabled_reason"] == "contact 'ACME' was deleted"
+    assert current["disabled_reasons"] == [
+        {
+            "code": "rule_disabled_deleted",
+            "params": {"kind": "contact", "name": "ACME"},
+            "subject": None,
+            "rule": None,
+            "field": None,
+        }
+    ]
     response = await api.client.patch(
         f"{PREFIX}/rules/{rule['id']}", json={"enabled": True}, headers=auth(owner)
     )

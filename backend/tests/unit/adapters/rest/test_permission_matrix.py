@@ -326,6 +326,7 @@ async def test_hidden_and_missing_documents_look_alike(api: Api) -> None:
             "title": "Not Found",
             "status": 404,
             "detail": f"document {id} not found",
+            "reason": {"code": "not_found", "params": {"kind": "document", "id": id}},
         }
 
 

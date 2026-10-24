@@ -48,6 +48,7 @@ from lekto.core.domain.ids import (
 )
 from lekto.core.domain.json_value import JsonValue, require_date, require_uuid
 from lekto.core.domain.master_data import DocumentType, TagScope
+from lekto.core.domain.reasons import Reason
 from lekto.core.domain.validation import require_name, require_utc
 
 DEFAULT_PRIORITY = 100
@@ -600,8 +601,8 @@ class Rule:
     """A rule with its current version. `space_id` is None exactly for global rules.
 
     `disabled_reason` says why the rule was disabled automatically (e.g. a contact it refers to
-    was deleted); None if a person disabled it or it is enabled. A deleted rule stays stored
-    for its versions; it never runs and is not listed.
+    was deleted), with its code; None if a person disabled it or it is enabled. A deleted rule
+    stays stored for its versions; it never runs and is not listed.
 
     `managed_by`: the document type whose title pattern this rule is (global, it sets the
     title). The type keeps it as the pattern says; nobody changes it otherwise."""
@@ -613,7 +614,7 @@ class Rule:
     created_at: datetime
     updated_at: datetime
     enabled: bool = True
-    disabled_reason: str | None = None
+    disabled_reason: Reason | None = None
     deleted_at: datetime | None = None
     managed_by: DocumentTypeId | None = None
     version: int = 1
@@ -701,7 +702,7 @@ class Rule:
         self.enabled, self.disabled_reason = True, None
         self.updated_at = require_utc(now, "updated_at")
 
-    def disable(self, now: datetime, reason: str | None = None) -> None:
+    def disable(self, now: datetime, reason: Reason | None = None) -> None:
         self._check_not_deleted()
         self.enabled, self.disabled_reason = False, reason
         self.updated_at = require_utc(now, "updated_at")
@@ -744,7 +745,7 @@ class RuleApplication:
 
     `accept_conflicts`: documents where the rule's value replaces a different value the
     document has (a deliberate decision, no review). `position`: how many of `documents` are
-    done. `skipped`: document id and reason."""
+    done. `skipped`: document id and reason (with its code)."""
 
     id: RuleApplicationId
     rule_id: RuleId
@@ -756,7 +757,7 @@ class RuleApplication:
     position: int = 0
     applied: int = 0
     unchanged: int = 0
-    skipped: list[tuple[DocumentId, str]] = field(default_factory=list)
+    skipped: list[tuple[DocumentId, Reason]] = field(default_factory=list)
     error: str | None = None
     created_at: datetime
     finished_at: datetime | None = None
@@ -806,7 +807,7 @@ class RuleApplication:
         self.unchanged += 1
         self._next()
 
-    def record_skipped(self, document: DocumentId, reason: str) -> None:
+    def record_skipped(self, document: DocumentId, reason: Reason) -> None:
         """One more document done: left as it was, for `reason`."""
         self.skipped.append((document, reason))
         self._next()

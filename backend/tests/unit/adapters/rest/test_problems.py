@@ -46,9 +46,12 @@ async def test_a_refusal_names_its_code_beside_the_text(api: Api) -> None:
     assert taken.status_code == 409
     assert taken.json()["detail"] == "'Invoice' already exists"
     assert taken.json()["reason"] == {"code": "name_taken", "params": {"name": "Invoice"}}
-    # An error raised with a text only has no code: its detail stands as it is.
     missing = await api.client.get(f"{PREFIX}/contacts/{UUID(int=1)}", headers=a)
-    assert missing.status_code == 404 and "reason" not in missing.json()
+    assert missing.status_code == 404
+    assert missing.json()["reason"] == {
+        "code": "not_found",
+        "params": {"kind": "contact", "id": str(UUID(int=1))},
+    }
 
 
 async def test_a_request_that_does_not_fit_names_each_part_with_its_code(api: Api) -> None:

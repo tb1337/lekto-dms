@@ -30,7 +30,7 @@ from lekto.core.domain.identifiers import (
 from lekto.core.domain.ids import ClassifierModelId, ContactId, TagId, UserId
 from lekto.core.domain.jobs import Job, RetryPolicy
 from lekto.core.domain.json_value import JsonObject
-from lekto.core.domain.reasons import ReasonCode, because
+from lekto.core.domain.reasons import Action, ReasonCode, because
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.text import shorten
 from lekto.core.ports.classifier import Classifier, Prediction, TrainedModel, TrainingExample
@@ -160,7 +160,7 @@ class ClassifierService:
         """Admins only: queue a training, unless one is queued or running. ConflictError with
         fewer decisions (confirmed documents, decided spaces) than a first model needs."""
         async with self._uow() as uow:
-            await require_admin(uow, actor, "train the classifier")
+            await require_admin(uow, actor, Action.TRAIN_CLASSIFIER)
             confirmed = await uow.documents.count_confirmed()
             if confirmed < self.policy.min_examples:
                 raise ConflictError(
@@ -176,7 +176,7 @@ class ClassifierService:
     async def status(self, actor: UserId) -> ClassifierStatus:
         """Admins only: the latest model and the confirmations since."""
         async with self._uow() as uow:
-            await require_admin(uow, actor, "see the classifier")
+            await require_admin(uow, actor, Action.SEE_CLASSIFIER)
             latest = await uow.classifier_models.latest()
             confirmed = await uow.documents.count_confirmed()
             since = (

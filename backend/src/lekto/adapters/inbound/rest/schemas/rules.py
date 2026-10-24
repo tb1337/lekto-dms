@@ -367,7 +367,13 @@ class RuleOut(_RuleDefinitionOut):
     version: int = Field(description="The current version.")
     enabled: bool
     disabled_reason: str | None = Field(
-        description="Why the rule was disabled automatically, e.g. a contact it uses was deleted."
+        description=(
+            "Why the rule was disabled automatically, e.g. a contact it uses was deleted, in "
+            "English."
+        )
+    )
+    disabled_reasons: list[ReasonOut] = Field(
+        default_factory=list, description="The same with its code (one, or none)."
     )
     managed_by_document_type_id: UUID | None = Field(
         description="The document type whose title pattern this rule is: it follows the type "
@@ -378,6 +384,7 @@ class RuleOut(_RuleDefinitionOut):
 
     @classmethod
     def of(cls, rule: Rule) -> "RuleOut":
+        reason = rule.disabled_reason
         return cls.model_validate(
             {
                 **definition_to_json(rule.definition),
@@ -386,7 +393,8 @@ class RuleOut(_RuleDefinitionOut):
                 "space_id": rule.space_id,
                 "version": rule.current.number,
                 "enabled": rule.enabled,
-                "disabled_reason": rule.disabled_reason,
+                "disabled_reason": None if reason is None else reason.text,
+                "disabled_reasons": [] if reason is None else [ReasonOut.of(reason)],
                 "managed_by_document_type_id": rule.managed_by,
                 "created_at": rule.created_at,
                 "updated_at": rule.updated_at,
@@ -547,7 +555,8 @@ class ApplyRequest(BaseModel):
 
 class SkippedOut(BaseModel):
     document_id: UUID
-    reason: str
+    reason: str = Field(description="Why, in English.")
+    reasons: list[ReasonOut] = Field(default_factory=list, description="The same with its code.")
 
 
 class RuleApplicationOut(BaseModel):
@@ -578,7 +587,8 @@ class RuleApplicationOut(BaseModel):
             applied=application.applied,
             unchanged=application.unchanged,
             skipped=[
-                SkippedOut(document_id=id, reason=reason) for id, reason in application.skipped
+                SkippedOut(document_id=id, reason=reason.text, reasons=[ReasonOut.of(reason)])
+                for id, reason in application.skipped
             ],
             error=application.error,
             created_at=application.created_at,

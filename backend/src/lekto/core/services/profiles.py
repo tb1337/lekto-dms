@@ -86,10 +86,7 @@ class ProfileService:
                 and isinstance(changes.birth_date, Unset)
                 and isinstance(changes.identifiers, Unset)
             ):
-                raise PermissionDeniedError(
-                    "this needs a signed-in session: an API token sets only the display name "
-                    "and the e-mail address"
-                )
+                raise PermissionDeniedError(because(ReasonCode.SESSION_NEEDED_PROFILE))
             if not isinstance(changes.display_name, Unset):
                 await uow.lock(USER_NAMES_LOCK)
             user = await uow.users.get(id)
@@ -136,7 +133,7 @@ async def _allowed(uow: UnitOfWork, actor: UserId, id: UserId, session: bool) ->
     PermissionDeniedError for anyone else, and for a user's own token."""
     user = await load_actor(uow, actor)
     if user.id != id and not user.is_active_admin:
-        raise PermissionDeniedError("only the user and admins see and change a profile")
+        raise PermissionDeniedError(because(ReasonCode.PROFILE_OWN_ONLY))
     if session:
         return False
     if user.id == id and not user.is_active_admin:

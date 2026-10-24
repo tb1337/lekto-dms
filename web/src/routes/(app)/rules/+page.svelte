@@ -17,6 +17,7 @@
 	import { describeError, reportError } from '#lib/errors.ts';
 	import { spaceLabel, type Space, type UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { reasonsText } from '#lib/reasons.ts';
 	import { scope } from '#lib/scope.svelte.ts';
 	import { canChangeRule } from '#lib/permissions.ts';
 	import { TRIGGER_LABELS } from '#lib/rules/describe.ts';
@@ -144,7 +145,9 @@
 						</span>
 						{#if rule.disabled_reason}
 							<span class="text-sm text-destructive">
-								{m.rule_disabled_reason({ reason: rule.disabled_reason })}
+								{m.rule_disabled_reason({
+									reason: reasonsText(rule.disabled_reasons, rule.disabled_reason) ?? ''
+								})}
 							</span>
 						{/if}
 					</div>

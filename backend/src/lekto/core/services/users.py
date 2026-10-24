@@ -19,7 +19,7 @@ from lekto.core.domain.errors import (
 )
 from lekto.core.domain.identity import Credential, ExternalIdentity, check_new_password
 from lekto.core.domain.ids import DocumentId, SpaceId, UserId
-from lekto.core.domain.reasons import ReasonCode, because
+from lekto.core.domain.reasons import Action, ReasonCode, because
 from lekto.core.domain.rules import Rule
 from lekto.core.domain.sorting import sort_key
 from lekto.core.domain.spaces import Space, SpaceRole
@@ -104,7 +104,7 @@ class UserService:
     async def account(self, actor: UserId, id: UserId) -> Account:
         """Admins only."""
         async with self._uow() as uow:
-            await require_admin(uow, actor, "manage users")
+            await require_admin(uow, actor, Action.MANAGE_USERS)
             return await _account(uow, await uow.users.get(id))
 
     # --- changes by admins ----------------------------------------------------------------------
@@ -128,14 +128,11 @@ class UserService:
         password or the role `admin` would turn a leaked token into a sign-in with more
         rights than the token was meant to give (see `update`)."""
         if not session and (password is not None or role is not Role.USER):
-            raise PermissionDeniedError(
-                "this needs a signed-in session: an API token can only create users with the "
-                "role 'user' and no password"
-            )
+            raise PermissionDeniedError(because(ReasonCode.SESSION_NEEDED_CREATE_USER))
         password_hash = await self._hash(username, password)
         now = self._clock.now()
         async with self._uow() as uow:
-            await require_admin(uow, actor, "manage users")
+            await require_admin(uow, actor, Action.MANAGE_USERS)
             user = await add_user(uow, username, role, now, display_name=display_name)
             if password_hash is not None:
                 await uow.credentials.add(
@@ -165,16 +162,13 @@ class UserService:
         session and has everything the token was not meant to give; nor may it deactivate the
         admins. A token only deactivates and reactivates users, as a migration does."""
         async with self._uow() as uow:
-            await require_admin(uow, actor, "manage users")
+            await require_admin(uow, actor, Action.MANAGE_USERS)
             user = await uow.users.get(id)
             if not session and (
                 (role is not None and role is not user.role)
                 or (user.is_admin and active is not None and active is not user.active)
             ):
-                raise PermissionDeniedError(
-                    "this needs a signed-in session: an API token cannot change a role or the "
-                    "state of an admin"
-                )
+                raise PermissionDeniedError(because(ReasonCode.SESSION_NEEDED_ROLE))
             new_role = user.role if role is None else role
             new_active = user.active if active is None else active
             if (new_role, new_active) != (user.role, user.active):
@@ -197,15 +191,15 @@ class UserService:
         """Admins only, not for their own account (that is `AuthService.change_password`, which
         needs the current password). All sessions of the user end; API tokens stay unless
         `revoke_tokens`."""
-        _not_own(actor, id, "reset their own password here")
+        _not_own(actor, id, Action.RESET_OWN_PASSWORD)
         async with self._uow() as uow:
-            await require_admin(uow, actor, "manage users")
+            await require_admin(uow, actor, Action.MANAGE_USERS)
             user = await uow.users.get(id)
         password_hash = await self._hash(user.username, password)
         assert password_hash is not None
         now = self._clock.now()
         async with self._uow() as uow:
-            await require_admin(uow, actor, "manage users")
+            await require_admin(uow, actor, Action.MANAGE_USERS)
             credential = await uow.credentials.find(id)
             if credential is None:
                 await uow.credentials.add(
@@ -224,9 +218,9 @@ class UserService:
     async def disable_totp(self, actor: UserId, id: UserId) -> None:
         """Admins only, for a user who lost their authenticator and recovery codes; not for
         their own account (that is `AuthService.disable_totp`, which needs a code)."""
-        _not_own(actor, id, "turn off their own TOTP here")
+        _not_own(actor, id, Action.TURN_OFF_OWN_TOTP)
         async with self._uow() as uow:
-            await require_admin(uow, actor, "manage users")
+            await require_admin(uow, actor, Action.MANAGE_USERS)
             await uow.users.get(id)
             credential = await uow.credentials.find(id)
             if credential is not None and credential.totp is not None:
@@ -239,7 +233,7 @@ class UserService:
     async def unlink_external_identities(self, actor: UserId, id: UserId) -> int:
         """Admins only: remove the user's links to identity providers."""
         async with self._uow() as uow:
-            await require_admin(uow, actor, "manage users")
+            await require_admin(uow, actor, Action.MANAGE_USERS)
             await uow.users.get(id)
             removed = await uow.external_identities.remove_for_user(id)
             await uow.commit()
@@ -249,7 +243,7 @@ class UserService:
         """Admins: the spaces that stop deleting the user until the deletion settles them
         (`delete_user`); empty if nothing does."""
         async with self._uow() as uow:
-            await require_admin(uow, actor, "manage users")
+            await require_admin(uow, actor, Action.MANAGE_USERS)
             await uow.users.get(id)
             return [blocking for blocking, _ in await _blocking(uow, id)]
 
@@ -274,7 +268,7 @@ class UserService:
         chosen = dict(settle or {})
         prepared = await self._arrivals(chosen)
         async with self._uow() as uow:
-            admin = await require_admin(uow, actor, "manage users")
+            admin = await require_admin(uow, actor, Action.MANAGE_USERS)
             user = await uow.users.get(id)
             if user.is_active_admin:
                 await _keep_an_admin(uow, user)
@@ -327,9 +321,9 @@ class UserService:
                 await disable_rules(
                     uow,
                     now,
-                    f"the personal space of '{user.username}' was deleted"
+                    because(ReasonCode.RULE_DISABLED_PERSONAL_SPACE, user=user.username)
                     if gone.personal_of == id
-                    else f"space '{gone.name}' was deleted",
+                    else because(ReasonCode.RULE_DISABLED_DELETED, kind="space", name=gone.name),
                     refers_to(lambda refs: refs.spaces, space_id),
                 )
             await uow.rules.remove_applications_by(id)
@@ -398,9 +392,9 @@ class UserService:
         return await self._hasher.hash(check_new_password(password, username))
 
 
-def _not_own(actor: UserId, id: UserId, what: str) -> None:
+def _not_own(actor: UserId, id: UserId, what: Action) -> None:
     if actor == id:
-        raise PermissionDeniedError(f"admins cannot {what}")
+        raise PermissionDeniedError(because(ReasonCode.ADMINS_CANNOT, action=what.value))
 
 
 async def add_user(

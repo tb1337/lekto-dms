@@ -61,7 +61,7 @@ from lekto.core.domain.reading import (
     OcrOutput,
     vision_advice,
 )
-from lekto.core.domain.reasons import Reason, ReasonCode, because
+from lekto.core.domain.reasons import Action, Reason, ReasonCode, because
 from lekto.core.domain.rule_planner import changed_fields
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import User
@@ -457,11 +457,15 @@ class PipelineService:
             if channel is not Channel.MIGRATION:
                 raise ValidationError("metadata: only with the channel 'migration'")
             if not caller.is_active_admin:
-                raise PermissionDeniedError("only admins can give metadata with an upload")
+                raise PermissionDeniedError(
+                    because(ReasonCode.ADMINS_ONLY, action=Action.GIVE_UPLOAD_METADATA.value)
+                )
         if uploaded_by is None or uploaded_by == actor:
             return actor
         if not caller.is_active_admin:
-            raise PermissionDeniedError("only admins can upload on behalf of another user")
+            raise PermissionDeniedError(
+                because(ReasonCode.ADMINS_ONLY, action=Action.UPLOAD_FOR_OTHERS.value)
+            )
         named = await uow.users.find(uploaded_by)
         if named is None or not named.active:
             raise NotFoundError("user", uploaded_by)
@@ -496,9 +500,7 @@ class PipelineService:
         """Editors and admins: repeat the failed nodes and continue from there."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, _ = await controllable_document(
-                uow, user, id, f"control the processing of document {id}"
-            )
+            document, _ = await controllable_document(uow, user, id, Action.CONTROL_PROCESSING)
             access = await access_to(uow, user, document)
             document.retry(self._clock.now())
             await self._restart(uow, document)
@@ -509,9 +511,7 @@ class PipelineService:
         them again."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, _ = await controllable_document(
-                uow, user, id, f"control the processing of document {id}"
-            )
+            document, _ = await controllable_document(uow, user, id, Action.CONTROL_PROCESSING)
             access = await access_to(uow, user, document)
             document.reprocess_from(node, self._clock.now())
             await self._restart(uow, document)
@@ -526,9 +526,7 @@ class PipelineService:
             raise InvalidTransitionError(because(ReasonCode.NO_VISION_MODEL))
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, _ = await controllable_document(
-                uow, user, id, f"control the processing of document {id}"
-            )
+            document, _ = await controllable_document(uow, user, id, Action.CONTROL_PROCESSING)
             access = await access_to(uow, user, document)
             document.read_with_vision(self._clock.now())
             await self._restart(uow, document)
@@ -540,7 +538,7 @@ class PipelineService:
         document waits for a person because no text was found, or with a poorly read page."""
         async with self._uow() as uow:
             document, _ = await controllable_document(
-                uow, await load_actor(uow, actor), id, f"control the processing of document {id}"
+                uow, await load_actor(uow, actor), id, Action.CONTROL_PROCESSING
             )
             log = await uow.processing_log.list_for(id)
         history = ProcessingHistory(log)
@@ -602,9 +600,7 @@ class PipelineService:
         decided values, as long as the document has the machine's title (`titles`)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, source = await controllable_document(
-                uow, user, id, f"control the processing of document {id}"
-            )
+            document, source = await controllable_document(uow, user, id, Action.CONTROL_PROCESSING)
             log = await uow.processing_log.list_for(id)
             outcomes = dict(document.processing.outcomes)
             again = {resume_at, *resume_at.descendants}
@@ -728,7 +724,7 @@ class PipelineService:
     async def request_reparse(self, actor: UserId) -> int:
         """Admins only: `reparse`."""
         async with self._uow() as uow:
-            await require_admin(uow, actor, "read the text of all documents again")
+            await require_admin(uow, actor, Action.REPARSE_ALL)
         return await self.reparse()
 
     async def reparse(self) -> int:

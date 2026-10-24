@@ -119,7 +119,6 @@
 	let color = $state<string | null>(null);
 	// A tag's scope: as given, or as chosen for a new one.
 	let kind = $state<TagScope | null>(null);
-	let error = $state<string | null>(null);
 	const groupScope = $derived<TagScope | null>(
 		extra === 'aliases' ? 'contact' : extra === 'description' ? 'document_type' : null
 	);
@@ -140,7 +139,6 @@
 	});
 	const typed = $derived((fields ?? []).filter((field) => field.document_type_ids !== null));
 	const everywhere = $derived((fields ?? []).filter((field) => field.document_type_ids === null));
-	let busy = $state(false);
 	// A contact and a document type are long: their identifiers or fields stand in a tab of
 	// their own (Tobi, 20.10.2026); a tag's editor is short and has none.
 	let tab = $state('general');
@@ -220,7 +218,6 @@
 						required: field.required_document_type_ids.includes(id)
 					}))
 			: [];
-		error = null;
 	}
 
 	/** A new tag becomes one of `next`: no parent yet, shown and set as that kind's are. */
@@ -231,11 +228,8 @@
 		shown = next === 'document' || next === 'topic';
 	}
 
-	async function submit(event: SubmitEvent) {
-		event.preventDefault();
-		if (busy || (extra === 'tag' && kind === null)) return;
-		busy = true;
-		error = null;
+	/** Save; a refused identifier opens its tab and its line, the shell shows the error too. */
+	async function submit() {
 		identifierErrors = {};
 		try {
 			await onsubmit({
@@ -254,17 +248,14 @@
 				color,
 				scope: kind
 			});
-			open = false;
 		} catch (problem) {
-			error = describeError(problem);
 			const refused = refusedRow(problem, identifiers);
 			if (refused) {
-				identifierErrors = { [refused.key]: error };
+				identifierErrors = { [refused.key]: describeError(problem) };
 				openedIdentifier = refused.key;
 				tab = 'identifiers';
 			}
-		} finally {
-			busy = false;
+			throw problem;
 		}
 	}
 </script>
@@ -281,10 +272,8 @@
 	{title}
 	{shortTitle}
 	{submitLabel}
-	{busy}
 	disabled={name.trim() === '' || (extra === 'tag' && kind === null)}
-	{error}
-	onsubmit={submit}
+	action={submit}
 	ondelete={initial && ondelete ? ondelete : undefined}
 	deleteTitle={m.master_delete({ name: initial?.name ?? '' })}
 	{deleteDescription}

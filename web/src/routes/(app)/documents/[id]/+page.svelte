@@ -56,7 +56,7 @@
 	import { canEdit } from '#lib/permissions.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
-	import { hasText, type GraphNode } from '#lib/pipeline.ts';
+	import { hasText, pipeline, type GraphNode } from '#lib/pipeline.ts';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import {
@@ -292,7 +292,7 @@
 
 	onMount(() => {
 		loadLookup().then((value) => (lookup = value), reportError);
-		unwrap(api.GET('/api/v1/pipeline')).then((value) => {
+		pipeline().then((value) => {
 			graph = value.nodes;
 			vision = value.vision;
 		}, reportError);

@@ -2,7 +2,7 @@
 
 from collections.abc import Awaitable, Sequence
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 from uuid import UUID
 
 import pytest
@@ -647,6 +647,63 @@ async def test_only_admins_request_a_rebuild(setup: Setup) -> None:
     assert await setup.indexing.run_next_job()
     assert not await setup.indexing.run_next_job()
     assert set(setup.index.documents) == {document.id}
+
+
+async def test_an_index_job_reports_the_sections_it_embedded(setup: Setup) -> None:
+    owner = await setup.world.user()
+    document = await setup.document(owner, "Stromrechnung September")
+    done = [job for job in index_jobs(setup.world) if job.status is JobStatus.DONE]
+    assert done and all(job.result is not None for job in done)
+    sections = [job.result.get("sections") for job in done if job.result is not None]
+    assert any(isinstance(count, int) and count >= 1 for count in sections)
+    assert await setup.indexing.index_document(document.id) == 0  # the vectors stay
+
+
+async def test_a_check_counts_without_queuing_or_removing(setup: Setup) -> None:
+    admin, owner = await setup.world.user(role=Role.ADMIN), await setup.world.user()
+    await setup.document(owner, "current")
+    stale = await setup.document(owner, "stale")
+    await setup.world.pipeline().receive(owner.id, incoming(b"%PDF-1 f"), filename="f.pdf")
+    await setup.index.upsert([index_document(id=stale.id, version=stale.version - 1)])
+    orphan = index_document()
+    await setup.index.upsert([orphan])
+    jobs = len(index_jobs(setup.world))
+
+    with pytest.raises(PermissionDeniedError):
+        await setup.indexing.check(owner.id)
+    checked = await setup.indexing.check(admin.id)
+
+    found = checked.comparison
+    assert (found.current, len(found.missing), len(found.outdated), found.extra) == (
+        1,
+        1,
+        1,
+        (orphan.id,),
+    )
+    assert found.other_model == () and found.asked == ()
+    assert len(index_jobs(setup.world)) == jobs
+    assert orphan.id in setup.index.documents
+
+
+async def test_the_status_of_the_index(setup: Setup) -> None:
+    owner = await setup.world.user()
+    first = await setup.document(owner, "eins")
+    await setup.document(owner, "zwei")
+    async with setup.world.uow() as uow:
+        for _ in range(3):
+            await uow.jobs.enqueue(INDEX_JOB, {"document_id": str(first.id)}, run_at=NOW + HOUR)
+        await uow.commit()
+
+    status = await setup.indexing.status(owner.id)
+
+    assert (status.documents, status.stats.documents, status.stats.embedded) == (2, 2, 2)
+    assert (status.running, status.queued) == (0, 3)
+    done = [job for job in index_jobs(setup.world) if job.status is JobStatus.DONE]
+    assert status.remaining == timedelta(minutes=10) * 3 / len(done)
+    assert status.embedded is not None and status.embedded.count >= 2
+    assert status.per_section == timedelta(0)  # the test clock stands still
+    assert status.model == "fake-embeddings 1"
+    assert status.since == NOW - builders.INDEXING.durations_window
 
 
 # --- sections ------------------------------------------------------------------------------------

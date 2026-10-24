@@ -11,8 +11,10 @@ from lekto.adapters.inbound.rest.params import ADMINS_ONLY, AllDocuments, Filter
 from lekto.adapters.inbound.rest.problems import problem_responses
 from lekto.adapters.inbound.rest.schemas.documents import ListedDocument
 from lekto.adapters.inbound.rest.schemas.search import (
+    IndexCheckOut,
     SearchResultItem,
     SearchResultPage,
+    SearchStatusOut,
     SnippetSegment,
 )
 from lekto.adapters.inbound.schemas import ReasonOut
@@ -118,3 +120,35 @@ async def warm_search(user: CurrentUser, search: Search) -> None:
 async def reindex(user: CurrentUser, indexing: Indexing) -> Response:
     await indexing.request_rebuild(user)
     return Response(status_code=202)
+
+
+@router.get(
+    "/search/status",
+    summary="The state of the search index",
+    description=(
+        "How many documents the database and the index hold, how many have vectors, the index "
+        "jobs running and waiting with an estimate of when they are through, how long index "
+        "jobs ran with and without embedding, and the embedding model. Every user. 503 "
+        "without a search index or when it cannot be reached."
+    ),
+    response_model=SearchStatusOut,
+    responses=problem_responses(401, 503),
+)
+async def search_status(user: CurrentUser, indexing: Indexing) -> SearchStatusOut:
+    return SearchStatusOut.of(await indexing.status(user))
+
+
+@router.post(
+    "/search/check",
+    summary="Check the search index",
+    description=(
+        ADMINS_ONLY + " Compares every document in the database with the index and counts "
+        "what is current, missing, stale and left over; nothing is queued or removed (the "
+        "next reconciliation does that). Reads the whole index: seconds for some thousand "
+        "documents."
+    ),
+    response_model=IndexCheckOut,
+    responses=problem_responses(401, 403, 503),
+)
+async def check_index(user: CurrentUser, indexing: Indexing) -> IndexCheckOut:
+    return IndexCheckOut.of(await indexing.check(user))

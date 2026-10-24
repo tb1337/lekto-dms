@@ -13,6 +13,8 @@
   ids and lane names only; the text of the user goes into `q`.
 - A rebuild fills `<index>-rebuild` and replaces the active index with `swap-indexes`, so
   searches never see a half-built index.
+- `stats` reads `GET /indexes/<index>/stats`: documents, those with vectors
+  (`numberOfEmbeddedDocuments`), the vectors and the size; versions that lack a number count 0.
 """
 
 import asyncio
@@ -45,6 +47,7 @@ from lekto.core.ports.repository import DocumentFilter, SortKey
 from lekto.core.ports.search_index import (
     MAX_HITS,
     IndexBuild,
+    IndexStats,
     SearchHit,
     SearchQuery,
     SearchResult,
@@ -266,6 +269,18 @@ class MeilisearchIndex:
         if response.status_code != 200 or _json(response).get("status") != "available":
             raise SearchUnavailableError("Meilisearch is not available")
         await self._request("GET", "/version")  # also proves that the key is accepted
+
+    async def stats(self) -> IndexStats:
+        await self._ensure_ready()
+        data = await self._request("GET", f"/indexes/{self._index}/stats")
+        size = data.get("indexSize", data.get("databaseSize"))
+        return IndexStats(
+            documents=int(data.get("numberOfDocuments", 0)),
+            embedded=int(data.get("numberOfEmbeddedDocuments", 0)),
+            vectors=int(data.get("numberOfEmbeddings", 0)),
+            indexing=bool(data.get("isIndexing", False)),
+            size_bytes=None if size is None else int(size),
+        )
 
     # --- rebuild (used by _MeilisearchBuild) ----------------------------------------------------
 

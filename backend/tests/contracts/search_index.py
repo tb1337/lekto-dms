@@ -619,3 +619,19 @@ class SearchIndexContract:
 
     async def test_check(self, search_index: SearchIndex) -> None:
         await search_index.check()
+
+    async def test_stats_count_documents_and_vectors(self, search_index: SearchIndex) -> None:
+        empty = await search_index.stats()
+        assert (empty.documents, empty.embedded, empty.vectors) == (0, 0, 0)
+        sections = index_document(
+            vectors=((1.0, 0.0, 0.0), (0.0, 1.0, 0.0)), embedding=STAMP, title="Zwei"
+        )
+        one = index_document(vectors=((0.0, 0.0, 1.0),), embedding=STAMP, title="Eins")
+        plain = index_document(title="Ohne")
+        await search_index.upsert([sections, one, plain])
+        stats = await search_index.stats()
+        assert (stats.documents, stats.embedded, stats.vectors) == (3, 2, 3)
+        assert stats.size_bytes is None or stats.size_bytes > 0
+        await search_index.remove(sections.id)
+        after = await search_index.stats()
+        assert (after.documents, after.embedded, after.vectors) == (2, 1, 1)

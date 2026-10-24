@@ -509,6 +509,9 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
                 counts[key] = counts.get(key, 0) + 1
         return counts
 
+    async def count_all(self) -> int:
+        return len(self._all())
+
     async def count_confirmed(self, *, after: datetime | None = None) -> int:
         def decided(at: datetime | None) -> bool:
             return at is not None and (after is None or at > after)

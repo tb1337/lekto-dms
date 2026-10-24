@@ -411,6 +411,10 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         NotFoundError if it does not exist."""
         ...
 
+    async def count_all(self) -> int:
+        """How many documents there are."""
+        ...
+
     async def count_confirmed(self, *, after: datetime | None = None) -> int:
         """Documents a person set or confirmed the metadata or decided the space of, after
         `after` if given (the decisions since the classifier was trained)."""

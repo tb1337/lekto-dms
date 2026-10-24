@@ -18,6 +18,7 @@ from lekto.core.domain.sorting import sort_key
 from lekto.core.ports.repository import DocumentFilter, DocumentOrder, FilterView, SortKey
 from lekto.core.ports.search_index import (
     IndexBuild,
+    IndexStats,
     SearchHit,
     SearchQuery,
     SearchResult,
@@ -58,6 +59,14 @@ class MemorySearchIndex:
     async def states(self) -> AsyncIterator[IndexState]:
         for document in list(self._documents.values()):
             yield self._state(document)
+
+    async def stats(self) -> IndexStats:
+        documents = list(self._documents.values())
+        return IndexStats(
+            documents=len(documents),
+            embedded=sum(1 for document in documents if document.vectors),
+            vectors=sum(len(document.vectors or ()) for document in documents),
+        )
 
     def _state(self, document: IndexDocument) -> IndexState:
         return IndexState(

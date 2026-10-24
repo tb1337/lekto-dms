@@ -13,6 +13,7 @@ from lekto.core.domain.errors import (
 from lekto.core.domain.fields import FieldType
 from lekto.core.domain.ids import ContactId, SpaceId, new_id
 from lekto.core.domain.pipeline import Lane
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.rules import (
     AddTags,
     ForceReview,
@@ -195,7 +196,8 @@ async def test_deleting_master_data_and_spaces_disables_the_rules_that_use_them(
     }
     for id, reason in expected.items():
         rule = await r.rules.get(r.admin.id, id)
-        assert (rule.enabled, rule.disabled_reason) == (False, reason)
+        assert rule.enabled is False
+        assert rule.disabled_reason is not None and rule.disabled_reason.text == reason
         # Enabling checks the references again.
         actor = r.admin if rule.scope is RuleScope.GLOBAL else owner
         with pytest.raises(NotFoundError):
@@ -215,7 +217,7 @@ async def test_removing_a_choice_a_rule_uses_disables_the_rule(world: World) -> 
     await world.master_data.change_field(r.admin.id, size.id, choices=["S"])
     disabled = await r.rules.get(owner.id, medium.id)
     assert disabled.enabled is False
-    assert disabled.disabled_reason == "field 'Size' no longer allows a value the rule uses"
+    assert disabled.disabled_reason == because(ReasonCode.RULE_DISABLED_CHOICE, field="Size")
     assert (await r.rules.get(owner.id, small.id)).enabled
     with pytest.raises(ValidationError):
         await r.rules.set_enabled(owner.id, medium.id, True)
@@ -243,7 +245,7 @@ async def test_deleting_a_user_removes_the_rules_of_their_personal_space(world: 
     rule = await r.rules.get(staying.id, hands_over.id)
     assert (rule.enabled, rule.disabled_reason) == (
         False,
-        "the personal space of 'leaving' was deleted",
+        because(ReasonCode.RULE_DISABLED_PERSONAL_SPACE, user="leaving"),
     )
 
 

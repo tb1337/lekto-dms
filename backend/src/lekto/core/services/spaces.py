@@ -4,7 +4,7 @@ from lekto.core.domain.documents import UNSET, Unset
 from lekto.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
 from lekto.core.domain.ids import SpaceId, UserId
 from lekto.core.domain.permissions import can_choose_members, can_manage_space
-from lekto.core.domain.reasons import ReasonCode, because
+from lekto.core.domain.reasons import Action, ReasonCode, because
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
@@ -24,7 +24,7 @@ class SpaceService:
         reach the admin chose, as the lists of documents, inboxes and rules do (Tobi,
         22.10.2026)."""
         async with self._uow() as uow:
-            await load_lister(uow, actor, all_users, "list every user's spaces")
+            await load_lister(uow, actor, all_users, Action.LIST_ALL_SPACES)
             if all_users:
                 return await uow.spaces.list_all()
             return await uow.spaces.list_accessible(actor)
@@ -57,7 +57,7 @@ class SpaceService:
             await disable_rules(
                 uow,
                 self._clock.now(),
-                f"space '{space.name}' was deleted",
+                because(ReasonCode.RULE_DISABLED_DELETED, kind="space", name=space.name),
                 refers_to(lambda refs: refs.spaces, id),
             )
             await uow.commit()
@@ -110,9 +110,7 @@ class SpaceService:
                 and not isinstance(description, Unset)
                 and not can_choose_members(user, space)
             ):
-                raise PermissionDeniedError(
-                    f"only its user and admins describe the personal space {id}"
-                )
+                raise PermissionDeniedError(because(ReasonCode.PERSONAL_SPACE_DESCRIBE, id=str(id)))
             if name is not None:
                 space.rename(name)
                 await _check_name_free(uow, space)
@@ -155,15 +153,15 @@ class SpaceService:
 async def _managed_space(uow: UnitOfWork, user: User, id: SpaceId) -> Space:
     space = await visible_space(uow, user, id)
     if not can_manage_space(user, space):
-        raise PermissionDeniedError(f"only editors and admins manage space {id}")
+        raise PermissionDeniedError(because(ReasonCode.SPACE_MANAGE, id=str(id)))
     return space
 
 
 async def _members_space(uow: UnitOfWork, user: User, id: SpaceId) -> Space:
     space = await visible_space(uow, user, id)
     if not can_choose_members(user, space):
-        who = "its user" if space.is_personal else "editors"
-        raise PermissionDeniedError(f"only {who} and admins choose the members of space {id}")
+        code = ReasonCode.SPACE_MEMBERS_PERSONAL if space.is_personal else ReasonCode.SPACE_MEMBERS
+        raise PermissionDeniedError(because(code, id=str(id)))
     return space
 
 

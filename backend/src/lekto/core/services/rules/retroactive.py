@@ -42,7 +42,7 @@ from lekto.core.domain.pipeline import (
     Lane,
     Node,
 )
-from lekto.core.domain.reasons import Reason
+from lekto.core.domain.reasons import Reason, ReasonCode, because
 from lekto.core.domain.rule_planner import Effect, Mode, Note, NoteKind
 from lekto.core.domain.rules import Rule, RuleApplication, RuleScope, SetSpace, Trigger
 from lekto.core.domain.users import User
@@ -358,7 +358,7 @@ class RuleApplicationService:
             async with self._uow() as uow:
                 application = await uow.rule_applications.get(id)
                 application.record_skipped(
-                    application.remaining[0], "changed meanwhile; not applied"
+                    application.remaining[0], because(ReasonCode.SKIP_CHANGED_MEANWHILE)
                 )
                 await uow.rule_applications.update(application)
                 await uow.commit()
@@ -376,7 +376,7 @@ class RuleApplicationService:
         id = application.remaining[0]
         document = await uow.documents.find(id)
         if document is None or not await _candidate(uow, user, rule, document):
-            application.record_skipped(id, "not available")
+            application.record_skipped(id, because(ReasonCode.SKIP_NOT_AVAILABLE))
             return
         played = await self._play(
             uow,
@@ -391,7 +391,7 @@ class RuleApplicationService:
             application.record_unchanged()
             return
         if played.problem is not None:
-            application.record_skipped(id, played.problem.text)
+            application.record_skipped(id, played.problem)
             return
         await uow.documents.update(document)
         await uow.outbox.add(document.pull_events())
@@ -492,7 +492,7 @@ async def _applicable_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
         space = await uow.spaces.find(rule.space_id)
         role = None if space is None else space_role(user, space)
         if role is None or not role.can_edit:
-            raise PermissionDeniedError("only the space's editors and admins apply a space rule")
+            raise PermissionDeniedError(because(ReasonCode.SPACE_RULE_APPLY))
     return rule
 
 

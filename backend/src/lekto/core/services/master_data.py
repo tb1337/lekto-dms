@@ -25,7 +25,7 @@ from lekto.core.domain.master_data import (
     one_line,
 )
 from lekto.core.domain.names import match_key, related
-from lekto.core.domain.reasons import ReasonCode, because
+from lekto.core.domain.reasons import Action, ReasonCode, because
 from lekto.core.domain.rules import References, Rule, RuleScope, title_rule
 from lekto.core.domain.rules_json import definition_to_json
 from lekto.core.domain.sorting import sort_key
@@ -572,7 +572,7 @@ class MasterDataService:
                 await disable_rules(
                     uow,
                     self._now(),
-                    f"field '{definition.name}' no longer allows a value the rule uses",
+                    because(ReasonCode.RULE_DISABLED_CHOICE, field=definition.name),
                     misfits(definition.id, fields),
                 )
 
@@ -588,7 +588,7 @@ class MasterDataService:
         of no other type (it would belong nowhere) or a global one (it belongs to every type).
         One transaction; returns the fields that changed."""
         async with self._uow() as uow:
-            await require_admin(uow, actor, "change master data")
+            await require_admin(uow, actor, Action.CHANGE_MASTER_DATA)
             document_type = await uow.document_types.get(id)
             definitions = await field_definitions(uow)
             for field in fields:
@@ -901,7 +901,7 @@ class MasterDataService:
         goes with it, before it goes."""
         kind, select = referenced
         async with self._uow() as uow:
-            await require_admin(uow, actor, "change master data")
+            await require_admin(uow, actor, Action.CHANGE_MASTER_DATA)
             item = await repository(uow).get(id)
             if await used(uow):
                 raise ConflictError(because(ReasonCode.IN_USE, name=item.name))
@@ -909,7 +909,10 @@ class MasterDataService:
                 await before(uow)
             await repository(uow).remove(id)
             await disable_rules(
-                uow, self._now(), f"{kind} '{item.name}' was deleted", refers_to(select, id)
+                uow,
+                self._now(),
+                because(ReasonCode.RULE_DISABLED_DELETED, kind=kind, name=item.name),
+                refers_to(select, id),
             )
             await uow.commit()
 
@@ -933,7 +936,7 @@ class MasterDataService:
         async with self._uow() as uow:
             if lock is not None:
                 await uow.lock(lock)
-            await require_admin(uow, actor, "change master data")
+            await require_admin(uow, actor, Action.CHANGE_MASTER_DATA)
             if check is not None:
                 await check(uow)
             if name_free is None:
@@ -968,7 +971,7 @@ class MasterDataService:
         async with self._uow() as uow:
             if lock is not None:
                 await uow.lock(lock)
-            await require_admin(uow, actor, "change master data")
+            await require_admin(uow, actor, Action.CHANGE_MASTER_DATA)
             item = await repository(uow).get(id)
             before = indexed(item)
             change(item)

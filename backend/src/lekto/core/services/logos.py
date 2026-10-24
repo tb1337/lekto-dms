@@ -38,7 +38,7 @@ from lekto.core.domain.errors import (
 from lekto.core.domain.ids import ContactId, UserId
 from lekto.core.domain.jobs import Job, RetryPolicy
 from lekto.core.domain.master_data import Contact
-from lekto.core.domain.reasons import ReasonCode, because
+from lekto.core.domain.reasons import Action, ReasonCode, because
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.images import ImageNormaliser
 from lekto.core.ports.logos import LogoFetcher
@@ -105,7 +105,7 @@ class LogoService:
         UnsupportedMediaTypeError for another kind (SVG: it can carry scripts),
         ValidationError if it is too large, ImageError if it cannot be read."""
         async with self._uow() as uow:
-            await require_admin(uow, actor, "change master data")
+            await require_admin(uow, actor, Action.CHANGE_MASTER_DATA)
             await uow.contacts.get(id)
         if len(data) > LOGO_MAX_SIZE:
             raise ValidationError(f"a logo is at most {LOGO_MAX_SIZE} bytes")
@@ -116,7 +116,7 @@ class LogoService:
         async def store() -> Contact:
             async with self._uow() as uow:
                 await uow.lock(logo_lock(id))
-                await require_admin(uow, actor, "change master data")
+                await require_admin(uow, actor, Action.CHANGE_MASTER_DATA)
                 contact = await uow.contacts.get(id)
                 logo = ContactLogo(source=LogoSource.UPLOADED, stored_at=self._clock.now())
                 contact.set_logo(logo)
@@ -134,7 +134,7 @@ class LogoService:
         async def drop() -> Contact:
             async with self._uow() as uow:
                 await uow.lock(logo_lock(id))
-                await require_admin(uow, actor, "change master data")
+                await require_admin(uow, actor, Action.CHANGE_MASTER_DATA)
                 contact = await uow.contacts.get(id)
                 if contact.logo is None and contact.logo_failure is None:
                     return contact
@@ -163,7 +163,7 @@ class LogoService:
         LogoFetchDisabledError without fetching; ConflictError while it has an uploaded logo;
         ValidationError without a domain among its identifiers."""
         async with self._uow() as uow:
-            await require_admin(uow, actor, "change master data")
+            await require_admin(uow, actor, Action.CHANGE_MASTER_DATA)
             if self._fetcher is None:
                 raise LogoFetchDisabledError("Lekto does not fetch logos")
             contact = await uow.contacts.get(id)

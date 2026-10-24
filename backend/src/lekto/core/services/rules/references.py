@@ -16,12 +16,13 @@ from datetime import datetime
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.fields import FieldDefinition
 from lekto.core.domain.ids import FieldId
+from lekto.core.domain.reasons import Reason
 from lekto.core.domain.rules import References, Rule, check_fields
 from lekto.core.ports.unit_of_work import UnitOfWork
 
 
 async def disable_rules(
-    uow: UnitOfWork, now: datetime, reason: str, affected: Callable[[Rule], bool]
+    uow: UnitOfWork, now: datetime, reason: Reason, affected: Callable[[Rule], bool]
 ) -> int:
     """Disable every enabled rule (global or of any space) for which `affected` holds; returns
     how many."""

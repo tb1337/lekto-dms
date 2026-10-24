@@ -269,6 +269,31 @@ class ReasonCode(StrEnum):
     OIDC_LINKED_ELSEWHERE = "oidc_linked_elsewhere"
     OIDC_NO_ACCOUNT = "oidc_no_account"
     OIDC_PASSWORD_FIRST = "oidc_password_first"
+    # the rest of the problems, rules disabled and skipped
+    NOT_FOUND = "not_found"
+    PAGE_NOT_FOUND = "page_not_found"
+    FILE_NOT_FOUND = "file_not_found"
+    RULE_VERSION_NOT_FOUND = "rule_version_not_found"
+    NAME_EMPTY = "name_empty"
+    NAME_TOO_LONG = "name_too_long"
+    ADMINS_ONLY = "admins_only"
+    EDITORS_ONLY = "editors_only"
+    ADMINS_CANNOT = "admins_cannot"
+    NO_WRITE_ACCESS_TO_DOCUMENT = "no_write_access_to_document"
+    SESSION_NEEDED_CREATE_USER = "session_needed_create_user"
+    SESSION_NEEDED_ROLE = "session_needed_role"
+    SESSION_NEEDED_PROFILE = "session_needed_profile"
+    PROFILE_OWN_ONLY = "profile_own_only"
+    PERSONAL_SPACE_DESCRIBE = "personal_space_describe"
+    SPACE_MANAGE = "space_manage"
+    SPACE_MEMBERS_PERSONAL = "space_members_personal"
+    SPACE_MEMBERS = "space_members"
+    SPACE_RULE_APPLY = "space_rule_apply"
+    RULE_DISABLED_DELETED = "rule_disabled_deleted"
+    RULE_DISABLED_PERSONAL_SPACE = "rule_disabled_personal_space"
+    RULE_DISABLED_CHOICE = "rule_disabled_choice"
+    SKIP_CHANGED_MEANWHILE = "skip_changed_meanwhile"
+    SKIP_NOT_AVAILABLE = "skip_not_available"
 
 
 TEMPLATES: Mapping[ReasonCode, str] = {
@@ -574,7 +599,102 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.OIDC_LINKED_ELSEWHERE: "this account is linked to another user",
     ReasonCode.OIDC_NO_ACCOUNT: "no account here is linked to this sign-in",
     ReasonCode.OIDC_PASSWORD_FIRST: "set a password first; without it you could not sign in",
+    ReasonCode.NOT_FOUND: "{kind:thing} {id} not found",
+    ReasonCode.PAGE_NOT_FOUND: "page {page:number} of document {id} not found",
+    ReasonCode.FILE_NOT_FOUND: "{file:thing} of document {id} not found",
+    ReasonCode.RULE_VERSION_NOT_FOUND: "version {number:number} of rule {id} not found",
+    ReasonCode.NAME_EMPTY: "{what:thing} must not be empty",
+    ReasonCode.NAME_TOO_LONG: "{what:thing} must have at most {max:number} characters",
+    ReasonCode.ADMINS_ONLY: "only admins {action:action}",
+    ReasonCode.EDITORS_ONLY: "only editors and admins {action:action}",
+    ReasonCode.ADMINS_CANNOT: "admins cannot {action:action}",
+    ReasonCode.NO_WRITE_ACCESS_TO_DOCUMENT: "no write access to document {id}",
+    ReasonCode.SESSION_NEEDED_CREATE_USER: (
+        "this needs a signed-in session: an API token can only create users with the role "
+        "'user' and no password"
+    ),
+    ReasonCode.SESSION_NEEDED_ROLE: (
+        "this needs a signed-in session: an API token cannot change a role or the state of an admin"
+    ),
+    ReasonCode.SESSION_NEEDED_PROFILE: (
+        "this needs a signed-in session: an API token sets only the display name and the "
+        "e-mail address"
+    ),
+    ReasonCode.PROFILE_OWN_ONLY: "only the user and admins see and change a profile",
+    ReasonCode.PERSONAL_SPACE_DESCRIBE: "only its user and admins describe the personal space {id}",
+    ReasonCode.SPACE_MANAGE: "only editors and admins manage space {id}",
+    ReasonCode.SPACE_MEMBERS_PERSONAL: "only its user and admins choose the members of space {id}",
+    ReasonCode.SPACE_MEMBERS: "only editors and admins choose the members of space {id}",
+    ReasonCode.SPACE_RULE_APPLY: "only the space's editors and admins apply a space rule",
+    ReasonCode.RULE_DISABLED_DELETED: "{kind:thing} '{name}' was deleted",
+    ReasonCode.RULE_DISABLED_PERSONAL_SPACE: "the personal space of '{user}' was deleted",
+    ReasonCode.RULE_DISABLED_CHOICE: "field '{field}' no longer allows a value the rule uses",
+    ReasonCode.SKIP_CHANGED_MEANWHILE: "changed meanwhile; not applied",
+    ReasonCode.SKIP_NOT_AVAILABLE: "not available",
 }
+
+
+class Action(StrEnum):
+    """What only some may do (`ADMINS_ONLY`, `EDITORS_ONLY`, `ADMINS_CANNOT`): the parameter
+    of the kind `action`, written in English as `ACTIONS` has it."""
+
+    MANAGE_USERS = "manage_users"
+    CHANGE_MASTER_DATA = "change_master_data"
+    SEE_ALL_INBOXES = "see_all_inboxes"
+    COUNT_ALL_DOCUMENTS = "count_all_documents"
+    LIST_ALL_DOCUMENTS = "list_all_documents"
+    SEARCH_ALL_DOCUMENTS = "search_all_documents"
+    LIST_ALL_RULES = "list_all_rules"
+    LIST_ALL_SPACES = "list_all_spaces"
+    TRAIN_CLASSIFIER = "train_classifier"
+    SEE_CLASSIFIER = "see_classifier"
+    REBUILD_INDEX = "rebuild_index"
+    REPARSE_ALL = "reparse_all"
+    MAKE_GLOBAL_RULES = "make_global_rules"
+    CHANGE_GLOBAL_RULES = "change_global_rules"
+    MAKE_SPACE_RULES = "make_space_rules"
+    CHANGE_UNCONFIRMED = "change_unconfirmed"
+    GIVE_UPLOAD_METADATA = "give_upload_metadata"
+    UPLOAD_FOR_OTHERS = "upload_for_others"
+    CONTROL_PROCESSING = "control_processing"
+    READ_PROCESSING_LOG = "read_processing_log"
+    READ_EXCHANGES = "read_exchanges"
+    REVIEW_DOCUMENT = "review_document"
+    MOVE_DOCUMENT = "move_document"
+    DELETE_DOCUMENT = "delete_document"
+    RESET_OWN_PASSWORD = "reset_own_password"
+    TURN_OFF_OWN_TOTP = "turn_off_own_totp"
+
+
+ACTIONS: Mapping[Action, str] = {
+    Action.MANAGE_USERS: "manage users",
+    Action.CHANGE_MASTER_DATA: "change master data",
+    Action.SEE_ALL_INBOXES: "see the inboxes of all users",
+    Action.COUNT_ALL_DOCUMENTS: "count the documents of all users",
+    Action.LIST_ALL_DOCUMENTS: "list the documents of all users",
+    Action.SEARCH_ALL_DOCUMENTS: "search the documents of all users",
+    Action.LIST_ALL_RULES: "list the rules of all users",
+    Action.LIST_ALL_SPACES: "list every user's spaces",
+    Action.TRAIN_CLASSIFIER: "train the classifier",
+    Action.SEE_CLASSIFIER: "see the classifier",
+    Action.REBUILD_INDEX: "rebuild the search index",
+    Action.REPARSE_ALL: "read the text of all documents again",
+    Action.MAKE_GLOBAL_RULES: "make global rules",
+    Action.CHANGE_GLOBAL_RULES: "change global rules",
+    Action.MAKE_SPACE_RULES: "make the rules of this space",
+    Action.CHANGE_UNCONFIRMED: "change a document without confirming it",
+    Action.GIVE_UPLOAD_METADATA: "give metadata with an upload",
+    Action.UPLOAD_FOR_OTHERS: "upload on behalf of another user",
+    Action.CONTROL_PROCESSING: "control the processing of this document",
+    Action.READ_PROCESSING_LOG: "read the processing log of this document",
+    Action.READ_EXCHANGES: "read the model exchanges of this document",
+    Action.REVIEW_DOCUMENT: "review this document",
+    Action.MOVE_DOCUMENT: "move this document",
+    Action.DELETE_DOCUMENT: "delete this document",
+    Action.RESET_OWN_PASSWORD: "reset their own password here",
+    Action.TURN_OFF_OWN_TOTP: "turn off their own TOTP here",
+}
+
 
 KINDS: Mapping[str, str] = {
     "": "text",
@@ -589,6 +709,8 @@ KINDS: Mapping[str, str] = {
     "reason": "reason",
     "list": "list",
     "nodes": "nodes",
+    "thing": "thing",
+    "action": "action",
 }
 """The kinds a template may give a parameter (after its colon; none: text), by the name the
 catalog gives them: `number` a number, `percent` a fraction from 0 to 1, `date` a day in ISO
@@ -597,7 +719,8 @@ for none), `names` a list of names, `fields` a list of check fields (`contact`, 
 ...), `rule_values` a list of `{"rule": name, "value": value}` (what each rule sets), `path`
 a list of names one after the other (spaces a document went through), `reason` another reason
 (`Reason.to_json`), `list` a list of names, quoted and joined by commas, `nodes` a list of
-nodes of the pipeline (`ocr`, ...)."""
+nodes of the pipeline (`ocr`, ...), `thing` what something is, as an English noun (`document
+type`, `title`), `action` one of `Action` (what only some may do)."""
 
 
 class _Formatter(string.Formatter):
@@ -623,6 +746,11 @@ class _Formatter(string.Formatter):
                 return ", ".join(f"'{item}'" for item in _items(value))
             case "nodes":
                 return ", ".join(str(item) for item in _items(value))
+            case "action":
+                try:
+                    return ACTIONS[Action(str(value))]
+                except ValueError:
+                    return str(value)
             case "reason":
                 try:
                     return Reason.from_json(value).text  # type: ignore[arg-type]

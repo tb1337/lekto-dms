@@ -62,6 +62,7 @@ from lekto.core.domain.jobs import Job, RetryPolicy
 from lekto.core.domain.json_value import JsonObject
 from lekto.core.domain.periods import MONTH_NAMES, Period, PeriodKind
 from lekto.core.domain.pipeline import SIGNALS
+from lekto.core.domain.reasons import Action
 from lekto.core.domain.search import LAYOUT, EmbeddingStamp, IndexDocument, IndexState
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.embeddings import Embeddings
@@ -234,7 +235,7 @@ class IndexingService:
     async def request_rebuild(self, actor: UserId) -> None:
         """Admins only: queue a rebuild of the index, unless one is queued or running."""
         async with self._uow() as uow:
-            await require_admin(uow, actor, "rebuild the search index")
+            await require_admin(uow, actor, Action.REBUILD_INDEX)
             await uow.jobs.enqueue(REBUILD_JOB, {}, run_at=self._clock.now(), dedup_key=REBUILD_JOB)
             await uow.commit()
 

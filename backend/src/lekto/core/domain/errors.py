@@ -39,8 +39,8 @@ class DomainError(Exception):
 class NotFoundError(DomainError):
     """The entity does not exist, or the caller may not know that it exists."""
 
-    def __init__(self, kind: str, id: UUID | str) -> None:
-        super().__init__(f"{kind} {id} not found")
+    def __init__(self, kind: str, id: UUID | str, reason: "Reason | None" = None) -> None:
+        super().__init__(reason or _because("NOT_FOUND", kind=kind, id=str(id)))
         self.kind = kind
         self.id = id
 

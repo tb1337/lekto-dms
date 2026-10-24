@@ -18,6 +18,7 @@ from lekto.core.domain.ids import (
     new_id,
 )
 from lekto.core.domain.master_data import DocumentType
+from lekto.core.domain.reasons import ReasonCode, because, written
 from lekto.core.domain.rules import (
     AddTags,
     ApplicationStatus,
@@ -357,13 +358,18 @@ class RuleRepositoriesContract:
         await store(uow_factory, rule)
         async with uow_factory() as uow:
             loaded = await uow.rules.get(rule.id)
-            loaded.disable(LATER, reason="contact 'ACME' was deleted")
+            loaded.disable(
+                LATER, reason=because(ReasonCode.RULE_DISABLED_DELETED, kind="contact", name="ACME")
+            )
             await uow.rules.update(loaded)
             await uow.commit()
         async with uow_factory() as uow:
             disabled = await uow.rules.get(rule.id)
             assert await uow.rules.versions(rule.id) == [rule.current]
-        assert (disabled.enabled, disabled.disabled_reason) == (False, "contact 'ACME' was deleted")
+        assert disabled.enabled is False
+        assert disabled.disabled_reason == because(
+            ReasonCode.RULE_DISABLED_DELETED, kind="contact", name="ACME"
+        )
         assert (disabled.current, disabled.version, disabled.updated_at) == (
             rule.current,
             2,
@@ -531,7 +537,7 @@ class RuleRepositoriesContract:
         await store(uow_factory, rule)
         async with uow_factory() as uow:
             loaded = await uow.rules.get(rule.id)
-            loaded.disable(LATER, reason="changed")
+            loaded.disable(LATER, reason=written("changed"))
             loaded.change(simple("changed"), by=owner.id, now=LATER)
             (listed,) = await uow.rules.list_for(spaces=[owned.id], include_global=False)
             listed.enabled = False
@@ -628,7 +634,7 @@ class RuleRepositoriesContract:
             running = await uow.rule_applications.get(item.id)
             running.record_applied()
             running.record_unchanged()
-            running.record_skipped(third, "the document was deleted")
+            running.record_skipped(third, because(ReasonCode.SKIP_NOT_AVAILABLE))
             await uow.rule_applications.update(running)
             assert running.version == 2
             await uow.commit()
@@ -641,7 +647,7 @@ class RuleRepositoriesContract:
             1,
             1,
         )
-        assert stored.skipped == [(third, "the document was deleted")]
+        assert stored.skipped == [(third, because(ReasonCode.SKIP_NOT_AVAILABLE))]
         assert stored.remaining == tuple(rest)
         assert stored.finished_at is None and stored.error is None
 
@@ -711,8 +717,8 @@ class RuleRepositoriesContract:
         await store(uow_factory, rule, applications=(item,))
         async with uow_factory() as uow:
             loaded = await uow.rule_applications.get(item.id)
-            loaded.record_skipped(item.documents[0], "skipped for a reason")
-            loaded.skipped.append((item.documents[1], "changed"))
+            loaded.record_skipped(item.documents[0], written("skipped for a reason"))
+            loaded.skipped.append((item.documents[1], written("changed")))
             assert await uow.rule_applications.get(item.id) == item
             await uow.commit()
         async with uow_factory() as uow:

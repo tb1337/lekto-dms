@@ -19,6 +19,7 @@ from lekto.core.domain.ids import (
 )
 from lekto.core.domain.json_value import JsonObject, JsonValue
 from lekto.core.domain.master_data import TagScope
+from lekto.core.domain.reasons import written
 from lekto.core.domain.rules import (
     MAX_ACTIONS,
     MAX_CONDITIONS,
@@ -666,8 +667,12 @@ def test_enable_and_disable_make_no_version() -> None:
     rule = space_rule()
     later = NOW + timedelta(minutes=5)
 
-    rule.disable(later, "contact deleted")
-    assert (rule.enabled, rule.disabled_reason, rule.is_active) == (False, "contact deleted", False)
+    rule.disable(later, written("contact deleted"))
+    assert (rule.enabled, rule.disabled_reason, rule.is_active) == (
+        False,
+        written("contact deleted"),
+        False,
+    )
     assert rule.updated_at == later
 
     rule.enable(later)
@@ -774,10 +779,10 @@ def test_application_progress() -> None:
 
     run.record_applied()
     run.record_unchanged()
-    run.record_skipped(c, "the space is read-only")
+    run.record_skipped(c, written("the space is read-only"))
 
     assert (run.position, run.applied, run.unchanged) == (3, 1, 1)
-    assert run.skipped == [(c, "the space is read-only")]
+    assert run.skipped == [(c, written("the space is read-only"))]
     assert (run.status, run.remaining) == (ApplicationStatus.RUNNING, (d,))
 
     run.record_applied()

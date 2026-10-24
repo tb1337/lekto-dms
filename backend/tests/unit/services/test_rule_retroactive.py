@@ -6,6 +6,7 @@ from lekto.core.domain.documents import DocumentChanges
 from lekto.core.domain.errors import NotFoundError, ValidationError
 from lekto.core.domain.ids import DocumentId, new_id
 from lekto.core.domain.pipeline import RULES_APPLY, Lane
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.rules import ApplicationStatus, ForceReview, SetSpace, SetTitle
 from lekto.core.domain.spaces import SpaceRole
 from lekto.core.services.rules.retroactive import BATCH
@@ -23,6 +24,8 @@ from tests.unit.services.rules_support import (
     text_matches,
 )
 from tests.unit.services.support import World
+
+NOT_AVAILABLE = because(ReasonCode.SKIP_NOT_AVAILABLE)
 
 
 async def run_jobs(r: RuleWorld) -> int:
@@ -128,7 +131,7 @@ async def test_the_job_checks_the_rights_again_and_a_global_rule_moves_nothing(
 
     done = await r.applications.get(editor.id, application.id)
     assert (done.status, done.applied) == (ApplicationStatus.DONE, 1)
-    assert done.skipped == [(in_shared.id, "not available"), (private.id, "not available")]
+    assert done.skipped == [(in_shared.id, NOT_AVAILABLE), (private.id, NOT_AVAILABLE)]
     assert (await r.stored(in_shared)).tag_ids == set()
     assert (await r.stored(private)).tag_ids == set()
     changed = await r.stored(own)
@@ -157,7 +160,7 @@ async def test_a_user_rule_is_applied_by_its_owner_to_their_own_documents(world:
     await run_jobs(r)
 
     done = await r.applications.get(owner.id, application.id)
-    assert (done.applied, done.skipped) == (1, [(theirs.id, "not available")])
+    assert (done.applied, done.skipped) == (1, [(theirs.id, NOT_AVAILABLE)])
     assert (await r.stored(theirs)).tag_ids == set()
 
     # Nobody else applies it or reads the application, but admins do (Tobi, 08.10.2026):
@@ -175,7 +178,7 @@ async def test_a_user_rule_is_applied_by_its_owner_to_their_own_documents(world:
     )
     await run_jobs(r)
     done = await r.applications.get(r.admin.id, by_admin.id)
-    assert (done.applied, done.unchanged, done.skipped) == (0, 1, [(theirs.id, "not available")])
+    assert (done.applied, done.unchanged, done.skipped) == (0, 1, [(theirs.id, NOT_AVAILABLE)])
 
     with pytest.raises(NotFoundError):
         await r.applications.start(owner.id, rule.id, version=2, documents=[mine.id])

@@ -20,6 +20,13 @@ from lekto.core.domain.ids import (
     UserId,
 )
 from lekto.core.domain.json_value import JsonValue
+from lekto.core.domain.reasons import (
+    Reason,
+    ReasonCode,
+    because,
+    reasons_from_json,
+    reasons_to_json,
+)
 from lekto.core.domain.rules import (
     ApplicationStatus,
     Rule,
@@ -82,7 +89,11 @@ class SqlRuleRepository(SqlRepository[RuleId, Rule]):
             )
         ).first()
         if row is None:
-            raise NotFoundError(f"version {number} of rule", id)
+            raise NotFoundError(
+                "rule version",
+                id,
+                because(ReasonCode.RULE_VERSION_NOT_FOUND, number=number, id=str(id)),
+            )
         return _version(row)
 
     async def remove_for_space(self, space: SpaceId) -> int:
@@ -128,7 +139,9 @@ class SqlRuleRepository(SqlRepository[RuleId, Rule]):
                 space_id=None if row.space_id is None else SpaceId(row.space_id),
                 current=current[(row.id, row.current_version)],
                 enabled=row.enabled,
-                disabled_reason=row.disabled_reason,
+                disabled_reason=next(
+                    iter(reasons_from_json(row.disabled_reasons, row.disabled_reason)), None
+                ),
                 deleted_at=row.deleted_at,
                 created_at=row.created_at,
                 updated_at=row.updated_at,
@@ -139,13 +152,15 @@ class SqlRuleRepository(SqlRepository[RuleId, Rule]):
         ]
 
     def _values(self, entity: Rule) -> Values:
+        reason = entity.disabled_reason
         return {
             "id": entity.id,
             "scope": entity.scope.value,
             "space_id": entity.space_id,
             "current_version": entity.current.number,
             "enabled": entity.enabled,
-            "disabled_reason": entity.disabled_reason,
+            "disabled_reason": None if reason is None else reason.text,
+            "disabled_reasons": None if reason is None else reasons_to_json([reason]),
             "deleted_at": entity.deleted_at,
             "created_at": entity.created_at,
             "updated_at": entity.updated_at,
@@ -216,7 +231,7 @@ class SqlRuleApplicationRepository(SqlRepository[RuleApplicationId, RuleApplicat
             position=row.position,
             applied=row.applied,
             unchanged=row.unchanged,
-            skipped=[(DocumentId(UUID(item[0])), str(item[1])) for item in row.skipped],
+            skipped=[_skipped(item) for item in row.skipped],
             error=row.error,
             created_at=row.created_at,
             finished_at=row.finished_at,
@@ -224,7 +239,10 @@ class SqlRuleApplicationRepository(SqlRepository[RuleApplicationId, RuleApplicat
         )
 
     def _values(self, entity: RuleApplication) -> Values:
-        skipped: list[JsonValue] = [[str(id), reason] for id, reason in entity.skipped]
+        # An entry from before codes has the document and the text only.
+        skipped: list[JsonValue] = [
+            [str(id), reason.text, reason.to_json()] for id, reason in entity.skipped
+        ]
         return {
             "id": entity.id,
             "rule_id": entity.rule_id,
@@ -242,3 +260,10 @@ class SqlRuleApplicationRepository(SqlRepository[RuleApplicationId, RuleApplicat
             "finished_at": entity.finished_at,
             "version": entity.version,
         }
+
+
+def _skipped(item: list[Any]) -> tuple[DocumentId, Reason]:
+    """A skipped document of a rule application as stored: id, text and the reason with its
+    code (an entry from before codes has the text alone)."""
+    reasons = reasons_from_json(item[2:], str(item[1]))
+    return DocumentId(UUID(item[0])), reasons[0]

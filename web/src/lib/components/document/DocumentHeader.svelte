@@ -27,7 +27,7 @@
 	import { Checkbox } from '#lib/components/ui/checkbox/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Label } from '#lib/components/ui/label/index.ts';
-	import { inboxDocument, tabHref, type Neighbours } from '#lib/document-view.ts';
+	import { documentApi, inboxDocument, tabHref, type Neighbours } from '#lib/document-view.ts';
 	import { reportError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import {
@@ -87,7 +87,7 @@
 	let fromNode = $state<ReprocessNode>('ocr');
 	let busy = $state(false);
 
-	const base = $derived(`/api/v1/documents/${document.id}`);
+	const base = $derived(documentApi(document.id));
 	const user = $derived(session.user);
 	// Editors of the document's space (and admins) change, move and delete it.
 	const manageable = $derived(canEdit(document, user));

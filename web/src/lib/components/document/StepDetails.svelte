@@ -25,6 +25,7 @@
 	import Info from '@lucide/svelte/icons/info';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
+	import { pageImageHref } from '#lib/document-view.ts';
 	import { fileKind, fileSize } from '#lib/file-passport.ts';
 	import { formatNumber } from '#lib/i18n.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
@@ -206,7 +207,7 @@
 								aria-label={m.details_page_open({ page: String(number) })}
 							>
 								<img
-									src="/api/v1/documents/{context.documentId}/pages/{number}"
+									src={pageImageHref(context.documentId, number)}
 									alt=""
 									loading="lazy"
 									decoding="async"

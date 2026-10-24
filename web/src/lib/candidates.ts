@@ -115,5 +115,5 @@ export function disputed(candidate: Candidate): boolean {
 }
 
 export function documentHref(id: string): string {
-	return `${BASE}/documents/${id}`;
+	return `${BASE}/documents/${encodeURIComponent(id)}`;
 }

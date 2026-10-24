@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { pageImageHref } from '#lib/document-view.ts';
 	import type { CodeFacts } from '#lib/facts.ts';
 
 	// A code as it stands on its (first) page: a square cut from the page image around its
@@ -32,7 +33,7 @@
 	aria-hidden="true"
 >
 	<img
-		src="/api/v1/documents/{documentId}/pages/{place.page}"
+		src={pageImageHref(documentId, place.page)}
 		alt=""
 		class="absolute max-w-none"
 		style={crop}

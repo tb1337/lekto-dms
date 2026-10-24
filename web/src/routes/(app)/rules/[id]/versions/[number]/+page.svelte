@@ -1,11 +1,11 @@
 <script lang="ts">
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
+	import BackLink from '#lib/components/BackLink.svelte';
 	import RuleView from '#lib/components/rules/RuleView.svelte';
 	import { formatDate } from '#lib/i18n.ts';
 	import { userName } from '#lib/masterdata.svelte.ts';
@@ -44,13 +44,7 @@
 </svelte:head>
 
 <div class="flex flex-col gap-6">
-	<a
-		href="{BASE}/rules/{id}"
-		class="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-	>
-		<ArrowLeft class="size-4" aria-hidden="true" />
-		{m.rule_versions()}
-	</a>
+	<BackLink href="{BASE}/rules/{id}" label={m.rule_versions()} />
 
 	{#if problem}
 		<p class="text-destructive" role="alert">{problem}</p>

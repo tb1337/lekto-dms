@@ -14,6 +14,8 @@
 	import { ApiError } from '#lib/api/problem.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
+	import EmptyNote from '#lib/components/EmptyNote.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import ActiveFilters from '#lib/components/ActiveFilters.svelte';
 	import DocumentCard from '#lib/components/DocumentCard.svelte';
 	import DocumentRow from '#lib/components/DocumentRow.svelte';
@@ -669,33 +671,27 @@ row of filters, on a desktop narrow by the title. -->
 			{/if}
 
 			{#if list.error}
-				<div class="flex flex-col items-start gap-3" role="alert">
-					<p class="text-destructive">{describeError(list.error)}</p>
-					<div class="flex flex-wrap gap-2">
-						<Button variant="outline" onclick={() => list.reload()}>{m.retry()}</Button>
-						{#if indexDown}
-							<Button
-								variant="outline"
-								onclick={() => {
-									text = '';
-									search('');
-								}}
-							>
-								{m.search_without_words()}
-							</Button>
-						{/if}
-					</div>
-				</div>
+				<LoadProblem problem={describeError(list.error)} onretry={() => list.reload()}>
+					{#if indexDown}
+						<Button
+							variant="outline"
+							onclick={() => {
+								text = '';
+								search('');
+							}}
+						>
+							{m.search_without_words()}
+						</Button>
+					{/if}
+				</LoadProblem>
 			{:else if list.empty}
-				<p
-					class="rounded-2xl border border-dashed bg-card px-6 py-16 text-center text-muted-foreground"
-				>
+				<EmptyNote>
 					{isFiltered(filters)
 						? m.documents_none_filtered()
 						: searching
 							? m.search_none()
 							: m.documents_none()}
-				</p>
+				</EmptyNote>
 			{:else}
 				<div class="flex flex-col gap-6" aria-busy={list.loading}>
 					{#each groups as group (group.key)}

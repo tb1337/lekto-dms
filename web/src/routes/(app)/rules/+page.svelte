@@ -7,6 +7,8 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
+	import EmptyNote from '#lib/components/EmptyNote.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import EditButton from '#lib/components/EditButton.svelte';
 	import TitlePatternBadge from '#lib/components/rules/TitlePatternBadge.svelte';
@@ -102,18 +104,11 @@
 	</div>
 
 	{#if problem}
-		<div class="flex flex-col items-start gap-3" role="alert">
-			<p class="text-destructive">{problem}</p>
-			<Button variant="outline" onclick={load}>{m.retry()}</Button>
-		</div>
+		<LoadProblem {problem} onretry={load} />
 	{:else if !rules}
 		<p class="text-muted-foreground">{m.loading()}</p>
 	{:else if rules.length === 0}
-		<p
-			class="rounded-2xl border border-dashed bg-card px-6 py-16 text-center text-muted-foreground"
-		>
-			{m.rules_none()}
-		</p>
+		<EmptyNote>{m.rules_none()}</EmptyNote>
 	{:else}
 		<ul class="flex flex-col gap-2">
 			{#each rules as rule (rule.id)}

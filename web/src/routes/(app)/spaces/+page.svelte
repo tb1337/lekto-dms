@@ -9,6 +9,7 @@
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import EditButton from '#lib/components/EditButton.svelte';
 	import SpaceMembers from '#lib/components/SpaceMembers.svelte';
@@ -130,10 +131,7 @@
 	</div>
 
 	{#if problem}
-		<div class="flex flex-col items-start gap-3" role="alert">
-			<p class="text-destructive">{problem}</p>
-			<Button variant="outline" onclick={load}>{m.retry()}</Button>
-		</div>
+		<LoadProblem {problem} onretry={load} />
 	{:else if !spaces}
 		<p class="text-muted-foreground">{m.loading()}</p>
 	{:else}

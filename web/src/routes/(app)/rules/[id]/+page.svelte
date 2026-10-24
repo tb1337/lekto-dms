@@ -1,5 +1,4 @@
 <script lang="ts">
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Play from '@lucide/svelte/icons/play';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -11,6 +10,7 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
+	import BackLink from '#lib/components/BackLink.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import RuleView from '#lib/components/rules/RuleView.svelte';
 	import TitlePatternBadge from '#lib/components/rules/TitlePatternBadge.svelte';
@@ -105,13 +105,7 @@
 <svelte:head><title>{rule?.name ?? m.nav_rules()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-6">
-	<a
-		href="{BASE}/rules"
-		class="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-	>
-		<ArrowLeft class="size-4" aria-hidden="true" />
-		{m.nav_rules()}
-	</a>
+	<BackLink href="{BASE}/rules" label={m.nav_rules()} />
 
 	{#if problem}
 		<p class="text-destructive" role="alert">{problem}</p>

@@ -12,6 +12,7 @@
 	import { ApiError } from '#lib/api/problem.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import DocumentFacts from '#lib/components/document/DocumentFacts.svelte';
 	import DocumentFiles from '#lib/components/document/DocumentFiles.svelte';
 	import DocumentForm from '#lib/components/document/DocumentForm.svelte';
@@ -417,10 +418,10 @@
 <!-- From the desktop width on the view fills the window; only its cards scroll. -->
 <div class="flex flex-col gap-4 lg:h-full lg:min-h-0" data-wide>
 	{#if problem}
-		<div class="flex flex-col items-start gap-3" role="alert">
-			<p class="text-destructive">{notFound ? m.document_not_found() : describeError(problem)}</p>
-			{#if !notFound}<Button variant="outline" onclick={load}>{m.retry()}</Button>{/if}
-		</div>
+		<LoadProblem
+			problem={notFound ? m.document_not_found() : describeError(problem)}
+			onretry={notFound ? undefined : load}
+		/>
 	{:else if !document}
 		<p class="text-muted-foreground">{m.loading()}</p>
 	{:else}

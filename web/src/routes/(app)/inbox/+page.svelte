@@ -7,6 +7,8 @@
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import { ApiError } from '#lib/api/problem.ts';
+	import EmptyNote from '#lib/components/EmptyNote.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import InboxRow from '#lib/components/InboxRow.svelte';
 	import TabBar from '#lib/components/TabBar.svelte';
@@ -204,18 +206,9 @@
 	</div>
 
 	{#if list.error}
-		<div class="flex flex-col items-start gap-3" role="alert">
-			<p class="text-destructive">{describeError(list.error)}</p>
-			<Button variant="outline" class="h-11 sm:h-9" onclick={() => list.reload()}>
-				{m.retry()}
-			</Button>
-		</div>
+		<LoadProblem problem={describeError(list.error)} onretry={() => list.reload()} />
 	{:else if list.empty}
-		<p
-			class="rounded-2xl border border-dashed bg-card px-6 py-16 text-center text-muted-foreground"
-		>
-			{EMPTY[tab ?? 'all']()}
-		</p>
+		<EmptyNote>{EMPTY[tab ?? 'all']()}</EmptyNote>
 	{:else}
 		<ul class="flex flex-col gap-2" aria-busy={list.loading}>
 			{#each list.items as item (item.document.id)}

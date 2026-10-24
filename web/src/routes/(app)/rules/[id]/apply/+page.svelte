@@ -1,5 +1,4 @@
 <script lang="ts">
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import { onDestroy, untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
@@ -10,6 +9,9 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
+	import BackLink from '#lib/components/BackLink.svelte';
+	import EmptyNote from '#lib/components/EmptyNote.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import RuleEffects from '#lib/components/rules/RuleEffects.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -193,13 +195,7 @@
 >
 
 <div class="flex flex-col gap-6">
-	<a
-		href="{BASE}/rules/{id}"
-		class="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-	>
-		<ArrowLeft class="size-4" aria-hidden="true" />
-		{rule?.name ?? m.nav_rules()}
-	</a>
+	<BackLink href="{BASE}/rules/{id}" label={rule?.name ?? m.nav_rules()} />
 	<h1 class="text-[1.75rem] font-semibold tracking-tight break-words">
 		{m.rule_apply_title({ name: rule?.name ?? '' })}
 	</h1>
@@ -332,18 +328,11 @@
 				{/each}
 			</ul>
 		{:else if complete}
-			<p
-				class="rounded-2xl border border-dashed bg-card px-6 py-16 text-center text-muted-foreground"
-			>
-				{m.rule_preview_nothing()}
-			</p>
+			<EmptyNote>{m.rule_preview_nothing()}</EmptyNote>
 		{/if}
 
 		{#if previewError}
-			<div class="flex flex-col items-start gap-3" role="alert">
-				<p class="text-destructive">{previewError}</p>
-				<Button variant="outline" onclick={() => void more()}>{m.retry()}</Button>
-			</div>
+			<LoadProblem problem={previewError} onretry={() => void more()} />
 		{:else if loading && items.length === 0}
 			<p class="text-muted-foreground">{m.loading()}</p>
 		{/if}

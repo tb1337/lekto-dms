@@ -19,6 +19,7 @@ from datetime import datetime
 from enum import StrEnum
 
 from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.validation import require_utc
 
 MAX_ICON = 64
@@ -55,10 +56,7 @@ def checked_icon(icon: str | None) -> str | None:
         return None
     icon = icon.strip()
     if len(icon) > MAX_ICON or not _ICON.fullmatch(icon):
-        raise ValidationError(
-            f"'{icon}' is no icon name (lower-case letters, digits and hyphens, at most "
-            f"{MAX_ICON} characters)"
-        )
+        raise ValidationError(because(ReasonCode.ICON_INVALID, icon=icon, max=MAX_ICON))
     return icon
 
 
@@ -70,7 +68,7 @@ def checked_color(color: str | None) -> str | None:
     value = color.strip().lower()
     if value in _PALETTE or _HEX.fullmatch(value):
         return value
-    raise ValidationError(f"'{color}' is no colour: one of {', '.join(_PALETTE)} or #rrggbb")
+    raise ValidationError(because(ReasonCode.COLOUR_INVALID, colour=color))
 
 
 class LogoSource(StrEnum):

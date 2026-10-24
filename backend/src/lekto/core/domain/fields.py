@@ -16,6 +16,7 @@ from lekto.core.domain.ids import DocumentTypeId, FieldId, new_id
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.master_data import Assignment, MasterData, checked_description
 from lekto.core.domain.periods import Period
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.sorting import strip_accents
 from lekto.core.domain.validation import require_name
 
@@ -55,14 +56,14 @@ class Url:
 
     def __post_init__(self) -> None:
         if not isinstance(self.value, str) or any(char.isspace() for char in self.value):
-            raise ValidationError(f"invalid URL {self.value!r}")
+            raise ValidationError(because(ReasonCode.NOT_A_URL, value=self.value))
         try:
             parts = urlsplit(self.value)
             host = parts.hostname
         except ValueError:
-            raise ValidationError(f"invalid URL {self.value!r}") from None
+            raise ValidationError(because(ReasonCode.NOT_A_URL, value=self.value)) from None
         if parts.scheme not in {"http", "https"} or not host:
-            raise ValidationError(f"URL must be absolute http(s), got {self.value!r}")
+            raise ValidationError(because(ReasonCode.URL_NOT_HTTP, value=self.value))
 
 
 type FieldValue = str | Decimal | Money | date | bool | Url | Period
@@ -119,21 +120,21 @@ class FieldDefinition(MasterData):
         self.description = checked_description(self.description)
         if self.document_type_ids is None:
             if self.required_types:
-                raise ValidationError("a global field is required by `required`, not per type")
+                raise ValidationError(because(ReasonCode.FIELD_GLOBAL_REQUIRED))
         else:
             if self.required:
-                raise ValidationError("a typed field is required per type")
+                raise ValidationError(because(ReasonCode.FIELD_TYPED_REQUIRED))
             if not self.required_types <= self.document_type_ids:
-                raise ValidationError("a field can only be required for its own types")
+                raise ValidationError(because(ReasonCode.FIELD_REQUIRED_OWN_TYPES))
         if self.data_type is FieldType.CHOICE:
             choices = tuple(require_name(choice, "choice") for choice in self.choices)
             if not choices:
-                raise ValidationError("a choice field needs at least one choice")
+                raise ValidationError(because(ReasonCode.CHOICE_NEEDS_CHOICES))
             if len(set(choices)) != len(choices):
-                raise ValidationError("choices must be unique")
+                raise ValidationError(because(ReasonCode.CHOICES_NOT_UNIQUE))
             self.choices = choices
         elif self.choices:
-            raise ValidationError("only choice fields have choices")
+            raise ValidationError(because(ReasonCode.ONLY_CHOICE_FIELDS_CHOICES))
 
     @classmethod
     def create(
@@ -170,7 +171,7 @@ class FieldDefinition(MasterData):
         """New choices for a choice field; returns the choices that are gone. Values in
         use are the caller's to check."""
         if self.data_type is not FieldType.CHOICE:
-            raise ValidationError("only choice fields have choices")
+            raise ValidationError(because(ReasonCode.ONLY_CHOICE_FIELDS_CHOICES))
         old = set(self.choices)
         changed = replace(self, choices=tuple(choices))
         self.choices = changed.choices
@@ -181,7 +182,7 @@ class FieldDefinition(MasterData):
         (then values of documents outside it are the caller's to check)."""
         new = None if document_type_ids is None else frozenset(document_type_ids)
         if new is not None and not new:
-            raise ValidationError("give at least one document type, or null for global")
+            raise ValidationError(because(ReasonCode.FIELD_NEEDS_TYPE))
         old, self.document_type_ids = self.document_type_ids, new
         if new is None:
             self.required_types = frozenset()
@@ -196,14 +197,14 @@ class FieldDefinition(MasterData):
         for (of its own); None leaves a part as it is."""
         if required is not None:
             if required and self.document_type_ids is not None:
-                raise ValidationError("a typed field is required per type")
+                raise ValidationError(because(ReasonCode.FIELD_TYPED_REQUIRED))
             self.required = required
         if types is not None:
             types = frozenset(types)
             if types and self.document_type_ids is None:
-                raise ValidationError("a global field is required by `required`, not per type")
+                raise ValidationError(because(ReasonCode.FIELD_GLOBAL_REQUIRED))
             if not types <= (self.document_type_ids or frozenset()):
-                raise ValidationError("a field can only be required for its own types")
+                raise ValidationError(because(ReasonCode.FIELD_REQUIRED_OWN_TYPES))
             self.required_types = types
 
     def is_required_for(self, document_type_id: DocumentTypeId | None) -> bool:

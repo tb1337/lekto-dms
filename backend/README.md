@@ -1203,9 +1203,11 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
   may do (`admins_only`, `editors_only`, `admins_cannot` with an `action`); a rule disabled
   automatically keeps why with its code (`RuleOut.disabled_reasons`, `rules.disabled_reasons`
   since revision 0039), a rule application each skipped document's reason
-  (`SkippedOut.reasons`). Still as text: the domain's own value checks the UI makes before it
-  sends, the messages of the template engine, and the upload's size and type (the UI words them
-  itself).
+  (`SkippedOut.reasons`). The value checks a person meets in the UI have codes too
+  (identifiers with the `value` refused, profiles, contacts, tags, fields, spaces, passwords,
+  webhook URLs, icons and colours, lenses, rule patterns). Still as text: the checks only a
+  faulty client trips (choices, the rule structure, lens filters), the messages of the template
+  engine, and the upload's size and type (the UI words them itself).
   Filing into a space without edit rights (upload, move, confirm, a rule that sets the space)
   is `403` with `space_id`, the space that was refused.
 - Documents and spaces the caller may not see are `404` with the same answer as missing ones;

@@ -26,6 +26,7 @@ from enum import StrEnum
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.evidence import normalise
 from lekto.core.domain.ids import ContactId, TagId, UserId
+from lekto.core.domain.reasons import ReasonCode, because
 
 MAX_IDENTIFIERS = 100
 """Identifiers of one contact, entered and learned."""
@@ -146,52 +147,44 @@ def normalise_identifier(kind: IdentifierKind, raw: str) -> str:
         case IdentifierKind.IBAN:
             value = re.sub(r"\s+", "", text).upper()
             if not _IBAN.fullmatch(value) or not iban_valid(value):
-                raise ValidationError(f"'{raw}' is not a valid IBAN")
+                raise ValidationError(because(ReasonCode.NOT_IBAN, value=raw))
         case IdentifierKind.VAT_ID:
             value = _SEPARATORS.sub("", text).upper()
             if not _VAT_ID.fullmatch(value):
-                raise ValidationError(f"'{raw}' is not a VAT number")
+                raise ValidationError(because(ReasonCode.NOT_VAT_ID, value=raw))
         case IdentifierKind.CUSTOMER_NUMBER:
             value = _SEPARATORS.sub("", text).upper()
             if not _CUSTOMER_NUMBER.fullmatch(value):
-                raise ValidationError(
-                    f"'{raw}' is no customer number (4 to 30 letters and digits, one a digit)"
-                )
+                raise ValidationError(because(ReasonCode.NOT_CUSTOMER_NUMBER, value=raw))
         case IdentifierKind.PERSONNEL_NUMBER:
             # Written with or without leading zeros (`00012345`, `12345`): one number.
             written = _SEPARATORS.sub("", text).upper()
             value = written.lstrip("0")
             if not _PERSONNEL_NUMBER.fullmatch(written) or not value:
-                raise ValidationError(
-                    f"'{raw}' is no personnel number (3 to 30 letters and digits, one a digit)"
-                )
+                raise ValidationError(because(ReasonCode.NOT_PERSONNEL_NUMBER, value=raw))
         case IdentifierKind.EMAIL_DOMAIN:
             value = text.lower().removeprefix("mailto:").rpartition("@")[2]
             value = re.sub(r"^(?:https?://)?(?:www\.)?", "", value).split("/")[0].rstrip(".")
             if not _DOMAIN.fullmatch(value):
-                raise ValidationError(f"'{raw}' is not a domain")
+                raise ValidationError(because(ReasonCode.NOT_DOMAIN, value=raw))
             if value in FREE_MAIL:
-                raise ValidationError(f"'{value}' is a free mail provider, not one contact's")
+                raise ValidationError(because(ReasonCode.FREE_MAIL_DOMAIN, value=value))
         case IdentifierKind.TAX_ID:
             value = _SEPARATORS.sub("", text)
             if not tax_id_valid(value):
-                raise ValidationError(f"'{raw}' is not a valid tax ID (11 digits, check digit)")
+                raise ValidationError(because(ReasonCode.NOT_TAX_ID, value=raw))
         case IdentifierKind.SOCIAL_SECURITY_NUMBER:
             value = _SEPARATORS.sub("", text).upper()
             if not social_security_number_valid(value):
-                raise ValidationError(
-                    f"'{raw}' is not a valid social security number (12 characters, check digit)"
-                )
+                raise ValidationError(because(ReasonCode.NOT_SOCIAL_SECURITY_NUMBER, value=raw))
         case IdentifierKind.HEALTH_INSURANCE_NUMBER:
             value = _SEPARATORS.sub("", text).upper()
             if not health_insurance_number_valid(value):
-                raise ValidationError(
-                    f"'{raw}' is not a valid health insurance number (a letter, 9 digits)"
-                )
+                raise ValidationError(because(ReasonCode.NOT_HEALTH_INSURANCE_NUMBER, value=raw))
         case IdentifierKind.EMAIL_ADDRESS:
             value = text.lower().removeprefix("mailto:")
             if not _ADDRESS.fullmatch(value):
-                raise ValidationError(f"'{raw}' is not an e-mail address")
+                raise ValidationError(because(ReasonCode.NOT_EMAIL_ADDRESS, value=raw))
     return value
 
 

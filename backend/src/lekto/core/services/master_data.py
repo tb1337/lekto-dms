@@ -596,7 +596,7 @@ class MasterDataService:
                     raise NotFoundError("field", field)
                 if definitions[field].document_type_ids is None:
                     name = definitions[field].name
-                    raise ValidationError(f"'{name}' is global: it belongs to every type")
+                    raise ValidationError(because(ReasonCode.FIELD_IS_GLOBAL, field=name))
             pattern = document_type.title_pattern
             changed: list[FieldDefinition] = []
             for definition in definitions.values():
@@ -611,8 +611,7 @@ class MasterDataService:
                     new_scope, required = scope - {id}, required - {id}
                     if not new_scope:
                         raise ValidationError(
-                            f"'{definition.name}' belongs to no other type: give it one or "
-                            "delete it in its own dialog"
+                            because(ReasonCode.FIELD_ONLY_THIS_TYPE, field=definition.name)
                         )
                     if await uow.documents.field_in_use(definition.id, outside_types=new_scope):
                         raise ConflictError(
@@ -837,9 +836,11 @@ class MasterDataService:
         unknown = unknown_values(self._templates.check(document_type.title_pattern), keys)
         if unknown:
             raise ValidationError(
-                f"the title pattern uses {unknown[0]}, which a template of "
-                f"'{document_type.name}' does not know (fields: field.<key> of those that "
-                "apply to the type)"
+                because(
+                    ReasonCode.TITLE_PATTERN_UNKNOWN,
+                    value=unknown[0],
+                    type=document_type.name,
+                )
             )
 
     async def _keep_title_rule(

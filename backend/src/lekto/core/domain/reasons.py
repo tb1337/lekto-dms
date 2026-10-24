@@ -294,6 +294,73 @@ class ReasonCode(StrEnum):
     RULE_DISABLED_CHOICE = "rule_disabled_choice"
     SKIP_CHANGED_MEANWHILE = "skip_changed_meanwhile"
     SKIP_NOT_AVAILABLE = "skip_not_available"
+    # value checks a person meets in the UI
+    NOT_IBAN = "not_iban"
+    NOT_VAT_ID = "not_vat_id"
+    NOT_CUSTOMER_NUMBER = "not_customer_number"
+    NOT_PERSONNEL_NUMBER = "not_personnel_number"
+    NOT_DOMAIN = "not_domain"
+    FREE_MAIL_DOMAIN = "free_mail_domain"
+    NOT_TAX_ID = "not_tax_id"
+    NOT_SOCIAL_SECURITY_NUMBER = "not_social_security_number"
+    NOT_HEALTH_INSURANCE_NUMBER = "not_health_insurance_number"
+    NOT_EMAIL_ADDRESS = "not_email_address"
+    BIRTH_DATE_TOO_EARLY = "birth_date_too_early"
+    BIRTH_DATE_IN_FUTURE = "birth_date_in_future"
+    ALIAS_TWICE = "alias_twice"
+    PERSON_TOO_MANY_ALIASES = "person_too_many_aliases"
+    PERSON_TOO_MANY_IDENTIFIERS = "person_too_many_identifiers"
+    DISPLAY_NAME_IS_ALIAS = "display_name_is_alias"
+    TOO_MANY_GROUPS = "too_many_groups"
+    TOO_MANY_TOPICS = "too_many_topics"
+    IDENTIFIER_TOPIC_NOT_ENABLED = "identifier_topic_not_enabled"
+    ALIAS_IS_NAME = "alias_is_name"
+    CONTACT_TOO_MANY_ALIASES = "contact_too_many_aliases"
+    CONTACT_TOO_MANY_IDENTIFIERS = "contact_too_many_identifiers"
+    ONLY_NUMBERS_NAME_USERS = "only_numbers_name_users"
+    TITLE_PATTERN_TOO_LONG = "title_pattern_too_long"
+    DESCRIPTION_TOO_LONG = "description_too_long"
+    TITLE_PATTERN_UNKNOWN = "title_pattern_unknown"
+    TAG_OWN_PARENT = "tag_own_parent"
+    GROUPS_MANUAL = "groups_manual"
+    TAG_WRONG_SCOPE = "tag_wrong_scope"
+    TAG_PARENT_OTHER_SCOPE = "tag_parent_other_scope"
+    TAG_UNDER_OWN_CHILD = "tag_under_own_child"
+    TAG_TOO_DEEP = "tag_too_deep"
+    FIELD_GLOBAL_REQUIRED = "field_global_required"
+    FIELD_TYPED_REQUIRED = "field_typed_required"
+    FIELD_REQUIRED_OWN_TYPES = "field_required_own_types"
+    CHOICE_NEEDS_CHOICES = "choice_needs_choices"
+    CHOICES_NOT_UNIQUE = "choices_not_unique"
+    ONLY_CHOICE_FIELDS_CHOICES = "only_choice_fields_choices"
+    FIELD_NEEDS_TYPE = "field_needs_type"
+    FIELD_IS_GLOBAL = "field_is_global"
+    FIELD_ONLY_THIS_TYPE = "field_only_this_type"
+    FIELD_NOT_FOR_TYPE = "field_not_for_type"
+    NOT_A_URL = "not_a_url"
+    URL_NOT_HTTP = "url_not_http"
+    RECEIPT_IN_FUTURE = "receipt_in_future"
+    PERSONAL_SPACE_NAME = "personal_space_name"
+    PERSONAL_SPACE_EDITOR = "personal_space_editor"
+    SPACE_NEEDS_EDITOR = "space_needs_editor"
+    PASSWORD_TOO_SHORT = "password_too_short"
+    PASSWORD_TOO_LONG = "password_too_long"
+    PASSWORD_IS_USERNAME = "password_is_username"
+    EXPIRY_IN_PAST = "expiry_in_past"
+    URL_LENGTH = "url_length"
+    URL_SPACES = "url_spaces"
+    URL_INVALID = "url_invalid"
+    URL_SCHEME = "url_scheme"
+    URL_NO_HOST = "url_no_host"
+    URL_CREDENTIALS = "url_credentials"
+    URL_FRAGMENT = "url_fragment"
+    NO_EVENT_TYPES = "no_event_types"
+    ICON_INVALID = "icon_invalid"
+    COLOUR_INVALID = "colour_invalid"
+    CARD_FIELD_UNKNOWN = "card_field_unknown"
+    DUE_FIELD_NOT_DATE = "due_field_not_date"
+    SORT_FIELD_INVALID = "sort_field_invalid"
+    PATTERN_INVALID = "pattern_invalid"
 
 
 TEMPLATES: Mapping[ReasonCode, str] = {
@@ -631,6 +698,96 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.RULE_DISABLED_CHOICE: "field '{field}' no longer allows a value the rule uses",
     ReasonCode.SKIP_CHANGED_MEANWHILE: "changed meanwhile; not applied",
     ReasonCode.SKIP_NOT_AVAILABLE: "not available",
+    ReasonCode.NOT_IBAN: "'{value}' is not a valid IBAN",
+    ReasonCode.NOT_VAT_ID: "'{value}' is not a VAT number",
+    ReasonCode.NOT_CUSTOMER_NUMBER: (
+        "'{value}' is no customer number (4 to 30 letters and digits, one a digit)"
+    ),
+    ReasonCode.NOT_PERSONNEL_NUMBER: (
+        "'{value}' is no personnel number (3 to 30 letters and digits, one a digit)"
+    ),
+    ReasonCode.NOT_DOMAIN: "'{value}' is not a domain",
+    ReasonCode.FREE_MAIL_DOMAIN: "'{value}' is a free mail provider, not one contact's",
+    ReasonCode.NOT_TAX_ID: "'{value}' is not a valid tax ID (11 digits, check digit)",
+    ReasonCode.NOT_SOCIAL_SECURITY_NUMBER: (
+        "'{value}' is not a valid social security number (12 characters, check digit)"
+    ),
+    ReasonCode.NOT_HEALTH_INSURANCE_NUMBER: (
+        "'{value}' is not a valid health insurance number (a letter, 9 digits)"
+    ),
+    ReasonCode.NOT_EMAIL_ADDRESS: "'{value}' is not an e-mail address",
+    ReasonCode.BIRTH_DATE_TOO_EARLY: "a birth date before {date:date}",
+    ReasonCode.BIRTH_DATE_IN_FUTURE: "a birth date in the future",
+    ReasonCode.ALIAS_TWICE: "the alias '{alias}' is given twice",
+    ReasonCode.PERSON_TOO_MANY_ALIASES: "at most {max:number} aliases",
+    ReasonCode.PERSON_TOO_MANY_IDENTIFIERS: "at most {max:number} identifiers",
+    ReasonCode.DISPLAY_NAME_IS_ALIAS: "'{name}' is the display name and an alias",
+    ReasonCode.TOO_MANY_GROUPS: "at most {max:number} groups",
+    ReasonCode.TOO_MANY_TOPICS: "a contact enables at most {max:number} topics",
+    ReasonCode.IDENTIFIER_TOPIC_NOT_ENABLED: (
+        "the topic of the identifier '{value}' is none the contact enables"
+    ),
+    ReasonCode.ALIAS_IS_NAME: "the alias '{alias}' is the contact's name",
+    ReasonCode.CONTACT_TOO_MANY_ALIASES: "a contact has at most {max:number} aliases",
+    ReasonCode.CONTACT_TOO_MANY_IDENTIFIERS: "a contact has at most {max:number} identifiers",
+    ReasonCode.ONLY_NUMBERS_NAME_USERS: (
+        "only a customer or personnel number entered by hand names the user it belongs to"
+    ),
+    ReasonCode.TITLE_PATTERN_TOO_LONG: "a title pattern is at most {max:number} characters",
+    ReasonCode.DESCRIPTION_TOO_LONG: "description must not be longer than {max:number} characters",
+    ReasonCode.TITLE_PATTERN_UNKNOWN: (
+        "the title pattern uses {value}, which a template of '{type}' does not know (fields: "
+        "field.<key> of those that apply to the type)"
+    ),
+    ReasonCode.TAG_OWN_PARENT: "a tag cannot be its own parent",
+    ReasonCode.GROUPS_MANUAL: "groups are set by hand only (assignment 'manual')",
+    ReasonCode.TAG_WRONG_SCOPE: "'{tag}' is a {scope:thing}, not a {expected:thing}",
+    ReasonCode.TAG_PARENT_OTHER_SCOPE: (
+        "'{parent}' is a tag of another scope: a parent tag has the scope of its children"
+    ),
+    ReasonCode.TAG_UNDER_OWN_CHILD: "'{tag}' cannot go under '{parent}', which is below it",
+    ReasonCode.TAG_TOO_DEEP: "tags are nested at most {max:number} levels deep",
+    ReasonCode.FIELD_GLOBAL_REQUIRED: "a global field is required by `required`, not per type",
+    ReasonCode.FIELD_TYPED_REQUIRED: "a typed field is required per type",
+    ReasonCode.FIELD_REQUIRED_OWN_TYPES: "a field can only be required for its own types",
+    ReasonCode.CHOICE_NEEDS_CHOICES: "a choice field needs at least one choice",
+    ReasonCode.CHOICES_NOT_UNIQUE: "choices must be unique",
+    ReasonCode.ONLY_CHOICE_FIELDS_CHOICES: "only choice fields have choices",
+    ReasonCode.FIELD_NEEDS_TYPE: "give at least one document type, or null for global",
+    ReasonCode.FIELD_IS_GLOBAL: "'{field}' is global: it belongs to every type",
+    ReasonCode.FIELD_ONLY_THIS_TYPE: (
+        "'{field}' belongs to no other type: give it one or delete it in its own dialog"
+    ),
+    ReasonCode.FIELD_NOT_FOR_TYPE: "field '{field}' does not apply to this document type",
+    ReasonCode.NOT_A_URL: "invalid URL '{value}'",
+    ReasonCode.URL_NOT_HTTP: "URL must be absolute http(s), got '{value}'",
+    ReasonCode.RECEIPT_IN_FUTURE: "created_at: not in the future",
+    ReasonCode.PERSONAL_SPACE_NAME: "a personal space keeps its name",
+    ReasonCode.PERSONAL_SPACE_EDITOR: "the user of a personal space always edits it",
+    ReasonCode.SPACE_NEEDS_EDITOR: "a space keeps at least one editor",
+    ReasonCode.PASSWORD_TOO_SHORT: "the password must have at least {min:number} characters",
+    ReasonCode.PASSWORD_TOO_LONG: "the password must have at most {max:number} characters",
+    ReasonCode.PASSWORD_IS_USERNAME: "the password must not be the username",
+    ReasonCode.EXPIRY_IN_PAST: "the expiry must be in the future",
+    ReasonCode.URL_LENGTH: "the URL must have 1 to {max:number} characters",
+    ReasonCode.URL_SPACES: "the URL must not contain spaces or control characters",
+    ReasonCode.URL_INVALID: "the URL is not valid",
+    ReasonCode.URL_SCHEME: "the URL must start with http:// or https://",
+    ReasonCode.URL_NO_HOST: "the URL needs a host",
+    ReasonCode.URL_CREDENTIALS: "the URL must not contain a user name or password",
+    ReasonCode.URL_FRAGMENT: "the URL must not have a fragment",
+    ReasonCode.NO_EVENT_TYPES: "choose at least one event type",
+    ReasonCode.ICON_INVALID: (
+        "'{icon}' is no icon name (lower-case letters, digits and hyphens, at most "
+        "{max:number} characters)"
+    ),
+    ReasonCode.COLOUR_INVALID: "'{colour}' is no colour: one of the palette or #rrggbb",
+    ReasonCode.CARD_FIELD_UNKNOWN: "card_field_ids: no field {id}",
+    ReasonCode.DUE_FIELD_NOT_DATE: "due_field_id: not a date field",
+    ReasonCode.SORT_FIELD_INVALID: (
+        "sort_field_id: not a field a list sorts by (date, period, number or amount)"
+    ),
+    ReasonCode.PATTERN_INVALID: "invalid pattern '{pattern}': {detail}",
 }
 
 

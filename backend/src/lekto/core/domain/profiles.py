@@ -28,6 +28,7 @@ from lekto.core.domain.identifiers import (
     normalise_identifier,
 )
 from lekto.core.domain.ids import UserId
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.users import MAX_DISPLAY_NAME, User
 from lekto.core.domain.validation import name_key, require_name
 
@@ -52,7 +53,9 @@ class Profile:
     def __post_init__(self) -> None:
         self.aliases = _aliases(self.aliases)
         if self.birth_date is not None and self.birth_date < EARLIEST_BIRTH:
-            raise ValidationError(f"a birth date before {EARLIEST_BIRTH.isoformat()}")
+            raise ValidationError(
+                because(ReasonCode.BIRTH_DATE_TOO_EARLY, date=EARLIEST_BIRTH.isoformat())
+            )
         if self.email is not None:
             self.email = normalise_identifier(IdentifierKind.EMAIL_ADDRESS, self.email)
         self.identifiers = _identifiers(self.identifiers)
@@ -113,11 +116,11 @@ def _aliases(aliases: Iterable[str]) -> list[str]:
     for alias in aliases:
         name = require_name(alias, "alias", max_length=MAX_DISPLAY_NAME)
         if name_key(name) in seen:
-            raise ValidationError(f"the alias '{name}' is given twice")
+            raise ValidationError(because(ReasonCode.ALIAS_TWICE, alias=name))
         seen.add(name_key(name))
         kept.append(name)
     if len(kept) > MAX_ALIASES:
-        raise ValidationError(f"at most {MAX_ALIASES} aliases")
+        raise ValidationError(because(ReasonCode.PERSON_TOO_MANY_ALIASES, max=MAX_ALIASES))
     return kept
 
 
@@ -128,5 +131,7 @@ def _identifiers(identifiers: Iterable[Identifier]) -> list[Identifier]:
             raise ValidationError(f"a person has no identifier of the kind '{item.kind.value}'")
         kept.setdefault(item.key, Identifier(item.kind, item.value))
     if len(kept) > MAX_PERSON_IDENTIFIERS:
-        raise ValidationError(f"at most {MAX_PERSON_IDENTIFIERS} identifiers")
+        raise ValidationError(
+            because(ReasonCode.PERSON_TOO_MANY_IDENTIFIERS, max=MAX_PERSON_IDENTIFIERS)
+        )
     return list(kept.values())

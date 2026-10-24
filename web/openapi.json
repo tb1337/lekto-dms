@@ -23680,7 +23680,73 @@
           "rule_disabled_personal_space",
           "rule_disabled_choice",
           "skip_changed_meanwhile",
-          "skip_not_available"
+          "skip_not_available",
+          "not_iban",
+          "not_vat_id",
+          "not_customer_number",
+          "not_personnel_number",
+          "not_domain",
+          "free_mail_domain",
+          "not_tax_id",
+          "not_social_security_number",
+          "not_health_insurance_number",
+          "not_email_address",
+          "birth_date_too_early",
+          "birth_date_in_future",
+          "alias_twice",
+          "person_too_many_aliases",
+          "person_too_many_identifiers",
+          "display_name_is_alias",
+          "too_many_groups",
+          "too_many_topics",
+          "identifier_topic_not_enabled",
+          "alias_is_name",
+          "contact_too_many_aliases",
+          "contact_too_many_identifiers",
+          "only_numbers_name_users",
+          "title_pattern_too_long",
+          "description_too_long",
+          "title_pattern_unknown",
+          "tag_own_parent",
+          "groups_manual",
+          "tag_wrong_scope",
+          "tag_parent_other_scope",
+          "tag_under_own_child",
+          "tag_too_deep",
+          "field_global_required",
+          "field_typed_required",
+          "field_required_own_types",
+          "choice_needs_choices",
+          "choices_not_unique",
+          "only_choice_fields_choices",
+          "field_needs_type",
+          "field_is_global",
+          "field_only_this_type",
+          "field_not_for_type",
+          "not_a_url",
+          "url_not_http",
+          "receipt_in_future",
+          "personal_space_name",
+          "personal_space_editor",
+          "space_needs_editor",
+          "password_too_short",
+          "password_too_long",
+          "password_is_username",
+          "expiry_in_past",
+          "url_length",
+          "url_spaces",
+          "url_invalid",
+          "url_scheme",
+          "url_no_host",
+          "url_credentials",
+          "url_fragment",
+          "no_event_types",
+          "icon_invalid",
+          "colour_invalid",
+          "card_field_unknown",
+          "due_field_not_date",
+          "sort_field_invalid",
+          "pattern_invalid"
         ],
         "title": "ReasonCode"
       },
@@ -27576,6 +27642,158 @@
       "field": "text"
     },
     "skip_changed_meanwhile": {},
-    "skip_not_available": {}
+    "skip_not_available": {},
+    "not_iban": {
+      "value": "text"
+    },
+    "not_vat_id": {
+      "value": "text"
+    },
+    "not_customer_number": {
+      "value": "text"
+    },
+    "not_personnel_number": {
+      "value": "text"
+    },
+    "not_domain": {
+      "value": "text"
+    },
+    "free_mail_domain": {
+      "value": "text"
+    },
+    "not_tax_id": {
+      "value": "text"
+    },
+    "not_social_security_number": {
+      "value": "text"
+    },
+    "not_health_insurance_number": {
+      "value": "text"
+    },
+    "not_email_address": {
+      "value": "text"
+    },
+    "birth_date_too_early": {
+      "date": "date"
+    },
+    "birth_date_in_future": {},
+    "alias_twice": {
+      "alias": "text"
+    },
+    "person_too_many_aliases": {
+      "max": "number"
+    },
+    "person_too_many_identifiers": {
+      "max": "number"
+    },
+    "display_name_is_alias": {
+      "name": "text"
+    },
+    "too_many_groups": {
+      "max": "number"
+    },
+    "too_many_topics": {
+      "max": "number"
+    },
+    "identifier_topic_not_enabled": {
+      "value": "text"
+    },
+    "alias_is_name": {
+      "alias": "text"
+    },
+    "contact_too_many_aliases": {
+      "max": "number"
+    },
+    "contact_too_many_identifiers": {
+      "max": "number"
+    },
+    "only_numbers_name_users": {},
+    "title_pattern_too_long": {
+      "max": "number"
+    },
+    "description_too_long": {
+      "max": "number"
+    },
+    "title_pattern_unknown": {
+      "value": "text",
+      "type": "text"
+    },
+    "tag_own_parent": {},
+    "groups_manual": {},
+    "tag_wrong_scope": {
+      "tag": "text",
+      "scope": "thing",
+      "expected": "thing"
+    },
+    "tag_parent_other_scope": {
+      "parent": "text"
+    },
+    "tag_under_own_child": {
+      "tag": "text",
+      "parent": "text"
+    },
+    "tag_too_deep": {
+      "max": "number"
+    },
+    "field_global_required": {},
+    "field_typed_required": {},
+    "field_required_own_types": {},
+    "choice_needs_choices": {},
+    "choices_not_unique": {},
+    "only_choice_fields_choices": {},
+    "field_needs_type": {},
+    "field_is_global": {
+      "field": "text"
+    },
+    "field_only_this_type": {
+      "field": "text"
+    },
+    "field_not_for_type": {
+      "field": "text"
+    },
+    "not_a_url": {
+      "value": "text"
+    },
+    "url_not_http": {
+      "value": "text"
+    },
+    "receipt_in_future": {},
+    "personal_space_name": {},
+    "personal_space_editor": {},
+    "space_needs_editor": {},
+    "password_too_short": {
+      "min": "number"
+    },
+    "password_too_long": {
+      "max": "number"
+    },
+    "password_is_username": {},
+    "expiry_in_past": {},
+    "url_length": {
+      "max": "number"
+    },
+    "url_spaces": {},
+    "url_invalid": {},
+    "url_scheme": {},
+    "url_no_host": {},
+    "url_credentials": {},
+    "url_fragment": {},
+    "no_event_types": {},
+    "icon_invalid": {
+      "icon": "text",
+      "max": "number"
+    },
+    "colour_invalid": {
+      "colour": "text"
+    },
+    "card_field_unknown": {
+      "id": "text"
+    },
+    "due_field_not_date": {},
+    "sort_field_invalid": {},
+    "pattern_invalid": {
+      "pattern": "text",
+      "detail": "text"
+    }
   }
 }

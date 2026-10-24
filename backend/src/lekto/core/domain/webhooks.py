@@ -27,6 +27,7 @@ from uuid import UUID
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.events import DOCUMENT_EVENT_TYPES
 from lekto.core.domain.ids import DeliveryId, DocumentId, EventId, UserId, WebhookId, new_id
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.validation import (
     MAX_URL_LENGTH,
     has_control_characters,
@@ -61,22 +62,22 @@ def validate_url(url: str) -> str:
     the own network are fine. ValidationError otherwise."""
     url = url.strip()
     if not url or len(url) > MAX_URL_LENGTH:
-        raise ValidationError(f"the URL must have 1 to {MAX_URL_LENGTH} characters")
+        raise ValidationError(because(ReasonCode.URL_LENGTH, max=MAX_URL_LENGTH))
     if has_control_characters(url):
-        raise ValidationError("the URL must not contain spaces or control characters")
+        raise ValidationError(because(ReasonCode.URL_SPACES))
     try:
         parts = urlsplit(url)
         parts.port  # noqa: B018  (raises ValueError for a bad port)
     except ValueError:
-        raise ValidationError("the URL is not valid") from None
+        raise ValidationError(because(ReasonCode.URL_INVALID)) from None
     if parts.scheme not in ("http", "https"):
-        raise ValidationError("the URL must start with http:// or https://")
+        raise ValidationError(because(ReasonCode.URL_SCHEME))
     if not parts.hostname:
-        raise ValidationError("the URL needs a host")
+        raise ValidationError(because(ReasonCode.URL_NO_HOST))
     if parts.username is not None or parts.password is not None:
-        raise ValidationError("the URL must not contain a user name or password")
+        raise ValidationError(because(ReasonCode.URL_CREDENTIALS))
     if parts.fragment:
-        raise ValidationError("the URL must not have a fragment")
+        raise ValidationError(because(ReasonCode.URL_FRAGMENT))
     return url
 
 
@@ -84,7 +85,7 @@ def validate_event_types(types: Collection[str]) -> frozenset[str]:
     """The known event types, or `*` (then only that). ValidationError for none or unknown."""
     chosen = frozenset(types)
     if not chosen:
-        raise ValidationError("choose at least one event type")
+        raise ValidationError(because(ReasonCode.NO_EVENT_TYPES))
     unknown = sorted(chosen - DOCUMENT_EVENT_TYPES.keys() - {ALL_EVENTS})
     if unknown:
         raise ValidationError(

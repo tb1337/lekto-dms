@@ -367,7 +367,7 @@ class AuthService:
                 raise ConflictError(because(ReasonCode.NO_TOTP_SETUP))
             step = self._totp.matching_step(self._decrypt(credential), code, now)
             if step is None:
-                raise ValidationError("the code is not valid")
+                raise ValidationError(because(ReasonCode.CODE_INVALID))
             totp.confirmed, totp.last_step = True, step
             codes = new_recovery_codes()
             credential.recovery_codes = {hash_token(normalize_recovery_code(c)) for c in codes}

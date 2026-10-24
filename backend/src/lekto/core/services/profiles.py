@@ -106,7 +106,7 @@ class ProfileService:
                 version=old.version,
             )
             if profile.birth_date is not None and profile.birth_date > self._clock.now().date():
-                raise ValidationError("a birth date in the future")
+                raise ValidationError(because(ReasonCode.BIRTH_DATE_IN_FUTURE))
             if display_name != user.display_name or not isinstance(changes.aliases, Unset):
                 await check_display_name(uow, id, display_name, profile.aliases)
             await check_person_identifiers(uow, profile.evidence())
@@ -152,7 +152,7 @@ async def check_display_name(
         return
     key = name_key(display_name)
     if key in {name_key(alias) for alias in aliases}:
-        raise ValidationError(f"'{display_name}' is the display name and an alias")
+        raise ValidationError(because(ReasonCode.DISPLAY_NAME_IS_ALIAS, name=display_name))
     for other in await uow.users.list_all():
         if other.id == user:
             continue

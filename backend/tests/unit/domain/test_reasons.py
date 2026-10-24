@@ -1,10 +1,14 @@
 """Reasons with codes (issue #83): every code has its English template, parameters must fit it,
 and what was stored without codes reads as written."""
 
+from collections.abc import Callable
+
 import pytest
 
 from lekto.core.domain.classification import FieldCheck
 from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.identifiers import IdentifierKind, normalise_identifier
+from lekto.core.domain.identity import PASSWORD_MIN_LENGTH, check_new_password
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.pipeline import Outcome
 from lekto.core.domain.reasons import (
@@ -18,6 +22,7 @@ from lekto.core.domain.reasons import (
     text_of,
     written,
 )
+from lekto.core.domain.webhooks import validate_url
 
 
 def test_every_code_has_a_template_and_the_catalog_lists_it() -> None:
@@ -104,3 +109,35 @@ def test_a_field_check_stores_its_reasons_beside_the_english_text() -> None:
     # A check stored before reasons had codes keeps its text.
     old = FieldCheck.from_json({**stored, "reasons": None, "reason": "'X' is similar"})
     assert old.reasons == (written("'X' is similar"),) and old.reason == "'X' is similar"
+
+
+@pytest.mark.parametrize(
+    ("check", "code", "params", "text"),
+    [
+        (
+            lambda: normalise_identifier(IdentifierKind.IBAN, "DE00 1234"),
+            ReasonCode.NOT_IBAN,
+            {"value": "DE00 1234"},
+            "'DE00 1234' is not a valid IBAN",
+        ),
+        (
+            lambda: check_new_password("short", "tobi"),
+            ReasonCode.PASSWORD_TOO_SHORT,
+            {"min": PASSWORD_MIN_LENGTH},
+            f"the password must have at least {PASSWORD_MIN_LENGTH} characters",
+        ),
+        (
+            lambda: validate_url("ftp://example.org/hook"),
+            ReasonCode.URL_SCHEME,
+            {},
+            "the URL must start with http:// or https://",
+        ),
+    ],
+)
+def test_a_value_check_a_person_meets_refuses_with_its_code(
+    check: Callable[[], object], code: ReasonCode, params: dict[str, JsonValue], text: str
+) -> None:
+    with pytest.raises(ValidationError) as caught:
+        check()
+    assert caught.value.reason == because(code, **params)
+    assert str(caught.value) == text

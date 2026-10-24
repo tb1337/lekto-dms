@@ -1,5 +1,6 @@
 /** Identifiers of contacts as the contact dialog edits them, and of persons as the profile
  * does. */
+import { ApiError } from '#lib/api/problem.ts';
 import type { components } from '#lib/api/schema.ts';
 import { m } from '#lib/paraglide/messages.js';
 
@@ -114,4 +115,24 @@ export function changesOf(
 			.filter((item) => item.source === 'rejected')
 			.map((item) => ({ kind: item.kind, value: item.value.trim() }))
 	};
+}
+
+/**
+ * The row a refused change failed on: the identifier the problem's reason names
+ * (`params.value`), or, for an error without a code, the row whose value its detail quotes.
+ * Values compare without spaces and case: an IBAN as typed, the API's as stored.
+ */
+export function refusedRow(
+	error: unknown,
+	rows: readonly IdentifierRow[]
+): IdentifierRow | undefined {
+	if (!(error instanceof ApiError)) return undefined;
+	const filled = rows.filter((item) => item.value.trim() !== '');
+	const value = error.problem?.reason?.params.value;
+	if (typeof value === 'string') {
+		const plain = (text: string) => text.replace(/\s+/g, '').toLowerCase();
+		return filled.find((item) => plain(item.value) === plain(value));
+	}
+	const detail = error.problem?.detail ?? '';
+	return filled.find((item) => detail.includes(`'${item.value.trim()}'`));
 }

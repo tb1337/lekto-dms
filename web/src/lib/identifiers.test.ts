@@ -2,7 +2,8 @@ import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import IdentifiersEditor from '#lib/components/IdentifiersEditor.svelte';
-import { changesOf, kindLabel, PERSON_KINDS, rowsOf } from '#lib/identifiers.ts';
+import { ApiError, type Problem } from '#lib/api/problem.ts';
+import { changesOf, kindLabel, PERSON_KINDS, refusedRow, rowsOf } from '#lib/identifiers.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 const stored = [
@@ -81,5 +82,44 @@ describe('the topic of an identifier', () => {
 			],
 			rejected_identifiers: [{ kind: 'iban', value: 'DE89370400440532013000' }]
 		});
+	});
+});
+
+describe('the identifier a change failed on', () => {
+	const rows = rowsOf([
+		{ kind: 'iban', value: 'DE89 3704 0044 0532 0130 00' },
+		{ kind: 'customer_number', value: '4711' }
+	]);
+	const problem = (detail: string, reason: Problem['reason'] = null): ApiError =>
+		new ApiError(
+			409,
+			{
+				type: 'about:blank',
+				title: 'Conflict',
+				status: 409,
+				detail,
+				existing_document_id: null,
+				space_id: null,
+				open_fields: null,
+				blocking_spaces: null,
+				second_factor_required: null,
+				reason,
+				errors: null
+			},
+			null
+		);
+
+	it('is the one its reason names, whatever the language of the text', () => {
+		const taken = problem("'DE89370400440532013000' is already an identifier of the contact 'X'", {
+			code: 'identifier_of_contact',
+			params: { value: 'DE89370400440532013000', contact: 'X' }
+		});
+		expect(refusedRow(taken, rows)?.value).toBe('DE89 3704 0044 0532 0130 00');
+	});
+
+	it('is the one the text quotes for an error without a code', () => {
+		expect(refusedRow(problem("'4711' is not allowed"), rows)?.value).toBe('4711');
+		expect(refusedRow(problem('something else'), rows)).toBeUndefined();
+		expect(refusedRow(new Error('x'), rows)).toBeUndefined();
 	});
 });

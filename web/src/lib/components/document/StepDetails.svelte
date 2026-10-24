@@ -58,6 +58,10 @@
 	const output = $derived(object(entry.output));
 	// The files, the page images and the text are the latest run's.
 	const latest = $derived(context.latest[entry.node] === entry.run);
+	// What the text effect depends on, as values: `context` is a fresh object on every change
+	// of the processing view, and the text is only asked for again when these change.
+	const node = $derived(entry.node);
+	const documentId = $derived(context.documentId);
 	// Bars of unsure words reach the top at a fifth of the page: well read pages stay low.
 	const unsureHeight = (value: number) => `${Math.max(4, Math.min(100, value * 500))}%`;
 	const pages = $derived(typeof output.pages === 'number' ? output.pages : 0);
@@ -69,8 +73,8 @@
 	const MAX_TEXT = 400_000;
 	let characters = $state<number[] | null>(null);
 	$effect(() => {
-		if (entry.node !== 'parse' || !latest) return;
-		const id = context.documentId;
+		if (node !== 'parse' || !latest) return;
+		const id = documentId;
 		let stale = false;
 		void (async () => {
 			try {

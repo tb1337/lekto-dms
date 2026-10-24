@@ -15,7 +15,6 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { Progress } from '#lib/components/ui/progress/index.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
-	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { reasonsText } from '#lib/reasons.ts';
 	import { canApplyRule, canChangeRule } from '#lib/permissions.ts';
@@ -28,6 +27,7 @@
 		type Application,
 		type PreviewItem
 	} from '#lib/rules/apply.ts';
+	import { RuleLoader } from '#lib/rules/page.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 
 	type Rule = components['schemas']['RuleOut'];
@@ -38,8 +38,9 @@
 	const saved = $derived(page.url.searchParams.get('saved') === '1');
 
 	let rule = $state<Rule | null>(null);
-	let lookup = $state<Lookup | null>(null);
-	let problem = $state<string | null>(null);
+	const loader = new RuleLoader();
+	const lookup = $derived(loader.lookup);
+	const problem = $derived(loader.problem);
 	let items = $state<PreviewItem[]>([]);
 	let version = $state<number | null>(null);
 	let cursor = $state<string | null>(null);
@@ -63,24 +64,20 @@
 
 	$effect(() => {
 		const wanted = id;
-		Promise.all([
-			unwrap(api.GET('/api/v1/rules/{id}', { params: { path: { id: wanted } } })),
-			untrack(() => lookup) ?? loadLookup()
-		]).then(
-			([found, loaded]) => {
-				if (wanted !== id) return;
-				// Only who may apply the rule gets its preview (the API refuses the others).
-				if (!canApplyRule(found, session.user, loaded.spaces)) {
-					[rule, lookup, problem] = [found, loaded, m.error_forbidden()];
-					return;
+		untrack(() =>
+			loader.load(
+				() => unwrap(api.GET('/api/v1/rules/{id}', { params: { path: { id: wanted } } })),
+				(found, loaded) => {
+					rule = found;
+					// Only who may apply the rule gets its preview (the API refuses the others).
+					if (!canApplyRule(found, session.user, loaded.spaces)) {
+						loader.problem = m.error_forbidden();
+						return;
+					}
+					restart();
+					void more();
 				}
-				[rule, lookup, problem] = [found, loaded, null];
-				restart();
-				void more();
-			},
-			(error) => {
-				if (wanted === id) problem = describeError(error);
-			}
+			)
 		);
 	});
 

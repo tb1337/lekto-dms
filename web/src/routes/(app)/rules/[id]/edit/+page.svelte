@@ -9,12 +9,12 @@
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
 	import RuleBuilder from '#lib/components/rules/RuleBuilder.svelte';
-	import { describeError } from '#lib/errors.ts';
-	import { loadLookup, spaceOptions, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { spaceOptions } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { problemText } from '#lib/rules/describe.ts';
 	import { saveErrors } from '#lib/rules/errors.ts';
 	import { fromApi, toApi, validate, type RuleModel } from '#lib/rules/model.ts';
+	import { RuleLoader } from '#lib/rules/page.svelte.ts';
 	import { placeOf, rulePlaces } from '#lib/rules/places.ts';
 	import { changeSwitchedOff } from '#lib/rules/save.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -24,8 +24,9 @@
 	const id = $derived(page.params.id ?? '');
 	let rule = $state<Rule | null>(null);
 	let model = $state<RuleModel | null>(null);
-	let lookup = $state<Lookup | null>(null);
-	let problem = $state<string | null>(null);
+	const loader = new RuleLoader();
+	const lookup = $derived(loader.lookup);
+	const problem = $derived(loader.problem);
 	let errors = $state<Record<string, string>>({});
 	let general = $state<string | null>(null);
 	let busy = $state(false);
@@ -48,17 +49,14 @@
 
 	$effect(() => {
 		const wanted = id;
-		Promise.all([
-			unwrap(api.GET('/api/v1/rules/{id}', { params: { path: { id: wanted } } })),
-			untrack(() => lookup) ?? loadLookup()
-		]).then(
-			([found, loaded]) => {
-				if (wanted !== id) return;
-				[rule, model, lookup, problem] = [found, fromApi(found), loaded, null];
-			},
-			(error) => {
-				if (wanted === id) problem = describeError(error);
-			}
+		untrack(() =>
+			loader.load(
+				() => unwrap(api.GET('/api/v1/rules/{id}', { params: { path: { id: wanted } } })),
+				(found) => {
+					rule = found;
+					model = fromApi(found);
+				}
+			)
 		);
 	});
 

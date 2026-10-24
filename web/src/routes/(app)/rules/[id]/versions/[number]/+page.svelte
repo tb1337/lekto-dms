@@ -7,36 +7,32 @@
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
 	import RuleView from '#lib/components/rules/RuleView.svelte';
-	import { describeError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
-	import { loadLookup, userName, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { userName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { RuleLoader } from '#lib/rules/page.svelte.ts';
 
 	// One saved version of a rule, to read (decision E4: no restoring).
 	const id = $derived(page.params.id ?? '');
 	const number = $derived(Number(page.params.number ?? '0'));
 	let version = $state<components['schemas']['RuleVersionOut'] | null>(null);
-	let lookup = $state<Lookup | null>(null);
-	let problem = $state<string | null>(null);
+	const loader = new RuleLoader();
+	const lookup = $derived(loader.lookup);
+	const problem = $derived(loader.problem);
 
 	$effect(() => {
 		const [wantedId, wantedNumber] = [id, number];
 		version = null;
-		Promise.all([
-			unwrap(
-				api.GET('/api/v1/rules/{id}/versions/{number}', {
-					params: { path: { id: wantedId, number: wantedNumber } }
-				})
-			),
-			untrack(() => lookup) ?? loadLookup()
-		]).then(
-			([found, loaded]) => {
-				if (wantedId !== id || wantedNumber !== number) return;
-				[version, lookup, problem] = [found, loaded, null];
-			},
-			(error) => {
-				if (wantedId === id && wantedNumber === number) problem = describeError(error);
-			}
+		untrack(() =>
+			loader.load(
+				() =>
+					unwrap(
+						api.GET('/api/v1/rules/{id}/versions/{number}', {
+							params: { path: { id: wantedId, number: wantedNumber } }
+						})
+					),
+				(found) => (version = found)
+			)
 		);
 	});
 

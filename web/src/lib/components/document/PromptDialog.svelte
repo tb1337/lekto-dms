@@ -23,7 +23,10 @@
 
 	type Part = 'system' | 'user' | 'answer';
 	let part = $state<Part>('system');
-	let attempt = $state(0);
+	// The attempt chosen, among the calls it was chosen from: another prompt in the same dialog
+	// starts at the first again.
+	let chosen = $state.raw<{ among: readonly Call[]; index: number } | null>(null);
+	const attempt = $derived(chosen?.among === calls ? chosen.index : 0);
 
 	const call = $derived(calls[Math.min(attempt, calls.length - 1)] ?? null);
 	const body = $derived(call ? call[part] : '');
@@ -80,7 +83,7 @@
 						value: String(index),
 						label: m.prompt_attempt({ number: index + 1, total: calls.length })
 					}))}
-					onchange={(next) => (attempt = Number(next))}
+					onchange={(next) => (chosen = { among: calls, index: Number(next) })}
 				/>
 			{/if}
 			<span class="text-sm text-muted-foreground">{size}</span>

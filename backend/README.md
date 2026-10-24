@@ -720,7 +720,8 @@ their numbers, a number entered by hand that names them, their birth date). The 
 without pickle (`classifier/model-<n>.npz`, the latest three are kept) and predicted with numpy
 alone, so a new scikit-learn version cannot break it. It sees about the first 8,000 and the last
 4,000 characters of a longer text, a run of spaces counted once (12,000 in all, `TEXT_LIMIT`).
-`GET /classifier` tells its state.
+`GET /classifier` tells its state to every user (the page "System"); training on request is for
+admins.
 
 **After the update to 0.2.** Three things, in this order:
 
@@ -1318,6 +1319,14 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
   most `LEKTO_EVENTS_MAX_ATTEMPTS` times. Several dispatchers under the same subscriber name
   may deliver an event twice (at least once is allowed).
 - Every loop runs its units of work one after another, never nested, as SQLite requires.
+- A job keeps when its latest claim took it, when it was done or given up, and what a done job
+  reports (`jobs.started_at`, `finished_at`, `result`; revision 0041). `/jobs` shows them on the
+  page "System" to every user (`JobsService`): counts by kind and state (`GET /jobs/summary`,
+  one `GROUP BY`), the jobs (`GET /jobs`; a document named only to those who may read it, the
+  last error only to admins), how long the done ones waited and ran within `LEKTO_RETENTION`
+  (`GET /jobs/durations`: median and 90th percentile by nearest rank), and an admin queues a
+  failed one again (`POST /jobs/{id}/retry`; a failed processing step goes through
+  `POST /documents/{id}/retry`, so that its document's processing goes on).
 
 ## Webhooks
 

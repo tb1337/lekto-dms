@@ -11,6 +11,7 @@ document; the two sorted lists page by an index each.
 
 import unicodedata
 from collections.abc import Sequence
+from itertools import batched
 
 import sqlalchemy as sa
 from alembic import op
@@ -19,6 +20,10 @@ revision: str = "0023"
 down_revision: str | None = "0022"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+# Documents per UPDATE round trip of the backfill: one statement per document took minutes on
+# an instance of 100k documents with Postgres over a network, and the migration blocks start-up.
+CHUNK = 1000
 
 
 def _sort_key(text: str) -> str:
@@ -35,9 +40,11 @@ def upgrade() -> None:
         "documents", sa.column("id", sa.Uuid()), sa.column("title"), sa.column("title_key")
     )
     connection = op.get_bind()
-    for id_, title in connection.execute(sa.select(documents.c.id, documents.c.title)).all():
+    rows = connection.execute(sa.select(documents.c.id, documents.c.title)).all()
+    for chunk in batched(rows, CHUNK, strict=False):
         connection.execute(
-            documents.update().where(documents.c.id == id_).values(title_key=_sort_key(title))
+            documents.update().where(documents.c.id == sa.bindparam("pk")),
+            [{"pk": id_, "title_key": _sort_key(title)} for id_, title in chunk],
         )
     op.create_index("ix_documents_document_date_id", "documents", ["document_date", "id"])
     op.create_index("ix_documents_title_key_id", "documents", ["title_key", "id"])

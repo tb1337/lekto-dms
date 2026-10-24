@@ -97,10 +97,8 @@ def _simple[K: UUID, E: MasterData, C: BaseModel, P: BaseModel, O: MasterDataOut
         all_users: CountAll = False,
     ) -> list[O]:
         found = [kind.of(item) for item in await kind.list(context.master_data, user)]
-        if not document_counts:
-            return found
-        counts = await context.documents.document_counts(user, kind.counted, all_users=all_users)
-        return _with_counts(found, counts)
+        counts = await _counts(context, user, kind.counted, document_counts, all_users)
+        return found if counts is None else _with_counts(found, counts)
 
     @router.post(
         "",
@@ -178,6 +176,18 @@ class _Counted(Protocol):
     def model_copy(
         self, *, update: Mapping[str, Any] | None = None, deep: bool = False
     ) -> Self: ...
+
+
+async def _counts(
+    context: ApiContext, user: UserId, by: CountBy, document_counts: bool, all_users: bool
+) -> Mapping[UUID, int] | None:
+    """The document counts of a listing when asked for (`document_counts`), else None. With
+    `all_users`, the service is asked either way: it refuses everyone but admins (403), whether
+    or not the counts are wanted."""
+    if not document_counts and not all_users:
+        return None
+    counts = await context.documents.document_counts(user, by, all_users=all_users)
+    return counts if document_counts else None
 
 
 def _with_counts[O: _Counted](items: list[O], counts: Mapping[UUID, int]) -> list[O]:
@@ -388,9 +398,9 @@ async def list_tags(
     tree = await _tree(context, user)
     scopes = list(TagScope) if scope is None else [scope]
     found = [TagOut.of(tag, tree) for wanted in scopes for tag in tree.of_scope(wanted)]
-    if not document_counts:
+    counts = await _counts(context, user, CountBy.TAG, document_counts, all_users)
+    if counts is None:
         return found
-    counts = await context.documents.document_counts(user, CountBy.TAG, all_users=all_users)
     members = await context.master_data.tag_members(user)
 
     def with_members(item: TagOut) -> TagOut:
@@ -530,10 +540,8 @@ async def list_fields(
     all_users: CountAll = False,
 ) -> list[FieldOut]:
     found = [FieldOut.of(item) for item in await context.master_data.list_fields(user)]
-    if not document_counts:
-        return found
-    counts = await context.documents.document_counts(user, CountBy.FIELD, all_users=all_users)
-    return _with_counts(found, counts)
+    counts = await _counts(context, user, CountBy.FIELD, document_counts, all_users)
+    return found if counts is None else _with_counts(found, counts)
 
 
 @fields.post(

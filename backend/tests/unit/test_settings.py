@@ -742,3 +742,10 @@ def test_every_setting_is_documented_with_its_role() -> None:
 def test_renamed_variables_are_refused_with_their_new_name(monkeypatch: pytest.MonkeyPatch) -> None:
     message = error_message(monkeypatch, {"LEKTO_STEP_MAX_ATTEMPTS": "5"})
     assert message == "LEKTO_STEP_MAX_ATTEMPTS was renamed to LEKTO_NODE_MAX_ATTEMPTS"
+
+
+def test_the_file_variant_of_a_renamed_variable_is_refused_too(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    message = error_message(monkeypatch, {"LEKTO_STEP_RETRY_DELAY_FILE": "/run/secrets/delay"})
+    assert message == "LEKTO_STEP_RETRY_DELAY_FILE was renamed to LEKTO_NODE_RETRY_DELAY"

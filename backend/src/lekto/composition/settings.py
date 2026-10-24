@@ -535,8 +535,8 @@ RENAMED: dict[str, str] = {
     "LEKTO_STEP_MAX_ATTEMPTS": "LEKTO_NODE_MAX_ATTEMPTS",
     "LEKTO_STEP_RETRY_DELAY": "LEKTO_NODE_RETRY_DELAY",
 }
-"""Variables of earlier versions and their names now; setting an old one is an error, so a
-value does not fall back to the default unnoticed."""
+"""Variables of earlier versions and their names now; setting an old one (or its `_FILE`
+variant) is an error, so a value does not fall back to the default unnoticed."""
 
 
 def load_settings() -> Settings:
@@ -544,7 +544,12 @@ def load_settings() -> Settings:
 
     Raises ConfigurationError with a message that names the offending variables.
     """
-    renamed = [f"{old} was renamed to {new}" for old, new in RENAMED.items() if old in os.environ]
+    renamed = [
+        f"{old}{suffix} was renamed to {new}"
+        for old, new in RENAMED.items()
+        for suffix in ("", FILE_SUFFIX)
+        if old + suffix in os.environ
+    ]
     if renamed:
         raise ConfigurationError("; ".join(renamed))
     try:

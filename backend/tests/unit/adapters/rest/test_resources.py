@@ -286,6 +286,13 @@ async def test_master_data_with_their_document_counts(api: Api) -> None:
         f"{PREFIX}/tags", params={"document_counts": True, "all_users": True}, headers=auth(owner)
     )
     assert denied.status_code == 403
+    # `all_users` is for admins whether or not counts are asked for.
+    for path in ("/contacts", "/document-types", "/tags", "/fields"):
+        denied = await api.client.get(
+            f"{PREFIX}{path}", params={"all_users": True}, headers=auth(owner)
+        )
+        assert denied.status_code == 403, path
+        assert set((await counts(path, auth(admin), all_users=True)).values()) <= {None}, path
 
 
 async def test_the_fields_of_a_document_type_from_the_type(api: Api) -> None:

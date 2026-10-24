@@ -5,6 +5,7 @@ import { LANGUAGE_NAMES, locales } from '#lib/i18n.ts';
 import { inbox } from '#lib/inbox.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { phone } from '#lib/phone.svelte.ts';
+import { scope } from '#lib/scope.svelte.ts';
 import { session, type User } from '#lib/session.svelte.ts';
 import AppShell from './AppShell.svelte';
 
@@ -25,7 +26,9 @@ function signIn(role: User['role']) {
 afterEach(() => {
 	session.clear();
 	phone.override(null);
+	scope.set(false);
 	inbox.summary = null;
+	vi.restoreAllMocks();
 });
 
 function mainNavigation() {
@@ -133,6 +136,17 @@ describe('AppShell', () => {
 		inbox.summary = { ...inbox.summary, processing: 0, open: 0 };
 		await tick();
 		expect(within(mainNavigation()).queryByRole('img')).toBeNull();
+	});
+
+	it('counts the inbox anew when the reach switches, not on first sight', async () => {
+		signIn('admin');
+		const refresh = vi.spyOn(inbox, 'refresh').mockResolvedValue();
+		render(AppShell, { children });
+		await tick();
+		expect(refresh).not.toHaveBeenCalled();
+		scope.set(true);
+		await tick();
+		expect(refresh).toHaveBeenCalledOnce();
 	});
 
 	it('offers a skip link and the account menu', () => {

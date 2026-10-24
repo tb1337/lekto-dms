@@ -280,11 +280,10 @@ async def test_the_check_queues_a_training_when_enough_was_confirmed(world: Worl
     assert not await classifier.check()
 
 
-async def test_status_and_training_on_request_are_for_admins(world: World) -> None:
+async def test_every_user_sees_the_status_admins_train_on_request(world: World) -> None:
     admin, user = await world.user(role=Role.ADMIN), await world.user()
     classifier = service(world)
-    with pytest.raises(PermissionDeniedError):
-        await classifier.status(user.id)
+    assert (await classifier.status(user.id)).confirmed == 0
     with pytest.raises(PermissionDeniedError):
         await classifier.request_training(user.id)
     with pytest.raises(ConflictError):  # too few confirmed documents
@@ -292,5 +291,5 @@ async def test_status_and_training_on_request_are_for_admins(world: World) -> No
     await corpus(world)
     await classifier.request_training(admin.id)
     await classifier.request_training(admin.id)  # queued once
-    status = await classifier.status(admin.id)
+    status = await classifier.status(user.id)
     assert (status.model, status.confirmed, status.since) == (None, 4, 4)

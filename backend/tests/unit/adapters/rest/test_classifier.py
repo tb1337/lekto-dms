@@ -1,4 +1,5 @@
-"""The classifier's status and training on request: admins only, 503 without a classifier."""
+"""The classifier's status (every user) and training on request (admins), 503 without a
+classifier."""
 
 from dataclasses import replace
 
@@ -13,9 +14,11 @@ from tests.unit.adapters.rest.support import Api
 
 async def test_status_and_training(api: Api) -> None:
     admin, user = await api.admin(), await api.user()
-    assert (await api.client.get(f"{PREFIX}/classifier", headers=auth(user))).status_code == 403
-    response = await api.client.get(f"{PREFIX}/classifier", headers=auth(admin))
+    response = await api.client.get(f"{PREFIX}/classifier", headers=auth(user))
     assert response.status_code == 200
+    assert (await api.client.get(f"{PREFIX}/classifier", headers=auth(admin))).json() == (
+        response.json()
+    )
     assert response.json() == {
         "model": None,
         "confirmed": 0,

@@ -837,8 +837,8 @@ class Action(StrEnum):
     LIST_ALL_RULES = "list_all_rules"
     LIST_ALL_SPACES = "list_all_spaces"
     TRAIN_CLASSIFIER = "train_classifier"
-    SEE_CLASSIFIER = "see_classifier"
     REBUILD_INDEX = "rebuild_index"
+    RETRY_JOBS = "retry_jobs"
     REPARSE_ALL = "reparse_all"
     MAKE_GLOBAL_RULES = "make_global_rules"
     CHANGE_GLOBAL_RULES = "change_global_rules"
@@ -866,8 +866,8 @@ ACTIONS: Mapping[Action, str] = {
     Action.LIST_ALL_RULES: "list the rules of all users",
     Action.LIST_ALL_SPACES: "list every user's spaces",
     Action.TRAIN_CLASSIFIER: "train the classifier",
-    Action.SEE_CLASSIFIER: "see the classifier",
     Action.REBUILD_INDEX: "rebuild the search index",
+    Action.RETRY_JOBS: "try failed jobs again",
     Action.REPARSE_ALL: "read the text of all documents again",
     Action.MAKE_GLOBAL_RULES: "make global rules",
     Action.CHANGE_GLOBAL_RULES: "change global rules",

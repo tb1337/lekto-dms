@@ -101,6 +101,7 @@ from lekto.core.services.documents import DocumentService
 from lekto.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
 from lekto.core.services.inbox import InboxService
 from lekto.core.services.indexing import IndexingPolicy, IndexingService
+from lekto.core.services.jobs import JobsService
 from lekto.core.services.lenses import LensService
 from lekto.core.services.logos import LogoService
 from lekto.core.services.maintenance import MaintenanceService
@@ -490,6 +491,7 @@ class Services:
     inbox: InboxService
     pipeline: PipelineService
     maintenance: MaintenanceService
+    jobs: JobsService
     indexing: IndexingService | None  # with a search index
     search: SearchService | None  # with a search index
     classifier: ClassifierService | None  # with a classifier
@@ -733,6 +735,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         rules=RuleService(uow, clock, container.templates, container.patterns),
         webhooks=WebhookService(uow, clock, container.cipher, webhook_policy_of(settings)),
         lenses=LensService(uow, clock),
+        jobs=JobsService(uow, clock, retention=settings.retention),
         webhook_delivery=WebhookDeliveryService(
             uow, clock, container.cipher, container.webhook_sender, webhook_policy_of(settings)
         ),

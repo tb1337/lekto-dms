@@ -18,6 +18,7 @@ from lekto.core.services.classifier import ClassifierService
 from lekto.core.services.documents import DocumentService
 from lekto.core.services.inbox import InboxService
 from lekto.core.services.indexing import IndexingService
+from lekto.core.services.jobs import JobsService
 from lekto.core.services.lenses import LensService
 from lekto.core.services.logos import LogoService
 from lekto.core.services.master_data import MasterDataService
@@ -53,6 +54,7 @@ class ApiContext:
     webhooks: WebhookService
     webhook_delivery: WebhookDeliveryService
     lenses: LensService
+    jobs: JobsService
     event_bus: EventBus
     health_checks: Mapping[str, HealthCheck]
     max_upload_size: int

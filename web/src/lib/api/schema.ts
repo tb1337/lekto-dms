@@ -1094,7 +1094,7 @@ export interface paths {
 		};
 		/**
 		 * The classifier's status
-		 * @description Admins only. The latest model (trained from the documents a person confirmed or that were taken over with metadata) and the confirmations since. 503 without a classifier.
+		 * @description The latest model (trained from the documents a person confirmed or that were taken over with metadata) and the confirmations since; every user sees it. 503 without a classifier.
 		 */
 		get: operations['status_api_v1_classifier_get'];
 		put?: never;
@@ -1690,7 +1690,7 @@ export interface paths {
 		};
 		/**
 		 * Progress of documents (server-sent events)
-		 * @description A stream of document events (`document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Active admins also get `classifier.trained` (a new model, with its `number` and `examples`), unless the stream follows one document. A searcher gets `search.meaning_ready` (with the `query`) when the meaning of a query that had to go by words alone is ready (`meaning_pending` of the search), unless the stream follows one document. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream starts with the comment `: ready` once it is registered: every event after that reaches it. It checks regularly that its session or token is still valid and ends otherwise.
+		 * @description A stream of document events (`document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Every user also gets `classifier.trained` (a new model, with its `number` and `examples`), unless the stream follows one document. A searcher gets `search.meaning_ready` (with the `query`) when the meaning of a query that had to go by words alone is ready (`meaning_pending` of the search), unless the stream follows one document. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream starts with the comment `: ready` once it is registered: every event after that reaches it. It checks regularly that its session or token is still valid and ends otherwise.
 		 */
 		get: operations['events_api_v1_events_get'];
 		put?: never;
@@ -1883,6 +1883,86 @@ export interface paths {
 		 * @description Checks as when creating. Only its owner sees and changes a lens; other users' lenses are not found (404).
 		 */
 		patch: operations['update_lens_api_v1_lenses__id__patch'];
+		trace?: never;
+	};
+	'/api/v1/jobs/summary': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Jobs by kind and state
+		 * @description How many jobs of each kind are running, due, planned, failed and done (failed and done ones within the retention period, `LEKTO_RETENTION`), and when a worker last claimed one. Cheap enough to ask every few seconds.
+		 */
+		get: operations['summary_api_v1_jobs_summary_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/jobs': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List jobs
+		 * @description The jobs in the given states (without `state`: the open ones, running, due and planned), of one kind if given: running ones first, longest running first; then due and planned ones by when they are due; then failed and done ones, latest first. Every user sees the jobs; a job names a document only to those who may read it, and its error only to admins.
+		 */
+		get: operations['list_jobs_api_v1_jobs_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/jobs/durations': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * How long jobs wait and run
+		 * @description For each kind, how long its jobs done within the retention period waited (from due to started) and ran (from started to done): median and 90th percentile. Jobs from before the jobs kept their times are left out.
+		 */
+		get: operations['durations_api_v1_jobs_durations_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/jobs/{id}/retry': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Try a failed job again
+		 * @description Admins only. Queues the failed job again, due now, without its attempts; its last error stays until it runs. 409 if it did not fail, if the same work is queued or running already, or for a failed processing step: that one is repeated at its document (`POST /documents/{id}/retry`).
+		 */
+		post: operations['retry_api_v1_jobs__id__retry_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
 		trace?: never;
 	};
 	'/api/v1/health': {
@@ -4118,6 +4198,202 @@ export interface components {
 		 * @enum {string}
 		 */
 		InboxTab: 'new' | 'review' | 'intervene' | 'processing' | 'done';
+		/** JobDocumentOut */
+		JobDocumentOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Title */
+			title: string;
+		};
+		/** JobDurationsOut */
+		JobDurationsOut: {
+			/**
+			 * Kinds
+			 * @description By kind; kinds without done jobs left out.
+			 */
+			kinds: components['schemas']['KindDurationsOut'][];
+			/**
+			 * Since
+			 * Format: date-time
+			 * @description The jobs done from then on count.
+			 */
+			since: string;
+		};
+		/** JobOut */
+		JobOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/**
+			 * Kind
+			 * @description What the job does, as Lekto names it internally (`pipeline.node`, `search.index`, `webhooks.deliver`, ...); new kinds may come.
+			 * @example pipeline.node
+			 */
+			kind: string;
+			state: components['schemas']['JobState'];
+			/**
+			 * Attempts
+			 * @description Attempts that counted, the current one included; claims given back because a worker stopped are left out.
+			 */
+			attempts: number;
+			/**
+			 * Run At
+			 * Format: date-time
+			 * @description When it is or was due.
+			 */
+			run_at: string;
+			/**
+			 * Started At
+			 * @description When its latest attempt began; null before the first.
+			 */
+			started_at: string | null;
+			/**
+			 * Finished At
+			 * @description When it was done or given up.
+			 */
+			finished_at: string | null;
+			/** @description The document it works on, if the caller may read it. */
+			document: components['schemas']['JobDocumentOut'] | null;
+			/**
+			 * Document Hidden
+			 * @description It works on a document the caller may not read (or one deleted since).
+			 */
+			document_hidden: boolean;
+			/** @description The processing step it runs, for `pipeline.node`. */
+			node: components['schemas']['Node'] | null;
+			/**
+			 * Contact
+			 * @description The name of the contact it works on.
+			 */
+			contact: string | null;
+			/**
+			 * Error
+			 * @description Why its last attempt failed, as the worker wrote it (English, for admins; null for other users).
+			 */
+			error: string | null;
+			/** @description For an admin and a failed job: `job` to queue it again (`POST /jobs/{id}/retry`), `document` to repeat the failed step at its document (`POST /documents/{id}/retry`); null otherwise. */
+			retry: components['schemas']['RetryWay'] | null;
+		};
+		/** JobPageOut */
+		JobPageOut: {
+			/** Items */
+			items: components['schemas']['JobOut'][];
+			/**
+			 * Total
+			 * @description How many jobs match in all.
+			 */
+			total: number;
+			/**
+			 * Next Offset
+			 * @description Pass as `offset` for the next page; null on the last page.
+			 */
+			next_offset: number | null;
+		};
+		/**
+		 * JobState
+		 * @description Where a job stands for the people looking at it: a queued job is due once its time has
+		 *     come, planned before (a repetition, a recurring job).
+		 * @enum {string}
+		 */
+		JobState: 'running' | 'due' | 'planned' | 'done' | 'failed';
+		/** JobsSummaryOut */
+		JobsSummaryOut: {
+			/**
+			 * Kinds
+			 * @description By kind; kinds without jobs left out.
+			 */
+			kinds: components['schemas']['KindSummaryOut'][];
+			/**
+			 * Last Started At
+			 * @description When a worker last claimed a job; null if none did since the jobs keep their times. Long ago while jobs are due: no worker runs.
+			 */
+			last_started_at: string | null;
+			/**
+			 * Now
+			 * Format: date-time
+			 * @description The server's time the counts are of.
+			 */
+			now: string;
+			/**
+			 * Kept Since
+			 * Format: date-time
+			 * @description Done and failed jobs are kept from then on (the retention period); older ones are removed.
+			 */
+			kept_since: string;
+		};
+		/** KindDurationsOut */
+		KindDurationsOut: {
+			/**
+			 * Kind
+			 * @description What the job does, as Lekto names it internally (`pipeline.node`, `search.index`, `webhooks.deliver`, ...); new kinds may come.
+			 * @example pipeline.node
+			 */
+			kind: string;
+			/**
+			 * Count
+			 * @description Jobs done within the retention period.
+			 */
+			count: number;
+			/**
+			 * Wait Median Ms
+			 * @description From due to started, median.
+			 */
+			wait_median_ms: number;
+			/**
+			 * Wait P90 Ms
+			 * @description From due to started, 90th percentile.
+			 */
+			wait_p90_ms: number;
+			/**
+			 * Run Median Ms
+			 * @description From started to done, median.
+			 */
+			run_median_ms: number;
+			/**
+			 * Run P90 Ms
+			 * @description From started to done, 90th percentile.
+			 */
+			run_p90_ms: number;
+		};
+		/** KindSummaryOut */
+		KindSummaryOut: {
+			/**
+			 * Kind
+			 * @description What the job does, as Lekto names it internally (`pipeline.node`, `search.index`, `webhooks.deliver`, ...); new kinds may come.
+			 * @example pipeline.node
+			 */
+			kind: string;
+			/**
+			 * Running
+			 * @description Claimed by a worker now.
+			 */
+			running: number;
+			/**
+			 * Due
+			 * @description Queued, their time has come: waiting for a worker.
+			 */
+			due: number;
+			/**
+			 * Planned
+			 * @description Queued for later: a repetition or a recurring job.
+			 */
+			planned: number;
+			/**
+			 * Failed
+			 * @description Given up, within the retention period.
+			 */
+			failed: number;
+			/**
+			 * Done
+			 * @description Done, within the retention period.
+			 */
+			done: number;
+		};
 		/**
 		 * LabelCheckOut
 		 * @description The label the model gave for a field's value, and whether the value stands by it.
@@ -5461,6 +5737,9 @@ export interface components {
 			| 'logo_type'
 			| 'logo_upload_type'
 			| 'training_needs_examples'
+			| 'job_not_failed'
+			| 'job_already_queued'
+			| 'job_retry_in_document'
 			| 'rule_follows_type'
 			| 'personal_space_undeletable'
 			| 'space_not_empty'
@@ -5711,6 +5990,13 @@ export interface components {
 		 * @enum {string}
 		 */
 		ResumeNode: 'fields' | 'apply_rules';
+		/**
+		 * RetryWay
+		 * @description How an admin tries a failed job again: the job itself, or (a processing step) its
+		 *     document.
+		 * @enum {string}
+		 */
+		RetryWay: 'job' | 'document';
 		/** ReviewOut */
 		ReviewOut: {
 			document: components['schemas']['DocumentDetails'];
@@ -16077,23 +16363,6 @@ export interface operations {
 					'application/problem+json': components['schemas']['Problem'];
 				};
 			};
-			/** @description Forbidden */
-			403: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					/**
-					 * @example {
-					 *       "type": "about:blank",
-					 *       "title": "Forbidden",
-					 *       "status": 403,
-					 *       "detail": "only editors and admins control the processing of this document"
-					 *     }
-					 */
-					'application/problem+json': components['schemas']['Problem'];
-				};
-			};
 			/** @description Internal Server Error */
 			500: {
 				headers: {
@@ -21210,6 +21479,315 @@ export interface operations {
 					 *       "title": "Content Too Large",
 					 *       "status": 413,
 					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	summary_api_v1_jobs_summary_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['JobsSummaryOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	list_jobs_api_v1_jobs_get: {
+		parameters: {
+			query?: {
+				/** @description Repeat for several. */
+				state?: components['schemas']['JobState'][] | null;
+				kind?: string | null;
+				offset?: number;
+				limit?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['JobPageOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	durations_api_v1_jobs_durations_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['JobDurationsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	retry_api_v1_jobs__id__retry_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['JobOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

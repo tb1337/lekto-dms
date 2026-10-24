@@ -42,7 +42,7 @@ from lekto.core.ports.clock import Clock
 from lekto.core.ports.object_store import ObjectStore
 from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
-from lekto.core.services._access import require_admin
+from lekto.core.services._access import load_actor, require_admin
 from lekto.core.services._identifiers import person_identifiers
 from lekto.core.services._jobs import LEASE, JobRunner, Step, retrying
 from lekto.core.services._pages import document_pages
@@ -180,9 +180,10 @@ class ClassifierService:
             await uow.commit()
 
     async def status(self, actor: UserId) -> ClassifierStatus:
-        """Admins only: the latest model and the confirmations since."""
+        """The latest model and the confirmations since; every user sees them (the page
+        "System")."""
         async with self._uow() as uow:
-            await require_admin(uow, actor, Action.SEE_CLASSIFIER)
+            await load_actor(uow, actor)
             latest = await uow.classifier_models.latest()
             confirmed = await uow.documents.count_confirmed()
             since = (

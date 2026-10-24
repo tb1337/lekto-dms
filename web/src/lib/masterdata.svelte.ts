@@ -44,6 +44,21 @@ export async function loadLookup(): Promise<Lookup> {
 	return { contacts, documentTypes, tags, fields, spaces, users };
 }
 
+const indexes = new WeakMap<readonly { id: string }[], ReadonlyMap<string, { id: string }>>();
+
+/** The entries of a list of master data by id, built once per list: a grid of fifty cards
+ * resolves its contacts, types and spaces from it in O(1) on every render instead of scanning
+ * thousands of entries each. A list loaded anew (`loadLookup`) gets an index of its own. */
+export function byId<T extends { id: string }>(list: readonly T[]): ReadonlyMap<string, T> {
+	let index = indexes.get(list) as ReadonlyMap<string, T> | undefined;
+	if (!index) {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
+		index = new Map(list.map((entry) => [entry.id, entry]));
+		indexes.set(list, index);
+	}
+	return index;
+}
+
 /** Name by id for a list of master data. */
 export function names(list: readonly { id: string; name: string }[]): Map<string, string> {
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
@@ -75,7 +90,7 @@ export function spaceLabel(
 
 /** A user's name by id; the id while unknown. */
 export function userName(users: readonly UserName[], id: string): string {
-	const user = users.find((entry) => entry.id === id);
+	const user = byId(users).get(id);
 	return user ? userLabel(user) : id;
 }
 
@@ -101,7 +116,7 @@ export function foreignSpace(
 	lookup: Pick<Lookup, 'spaces' | 'users'> | null,
 	me: string | undefined
 ): string | null {
-	const space = lookup?.spaces.find((entry) => entry.id === spaceId);
+	const space = lookup ? byId(lookup.spaces).get(spaceId) : undefined;
 	if (!space || space.members.some((member) => member.user_id === me)) return null;
 	return spaceLabel(space, lookup?.users ?? [], me);
 }

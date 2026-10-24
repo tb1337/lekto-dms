@@ -12,7 +12,7 @@
 	import TypeIcon from '#lib/components/TypeIcon.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { formatDate } from '#lib/i18n.ts';
-	import { foreignSpace, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { byId, foreignSpace, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
@@ -39,9 +39,14 @@
 		fields?: readonly CardLine[];
 	} = $props();
 
-	const contact = $derived(lookup?.contacts.find((entry) => entry.id === document.contact_id));
+	// By the indexes of the lists: one card of many must not scan them on every render.
+	const contact = $derived(
+		lookup && document.contact_id ? byId(lookup.contacts).get(document.contact_id) : undefined
+	);
 	const kind = $derived(
-		lookup?.documentTypes.find((entry) => entry.id === document.document_type_id)
+		lookup && document.document_type_id
+			? byId(lookup.documentTypes).get(document.document_type_id)
+			: undefined
 	);
 	// For admins, the space of a document in a space they are no member of.
 	const foreign = $derived(foreignSpace(document.space_id, lookup, session.user?.id));

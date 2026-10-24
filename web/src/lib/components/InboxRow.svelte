@@ -10,7 +10,7 @@
 	import { inboxDocument } from '#lib/document-view.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import type { InboxItem } from '#lib/inbox-view.ts';
-	import { userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { byId, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { labelled, reasonsText } from '#lib/reasons.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -40,7 +40,7 @@
 	const who = $derived.by(() => {
 		if (!done) return '';
 		if (done.by === session.user?.id) return m.inbox_by_you();
-		const user = lookup?.users.find((entry) => entry.id === done.by);
+		const user = lookup ? byId(lookup.users).get(done.by) : undefined;
 		return user ? userLabel(user) : m.inbox_by_unknown();
 	});
 	const when = $derived(

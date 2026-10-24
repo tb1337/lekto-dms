@@ -1,4 +1,5 @@
 /** Texts for values in a change: ids become names, the rest is shown plainly. */
+import { isIsoDay } from '#lib/dates.ts';
 import { isMoney, isPeriod } from '#lib/fields.ts';
 import { formatDate, formatMoney } from '#lib/i18n.ts';
 import { spaceLabel, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
@@ -48,5 +49,5 @@ export function describeValue(value: unknown, lookup: Lookup | null): string {
 		const user = lookup.users.find((entry) => entry.id === text);
 		if (user) return userLabel(user);
 	}
-	return /^\d{4}-\d{2}-\d{2}$/.test(text) ? formatDate(text) : text;
+	return isIsoDay(text) ? formatDate(text) : text;
 }

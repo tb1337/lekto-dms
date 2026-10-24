@@ -6,6 +6,7 @@
  * words, never by colour alone.
  */
 
+import { utcDay } from '#lib/dates.ts';
 import { describeValue } from '#lib/describe.ts';
 import { isMoney } from '#lib/fields.ts';
 import { formatDate, formatMoney, formatNumber } from '#lib/i18n.ts';
@@ -26,9 +27,8 @@ const SOON = 7;
 
 /** How soon `day` (`YYYY-MM-DD`) is due as of `today`, by calendar days in the browser's time. */
 export function dueOf(day: string, today: Date): Due {
-	const [year, month, date] = day.split('-').map(Number);
 	const start = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
-	const days = Math.round((Date.UTC(year, month - 1, date) - start) / 86_400_000);
+	const days = Math.round((utcDay(day).getTime() - start) / 86_400_000);
 	return { state: days < 0 ? 'overdue' : days <= SOON ? 'soon' : 'later', days, day };
 }
 

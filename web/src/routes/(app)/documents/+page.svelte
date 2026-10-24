@@ -319,6 +319,7 @@
 			clearTimeout(timer);
 			stop();
 			stopMeaning();
+			searchNote.dispose();
 		};
 	});
 

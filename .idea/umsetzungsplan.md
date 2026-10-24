@@ -1691,6 +1691,8 @@ Mock: https://claude.ai/artifact/CZha1VoRbf2KxJQCAZx5ma (vier Reiter hell und du
 
 **A gebaut (24.10.2026):** `jobs.created_at` entfällt: Die Wartezeit rechnet ab `run_at` (fällig), das ist bei Wiederholungen ohnehin richtig. `JobQueue.complete` und `fail` nehmen die Zeit (`now`), damit Start und Ende von derselben Uhr kommen wie `claim`. Neu im Port: `retry`, `overview` (ein `GROUP BY` über einer Unterabfrage, Postgres sähe sonst zwei Ausdrücke mit je eigenem Parameter), `find`, `finished`. Die Dauern sind ein eigener Endpunkt (`GET /jobs/durations`, jede Minute), die Zahlen (`GET /jobs/summary`) und die Liste (`GET /jobs`, Versatz statt Cursor, „Mehr laden“) alle fünf Sekunden. Ein fehlgeschlagener Verarbeitungsschritt wird am Dokument wiederholt (`POST /documents/{id}/retry`, `retry: document`), sonst geht das Dokument nicht weiter; `POST /jobs/{id}/retry` lehnt ihn ab (`job_retry_in_document`). „Versuch 3 von 8“ steht ohne „von 8“: Wie oft eine Art es versucht, weiß die Queue nicht. `classifier.trained` geht jetzt an alle Ereignisströme. Die Reiter der Seite kommen mit ihren PRs (A: Klassifikator, Jobs; B: Suchindex; C2: Automatisierung vorn).
 
+**B gebaut (24.10.2026):** Die Routen stehen neben `POST /search/reindex`: `GET /search/status` und `POST /search/check` (nicht unter `/documents/search`, das ist die Suche selbst). Das letzte Ergebnis von „Genau prüfen“ hält die Seite nur, solange sie offen ist („Gerade geprüft · dauerte 3,4s“); wer wann zuletzt prüfte, merkt sich Lekto nicht. Die Dokumente der Datenbank zählt `DocumentRepository.count_all`. Der Reiter fragt alle zehn Sekunden.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

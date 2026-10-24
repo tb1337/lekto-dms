@@ -14,6 +14,7 @@ import type { Strength } from '#lib/facts.ts';
 import { userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { labelled, outputReasonText } from '#lib/reasons.ts';
+import { own } from '#lib/utils.ts';
 
 type LogEntry = components['schemas']['LogEntry'];
 
@@ -171,7 +172,7 @@ function labels(output: Json, lookup: Lookup | null): SummaryRow[] {
 			const said =
 				label === null || outcome === 'no_label'
 					? m.log_label_none()
-					: (LABEL_TEXTS[outcome] ?? m.log_label_unknown)({ label });
+					: (own(LABEL_TEXTS, outcome) ?? m.log_label_unknown)({ label });
 			return [{ label: fieldLabel(String(check.field), lookup), items: [{ text: said }] }];
 		});
 }

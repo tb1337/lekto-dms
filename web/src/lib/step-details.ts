@@ -12,6 +12,7 @@ import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import type { Node } from '#lib/pipeline.ts';
 import { kind, list, named, object, percent, personWithStrength, text } from '#lib/signals.ts';
+import { own } from '#lib/utils.ts';
 
 type LogEntry = components['schemas']['LogEntry'];
 type Json = Record<string, unknown>;
@@ -110,7 +111,7 @@ export function classifierThresholds(
 ): Partial<Record<RankKind, number>> {
 	const found: Partial<Record<RankKind, number>> = {};
 	for (const check of list(object(verdict?.output).fields).map(object)) {
-		const kind = FIELD_KIND[String(check.field)];
+		const kind = own(FIELD_KIND, String(check.field));
 		if (!kind || found[kind] !== undefined) continue;
 		for (const candidate of list(check.candidates).map(object)) {
 			const source = list(candidate.sources)

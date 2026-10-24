@@ -6,6 +6,7 @@ import { spaceLabel, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { writePeriod } from '#lib/periods.ts';
 import { session } from '#lib/session.svelte.ts';
+import { own } from '#lib/utils.ts';
 
 const FIELD_LABELS: Record<string, () => string> = {
 	title: m.field_title,
@@ -24,7 +25,7 @@ export function fieldLabel(field: string, lookup: Lookup | null): string {
 		const id = field.slice('field:'.length);
 		return lookup?.fields.find((entry) => entry.id === id)?.name ?? field;
 	}
-	return FIELD_LABELS[field]?.() ?? field;
+	return own(FIELD_LABELS, field)?.() ?? field;
 }
 
 /** A value as the user reads it. */

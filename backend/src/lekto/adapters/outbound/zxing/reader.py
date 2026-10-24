@@ -4,8 +4,9 @@ PDFium.
 Each page is rendered in grey at `DPI` (small codes need it: a matrix code of a franking mark
 has modules of a third of a millimetre), its long edge at most `MAX_EDGE` pixels, and zxing-cpp
 reads every format it knows from it. A long document is read as far as `max_pages`. Rendering
-goes through the process-wide PDFium lock; decoding does not need it. A result zxing-cpp marks
-invalid, or with no text, is left out; the same code twice on a page counts once.
+goes through the process-wide PDFium lock; the copy of the pixels and decoding do not need it. A
+result zxing-cpp marks invalid, or with no text, is left out; the same code twice on a page
+counts once.
 """
 
 import asyncio
@@ -68,9 +69,12 @@ def _render(document: pypdfium2.PdfDocument, index: int) -> Image.Image:
             width, height = page.get_size()
             scale = min(DPI / POINTS_PER_INCH, MAX_EDGE / max(width, height, 1))
             bitmap = page.render(scale=scale, grayscale=True)
-            image: Image.Image = bitmap.to_pil().convert("L")
         finally:
             page.close()
+    # The pixels lie in a buffer of our own (`PdfBitmap.new_native`), so the copy into a PIL
+    # image (about 17 MB for a page at 300 dpi) needs no PDFium call: outside the lock, where it
+    # does not hold up the other users of PDFium.
+    image: Image.Image = bitmap.to_pil().convert("L")
     return image
 
 

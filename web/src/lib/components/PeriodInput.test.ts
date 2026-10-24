@@ -1,9 +1,16 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { m } from '#lib/paraglide/messages.js';
+import * as periods from '#lib/periods.ts';
 import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 import FieldValueInput from './FieldValueInput.svelte';
 import PeriodInput from './PeriodInput.svelte';
+
+// What is typed is read through, counted (issue #69).
+vi.mock('#lib/periods.ts', async (original) => {
+	const actual = await original<typeof import('#lib/periods.ts')>();
+	return { ...actual, readPeriod: vi.fn(actual.readPeriod) };
+});
 
 const NAME = 'Bezugszeitraum';
 
@@ -172,6 +179,20 @@ describe('PeriodInput', () => {
 		// The form loads it again with the period it now holds: the same as before.
 		await rerender({ value: { start: '2026-04-01', end: '2026-06-30' } });
 		expect(input.value).toBe('2026-Q2');
+	});
+
+	it('reads what is typed once a keystroke, and not again when it is taken', async () => {
+		const onchange = vi.fn();
+		render(PeriodInput, { value: { start: '', end: '' }, label: NAME, onchange });
+		const field = notationField();
+		const read = vi.mocked(periods.readPeriod);
+		read.mockClear();
+		await fireEvent.input(field, { target: { value: 'Mrz' } });
+		await fireEvent.input(field, { target: { value: 'Mrz 2026' } });
+		expect(read).toHaveBeenCalledTimes(2);
+		await fireEvent.blur(field);
+		expect(read).toHaveBeenCalledTimes(2);
+		expect(onchange).toHaveBeenCalledExactlyOnceWith({ start: '2026-03-01', end: '2026-03-31' });
 	});
 
 	it('clears both ends when the period is emptied', async () => {

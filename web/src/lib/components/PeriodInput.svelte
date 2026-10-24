@@ -32,14 +32,20 @@
 
 	const errorId = $props.id();
 	// What the user types stays while it is the period's (until the field is left, or from or
-	// to change); else the field shows the period as written.
-	let draft = $state<{ text: string } & Period>({ text: '', start: '', end: '' });
+	// to change); else the field shows the period as written. It is read once, as it is typed
+	// (`read`: the period it writes, null if it cannot be read; issue #69).
+	let draft = $state<{ text: string; read: Period | null } & Period>({
+		text: '',
+		read: null,
+		start: '',
+		end: ''
+	});
 	let typing = $state(false);
 	const typed = $derived(
 		typing && draft.start === value.start && draft.end === value.end ? draft.text : null
 	);
 	const notation = $derived(typed ?? writePeriod(value.start, value.end));
-	const unreadable = $derived(typed !== null && typed.trim() !== '' && readPeriod(typed) === null);
+	const unreadable = $derived(typed !== null && typed.trim() !== '' && draft.read === null);
 
 	$effect(() => {
 		onunreadable?.(unreadable);
@@ -65,7 +71,7 @@
 	}
 
 	function type(text: string) {
-		draft = { text, start: value.start, end: value.end };
+		draft = { text, read: readPeriod(text), start: value.start, end: value.end };
 		typing = true;
 	}
 
@@ -73,10 +79,10 @@
 	function commit(): boolean {
 		const text = typed;
 		if (text === null) return true;
-		const next = text.trim() === '' ? { start: '', end: '' } : readPeriod(text);
+		const next = text.trim() === '' ? { start: '', end: '' } : draft.read;
 		if (next === null) return false;
 		if (next.start !== value.start || next.end !== value.end) set(next);
-		draft = { text, ...next };
+		draft = { text, read: next, ...next };
 		return true;
 	}
 

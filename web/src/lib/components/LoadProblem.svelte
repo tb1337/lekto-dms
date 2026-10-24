@@ -8,8 +8,9 @@
 	let {
 		problem,
 		onretry,
+		buttonClass,
 		children
-	}: { problem: string; onretry?: () => void; children?: Snippet } = $props();
+	}: { problem: string; onretry?: () => void; buttonClass?: string; children?: Snippet } = $props();
 </script>
 
 <div class="flex flex-col items-start gap-3" role="alert">
@@ -17,7 +18,7 @@
 	{#if onretry || children}
 		<div class="flex flex-wrap gap-2">
 			{#if onretry}
-				<Button variant="outline" onclick={onretry}>{m.retry()}</Button>
+				<Button variant="outline" class={buttonClass} onclick={onretry}>{m.retry()}</Button>
 			{/if}
 			{@render children?.()}
 		</div>

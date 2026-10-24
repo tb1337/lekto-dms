@@ -206,7 +206,11 @@
 	</div>
 
 	{#if list.error}
-		<LoadProblem problem={describeError(list.error)} onretry={() => list.reload()} />
+		<LoadProblem
+			problem={describeError(list.error)}
+			onretry={() => list.reload()}
+			buttonClass="h-11 sm:h-9"
+		/>
 	{:else if list.empty}
 		<EmptyNote>{EMPTY[tab ?? 'all']()}</EmptyNote>
 	{:else}

@@ -148,16 +148,18 @@
 		if (!kind) return;
 		const ops = KINDS[kind];
 		const id = item ? item.id : null;
-		if (id) await ops.change(id, values);
-		const saved = id ?? (await ops.create(values)).id;
-		// A document type's fields, after the type: a new one needs its id first.
-		if (values.fields) {
-			await unwrap(
-				api.PUT('/api/v1/document-types/{id}/fields', {
-					params: { path: { id: saved } },
-					body: { fields: values.fields.map(({ id, required }) => ({ field_id: id, required })) }
-				})
-			);
+		// A new document type comes with its fields (`create`); a type changed sets them after.
+		if (!id) await ops.create(values);
+		else {
+			await ops.change(id, values);
+			if (values.fields) {
+				await unwrap(
+					api.PUT('/api/v1/document-types/{id}/fields', {
+						params: { path: { id } },
+						body: { fields: values.fields.map(({ id, required }) => ({ field_id: id, required })) }
+					})
+				);
+			}
 		}
 		toast.success(id ? m.master_saved() : m.master_created());
 		masterDataDialogs.saved();

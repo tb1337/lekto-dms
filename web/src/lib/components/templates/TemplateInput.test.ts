@@ -133,6 +133,26 @@ describe('TemplateInput', () => {
 		);
 	});
 
+	it('offers a new type the fields it is created with, besides the global ones', async () => {
+		// Issue #73: a type and its fields are created together, so its pattern may name them.
+		const user = userEvent.setup();
+		render(TemplateInput, {
+			id: 'pattern',
+			label: m.master_title_pattern(),
+			documentType: null,
+			extraFields: ['f2'],
+			value: ''
+		});
+		await user.click(await screen.findByRole('button', { name: m.template_editor_open() }));
+		const sheet = await screen.findByRole('dialog');
+		expect(
+			await within(sheet).findByRole('button', { name: m.template_insert({ name: 'Betrag' }) })
+		).toBeTruthy();
+		expect(
+			within(sheet).queryByRole('button', { name: m.template_insert({ name: 'LA_Brutto' }) })
+		).toBeNull();
+	});
+
 	it('links the documentation of templates from the editor', async () => {
 		const user = userEvent.setup();
 		render(TemplateInput, { id: 'pattern', label: m.master_title_pattern(), value: '' });

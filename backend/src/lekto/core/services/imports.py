@@ -22,7 +22,7 @@ from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.imports import IMPORTED, ImportedMetadata
 from lekto.core.domain.json_value import JsonObject
 from lekto.core.domain.pipeline import Node, NodeResult, Outcome
-from lekto.core.domain.reasons import Reason, ReasonCode, because, written
+from lekto.core.domain.reasons import Reason, ReasonCode, because
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from lekto.core.services._access import field_definitions
 from lekto.core.services.classification.signals import abstained
@@ -89,7 +89,7 @@ class ImportedJudgeNode(_ImportedStep):
 
     def _apply(self, imported: ImportedMetadata, document: Document) -> MetadataResult:
         reviews: list[_Review] = [
-            (written(item.reason), item.field)
+            (item.as_reason(), item.field)
             for item in imported.review
             if field_id_of(item.field or "") is None
         ]
@@ -113,7 +113,7 @@ class ImportedFieldsNode(_ImportedStep):
 
     def _apply(self, imported: ImportedMetadata, document: Document) -> MetadataResult:
         reviews: list[_Review] = [
-            (written(item.reason), item.field)
+            (item.as_reason(), item.field)
             for item in imported.review
             if field_id_of(item.field or "") is not None
         ]

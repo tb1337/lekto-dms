@@ -1185,7 +1185,9 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
   (`subject`), the rule it comes from (`rule`) and, among a node's reasons, the built-in field
   (`field`). A signal that abstains writes `abstained_reason` beside `abstained` in its output,
   the rules `problem_reason` beside `problem` (also `ArrivalStepOut`); a document the adapters
-  cannot process fails its node with the error's own code (`DomainError.reason`). The OpenAPI document lists every code with its parameters and how each is
+  cannot process fails its node with the error's own code (`DomainError.reason`). A migration
+  gives the default reasons of its reviews with their codes (`ImportedReviewIn.code`, one of
+  `paperless_*_review` with `name`); a reason a person wrote has none. The OpenAPI document lists every code with its parameters and how each is
   written (`x-reasons`: `text`, `number`, `percent` (0 to 1), `date`, `value` (a field's value
   as a reason shows it: true or false for yes or no, null for none), `names`, `fields` (check
   fields), `rule_values`). `text` is a reason as written (a person's, or one stored before

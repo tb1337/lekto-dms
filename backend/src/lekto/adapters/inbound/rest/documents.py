@@ -907,7 +907,9 @@ async def _imported_metadata(
 def _review(
     body: ImportedReviewIn, definitions: Mapping[FieldId, FieldDefinition]
 ) -> ImportedReview:
-    review = ImportedReview(reason=body.reason, field=body.field)
+    review = ImportedReview(
+        reason=body.reason, field=body.field, code=body.code, params=dict(body.params)
+    )
     field_id = None if review.field is None else field_id_of(review.field)
     if field_id is not None and field_id not in definitions:
         raise ValidationError(f"review: field {field_id} does not exist")

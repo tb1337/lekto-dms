@@ -1,9 +1,7 @@
 <script lang="ts">
+	import ConfirmFooter from '#lib/components/ConfirmFooter.svelte';
 	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.ts';
-	import { buttonVariants } from '#lib/components/ui/button/index.ts';
 	import { reportError } from '#lib/errors.ts';
-	import { m } from '#lib/paraglide/messages.js';
-	import { cn } from '#lib/utils.ts';
 
 	// Asks before a destructive action. The action runs on confirm; the dialog closes when it
 	// succeeds and stays open (with the error as a toast) when it fails.
@@ -45,15 +43,6 @@
 			<AlertDialog.Title>{title}</AlertDialog.Title>
 			<AlertDialog.Description>{description}</AlertDialog.Description>
 		</AlertDialog.Header>
-		<AlertDialog.Footer>
-			<AlertDialog.Cancel disabled={busy}>{m.cancel()}</AlertDialog.Cancel>
-			<AlertDialog.Action
-				disabled={busy}
-				onclick={confirm}
-				class={cn(destructive && buttonVariants({ variant: 'destructive' }))}
-			>
-				{confirmLabel}
-			</AlertDialog.Action>
-		</AlertDialog.Footer>
+		<ConfirmFooter label={confirmLabel} {busy} {destructive} onconfirm={confirm} />
 	</AlertDialog.Content>
 </AlertDialog.Root>

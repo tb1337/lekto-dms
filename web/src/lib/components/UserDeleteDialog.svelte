@@ -2,9 +2,9 @@
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
+	import ConfirmFooter from '#lib/components/ConfirmFooter.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.ts';
-	import { buttonVariants } from '#lib/components/ui/button/index.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
 	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -20,7 +20,6 @@
 		type Decision,
 		type How
 	} from '#lib/user-removal.ts';
-	import { cn } from '#lib/utils.ts';
 
 	// Deleting a user (Tobi, 22.10.2026): the spaces they leave behind are decided here, each
 	// with a click, and all goes in one request; with none, it is a plain confirmation.
@@ -143,15 +142,6 @@
 				{/each}
 			</div>
 		{/if}
-		<AlertDialog.Footer>
-			<AlertDialog.Cancel disabled={busy}>{m.cancel()}</AlertDialog.Cancel>
-			<AlertDialog.Action
-				disabled={busy || !ready}
-				onclick={confirm}
-				class={cn(buttonVariants({ variant: 'destructive' }))}
-			>
-				{m.user_delete()}
-			</AlertDialog.Action>
-		</AlertDialog.Footer>
+		<ConfirmFooter label={m.user_delete()} {busy} disabled={!ready} onconfirm={confirm} />
 	</AlertDialog.Content>
 </AlertDialog.Root>

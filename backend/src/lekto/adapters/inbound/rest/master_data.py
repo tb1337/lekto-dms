@@ -193,6 +193,13 @@ def _identifier(item: IdentifierIn, *, rejected: bool = False) -> Identifier:
     return Identifier.parse(item.kind, item.value, topic_id=topic, user_id=user)
 
 
+def _document_type_arguments(given: dict[str, Any]) -> dict[str, Any]:
+    """The fields of a new type's body as required or not, by field."""
+    if given.get("fields") is not None:
+        given["fields"] = {FieldId(item.field_id): item.required for item in given["fields"]}
+    return given
+
+
 def _contact_arguments(given: dict[str, Any]) -> dict[str, Any]:
     """The identifiers of a contact's body as `Identifier`s."""
     for key in ("identifiers", "rejected_identifiers"):
@@ -346,6 +353,7 @@ document_types = _simple(
         out=DocumentTypeOut,
         of=DocumentTypeOut.of,
         counted=CountBy.DOCUMENT_TYPE,
+        arguments=_document_type_arguments,
     )
 )
 tags = APIRouter(prefix="/tags", tags=["master data"], dependencies=PROTECTED)

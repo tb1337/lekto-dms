@@ -343,6 +343,34 @@ async def test_the_fields_of_a_document_type_from_the_type(api: Api) -> None:
     assert (await assign([{"field_id": only["id"]}], auth(admin))).status_code == 409
 
 
+async def test_a_document_type_is_created_with_its_fields(api: Api) -> None:
+    """Issue #73: one request, all or nothing; the pattern may name the fields it comes with."""
+    admin = await api.admin()
+    letter = await post(api, "/document-types", {"name": "Letter"}, auth(admin))
+    amount = await post(
+        api,
+        "/fields",
+        {"name": "Amount", "data_type": "text", "document_type_ids": [letter["id"]]},
+        auth(admin),
+    )
+    body = {
+        "name": "Invoice",
+        "title_pattern": "Invoice {{ field.amount }}",
+        "fields": [{"field_id": amount["id"], "required": True}],
+    }
+    invoice = await post(api, "/document-types", body, auth(admin))
+    fields = (await api.client.get(f"{PREFIX}/fields", headers=auth(admin))).json()
+    (stored,) = [item for item in fields if item["id"] == amount["id"]]
+    assert set(stored["document_type_ids"]) == {letter["id"], invoice["id"]}
+    assert invoice["id"] in stored["required_document_type_ids"]
+    # A field that does not exist: no type either.
+    missing = {"name": "Reminder", "fields": [{"field_id": str(UUID(int=7))}]}
+    refused = await api.client.post(f"{PREFIX}/document-types", json=missing, headers=auth(admin))
+    assert refused.status_code == 404
+    types = (await api.client.get(f"{PREFIX}/document-types", headers=auth(admin))).json()
+    assert "Reminder" not in {item["name"] for item in types}
+
+
 async def test_downloads(api: Api) -> None:
     owner = await api.user()
     document = await upload(api, auth(owner))

@@ -268,11 +268,13 @@ class MasterDataService:
         title_pattern: str | None = None,
         group_ids: Collection[TagId] = (),
         icon: str | None = None,
+        fields: Mapping[FieldId, bool] | None = None,
     ) -> DocumentType:
-        """`title_pattern` (a template, `domain.templates`) may name global fields only: no
-        other field applies to a new type yet. A pattern is carried out by a rule of the type
-        (`rules.title_rule`). `group_ids`: type groups (tags of scope `document_type`).
-        `icon`: the name of a Lucide icon."""
+        """`fields`: the fields that belong to it besides the global ones, each required (True)
+        or optional, as `assign_fields` sets them, in the same transaction (issue #73: all or
+        nothing). `title_pattern` (a template, `domain.templates`) may name them and the global
+        fields; it is carried out by a rule of the type (`rules.title_rule`). `group_ids`: type
+        groups (tags of scope `document_type`). `icon`: the name of a Lucide icon."""
         item = DocumentType.create(
             name=name,
             now=self._now(),
@@ -283,15 +285,15 @@ class MasterDataService:
 
         async def check(uow: UnitOfWork) -> None:
             item.set_groups(await _groups(uow, group_ids, TagScope.DOCUMENT_TYPE))
-            await self._check_title_pattern(uow, item)
 
-        return await self._create(
-            actor,
-            _document_types,
-            item,
-            check,
-            after=lambda uow: self._keep_title_rule(uow, actor, item),
-        )
+        async def after(uow: UnitOfWork) -> None:
+            # The fields need the stored type; the pattern may name them.
+            if fields:
+                await self._fit_fields(uow, item, fields)
+            await self._check_title_pattern(uow, item)
+            await self._keep_title_rule(uow, actor, item)
+
+        return await self._create(actor, _document_types, item, check, after=after)
 
     async def change_document_type(
         self,
@@ -589,54 +591,63 @@ class MasterDataService:
         async with self._uow() as uow:
             await require_admin(uow, actor, Action.CHANGE_MASTER_DATA)
             document_type = await uow.document_types.get(id)
-            definitions = await field_definitions(uow)
-            for field in fields:
-                if field not in definitions:
-                    raise NotFoundError("field", field)
-                if definitions[field].document_type_ids is None:
-                    name = definitions[field].name
-                    raise ValidationError(because(ReasonCode.FIELD_IS_GLOBAL, field=name))
-            pattern = document_type.title_pattern
-            changed: list[FieldDefinition] = []
-            for definition in definitions.values():
-                scope = definition.document_type_ids
-                if scope is None:
-                    continue
-                required = set(definition.required_types)
-                if definition.id in fields:
-                    new_scope = scope | {id}
-                    required = required | {id} if fields[definition.id] else required - {id}
-                elif id in scope:
-                    new_scope, required = scope - {id}, required - {id}
-                    if not new_scope:
-                        raise ValidationError(
-                            because(ReasonCode.FIELD_ONLY_THIS_TYPE, field=definition.name)
-                        )
-                    if await uow.documents.field_in_use(definition.id, outside_types=new_scope):
-                        raise ConflictError(
-                            because(
-                                ReasonCode.TYPE_HAS_VALUES,
-                                type=document_type.name,
-                                field=definition.name,
-                            )
-                        )
-                    if pattern and field_used(self._templates.check(pattern), definition.key):
-                        raise ConflictError(
-                            because(
-                                ReasonCode.TITLE_PATTERN_USES_FIELD,
-                                type=document_type.name,
-                                key=definition.key,
-                            )
-                        )
-                else:
-                    continue
-                if new_scope == scope and required == definition.required_types:
-                    continue
-                definition.change_scope(new_scope)
-                definition.require(types=required)
-                await uow.fields.update(definition)
-                changed.append(definition)
+            changed = await self._fit_fields(uow, document_type, fields)
             await uow.commit()
+        return changed
+
+    async def _fit_fields(
+        self, uow: UnitOfWork, document_type: DocumentType, fields: Mapping[FieldId, bool]
+    ) -> list[FieldDefinition]:
+        """Make `fields` the type's fields besides the global ones (`assign_fields`), in `uow`
+        without committing; the fields that changed."""
+        id = document_type.id
+        definitions = await field_definitions(uow)
+        for field in fields:
+            if field not in definitions:
+                raise NotFoundError("field", field)
+            if definitions[field].document_type_ids is None:
+                name = definitions[field].name
+                raise ValidationError(because(ReasonCode.FIELD_IS_GLOBAL, field=name))
+        pattern = document_type.title_pattern
+        changed: list[FieldDefinition] = []
+        for definition in definitions.values():
+            scope = definition.document_type_ids
+            if scope is None:
+                continue
+            required = set(definition.required_types)
+            if definition.id in fields:
+                new_scope = scope | {id}
+                required = required | {id} if fields[definition.id] else required - {id}
+            elif id in scope:
+                new_scope, required = scope - {id}, required - {id}
+                if not new_scope:
+                    raise ValidationError(
+                        because(ReasonCode.FIELD_ONLY_THIS_TYPE, field=definition.name)
+                    )
+                if await uow.documents.field_in_use(definition.id, outside_types=new_scope):
+                    raise ConflictError(
+                        because(
+                            ReasonCode.TYPE_HAS_VALUES,
+                            type=document_type.name,
+                            field=definition.name,
+                        )
+                    )
+                if pattern and field_used(self._templates.check(pattern), definition.key):
+                    raise ConflictError(
+                        because(
+                            ReasonCode.TITLE_PATTERN_USES_FIELD,
+                            type=document_type.name,
+                            key=definition.key,
+                        )
+                    )
+            else:
+                continue
+            if new_scope == scope and required == definition.required_types:
+                continue
+            definition.change_scope(new_scope)
+            definition.require(types=required)
+            await uow.fields.update(definition)
+            changed.append(definition)
         return changed
 
     # --- reading (every signed-in user) ----------------------------------------------------------

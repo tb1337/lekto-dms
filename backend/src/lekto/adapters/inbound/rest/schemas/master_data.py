@@ -320,6 +320,15 @@ class ContactOut(MasterDataOut):
         )
 
 
+class FieldAssignmentIn(BaseModel):
+    """A field of a document type, from the type."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    field_id: UUID
+    required: bool = False
+
+
 class DocumentTypeCreate(NameIn):
     model_config = ConfigDict(
         extra="forbid",
@@ -329,9 +338,25 @@ class DocumentTypeCreate(NameIn):
     )
 
     description: Description | None = None
-    title_pattern: TitlePattern | None = None
+    title_pattern: TitlePattern | None = Field(
+        default=None,
+        description="May name the global fields and those in `fields`.",
+    )
     group_ids: TypeGroups = Field(default_factory=list)
     icon: Icon | None = None
+    fields: list[FieldAssignmentIn] = Field(
+        default_factory=list,
+        max_length=500,
+        description="The fields of the type besides the global ones, each once, required or "
+        "optional: set with it in one transaction (as `PUT /document-types/{id}/fields`).",
+    )
+
+    @field_validator("fields")
+    @classmethod
+    def _each_once(cls, fields: list[FieldAssignmentIn]) -> list[FieldAssignmentIn]:
+        if len({item.field_id for item in fields}) != len(fields):
+            raise ValueError("each field once")
+        return fields
 
 
 class DocumentTypePatch(BaseModel):
@@ -648,15 +673,6 @@ class FieldOut(BaseModel):
             assignment=item.assignment,
             created_at=item.created_at,
         )
-
-
-class FieldAssignmentIn(BaseModel):
-    """A field of a document type, from the type."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    field_id: UUID
-    required: bool = False
 
 
 class FieldAssignmentsIn(BaseModel):

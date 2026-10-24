@@ -107,8 +107,13 @@
 		}
 		void events.generation;
 		void loadText();
+		// The text is read by its node alone (issue #75).
 		return events.subscribe((event) => {
-			if (event.document_id === documentId && event.type === 'document.node_completed') {
+			if (
+				event.document_id === documentId &&
+				event.type === 'document.node_completed' &&
+				event.node === 'parse'
+			) {
 				void loadText();
 			}
 		});

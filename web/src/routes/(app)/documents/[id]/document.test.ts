@@ -107,6 +107,21 @@ describe('the document view and seen', () => {
 		expect(seen(api)).toHaveLength(1);
 	});
 
+	it('loads the document once after a burst of events of a run', async () => {
+		// Issue #75: a run sends two events for each node, some of them side by side.
+		const api = serve(() => documentOf({ lane: null }));
+		render(Page);
+		await waitFor(() => expect(seen(api)).toHaveLength(1));
+		for (const node of ['signal_llm', 'signal_classifier', 'signal_neighbours', 'signal_facts']) {
+			emit?.('document.node_started', { document_id: 'doc-1', node, run: 1 });
+			emit?.('document.node_completed', { document_id: 'doc-1', node, run: 1, outcome: 'ok' });
+		}
+		const loads = () => calls(api).filter((call) => call === 'GET /api/v1/documents/doc-1');
+		await waitFor(() => expect(loads()).toHaveLength(2));
+		await new Promise((resolve) => setTimeout(resolve, 400));
+		expect(loads()).toHaveLength(2);
+	});
+
 	it('asks for no facts before the document has its text', async () => {
 		const api = serve(() => documentOf({ lane: null }));
 		render(Page);

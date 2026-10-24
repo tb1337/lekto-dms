@@ -19,6 +19,7 @@
 	import { pageHref, stepHref, stepOf, viewHref, viewOf } from '#lib/document-view.ts';
 	import { formatDuration } from '#lib/duration.ts';
 	import { describeError } from '#lib/errors.ts';
+	import { coalesced } from '#lib/coalesce.ts';
 	import { events } from '#lib/events.svelte.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
@@ -121,8 +122,8 @@
 		reading = read && typeof read === 'object' && Array.isArray(read.pages) ? read : null;
 	}
 
-	// Loaded once per document and after each completed node; a new state of the document
-	// (every event) does not load it again.
+	// Loaded once per document and after completed nodes; a new state of the document (every
+	// event) does not load it again.
 	const documentId = $derived(document.id);
 	let loadedFor = '';
 	$effect(() => {
@@ -138,9 +139,15 @@
 			}
 			void load();
 		});
-		return events.subscribe((event) => {
-			if (event.document_id === id && event.type === 'document.node_completed') void load();
+		// Nodes side by side complete together: loaded once after them.
+		const reload = coalesced(() => void load());
+		const stop = events.subscribe((event) => {
+			if (event.document_id === id && event.type === 'document.node_completed') reload();
 		});
+		return () => {
+			stop();
+			reload.cancel();
+		};
 	});
 
 	// The clock for the duration of a running node.

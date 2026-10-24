@@ -29,6 +29,7 @@
 	import TypeIcon from '#lib/components/TypeIcon.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
+	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { describeValue, fieldLabel } from '#lib/describe.ts';
 	import {
@@ -965,7 +966,7 @@
 	</div>
 
 	<div class="flex flex-col gap-2.5 border-t bg-card px-5 py-3.5">
-		{#if formError}<p class="text-sm text-destructive" role="alert">{formError}</p>{/if}
+		{#if formError}<Field.Error>{formError}</Field.Error>{/if}
 		{#if !editable}
 			<p class="text-sm text-muted-foreground">{m.edit_read_only()}</p>
 		{:else if confirming}

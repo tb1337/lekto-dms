@@ -8,6 +8,7 @@
 	import ValueInput from '#lib/components/rules/ValueInput.svelte';
 	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
+	import * as Field from '#lib/components/ui/field/index.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { ACTION_LABELS } from '#lib/rules/describe.ts';
@@ -175,5 +176,5 @@
 			</Button>
 		</div>
 	</div>
-	{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+	{#if error}<Field.Error>{error}</Field.Error>{/if}
 </div>

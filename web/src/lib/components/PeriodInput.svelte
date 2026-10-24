@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import type { Period } from '#lib/fields.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -45,7 +46,20 @@
 		return () => onunreadable?.(false);
 	});
 
+	// A value from outside (the form reset or loaded again) drops what was typed, also when it
+	// is the same period: an unreadable text never changes the value (issue #68). The field's
+	// own changes keep it (`set`).
+	let own = false;
+	$effect(() => {
+		void value;
+		untrack(() => {
+			if (own) own = false;
+			else typing = false;
+		});
+	});
+
 	function set(next: Period) {
+		own = true;
 		value = next;
 		onchange?.(next);
 	}

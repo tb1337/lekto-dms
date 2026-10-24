@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { m } from '#lib/paraglide/messages.js';
+import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
+import FieldValueInput from './FieldValueInput.svelte';
 import PeriodInput from './PeriodInput.svelte';
 
 const NAME = 'Bezugszeitraum';
@@ -137,6 +139,39 @@ describe('PeriodInput', () => {
 		await fireEvent.input(start, { target: { value: '2026-09-14' } });
 		expect(field.value).toBe('2026-09-14/2026-09-30');
 		expect(screen.queryByText(m.field_period_unreadable())).toBeNull();
+	});
+
+	it('drops what was typed when the value comes again from outside, also the same period', async () => {
+		// Issue #68: the form is reset or loaded again after an unreadable text was typed.
+		const onunreadable = vi.fn();
+		const september = { start: '2026-09-01', end: '2026-09-30' };
+		const { rerender } = render(PeriodInput, { value: september, label: NAME, onunreadable });
+		const field = notationField();
+		await fireEvent.input(field, { target: { value: 'nächsten Monat' } });
+		await fireEvent.blur(field);
+		expect(field.value).toBe('nächsten Monat');
+		expect(field.getAttribute('aria-invalid')).toBe('true');
+		await rerender({ value: { ...september } });
+		expect(field.value).toBe('2026-09');
+		expect(field.getAttribute('aria-invalid')).toBeNull();
+		expect(onunreadable).toHaveBeenLastCalledWith(false);
+	});
+
+	it('keeps its own changes and drops what was typed on a reset, also when bound', async () => {
+		// Bound, as the document form binds it through the field's input.
+		const field = { id: 'f1', name: NAME, data_type: 'period' } as FieldDefinition;
+		const september = { start: '2026-09-01', end: '2026-09-30' };
+		const { rerender } = render(FieldValueInput, { field, id: 'f1', value: september });
+		const input = screen.getByPlaceholderText(m.field_period_placeholder()) as HTMLInputElement;
+		await fireEvent.input(input, { target: { value: 'Q2 2026' } });
+		await fireEvent.keyDown(input, { key: 'Enter' });
+		expect(input.value).toBe('Q2 2026');
+		await fireEvent.input(input, { target: { value: 'nächsten Monat' } });
+		await fireEvent.blur(input);
+		expect(input.value).toBe('nächsten Monat');
+		// The form loads it again with the period it now holds: the same as before.
+		await rerender({ value: { start: '2026-04-01', end: '2026-06-30' } });
+		expect(input.value).toBe('2026-Q2');
 	});
 
 	it('clears both ends when the period is emptied', async () => {

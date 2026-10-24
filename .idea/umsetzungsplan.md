@@ -1639,6 +1639,7 @@ PR mit Label `enhancement` nach `release/0.5.0`, nach Paket 3.
 - Hintergrund-Einbettung: Eine zu langsame Anfrage rechnet weiter (höchstens acht zugleich), der Vektor bleibt zehn Minuten (auch fürs Blättern), `SearchMeaningReady` geht an die Event-Streams des Suchenden (`EventHub.deliver`, nicht über die Outbox); `meaning_pending` in der Antwort.
 - `POST /documents/search/warm`: eine Einbettung im Hintergrund, höchstens einmal pro Minute; die Web-UI ruft es beim Tippen (Suchfeld der Seite und des Kopfs).
 - Web: Hinweis über den Treffern (`SearchNote`), „Mit Bedeutung neu suchen“ nach dem Event, bis dahin für dieselbe Anfrage nur Wörter (`semantic_ratio=0`); nach 1,5 s „Die Suche nach Bedeutung braucht gerade länger …“; bei nicht erreichbarem Index „Liste ohne Suchwort zeigen“. MCP: `words_only_because`.
+- Ohne Embeddings zeigt die Web-UI nichts davon (Tobi, 24.10.2026: „ohne Embeddings konfiguriert soll man im UI von dem Feature nichts sehen“): `GET /pipeline` sagt `meaning_search`, ohne gibt es keinen Hinweis, keinen Wartetext und kein Vorwärmen.
 - Geprüft auf einer Wegwerf-Instanz mit Wegwerf-Index und dem Embedding-Dienst der Devinstanz (Timeout 50 ms): Hinweis, Event, Knopf, danach mit Bedeutung.
 
 **Offen:** Gleichstand der Wortsuche durch Bruchstücke der Zerlegung („en“); pflegbare Synonyme für die Wortsuche („Weihnachtsgeld“ ↔ „Einmalzahlung“, „13. Gehalt“) als nächste Idee.

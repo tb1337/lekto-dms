@@ -745,6 +745,7 @@
 	"oidc_linked": "Your account is linked.",
 	"oidc_not_linked": "Your account is not linked.",
 	"oidc_link": "Link account",
+	"oidc_link_bad_url": "The identity provider answered with an address that is no web address.",
 	"oidc_unlink": "Remove link",
 	"oidc_unlink_confirm": "You then sign in with your password only.",
 	"oidc_unlink_needs_password": "Without a password the link cannot be removed.",

@@ -14,6 +14,7 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
+	import { httpUrl } from '#lib/http-url.ts';
 	import { userLabel } from '#lib/masterdata.svelte.ts';
 	import { oidcErrorMessage } from '#lib/oidc-errors.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -49,7 +50,13 @@
 	async function link() {
 		try {
 			const { authorization_url } = await unwrap(api.POST('/api/v1/auth/oidc/link'));
-			window.location.assign(authorization_url);
+			// Only a web address: the browser is never sent to another scheme from an answer.
+			const target = httpUrl(authorization_url, location.origin);
+			if (!target) {
+				toast.error(m.oidc_link_bad_url());
+				return;
+			}
+			window.location.assign(target);
 		} catch (error) {
 			reportError(error);
 		}

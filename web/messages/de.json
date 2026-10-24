@@ -745,6 +745,7 @@
 	"oidc_linked": "Ihr Konto ist verknüpft.",
 	"oidc_not_linked": "Ihr Konto ist nicht verknüpft.",
 	"oidc_link": "Konto verknüpfen",
+	"oidc_link_bad_url": "Der Identitätsanbieter hat mit einer Adresse geantwortet, die keine Webadresse ist.",
 	"oidc_unlink": "Verknüpfung entfernen",
 	"oidc_unlink_confirm": "Danach melden Sie sich nur noch mit dem Passwort an.",
 	"oidc_unlink_needs_password": "Ohne Passwort kann die Verknüpfung nicht entfernt werden.",

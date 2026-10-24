@@ -3,9 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import IdentifiersEditor from '#lib/components/IdentifiersEditor.svelte';
 import { ApiError, type Problem } from '#lib/api/problem.ts';
+import openapi from '../../openapi.json';
 import {
 	changesOf,
+	IDENTIFIER_KINDS,
 	kindLabel,
+	NAMING_KINDS,
 	numbersOf,
 	PERSON_KINDS,
 	refusedRow,
@@ -20,6 +23,18 @@ const stored = [
 ] as const;
 
 describe('identifiers', () => {
+	it('offers the kinds as the API names them', () => {
+		type Kinds = Record<string, { contact: boolean; person: boolean; names_user: boolean }>;
+		const kinds = (openapi as unknown as { 'x-identifier-kinds': Kinds })['x-identifier-kinds'];
+		const having = (flag: 'contact' | 'person' | 'names_user') =>
+			Object.keys(kinds)
+				.filter((kind) => kinds[kind][flag])
+				.sort();
+		expect([...IDENTIFIER_KINDS].sort()).toEqual(having('contact'));
+		expect([...PERSON_KINDS].sort()).toEqual(having('person'));
+		expect([...NAMING_KINDS].sort()).toEqual(having('names_user'));
+	});
+
 	it('sends the entered and the rejected ones, not the learned ones', () => {
 		const rows = rowsOf([...stored]);
 		rows.push({ ...rows[0], key: 99, value: '  ' });

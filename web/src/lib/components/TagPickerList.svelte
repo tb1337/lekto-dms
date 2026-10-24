@@ -1,9 +1,10 @@
 <script lang="ts">
-	import SearchIcon from '@lucide/svelte/icons/search';
 	import type { Snippet } from 'svelte';
+	import SearchField from '#lib/components/SearchField.svelte';
 	import TagChip from '#lib/components/TagChip.svelte';
 	import type { Tag, TagScope } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { toggled } from '#lib/picking.ts';
 	import { matchesQuery, ofScope, pathLabel } from '#lib/tags.ts';
 
 	// Several tags of one scope to choose: a search over their paths, then every tag of the scope
@@ -48,24 +49,17 @@
 	const isGroup = $derived(scope === 'contact' || scope === 'document_type');
 
 	function toggle(id: string, on: boolean) {
-		onchange(on ? [...selected, id] : selected.filter((entry) => entry !== id));
+		onchange(toggled(selected, id, on));
 	}
 </script>
 
 <div class="shrink-0 px-4 pb-3">
-	<label
-		class="flex h-11 items-center gap-2 rounded-xl bg-muted px-3 text-muted-foreground focus-within:ring-2 focus-within:ring-ring/40"
-	>
-		<SearchIcon class="size-4 shrink-0" aria-hidden="true" />
-		<input
-			bind:this={search}
-			bind:value={query}
-			type="search"
-			aria-label={searchLabel}
-			placeholder={searchLabel}
-			class="h-full min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground sm:text-sm"
-		/>
-	</label>
+	<SearchField
+		bind:ref={search}
+		bind:value={query}
+		label={searchLabel}
+		class="h-11 rounded-xl bg-muted px-3 focus-within:ring-2 focus-within:ring-ring/40"
+	/>
 </div>
 <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-4 pb-4">
 	{@render actions?.()}

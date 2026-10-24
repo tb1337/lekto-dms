@@ -17,6 +17,7 @@
 	import * as Command from '#lib/components/ui/command/index.ts';
 	import * as Popover from '#lib/components/ui/popover/index.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { matchesWords, searchWords } from '#lib/picking.ts';
 	import { cn } from '#lib/utils.ts';
 
 	// A choice from a long list, by searching: contact, document type, topic. Closed it looks like
@@ -63,12 +64,10 @@
 		...made.filter((entry) => !options.some((option) => option.value === entry.value))
 	]);
 	const current = $derived(all.find((option) => option.value === value) ?? null);
-	const words = $derived(query.trim().toLocaleLowerCase());
+	const words = $derived(searchWords(query));
 	const found = $derived(
 		all.filter((option) =>
-			`${option.label} ${option.hint ?? ''} ${option.keywords ?? ''}`
-				.toLocaleLowerCase()
-				.includes(words)
+			matchesWords(`${option.label} ${option.hint ?? ''} ${option.keywords ?? ''}`, words)
 		)
 	);
 	const offered = $derived(

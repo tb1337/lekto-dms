@@ -1,10 +1,10 @@
 <script lang="ts">
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Plus from '@lucide/svelte/icons/plus';
-	import SearchIcon from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
 	import { tick } from 'svelte';
 	import InfoHint from '#lib/components/InfoHint.svelte';
+	import SearchField from '#lib/components/SearchField.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import TagChip from '#lib/components/TagChip.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
@@ -154,18 +154,11 @@
 
 <div class="flex flex-col gap-1" role="group" aria-label={m.master_identifiers()}>
 	<div class="flex items-center gap-2 pb-1">
-		<label
-			class="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full border border-input bg-card px-3.5 text-muted-foreground focus-within:border-ring sm:h-10 dark:bg-input/30"
-		>
-			<SearchIcon class="size-4 shrink-0" aria-hidden="true" />
-			<input
-				type="search"
-				bind:value={query}
-				placeholder={m.identifier_search()}
-				aria-label={m.identifier_search()}
-				class="h-full min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground sm:text-sm"
-			/>
-		</label>
+		<SearchField
+			bind:value={query}
+			label={m.identifier_search()}
+			class="h-11 min-w-0 flex-1 rounded-full border border-input bg-card px-3.5 focus-within:border-ring sm:h-10 dark:bg-input/30"
+		/>
 		{#if hint}<InfoHint text={hint} about={m.master_identifiers()} />{/if}
 		{#if phone.current}
 			<Button

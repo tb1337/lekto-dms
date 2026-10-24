@@ -14,10 +14,11 @@
 </script>
 
 <script lang="ts">
-	import SearchIcon from '@lucide/svelte/icons/search';
 	import FacetPicker from '#lib/components/FacetPicker.svelte';
+	import SearchField from '#lib/components/SearchField.svelte';
 	import TypeIcon from '#lib/components/TypeIcon.svelte';
 	import { formatNumber } from '#lib/i18n.ts';
+	import { matchesWords, searchWords, toggled } from '#lib/picking.ts';
 
 	// A long list of a group of the filters, kept short: the most frequent values (`top`, most
 	// first) and the chosen ones with a box each, a field that searches all of them, and every
@@ -49,10 +50,8 @@
 	let query = $state('');
 	let picking = $state(false);
 	const shown = $derived.by(() => {
-		const words = query.trim().toLocaleLowerCase();
-		if (words) {
-			return items.filter((item) => item.label.toLocaleLowerCase().includes(words)).slice(0, 8);
-		}
+		const words = searchWords(query);
+		if (words) return items.filter((item) => matchesWords(item.label, words)).slice(0, 8);
 		const first = top.slice(0, limit);
 		const chosen = items.filter(
 			(item) => selected.includes(item.id) && !first.some((entry) => entry.id === item.id)
@@ -61,7 +60,7 @@
 	});
 
 	function toggle(itemId: string, checked: boolean) {
-		onchange(checked ? [...selected, itemId] : selected.filter((entry) => entry !== itemId));
+		onchange(toggled(selected, itemId, checked));
 	}
 </script>
 
@@ -69,18 +68,12 @@
 	<div class="flex flex-col gap-1" role="group" aria-labelledby="{id}-heading">
 		<span id="{id}-heading" class="text-xs text-muted-foreground">{heading}</span>
 		{#if items.length > limit}
-			<label
-				class="flex h-8 items-center gap-2 rounded-lg border border-input bg-background px-2.5 focus-within:border-ring"
-			>
-				<SearchIcon class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-				<input
-					type="search"
-					bind:value={query}
-					aria-label={searchLabel}
-					placeholder={searchLabel}
-					class="h-full min-w-0 flex-1 bg-transparent text-base outline-none sm:text-sm"
-				/>
-			</label>
+			<SearchField
+				bind:value={query}
+				label={searchLabel}
+				size="sm"
+				class="h-8 rounded-lg border border-input bg-background px-2.5 focus-within:border-ring"
+			/>
 		{/if}
 		<ul class="flex flex-col">
 			{#each shown as item (item.id)}

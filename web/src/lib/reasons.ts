@@ -457,6 +457,7 @@ const ACTIONS: Record<string, () => string> = {
 	train_classifier: m.action_train_classifier,
 	rebuild_index: m.action_rebuild_index,
 	retry_jobs: m.action_retry_jobs,
+	check_index: m.action_check_index,
 	reparse_all: m.action_reparse_all,
 	make_global_rules: m.action_make_global_rules,
 	change_global_rules: m.action_change_global_rules,

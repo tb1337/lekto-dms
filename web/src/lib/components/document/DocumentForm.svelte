@@ -15,6 +15,7 @@
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
+	import { moveTargets } from '#lib/components/document/actions.ts';
 	import FieldGroup from '#lib/components/document/FieldGroup.svelte';
 	import FieldShell from '#lib/components/document/FieldShell.svelte';
 	import FilingBox from '#lib/components/document/FilingBox.svelte';
@@ -198,6 +199,8 @@
 	);
 	// Where the document goes on confirming: empty while nothing is chosen.
 	const spaceTarget = $derived(spaceChoice === 'other' ? otherSpace : spaceChoice);
+	// "Move" in the filing box: there is somewhere to move it (the head's button says the same).
+	const canMove = $derived(moveTargets(lookup, session.user, document.space_id).length > 0);
 	const filingHint = $derived(
 		filing ? confirmHint(spaceTarget, document.space_id, lookup, viewer) : null
 	);
@@ -947,7 +950,15 @@
 		{/if}
 
 		{#if !filing}
-			<FilingBox {document} {lookup} {viewer} unseen={settledUnseen} {editable} {onmove} />
+			<FilingBox
+				{document}
+				{lookup}
+				{viewer}
+				unseen={settledUnseen}
+				{editable}
+				{canMove}
+				{onmove}
+			/>
 		{/if}
 
 		{#if reviewing && decisions.length === 0 && !failedNode && ruleNotes.length === 0 && nodeNotes.length === 0 && !hasSpace}

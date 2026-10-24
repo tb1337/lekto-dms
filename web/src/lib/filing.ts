@@ -273,31 +273,66 @@ export function visibleNames(
 	};
 }
 
+/** "visible to Anna, Ben", or "visible to you only". */
+export function visibleText(members: readonly Member[], viewer: Viewer, green: boolean): string {
+	const { now } = visibleNames(members, viewer, green);
+	return now.length > 0 ? m.visible_to({ names: now.join(', ') }) : m.visible_to_you();
+}
+
+/** "Anna reads it once it is green"; null when nobody waits for that. */
+export function readersLaterText(
+	members: readonly Member[],
+	viewer: Viewer,
+	green: boolean
+): string | null {
+	const { later } = visibleNames(members, viewer, green);
+	return later.length > 0 ? m.visible_to_readers_later({ names: later.join(', ') }) : null;
+}
+
 /** "Liegt in Persönlich · nur für dich sichtbar". */
 export function whereText(current: string, lookup: Lookup, viewer: Viewer, green: boolean): string {
 	const space = lookup.spaces.find((entry) => entry.id === current);
-	const { now } = visibleNames(space?.members ?? [], viewer, green);
-	const visible = now.length > 0 ? m.visible_to({ names: now.join(', ') }) : m.visible_to_you();
+	const visible = visibleText(space?.members ?? [], viewer, green);
 	const person = personOf(current, lookup, viewer);
 	return person
 		? m.filing_where_person({ name: person, visible })
 		: m.filing_where({ space: spaceName(current, lookup, viewer), visible });
 }
 
+/** A member of the space as a chip; `key` is the member's user id (two members may share a
+ * display name). */
+export interface MemberChip {
+	key: string;
+	text: string;
+}
+
 /** The members of the space as chips: the caller first ("Du · bearbeitest"), then the others
  * with their role; readers of a document that is not green yet see it once it is. */
-export function memberChips(members: readonly Member[], viewer: Viewer, green: boolean): string[] {
+export function memberChips(
+	members: readonly Member[],
+	viewer: Viewer,
+	green: boolean
+): MemberChip[] {
 	const own = members.find((member) => member.user_id === viewer.id);
 	const others = members.filter((member) => member.user_id !== viewer.id);
 	return [
-		...(own ? [own.role === 'edit' ? m.filing_you_edit() : m.filing_you_read()] : []),
-		...others.map((member) =>
-			member.role === 'edit'
-				? m.filing_member_edit({ name: userLabel(member) })
-				: green
-					? m.filing_member_read({ name: userLabel(member) })
-					: m.filing_member_read_later({ name: userLabel(member) })
-		)
+		...(own
+			? [
+					{
+						key: own.user_id,
+						text: own.role === 'edit' ? m.filing_you_edit() : m.filing_you_read()
+					}
+				]
+			: []),
+		...others.map((member) => ({
+			key: member.user_id,
+			text:
+				member.role === 'edit'
+					? m.filing_member_edit({ name: userLabel(member) })
+					: green
+						? m.filing_member_read({ name: userLabel(member) })
+						: m.filing_member_read_later({ name: userLabel(member) })
+		}))
 	];
 }
 

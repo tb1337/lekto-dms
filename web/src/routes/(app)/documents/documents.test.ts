@@ -2,12 +2,30 @@ import { render, screen, within } from '@testing-library/svelte';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
+import { events } from '#lib/events.svelte.ts';
 import { formatDate } from '#lib/i18n.ts';
 import { rememberLayout } from '#lib/listing.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
 import { calls, fakeApi, listedOf, OWNER } from '#lib/testing/documents.ts';
 import Page from './+page.svelte';
+
+class FakeSource {
+	static last: FakeSource;
+	onopen: (() => void) | null = null;
+	onerror: (() => void) | null = null;
+	readyState = 1;
+	listeners = new Map<string, (message: { data: string }) => void>();
+	constructor(readonly url: string) {
+		FakeSource.last = this;
+	}
+	addEventListener(type: string, handler: (message: { data: string }) => void) {
+		this.listeners.set(type, handler);
+	}
+	close() {
+		this.readyState = 2;
+	}
+}
 
 const state = vi.hoisted(() => ({ url: new URL('http://lekto/ui/documents') }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
@@ -314,6 +332,57 @@ describe('the archive page', () => {
 			screen.getByRole('button', { name: m.search_chip_remove({ words: 'Strom' }) })
 		);
 		expect(vi.mocked(goto)).toHaveBeenLastCalledWith('?tag=t1', { reset: false });
+	});
+
+	it('says when a search went by words alone, and offers the meaning once it is ready', async () => {
+		state.url = new URL('http://lekto/ui/documents?q=Weihnachten');
+		let first = true;
+		const api = fakeApi({
+			'GET /api/v1/documents/search': () => {
+				const pending = first;
+				first = false;
+				return {
+					items: [listedOf({ id: 'd1', title: 'Kontoauszug Dezember' })].map((document) => ({
+						document,
+						score: 0.9,
+						snippet: []
+					})),
+					estimated_total: 1,
+					next_offset: null,
+					semantic: !pending,
+					mode: pending ? 'words' : 'hybrid',
+					reason: pending ? { code: 'search_embed_timeout', params: { seconds: 5 } } : null,
+					meaning_pending: pending
+				};
+			}
+		});
+		vi.stubGlobal('fetch', api);
+		events.useFactory((url) => new FakeSource(url) as unknown as EventSource);
+		events.start(() => {});
+		const user = userEvent.setup();
+		render(Page);
+		expect(
+			await screen.findByText(m.reason_search_embed_timeout({ seconds: '5' }), { exact: false })
+		).toBeTruthy();
+		expect(screen.getByText(m.search_meaning_pending(), { exact: false })).toBeTruthy();
+		FakeSource.last.listeners.get('search.meaning_ready')?.({
+			data: JSON.stringify({
+				type: 'search.meaning_ready',
+				id: 'e1',
+				occurred_at: '',
+				query: 'Weihnachten'
+			})
+		});
+		await user.click(await screen.findByRole('button', { name: m.search_with_meaning() }));
+		await vi.waitFor(() =>
+			expect(
+				screen.queryByText(m.reason_search_embed_timeout({ seconds: '5' }), { exact: false })
+			).toBeNull()
+		);
+		const searches = calls(api).filter((call) => call.startsWith('GET /api/v1/documents/search'));
+		expect(searches[0]).not.toContain('semantic_ratio');
+		expect(searches.at(-1)).not.toContain('semantic_ratio');
+		events.stop();
 	});
 
 	it('takes no lane from an older link', async () => {

@@ -5,6 +5,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { BASE } from '#lib/base.ts';
 	import { openLens } from '#lib/open-lens.svelte.ts';
+	import { warmSearch } from '#lib/search-warm.ts';
 	import { cn } from '#lib/utils.ts';
 
 	// The search field of the header: Enter searches the documents with the words (and, in the
@@ -63,6 +64,7 @@
 		placeholder={inDocuments && openLens.name
 			? m.header_search_in({ name: openLens.name })
 			: m.header_search_placeholder()}
+		oninput={() => warmSearch()}
 		class="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
 	/>
 	<kbd

@@ -15,7 +15,7 @@
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
-	import { moveTargets } from '#lib/components/document/actions.ts';
+	import { moveTargets, retryProcessing } from '#lib/components/document/actions.ts';
 	import FieldGroup from '#lib/components/document/FieldGroup.svelte';
 	import FieldShell from '#lib/components/document/FieldShell.svelte';
 	import FilingBox from '#lib/components/document/FilingBox.svelte';
@@ -527,9 +527,7 @@
 	async function retry() {
 		busy = true;
 		try {
-			await unwrap(
-				api.POST('/api/v1/documents/{id}/retry', { params: { path: { id: document.id } } })
-			);
+			await retryProcessing(document.id);
 			toast.success(m.retry_started());
 		} catch (error) {
 			formError = describeError(error);

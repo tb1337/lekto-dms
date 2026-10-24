@@ -125,6 +125,17 @@ describe('DocumentHeader', () => {
 		expect(new URL(request.url).pathname).toBe('/api/v1/documents/doc-1/vision');
 	});
 
+	it('runs the failed step again from the menu', async () => {
+		const onchanged = vi.fn();
+		render(DocumentHeader, props({ onchanged }));
+		const user = await openMenu();
+		await user.click(await screen.findByRole('menuitem', { name: m.retry_node() }));
+		await waitFor(() => expect(onchanged).toHaveBeenCalled());
+		const [request] = fetchMock.mock.calls[0];
+		expect(request.method).toBe('POST');
+		expect(new URL(request.url).pathname).toBe('/api/v1/documents/doc-1/retry');
+	});
+
 	it('offers nothing without a model', async () => {
 		render(DocumentHeader, props({ vision: null }));
 		await openMenu();

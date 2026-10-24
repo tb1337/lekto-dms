@@ -18,7 +18,7 @@
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
-	import { moveTargets } from '#lib/components/document/actions.ts';
+	import { moveTargets, retryProcessing } from '#lib/components/document/actions.ts';
 	import LaneBadge from '#lib/components/LaneBadge.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import ProcessingProgress from '#lib/components/ProcessingProgress.svelte';
@@ -164,11 +164,7 @@
 	}
 
 	async function retry() {
-		await act(
-			() =>
-				unwrap(api.POST('/api/v1/documents/{id}/retry', { params: { path: { id: document.id } } })),
-			m.retry_started()
-		);
+		await act(() => retryProcessing(document.id), m.retry_started());
 	}
 
 	async function reprocess() {

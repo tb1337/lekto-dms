@@ -81,7 +81,11 @@
 	// One chip per page; beyond `CHIPS` pages the rest behind "+N".
 	const CHIPS = 6;
 	const places = $derived(byPage(applies ? (check?.locations ?? []) : []));
-	let allPages = $state(false);
+	// "+N" shows all pages of these places; other places (the field read again) start collapsed
+	// again (issue #71), the same ones after the document was loaded again stay as they are.
+	const placesKey = $derived(places.map((place) => place.page).join(' '));
+	let expandedFor = $state<string | null>(null);
+	const allPages = $derived(expandedFor === placesKey);
 	const shownPlaces = $derived(allPages ? places : places.slice(0, CHIPS));
 	const hiddenPlaces = $derived(places.length - shownPlaces.length);
 	const labelId = $derived(`${inputId}-label`);
@@ -114,7 +118,7 @@
 	{#if hiddenPlaces > 0}
 		<button
 			type="button"
-			onclick={() => (allPages = true)}
+			onclick={() => (expandedFor = placesKey)}
 			aria-label={m.source_more({ count: hiddenPlaces })}
 			class="shrink-0 rounded-full bg-panel px-2 font-mono text-[11px] leading-5 text-brand hover:underline"
 		>

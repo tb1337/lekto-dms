@@ -48,6 +48,7 @@
 		viewOf
 	} from '#lib/document-view.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
+	import { coalesced } from '#lib/coalesce.ts';
 	import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
 	import { inbox as inboxSummary } from '#lib/inbox.svelte.ts';
 	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
@@ -295,13 +296,23 @@
 			graph = value.nodes;
 			vision = value.vision;
 		}, reportError);
-		return events.subscribe((event) => {
+		// A run sends a burst of events: the document is loaded once after it (issue #75).
+		const reload = coalesced(() => void load());
+		const reloadInbox = coalesced(() => void loadInbox());
+		const stop = events.subscribe((event) => {
 			if (event.document_id !== id) return;
-			if (event.type === 'document.deleted')
+			if (event.type === 'document.deleted') {
 				void goto(fromInbox ? `${BASE}/inbox` : `${BASE}/documents`);
-			else void load();
-			if (fromInbox && !NODE_EVENTS.has(event.type)) void loadInbox();
+				return;
+			}
+			reload();
+			if (fromInbox && !NODE_EVENTS.has(event.type)) reloadInbox();
 		});
+		return () => {
+			stop();
+			reload.cancel();
+			reloadInbox.cancel();
+		};
 	});
 
 	/** Show a field's quote where it stands in the pane on the left. */

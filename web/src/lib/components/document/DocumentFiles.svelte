@@ -17,6 +17,7 @@
 	import Segmented from '#lib/components/Segmented.svelte';
 	import ReceiptEdit from '#lib/components/document/ReceiptEdit.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
+	import { coalesced } from '#lib/coalesce.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { events } from '#lib/events.svelte.ts';
 	import {
@@ -92,12 +93,18 @@
 		});
 		void events.generation;
 		void load();
-		// The archive comes with the text recognition.
-		return events.subscribe((event) => {
+		// The archive comes with the text recognition, the pages and the last change with other
+		// nodes: loaded once after nodes that complete together (issue #75).
+		const reload = coalesced(() => void load());
+		const stop = events.subscribe((event) => {
 			if (event.document_id === documentId && event.type === 'document.node_completed') {
-				void load();
+				reload();
 			}
 		});
+		return () => {
+			stop();
+			reload.cancel();
+		};
 	});
 
 	const SOURCES: Record<Source, () => string> = {

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import Workflow from '@lucide/svelte/icons/workflow';
+	import { api } from '#lib/api/client.ts';
 	import AssignmentList, { type Assignment } from '#lib/components/AssignmentList.svelte';
 	import ColorPicker from '#lib/components/ColorPicker.svelte';
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
@@ -20,8 +21,15 @@
 	import { Textarea } from '#lib/components/ui/textarea/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { changesOf, type IdentifierRow, refusedRow, rowsOf } from '#lib/identifiers.ts';
+	import { latest } from '#lib/latest.ts';
 	import { type Extra, type Item, type Values } from '#lib/masterdata-api.ts';
-	import type { Contact, FieldDefinition, Tag, TagScope } from '#lib/masterdata.svelte.ts';
+	import type {
+		Contact,
+		FieldDefinition,
+		Tag,
+		TagScope,
+		UserName
+	} from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { below, ofScope, pathLabel } from '#lib/tags.ts';
@@ -140,6 +148,21 @@
 	// refuses): saving then opens its tab and its line.
 	let openedIdentifier = $state<number | null>(null);
 	let identifierErrors = $state<Record<number, string>>({});
+	// The users a customer or personnel number may belong to: fetched once each time the dialog
+	// opens for a contact, not on every switch to the identifiers tab. Without the list, a number
+	// still shows whose it is by id.
+	let users = $state<UserName[]>([]);
+	const beginUsers = latest();
+	$effect(() => {
+		if (!open || extra !== 'aliases') return;
+		const current = beginUsers();
+		void api
+			.GET('/api/v1/users')
+			.then(({ data }) => {
+				if (current() && Array.isArray(data)) users = data;
+			})
+			.catch(() => {});
+	});
 	const tabs = $derived.by(() => {
 		const general = { value: 'general', label: m.master_tab_general() };
 		if (extra === 'aliases') {
@@ -544,7 +567,7 @@
 			topics={enabledTopics}
 			errors={identifierErrors}
 			hint={m.master_identifiers_hint()}
-			withUsers
+			{users}
 		/>
 	{:else if part === 'fields'}
 		{#if fields}

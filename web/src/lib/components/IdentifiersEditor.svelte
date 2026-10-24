@@ -10,7 +10,6 @@
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
-	import { api } from '#lib/api/client.ts';
 	import {
 		IDENTIFIER_KINDS,
 		type IdentifierKind,
@@ -38,8 +37,8 @@
 	// rejected (training does not learn it again); a rejected one can be allowed again. Enter
 	// in the value closes the line. A search finds them by value, kind and topic; a new one
 	// opens empty. `errors` (by row key) show in their open line. `kinds`: those offered (a
-	// person's in the profile); `withUsers`: a customer or personnel number may name the user it
-	// belongs to (the contact dialog). `contacts`: the lines are a user's numbers at these
+	// person's in the profile); `users`: a customer or personnel number may name the user it
+	// belongs to, one of these (the contact dialog). `contacts`: the lines are a user's numbers at these
 	// contacts (the profile, issue #82): each names its contact, offers the topics that contact
 	// enables, and a learned one is taken over or declined as not theirs.
 	let {
@@ -49,7 +48,7 @@
 		errors = {},
 		hint,
 		kinds: offered = IDENTIFIER_KINDS,
-		withUsers = false,
+		users = null,
 		contacts
 	}: {
 		rows: IdentifierRow[];
@@ -59,29 +58,19 @@
 		/** The help of the identifiers, behind an info button beside the search. */
 		hint?: string;
 		kinds?: readonly IdentifierKind[];
-		withUsers?: boolean;
+		/** Without the list, a number still shows whose it is by id; it only cannot be chosen. */
+		users?: readonly UserName[] | null;
 		contacts?: readonly Pick<Contact, 'id' | 'name' | 'topic_ids'>[];
 	} = $props();
 
 	const uid = $props.id();
 	let query = $state('');
-	let users = $state<UserName[]>([]);
 	const kinds = $derived(offered.map((kind) => ({ value: kind, label: kindLabel(kind) })));
+	const withUsers = $derived(users !== null);
 	const userOptions = $derived([
 		{ value: '', label: m.identifier_user_none() },
-		...users.map((user) => ({ value: user.id, label: userChoice(user) }))
+		...(users ?? []).map((user) => ({ value: user.id, label: userChoice(user) }))
 	]);
-
-	$effect(() => {
-		if (!withUsers) return;
-		// Without the list, a number still shows whose it is by id; it only cannot be chosen.
-		void api
-			.GET('/api/v1/users')
-			.then(({ data }) => {
-				if (Array.isArray(data)) users = data;
-			})
-			.catch(() => {});
-	});
 	const contactOptions = $derived([
 		{ value: '', label: m.number_contact_choose() },
 		...(contacts ?? []).map((contact) => ({ value: contact.id, label: contact.name }))
@@ -253,7 +242,7 @@
 							{/if}
 							{#if topic}<TagChip tag={topic} topic size="sm" />{/if}
 							{#if withUsers && item.user_id}
-								<Badge variant="outline">{userName(users, item.user_id)}</Badge>
+								<Badge variant="outline">{userName(users ?? [], item.user_id)}</Badge>
 							{/if}
 							{#if errors[item.key]}
 								<span class="size-[7px] shrink-0 rounded-full bg-destructive" aria-hidden="true"

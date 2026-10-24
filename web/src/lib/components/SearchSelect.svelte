@@ -20,7 +20,8 @@
 	import { cn } from '#lib/utils.ts';
 
 	// A choice from a long list, by searching: contact, document type, topic. Closed it looks like
-	// a `Select` (the chosen one as `chosen` draws it, else its label, else `placeholder`); open,
+	// a `Select` (the chosen one as `chosen` draws it, else its label, else `placeholder`; a value
+	// the options do not hold, deleted or out of sight, says so rather than that none is set); open,
 	// a search over label and hint, "none" first while nothing is typed. With `create` (admins)
 	// a search that names nothing offers "„…“ anlegen …": the choice gives way to `create`'s
 	// dialog, and the one it makes is chosen.
@@ -108,6 +109,8 @@
 			{@render chosen(current)}
 		{:else if current}
 			<span class="min-w-0 flex-1 truncate">{current.label}</span>
+		{:else if value !== ''}
+			<span class="min-w-0 flex-1 truncate">{m.rule_unknown()}</span>
 		{:else}
 			<span class="min-w-0 flex-1 truncate text-muted-foreground">{placeholder}</span>
 		{/if}

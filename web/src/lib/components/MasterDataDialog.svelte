@@ -19,7 +19,7 @@
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { Textarea } from '#lib/components/ui/textarea/index.ts';
 	import { describeError } from '#lib/errors.ts';
-	import { changesOf, type IdentifierRow, rowsOf } from '#lib/identifiers.ts';
+	import { changesOf, type IdentifierRow, refusedRow, rowsOf } from '#lib/identifiers.ts';
 	import { type Extra, type Item, type Values } from '#lib/masterdata-api.ts';
 	import type { Contact, FieldDefinition, Tag, TagScope } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -234,9 +234,7 @@
 			open = false;
 		} catch (problem) {
 			error = describeError(problem);
-			const refused = identifiers.find(
-				(item) => item.value.trim() !== '' && error?.includes(`'${item.value.trim()}'`)
-			);
+			const refused = refusedRow(problem, identifiers);
 			if (refused) {
 				identifierErrors = { [refused.key]: error };
 				openedIdentifier = refused.key;

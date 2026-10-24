@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { m } from '#lib/paraglide/messages.js';
 import {
+	byId,
 	foreignSpace,
 	spaceLabel,
 	spaceOptions,
@@ -82,5 +83,20 @@ describe('a user offered for a choice', () => {
 		expect(userChoice({ username: 'bob', display_name: 'anna' })).toBe('anna (bob)');
 		expect(userChoice({ username: 'anna', display_name: 'Anna' })).toBe('Anna');
 		expect(userChoice({ username: 'anna', display_name: null })).toBe('anna');
+	});
+});
+
+describe('the index of a list', () => {
+	it('finds an entry by id, once built, and anew for a list loaded anew', () => {
+		const index = byId(users);
+		expect(index.get('u2')).toBe(users[1]);
+		expect(index.get('nobody')).toBeUndefined();
+		// Built once per list: the cards of a grid share it.
+		expect(byId(users)).toBe(index);
+		// A new list (the lookup loaded again) gets its own.
+		const reloaded = [...users, { ...users[0], id: 'u9' }];
+		expect(byId(reloaded)).not.toBe(index);
+		expect(byId(reloaded).get('u9')?.id).toBe('u9');
+		expect(index.get('u9')).toBeUndefined();
 	});
 });

@@ -3,8 +3,10 @@ and nothing where there is none."""
 
 from pathlib import Path
 
+import pypdfium2
 import pytest
 
+from lekto.adapters.outbound.pdfium.library import LOCK
 from lekto.adapters.outbound.zxing import ZxingCodeReader
 from tests.builders import SAMPLES
 from tests.contracts.processing import CodeReaderContract
@@ -37,8 +39,6 @@ async def test_no_codes_where_there_are_none(sample: str) -> None:
 
 
 async def test_a_long_document_is_read_as_far_as_the_limit(tmp_path: Path) -> None:
-    import pypdfium2
-
     source = pypdfium2.PdfDocument(SAMPLES / "codes.pdf")
     target = pypdfium2.PdfDocument.new()
     for _ in range(3):
@@ -50,3 +50,21 @@ async def test_a_long_document_is_read_as_far_as_the_limit(tmp_path: Path) -> No
     reading = await ZxingCodeReader(max_pages=2).read_codes(path)
     assert reading.pages == 2
     assert sorted({code.page for code in reading.codes}) == [1, 2]
+
+
+async def test_the_copy_of_a_page_does_not_hold_the_pdfium_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The pixels of a rendered page lie in a buffer of our own; copying them into an image is
+    no PDFium call and must not hold up the other users of PDFium."""
+    to_pil = pypdfium2.PdfBitmap.to_pil
+    held: list[bool] = []
+
+    def observed(self: pypdfium2.PdfBitmap) -> object:
+        held.append(LOCK.locked())
+        return to_pil(self)
+
+    monkeypatch.setattr(pypdfium2.PdfBitmap, "to_pil", observed)
+    reading = await ZxingCodeReader().read_codes(SAMPLES / "codes.pdf")
+    assert reading.pages == 1
+    assert held == [False]

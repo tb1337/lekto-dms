@@ -11,7 +11,7 @@ from lekto.adapters.outbound.sql.repositories import SqlRepository, Values
 from lekto.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSource
 from lekto.core.domain.fields import FieldDefinition, FieldType
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
-from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId, UserId
+from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId, UserId
 from lekto.core.domain.master_data import (
     Assignment,
     Contact,
@@ -72,6 +72,7 @@ class SqlContactRepository(SqlNamedRepository[ContactId, Contact]):
                         IdentifierSource(item.source),
                         None if item.topic_id is None else TagId(item.topic_id),
                         None if item.user_id is None else UserId(item.user_id),
+                        frozenset(SpaceId(UUID(space)) for space in item.learned_in or ()),
                     )
                     for item in identifiers[row.id]
                 ],
@@ -115,6 +116,7 @@ class SqlContactRepository(SqlNamedRepository[ContactId, Contact]):
                     "source": item.source.value,
                     "topic_id": item.topic_id,
                     "user_id": item.user_id,
+                    "learned_in": sorted(str(space) for space in item.learned_in) or None,
                 }
                 for item in entity.identifiers
             ],

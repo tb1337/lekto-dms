@@ -10,13 +10,22 @@
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { describeError } from '#lib/errors.ts';
-	import { type IdentifierRow, PERSON_KINDS, rowsOf } from '#lib/identifiers.ts';
+	import {
+		type IdentifierRow,
+		NAMING_KINDS,
+		numbersOf,
+		PERSON_KINDS,
+		rowsOf
+	} from '#lib/identifiers.ts';
+	import type { Contact, Tag } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
 	// A user's profile (Tobi, 21.10.2026): the display name others see, and what only the user
 	// and admins see: other names, birth date, e-mail and the person's own numbers. Found in a
-	// document, they tell whose it is; none of it goes to the language model. `userId` null: the
-	// caller's own (settings); else an admin edits another user's (user management).
+	// document, they tell whose it is; none of it goes to the language model. With them the
+	// user's numbers at contacts (issue #82): private too, entered, taken over or declined here.
+	// `userId` null: the caller's own (settings); else an admin edits another user's (user
+	// management).
 	type Profile = components['schemas']['ProfileOut'];
 
 	let { userId = null, onsaved }: { userId?: string | null; onsaved?: () => void } = $props();
@@ -30,6 +39,10 @@
 	let email = $state('');
 	let identifiers = $state<IdentifierRow[]>([]);
 	let opened = $state<number | null>(null);
+	let numbers = $state<IdentifierRow[]>([]);
+	let openedNumber = $state<number | null>(null);
+	let contacts = $state<Contact[]>([]);
+	let topics = $state<Tag[]>([]);
 	let problem = $state<string | null>(null);
 	let busy = $state(false);
 
@@ -40,20 +53,30 @@
 		birthDate = loaded.birth_date ?? '';
 		email = loaded.email ?? '';
 		identifiers = rowsOf(loaded.identifiers);
+		numbers = rowsOf(loaded.numbers);
 	}
 
 	async function load() {
 		try {
-			show(
-				await unwrap(
+			const [loaded, contactList, tags] = await Promise.all([
+				unwrap(
 					userId === null
 						? api.GET('/api/v1/auth/me/profile')
 						: api.GET('/api/v1/users/{id}/profile', { params: { path: { id: userId } } })
-				)
-			);
+				),
+				unwrap(api.GET('/api/v1/contacts')),
+				unwrap(api.GET('/api/v1/tags'))
+			]);
+			contacts = contactList;
+			topics = tags.filter((tag) => tag.scope === 'topic');
+			show(loaded);
 		} catch (error) {
 			problem = describeError(error);
 		}
+	}
+
+	function topicsOf(contact: string): readonly string[] {
+		return contacts.find((item) => item.id === contact)?.topic_ids ?? [];
 	}
 
 	onMount(load);
@@ -77,7 +100,8 @@
 			email: email.trim() || null,
 			identifiers: identifiers
 				.filter((item) => item.value.trim() !== '')
-				.map((item) => ({ kind: item.kind, value: item.value.trim() }))
+				.map((item) => ({ kind: item.kind, value: item.value.trim() })),
+			...numbersOf(numbers, topicsOf)
 		};
 		try {
 			show(
@@ -171,6 +195,17 @@
 				bind:opened
 				kinds={PERSON_KINDS}
 				hint={m.profile_identifiers_hint()}
+			/>
+		</Field.Field>
+		<Field.Field>
+			<Field.Label>{m.profile_numbers()}</Field.Label>
+			<IdentifiersEditor
+				bind:rows={numbers}
+				bind:opened={openedNumber}
+				kinds={NAMING_KINDS}
+				{topics}
+				{contacts}
+				hint={m.profile_numbers_hint()}
 			/>
 		</Field.Field>
 		{#if problem}

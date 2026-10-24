@@ -21,15 +21,19 @@ from lekto.core.domain.errors import (
     NotFoundError,
 )
 from lekto.core.domain.events import ClassifierTrained
+from lekto.core.domain.facts import Strength, persons_in
 from lekto.core.domain.identifiers import (
+    Confirmed,
+    Identifier,
     IdentifierKind,
     IdentifierSource,
     identifiers_in,
     mine_identifiers,
 )
-from lekto.core.domain.ids import ClassifierModelId, ContactId, TagId, UserId
+from lekto.core.domain.ids import ClassifierModelId, UserId
 from lekto.core.domain.jobs import Job, RetryPolicy
 from lekto.core.domain.json_value import JsonObject
+from lekto.core.domain.profiles import Person
 from lekto.core.domain.reasons import Action, ReasonCode, because
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.text import shorten
@@ -39,11 +43,12 @@ from lekto.core.ports.object_store import ObjectStore
 from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import require_admin
+from lekto.core.services._identifiers import person_identifiers
 from lekto.core.services._jobs import LEASE, JobRunner, Step, retrying
 from lekto.core.services._pages import document_pages
 from lekto.core.services.master_data import replace_learned_identifiers
 from lekto.core.services.objects import classifier_key, load_text
-from lekto.core.services.profiles import person_identifiers
+from lekto.core.services.profiles import matching_persons
 
 log = logging.getLogger(__name__)
 
@@ -95,6 +100,7 @@ class ClassifierStatus:
 class _Example:
     document: Document
     example: TrainingExample
+    personal_of: UserId | None = None  # the user whose personal space it lies in
 
 
 class ClassifierService:
@@ -210,7 +216,16 @@ class ClassifierService:
         )
         # Identifiers are learned from confirmed contacts only, never from the machine's.
         confirmed = [item for item in examples if item.example.labelled]
-        found = await asyncio.to_thread(_identifiers_of, confirmed)
+        async with self._uow() as uow:
+            persons = await matching_persons(uow)
+            # Whose a document is: a number entered by hand tells, not one learned before.
+            numbers = [
+                item
+                for contact in await uow.contacts.list_all()
+                for item in contact.identifiers
+                if item.manual and item.user_id is not None
+            ]
+        found = await asyncio.to_thread(_identifiers_of, confirmed, persons, numbers)
         model, learned, old = await retrying(
             lambda: self._store_model(trained, found, accuracy, len(examples), until),
             attempts=_COMMIT_ATTEMPTS,
@@ -230,7 +245,7 @@ class ClassifierService:
     async def _store_model(
         self,
         trained: TrainedModel,
-        found: list[tuple[ContactId | None, TagId | None, set[tuple[IdentifierKind, str]]]],
+        found: list[Confirmed],
         accuracy: JsonObject | None,
         examples: int,
         until: datetime | None,
@@ -318,7 +333,9 @@ class ClassifierService:
                 space=space_label(document, spaces.get(document.space_id)),
                 labelled=document.confirmed_at is not None,
             )
-            examples.append(_Example(document, example))
+            space = spaces.get(document.space_id)
+            owner = None if space is None else space.personal_of
+            examples.append(_Example(document, example, owner))
         return examples
 
     async def _accuracy(self, examples: Sequence[_Example]) -> JsonObject | None:
@@ -411,13 +428,29 @@ class ClassifierService:
 
 
 def _identifiers_of(
-    examples: Sequence[_Example],
-) -> list[tuple[ContactId | None, TagId | None, set[tuple[IdentifierKind, str]]]]:
-    """The identifiers in each example's text, with its contact and topic."""
-    return [
-        (item.document.contact_id, item.document.topic_id, identifiers_in(item.example.text))
-        for item in examples
-    ]
+    examples: Sequence[_Example], persons: Sequence[Person], numbers: Sequence[Identifier]
+) -> list[Confirmed]:
+    """The identifiers in each example's text, with its contact, topic and space, and whose it
+    surely is: the user of the personal space it lies in, and the `persons` it names by more
+    than their name (one of their numbers, a contact's number that names them, their birth
+    date)."""
+    confirmed = []
+    for item in examples:
+        found = identifiers_in(item.example.text)
+        named = persons_in(item.example.text, found, persons, numbers)
+        whose = {person.user_id for person in named if person.strength is not Strength.WEAK}
+        if item.personal_of is not None:
+            whose.add(item.personal_of)
+        confirmed.append(
+            Confirmed(
+                item.document.contact_id,
+                item.document.topic_id,
+                frozenset(found),
+                item.document.space_id,
+                frozenset(whose),
+            )
+        )
+    return confirmed
 
 
 def _first_contact(prediction: Prediction) -> object:

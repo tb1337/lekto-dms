@@ -12,7 +12,15 @@ from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
 from lekto.core.domain.fields import FieldDefinition, FieldType, Money, Url
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
-from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, TagId, UserId, new_id
+from lekto.core.domain.ids import (
+    ContactId,
+    DocumentId,
+    DocumentTypeId,
+    SpaceId,
+    TagId,
+    UserId,
+    new_id,
+)
 from lekto.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
 from lekto.core.domain.periods import Period
 from lekto.core.domain.permissions import can_read_document
@@ -716,6 +724,41 @@ class UnitOfWorkContract:
         async with uow_factory() as uow:
             await uow.contacts.add(Contact.create(name="New", now=NOW, identifiers=[iban, domain]))
             await uow.commit()
+
+    async def test_numbers_of_users(self, uow_factory: UnitOfWorkFactory) -> None:
+        """A learned identifier keeps the user it belongs to and the spaces it was learned in;
+        the numbers that name a user go with them (issue #82: nobody else's to see then)."""
+        anna, bob = builders.user(), builders.user()
+        await seed(uow_factory, anna, bob)
+        spaces = frozenset({SpaceId(new_id()), SpaceId(new_id())})
+        contract = Identifier(IdentifierKind.CUSTOMER_NUMBER, "K4711", user_id=anna.id)
+        learned = IdentifierSource.LEARNED
+        personnel = Identifier(
+            IdentifierKind.PERSONNEL_NUMBER, "12345", learned, None, anna.id, spaces
+        )
+        iban = Identifier(
+            IdentifierKind.IBAN,
+            "DE89370400440532013000",
+            IdentifierSource.LEARNED,
+            learned_in=spaces,
+        )
+        bobs = Identifier(IdentifierKind.CUSTOMER_NUMBER, "K0815", user_id=bob.id)
+        contact = Contact.create(name="Employer", now=NOW, identifiers=[contract, bobs])
+        contact.set_learned([personnel, iban])
+        async with uow_factory() as uow:
+            await uow.contacts.add(contact)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.contacts.get(contact.id)).identifiers == [
+                bobs,
+                contract,
+                iban,
+                personnel,
+            ]
+            await uow.users.remove(anna.id)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.contacts.get(contact.id)).identifiers == [bobs, iban]
 
     async def test_field_definition_round_trip(self, uow_factory: UnitOfWorkFactory) -> None:
         """Scope and choices; a field required for some of its types or, global, everywhere.
@@ -1795,7 +1838,8 @@ class UnitOfWorkContract:
             await uow.commit()
         async with uow_factory() as uow:
             assert await uow.profiles.find(anna.id) is None
-            assert (await uow.contacts.get(contact.id)).identifiers[0].user_id is None
+            # Her number at the contact went with her: nobody else's to see.
+            assert (await uow.contacts.get(contact.id)).identifiers == []
             assert [item.id for item in await uow.profiles.list_all()] == [bob.id]
 
     async def test_display_names_are_unique_and_aliases_need_not_be(

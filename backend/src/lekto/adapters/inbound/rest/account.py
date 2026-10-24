@@ -167,12 +167,11 @@ async def own_profile(principal: SessionPrincipal, context: Context) -> ProfileO
     "/me/profile",
     summary="Change the own profile",
     description=(
-        "Display name, aliases, birth date, e-mail and identifiers; what is given changes."
-        + PERSON_NOTE
-        + SESSION_ONLY_NOTE
+        "Display name, aliases, birth date, e-mail, identifiers and the numbers at contacts; "
+        "what is given changes." + PERSON_NOTE + SESSION_ONLY_NOTE
     ),
     response_model=ProfileOut,
-    responses=problem_responses(401, 403, 409, 422),
+    responses=problem_responses(401, 403, 404, 409, 422),
 )
 async def change_own_profile(
     body: ProfilePatch, principal: SessionPrincipal, context: Context

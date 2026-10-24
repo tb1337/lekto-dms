@@ -82,16 +82,19 @@ class IdentifierOut(BaseModel):
     kind: IdentifierKind
     value: str = Field(examples=["DE89370400440532013000"])
     source: IdentifierSource = Field(
-        description="`manual`: entered by an admin; `learned`: found by training in "
-        "confirmed documents of only this contact; `rejected`: learned, then rejected by an "
-        "admin (does not count, and training does not learn it again)."
+        description="`manual`: entered by hand (by an admin, or by the user it names); "
+        "`learned`: found by training in confirmed documents of only this contact; "
+        "`rejected`: learned, then rejected by an admin or declined by the user it named (does "
+        "not count, and training does not learn it again)."
     )
     topic_id: UUID | None = Field(
         description="The topic of the contact it points to; a learned one points to a topic "
         "only if all the confirmed documents it stands in carry it."
     )
     user_id: UUID | None = Field(
-        default=None, description="The user it belongs to; only one entered by hand has one."
+        default=None,
+        description="The user a customer or personnel number belongs to: entered by hand, or "
+        "found by training when all its documents are surely theirs alone.",
     )
 
 
@@ -273,7 +276,10 @@ class LogoFailureOut(BaseModel):
 class ContactOut(MasterDataOut):
     aliases: list[str] = Field(examples=[["ACME Strom"]])
     identifiers: list[IdentifierOut] = Field(
-        description="Entered, learned and rejected identifiers, in this order."
+        description="Entered, learned and rejected identifiers, in this order, as far as the "
+        "caller sees them: admins all; anyone else those entered by hand that name nobody, the "
+        "numbers that name them, and the learned ones of the spaces they are a member of; "
+        "rejected ones only admins."
     )
     group_ids: list[UUID] = Field(description="The contact groups it is in.")
     topic_ids: list[UUID] = Field(description="The topics it enables.")

@@ -3,7 +3,14 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import IdentifiersEditor from '#lib/components/IdentifiersEditor.svelte';
 import { ApiError, type Problem } from '#lib/api/problem.ts';
-import { changesOf, kindLabel, PERSON_KINDS, refusedRow, rowsOf } from '#lib/identifiers.ts';
+import {
+	changesOf,
+	kindLabel,
+	numbersOf,
+	PERSON_KINDS,
+	refusedRow,
+	rowsOf
+} from '#lib/identifiers.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 const stored = [
@@ -19,6 +26,23 @@ describe('identifiers', () => {
 		expect(changesOf(rows)).toEqual({
 			identifiers: [{ kind: 'iban', value: 'DE89370400440532013000' }],
 			rejected_identifiers: [{ kind: 'customer_number', value: '4711' }]
+		});
+	});
+
+	it('sends a user’s numbers with the topics their contacts enable, and the declined ones', () => {
+		const rows = rowsOf([
+			{ contact_id: 'c1', kind: 'personnel_number', value: ' 12345 ', topic_id: 'work' },
+			{ contact_id: 'c2', kind: 'customer_number', value: 'K2002', topic_id: 'work' },
+			{ contact_id: 'c2', kind: 'customer_number', value: 'K3003', source: 'rejected' },
+			{ contact_id: 'c2', kind: 'customer_number', value: 'K4004', source: 'learned' },
+			{ contact_id: '', kind: 'customer_number', value: 'K5005' }
+		]);
+		expect(numbersOf(rows, (contact) => (contact === 'c1' ? ['work'] : []))).toEqual({
+			numbers: [
+				{ contact_id: 'c1', kind: 'personnel_number', value: '12345', topic_id: 'work' },
+				{ contact_id: 'c2', kind: 'customer_number', value: 'K2002' }
+			],
+			declined_numbers: [{ contact_id: 'c2', kind: 'customer_number', value: 'K3003' }]
 		});
 	});
 

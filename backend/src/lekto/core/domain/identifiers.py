@@ -11,6 +11,15 @@ Admins enter identifiers by hand. Training learns more from confirmed documents 
 in documents of several contacts (the owner's own IBAN on every direct debit) is never learned.
 An admin can reject a learned one; it is then not learned again.
 
+Who sees a contact's identifier (issue #82, Tobi 24.10.2026: "wenn Datenschutz dann richtig";
+`seen_by`): one entered by hand that names no user is the contact's own and everyone's to see;
+one that names a user (a customer or personnel number) only that user's and the admins'; a
+learned one only theirs who are a member of a space a document it was learned from lies in,
+so a number learned from the pay slips in a personal space stays its user's; a rejected one
+the admins' alone. Training gives a learned customer or personnel number the user every one of
+its documents surely belongs to (`Confirmed.whose`); a user maintains the numbers that name
+them in their profile, and may decline a learned one (it is then rejected).
+
 An identifier may point to one of its contact's topics (a personnel number to "work", a policy
 number to "health insurance"): found in a document, it is evidence for the pair of contact and
 topic. A learned one gets a topic only if all the confirmed documents it stands in carry it.
@@ -18,14 +27,14 @@ topic. A learned one gets a topic only if all the confirmed documents it stands 
 
 import re
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
 
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.evidence import normalise
-from lekto.core.domain.ids import ContactId, TagId, UserId
+from lekto.core.domain.ids import ContactId, SpaceId, TagId, UserId
 from lekto.core.domain.reasons import ReasonCode, because
 
 MAX_IDENTIFIERS = 100
@@ -74,7 +83,7 @@ policy, a personnel number)."""
 class IdentifierSource(StrEnum):
     MANUAL = "manual"
     LEARNED = "learned"
-    REJECTED = "rejected"  # learned, then rejected by an admin: not learned again
+    REJECTED = "rejected"  # learned, then rejected (by an admin, or declined by its user)
 
 
 @dataclass(frozen=True)
@@ -82,14 +91,16 @@ class Identifier:
     """`value` is normalised (see `normalise_identifier`); kind and value are unique across
     all contacts. `topic_id`: the topic of its contact it points to, if any (the contact checks
     that it enables it). `user_id`: the user a contact's customer or personnel number belongs
-    to, if one does (entered by hand only); found in a document, it is evidence for them too.
-    A person's identifier has neither."""
+    to, if one does (entered by hand, or found by training); found in a document, it is
+    evidence for them too. `learned_in`: the spaces of the confirmed documents a learned one
+    was learned from (`seen_by`). A person's identifier has none of them."""
 
     kind: IdentifierKind
     value: str
     source: IdentifierSource = IdentifierSource.MANUAL
     topic_id: TagId | None = None
     user_id: UserId | None = None
+    learned_in: frozenset[SpaceId] = frozenset()
 
     @classmethod
     def parse(
@@ -107,9 +118,27 @@ class Identifier:
         return self.kind, self.value
 
     @property
+    def manual(self) -> bool:
+        """Whether a person entered it by hand."""
+        return self.source is IdentifierSource.MANUAL
+
+    @property
     def counts(self) -> bool:
         """Whether it is evidence (a rejected one only keeps training from learning it)."""
         return self.source is not IdentifierSource.REJECTED
+
+
+def seen_by(identifier: Identifier, user: UserId, spaces: Collection[SpaceId]) -> bool:
+    """Whether `user`, no admin, sees a contact's identifier (`spaces`: those they are a member
+    of): one entered by hand that names nobody everyone; one that names a user only that user;
+    a learned one whoever is a member of a space it was learned in; a rejected one nobody."""
+    if identifier.source is IdentifierSource.REJECTED:
+        return False
+    if identifier.user_id is not None:
+        return identifier.user_id == user
+    if identifier.source is IdentifierSource.LEARNED:
+        return not identifier.learned_in.isdisjoint(spaces)
+    return True
 
 
 # --- normalising ------------------------------------------------------------------------------
@@ -399,43 +428,60 @@ def matches(identifier: Identifier, found: tuple[IdentifierKind, str]) -> bool:
 # --- learning ---------------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class Confirmed:
+    """A confirmed document as training learns from it: its contact and topic, the identifiers
+    in its text, the space it lies in, and whose it surely is (`whose`: the user of the personal
+    space it lies in and the users it names by more than their name)."""
+
+    contact: ContactId | None
+    topic: TagId | None
+    found: frozenset[tuple[IdentifierKind, str]]
+    space: SpaceId | None = None
+    whose: frozenset[UserId] = frozenset()
+
+
 def mine_identifiers(
-    documents: Iterable[
-        tuple[ContactId | None, TagId | None, Iterable[tuple[IdentifierKind, str]]]
-    ],
+    documents: Iterable[Confirmed],
     taken: Iterable[tuple[IdentifierKind, str]] = (),
     personal: Iterable[tuple[IdentifierKind, str]] = (),
 ) -> Mapping[ContactId, list[Identifier]]:
-    """The identifiers to learn from confirmed documents (each its contact, its topic and the
-    identifiers in its text): a value that stands in at least `LEARN_FROM` documents, all with
-    the same contact. A document without a contact counts as another contact. `taken` (entered
-    by hand or rejected anywhere) is never learned, nor what is one of the persons' values
-    `personal` (`of_person`: also a customer number that stands in a social security number).
-    A learned value points to a topic if all its documents carry that one; otherwise to none.
-    Only the kinds of contacts are learned (`CONTACT_KINDS`): a person's numbers never become a
-    contact's."""
-    holders: dict[tuple[IdentifierKind, str], list[tuple[ContactId | None, TagId | None]]] = (
-        defaultdict(list)
-    )
-    for contact, topic, found in documents:
-        for key in set(found):
-            holders[key].append((contact, topic))
+    """The identifiers to learn from confirmed documents: a value that stands in at least
+    `LEARN_FROM` documents, all with the same contact. A document without a contact counts as
+    another contact. `taken` (entered by hand or rejected anywhere) is never learned, nor what
+    is one of the persons' values `personal` (`of_person`: also a customer number that stands
+    in a social security number). A learned value points to a topic if all its documents carry
+    that one; otherwise to none. It notes the spaces its documents lie in (`learned_in`); a
+    customer or personnel number belongs to a user if every one of its documents is surely that
+    user's alone (`Confirmed.whose`). Only the kinds of contacts are learned (`CONTACT_KINDS`):
+    a person's numbers never become a contact's."""
+    holders: dict[tuple[IdentifierKind, str], list[Confirmed]] = defaultdict(list)
+    for document in documents:
+        for key in document.found:
+            holders[key].append(document)
     skip = set(taken)
     persons = list(personal)
     learned: dict[ContactId, list[Identifier]] = defaultdict(list)
-    for (kind, value), pairs in sorted(holders.items()):
-        owners = {contact for contact, _ in pairs}
+    for (kind, value), held in sorted(holders.items()):
+        owners = {document.contact for document in held}
         if (
             kind not in CONTACT_KINDS
             or (kind, value) in skip
             or of_person((kind, value), persons)
-            or len(pairs) < LEARN_FROM
+            or len(held) < LEARN_FROM
             or len(owners) != 1
         ):
             continue
         (owner,) = owners
-        topics = {topic for _, topic in pairs}
+        topics = {document.topic for document in held}
         topic = next(iter(topics)) if len(topics) == 1 else None
+        whose = {document.whose for document in held}
+        user = None
+        if kind in NAMING_KINDS and len(whose) == 1 and len(alone := next(iter(whose))) == 1:
+            (user,) = alone
+        spaces = frozenset(document.space for document in held if document.space is not None)
         if owner is not None:
-            learned[owner].append(Identifier(kind, value, IdentifierSource.LEARNED, topic))
+            learned[owner].append(
+                Identifier(kind, value, IdentifierSource.LEARNED, topic, user, spaces)
+            )
     return {owner: found[:MAX_IDENTIFIERS] for owner, found in learned.items()}

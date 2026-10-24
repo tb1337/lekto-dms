@@ -6,6 +6,8 @@ import { m } from '#lib/paraglide/messages.js';
 
 export type IdentifierIn = components['schemas']['IdentifierIn'];
 export type IdentifierOut = components['schemas']['IdentifierOut'];
+export type ContactNumberIn = components['schemas']['ContactNumberIn'];
+export type ContactNumberOut = components['schemas']['ContactNumberOut'];
 export type IdentifierKind = IdentifierIn['kind'];
 export type IdentifierSource = IdentifierOut['source'];
 
@@ -54,7 +56,8 @@ export function kindLabel(kind: IdentifierKind): string {
 
 /** One row of the editor; `key` keeps a row apart while its value is typed. `topic_id`: the
  * contact's topic it points to (empty: none); `user_id`: the user a customer or personnel number
- * belongs to (empty: none). */
+ * belongs to (empty: none); `contact_id`: the contact of a user's number (the profile; empty:
+ * none chosen yet). */
 export interface IdentifierRow {
 	key: number;
 	kind: IdentifierKind;
@@ -62,6 +65,7 @@ export interface IdentifierRow {
 	source: IdentifierSource;
 	topic_id: string;
 	user_id: string;
+	contact_id: string;
 }
 
 let next = 0;
@@ -71,18 +75,63 @@ export function row(
 	value = '',
 	source: IdentifierSource = 'manual',
 	topic_id: string | null = null,
-	user_id: string | null = null
+	user_id: string | null = null,
+	contact_id: string | null = null
 ): IdentifierRow {
-	return { key: next++, kind, value, source, topic_id: topic_id ?? '', user_id: user_id ?? '' };
+	return {
+		key: next++,
+		kind,
+		value,
+		source,
+		topic_id: topic_id ?? '',
+		user_id: user_id ?? '',
+		contact_id: contact_id ?? ''
+	};
 }
 
 export function rowsOf(
 	identifiers:
-		readonly (Pick<IdentifierOut, 'kind' | 'value'> & Partial<IdentifierOut>)[] | undefined
+		| readonly (Pick<IdentifierOut, 'kind' | 'value'> &
+				Partial<IdentifierOut> &
+				Partial<Pick<ContactNumberOut, 'contact_id'>>)[]
+		| undefined
 ): IdentifierRow[] {
 	return (identifiers ?? []).map((item) =>
-		row(item.kind, item.value, item.source ?? 'manual', item.topic_id, item.user_id)
+		row(
+			item.kind,
+			item.value,
+			item.source ?? 'manual',
+			item.topic_id,
+			item.user_id,
+			item.contact_id
+		)
 	);
+}
+
+/** What a profile sends of the user's numbers at contacts: those entered by hand (a learned one
+ * taken over among them), each with its topic if its contact enables it (`topicsOf`), and the
+ * learned ones declined; learned ones left alone stay. Rows without contact or value are left
+ * out. */
+export function numbersOf(
+	rows: readonly IdentifierRow[],
+	topicsOf: (contact: string) => readonly string[]
+): { numbers: ContactNumberIn[]; declined_numbers: ContactNumberIn[] } {
+	const filled = rows.filter((item) => item.value.trim() !== '' && item.contact_id !== '');
+	const number = (item: IdentifierRow): ContactNumberIn => ({
+		contact_id: item.contact_id,
+		kind: item.kind,
+		value: item.value.trim()
+	});
+	return {
+		numbers: filled
+			.filter((item) => item.source === 'manual')
+			.map((item) =>
+				item.topic_id !== '' && topicsOf(item.contact_id).includes(item.topic_id)
+					? { ...number(item), topic_id: item.topic_id }
+					: number(item)
+			),
+		declined_numbers: filled.filter((item) => item.source === 'rejected').map(number)
+	};
 }
 
 /** What a change sends: the identifiers entered by hand (a learned one taken over among them),

@@ -7,10 +7,16 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from lekto.core.domain.documents import UNSET
-from lekto.core.domain.identifiers import Identifier, IdentifierKind
+from lekto.core.domain.identifiers import (
+    MAX_IDENTIFIERS,
+    Identifier,
+    IdentifierKind,
+    IdentifierSource,
+)
+from lekto.core.domain.ids import ContactId, TagId
 from lekto.core.domain.profiles import MAX_ALIASES, MAX_PERSON_IDENTIFIERS
 from lekto.core.domain.users import MAX_DISPLAY_NAME
-from lekto.core.services.profiles import ProfileChanges, UserProfile
+from lekto.core.services.profiles import ContactNumber, ProfileChanges, UserProfile
 
 PERSON_NOTE = (
     " Only the user and admins see the profile; others see the display name. Of the profile "
@@ -43,6 +49,67 @@ class PersonIdentifierOut(BaseModel):
     value: str = Field(description="Normalised.")
 
 
+class ContactNumberIn(BaseModel):
+    """A customer or personnel number of the user at a contact, written as in documents."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "contact_id": "6f1c2a4e-0000-4000-8000-000000000001",
+                    "kind": "personnel_number",
+                    "value": "12345",
+                }
+            ]
+        },
+    )
+
+    contact_id: UUID
+    kind: IdentifierKind = Field(
+        description="`customer_number` (also a contract or policy number) or `personnel_number`; "
+        "other kinds name nobody (422)."
+    )
+    value: str = Field(min_length=1, max_length=100)
+    topic_id: UUID | None = Field(
+        default=None,
+        description="One of the contact's topics it points to (a personnel number to work).",
+    )
+
+    def number(self) -> ContactNumber:
+        return ContactNumber(
+            ContactId(self.contact_id),
+            Identifier.parse(
+                self.kind,
+                self.value,
+                topic_id=None if self.topic_id is None else TagId(self.topic_id),
+            ),
+        )
+
+
+class ContactNumberOut(BaseModel):
+    contact_id: UUID
+    kind: IdentifierKind
+    value: str = Field(description="Normalised.")
+    source: IdentifierSource = Field(
+        description="`manual`: entered by hand (by the user or an admin); `learned`: training "
+        "found it in confirmed documents that are surely the user's alone (in their personal "
+        "space, or naming them by more than their name)."
+    )
+    topic_id: UUID | None
+
+    @classmethod
+    def of(cls, number: ContactNumber) -> "ContactNumberOut":
+        item = number.identifier
+        return cls(
+            contact_id=number.contact_id,
+            kind=item.kind,
+            value=item.value,
+            source=item.source,
+            topic_id=item.topic_id,
+        )
+
+
 Alias = Annotated[str, Field(min_length=1, max_length=MAX_DISPLAY_NAME)]
 
 
@@ -53,6 +120,11 @@ class ProfileOut(BaseModel):
     birth_date: date | None
     email: str | None = Field(description="Also counts as an identifier.")
     identifiers: list[PersonIdentifierOut]
+    numbers: list[ContactNumberOut] = Field(
+        description="The user's customer and personnel numbers at contacts, by contact: found "
+        "in a document, they are evidence for the contact and for the user. Only the user and "
+        "admins see them, here and at the contact."
+    )
 
     @classmethod
     def of(cls, found: UserProfile) -> "ProfileOut":
@@ -67,12 +139,13 @@ class ProfileOut(BaseModel):
                 PersonIdentifierOut(kind=item.kind, value=item.value)
                 for item in profile.identifiers
             ],
+            numbers=[ContactNumberOut.of(number) for number in found.numbers],
         )
 
 
 class ProfilePatch(BaseModel):
-    """What is given changes; null removes the display name, birth date or e-mail; `aliases`
-    and `identifiers` replace all of them."""
+    """What is given changes; null removes the display name, birth date or e-mail; `aliases`,
+    `identifiers` and `numbers` replace all of them."""
 
     model_config = ConfigDict(
         extra="forbid",
@@ -104,6 +177,24 @@ class ProfilePatch(BaseModel):
             "entered it by hand; a learned one gives way)."
         ),
     )
+    numbers: list[ContactNumberIn] = Field(
+        default_factory=list,
+        max_length=MAX_IDENTIFIERS,
+        description=(
+            "The user's numbers at contacts entered by hand (a learned one given is then entered "
+            "by hand); learned ones left out stay. Unique across contacts: 409 if another "
+            "contact has it entered by hand (naming that contact only if the caller sees the "
+            "number there), 404 for a contact that does not exist."
+        ),
+    )
+    declined_numbers: list[ContactNumberIn] = Field(
+        default_factory=list,
+        max_length=MAX_IDENTIFIERS,
+        description=(
+            "Learned numbers that are not the user's: they are rejected at their contact, and "
+            "training does not learn them again. Others are left as they are."
+        ),
+    )
 
     def changes(self) -> ProfileChanges:
         given = self.model_fields_set
@@ -115,6 +206,12 @@ class ProfilePatch(BaseModel):
             identifiers=(
                 [Identifier.parse(item.kind, item.value) for item in self.identifiers]
                 if "identifiers" in given
+                else UNSET
+            ),
+            numbers=[item.number() for item in self.numbers] if "numbers" in given else UNSET,
+            declined_numbers=(
+                [item.number() for item in self.declined_numbers]
+                if "declined_numbers" in given
                 else UNSET
             ),
         )

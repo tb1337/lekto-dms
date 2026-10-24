@@ -2351,6 +2351,61 @@ class MigrationSuite:
         async with empty_database.reading() as connection:
             assert await connection.run_sync(_schema) == schema
 
+    async def test_private_identifiers_of_revision_0040_come_and_go(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0040: identifiers keep their rows, a learned one without the spaces it was
+        learned in until the next training; a user's numbers go with them. The downgrade drops
+        the spaces and lets a deleted user's numbers name nobody again."""
+        await migrate(empty_database, "0039")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        ids = {name: new_id() for name in ("anna", "bob", "contact")}
+        before = _before_0040(t.contact_identifiers)
+        number = {"contact_id": ids["contact"], "kind": "customer_number", "source": "manual"}
+        await _insert(
+            empty_database,
+            [
+                *(
+                    (
+                        t.users,
+                        {"id": ids[name], "username": name, "username_key": name, "role": "user"},
+                    )
+                    for name in ("anna", "bob")
+                ),
+                (t.contacts, {"id": ids["contact"], "name": "Insurer", "name_key": "insurer"}),
+                (before, number | {"value": "K4711", "user_id": ids["anna"]}),
+                (before, number | {"value": "K0815", "user_id": ids["bob"]}),
+                (before, number | {"value": "K1", "source": "learned"}),
+            ],
+        )
+
+        await migrate(empty_database)
+        identifiers = t.contact_identifiers
+        async with empty_database.reading() as connection:
+            rows = await _read_all(
+                connection,
+                select(identifiers.c.value, identifiers.c.user_id, identifiers.c.learned_in),
+            )
+        assert sorted(rows, key=str) == sorted(
+            [("K4711", ids["anna"], None), ("K0815", ids["bob"], None), ("K1", None, None)],
+            key=str,
+        )
+        async with empty_database.writing() as connection:
+            await connection.execute(sa.delete(t.users).where(t.users.c.id == ids["anna"]))
+        async with empty_database.reading() as connection:
+            kept = await _read_all(connection, select(identifiers.c.value))
+        assert sorted(kept) == [("K0815",), ("K1",)]
+
+        await downgrade(empty_database, "0039")
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+        async with empty_database.writing() as connection:
+            await connection.execute(sa.delete(t.users).where(t.users.c.id == ids["bob"]))
+        async with empty_database.reading() as connection:
+            kept = await _read_all(connection, select(before.c.value, before.c.user_id))
+        assert sorted(kept) == [("K0815", None), ("K1", None)]
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -2557,12 +2612,26 @@ def _drawer(table: sa.TableClause) -> sa.TableClause:
 _INBOX_COLUMNS = frozenset({"new_at", "processing_baseline", "processing_decided"})
 
 
+def _before_0040(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0040 had it: no spaces a learned identifier was learned
+    in."""
+    added = {"contact_identifiers": {"learned_in"}}
+    return sa.table(
+        table.name,
+        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+    )
+
+
 def _before_0038(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0038 had it: no reasons with codes in the log."""
     added = {"processing_log": {"reasons"}}
     return sa.table(
         table.name,
-        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+        *(
+            sa.column(c.name, c.type)
+            for c in _before_0040(table).c
+            if c.name not in added.get(table.name, ())
+        ),
     )
 
 

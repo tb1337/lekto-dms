@@ -32,6 +32,7 @@ from lekto.core.domain.codes import Code, code_identifiers, giro_code
 from lekto.core.domain.evidence import UMLAUTS, dates_in, normalise
 from lekto.core.domain.identifiers import (
     CONTACT_KINDS,
+    Identifier,
     IdentifierKind,
     identifiers_in,
     matches,
@@ -172,7 +173,8 @@ def facts_in(
                             topics[key] = identifier.topic_id
                     else:
                         rejected.add(key)
-    found_persons = _persons(text, text_key, in_text | in_codes, contacts, persons, places=places)
+    numbers = [item for contact in contacts for item in contact.evidence() if item.user_id]
+    found_persons = _persons(text, text_key, in_text | in_codes, numbers, persons, places=places)
     personal = {key for person in persons for item in person.identifiers for key in [item.key]}
     found = [
         FoundIdentifier(
@@ -200,16 +202,29 @@ def facts_in(
     )
 
 
+def persons_in(
+    text: str,
+    keys: set[Key],
+    persons: Sequence[Person],
+    numbers: Sequence[Identifier] = (),
+) -> tuple[FoundPerson, ...]:
+    """The `persons` a text names, the surest first, without its contacts: `keys` the
+    identifiers in it, `numbers` the contacts' customer and personnel numbers that name a user
+    (training asks whose a document is)."""
+    return _persons(text, match_key(text), keys, numbers, persons, places=False)
+
+
 def _persons(
     text: str,
     text_key: str,
     keys: set[Key],
-    contacts: Sequence[Contact],
+    numbers: Sequence[Identifier],
     persons: Sequence[Person],
     *,
     places: bool,
 ) -> tuple[FoundPerson, ...]:
-    """The persons `text` names, the surest first (then by user id)."""
+    """The persons `text` names, the surest first (then by user id); `numbers`: the contacts'
+    identifiers that name a user."""
     evidence: dict[UserId, list[tuple[Strength, str, tuple[Span, ...]]]] = {}
 
     def add(user: UserId, strength: Strength, kind: str, spans: tuple[Span, ...] = ()) -> None:
@@ -222,15 +237,14 @@ def _persons(
                     spans = identifier_spans(text, *key) if places else ()
                     add(person.user_id, Strength.HARD, identifier.kind.value, spans)
     private = {person.user_id for person in persons if person.private}
-    for contact in contacts:
-        for identifier in contact.evidence():
-            if identifier.user_id not in private:
-                continue
-            for key in keys:
-                if matches(identifier, key):
-                    spans = identifier_spans(text, *key) if places else ()
-                    assert identifier.user_id is not None
-                    add(identifier.user_id, Strength.HARD, identifier.kind.value, spans)
+    for identifier in numbers:
+        if identifier.user_id not in private:
+            continue
+        for key in keys:
+            if matches(identifier, key):
+                spans = identifier_spans(text, *key) if places else ()
+                assert identifier.user_id is not None
+                add(identifier.user_id, Strength.HARD, identifier.kind.value, spans)
     if any(person.birth_date is not None for person in persons):
         # A two-digit year reads in both centuries, so `15.06.80` meets 15 June 1980.
         days = dates_in(normalise(text))

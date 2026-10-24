@@ -143,7 +143,7 @@ export interface paths {
 		head?: never;
 		/**
 		 * Change the own profile
-		 * @description Display name, aliases, birth date, e-mail and identifiers; what is given changes. Only the user and admins see the profile; others see the display name. Of the profile nothing goes to the language model or the search index (the display name does: it labels the user's personal space in the prompt); the processing log keeps only which users a document names and the kinds of evidence, never the values, and shows them to admins and to the user named. Needs a session; API tokens are refused (403).
+		 * @description Display name, aliases, birth date, e-mail, identifiers and the numbers at contacts; what is given changes. Only the user and admins see the profile; others see the display name. Of the profile nothing goes to the language model or the search index (the display name does: it labels the user's personal space in the prompt); the processing log keeps only which users a document names and the kinds of evidence, never the values, and shows them to admins and to the user named. Needs a session; API tokens are refused (403).
 		 */
 		patch: operations['change_own_profile_api_v1_auth_me_profile_patch'];
 		trace?: never;
@@ -2622,6 +2622,49 @@ export interface components {
 			 */
 			topic_ids?: string[];
 		};
+		/**
+		 * ContactNumberIn
+		 * @description A customer or personnel number of the user at a contact, written as in documents.
+		 * @example {
+		 *       "contact_id": "6f1c2a4e-0000-4000-8000-000000000001",
+		 *       "kind": "personnel_number",
+		 *       "value": "12345"
+		 *     }
+		 */
+		ContactNumberIn: {
+			/**
+			 * Contact Id
+			 * Format: uuid
+			 */
+			contact_id: string;
+			/** @description `customer_number` (also a contract or policy number) or `personnel_number`; other kinds name nobody (422). */
+			kind: components['schemas']['IdentifierKind'];
+			/** Value */
+			value: string;
+			/**
+			 * Topic Id
+			 * @description One of the contact's topics it points to (a personnel number to work).
+			 */
+			topic_id?: string | null;
+		};
+		/** ContactNumberOut */
+		ContactNumberOut: {
+			/**
+			 * Contact Id
+			 * Format: uuid
+			 */
+			contact_id: string;
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @description Normalised.
+			 */
+			value: string;
+			/** @description `manual`: entered by hand (by the user or an admin); `learned`: training found it in confirmed documents that are surely the user's alone (in their personal space, or naming them by more than their name). */
+			source: components['schemas']['IdentifierSource'];
+			/** Topic Id */
+			topic_id: string | null;
+		};
 		/** ContactOut */
 		ContactOut: {
 			/**
@@ -2653,7 +2696,7 @@ export interface components {
 			aliases: string[];
 			/**
 			 * Identifiers
-			 * @description Entered, learned and rejected identifiers, in this order.
+			 * @description Entered, learned and rejected identifiers, in this order, as far as the caller sees them: admins all; anyone else those entered by hand that name nobody, the numbers that name them, and the learned ones of the spaces they are a member of; rejected ones only admins.
 			 */
 			identifiers: components['schemas']['IdentifierOut'][];
 			/**
@@ -3945,7 +3988,7 @@ export interface components {
 			 * @example DE89370400440532013000
 			 */
 			value: string;
-			/** @description `manual`: entered by an admin; `learned`: found by training in confirmed documents of only this contact; `rejected`: learned, then rejected by an admin (does not count, and training does not learn it again). */
+			/** @description `manual`: entered by hand (by an admin, or by the user it names); `learned`: found by training in confirmed documents of only this contact; `rejected`: learned, then rejected by an admin or declined by the user it named (does not count, and training does not learn it again). */
 			source: components['schemas']['IdentifierSource'];
 			/**
 			 * Topic Id
@@ -3954,7 +3997,7 @@ export interface components {
 			topic_id: string | null;
 			/**
 			 * User Id
-			 * @description The user it belongs to; only one entered by hand has one.
+			 * @description The user a customer or personnel number belongs to: entered by hand, or found by training when all its documents are surely theirs alone.
 			 */
 			user_id?: string | null;
 		};
@@ -5115,11 +5158,16 @@ export interface components {
 			email: string | null;
 			/** Identifiers */
 			identifiers: components['schemas']['PersonIdentifierOut'][];
+			/**
+			 * Numbers
+			 * @description The user's customer and personnel numbers at contacts, by contact: found in a document, they are evidence for the contact and for the user. Only the user and admins see them, here and at the contact.
+			 */
+			numbers: components['schemas']['ContactNumberOut'][];
 		};
 		/**
 		 * ProfilePatch
-		 * @description What is given changes; null removes the display name, birth date or e-mail; `aliases`
-		 *     and `identifiers` replace all of them.
+		 * @description What is given changes; null removes the display name, birth date or e-mail; `aliases`,
+		 *     `identifiers` and `numbers` replace all of them.
 		 * @example {
 		 *       "aliases": [
 		 *         "Anna Sample"
@@ -5145,6 +5193,16 @@ export interface components {
 			 * @description The person's own numbers; found in a document, they tell whose it is. Several users may share one (a joint account), a contact may not have it (409 if a contact entered it by hand; a learned one gives way).
 			 */
 			identifiers?: components['schemas']['PersonIdentifierIn'][];
+			/**
+			 * Numbers
+			 * @description The user's numbers at contacts entered by hand (a learned one given is then entered by hand); learned ones left out stay. Unique across contacts: 409 if another contact has it entered by hand (naming that contact only if the caller sees the number there), 404 for a contact that does not exist.
+			 */
+			numbers?: components['schemas']['ContactNumberIn'][];
+			/**
+			 * Declined Numbers
+			 * @description Learned numbers that are not the user's: they are rejected at their contact, and training does not learn them again. Others are left as they are.
+			 */
+			declined_numbers?: components['schemas']['ContactNumberIn'][];
 		};
 		/**
 		 * ReadingOut
@@ -5462,6 +5520,7 @@ export interface components {
 			| 'contact_too_many_aliases'
 			| 'contact_too_many_identifiers'
 			| 'only_numbers_name_users'
+			| 'identifier_taken'
 			| 'title_pattern_too_long'
 			| 'description_too_long'
 			| 'title_pattern_unknown'
@@ -7686,6 +7745,23 @@ export interface operations {
 					 *       "title": "Forbidden",
 					 *       "status": 403,
 					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

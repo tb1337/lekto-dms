@@ -326,10 +326,13 @@
 												{m.tag_below({ count: childCount.get(tag.id) ?? 0 })}
 											</span>
 										{/if}
-										{#if !phone.current && kind === 'type-groups' && members(tag)}
-											<span class="min-w-0 truncate text-sm text-muted-foreground"
-												>{members(tag)}</span
-											>
+										{#if !phone.current && kind === 'type-groups'}
+											{@const typeNames = members(tag)}
+											{#if typeNames}
+												<span class="min-w-0 truncate text-sm text-muted-foreground"
+													>{typeNames}</span
+												>
+											{/if}
 										{/if}
 									</span>
 								</MasterRow>

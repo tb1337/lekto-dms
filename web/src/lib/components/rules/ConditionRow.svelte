@@ -5,6 +5,7 @@
 	import X from '@lucide/svelte/icons/x';
 	import MultiPicker from '#lib/components/MultiPicker.svelte';
 	import Select from '#lib/components/Select.svelte';
+	import { namedOptions, withChoice } from '#lib/components/rules/options.ts';
 	import ValueInput from '#lib/components/rules/ValueInput.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
@@ -58,11 +59,7 @@
 			label: operatorLabel(condition.field, op, field?.data_type ?? null)
 		}))
 	);
-	const fieldOptions = $derived([
-		{ value: '', label: m.rule_choose() },
-		...lookup.fields.map((entry) => ({ value: entry.id, label: entry.name })),
-		...(condition.fieldId && !field ? [{ value: condition.fieldId, label: m.rule_unknown() }] : [])
-	]);
+	const fieldOptions = $derived(withChoice(namedOptions(lookup.fields), condition.fieldId ?? ''));
 	/** The choices of an id field or the channel. */
 	const choices = $derived.by(() => {
 		switch (condition.field) {
@@ -93,15 +90,6 @@
 	);
 	const valueLabel = m.rule_condition_value();
 	const invalid = $derived(Boolean(error));
-
-	function withUnknown(options: { value: string; label: string }[], value: string) {
-		const known = value === '' || options.some((option) => option.value === value);
-		return [
-			{ value: '', label: m.rule_choose() },
-			...options,
-			...(known ? [] : [{ value, label: m.rule_unknown() }])
-		];
-	}
 </script>
 
 <div class="flex flex-col gap-2 rounded-xl border bg-background p-3" data-key={condition.key}>
@@ -178,7 +166,7 @@
 					aria-label={valueLabel}
 					aria-invalid={invalid || undefined}
 					value={single}
-					options={withUnknown(choices, single)}
+					options={withChoice(choices, single)}
 					onchange={(next) => (condition.value = next)}
 					class="h-10"
 				/>

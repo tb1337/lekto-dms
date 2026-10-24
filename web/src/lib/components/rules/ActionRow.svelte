@@ -4,6 +4,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import MultiPicker from '#lib/components/MultiPicker.svelte';
 	import Select from '#lib/components/Select.svelte';
+	import { namedOptions, withChoice } from '#lib/components/rules/options.ts';
 	import ValueInput from '#lib/components/rules/ValueInput.svelte';
 	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -39,24 +40,6 @@
 	const invalid = $derived(Boolean(error));
 	const label = $derived(ACTION_LABELS[action.type]());
 
-	function options(list: readonly { id: string; name: string }[], value: string) {
-		const known = value === '' || list.some((entry) => entry.id === value);
-		return [
-			{ value: '', label: m.rule_choose() },
-			...list.map((entry) => ({ value: entry.id, label: entry.name })),
-			...(known ? [] : [{ value, label: m.rule_unknown() }])
-		];
-	}
-
-	function withUnknown(list: { value: string; label: string }[], value: string) {
-		const known = value === '' || list.some((entry) => entry.value === value);
-		return [
-			{ value: '', label: m.rule_choose() },
-			...list,
-			...(known ? [] : [{ value, label: m.rule_unknown() }])
-		];
-	}
-
 	// A space the rule files into that the caller may not file into (another editor saved it,
 	// into a space the caller is no member of): kept, but saving needs another choice.
 	const unreachable = $derived(
@@ -64,14 +47,6 @@
 			action.space_id !== '' &&
 			!targets.some((entry) => entry.value === action.space_id)
 	);
-
-	function spaceTargets(list: readonly { value: string; label: string }[], value: string) {
-		return [
-			{ value: '', label: m.rule_choose() },
-			...list,
-			...(unreachable ? [{ value, label: m.rule_space_unreachable() }] : [])
-		];
-	}
 
 	const field = $derived(
 		action.type === 'set_field'
@@ -89,7 +64,7 @@
 					aria-label={label}
 					aria-invalid={invalid || undefined}
 					bind:value={action.space_id}
-					options={spaceTargets(targets, action.space_id)}
+					options={withChoice(targets, action.space_id, m.rule_space_unreachable())}
 					class="h-10"
 				/>
 				{#if unreachable}
@@ -100,7 +75,7 @@
 					aria-label={label}
 					aria-invalid={invalid || undefined}
 					bind:value={action.contact_id}
-					options={options(lookup.contacts, action.contact_id)}
+					options={withChoice(namedOptions(lookup.contacts), action.contact_id)}
 					class="h-10"
 				/>
 			{:else if action.type === 'set_document_type'}
@@ -108,7 +83,7 @@
 					aria-label={label}
 					aria-invalid={invalid || undefined}
 					bind:value={action.document_type_id}
-					options={options(lookup.documentTypes, action.document_type_id)}
+					options={withChoice(namedOptions(lookup.documentTypes), action.document_type_id)}
 					class="h-10"
 				/>
 			{:else if action.type === 'set_topic'}
@@ -116,7 +91,7 @@
 					aria-label={label}
 					aria-invalid={invalid || undefined}
 					bind:value={action.topic_id}
-					options={withUnknown(tagOptions(lookup.tags, 'topic'), action.topic_id)}
+					options={withChoice(tagOptions(lookup.tags, 'topic'), action.topic_id)}
 					class="h-10"
 				/>
 			{:else if action.type === 'set_title'}
@@ -142,7 +117,7 @@
 					aria-label={m.rule_condition_field()}
 					aria-invalid={(invalid && !action.field_id) || undefined}
 					value={action.field_id}
-					options={options(lookup.fields, action.field_id)}
+					options={withChoice(namedOptions(lookup.fields), action.field_id)}
 					onchange={(id) => {
 						if (action.type !== 'set_field') return;
 						const chosen = lookup.fields.find((entry) => entry.id === id) ?? null;

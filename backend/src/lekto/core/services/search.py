@@ -141,6 +141,11 @@ class SearchService:
         self._listeners: list[Callable[[SearchMeaningReady], None]] = []
         self._warmed_at: datetime | None = None
 
+    @property
+    def meaning(self) -> bool:
+        """Whether the search takes the meaning into account: embeddings are set up."""
+        return self._embeddings is not None
+
     def listen(self, listener: Callable[[SearchMeaningReady], None]) -> None:
         """Hand `SearchMeaningReady` to `listener` (the event streams of the API)."""
         self._listeners.append(listener)

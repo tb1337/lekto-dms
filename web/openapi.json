@@ -14708,7 +14708,7 @@
           "pipeline"
         ],
         "summary": "The processing graph",
-        "description": "The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Lekto; `processing.nodes` of a document names the state of each node. `vision` names the vision language model documents can be read with, if one is configured; `logo_fetch` says whether Lekto fetches the logos of contacts from their websites.",
+        "description": "The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Lekto; `processing.nodes` of a document names the state of each node. `vision` names the vision language model documents can be read with, if one is configured; `logo_fetch` says whether Lekto fetches the logos of contacts from their websites; `meaning_search` whether the search takes the meaning into account.",
         "operationId": "pipeline_api_v1_pipeline_get",
         "responses": {
           "200": {
@@ -23326,18 +23326,25 @@
             "type": "boolean",
             "title": "Logo Fetch",
             "description": "Whether Lekto fetches the logos of contacts from their websites (`LEKTO_LOGO_FETCH`; `POST /contacts/{id}/logo/fetch`)."
+          },
+          "meaning_search": {
+            "type": "boolean",
+            "title": "Meaning Search",
+            "description": "Whether the search takes the meaning into account besides the words (a search index and embeddings are set up): only then does a client say how a search searched (`mode`, `reason`) and warm the model (`POST /documents/search/warm`)."
           }
         },
         "type": "object",
         "required": [
           "nodes",
           "vision",
-          "logo_fetch"
+          "logo_fetch",
+          "meaning_search"
         ],
         "title": "PipelineOut",
         "examples": [
           {
             "logo_fetch": false,
+            "meaning_search": true,
             "nodes": [
               {
                 "node": "receive",

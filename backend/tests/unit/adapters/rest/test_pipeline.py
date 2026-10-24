@@ -50,3 +50,9 @@ async def test_only_admins_have_every_text_read_again(api: Api) -> None:
     response = await api.client.post(REPARSE, headers=auth(admin))
     assert response.status_code == 202
     assert response.json() == {"queued": 0}
+
+
+async def test_the_graph_tells_whether_the_search_takes_the_meaning_into_account(api: Api) -> None:
+    user = await api.user()
+    response = await api.client.get(PIPELINE, headers=auth(user))
+    assert response.json()["meaning_search"] is False  # the memory container has no embeddings

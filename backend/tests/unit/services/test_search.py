@@ -455,3 +455,8 @@ async def test_admins_search_their_reach_or_everything(scene: Scene) -> None:
     await scene.setup.world.users.update(other.id, admin.id, active=False)
     with pytest.raises(AuthenticationError):
         await search.search(admin.id, "Stromrechnung", all_users=True)
+
+
+async def test_the_search_tells_whether_it_takes_the_meaning_into_account(scene: Scene) -> None:
+    assert scene.search().meaning
+    assert not scene.search(embeddings=None).meaning

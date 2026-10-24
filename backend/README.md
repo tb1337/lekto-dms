@@ -1061,7 +1061,8 @@ and why by words alone where the meaning was to take part (`reason` with a code:
   `search.meaning_ready` with the `query`; the web UI then offers to search again with meaning
   and keeps the words until asked (the list does not change under one's hands). The vector of a
   query is kept ten minutes in the API process, so paging and the search again do not embed it
-  anew. `POST /documents/search/warm` (the web UI as soon as one types, at most once a minute)
+  anew. Without embeddings the web UI shows nothing of this (`GET /pipeline`:
+  `meaning_search`). `POST /documents/search/warm` (the web UI as soon as one types, at most once a minute)
   has the model loaded before the search needs it: Ollama unloads an unused model after a
   while, and loading Qwen3-Embedding 4B takes about seven seconds, one embedding then well under
   one.
@@ -1196,7 +1197,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /documents/{id}/reprocess` | `{"from_node": "ocr"}`: process again from a node, with every node after it (editors and admins) |
 | `POST /documents/{id}/vision` | Process again from OCR with the vision language model reading every page (editors and admins); `409` without a model |
 | `GET /documents/{id}/reading` | How the archive's text was read: by the vision model or not, each recognised page, the advice to read with the model (editors and admins) |
-| `GET /pipeline` | The graph: every node and what it needs, in graph order; the vision model, if one is configured; whether logos are fetched (`logo_fetch`) |
+| `GET /pipeline` | The graph: every node and what it needs, in graph order; the vision model, if one is configured; whether logos are fetched (`logo_fetch`); whether the search takes the meaning into account (`meaning_search`) |
 | `POST /pipeline/reparse` | Read the text of every document again in the background (admins, after the update to 0.2); `202` with `queued` |
 | `GET /inbox` | The caller's inbox (see Inbox), newest first, with open nodes and fields: everything open, or one `tab` (`new`, `review`, `intervene`, `processing`, `done` with how, when and by whom, newest first by when it left); `limit`, `cursor`, `all_users` (admins) |
 | `GET /inbox/summary` | The count of each tab, `open` (all but done) and the worst lane among the open documents; `all_users` (admins) |

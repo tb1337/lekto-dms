@@ -29,6 +29,7 @@ class PipelineOut(BaseModel):
                     ],
                     "vision": {"model": "claude-sonnet-5-5", "endpoint": "chat.example"},
                     "logo_fetch": False,
+                    "meaning_search": True,
                 }
             ]
         }
@@ -45,6 +46,13 @@ class PipelineOut(BaseModel):
         description=(
             "Whether Lekto fetches the logos of contacts from their websites "
             "(`LEKTO_LOGO_FETCH`; `POST /contacts/{id}/logo/fetch`)."
+        )
+    )
+    meaning_search: bool = Field(
+        description=(
+            "Whether the search takes the meaning into account besides the words (a search "
+            "index and embeddings are set up): only then does a client say how a search "
+            "searched (`mode`, `reason`) and warm the model (`POST /documents/search/warm`)."
         )
     )
 

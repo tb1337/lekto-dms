@@ -5,7 +5,7 @@
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import Info from '@lucide/svelte/icons/info';
 	import X from '@lucide/svelte/icons/x';
-	import { onMount, tick, untrack } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -26,6 +26,7 @@
 	import SortMenu from '#lib/components/SortMenu.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Sheet from '#lib/components/ui/sheet/index.ts';
+	import { coalesced } from '#lib/coalesce.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { events } from '#lib/events.svelte.ts';
 	import {
@@ -40,6 +41,7 @@
 	import { formatNumber } from '#lib/i18n.ts';
 	import { cardLines } from '#lib/card-fields.ts';
 	import { groupDocuments } from '#lib/grouping.ts';
+	import { latest } from '#lib/latest.ts';
 	import { lensDiffers, lensFilter, lensParams, type Lens, type LensSort } from '#lib/lenses.ts';
 	import {
 		FIELD_SORTS,
@@ -58,7 +60,7 @@
 		type FieldSort,
 		type Layout
 	} from '#lib/listing.ts';
-	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { PageLookup } from '#lib/lookup.svelte.ts';
 	import { openLens } from '#lib/open-lens.svelte.ts';
 	import { PagedList } from '#lib/paging.svelte.ts';
 	import { reasonText } from '#lib/reasons.ts';
@@ -68,6 +70,7 @@
 	import { scope } from '#lib/scope.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import { onChange } from '#lib/watch.svelte.ts';
 
 	// The documents (the archive): listed (newest document date first) or, with words in `q`,
 	// searched (by relevance), with the same filters; sorted as chosen, as a grid or a list, by
@@ -89,8 +92,10 @@
 	// The search field follows the URL (back button, links) until the user types.
 	let text = $derived(query);
 	let layout = $state<Layout>(rememberedLayout());
-	let lookup = $state<Lookup | null>(null);
-	let lookupError = $state<string | null>(null);
+	// The names the filters and the documents show.
+	const pageLookup = new PageLookup();
+	const lookup = $derived(pageLookup.value);
+	const lookupError = $derived(pageLookup.problem);
 	// How many documents each value of the filters holds; the words of a search aside.
 	let facets = $state<Facets | null>(null);
 	let filtersOpen = $state(false);
@@ -197,13 +202,17 @@
 		}
 	}
 
+	// An answer overtaken by a later request (the filters changed meanwhile) is dropped.
+	const beginFacets = latest();
 	async function loadFacets() {
+		const current = beginFacets();
 		const query = apiQuery(filters, scope.allUsers);
 		try {
-			facets = await unwrap(api.GET('/api/v1/documents/facets', { params: { query } }));
+			const found = await unwrap(api.GET('/api/v1/documents/facets', { params: { query } }));
+			if (current()) facets = found;
 		} catch {
 			// The list stands without counts; it says what went wrong itself.
-			facets = null;
+			if (current()) facets = null;
 		}
 	}
 
@@ -274,24 +283,13 @@
 	});
 
 	// Again when an admin switches the reach: the spaces of the filter follow it.
-	let reachBefore = scope.allUsers;
-	$effect(() => {
-		const reach = scope.allUsers;
-		if (reach === reachBefore) return;
-		reachBefore = reach;
-		untrack(() =>
-			loadLookup().then(
-				(value) => (lookup = value),
-				(error) => (lookupError = describeError(error))
-			)
-		);
-	});
+	onChange(
+		() => scope.allUsers,
+		() => void pageLookup.load()
+	);
 
 	onMount(() => {
-		loadLookup().then(
-			(value) => (lookup = value),
-			(error) => (lookupError = describeError(error))
-		);
+		void pageLookup.load();
 		void loadLenses();
 		void meaningSearch().then((value) => (meaning = value));
 		// Opened from the search icon of a narrow header: the field takes the focus.
@@ -302,21 +300,17 @@
 				[...fields].find((field) => field.offsetParent !== null)?.focus();
 			});
 		}
-		let timer: ReturnType<typeof setTimeout> | undefined;
 		// Events are thin: fetch the list again, at most once in a while.
-		const refresh = () => {
-			clearTimeout(timer);
-			timer = setTimeout(() => {
-				void list.refresh();
-				void loadFacets();
-			}, 400);
-		};
+		const refresh = coalesced(() => {
+			void list.refresh();
+			void loadFacets();
+		}, 400);
 		const stop = events.subscribe(refresh);
 		const stopMeaning = events.on('search.meaning_ready', (event) =>
 			searchNote.meaningReady(String(event.query ?? ''))
 		);
 		return () => {
-			clearTimeout(timer);
+			refresh.cancel();
 			stop();
 			stopMeaning();
 			searchNote.dispose();

@@ -51,7 +51,7 @@
 	import { coalesced } from '#lib/coalesce.ts';
 	import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
 	import { inbox as inboxSummary } from '#lib/inbox.svelte.ts';
-	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { PageLookup } from '#lib/lookup.svelte.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { canEdit } from '#lib/permissions.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -68,6 +68,7 @@
 		type Span
 	} from '#lib/facts.ts';
 	import { adviceText, visionAvailable, type Reading, type Vision } from '#lib/vision.ts';
+	import { onChange } from '#lib/watch.svelte.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
 
@@ -81,7 +82,9 @@
 	const fromInbox = $derived(page.url.searchParams.get('from') === 'inbox');
 	let document = $state<Document | null>(null);
 	let review = $state<Review | null>(null);
-	let lookup = $state<Lookup | null>(null);
+	// The names the view shows; a load that fails says so in a toast.
+	const pageLookup = new PageLookup(reportError);
+	const lookup = $derived(pageLookup.value);
 	let graph = $state<GraphNode[]>([]);
 	let vision = $state<Vision | null>(null);
 	let reading = $state<Reading | null>(null);
@@ -270,28 +273,22 @@
 
 	// Again after a master data dialog saved here (a contact opened from its facts): names,
 	// aliases and identifiers decide what the facts show.
-	let savedBefore = masterDataDialogs.changed;
-	$effect(() => {
-		const saved = masterDataDialogs.changed;
-		if (saved === savedBefore) return;
-		savedBefore = saved;
-		untrack(() => {
-			loadLookup().then((value) => (lookup = value), reportError);
+	onChange(
+		() => masterDataDialogs.changed,
+		() => {
+			void pageLookup.load();
 			void reloadFacts();
-		});
-	});
+		}
+	);
 
 	// Again when an admin switches the reach: the spaces offered follow it.
-	let reachBefore = scope.allUsers;
-	$effect(() => {
-		const reach = scope.allUsers;
-		if (reach === reachBefore) return;
-		reachBefore = reach;
-		untrack(() => loadLookup().then((value) => (lookup = value), reportError));
-	});
+	onChange(
+		() => scope.allUsers,
+		() => void pageLookup.load()
+	);
 
 	onMount(() => {
-		loadLookup().then((value) => (lookup = value), reportError);
+		void pageLookup.load();
 		pipeline().then((value) => {
 			graph = value.nodes;
 			vision = value.vision;
@@ -597,7 +594,7 @@
 										{editable}
 										next={nextUp}
 										onsaved={(updated) => (document = updated)}
-										onenabled={() => loadLookup().then((value) => (lookup = value), reportError)}
+										onenabled={() => void pageLookup.load()}
 										onconfirmed={confirmed}
 										onmarks={(next) => (marks = next)}
 										onquotes={(next) => (fieldQuotes = next)}

@@ -16,6 +16,7 @@
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
+	import { latest } from '#lib/latest.ts';
 	import { spaceLabel, userLabel, type Space, type UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import {
@@ -58,15 +59,19 @@
 			)
 			.join(', ');
 
+	// An answer overtaken by a later load (the reach switched twice) is dropped.
+	const begin = latest();
 	async function load() {
+		const current = begin();
 		try {
-			[spaces, users] = await Promise.all([
+			const [found, known] = await Promise.all([
 				unwrap(api.GET('/api/v1/spaces', { params: { query: { all_users: scope.query } } })),
 				unwrap(api.GET('/api/v1/users'))
 			]);
-			problem = null;
+			if (!current()) return;
+			[spaces, users, problem] = [found, known, null];
 		} catch (error) {
-			problem = describeError(error);
+			if (current()) problem = describeError(error);
 		}
 	}
 

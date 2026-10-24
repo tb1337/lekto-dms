@@ -9,6 +9,7 @@ from typing import Self
 
 from lekto.core.domain.errors import ConflictError, ValidationError
 from lekto.core.domain.ids import SpaceId, UserId, new_id
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.validation import require_name, require_utc
 
 MAX_USERNAME = 150
@@ -108,6 +109,6 @@ class UserDeletionBlockedError(ConflictError):
     """Deleting the user needs a decision on each of `spaces` (`Settlement`)."""
 
     def __init__(self, spaces: tuple[BlockingSpace, ...]) -> None:
-        names = ", ".join(f"'{space.name}'" for space in spaces)
-        super().__init__(f"deleting the user needs a decision on these spaces: {names}")
+        names = [space.name for space in spaces]
+        super().__init__(because(ReasonCode.USER_DELETION_BLOCKED, spaces=names))
         self.spaces = spaces

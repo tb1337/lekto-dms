@@ -1,6 +1,7 @@
 """The bearer token of a request, as the REST API and the MCP endpoint read it."""
 
 from lekto.core.domain.errors import AuthenticationError
+from lekto.core.domain.reasons import ReasonCode, because
 
 
 def bearer_token(header: str) -> str:
@@ -8,5 +9,5 @@ def bearer_token(header: str) -> str:
     any other scheme or an empty token."""
     scheme, _, token = header.partition(" ")
     if scheme.lower() != "bearer" or not token.strip():
-        raise AuthenticationError("authentication is required")
+        raise AuthenticationError(because(ReasonCode.AUTHENTICATION_REQUIRED))
     return token.strip()

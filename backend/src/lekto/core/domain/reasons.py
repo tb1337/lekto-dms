@@ -169,6 +169,99 @@ class ReasonCode(StrEnum):
     NO_UPLOADER = "no_uploader"
     INDEX_UNAVAILABLE = "index_unavailable"
     NO_SIMILAR = "no_similar"
+    # problems: requests the API refuses
+    INPUT_MISSING = "input_missing"
+    INPUT_TOO_SHORT = "input_too_short"
+    INPUT_TOO_LONG = "input_too_long"
+    INPUT_TOO_FEW = "input_too_few"
+    INPUT_TOO_MANY = "input_too_many"
+    INPUT_TOO_SMALL = "input_too_small"
+    INPUT_ABOVE = "input_above"
+    INPUT_TOO_LARGE = "input_too_large"
+    INPUT_BELOW = "input_below"
+    INPUT_CHOICE = "input_choice"
+    INPUT_NOT_ID = "input_not_id"
+    INPUT_NOT_DATE = "input_not_date"
+    INPUT_NOT_DATETIME = "input_not_datetime"
+    INPUT_NOT_NUMBER = "input_not_number"
+    INPUT_NOT_INTEGER = "input_not_integer"
+    INPUT_NOT_BOOLEAN = "input_not_boolean"
+    INPUT_NOT_TEXT = "input_not_text"
+    INPUT_NOT_LIST = "input_not_list"
+    INPUT_NOT_OBJECT = "input_not_object"
+    INPUT_UNKNOWN = "input_unknown"
+    INPUT_PATTERN = "input_pattern"
+    INPUT_INVALID = "input_invalid"
+    IN_USE = "in_use"
+    NAME_TAKEN = "name_taken"
+    TOPIC_CARRIED = "topic_carried"
+    CHOICES_IN_USE = "choices_in_use"
+    VALUES_OUTSIDE_SCOPE = "values_outside_scope"
+    TITLE_PATTERN_USES_FIELD = "title_pattern_uses_field"
+    TYPE_HAS_VALUES = "type_has_values"
+    TAG_HAS_CHILDREN = "tag_has_children"
+    TAG_HAS_CONTACTS = "tag_has_contacts"
+    TAG_HAS_TYPES = "tag_has_types"
+    TOPIC_ENABLED_BY = "topic_enabled_by"
+    TAG_USED_BY_RULES = "tag_used_by_rules"
+    FIELD_USED_BY_PATTERNS = "field_used_by_patterns"
+    FIELD_USED_BY_RULES = "field_used_by_rules"
+    FIELD_KEY_TAKEN = "field_key_taken"
+    IDENTIFIER_OF_PERSON = "identifier_of_person"
+    IDENTIFIER_OF_CONTACT = "identifier_of_contact"
+    PROFILE_IDENTIFIER_OF_CONTACT = "profile_identifier_of_contact"
+    NAME_OF_CONTACT = "name_of_contact"
+    NAME_TOO_CLOSE = "name_too_close"
+    LOGO_UPLOADED = "logo_uploaded"
+    LOGO_TYPE = "logo_type"
+    LOGO_UPLOAD_TYPE = "logo_upload_type"
+    TRAINING_NEEDS_EXAMPLES = "training_needs_examples"
+    RULE_FOLLOWS_TYPE = "rule_follows_type"
+    PERSONAL_SPACE_UNDELETABLE = "personal_space_undeletable"
+    SPACE_NOT_EMPTY = "space_not_empty"
+    SPACE_NAME_TAKEN = "space_name_taken"
+    NO_WRITE_ACCESS_TO_SPACE = "no_write_access_to_space"
+    USERNAME_TAKEN = "username_taken"
+    LAST_ADMIN = "last_admin"
+    USER_DELETION_BLOCKED = "user_deletion_blocked"
+    DISPLAY_NAME_TAKEN = "display_name_taken"
+    USERNAME_OF_OTHER = "username_of_other"
+    LENSES_LIMIT = "lenses_limit"
+    WEBHOOKS_LIMIT = "webhooks_limit"
+    OPEN_FIELDS = "open_fields"
+    DUPLICATE_OF = "duplicate_of"
+    DUPLICATE_UNSEEN = "duplicate_unseen"
+    NO_TEXT_YET = "no_text_yet"
+    NO_STRUCTURE_YET = "no_structure_yet"
+    BEING_PROCESSED = "being_processed"
+    ONLY_FAILED_RETRIED = "only_failed_retried"
+    RECEIVE_NOT_REPEATABLE = "receive_not_repeatable"
+    NOT_WAITING_FOR_CONFIRMATION = "not_waiting_for_confirmation"
+    STILL_RUNNING = "still_running"
+    NO_TEXT_TO_EXTRACT = "no_text_to_extract"
+    NO_VISION_MODEL = "no_vision_model"
+    CANNOT_SKIP = "cannot_skip"
+    UNCERTAIN_BEFORE_FILING = "uncertain_before_filing"
+    INVALID_CREDENTIALS = "invalid_credentials"
+    INVALID_ONE_TIME_CODE = "invalid_one_time_code"
+    SECOND_FACTOR_REQUIRED = "second_factor_required"
+    ACCOUNT_INACTIVE = "account_inactive"
+    AUTHENTICATION_REQUIRED = "authentication_required"
+    SESSION_EXPIRED = "session_expired"
+    TOKEN_INVALID = "token_invalid"
+    WRONG_PASSWORD = "wrong_password"
+    TOTP_ALREADY_ON = "totp_already_on"
+    NO_TOTP_SETUP = "no_totp_setup"
+    TOTP_OFF = "totp_off"
+    CODE_INVALID = "code_invalid"
+    READ_ONLY_TOKEN = "read_only_token"
+    CSRF_MISSING = "csrf_missing"
+    SESSION_NEEDED = "session_needed"
+    OIDC_MISMATCH = "oidc_mismatch"
+    OIDC_RELINK = "oidc_relink"
+    OIDC_LINKED_ELSEWHERE = "oidc_linked_elsewhere"
+    OIDC_NO_ACCOUNT = "oidc_no_account"
+    OIDC_PASSWORD_FIRST = "oidc_password_first"
 
 
 TEMPLATES: Mapping[ReasonCode, str] = {
@@ -348,6 +441,115 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.NO_UPLOADER: "the document has no active uploader to look from",
     ReasonCode.INDEX_UNAVAILABLE: "the search index cannot be asked: {detail}",
     ReasonCode.NO_SIMILAR: "no similar confirmed document",
+    ReasonCode.INPUT_MISSING: "a value is required",
+    ReasonCode.INPUT_TOO_SHORT: "at least {min:number} characters",
+    ReasonCode.INPUT_TOO_LONG: "at most {max:number} characters",
+    ReasonCode.INPUT_TOO_FEW: "at least {min:number} entries",
+    ReasonCode.INPUT_TOO_MANY: "at most {max:number} entries",
+    ReasonCode.INPUT_TOO_SMALL: "at least {min:number}",
+    ReasonCode.INPUT_ABOVE: "more than {min:number}",
+    ReasonCode.INPUT_TOO_LARGE: "at most {max:number}",
+    ReasonCode.INPUT_BELOW: "less than {max:number}",
+    ReasonCode.INPUT_CHOICE: "not one of the allowed values",
+    ReasonCode.INPUT_NOT_ID: "not a valid id",
+    ReasonCode.INPUT_NOT_DATE: "not a valid date",
+    ReasonCode.INPUT_NOT_DATETIME: "not a valid time",
+    ReasonCode.INPUT_NOT_NUMBER: "not a number",
+    ReasonCode.INPUT_NOT_INTEGER: "not a whole number",
+    ReasonCode.INPUT_NOT_BOOLEAN: "not yes or no",
+    ReasonCode.INPUT_NOT_TEXT: "not a text",
+    ReasonCode.INPUT_NOT_LIST: "not a list",
+    ReasonCode.INPUT_NOT_OBJECT: "not an object",
+    ReasonCode.INPUT_UNKNOWN: "not allowed here",
+    ReasonCode.INPUT_PATTERN: "not in the expected form",
+    ReasonCode.INPUT_INVALID: "{detail}",
+    ReasonCode.IN_USE: "'{name}' is in use",
+    ReasonCode.NAME_TAKEN: "'{name}' already exists",
+    ReasonCode.TOPIC_CARRIED: (
+        "documents of '{contact}' carry the topic '{topic}': give them another topic first"
+    ),
+    ReasonCode.CHOICES_IN_USE: "documents use the choices {choices:list}",
+    ReasonCode.VALUES_OUTSIDE_SCOPE: "documents outside the new scope have values",
+    ReasonCode.TITLE_PATTERN_USES_FIELD: "the title pattern of '{type}' uses field.{key}",
+    ReasonCode.TYPE_HAS_VALUES: "documents of '{type}' have values for '{field}'",
+    ReasonCode.TAG_HAS_CHILDREN: "'{tag}' has tags below it",
+    ReasonCode.TAG_HAS_CONTACTS: "contacts are in '{tag}'",
+    ReasonCode.TAG_HAS_TYPES: "document types are in '{tag}'",
+    ReasonCode.TOPIC_ENABLED_BY: "the contacts {contacts:list} enable '{tag}'",
+    ReasonCode.TAG_USED_BY_RULES: "'{tag}' is used by the rules {rules:list}",
+    ReasonCode.FIELD_USED_BY_PATTERNS: "field.{key} is used by the title patterns of {types:list}",
+    ReasonCode.FIELD_USED_BY_RULES: (
+        "field.{key} is used by the templates of the rules {rules:list}"
+    ),
+    ReasonCode.FIELD_KEY_TAKEN: "'{field}' would be field.{key} in templates, as '{other}' is",
+    ReasonCode.IDENTIFIER_OF_PERSON: "'{value}' is an identifier of a person",
+    ReasonCode.IDENTIFIER_OF_CONTACT: (
+        "'{value}' is already an identifier of the contact '{contact}'"
+    ),
+    ReasonCode.PROFILE_IDENTIFIER_OF_CONTACT: (
+        "'{value}' is an identifier of the contact '{contact}'"
+    ),
+    ReasonCode.NAME_OF_CONTACT: "'{name}' is already a name of the contact '{contact}'",
+    ReasonCode.NAME_TOO_CLOSE: "'{name}' is too close to '{other}' of the contact '{contact}'",
+    ReasonCode.LOGO_UPLOADED: "'{contact}' has an uploaded logo; a fetched one never replaces it",
+    ReasonCode.LOGO_TYPE: "a logo is a PNG, JPEG, WebP or ICO image",
+    ReasonCode.LOGO_UPLOAD_TYPE: "a logo is a PNG, JPEG or WebP image",
+    ReasonCode.TRAINING_NEEDS_EXAMPLES: (
+        "{confirmed:number} confirmed documents or decided spaces; training needs {needed:number}"
+    ),
+    ReasonCode.RULE_FOLLOWS_TYPE: (
+        "the rule of the title pattern of '{type}' follows the document type: change the pattern "
+        "there"
+    ),
+    ReasonCode.PERSONAL_SPACE_UNDELETABLE: "a personal space cannot be deleted",
+    ReasonCode.SPACE_NOT_EMPTY: "space '{space}' is not empty",
+    ReasonCode.SPACE_NAME_TAKEN: "space '{space}' already exists",
+    ReasonCode.NO_WRITE_ACCESS_TO_SPACE: "no write access to space '{space}'",
+    ReasonCode.USERNAME_TAKEN: "username '{username}' is taken",
+    ReasonCode.LAST_ADMIN: "the last active admin must stay an active admin",
+    ReasonCode.USER_DELETION_BLOCKED: (
+        "deleting the user needs a decision on these spaces: {spaces:list}"
+    ),
+    ReasonCode.DISPLAY_NAME_TAKEN: "'{name}' is the name of another user",
+    ReasonCode.USERNAME_OF_OTHER: "username '{username}' is another user's name",
+    ReasonCode.LENSES_LIMIT: "at most {max:number} lenses per user",
+    ReasonCode.WEBHOOKS_LIMIT: "at most {max:number} webhooks per user",
+    ReasonCode.OPEN_FIELDS: "decide the open fields first: {fields:fields}",
+    ReasonCode.DUPLICATE_OF: "duplicate of document {id}",
+    ReasonCode.DUPLICATE_UNSEEN: "the file lies in Lekto already, in a space you cannot see",
+    ReasonCode.NO_TEXT_YET: "document has no text yet",
+    ReasonCode.NO_STRUCTURE_YET: "document has no structure yet",
+    ReasonCode.BEING_PROCESSED: "document {id} is being processed",
+    ReasonCode.ONLY_FAILED_RETRIED: "document {id}: only failed processing is retried",
+    ReasonCode.RECEIVE_NOT_REPEATABLE: "the receive node cannot be repeated",
+    ReasonCode.NOT_WAITING_FOR_CONFIRMATION: "document {id} is not waiting for confirmation",
+    ReasonCode.STILL_RUNNING: "document {id}: {nodes:nodes} is still running; confirm afterwards",
+    ReasonCode.NO_TEXT_TO_EXTRACT: "document {id} has no text to extract from",
+    ReasonCode.NO_VISION_MODEL: "no vision language model is configured",
+    ReasonCode.CANNOT_SKIP: "processing stopped at {nodes:nodes}; cannot skip it",
+    ReasonCode.UNCERTAIN_BEFORE_FILING: (
+        "document {id} has uncertain results; confirm them before filing"
+    ),
+    ReasonCode.INVALID_CREDENTIALS: "invalid username or password",
+    ReasonCode.INVALID_ONE_TIME_CODE: "invalid one-time code",
+    ReasonCode.SECOND_FACTOR_REQUIRED: "a one-time code is required",
+    ReasonCode.ACCOUNT_INACTIVE: "the account is not active",
+    ReasonCode.AUTHENTICATION_REQUIRED: "authentication is required",
+    ReasonCode.SESSION_EXPIRED: "the session has expired",
+    ReasonCode.TOKEN_INVALID: "the token is invalid or has expired",
+    ReasonCode.WRONG_PASSWORD: "the current password is wrong",
+    ReasonCode.TOTP_ALREADY_ON: "TOTP is already on; turn it off first",
+    ReasonCode.NO_TOTP_SETUP: "no TOTP setup to confirm",
+    ReasonCode.TOTP_OFF: "TOTP is off",
+    ReasonCode.CODE_INVALID: "the code is not valid",
+    ReasonCode.READ_ONLY_TOKEN: "this API token may only read",
+    ReasonCode.CSRF_MISSING: "the header {header} is missing or wrong",
+    ReasonCode.SESSION_NEEDED: "this needs a signed-in session, not an API token",
+    ReasonCode.OIDC_MISMATCH: "the sign-in does not match the one started here",
+    ReasonCode.OIDC_RELINK: "sign in again to link the account",
+    ReasonCode.OIDC_LINKED_ELSEWHERE: "this account is linked to another user",
+    ReasonCode.OIDC_NO_ACCOUNT: "no account here is linked to this sign-in",
+    ReasonCode.OIDC_PASSWORD_FIRST: "set a password first; without it you could not sign in",
 }
 
 KINDS: Mapping[str, str] = {
@@ -361,6 +563,8 @@ KINDS: Mapping[str, str] = {
     "rule_values": "rule_values",
     "path": "path",
     "reason": "reason",
+    "list": "list",
+    "nodes": "nodes",
 }
 """The kinds a template may give a parameter (after its colon; none: text), by the name the
 catalog gives them: `number` a number, `percent` a fraction from 0 to 1, `date` a day in ISO
@@ -368,7 +572,8 @@ catalog gives them: `number` a number, `percent` a fraction from 0 to 1, `date` 
 for none), `names` a list of names, `fields` a list of check fields (`contact`, `field:<id>`,
 ...), `rule_values` a list of `{"rule": name, "value": value}` (what each rule sets), `path`
 a list of names one after the other (spaces a document went through), `reason` another reason
-(`Reason.to_json`)."""
+(`Reason.to_json`), `list` a list of names, quoted and joined by commas, `nodes` a list of
+nodes of the pipeline (`ocr`, ...)."""
 
 
 class _Formatter(string.Formatter):
@@ -390,6 +595,10 @@ class _Formatter(string.Formatter):
                 )
             case "path":
                 return " → ".join(str(item) for item in _items(value))
+            case "list":
+                return ", ".join(f"'{item}'" for item in _items(value))
+            case "nodes":
+                return ", ".join(str(item) for item in _items(value))
             case "reason":
                 try:
                     return Reason.from_json(value).text  # type: ignore[arg-type]
@@ -506,9 +715,20 @@ class Reason:
         )
 
 
-def because(code: ReasonCode, /, **params: JsonValue) -> Reason:
-    """The reason `code` with `params`."""
-    return Reason(code, params)
+def because(code: ReasonCode, /, **params: object) -> Reason:
+    """The reason `code` with `params` (JSON values; a tuple becomes a list)."""
+    return Reason(code, {name: _json(value) for name, value in params.items()})
+
+
+def _json(value: object) -> JsonValue:
+    match value:
+        case None | bool() | int() | float() | str():
+            return value
+        case list() | tuple():
+            return [_json(item) for item in value]
+        case dict():
+            return {str(key): _json(item) for key, item in value.items()}
+    raise TypeError(f"a reason's parameter is no JSON value: {value!r}")
 
 
 def written(text: str) -> Reason:

@@ -1,8 +1,10 @@
 import { toast } from 'svelte-sonner';
 import { ApiError } from '#lib/api/problem.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { reasonsText } from '#lib/reasons.ts';
 
-/** A text for the user about a failed call. Problem details stay as the API wrote them. */
+/** A text for the user about a failed call: the problem's reason in the user's language where
+ * the API gave one with a code this UI knows, else the detail as the API wrote it. */
 export function describeError(error: unknown): string {
 	if (error instanceof ApiError) {
 		if (error.status === 429) {
@@ -10,7 +12,10 @@ export function describeError(error: unknown): string {
 				? m.error_too_many({ seconds: error.retryAfter })
 				: m.error_too_many_later();
 		}
-		const detail = error.problem?.detail ?? null;
+		const problem = error.problem;
+		const detail = problem?.reason
+			? reasonsText([problem.reason], problem.detail)
+			: (problem?.detail ?? null);
 		if (error.status === 403)
 			return detail ? `${m.error_forbidden()} ${detail}` : m.error_forbidden();
 		return detail ?? error.problem?.title ?? m.error_unexpected({ status: error.status });
@@ -26,12 +31,21 @@ export function reportError(error: unknown): void {
 }
 
 /**
- * The messages of a 422 by field. The API writes the details as `field: message; field: message`
- * (`fields.<id>` for a field); anything else stays out of the result.
+ * The messages of a 422 by field (`fields.<id>` of the API as `field:<id>`): each part's reason
+ * in the user's language (`errors` of the problem), or, from an API without them, the details
+ * as it writes them (`field: message; field: message`); anything else stays out of the result.
  */
 export function fieldErrors(error: unknown): Record<string, string> {
 	const found: Record<string, string> = {};
 	if (!(error instanceof ApiError) || error.status !== 422) return found;
+	const parts = error.problem?.errors;
+	if (parts?.length) {
+		for (const part of parts) {
+			const name = part.field.replace(/^fields\./, 'field:');
+			found[name] = reasonsText([part.reason], part.message) ?? part.message;
+		}
+		return found;
+	}
 	for (const part of (error.problem?.detail ?? '').split('; ')) {
 		const match = /^([\w-]+(?:\.[\w-]+)*): (.+)$/.exec(part);
 		if (!match) continue;

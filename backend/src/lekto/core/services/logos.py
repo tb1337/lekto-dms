@@ -38,6 +38,7 @@ from lekto.core.domain.errors import (
 from lekto.core.domain.ids import ContactId, UserId
 from lekto.core.domain.jobs import Job, RetryPolicy
 from lekto.core.domain.master_data import Contact
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.images import ImageNormaliser
 from lekto.core.ports.logos import LogoFetcher
@@ -109,7 +110,7 @@ class LogoService:
         if len(data) > LOGO_MAX_SIZE:
             raise ValidationError(f"a logo is at most {LOGO_MAX_SIZE} bytes")
         if media_types.detect_image(data[: media_types.SNIFF_SIZE]) not in media_types.LOGO_UPLOADS:
-            raise UnsupportedMediaTypeError("a logo is a PNG, JPEG or WebP image")
+            raise UnsupportedMediaTypeError(because(ReasonCode.LOGO_UPLOAD_TYPE))
         image = await self._images.normalise(data)
 
         async def store() -> Contact:
@@ -167,9 +168,7 @@ class LogoService:
                 raise LogoFetchDisabledError("Lekto does not fetch logos")
             contact = await uow.contacts.get(id)
             if contact.logo is not None and contact.logo.source is LogoSource.UPLOADED:
-                raise ConflictError(
-                    f"'{contact.name}' has an uploaded logo; a fetched one never replaces it"
-                )
+                raise ConflictError(because(ReasonCode.LOGO_UPLOADED, contact=contact.name))
             if not contact.domains:
                 raise ValidationError(f"'{contact.name}' has no domain among its identifiers")
             await _enqueue(uow, contact.id, None, self._clock.now())

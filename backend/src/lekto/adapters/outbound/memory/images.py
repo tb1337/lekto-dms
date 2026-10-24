@@ -2,6 +2,7 @@
 
 from lekto.core.domain import media_types
 from lekto.core.domain.errors import ImageError, UnsupportedMediaTypeError
+from lekto.core.domain.reasons import ReasonCode, because
 
 FAKE_LOGO = (
     b"RIFF\x1e\x00\x00\x00WEBPVP8L\x11\x00\x00\x00/\x00\x00\x00\x10\x07\xd0\xb56t\xad\x80"
@@ -21,7 +22,7 @@ class FakeImageNormaliser:
     async def normalise(self, data: bytes) -> bytes:
         self.calls += 1
         if media_types.detect_image(data[: media_types.SNIFF_SIZE]) is None:
-            raise UnsupportedMediaTypeError("a logo is a PNG, JPEG, WebP or ICO image")
+            raise UnsupportedMediaTypeError(because(ReasonCode.LOGO_TYPE))
         if len(data) <= _DAMAGED:
             raise ImageError("the image cannot be read")
         return FAKE_LOGO

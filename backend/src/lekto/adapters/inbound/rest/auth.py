@@ -19,6 +19,7 @@ from lekto.adapters.inbound.rest.context import ApiContext, Context
 from lekto.core.domain.errors import AuthenticationError, PermissionDeniedError
 from lekto.core.domain.identity import csrf_matches
 from lekto.core.domain.ids import UserId
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.services.auth import Principal, SignedIn
 from lekto.core.services.oidc import FLOW_LIFETIME
 
@@ -71,16 +72,16 @@ async def authenticate(request: Request, context: Context) -> Principal:
     if header is not None:
         principal = await context.auth.authenticate_token(bearer_token(header))
         if request.method not in SAFE_METHODS and not principal.can_write:
-            raise PermissionDeniedError("this API token may only read")
+            raise PermissionDeniedError(because(ReasonCode.READ_ONLY_TOKEN))
     else:
         session_token = request.cookies.get(session_cookie_name(context))
         if not session_token:
-            raise AuthenticationError("authentication is required")
+            raise AuthenticationError(because(ReasonCode.AUTHENTICATION_REQUIRED))
         principal = await context.auth.authenticate_session(session_token)
         if request.method not in SAFE_METHODS and not csrf_matches(
             session_token, request.headers.get(CSRF_HEADER, "")
         ):
-            raise PermissionDeniedError(f"the header {CSRF_HEADER} is missing or wrong")
+            raise PermissionDeniedError(because(ReasonCode.CSRF_MISSING, header=CSRF_HEADER))
     request.state.principal = principal
     return principal
 
@@ -103,7 +104,7 @@ async def current_user(principal: Annotated[Principal, Depends(authenticate)]) -
 async def session_principal(principal: Annotated[Principal, Depends(authenticate)]) -> Principal:
     """The caller, who must use a session (not an API token)."""
     if principal.session is None:
-        raise PermissionDeniedError("this needs a signed-in session, not an API token")
+        raise PermissionDeniedError(because(ReasonCode.SESSION_NEEDED))
     return principal
 
 

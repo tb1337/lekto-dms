@@ -24,6 +24,7 @@ from lekto.core.domain.permissions import (
     space_role,
 )
 from lekto.core.domain.pipeline import Node, NodeRun
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
 from lekto.core.ports.unit_of_work import UnitOfWork
@@ -35,7 +36,7 @@ async def load_actor(uow: UnitOfWork, actor: UserId) -> User:
     changed since the request was authenticated)."""
     user = await uow.users.find(actor)
     if user is None or not user.active:
-        raise AuthenticationError("authentication is required")
+        raise AuthenticationError(because(ReasonCode.AUTHENTICATION_REQUIRED))
     return user
 
 

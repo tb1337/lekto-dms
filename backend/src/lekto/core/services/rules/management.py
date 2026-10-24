@@ -28,6 +28,7 @@ from lekto.core.domain.errors import (
 from lekto.core.domain.fields import FieldDefinition, FieldType
 from lekto.core.domain.ids import DocumentId, DocumentTypeId, RuleId, SpaceId, UserId
 from lekto.core.domain.permissions import space_role
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.rules import (
     ForceReview,
     Rule,
@@ -410,10 +411,7 @@ async def _managed_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
     if rule.managed_by is not None:
         document_type = await uow.document_types.find(rule.managed_by)
         name = rule.definition.name if document_type is None else document_type.name
-        raise ConflictError(
-            f"the rule of the title pattern of '{name}' follows the document type: change "
-            "the pattern there"
-        )
+        raise ConflictError(because(ReasonCode.RULE_FOLLOWS_TYPE, type=name))
     if user.is_active_admin:
         return rule
     if rule.scope is RuleScope.GLOBAL:

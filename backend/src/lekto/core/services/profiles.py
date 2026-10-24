@@ -21,6 +21,7 @@ from lekto.core.domain.errors import ConflictError, PermissionDeniedError, Valid
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource, of_person
 from lekto.core.domain.ids import UserId
 from lekto.core.domain.profiles import Person, Profile
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.users import User, display_name_of
 from lekto.core.domain.validation import name_key
 from lekto.core.ports.clock import Clock
@@ -139,7 +140,7 @@ async def _allowed(uow: UnitOfWork, actor: UserId, id: UserId, session: bool) ->
     if session:
         return False
     if user.id == id and not user.is_active_admin:
-        raise PermissionDeniedError("this needs a signed-in session, not an API token")
+        raise PermissionDeniedError(because(ReasonCode.SESSION_NEEDED))
     return True
 
 
@@ -160,7 +161,7 @@ async def check_display_name(
             continue
         theirs = (other.username, other.display_name)
         if any(name is not None and name_key(name) == key for name in theirs):
-            raise ConflictError(f"'{display_name}' is the name of another user")
+            raise ConflictError(because(ReasonCode.DISPLAY_NAME_TAKEN, name=display_name))
 
 
 async def check_username(uow: UnitOfWork, username: str) -> None:
@@ -169,7 +170,7 @@ async def check_username(uow: UnitOfWork, username: str) -> None:
     key = name_key(username)
     for other in await uow.users.list_all():
         if other.display_name is not None and name_key(other.display_name) == key:
-            raise ConflictError(f"username '{username}' is another user's name")
+            raise ConflictError(because(ReasonCode.USERNAME_OF_OTHER, username=username))
 
 
 async def check_person_identifiers(uow: UnitOfWork, identifiers: Iterable[Identifier]) -> None:
@@ -185,7 +186,11 @@ async def check_person_identifiers(uow: UnitOfWork, identifiers: Iterable[Identi
         for theirs in [item for item in contact.identifiers if of_person(item.key, mine)]:
             if theirs.source is IdentifierSource.MANUAL:
                 raise ConflictError(
-                    f"'{theirs.value}' is an identifier of the contact '{contact.name}'"
+                    because(
+                        ReasonCode.PROFILE_IDENTIFIER_OF_CONTACT,
+                        value=theirs.value,
+                        contact=contact.name,
+                    )
                 )
             changed |= contact.drop_identifier(theirs.key)
         if changed:

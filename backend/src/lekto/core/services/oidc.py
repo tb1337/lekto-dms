@@ -27,6 +27,7 @@ from lekto.core.domain.encoding import base64url, from_base64url
 from lekto.core.domain.errors import AuthenticationError, ConflictError
 from lekto.core.domain.identity import ExternalIdentity, LoginMethod, safe_redirect
 from lekto.core.domain.ids import SessionId, UserId
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.users import Role
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.identity import DecryptionError, OidcProvider, SecretCipher
@@ -119,7 +120,7 @@ class OidcService:
         to another user."""
         flow = self._open(sealed_flow)
         if not hmac.compare_digest(flow.state, state):
-            raise AuthenticationError("the sign-in does not match the one started here")
+            raise AuthenticationError(because(ReasonCode.OIDC_MISMATCH))
         identity = await self._provider.authenticate(
             code=code, code_verifier=flow.code_verifier, nonce=flow.nonce
         )
@@ -127,12 +128,12 @@ class OidcService:
 
         if flow.link_user is not None:
             if caller != flow.link_user:
-                raise AuthenticationError("sign in again to link the account")
+                raise AuthenticationError(because(ReasonCode.OIDC_RELINK))
             async with self._uow() as uow:
                 await load_actor(uow, caller)
                 existing = await uow.external_identities.find(identity.issuer, identity.subject)
                 if existing is not None and existing.user_id != caller:
-                    raise ConflictError("this account is linked to another user")
+                    raise ConflictError(because(ReasonCode.OIDC_LINKED_ELSEWHERE))
                 if existing is None:
                     await uow.external_identities.add(
                         ExternalIdentity.link(
@@ -162,7 +163,7 @@ class OidcService:
                 user_id = user.id
                 log.info("user created at first sign-in", extra={"user_id": str(user.id)})
             else:
-                raise AuthenticationError("no account here is linked to this sign-in")
+                raise AuthenticationError(because(ReasonCode.OIDC_NO_ACCOUNT))
         if current_session is not None:
             await self._auth.logout(current_session)
         signed_in = await self._auth.sign_in(user_id, LoginMethod.OIDC)
@@ -175,7 +176,7 @@ class OidcService:
             await load_actor(uow, actor)
             credential = await uow.credentials.find(actor)
             if credential is None or credential.password_hash is None:
-                raise ConflictError("set a password first; without it you could not sign in")
+                raise ConflictError(because(ReasonCode.OIDC_PASSWORD_FIRST))
             removed = await uow.external_identities.remove_for_user(actor)
             await uow.commit()
         return removed

@@ -8,6 +8,14 @@ if TYPE_CHECKING:
     from lekto.core.domain.reasons import Reason
 
 
+def _because(code: str, **params: object) -> "Reason":
+    """The reason `code` (a `ReasonCode` by its name), for errors defined before the reasons
+    can be imported here."""
+    from lekto.core.domain.reasons import ReasonCode, because
+
+    return because(ReasonCode[code], **params)
+
+
 class DomainError(Exception):
     """Base class for all errors of the core. Raised with a `Reason` (issue #83), its message is
     the reason's English text and `reason` keeps the code; raised with a text, `reason` is that
@@ -46,7 +54,7 @@ class SpaceWriteDeniedError(PermissionDeniedError):
     names the space, so a caller can tell which of its choices was refused."""
 
     def __init__(self, space_id: object, name: str) -> None:
-        super().__init__(f"no write access to space '{name}'")
+        super().__init__(_because("NO_WRITE_ACCESS_TO_SPACE", space=name))
         self.space_id = space_id
 
 
@@ -58,7 +66,7 @@ class OpenFieldsError(ValidationError):
     """Confirming a document needs a decision on each of its open fields."""
 
     def __init__(self, fields: tuple[str, ...]) -> None:
-        super().__init__(f"decide the open fields first: {', '.join(fields)}")
+        super().__init__(_because("OPEN_FIELDS", fields=list(fields)))
         self.fields = fields
 
 
@@ -77,9 +85,9 @@ class DuplicateDocumentError(ConflictError):
 
     def __init__(self, existing: UUID | None) -> None:
         super().__init__(
-            "the file lies in Lekto already, in a space you cannot see"
+            _because("DUPLICATE_UNSEEN")
             if existing is None
-            else f"duplicate of document {existing}"
+            else _because("DUPLICATE_OF", id=str(existing))
         )
         self.existing = existing
 

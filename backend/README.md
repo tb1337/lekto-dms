@@ -1192,6 +1192,11 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
   codes); the log keeps the English text beside the codes, and an entry from before has the
   text only. Clients translate the codes they know and show the text for the others.
 - Errors are problem details (RFC 9457, `application/problem+json`) and documented per endpoint.
+  An error with a code of its own carries it as `reason` beside `detail` (a domain error raised
+  with a `Reason`; one raised with a text has none). A request that does not fit (422) lists
+  each part in `errors` (`field`: its path joined by `.`; `message` in English; `reason` with
+  an `input_*` code from Pydantic's error type, `input_invalid` with the message for the rest);
+  `detail` joins them as `field: message; ...` as before.
   Filing into a space without edit rights (upload, move, confirm, a rule that sets the space)
   is `403` with `space_id`, the space that was refused.
 - Documents and spaces the caller may not see are `404` with the same answer as missing ones;

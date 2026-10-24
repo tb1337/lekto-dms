@@ -58,6 +58,7 @@ from lekto.core.domain.identity import (
     source_key,
 )
 from lekto.core.domain.ids import ApiTokenId, SessionId, UserId
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.identity import PasswordHasher, SecretCipher, Totp
@@ -167,13 +168,13 @@ class AuthService:
             _log_failure(None if user is None else user.id, source)
             if source_blocked is not None:
                 raise TooManyAttemptsError(source_blocked)
-            raise AuthenticationError("invalid username or password")
+            raise AuthenticationError(because(ReasonCode.INVALID_CREDENTIALS))
 
         if credential.totp_enabled and not code and not recovery_code:
             async with self._uow() as uow:
                 await _release(uow, reserved)  # no failure: the code is still to come
                 await uow.commit()
-            raise SecondFactorRequiredError("a one-time code is required")
+            raise SecondFactorRequiredError(because(ReasonCode.SECOND_FACTOR_REQUIRED))
         new_hash = None
         if self._hasher.needs_rehash(stored):
             new_hash = await self._hasher.hash(normalize_password(password))
@@ -207,7 +208,7 @@ class AuthService:
             credential = await uow.credentials.get(user_id)
             if credential.password_hash != verified or not user.active:
                 # Reset, changed or deactivated while the password was checked.
-                raise AuthenticationError("invalid username or password")
+                raise AuthenticationError(because(ReasonCode.INVALID_CREDENTIALS))
             valid = not credential.totp_enabled or self._second_factor(
                 credential, code, recovery_code, now
             )
@@ -224,7 +225,7 @@ class AuthService:
             _log_failure(user_id, source)
             if source_blocked is not None:
                 raise TooManyAttemptsError(source_blocked)
-            raise AuthenticationError("invalid one-time code")
+            raise AuthenticationError(because(ReasonCode.INVALID_ONE_TIME_CODE))
         log.info("signed in", extra={"user_id": str(user.id), "method": "password"})
         return signed_in
 
@@ -234,7 +235,7 @@ class AuthService:
         async with self._uow() as uow:
             user = await uow.users.find(user_id)
             if user is None or not user.active:
-                raise AuthenticationError("the account is not active")
+                raise AuthenticationError(because(ReasonCode.ACCOUNT_INACTIVE))
             signed_in = await self._start_session(uow, user, method, now)
             await uow.commit()
         log.info("signed in", extra={"user_id": str(user.id), "method": method.value})
@@ -254,14 +255,14 @@ class AuthService:
         async with self._uow() as uow:
             session = await uow.sessions.find_by_token(hash_token(token))
             if session is None:
-                raise AuthenticationError("authentication is required")
+                raise AuthenticationError(because(ReasonCode.AUTHENTICATION_REQUIRED))
             user = await uow.users.find(session.user_id)
             if not session.is_valid(now, self._policy.idle):
                 await uow.sessions.remove(session.id)
                 await uow.commit()
-                raise AuthenticationError("the session has expired")
+                raise AuthenticationError(because(ReasonCode.SESSION_EXPIRED))
             if user is None or not user.active:
-                raise AuthenticationError("authentication is required")
+                raise AuthenticationError(because(ReasonCode.AUTHENTICATION_REQUIRED))
             if now - session.last_seen_at >= self._policy.touch_interval:
                 await uow.sessions.touch(session.id, now)
                 await _commit_quietly(uow)
@@ -274,10 +275,10 @@ class AuthService:
         async with self._uow() as uow:
             api_token = await uow.api_tokens.find_by_token(hash_token(token))
             if api_token is None or not api_token.is_valid(now):
-                raise AuthenticationError("the token is invalid or has expired")
+                raise AuthenticationError(because(ReasonCode.TOKEN_INVALID))
             user = await uow.users.find(api_token.user_id)
             if user is None or not user.active:
-                raise AuthenticationError("the token is invalid or has expired")
+                raise AuthenticationError(because(ReasonCode.TOKEN_INVALID))
             last = api_token.last_used_at
             if last is None or now - last >= self._policy.touch_interval:
                 await uow.api_tokens.touch(api_token.id, now)
@@ -306,7 +307,7 @@ class AuthService:
         stored = None if credential is None else credential.password_hash
         if stored is None or not await self._hasher.verify(stored, normalize_password(current)):
             _log_failure(actor, None)
-            raise PermissionDeniedError("the current password is wrong")
+            raise PermissionDeniedError(because(ReasonCode.WRONG_PASSWORD))
         new_hash = await self._hasher.hash(new_password)
 
         async with self._uow() as uow:
@@ -346,7 +347,7 @@ class AuthService:
             user = await load_actor(uow, actor)
             credential = await _credential(uow, actor)
             if credential.totp_enabled:
-                raise ConflictError("TOTP is already on; turn it off first")
+                raise ConflictError(because(ReasonCode.TOTP_ALREADY_ON))
             secret = self._totp.new_secret()
             credential.totp = TotpSetting(secret=self._encrypt(actor, secret))
             await uow.credentials.update(credential)
@@ -363,7 +364,7 @@ class AuthService:
             credential = await _credential(uow, actor)
             totp = credential.totp
             if totp is None or totp.confirmed:
-                raise ConflictError("no TOTP setup to confirm")
+                raise ConflictError(because(ReasonCode.NO_TOTP_SETUP))
             step = self._totp.matching_step(self._decrypt(credential), code, now)
             if step is None:
                 raise ValidationError("the code is not valid")
@@ -404,7 +405,7 @@ class AuthService:
             if not credential.totp_enabled:
                 await _release(uow, reserved)
                 await uow.commit()
-                raise ConflictError("TOTP is off")
+                raise ConflictError(because(ReasonCode.TOTP_OFF))
             valid = self._second_factor(credential, code, code, now)
             if valid:
                 change(credential)
@@ -413,7 +414,7 @@ class AuthService:
                 await uow.commit()
         if not valid:
             _log_failure(actor, None)
-            raise PermissionDeniedError("the code is not valid")
+            raise PermissionDeniedError(because(ReasonCode.CODE_INVALID))
 
     # --- API tokens -----------------------------------------------------------------------------
 

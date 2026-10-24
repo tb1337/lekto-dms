@@ -16,6 +16,7 @@ from lekto.core.domain.errors import ConflictError, NotFoundError, ValidationErr
 from lekto.core.domain.fields import SORTABLE_TYPES, FieldDefinition, FieldType
 from lekto.core.domain.ids import FieldId, LensId, UserId
 from lekto.core.domain.lenses import UNSET, Grouping, Lens, LensChanges
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
@@ -52,7 +53,7 @@ class LensService:
             user = await load_actor(uow, actor)
             lenses = await uow.lenses.list_for_owner(user.id)
             if len(lenses) >= MAX_LENSES:
-                raise ConflictError(f"at most {MAX_LENSES} lenses per user")
+                raise ConflictError(because(ReasonCode.LENSES_LIMIT, max=MAX_LENSES))
             position = max((lens.position for lens in lenses), default=-1) + 1
             now = self._clock.now()
             lens = Lens.create(owner_id=user.id, name=name, position=position, now=now)

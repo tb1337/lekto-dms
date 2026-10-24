@@ -57,6 +57,7 @@ from lekto.core.domain.pipeline import (
     Processing,
     ProcessingStatus,
 )
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.validation import require_name, require_utc
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -400,7 +401,7 @@ class Document:
         """Repeat the failed nodes; processing then continues with the nodes after them.
         Returns the nodes that are due now."""
         if self.processing.status is not ProcessingStatus.FAILED:
-            raise InvalidTransitionError(f"document {self.id}: only failed processing is retried")
+            raise InvalidTransitionError(because(ReasonCode.ONLY_FAILED_RETRIED, id=str(self.id)))
         return self._reset(set(self.processing.failed()), now)
 
     def reprocess_from(self, node: Node, now: datetime) -> tuple[Node, ...]:
@@ -411,18 +412,16 @@ class Document:
         now."""
         processing = self.processing
         if processing.status is ProcessingStatus.PROCESSING:
-            raise InvalidTransitionError(f"document {self.id} is being processed")
+            raise InvalidTransitionError(because(ReasonCode.BEING_PROCESSED, id=str(self.id)))
         if node is Node.RECEIVE:
-            raise InvalidTransitionError("the receive node cannot be repeated")
+            raise InvalidTransitionError(because(ReasonCode.RECEIVE_NOT_REPEATABLE))
         again = self._reset_set({node})
         skipped = [failed for failed in processing.failed() if failed not in again]
         if skipped:
-            raise InvalidTransitionError(
-                f"processing stopped at {', '.join(skipped)}; cannot skip it"
-            )
+            raise InvalidTransitionError(because(ReasonCode.CANNOT_SKIP, nodes=skipped))
         if node is Node.FILE and self._uncertain_before(Node.FILE):
             raise InvalidTransitionError(
-                f"document {self.id} has uncertain results; confirm them before filing"
+                because(ReasonCode.UNCERTAIN_BEFORE_FILING, id=str(self.id))
             )
         signals = {
             signal
@@ -457,11 +456,13 @@ class Document:
             ProcessingStatus.FAILED,
             ProcessingStatus.COMPLETED,
         ):
-            raise InvalidTransitionError(f"document {self.id} is not waiting for confirmation")
+            raise InvalidTransitionError(
+                because(ReasonCode.NOT_WAITING_FOR_CONFIRMATION, id=str(self.id))
+            )
         if running := processing.running():
             # Its result would overwrite what the person decided; it ends soon.
             raise InvalidTransitionError(
-                f"document {self.id}: {', '.join(running)} is still running; confirm afterwards"
+                because(ReasonCode.STILL_RUNNING, id=str(self.id), nodes=list(running))
             )
         if resume_at not in (Node.FIELDS, Node.APPLY_RULES):
             raise InvalidTransitionError(
@@ -471,7 +472,7 @@ class Document:
             Outcome.OK,
             Outcome.UNCERTAIN,
         ):
-            raise InvalidTransitionError(f"document {self.id} has no text to extract from")
+            raise InvalidTransitionError(because(ReasonCode.NO_TEXT_TO_EXTRACT, id=str(self.id)))
         again = self._reset_set({resume_at})
         overruled = []
         for node, state in processing.nodes.items():

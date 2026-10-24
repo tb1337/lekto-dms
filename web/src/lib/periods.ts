@@ -104,11 +104,12 @@ function quarter(year: number, number: number): Period {
 }
 
 /** Month names to read: German and English, without umlauts (`Maerz`), any three or more
- * letters of one (`Sept`, `Mär`). */
+ * letters of one (`Sept`, `Mär`); besides, the abbreviation that is none, `Mrz` (DIN 5008, on
+ * payslips and statements), and Austria's `Jänner` with its `Jän` (issue #70). */
 const MONTH_NAMES = [
-	['januar', 'january'],
+	['januar', 'january', 'jaenner'],
 	['februar', 'february'],
-	['maerz', 'march'],
+	['maerz', 'march', 'mrz'],
 	['april'],
 	['mai', 'may'],
 	['juni', 'june'],

@@ -77,6 +77,17 @@ describe('event stream', () => {
 		expect(source.closed).toBe(true);
 	});
 
+	it('counts the first stream after a sign-out as no reconnect', () => {
+		events.start(() => {});
+		FakeSource.last.onopen?.();
+		const before = events.generation;
+		events.stop(); // sign-out
+		events.start(() => {}); // sign-in
+		FakeSource.last.onopen?.();
+		expect(events.generation).toBe(before);
+		events.stop();
+	});
+
 	it('reloads after a stream the server closed was started again', () => {
 		events.start(() => {});
 		FakeSource.last.onopen?.();

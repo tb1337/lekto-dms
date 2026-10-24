@@ -36,6 +36,7 @@ class FakeLekto:
     ticks: int = 1  # polls until a document's pipeline is through
     lanes: dict[str, str] = field(default_factory=dict)  # file name -> lane (default green)
     errors: dict[str, tuple[int, int]] = field(default_factory=dict)  # file name -> (status, times)
+    review_codes: bool = True  # whether it takes the codes of reviews (`takes_review_codes`)
     log: list[tuple[str, str]] = field(default_factory=list)
     texts: dict[str, str] = field(default_factory=dict)  # file name -> the archive's text
     advice: dict[str, str] = field(default_factory=dict)  # file name -> reading advice
@@ -60,6 +61,12 @@ class FakeLekto:
             return _problem(401, "authentication is required")
         path = request.url.path.removeprefix(PREFIX)
         method = request.method
+        if path == "/openapi.json":
+            properties: dict[str, Any] = {"reason": {}, "field": {}}
+            if self.review_codes:
+                properties["code"] = {}
+            schemas = {"ImportedReviewIn": {"properties": properties}}
+            return httpx2.Response(200, json={"components": {"schemas": schemas}})
         if path == "/auth/me":
             return httpx2.Response(
                 200,

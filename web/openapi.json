@@ -23484,6 +23484,13 @@
           "source_lacks_contact",
           "source_lacks_document_type",
           "source_lacks_document_date",
+          "paperless_user_review",
+          "paperless_correspondent_review",
+          "paperless_document_type_review",
+          "paperless_tag_review",
+          "paperless_custom_field_review",
+          "paperless_storage_path_review",
+          "paperless_asn_review",
           "field_does_not_apply",
           "field_gone",
           "contact_gone",
@@ -27079,6 +27086,27 @@
     "source_lacks_contact": {},
     "source_lacks_document_type": {},
     "source_lacks_document_date": {},
+    "paperless_user_review": {
+      "name": "text"
+    },
+    "paperless_correspondent_review": {
+      "name": "text"
+    },
+    "paperless_document_type_review": {
+      "name": "text"
+    },
+    "paperless_tag_review": {
+      "name": "text"
+    },
+    "paperless_custom_field_review": {
+      "name": "text"
+    },
+    "paperless_storage_path_review": {
+      "name": "text"
+    },
+    "paperless_asn_review": {
+      "name": "text"
+    },
     "field_does_not_apply": {
       "field": "text"
     },

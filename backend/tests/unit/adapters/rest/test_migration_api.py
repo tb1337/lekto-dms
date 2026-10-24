@@ -479,6 +479,48 @@ async def test_what_the_source_system_lacks_a_person_decides(api: Api) -> None:
     assert (document["lane"], document["contact_id"]) == ("green", data["contact"]["id"])
 
 
+async def test_a_review_of_the_migration_may_come_with_its_code(api: Api) -> None:
+    admin, owner = await api.admin(), await api.user()
+    data = await master_data(api, admin)
+    text = "Paperless correspondent 'Sonstiges': to be checked in Lekto"
+    coded = {
+        "reason": text,
+        "field": "contact",
+        "code": "paperless_correspondent_review",
+        "params": {"name": "Sonstiges"},
+    }
+    response = await upload(
+        api,
+        auth(admin),
+        channel="migration",
+        uploaded_by=str(owner.id),
+        metadata=metadata(data, review=[coded]),
+    )
+    assert response.status_code == 202, response.text
+    await api.drain()
+    (item,) = (await api.client.get(f"{PREFIX}/inbox", headers=auth(owner))).json()["items"]
+    (open,) = item["open"]
+    assert open["reason"] == text
+    ((field,),) = [entry["reasons"] for entry in open["fields"]]
+    assert (field["code"], field["params"]) == (
+        "paperless_correspondent_review",
+        {"name": "Sonstiges"},
+    )
+
+    for wrong in (
+        {**coded, "code": "contact_none"},  # not a code of a migration's reason
+        {**coded, "params": {}},  # the name is missing
+        {**coded, "code": "from_the_future"},
+    ):
+        refused = await upload(
+            api,
+            auth(admin),
+            channel="migration",
+            metadata=metadata(data, review=[wrong]),
+        )
+        assert refused.status_code == 422, refused.text
+
+
 async def test_a_review_of_a_field_with_a_value_keeps_it(api: Api) -> None:
     admin, owner = await api.admin(), await api.user()
     data = await master_data(api, admin)

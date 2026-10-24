@@ -239,7 +239,7 @@ def _becomes(item: Expected, members: list[tuple[str, str]], beyond: list[str]) 
         "document_date": item.document_date,
         "created_at": item.created_at,
         "fields": item.fields,
-        "review": [reason for reason, _ in item.review],
+        "review": [review.text for review, _ in item.review],
         "sources": item.sources,
     }
 

@@ -2,6 +2,7 @@
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from dataclasses import field as dataclass_field
 from datetime import date, datetime
 from uuid import UUID
 
@@ -28,6 +29,7 @@ from lekto.core.domain.json_value import (
     require_object,
     require_uuid,
 )
+from lekto.core.domain.reasons import Reason, ReasonCode, written
 from lekto.core.domain.validation import require_utc
 
 IMPORTED = "imported"
@@ -38,6 +40,19 @@ MAX_REVIEWS = 50
 MAX_REVIEW_REASON = 500  # characters
 REVIEWABLE: frozenset[str] = frozenset({CONTACT, DOCUMENT_TYPE, TOPIC, TAGS, DOCUMENT_DATE, TITLE})
 """The fields of the judge a review can name; a custom field is named `field:<id>`."""
+PAPERLESS_REVIEWS: frozenset[ReasonCode] = frozenset(
+    {
+        ReasonCode.PAPERLESS_USER_REVIEW,
+        ReasonCode.PAPERLESS_CORRESPONDENT_REVIEW,
+        ReasonCode.PAPERLESS_DOCUMENT_TYPE_REVIEW,
+        ReasonCode.PAPERLESS_TAG_REVIEW,
+        ReasonCode.PAPERLESS_CUSTOM_FIELD_REVIEW,
+        ReasonCode.PAPERLESS_STORAGE_PATH_REVIEW,
+        ReasonCode.PAPERLESS_ASN_REVIEW,
+    }
+)
+"""The codes a migration may give its own reasons: a Paperless object the plan asks a person to
+check (`review: true`), by its name (`name`)."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -45,10 +60,13 @@ class ImportedReview:
     """Why a person should look at a document taken over from another system before it is
     filed: the reason, and the field it is about (`contact`, ..., `field:<id>`), or None for the
     document as a whole. A named field is open in the inbox: without a value, the person
-    decides one."""
+    decides one. A reason the migration gives of its own may come with its code (`code`,
+    `params`: one of `PAPERLESS_REVIEWS`, issue #83); a reason a person wrote has none."""
 
     reason: str
     field: str | None = None
+    code: ReasonCode | None = None
+    params: Mapping[str, JsonValue] = dataclass_field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.reason.strip() or len(self.reason) > MAX_REVIEW_REASON:
@@ -56,14 +74,37 @@ class ImportedReview:
         named = self.field is None or self.field in REVIEWABLE
         if not named and field_id_of(self.field or "") is None:
             raise ValidationError(f"review: {self.field!r} is no field of a document")
+        if self.code is not None and self.code not in PAPERLESS_REVIEWS:
+            raise ValidationError(f"review: {self.code!r} is no code of a migration's reason")
+        if self.code is None and self.params:
+            raise ValidationError("review: parameters need a code")
+        self.as_reason()  # ValidationError for parameters that do not fit the code
+
+    def as_reason(self) -> Reason:
+        """The reason with its code, or as written."""
+        return written(self.reason) if self.code is None else Reason(self.code, self.params)
 
     def to_json(self) -> JsonObject:
-        return {"reason": self.reason, "field": self.field}
+        data: JsonObject = {"reason": self.reason, "field": self.field}
+        if self.code is not None:
+            data["code"] = self.code.value
+            data["params"] = dict(self.params)
+        return data
 
     @classmethod
     def from_json(cls, data: JsonValue) -> "ImportedReview":
         data = require_object(data, "review")
-        return cls(reason=as_text(data.get("reason")) or "", field=as_text(data.get("field")))
+        code = as_text(data.get("code"))
+        try:
+            known = None if code is None else ReasonCode(code)
+        except ValueError:
+            raise ValidationError(f"review: unknown code {code!r}") from None
+        return cls(
+            reason=as_text(data.get("reason")) or "",
+            field=as_text(data.get("field")),
+            code=known,
+            params=dict(as_object(data.get("params")) or {}),
+        )
 
 
 @dataclass(frozen=True, kw_only=True)

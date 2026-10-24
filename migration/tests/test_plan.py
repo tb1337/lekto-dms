@@ -90,7 +90,7 @@ def test_a_plan_says_where_everything_goes() -> None:
 
     other = plan.entry("correspondents", "Sonstiges")
     assert other is not None and other.dropped
-    assert other.review_reason() == "Resolve the contact in Lekto"
+    assert other.review_reason() == plans.Review("Resolve the contact in Lekto")
     assert plan.entry("tags", "rechnung") == plans.Entry(
         "tags", "Rechnung", (Target("document_type", "Rechnung", override=True),)
     )
@@ -107,7 +107,11 @@ def test_a_plan_says_where_everything_goes() -> None:
     assert kind.values["Sonst"] == ()
     insurer = plan.entry("custom_fields", "Versicherer")
     assert insurer is not None and insurer.targets[0].by_value
-    assert insurer.review_reason() == "Paperless custom field 'Versicherer': to be checked in Lekto"
+    assert insurer.review_reason() == plans.Review(
+        "Paperless custom field 'Versicherer': to be checked in Lekto",
+        "paperless_custom_field_review",
+        "Versicherer",
+    )
     date = plan.entry("custom_fields", "Rechnungsdatum")
     assert date is not None and date.targets == (Target("document_date", override=True),)
     assert plan.asn.targets == (Target("field", "ASN"),)

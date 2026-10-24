@@ -93,6 +93,13 @@ class ReasonCode(StrEnum):
     SOURCE_LACKS_CONTACT = "source_lacks_contact"
     SOURCE_LACKS_DOCUMENT_TYPE = "source_lacks_document_type"
     SOURCE_LACKS_DOCUMENT_DATE = "source_lacks_document_date"
+    PAPERLESS_USER_REVIEW = "paperless_user_review"
+    PAPERLESS_CORRESPONDENT_REVIEW = "paperless_correspondent_review"
+    PAPERLESS_DOCUMENT_TYPE_REVIEW = "paperless_document_type_review"
+    PAPERLESS_TAG_REVIEW = "paperless_tag_review"
+    PAPERLESS_CUSTOM_FIELD_REVIEW = "paperless_custom_field_review"
+    PAPERLESS_STORAGE_PATH_REVIEW = "paperless_storage_path_review"
+    PAPERLESS_ASN_REVIEW = "paperless_asn_review"
     # rules
     FIELD_DOES_NOT_APPLY = "field_does_not_apply"
     FIELD_GONE = "field_gone"
@@ -338,6 +345,23 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.SOURCE_LACKS_CONTACT: "no contact in the source system",
     ReasonCode.SOURCE_LACKS_DOCUMENT_TYPE: "no document type in the source system",
     ReasonCode.SOURCE_LACKS_DOCUMENT_DATE: "no document date in the source system",
+    ReasonCode.PAPERLESS_USER_REVIEW: "Paperless user '{name}': to be checked in Lekto",
+    ReasonCode.PAPERLESS_CORRESPONDENT_REVIEW: (
+        "Paperless correspondent '{name}': to be checked in Lekto"
+    ),
+    ReasonCode.PAPERLESS_DOCUMENT_TYPE_REVIEW: (
+        "Paperless document type '{name}': to be checked in Lekto"
+    ),
+    ReasonCode.PAPERLESS_TAG_REVIEW: "Paperless tag '{name}': to be checked in Lekto",
+    ReasonCode.PAPERLESS_CUSTOM_FIELD_REVIEW: (
+        "Paperless custom field '{name}': to be checked in Lekto"
+    ),
+    ReasonCode.PAPERLESS_STORAGE_PATH_REVIEW: (
+        "Paperless storage path '{name}': to be checked in Lekto"
+    ),
+    ReasonCode.PAPERLESS_ASN_REVIEW: (
+        "Paperless archive serial number '{name}': to be checked in Lekto"
+    ),
     ReasonCode.FIELD_DOES_NOT_APPLY: "'{field}' does not apply",
     ReasonCode.FIELD_GONE: "the field no longer exists",
     ReasonCode.CONTACT_GONE: "contact {id} no longer exists",

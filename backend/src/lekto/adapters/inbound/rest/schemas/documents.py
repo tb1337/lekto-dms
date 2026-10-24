@@ -24,6 +24,7 @@ from lekto.core.domain.pipeline import (
     ProcessingStatus,
 )
 from lekto.core.domain.reading import DocumentReading, VisionAdvice
+from lekto.core.domain.reasons import ReasonCode
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.services.documents import DocumentFacets
 from lekto.core.services.objects import EXCHANGE_NODES
@@ -402,6 +403,17 @@ class ImportedReviewIn(BaseModel):
             "`document_date`, `title` or `field:<id>`); it is open in the inbox and, without "
             "a value, needs a decision. Null: the document as a whole."
         ),
+    )
+    code: ReasonCode | None = Field(
+        default=None,
+        description=(
+            "A reason the migration gives of its own: its code (`paperless_*_review`, see "
+            "`x-reasons`), with `reason` as its English text; clients translate it. None for a "
+            "reason a person wrote."
+        ),
+    )
+    params: dict[str, Any] = Field(
+        default_factory=dict, description="The code's parameters (`name`: the Paperless object)."
     )
 
 

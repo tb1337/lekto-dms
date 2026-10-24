@@ -4,9 +4,10 @@ from datetime import date
 
 import pytest
 
-from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.errors import ConflictError, ValidationError
 from lekto.core.domain.facts import Strength, facts_in
 from lekto.core.domain.identifiers import (
+    Confirmed,
     Identifier,
     IdentifierKind,
     IdentifierSource,
@@ -18,7 +19,7 @@ from lekto.core.domain.identifiers import (
     social_security_number_valid,
     tax_id_valid,
 )
-from lekto.core.domain.ids import ContactId, UserId, new_id
+from lekto.core.domain.ids import ContactId, TagId, UserId, new_id
 from lekto.core.domain.master_data import Contact
 from lekto.core.domain.profiles import Person, Profile
 from lekto.core.domain.users import Role, User
@@ -107,10 +108,10 @@ def test_the_social_security_label_is_no_customer_label() -> None:
 
 def test_a_persons_numbers_are_never_learned() -> None:
     contact = ContactId(new_id())
-    found = [(TAX, TAX_ID), (IdentifierKind.IBAN, IBAN)]
-    learned = mine_identifiers([(contact, None, found), (contact, None, found)])
+    document = Confirmed(contact, None, frozenset({(TAX, TAX_ID), (IdentifierKind.IBAN, IBAN)}))
+    learned = mine_identifiers([document, document])
     assert [item.key for item in learned[contact]] == [(IdentifierKind.IBAN, IBAN)]
-    assert mine_identifiers([(contact, None, found)] * 2, taken=[(IdentifierKind.IBAN, IBAN)]) == {}
+    assert mine_identifiers([document] * 2, taken=[(IdentifierKind.IBAN, IBAN)]) == {}
 
 
 def test_a_profile() -> None:
@@ -135,7 +136,7 @@ def test_a_profile() -> None:
         Profile(id=user, birth_date=date(1899, 12, 31))
 
 
-def test_a_contact_names_a_user_only_by_a_number_entered_by_hand() -> None:
+def test_a_contact_names_a_user_only_by_a_customer_or_personnel_number() -> None:
     user = UserId(new_id())
     contact = Contact.create(name="Insurer", now=builders.NOW)
     contact.set_identifiers([Identifier.parse(CUSTOMER, "K-1001", user_id=user)])
@@ -144,12 +145,60 @@ def test_a_contact_names_a_user_only_by_a_number_entered_by_hand() -> None:
         contact.set_identifiers([Identifier.parse(IdentifierKind.IBAN, IBAN, user_id=user)])
     with pytest.raises(ValidationError, match="kind"):
         contact.set_identifiers([Identifier.parse(TAX, TAX_ID)])
+    # Training finds whose a number is; a rejected one names nobody.
+    contact.set_learned([Identifier(CUSTOMER, "K2", IdentifierSource.LEARNED, user_id=user)])
+    assert contact.identifiers[1].user_id == user
     with pytest.raises(ValidationError, match="names the user"):
         Contact(
             id=contact.id,
             name="X",
-            identifiers=[Identifier(CUSTOMER, "K2", IdentifierSource.LEARNED, user_id=user)],
+            identifiers=[Identifier(CUSTOMER, "K3", IdentifierSource.REJECTED, user_id=user)],
             created_at=builders.NOW,
+        )
+
+
+def test_a_user_keeps_their_numbers_at_a_contact() -> None:
+    """Issue #82: what names a user they enter, take over or decline themselves; the rest of
+    the contact stays; a number entered for someone else, or for nobody, is taken."""
+    anna, bob = UserId(new_id()), UserId(new_id())
+    topic = TagId(new_id())
+    insurer = Contact.create(
+        name="Insurer",
+        now=builders.NOW,
+        topic_ids=[topic],
+        identifiers=[
+            Identifier.parse(IdentifierKind.IBAN, IBAN),
+            Identifier.parse(CUSTOMER, "K-1001", user_id=anna),
+            Identifier.parse(CUSTOMER, "K-9009", user_id=bob),
+        ],
+    )
+    learned = [
+        Identifier(CUSTOMER, "K2002", IdentifierSource.LEARNED, user_id=anna),
+        Identifier(CUSTOMER, "K3003", IdentifierSource.LEARNED, user_id=anna),
+    ]
+    insurer.set_learned(learned)
+    insurer.set_numbers_of(
+        anna,
+        [Identifier.parse(CUSTOMER, "K 2002", topic_id=topic), Identifier.parse(CUSTOMER, "K4004")],
+        declined=[(CUSTOMER, "K3003")],
+    )
+    assert [(item.value, item.source, item.user_id) for item in insurer.identifiers] == [
+        (IBAN, IdentifierSource.MANUAL, None),
+        ("K2002", IdentifierSource.MANUAL, anna),  # taken over
+        ("K4004", IdentifierSource.MANUAL, anna),
+        ("K9009", IdentifierSource.MANUAL, bob),  # not hers: stays
+        ("K3003", IdentifierSource.REJECTED, None),  # declined; K1001 she took away
+    ]
+    assert insurer.identifiers[1].topic_id == topic
+    for taken in ("K9009", IBAN):
+        kind = IdentifierKind.IBAN if taken == IBAN else CUSTOMER
+        with pytest.raises(ConflictError, match="already taken"):
+            insurer.set_numbers_of(anna, [Identifier.parse(kind, taken)])
+    with pytest.raises(ValidationError, match="names the user"):
+        insurer.set_numbers_of(anna, [Identifier.parse(IdentifierKind.VAT_ID, "DE123456789")])
+    with pytest.raises(ValidationError):
+        insurer.set_numbers_of(
+            anna, [Identifier.parse(CUSTOMER, "K5005", topic_id=TagId(new_id()))]
         )
 
 
@@ -231,8 +280,8 @@ def test_a_customer_number_that_stands_in_a_persons_number_is_theirs() -> None:
     assert not of_person((CUSTOMER, "4711"), personal)  # too short to tell
     assert not of_person((CUSTOMER, IBAN[4:12]), [(IdentifierKind.IBAN, IBAN)])
     contact = ContactId(new_id())
-    found = [(CUSTOMER, SV[:8]), (CUSTOMER, "K4711")]
-    learned = mine_identifiers([(contact, None, found)] * 2, personal=personal)
+    document = Confirmed(contact, None, frozenset({(CUSTOMER, SV[:8]), (CUSTOMER, "K4711")}))
+    learned = mine_identifiers([document] * 2, personal=personal)
     assert [item.key for item in learned[contact]] == [(CUSTOMER, "K4711")]
 
 

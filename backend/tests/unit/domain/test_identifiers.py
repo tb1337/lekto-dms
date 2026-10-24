@@ -4,6 +4,7 @@ import pytest
 
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.identifiers import (
+    Confirmed,
     Identifier,
     IdentifierKind,
     IdentifierSource,
@@ -11,8 +12,9 @@ from lekto.core.domain.identifiers import (
     matches,
     mine_identifiers,
     normalise_identifier,
+    seen_by,
 )
-from lekto.core.domain.ids import ContactId, TagId, new_id
+from lekto.core.domain.ids import ContactId, SpaceId, TagId, UserId, new_id
 from lekto.core.domain.master_data import Contact
 
 NOW = datetime(2026, 10, 13, tzinfo=UTC)
@@ -136,10 +138,12 @@ def test_training_learns_what_only_one_contacts_documents_carry() -> None:
     utility, bank = ContactId(new_id()), ContactId(new_id())
     learned = mine_identifiers(
         [
-            (utility, None, {(IBAN, THEIR_IBAN), (IBAN, OWN_IBAN)}),
-            (utility, None, {(IBAN, THEIR_IBAN), (IBAN, OWN_IBAN), (CUSTOMER, "4711")}),
-            (bank, None, {(IBAN, OWN_IBAN), (VAT, "DE123456789")}),
-            (bank, None, {(IBAN, OWN_IBAN)}),
+            Confirmed(utility, None, frozenset({(IBAN, THEIR_IBAN), (IBAN, OWN_IBAN)})),
+            Confirmed(
+                utility, None, frozenset({(IBAN, THEIR_IBAN), (IBAN, OWN_IBAN), (CUSTOMER, "4711")})
+            ),
+            Confirmed(bank, None, frozenset({(IBAN, OWN_IBAN), (VAT, "DE123456789")})),
+            Confirmed(bank, None, frozenset({(IBAN, OWN_IBAN)})),
         ]
     )
     # The owner's IBAN stands at both; the customer number and the VAT number only once.
@@ -148,12 +152,10 @@ def test_training_learns_what_only_one_contacts_documents_carry() -> None:
 
 def test_a_document_without_contact_or_a_taken_value_keeps_it_from_being_learned() -> None:
     utility = ContactId(new_id())
-    found = {(IBAN, THEIR_IBAN)}
-    assert (
-        mine_identifiers([(utility, None, found), (utility, None, found), (None, None, found)])
-        == {}
-    )
-    assert mine_identifiers([(utility, None, found), (utility, None, found)], taken=found) == {}
+    found = frozenset({(IBAN, THEIR_IBAN)})
+    theirs, unknown = Confirmed(utility, None, found), Confirmed(None, None, found)
+    assert mine_identifiers([theirs, theirs, unknown]) == {}
+    assert mine_identifiers([theirs, theirs], taken=found) == {}
 
 
 def test_a_learned_identifier_points_to_the_topic_all_its_documents_carry() -> None:
@@ -162,11 +164,11 @@ def test_a_learned_identifier_points_to_the_topic_all_its_documents_carry() -> N
     number, policy, domain = (PERSONNEL, "4711"), (CUSTOMER, "KV-1"), (DOMAIN, "nord.example")
     learned = mine_identifiers(
         [
-            (employer, work, {number, domain}),
-            (employer, work, {number, domain}),
-            (employer, health, {policy, domain}),
-            (employer, health, {policy}),
-            (employer, None, {policy}),
+            Confirmed(employer, work, frozenset({number, domain})),
+            Confirmed(employer, work, frozenset({number, domain})),
+            Confirmed(employer, health, frozenset({policy, domain})),
+            Confirmed(employer, health, frozenset({policy})),
+            Confirmed(employer, None, frozenset({policy})),
         ]
     )
     assert learned == {
@@ -206,3 +208,61 @@ def test_a_contact_keeps_entered_learned_and_rejected_identifiers_apart() -> Non
     ]
     assert contact.drop_identifier(domain.key)
     assert contact.identifiers == []
+
+
+def test_a_learned_number_belongs_to_whom_all_its_documents_surely_belong() -> None:
+    """Issue #82: a customer or personnel number gets the user every document of it is surely
+    theirs alone; what is learned notes the spaces of its documents."""
+    employer = ContactId(new_id())
+    anna, bob = UserId(new_id()), UserId(new_id())
+    own, shared = SpaceId(new_id()), SpaceId(new_id())
+    number, iban = (PERSONNEL, "12345"), (IBAN, THEIR_IBAN)
+
+    def learn(*whose: frozenset[UserId]) -> list[Identifier]:
+        documents = [
+            Confirmed(employer, None, frozenset({number, iban}), space, users)
+            for space, users in zip((own, shared), whose, strict=True)
+        ]
+        return list(mine_identifiers(documents)[employer])
+
+    assert learn(frozenset({anna}), frozenset({anna})) == [
+        Identifier(IBAN, THEIR_IBAN, IdentifierSource.LEARNED, learned_in=frozenset({own, shared})),
+        Identifier(
+            PERSONNEL, "12345", IdentifierSource.LEARNED, None, anna, frozenset({own, shared})
+        ),
+    ]
+    # Another user, both, or nobody surely: nobody's.
+    for whose in (
+        (frozenset({anna}), frozenset({bob})),
+        (frozenset({anna}), frozenset({anna, bob})),
+        (frozenset({anna}), frozenset()),
+    ):
+        assert [item.user_id for item in learn(*whose)] == [None, None]
+
+
+def test_who_sees_a_contacts_identifier() -> None:
+    anna, bob = UserId(new_id()), UserId(new_id())
+    own, other = SpaceId(new_id()), SpaceId(new_id())
+    public = Identifier(IBAN, THEIR_IBAN)
+    hers = Identifier(CUSTOMER, "K4711", user_id=anna)
+    learned = Identifier(IBAN, OWN_IBAN, IdentifierSource.LEARNED, learned_in=frozenset({own}))
+    learned_hers = Identifier(
+        PERSONNEL, "12345", IdentifierSource.LEARNED, None, anna, frozenset({own, other})
+    )
+    old = Identifier(VAT, "DE123456789", IdentifierSource.LEARNED)  # before 0040: no spaces
+    rejected = Identifier(DOMAIN, "nord.example", IdentifierSource.REJECTED)
+    seen = {
+        name: [seen_by(item, user, spaces) for item in (public, hers, learned, learned_hers)]
+        for name, user, spaces in (
+            ("anna", anna, {own}),
+            ("bob in her space", bob, {own}),
+            ("bob", bob, {other}),
+        )
+    }
+    assert seen == {
+        "anna": [True, True, True, True],
+        "bob in her space": [True, False, True, False],
+        "bob": [True, False, False, False],
+    }
+    assert not seen_by(old, anna, {own, other})
+    assert not seen_by(rejected, anna, {own})

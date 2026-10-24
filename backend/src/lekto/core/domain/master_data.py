@@ -21,7 +21,7 @@ from lekto.core.domain.appearance import (
     checked_color,
     checked_icon,
 )
-from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.errors import ConflictError, ValidationError
 from lekto.core.domain.identifiers import (
     CONTACT_KINDS,
     MAX_IDENTIFIERS,
@@ -30,7 +30,7 @@ from lekto.core.domain.identifiers import (
     IdentifierKind,
     IdentifierSource,
 )
-from lekto.core.domain.ids import ContactId, DocumentTypeId, TagId, new_id
+from lekto.core.domain.ids import ContactId, DocumentTypeId, TagId, UserId, new_id
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.validation import name_key, require_name, require_utc
 
@@ -139,7 +139,9 @@ class Contact(MasterData):
 
     `identifiers` are values its documents carry (see `identifiers`): entered by hand, learned
     by training, or learned and rejected. Each value belongs to one contact at most, and may
-    point to one of the contact's topics.
+    point to one of the contact's topics. A customer or personnel number may name the user it
+    belongs to; that user maintains it too (`set_numbers_of`), and only they and admins see it
+    (`identifiers.seen_by`).
 
     `group_ids`: the contact groups it is in (tags of scope `contact`; the service checks
     them). `topic_ids`: the topics it enables (tags of scope `topic`, checked by the service):
@@ -256,8 +258,8 @@ class Contact(MasterData):
 
     def set_learned(self, learned: Iterable[Identifier]) -> None:
         """Replace the learned identifiers, each with its topic if the contact enables it (a
-        topic it does not is left out); values entered by hand or rejected stay as they
-        are."""
+        topic it does not is left out), the user it belongs to and the spaces it was learned
+        in; values entered by hand or rejected stay as they are."""
         kept = [item for item in self.identifiers if item.source is not IdentifierSource.LEARNED]
         taken = {item.key for item in kept}
         fresh = [
@@ -266,11 +268,48 @@ class Contact(MasterData):
                 item.value,
                 IdentifierSource.LEARNED,
                 item.topic_id if item.topic_id in self.topic_ids else None,
+                item.user_id,
+                item.learned_in,
             )
             for item in learned
             if item.key not in taken
         ]
         self.identifiers = _identifiers([*kept, *fresh])
+
+    def set_numbers_of(
+        self,
+        user: UserId,
+        entered: Iterable[Identifier],
+        declined: Iterable[tuple[IdentifierKind, str]] = (),
+    ) -> None:
+        """The numbers of the contact that name `user`, as they keep them in their profile:
+        `entered` replaces those entered by hand for them (a learned one of theirs given is then
+        entered by hand, a rejected one allowed again), each with its topic (one of the
+        contact's: ValidationError otherwise); `declined`, learned ones of theirs they say are
+        not theirs, are rejected (training does not learn them again). Identifiers that do not
+        name them stay as they are; one entered by hand for someone else, or for nobody, is
+        taken (ConflictError, not saying whose)."""
+        mine = {
+            item.key: Identifier(item.kind, item.value, topic_id=item.topic_id, user_id=user)
+            for item in entered
+        }
+        refused = set(declined) - mine.keys()
+        kept: list[Identifier] = []
+        for item in self.identifiers:
+            if item.key in mine:
+                if item.source is IdentifierSource.MANUAL and item.user_id != user:
+                    raise ConflictError(because(ReasonCode.IDENTIFIER_TAKEN, value=item.value))
+                continue
+            if item.user_id != user:
+                kept.append(item)
+            elif item.source is IdentifierSource.LEARNED:
+                if item.key in refused:
+                    kept.append(Identifier(item.kind, item.value, IdentifierSource.REJECTED))
+                else:
+                    kept.append(item)
+        identifiers = _identifiers([*mine.values(), *kept])
+        self._check_topics(identifiers)
+        self.identifiers = identifiers
 
     def drop_identifier(self, key: tuple[IdentifierKind, str]) -> bool:
         """Forget the value (another contact took it); whether it was there."""
@@ -499,15 +538,13 @@ _KIND_ORDER = {kind: order for order, kind in enumerate(IdentifierKind)}
 def _identifiers(identifiers: Iterable[Identifier]) -> list[Identifier]:
     """Without duplicates (the first of a value wins), entered first, then learned, then
     rejected; at most `MAX_IDENTIFIERS` that count. Only the kinds of contacts
-    (`CONTACT_KINDS`); a user named only by a customer or personnel number entered by hand."""
+    (`CONTACT_KINDS`); a user named only by a customer or personnel number that counts."""
     seen: set[tuple[IdentifierKind, str]] = set()
     result: list[Identifier] = []
     for item in identifiers:
         if item.kind not in CONTACT_KINDS:
             raise ValidationError(f"a contact has no identifier of the kind '{item.kind.value}'")
-        if item.user_id is not None and (
-            item.kind not in NAMING_KINDS or item.source is not IdentifierSource.MANUAL
-        ):
+        if item.user_id is not None and (item.kind not in NAMING_KINDS or not item.counts):
             raise ValidationError(because(ReasonCode.ONLY_NUMBERS_NAME_USERS))
         if item.key not in seen:
             seen.add(item.key)

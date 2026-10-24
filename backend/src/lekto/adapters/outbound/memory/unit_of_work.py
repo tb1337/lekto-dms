@@ -9,7 +9,7 @@ import asyncio
 import copy
 import dataclasses
 from collections.abc import Callable, Collection, Hashable, Iterable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from types import TracebackType
 from typing import Any, Self, cast
@@ -349,8 +349,8 @@ class MemoryUserRepository(MemoryRepository[UserId, User]):
         return next((_copy(row) for row in self._all() if name_key(row.username) == key), None)
 
     async def remove(self, id: UserId) -> None:
-        """As the SQL schema's ON DELETE SET NULL: the user's documents keep no uploader, the
-        contacts' identifiers that named them name nobody; their profile goes with them."""
+        """As the SQL schema's foreign keys: the user's documents keep no uploader (SET NULL),
+        the contacts' identifiers that named them and their profile go with them (CASCADE)."""
         await self.get(id)
         self._uow._check_unreferenced(self._table, id)
         for row in self._uow._rows(DOCUMENTS):
@@ -361,10 +361,7 @@ class MemoryUserRepository(MemoryRepository[UserId, User]):
         for contact in self._uow._rows(CONTACTS):
             if any(item.user_id == id for item in contact.identifiers):
                 updated = _copy(contact)
-                updated.identifiers = [
-                    replace(item, user_id=None) if item.user_id == id else item
-                    for item in contact.identifiers
-                ]
+                updated.identifiers = [item for item in contact.identifiers if item.user_id != id]
                 self._uow._write(CONTACTS, contact.id, updated)
         if self._uow._row(PROFILES, id) is not None:
             self._uow._write(PROFILES, id, _REMOVED)

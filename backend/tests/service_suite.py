@@ -6,12 +6,14 @@ import asyncio
 
 from lekto.adapters.outbound.memory import ManualClock, MemoryObjectStore
 from lekto.core.domain.documents import Document, DocumentChanges
+from lekto.core.domain.identifiers import Identifier, IdentifierKind
 from lekto.core.domain.master_data import TagScope
 from lekto.core.domain.pipeline import Lane
 from lekto.core.domain.users import User
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from lekto.core.services.documents import DocumentService
 from lekto.core.services.master_data import MasterDataService
+from lekto.core.services.profiles import ContactNumber, ProfileChanges, ProfileService
 from tests import builders
 from tests.builders import NOW
 from tests.contracts.unit_of_work import owner_with_space
@@ -169,3 +171,39 @@ class ServicesOverPersistence:
             stored = await uow.documents.get(document.id)
             contact = await uow.contacts.get(nord.id)
         assert stored.topic_id is None or stored.topic_id in contact.topic_ids
+
+    async def test_a_user_moves_a_number_to_another_contact(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """In one change a number leaves one contact and comes to another, a learned one of
+        hers gives way at a third: kind and value are unique across contacts, so what is given
+        up is stored first (issue #82)."""
+        owner, _ = await owner_with_space(uow_factory)
+        admin = await _admin(uow_factory)
+        master = MasterDataService(uow_factory, ManualClock(NOW), builders.TEMPLATES)
+        hers = Identifier.parse(IdentifierKind.CUSTOMER_NUMBER, "K4711", user_id=owner.id)
+        # Stored first, the one that gets the number is listed and changed first.
+        second = await master.create_contact(admin.id, "Alpha")
+        first = await master.create_contact(admin.id, "Zulu", identifiers=[hers])
+        third = await master.create_contact(admin.id, "Yankee")
+        async with uow_factory() as uow:
+            contact = await uow.contacts.get(third.id)
+            contact.set_learned(
+                [Identifier(IdentifierKind.CUSTOMER_NUMBER, "K0815", user_id=owner.id)]
+            )
+            await uow.contacts.update(contact)
+            await uow.commit()
+        numbers = [
+            ContactNumber(second.id, Identifier.parse(IdentifierKind.CUSTOMER_NUMBER, value))
+            for value in ("K4711", "K0815")
+        ]
+        changed = await ProfileService(uow_factory, ManualClock(NOW)).update(
+            owner.id, owner.id, ProfileChanges(numbers=numbers)
+        )
+        assert [(item.contact_id, item.identifier.value) for item in changed.numbers] == [
+            (second.id, "K0815"),
+            (second.id, "K4711"),
+        ]
+        async with uow_factory() as uow:
+            assert (await uow.contacts.get(first.id)).identifiers == []
+            assert (await uow.contacts.get(third.id)).identifiers == []

@@ -262,8 +262,10 @@ contact_identifiers = Table(
     Column("value", Text, primary_key=True),
     Column("source", Text, nullable=False),
     Column("topic_id", Uuid, ForeignKey("tags.id"), nullable=True),
-    # The user a customer or personnel number belongs to, if one does.
-    Column("user_id", Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
+    # The user a customer or personnel number belongs to, if one does; it goes with them.
+    Column("user_id", Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=True),
+    # A learned one: the ids of the spaces it was learned in (a JSON list; null: none).
+    Column("learned_in", json_type(), nullable=True),
 )
 
 field_definitions = Table(

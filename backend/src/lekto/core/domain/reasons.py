@@ -318,6 +318,7 @@ class ReasonCode(StrEnum):
     CONTACT_TOO_MANY_ALIASES = "contact_too_many_aliases"
     CONTACT_TOO_MANY_IDENTIFIERS = "contact_too_many_identifiers"
     ONLY_NUMBERS_NAME_USERS = "only_numbers_name_users"
+    IDENTIFIER_TAKEN = "identifier_taken"
     TITLE_PATTERN_TOO_LONG = "title_pattern_too_long"
     DESCRIPTION_TOO_LONG = "description_too_long"
     TITLE_PATTERN_UNKNOWN = "title_pattern_unknown"
@@ -731,8 +732,9 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.CONTACT_TOO_MANY_ALIASES: "a contact has at most {max:number} aliases",
     ReasonCode.CONTACT_TOO_MANY_IDENTIFIERS: "a contact has at most {max:number} identifiers",
     ReasonCode.ONLY_NUMBERS_NAME_USERS: (
-        "only a customer or personnel number entered by hand names the user it belongs to"
+        "only a customer or personnel number names the user it belongs to"
     ),
+    ReasonCode.IDENTIFIER_TAKEN: "'{value}' is already taken",
     ReasonCode.TITLE_PATTERN_TOO_LONG: "a title pattern is at most {max:number} characters",
     ReasonCode.DESCRIPTION_TOO_LONG: "description must not be longer than {max:number} characters",
     ReasonCode.TITLE_PATTERN_UNKNOWN: (

@@ -17,6 +17,7 @@ from lekto.core.domain.identifiers import Identifier, IdentifierKind, Identifier
 from lekto.core.domain.ids import ContactId
 from lekto.core.domain.master_data import Assignment, Contact, Tag, TagScope
 from lekto.core.domain.profiles import Profile
+from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import Role, User
 from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services.classifier import (
@@ -44,8 +45,10 @@ def service(world: World, **policy: Any) -> ClassifierService:
     )
 
 
-async def confirmed(world: World, owner: User, contact: Contact, text: str) -> Document:
-    space = await world.personal_space(owner)
+async def confirmed(
+    world: World, owner: User, contact: Contact, text: str, space: Space | None = None
+) -> Document:
+    space = space or await world.personal_space(owner)
     document = builders.processed(owner, space, content=text)
     document.apply_changes(DocumentChanges(contact_id=contact.id), {}, world.clock.now())
     document.mark_confirmed(world.clock.now())
@@ -114,6 +117,44 @@ async def test_a_persons_own_number_is_never_a_contacts(world: World) -> None:
     assert model.summary["learned_identifiers"] == 0
     async with world.uow() as uow:
         assert (await uow.contacts.get(utility.id)).identifiers == []
+
+
+async def test_a_learned_number_knows_whose_it_is_and_where_it_was_learned(world: World) -> None:
+    """Issue #82: the pay slips in a user's personal space teach the employer her personnel
+    number as hers; the IBAN learned there names nobody, but only the members of that space see
+    it. A contract number in a shared space that names nobody surely is nobody's."""
+    anna, bob = await world.user(), await world.user()
+    employer = Contact.create(name="Arbeitgeber", now=builders.NOW)
+    utility = Contact.create(name="Stadtwerke", now=builders.NOW)
+    async with world.uow() as uow:
+        await uow.contacts.add(employer)
+        await uow.contacts.add(utility)
+        await uow.commit()
+    own = await world.personal_space(anna)
+    family = await world.spaces.create(anna.id, "Familie")
+    for number in range(2):
+        await confirmed(
+            world,
+            anna,
+            employer,
+            f"Arbeitgeber Lohnabrechnung {number} Personalnummer 12345 IBAN {THEIR_IBAN}",
+        )
+        await confirmed(
+            world, bob, utility, f"Stadtwerke Abschlag {number} Kundennummer K-4711", family
+        )
+    await service(world).train()
+    async with world.uow() as uow:
+        learned = {
+            item.kind: item
+            for contact in (await uow.contacts.get(employer.id), await uow.contacts.get(utility.id))
+            for item in contact.identifiers
+        }
+    personnel = learned[IdentifierKind.PERSONNEL_NUMBER]
+    assert (personnel.user_id, personnel.learned_in) == (anna.id, frozenset({own.id}))
+    iban = learned[IdentifierKind.IBAN]
+    assert (iban.user_id, iban.learned_in) == (None, frozenset({own.id}))
+    contract = learned[IdentifierKind.CUSTOMER_NUMBER]
+    assert (contract.user_id, contract.learned_in) == (None, frozenset({family.id}))
 
 
 async def test_only_the_tags_the_classification_sets_are_learned(world: World) -> None:

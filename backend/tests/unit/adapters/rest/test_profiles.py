@@ -79,6 +79,7 @@ async def test_the_own_profile_and_the_display_name_others_see(api: Api) -> None
         "birth_date": None,
         "email": None,
         "identifiers": [],
+        "numbers": [],
     }
     body = {
         "display_name": "Anna Example",
@@ -213,7 +214,7 @@ async def test_identifiers_of_persons_and_of_contacts(api: Api) -> None:
     )
     assert named.status_code == 200, named.text
     assert named.json()["identifiers"][0]["user_id"] == str(anna.id)
-    # Whose contract it is only she and admins see.
+    # Her contract only she and admins see (issue #82).
     bob = await api.user("bob")
     assert (await get(api, f"/contacts/{bank.id}", auth(anna))).json()["identifiers"][0][
         "user_id"
@@ -222,7 +223,7 @@ async def test_identifiers_of_persons_and_of_contacts(api: Api) -> None:
         (await get(api, "/contacts", auth(bob))).json()[0],
         (await get(api, f"/contacts/{bank.id}", auth(bob))).json(),
     ):
-        assert listed["identifiers"][0]["user_id"] is None
+        assert listed["identifiers"] == []
     unknown = await api.client.post(
         f"{PREFIX}/contacts/{bank.id}/identifiers",
         json={"kind": "customer_number", "value": "K-4712", "user_id": str(UUID(int=1))},
@@ -287,7 +288,7 @@ async def test_a_deleted_user_takes_their_profile_along(api: Api) -> None:
     async with api.container.unit_of_work() as uow:
         assert await uow.profiles.find(anna.id) is None
         contact = await uow.contacts.get(bank.id)
-    assert contact.identifiers[0].user_id is None
+    assert contact.identifiers == []  # her number went with her
     # The display name is free again.
     bob = await api.user("bob")
     reused = await change(api, bob, {"display_name": "Anna Sample"})

@@ -88,6 +88,24 @@ describe('a reason in the user language', () => {
 		expect(outputReasonText(undefined, undefined)).toBeNull();
 	});
 
+	it('names things and actions in the user language', () => {
+		setLocale('de', { reload: false });
+		const reason = (code: string, params: Record<string, unknown>): Reason =>
+			({ code, params }) as Reason;
+		expect(reasonText(reason('admins_only', { action: 'manage_users' }))).toBe(
+			'Nur Admins dürfen Nutzer verwalten.'
+		);
+		expect(reasonText(reason('not_found', { kind: 'document type', id: 'x1' }))).toBe(
+			'Dokumenttyp x1 wurde nicht gefunden.'
+		);
+		expect(reasonText(reason('name_too_long', { what: 'title', max: 300 }))).toBe(
+			'Der Titel darf höchstens 300 Zeichen haben.'
+		);
+		expect(reasonText(reason('not_found', { kind: 'gizmo', id: 'x2' }))).toBe(
+			'gizmo x2 wurde nicht gefunden.'
+		);
+	});
+
 	it('falls back to the English text without codes or for a code it does not know', () => {
 		setLocale('de', { reload: false });
 		const known = { code: 'contact_none', params: {} } as Reason;

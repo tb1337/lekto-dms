@@ -17,6 +17,7 @@
 	import { describeError, reportError } from '#lib/errors.ts';
 	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { reasonsText } from '#lib/reasons.ts';
 	import { canApplyRule, canChangeRule } from '#lib/permissions.ts';
 	import {
 		applyRequest,
@@ -230,7 +231,9 @@
 								<a href="{BASE}/documents/{skip.document_id}" class="font-medium hover:underline">
 									{titles.get(skip.document_id) ?? skip.document_id}
 								</a>
-								<span class="text-muted-foreground">{skip.reason}</span>
+								<span class="text-muted-foreground">
+									{reasonsText(skip.reasons, skip.reason)}
+								</span>
 							</li>
 						{/each}
 					</ul>

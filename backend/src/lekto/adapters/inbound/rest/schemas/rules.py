@@ -284,10 +284,18 @@ class RuleCreate(RuleDefinitionIn):
     space_id: UUID | None = Field(
         default=None, description="The space a space rule belongs to; none for a global rule."
     )
+    enabled: bool = Field(
+        default=True,
+        description="false: saved switched off (to try it first); it never runs before it is "
+        "switched on.",
+    )
 
     def to_json(self) -> JsonValue:
         data: JsonValue = self.model_dump(
-            mode="json", by_alias=True, exclude_defaults=True, exclude={"scope", "space_id"}
+            mode="json",
+            by_alias=True,
+            exclude_defaults=True,
+            exclude={"scope", "space_id", "enabled"},
         )
         return data
 
@@ -308,10 +316,18 @@ class RuleChange(RuleDefinitionIn):
     space_id: UUID | None = Field(
         default=None, description="With `scope: space`: the space the rule moves into."
     )
+    enabled: bool | None = Field(
+        default=None,
+        description="Switched on or off with the change, in one transaction (the editor saves "
+        "a change switched off, to try it first); left out: as it was.",
+    )
 
     def to_json(self) -> JsonValue:
         data: JsonValue = self.model_dump(
-            mode="json", by_alias=True, exclude_defaults=True, exclude={"scope", "space_id"}
+            mode="json",
+            by_alias=True,
+            exclude_defaults=True,
+            exclude={"scope", "space_id", "enabled"},
         )
         return data
 

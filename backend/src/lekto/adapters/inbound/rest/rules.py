@@ -92,7 +92,9 @@ async def list_rules(
 async def create_rule(body: RuleCreate, user: CurrentUser, context: Context) -> RuleOut:
     definition = definition_from_json(body.to_json())
     space = None if body.space_id is None else SpaceId(body.space_id)
-    return RuleOut.of(await context.rules.create(user, body.scope, definition, space=space))
+    return RuleOut.of(
+        await context.rules.create(user, body.scope, definition, space=space, enabled=body.enabled)
+    )
 
 
 @router.get(
@@ -121,7 +123,9 @@ async def change_rule(id: UUID, body: RuleChange, user: CurrentUser, context: Co
     definition = definition_from_json(body.to_json())
     space = None if body.space_id is None else SpaceId(body.space_id)
     return RuleOut.of(
-        await context.rules.change(user, RuleId(id), definition, scope=body.scope, space=space)
+        await context.rules.change(
+            user, RuleId(id), definition, scope=body.scope, space=space, enabled=body.enabled
+        )
     )
 
 

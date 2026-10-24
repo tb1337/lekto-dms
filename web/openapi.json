@@ -19674,7 +19674,8 @@
                 "type": "null"
               }
             ],
-            "title": "Title Pattern"
+            "title": "Title Pattern",
+            "description": "May name the global fields and those in `fields`."
           },
           "group_ids": {
             "items": {
@@ -19702,6 +19703,15 @@
               }
             ],
             "title": "Icon"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldAssignmentIn"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Fields",
+            "description": "The fields of the type besides the global ones, each once, required or optional: set with it in one transaction (as `PUT /document-types/{id}/fields`)."
           }
         },
         "additionalProperties": false,
@@ -24412,6 +24422,18 @@
             ],
             "title": "Space Id",
             "description": "With `scope: space`: the space the rule moves into."
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled",
+            "description": "Switched on or off with the change, in one transaction (the editor saves a change switched off, to try it first); left out: as it was."
           }
         },
         "additionalProperties": false,
@@ -24565,6 +24587,12 @@
             ],
             "title": "Space Id",
             "description": "The space a space rule belongs to; none for a global rule."
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "false: saved switched off (to try it first); it never runs before it is switched on.",
+            "default": true
           }
         },
         "additionalProperties": false,

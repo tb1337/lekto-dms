@@ -340,7 +340,7 @@ Echtläufe auf Tobis Mac (Ollama am NUC, `qwen3:8b-ctx8k` und `snowflake-arctic-
 - Regeln eines Nutzers prüfen die Schublade einer Aktion gegen den Besitzer der Regel, nicht gegen den Aufrufer (F2a).
 - Bestätigt ein Admin in eine Schublade, in die der Besitzer nicht schreiben darf, steht seine Wahl im Protokoll (`drawer_id` im Eintrag `person`, ebenso in `person:drawer` bei Upload und Verschieben); die Ablage akzeptiert sie, solange der Admin aktiv ist. Ältere Protokolleinträge nennen keine Schublade.
 - Fehler beim Speichern einer Regel nennen den Ort (`conditions.all[1].any[0]: …`, `actions[2]: …`); Fehler der Anfrageprüfung kommen weiter in Pydantics Form (`conditions.AllGroup.all.0.ConditionSchema.op: …`, je versuchter Art ein Fehler; die UI behält nur die passende).
-- Offen: Gründe für Konflikte und Hinweise im Probelauf und bei Übersprungenen kommen von der API englisch und mit rohen IDs (etwa eines Kontakts); die UI zeigt sie, wie sie kommen. Die Regelliste ist nicht live (kein Ereignis für Regeln). Zwischen Anlegen und Ausschalten einer neuen Regel liegt ein kurzes Fenster, in dem sie eingeschaltet ist (F5a, entschieden). Die Suche über alle Nutzer (`Visibility.everything`) ist nur in der CI gegen Meilisearch geprüft. Der Baustein `checkbox` des Kits nutzt noch `data-checked`-Varianten (bits-ui setzt `data-state`), wird aber nirgends verwendet.
+- Offen: Gründe für Konflikte und Hinweise im Probelauf und bei Übersprungenen kommen von der API englisch und mit rohen IDs (etwa eines Kontakts); die UI zeigt sie, wie sie kommen. Die Regelliste ist nicht live (kein Ereignis für Regeln). Zwischen Anlegen und Ausschalten einer neuen Regel lag ein kurzes Fenster, in dem sie eingeschaltet war (F5a, entschieden); seit 24.10.2026 legt der Editor sie in einer Anfrage ausgeschaltet an (Issue #73). Die Suche über alle Nutzer (`Visibility.everything`) ist nur in der CI gegen Meilisearch geprüft. Der Baustein `checkbox` des Kits nutzt noch `data-checked`-Varianten (bits-ui setzt `data-state`), wird aber nirgends verwendet.
 - Unverändert weitergetragen:
   - Aus M11a: `img-src blob:` wahrscheinlich überflüssig (mit JBIG2/JPX-PDF prüfen); kein Byte-Fortschritt beim Upload; gelbe Prüfansicht, Suchtreffer und rote Spur nur mit abgefangenen Antworten geprüft.
   - Aus M8: `POST /webhooks/{id}/test` ohne Ratenbegrenzung, `Webhook.previous_secret` bleibt nach der Übergangszeit verschlüsselt liegen.
@@ -1643,6 +1643,17 @@ PR mit Label `enhancement` nach `release/0.5.0`, nach Paket 3.
 - Geprüft auf einer Wegwerf-Instanz mit Wegwerf-Index und dem Embedding-Dienst der Devinstanz (Timeout 50 ms): Hinweis, Event, Knopf, danach mit Bedeutung.
 
 **Offen:** Gleichstand der Wortsuche durch Bruchstücke der Zerlegung („en“); pflegbare Synonyme für die Wortsuche („Weihnachtsgeld“ ↔ „Einmalzahlung“, „13. Gehalt“) als nächste Idee.
+
+### Zwischenschritt: Eine Anfrage je Speichern (Issue #73, `bugfix/one-request-saves`)
+
+**Anlass (Tobi, 24.10.2026):** Issue #73 lösen (ein neuer Dokumenttyp waren zwei Anfragen ohne Weg zurück) und „die anderen Stammdaten wie Kontakte und Tags bzw. alle Dialoge auf ähnliche Themen prüfen und mit lösen“.
+
+**Befund:** Zwei Abläufe schickten für ein Speichern mehrere ändernde Anfragen. Ein neuer Dokumenttyp: `POST /document-types`, dann `PUT …/fields` (auch ohne Felder); scheiterte das zweite, gab es den Typ schon, der Dialog blieb im Anlegen-Modus, ein zweites „Anlegen“ war 409. Und weil die Felder erst nach dem Typ kamen, durfte das Titelmuster eines neuen Typs nur globale Felder nennen. Eine neue Regel: angelegt (eingeschaltet), dann ausgeschaltet (F5a: ein kurzes Fenster, in dem sie lief); eine geänderte: ausgeschaltet, geändert, bei Fehler wieder eingeschaltet. Geprüft und in Ordnung: Kontakte (Kennungen, Gruppen, Themen in einer Anfrage; das Logo nur am bestehenden Kontakt), Tags, Felder, Spaces, Nutzer, Webhooks, Lenses, Profil, das Dokumentformular; „Einschalten und anwenden“ einer Regel sind zwei Absichten, ein Teilerfolg ist sichtbar und wiederholbar.
+
+**Umsetzung:**
+
+- `POST /document-types` nimmt `fields` (Pflicht oder optional): Typ, Felder und die Prüfung des Titelmusters in einer Transaktion (`MasterDataService._fit_fields`, auch von `assign_fields` genutzt); das Muster darf die mitgegebenen Felder nennen. Die Web-UI schickt beim Anlegen eine Anfrage (Dialog und Anlegen aus der Auswahl), `PUT …/fields` nur noch beim Bearbeiten; das Titelmuster eines neuen Typs bietet die im Dialog zugeordneten Felder an (`TemplateInput.extraFields`).
+- `POST /rules` nimmt `enabled`, `PUT /rules/{id}` ebenso: Der Editor speichert neue und geänderte Regeln in einer Anfrage ausgeschaltet; F5a entfällt.
 
 ### M16 – Lesen
 

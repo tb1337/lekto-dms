@@ -27932,5 +27932,52 @@
       "pattern": "text",
       "detail": "text"
     }
+  },
+  "x-identifier-kinds": {
+    "iban": {
+      "contact": true,
+      "person": true,
+      "names_user": false
+    },
+    "vat_id": {
+      "contact": true,
+      "person": false,
+      "names_user": false
+    },
+    "customer_number": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "personnel_number": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "email_domain": {
+      "contact": true,
+      "person": false,
+      "names_user": false
+    },
+    "tax_id": {
+      "contact": false,
+      "person": true,
+      "names_user": false
+    },
+    "social_security_number": {
+      "contact": false,
+      "person": true,
+      "names_user": false
+    },
+    "health_insurance_number": {
+      "contact": false,
+      "person": true,
+      "names_user": false
+    },
+    "email_address": {
+      "contact": false,
+      "person": true,
+      "names_user": false
+    }
   }
 }

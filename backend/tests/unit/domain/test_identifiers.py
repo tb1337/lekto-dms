@@ -4,10 +4,17 @@ import pytest
 
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.identifiers import (
+    CONTACT_KINDS,
+    NAMING_KINDS,
+    PERSON_KINDS,
+    TYPES,
+    Candidate,
     Confirmed,
     Identifier,
     IdentifierKind,
     IdentifierSource,
+    catalog,
+    identifiers_from,
     identifiers_in,
     matches,
     mine_identifiers,
@@ -16,6 +23,7 @@ from lekto.core.domain.identifiers import (
 )
 from lekto.core.domain.ids import ContactId, SpaceId, TagId, UserId, new_id
 from lekto.core.domain.master_data import Contact
+from tests.person_numbers import social_security_number
 
 NOW = datetime(2026, 10, 13, tzinfo=UTC)
 IBAN = IdentifierKind.IBAN
@@ -23,6 +31,10 @@ VAT = IdentifierKind.VAT_ID
 CUSTOMER = IdentifierKind.CUSTOMER_NUMBER
 PERSONNEL = IdentifierKind.PERSONNEL_NUMBER
 DOMAIN = IdentifierKind.EMAIL_DOMAIN
+TAX = IdentifierKind.TAX_ID
+SOCIAL = IdentifierKind.SOCIAL_SECURITY_NUMBER
+HEALTH = IdentifierKind.HEALTH_INSURANCE_NUMBER
+ADDRESS = IdentifierKind.EMAIL_ADDRESS
 OWN_IBAN = "DE02120300000000202051"
 THEIR_IBAN = "DE89370400440532013000"
 
@@ -266,3 +278,33 @@ def test_who_sees_a_contacts_identifier() -> None:
     }
     assert not seen_by(old, anna, {own, other})
     assert not seen_by(rejected, anna, {own})
+
+
+def test_every_kind_has_its_type_and_says_whose_it_is() -> None:
+    assert set(TYPES) == set(IdentifierKind)
+    assert all(TYPES[kind].kind is kind for kind in IdentifierKind)
+    assert frozenset({IBAN, VAT, CUSTOMER, PERSONNEL, DOMAIN}) == CONTACT_KINDS
+    assert frozenset({IBAN, TAX, SOCIAL, HEALTH, ADDRESS}) == PERSON_KINDS
+    assert frozenset({CUSTOMER, PERSONNEL}) == NAMING_KINDS
+    assert catalog()["customer_number"] == {"contact": True, "person": False, "names_user": True}
+
+
+def test_candidates_of_any_reader_are_checked_and_weighed() -> None:
+    """Without their place (a GiroCode's, in time a language model's), candidates are checked
+    against their kind; a customer number that stands in a person's number found does not
+    count."""
+    social = social_security_number()
+    found = identifiers_from(
+        [
+            Candidate(IBAN, "DE89 3704 0044 0532 0130 00"),
+            Candidate(IBAN, "DE00 1234"),  # no IBAN: left out
+            Candidate(SOCIAL, social),
+            Candidate(CUSTOMER, social[:8]),
+            Candidate(CUSTOMER, "K-4711"),
+        ]
+    )
+    assert found == {
+        (IBAN, THEIR_IBAN),
+        (SOCIAL, social),
+        (CUSTOMER, "K4711"),
+    }

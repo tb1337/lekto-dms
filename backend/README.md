@@ -500,7 +500,12 @@ and the space, the fields node reads the fields of the decided type and the titl
   contacts (IBAN, VAT ID, customer number, personnel number, mail domain) with the topic they
   point to, unknown IBANs and VAT IDs. A personnel number stands after its label
   (`Personalnummer`, `Pers.-Nr.`, `Mitarbeiternummer`, `Employee ID`, ...) and is kept
-  without leading zeros. It also reads the bar and QR codes on the archive's pages, once (`documents/<id>/codes.json`; the
+  without leading zeros. Each kind of identifier is a module of `core/domain/identifiers`
+  (`IdentifierType`: whose it is, whether it may name a user, its comparable form, its
+  patterns in a text, how a value of it is written); the registry lists them (`TYPES`, in the
+  OpenAPI document as `x-identifier-kinds`). Readers deliver candidates (`Candidate`: the
+  patterns in the text, a GiroCode's IBAN), checked against their kind and weighed together
+  (`identifiers_from`), so another reader, a language model, would fit in. It also reads the bar and QR codes on the archive's pages, once (`documents/<id>/codes.json`; the
   OCR node deletes it with a new archive, a reprocessing from the judge takes it): an
   identifier in a code counts as one in the text, the payee of a GiroCode as a name in the
   text, which proposes nothing alone. Reading the codes may fail; the signal warns and goes on

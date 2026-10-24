@@ -71,7 +71,8 @@ describe('the names of users', () => {
 		expect(userLabel(named)).toBe('Carla Example');
 		expect(userLabel({ username: 'carla', display_name: null })).toBe('carla');
 		expect(userName([...users, named], 'u4')).toBe('Carla Example');
-		expect(userName(users, 'nobody')).toBe('nobody');
+		expect(userName(users, 'nobody')).toBe(m.user_unknown());
+		expect(userName(users, null)).toBe(m.user_unknown());
 		expect(spaceLabel({ name: 'Personal', personal_of: 'u4' }, [named], 'u1')).toBe(
 			'Carla Example'
 		);

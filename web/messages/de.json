@@ -645,6 +645,7 @@
 	"user_totp_off": "Zweiter Faktor aus",
 	"user_oidc_on": "Mit dem Identitätsanbieter verknüpft",
 	"user_oidc_off": "Nicht verknüpft",
+	"user_unknown": "unbekannt",
 	"user_totp_remove": "Zweiten Faktor entfernen",
 	"user_totp_remove_confirm": "Der Nutzer meldet sich dann nur mit dem Passwort an, bis er ihn neu einrichtet.",
 	"user_totp_removed": "Zweiter Faktor entfernt.",

@@ -9,7 +9,7 @@
 	import RuleView from '#lib/components/rules/RuleView.svelte';
 	import { describeError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
-	import { loadLookup, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { loadLookup, userName, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
 	// One saved version of a rule, to read (decision E4: no restoring).
@@ -40,10 +40,7 @@
 		);
 	});
 
-	const author = $derived.by(() => {
-		const user = lookup?.users.find((entry) => entry.id === version?.created_by);
-		return user ? userLabel(user) : m.rule_unknown();
-	});
+	const author = $derived(userName(lookup?.users ?? [], version?.created_by));
 </script>
 
 <svelte:head>

@@ -88,10 +88,11 @@ export function spaceLabel(
 	return userName(users, space.personal_of);
 }
 
-/** A user's name by id; the id while unknown. */
-export function userName(users: readonly UserName[], id: string): string {
-	const user = byId(users).get(id);
-	return user ? userLabel(user) : id;
+/** A user's name by id; "unknown" for one the list lacks (none, or a user deleted since): an
+ * id says nothing to a reader. */
+export function userName(users: readonly UserName[], id: string | null | undefined): string {
+	const user = id ? byId(users).get(id) : undefined;
+	return user ? userLabel(user) : m.user_unknown();
 }
 
 /** How a user is shown: their display name, else their username. */

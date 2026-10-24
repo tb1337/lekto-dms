@@ -645,6 +645,7 @@
 	"user_totp_off": "Two-factor off",
 	"user_oidc_on": "Linked to the identity provider",
 	"user_oidc_off": "Not linked",
+	"user_unknown": "unknown",
 	"user_totp_remove": "Remove two-factor",
 	"user_totp_remove_confirm": "The user can sign in with the password alone until they set it up again.",
 	"user_totp_removed": "Two-factor removed.",

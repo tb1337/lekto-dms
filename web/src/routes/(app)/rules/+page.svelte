@@ -15,12 +15,13 @@
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import { Switch } from '#lib/components/ui/switch/index.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
-	import { spaceLabel, type Space, type UserName } from '#lib/masterdata.svelte.ts';
+	import type { Space, UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { reasonsText } from '#lib/reasons.ts';
 	import { scope } from '#lib/scope.svelte.ts';
 	import { canChangeRule } from '#lib/permissions.ts';
 	import { TRIGGER_LABELS } from '#lib/rules/describe.ts';
+	import { placeLabel, placeOf } from '#lib/rules/places.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 
@@ -33,11 +34,8 @@
 	let removing = $state<Rule | null>(null);
 	let busy = $state<string | null>(null);
 
-	const placeName = (rule: Rule) => {
-		if (rule.scope === 'global') return m.rule_global();
-		const space = spaces.find((entry) => entry.id === rule.space_id);
-		return space ? spaceLabel(space, users, session.user?.id) : m.rule_unknown();
-	};
+	const placeName = (rule: Rule) =>
+		placeLabel(placeOf(rule), spaces, users, session.user?.id, m.rule_global);
 
 	let loads = 0;
 

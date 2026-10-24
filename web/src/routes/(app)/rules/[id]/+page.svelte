@@ -20,11 +20,11 @@
 	import { Switch } from '#lib/components/ui/switch/index.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
-	import { loadLookup, spaceLabel, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { loadLookup, userName, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { reasonsText } from '#lib/reasons.ts';
 	import { canApplyRule, canChangeRule } from '#lib/permissions.ts';
-	import { moves, placeLabel } from '#lib/rules/places.ts';
+	import { moves, placeLabel, placeOf } from '#lib/rules/places.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 
@@ -39,19 +39,13 @@
 	let removing = $state(false);
 	let busy = $state(false);
 
-	const userName = (user: string | null) => {
-		const found = lookup?.users.find((entry) => entry.id === user);
-		return found ? userLabel(found) : m.rule_unknown();
-	};
-	const placeName = $derived.by(() => {
-		if (!rule || rule.scope === 'global') return m.rule_global();
-		const space = lookup?.spaces.find((entry) => entry.id === rule?.space_id);
-		return space ? spaceLabel(space, lookup?.users ?? [], session.user?.id) : m.rule_unknown();
-	});
 	const spaces = $derived(lookup?.spaces ?? []);
+	const users = $derived(lookup?.users ?? []);
+	const placeName = $derived(
+		rule ? placeLabel(placeOf(rule), spaces, users, session.user?.id, m.rule_global) : ''
+	);
 	const moved = $derived(moves(versions));
-	const placed = (place: string) =>
-		placeLabel(place, spaces, lookup?.users ?? [], session.user?.id);
+	const placed = (place: string) => placeLabel(place, spaces, users, session.user?.id);
 
 	// Again after a master data dialog saved: a title pattern's rule follows its type.
 	$effect(() => {
@@ -197,7 +191,7 @@
 						<span class="text-muted-foreground">
 							{m.rule_version_meta({
 								date: formatDate(version.created_at, { dateStyle: 'medium', timeStyle: 'short' }),
-								user: userName(version.created_by)
+								user: userName(users, version.created_by)
 							})}
 						</span>
 						{#if moved.get(version.version)}

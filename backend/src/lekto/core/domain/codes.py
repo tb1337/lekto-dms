@@ -19,8 +19,10 @@ from decimal import Decimal
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.fields import Money
 from lekto.core.domain.identifiers import (
+    Candidate,
     IdentifierKind,
-    identifiers_in,
+    candidates_in,
+    identifiers_from,
     normalise_identifier,
 )
 from lekto.core.domain.json_value import JsonObject, JsonValue, as_int
@@ -102,12 +104,13 @@ def giro_code(text: str) -> GiroCode | None:
 
 
 def code_identifiers(code: Code) -> set[tuple[IdentifierKind, str]]:
-    """The identifiers a code shows: those its text shows, and a GiroCode's IBAN."""
-    found = identifiers_in(code.text)
+    """The identifiers a code shows: those its text shows, and a GiroCode's IBAN, weighed
+    together (`identifiers_from`)."""
+    candidates = list(candidates_in(code.text))
     giro = giro_code(code.text)
     if giro is not None:
-        found.add((IdentifierKind.IBAN, giro.iban))
-    return found
+        candidates.append(Candidate(IdentifierKind.IBAN, giro.iban))
+    return identifiers_from(candidates)
 
 
 def codes_to_json(codes: Sequence[Code]) -> JsonObject:

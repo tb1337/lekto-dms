@@ -41,6 +41,7 @@ from lekto.adapters.inbound.rest.middleware import LimitRequestBody, NoStore
 from lekto.adapters.inbound.rest.paths import HEALTH_PATH, MCP_PATH, PREFIX
 from lekto.adapters.inbound.rest.schemas.events import EventMessage
 from lekto.adapters.inbound.rest.ui import ui_routes
+from lekto.core.domain.identifiers import catalog as identifier_kinds
 from lekto.core.domain.reasons import catalog as reasons_catalog
 
 __all__ = ["PREFIX", "create_app"]
@@ -187,6 +188,8 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
         schema["components"]["securitySchemes"] = SECURITY_SCHEMES
         # The reasons' codes with their parameters and how each is written (`ReasonOut`).
         schema["x-reasons"] = reasons_catalog()
+        # The kinds of identifiers and whose they are (clients offer them by these).
+        schema["x-identifier-kinds"] = identifier_kinds()
         for route_context in iter_route_contexts(app.routes):
             route = route_context.original_route
             if isinstance(route, APIRoute) and route.include_in_schema:

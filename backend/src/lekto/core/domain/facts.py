@@ -37,6 +37,7 @@ from lekto.core.domain.identifiers import (
     identifiers_in,
     matches,
     of_person,
+    type_of,
 )
 from lekto.core.domain.ids import ContactId, TagId, UserId
 from lekto.core.domain.locations import Location
@@ -294,17 +295,10 @@ def name_spans(text: str, name: str) -> tuple[Span, ...]:
 
 
 def identifier_spans(text: str, kind: IdentifierKind, value: str) -> tuple[Span, ...]:
-    """Where an identifier stands in `text`, as it may be written: separators between its
-    characters (an IBAN, a VAT, customer or personnel number), any case; a personnel number
-    also with leading zeros."""
-    if kind is IdentifierKind.EMAIL_DOMAIN:
-        return _spans(rf"(?<![\w-]){re.escape(value)}(?![\w-])", text)
-    if kind is IdentifierKind.EMAIL_ADDRESS:
-        return _spans(rf"(?<![\w.%+-]){re.escape(value)}(?![\w-])", text)
-    pattern = r"[\s./-]?".join(re.escape(char) for char in value)
-    if kind is IdentifierKind.PERSONNEL_NUMBER:
-        pattern = rf"(?:0[\s./-]?)*{pattern}"
-    return _spans(rf"(?<![A-Za-z0-9]){pattern}(?![A-Za-z0-9])", text)
+    """Where an identifier stands in `text`, as its kind may write it
+    (`IdentifierType.written`: separators between the characters of a number, any case, a
+    personnel number also with leading zeros)."""
+    return _spans(type_of(kind).written(value), text)
 
 
 def _spelling(word: str) -> str:

@@ -1,5 +1,6 @@
 """Domain events. They are created by the aggregates and stored with the state change
-(transactional outbox). Receivers recognise repeated deliveries by the event id."""
+(transactional outbox). Receivers recognise repeated deliveries by the event id. One is not
+stored: `SearchMeaningReady` goes from the search straight to the searcher's event streams."""
 
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -101,6 +102,17 @@ class ClassifierTrained(DomainEvent):
     type: ClassVar[str] = "classifier.trained"
     number: int
     examples: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class SearchMeaningReady(DomainEvent):
+    """The meaning of a query that a search of `user_id` had to do without (it was not ready in
+    time) is ready now: a search for it again takes the meaning into account. Not stored, for
+    the user's event streams only (the API process that searched hands it on)."""
+
+    type: ClassVar[str] = "search.meaning_ready"
+    user_id: UserId
+    query: str
 
 
 DOCUMENT_EVENT_TYPES: dict[str, type[DocumentEvent]] = {

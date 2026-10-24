@@ -96,6 +96,8 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
     (lifespan), it delivers outbox events to its event streams and runs the mounts."""
     hub = EventHub(context.documents)
     hub.attach(context.event_bus)
+    if context.search is not None:
+        context.search.listen(hub.deliver)
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

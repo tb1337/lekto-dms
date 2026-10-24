@@ -10002,6 +10002,93 @@
         ]
       }
     },
+    "/api/v1/documents/search/warm": {
+      "post": {
+        "tags": [
+          "search"
+        ],
+        "summary": "Get the search ready",
+        "description": "Has the model of the embeddings loaded before a search needs it, e.g. as soon as a person starts typing: one embedding in the background, at most once a minute. Answers at once.",
+        "operationId": "warm_search_api_v1_documents_search_warm_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "database: unreachable"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/search/reindex": {
       "post": {
         "tags": [
@@ -14761,7 +14848,7 @@
           "events"
         ],
         "summary": "Progress of documents (server-sent events)",
-        "description": "A stream of document events (`document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Active admins also get `classifier.trained` (a new model, with its `number` and `examples`), unless the stream follows one document. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream starts with the comment `: ready` once it is registered: every event after that reaches it. It checks regularly that its session or token is still valid and ends otherwise.",
+        "description": "A stream of document events (`document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Active admins also get `classifier.trained` (a new model, with its `number` and `examples`), unless the stream follows one document. A searcher gets `search.meaning_ready` (with the `query`) when the meaning of a query that had to go by words alone is ready (`meaning_pending` of the search), unless the stream follows one document. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream starts with the comment `: ready` once it is registered: every event after that reaches it. It checks regularly that its session or token is still valid and ends otherwise.",
         "operationId": "events_api_v1_events_get",
         "parameters": [
           {
@@ -23880,7 +23967,13 @@
           "card_field_unknown",
           "due_field_not_date",
           "sort_field_invalid",
-          "pattern_invalid"
+          "pattern_invalid",
+          "search_no_embeddings",
+          "search_embed_timeout",
+          "search_embed_failed",
+          "search_embed_dimensions",
+          "search_index_unavailable",
+          "search_not_configured"
         ],
         "title": "ReasonCode"
       },
@@ -24972,6 +25065,14 @@
         "title": "RunExchangeOut",
         "description": "What a node sent to the language model in one processing run."
       },
+      "SearchMode": {
+        "type": "string",
+        "enum": [
+          "hybrid",
+          "words"
+        ],
+        "title": "SearchMode"
+      },
       "SearchResultItem": {
         "properties": {
           "document": {
@@ -25036,7 +25137,27 @@
           "semantic": {
             "type": "boolean",
             "title": "Semantic",
-            "description": "Whether the meaning took part. False without embeddings, with `semantic_ratio=0`, or when the embedding service did not answer in time: the result is by words only then."
+            "description": "Whether the meaning took part (`mode` is `hybrid`). False without embeddings, with `semantic_ratio=0`, or when the embedding service did not answer in time: the result is by words only then."
+          },
+          "mode": {
+            "$ref": "#/components/schemas/SearchMode",
+            "description": "`hybrid`: by words and meaning; `words`: by words alone, the fallback that always stays."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReasonOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why by words alone where the meaning was to take part (not for `semantic_ratio=0`): `search_no_embeddings`, `search_embed_timeout`, `search_embed_failed`, `search_embed_dimensions`."
+          },
+          "meaning_pending": {
+            "type": "boolean",
+            "title": "Meaning Pending",
+            "description": "The meaning of the query was not ready in time and is still being made: the event `search.meaning_ready` with this `query` follows on the caller's event stream, and the same search then takes the meaning into account."
           }
         },
         "type": "object",
@@ -25044,7 +25165,10 @@
           "items",
           "estimated_total",
           "next_offset",
-          "semantic"
+          "semantic",
+          "mode",
+          "reason",
+          "meaning_pending"
         ],
         "title": "SearchResultPage"
       },
@@ -26964,7 +27088,7 @@
       },
       "EventMessage": {
         "additionalProperties": true,
-        "description": "A domain event, thin: fetch the document for details. Fields beyond `type`, `id`,\n`occurred_at` and `document_id` depend on the type (`classifier.trained`: `number` and\n`examples` of the new model).",
+        "description": "A domain event, thin: fetch the document for details. Fields beyond `type`, `id`,\n`occurred_at` and `document_id` depend on the type (`classifier.trained`: `number` and\n`examples` of the new model; `search.meaning_ready`: the `query`).",
         "properties": {
           "type": {
             "examples": [
@@ -26994,7 +27118,7 @@
               }
             ],
             "default": null,
-            "description": "The document; absent from `classifier.trained`.",
+            "description": "The document; absent from `classifier.trained` and `search.meaning_ready`.",
             "title": "Document Id"
           }
         },
@@ -27931,7 +28055,18 @@
     "pattern_invalid": {
       "pattern": "text",
       "detail": "text"
-    }
+    },
+    "search_no_embeddings": {},
+    "search_embed_timeout": {
+      "seconds": "number"
+    },
+    "search_embed_failed": {},
+    "search_embed_dimensions": {
+      "got": "number",
+      "wanted": "number"
+    },
+    "search_index_unavailable": {},
+    "search_not_configured": {}
   },
   "x-identifier-kinds": {
     "iban": {

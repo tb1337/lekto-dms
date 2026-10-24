@@ -2,14 +2,20 @@
 documents they may read."""
 
 import asyncio
+from collections.abc import Sequence
+from dataclasses import replace
 from datetime import timedelta
 
 import httpx2
 
 from lekto.adapters.inbound.rest import PREFIX, close_event_streams
+from lekto.adapters.outbound.memory import FakeEmbeddings
 from lekto.composition.container import build_memory_container, build_services
+from lekto.composition.settings import Settings
 from lekto.core.domain.events import ClassifierTrained
 from lekto.core.domain.spaces import SpaceRole
+from lekto.core.domain.users import Role
+from lekto.core.ports.embeddings import EmbeddingResult
 from tests.api import Stream, auth, issue_token, listen, serving, until
 from tests.builders import NOW, PASSWORD, SAMPLES
 from tests.unit.adapters.rest.support import Api, make_app
@@ -136,3 +142,57 @@ async def test_a_stream_ends_when_its_token_is_revoked() -> None:
         assert stream.status == 200
         await services.auth.revoke_api_token(user.id, token.id)
         await asyncio.wait_for(task, timeout=5)  # the server ended the stream
+
+
+async def test_the_meaning_of_a_query_reaches_only_its_searcher() -> None:
+    """A search whose meaning was not ready in time answers by words with `meaning_pending`;
+    once the meaning is ready, `search.meaning_ready` with the query reaches the searcher's
+    stream, not another user's, and the same search takes the meaning into account."""
+
+    class Gated:
+        model = "fake-embeddings 1"
+
+        def __init__(self) -> None:
+            self.gate = asyncio.Event()
+
+        async def embed(self, texts: Sequence[str]) -> EmbeddingResult:
+            await self.gate.wait()
+            return await FakeEmbeddings(model=self.model).embed(texts)
+
+    gated = Gated()
+    container = replace(build_memory_container(), embeddings=gated)
+    settings = Settings.model_construct(search_embed_timeout=timedelta(milliseconds=50))
+    services = build_services(container, settings)
+    app = make_app(container, services)
+    searcher = await services.users.bootstrap_admin("root", PASSWORD)
+    assert searcher is not None
+    other = await services.users.create_user(searcher.id, "other", Role.USER, PASSWORD)
+    for user in (searcher, other):
+        await issue_token(services.auth, user)
+    async with serving(app) as url, httpx2.AsyncClient(base_url=url, timeout=10) as client:
+        streams = {user.id: Stream() for user in (searcher, other)}
+        tasks = [
+            asyncio.create_task(listen(client, user, streams[user.id]))
+            for user in (searcher, other)
+        ]
+        for stream in streams.values():
+            await asyncio.wait_for(stream.ready.wait(), timeout=5)
+        query = {"q": "Weihnachtsgeld"}
+        first = await client.get(f"{PREFIX}/documents/search", params=query, headers=auth(searcher))
+        assert first.status_code == 200, first.text
+        body = first.json()
+        assert (body["mode"], body["meaning_pending"]) == ("words", True)
+        assert body["reason"]["code"] == "search_embed_timeout"
+        gated.gate.set()
+        await until(lambda: streams[searcher.id].types() == ["search.meaning_ready"])
+        event = streams[searcher.id].events[0]
+        assert event["query"] == "Weihnachtsgeld"
+        assert "user_id" not in event and "document_id" not in event
+        again = await client.get(f"{PREFIX}/documents/search", params=query, headers=auth(searcher))
+        assert (again.json()["mode"], again.json()["reason"]) == ("hybrid", None)
+        warm = await client.post(f"{PREFIX}/documents/search/warm", headers=auth(searcher))
+        assert warm.status_code == 204
+        await asyncio.sleep(0.1)
+        assert streams[other.id].events == []
+        close_event_streams(app)
+        await asyncio.wait_for(asyncio.gather(*tasks), timeout=5)

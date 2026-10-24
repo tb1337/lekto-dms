@@ -104,6 +104,14 @@ describe('a reason in the user language', () => {
 		expect(reasonText(reason('not_found', { kind: 'gizmo', id: 'x2' }))).toBe(
 			'gizmo x2 wurde nicht gefunden.'
 		);
+		expect(
+			reasonText(
+				reason('tag_wrong_scope', { tag: 'Kfz', scope: 'topic', expected: 'contact group' })
+			)
+		).toBe('„Kfz“ hat die Art „Thema“, nicht „Kontaktgruppe“.');
+		expect(reasonText(reason('password_too_short', { min: 1000 }))).toBe(
+			'Das Passwort muss mindestens 1.000 Zeichen haben.'
+		);
 	});
 
 	it('falls back to the English text without codes or for a code it does not know', () => {

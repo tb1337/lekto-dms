@@ -1,19 +1,17 @@
 <script lang="ts">
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
+	import BackLink from '#lib/components/BackLink.svelte';
 	import RuleBuilder from '#lib/components/rules/RuleBuilder.svelte';
 	import { spaceOptions } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { problemText } from '#lib/rules/describe.ts';
-	import { saveErrors } from '#lib/rules/errors.ts';
-	import { fromApi, toApi, validate, type RuleModel } from '#lib/rules/model.ts';
+	import { RuleForm } from '#lib/rules/form.svelte.ts';
+	import { fromApi, toApi, type RuleModel } from '#lib/rules/model.ts';
 	import { RuleLoader } from '#lib/rules/page.svelte.ts';
 	import { placeOf, rulePlaces } from '#lib/rules/places.ts';
 	import { changeSwitchedOff } from '#lib/rules/save.ts';
@@ -27,9 +25,7 @@
 	const loader = new RuleLoader();
 	const lookup = $derived(loader.lookup);
 	const problem = $derived(loader.problem);
-	let errors = $state<Record<string, string>>({});
-	let general = $state<string | null>(null);
-	let busy = $state(false);
+	const form = new RuleForm();
 	// Where the rule moves to (empty: where it is); its space changes with its content.
 	let chosen = $state('');
 	const current = $derived(rule ? placeOf(rule) : '');
@@ -61,13 +57,7 @@
 	});
 
 	async function save() {
-		if (!rule || !model || !lookup) return;
-		const problems = validate(model, lookup.fields);
-		errors = Object.fromEntries(
-			Object.entries(problems).map(([key, entry]) => [key, problemText(entry)])
-		);
-		general = Object.keys(errors).length > 0 ? m.rule_form_invalid() : null;
-		if (general) return;
+		if (!rule || !model || !lookup || !form.check(model, lookup.fields)) return;
 		const definition = toApi(model);
 		const before = toApi(fromApi(rule));
 		const moved = place !== current;
@@ -75,17 +65,11 @@
 			await goto(`${BASE}/rules/${rule.id}`);
 			return;
 		}
-		busy = true;
-		try {
-			const saved = await changeSwitchedOff(rule, definition, moved ? place : undefined);
-			toast.success(m.rule_saved());
-			await goto(`${BASE}/rules/${saved.id}/apply?saved=1`);
-		} catch (error) {
-			({ byKey: errors, general } = saveErrors(error, model));
-			if (!general && Object.keys(errors).length > 0) general = m.rule_form_invalid();
-		} finally {
-			busy = false;
-		}
+		const target = rule;
+		const saved = await form.save(model, () =>
+			changeSwitchedOff(target, definition, moved ? place : undefined)
+		);
+		if (saved) await goto(`${BASE}/rules/${saved.id}/apply?saved=1`);
 	}
 </script>
 
@@ -94,13 +78,7 @@
 >
 
 <div class="flex flex-col gap-6">
-	<a
-		href="{BASE}/rules/{id}"
-		class="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-	>
-		<ArrowLeft class="size-4" aria-hidden="true" />
-		{rule?.name ?? m.nav_rules()}
-	</a>
+	<BackLink href="{BASE}/rules/{id}" label={rule?.name ?? m.nav_rules()} />
 	<h1 class="text-[1.75rem] font-semibold tracking-tight">
 		{m.rule_edit_title({ name: rule?.name ?? '' })}
 	</h1>
@@ -118,9 +96,9 @@
 			placeHint={m.rule_scope_move_hint()}
 			{lookup}
 			{targets}
-			{errors}
-			{general}
-			{busy}
+			errors={form.errors}
+			general={form.general}
+			busy={form.busy}
 			cancelHref="{BASE}/rules/{rule.id}"
 			onsubmit={save}
 		/>

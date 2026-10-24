@@ -1,5 +1,6 @@
-"""Server-sent events: progress of the documents a user may see, and for admins the end of a
-training of the classifier.
+"""Server-sent events: progress of the documents a user may see, for admins the end of a
+training of the classifier, and for a searcher that the meaning of their query is ready
+(`search.meaning_ready`, from the search of this process, not the event bus: `deliver`).
 
 `EventHub` subscribes to the event bus (subscriber `api.sse`, dispatched by the API process)
 and hands each document event to the open streams of the users who may read the document at
@@ -30,6 +31,7 @@ from lekto.core.domain.events import (
     DocumentDeleted,
     DocumentEvent,
     DomainEvent,
+    SearchMeaningReady,
 )
 from lekto.core.domain.ids import DocumentId, UserId
 from lekto.core.ports.event_bus import EventBus
@@ -129,6 +131,12 @@ class EventHub:
             if listener.user in readers:
                 listener.offer(event)
 
+    def deliver(self, event: SearchMeaningReady) -> None:
+        """Hand the event to the streams of its user that do not follow one document."""
+        for listener in list(self._listeners):
+            if listener.user == event.user_id and listener.document is None:
+                listener.offer(event)
+
     async def _to_admins(self, event: DomainEvent) -> None:
         listeners = [listener for listener in self._listeners if listener.document is None]
         if not listeners:
@@ -163,7 +171,7 @@ def message(event: DomainEvent) -> dict[str, Any]:
     fields = {
         field.name: getattr(event, field.name)
         for field in dataclasses.fields(event)
-        if field.name != "readers"
+        if field.name not in ("readers", "user_id")
     }
     payload: dict[str, Any] = jsonable_encoder({"type": event.type, **fields})
     return payload

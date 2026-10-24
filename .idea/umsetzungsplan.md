@@ -1629,6 +1629,21 @@ PR mit Label `enhancement` nach `release/0.5.0`, nach Paket 3.
 
 **Offen für Tobi:** Vor Revision 0040 gelernte Kennungen haben keine Spaces und sind bis zum nächsten Training nur für Admins sichtbar (`lekto train` oder „Jetzt trainieren“ unter Verwaltung › Klassifikator).
 
+### Zwischenschritt: Rückmeldung der Suche (`enhancement/search-feedback`)
+
+**Anlass (Tobi, 24.10.2026):** Die Suche nach „Weihnachten“ zeigte vor allem Kontoauszüge statt Entgeltbescheinigungen, ohne Rückmeldung, ob die Bedeutung mitgesucht hat. Befund (nur lesend): In Produktion wartete jede Suche 5 s und fiel auf Wörter zurück (`semantic: false`, im UI unsichtbar); das Embedding-Modell braucht kalt etwa 7 s (warm 0,7 s), in Produktion auch warm zu lange (Ursache im Log, Prompt für Tobis Mac-mini-Session). Meilisearch zerlegt „Weihnachten“ in „Weihnacht“ + „en“; „en“ passt als Wortanfang fast überall, alle 39 Treffer gleich bewertet. Die meisten Entgeltbescheinigungen nennen das Weihnachtsgeld „Einmalzahlung“ oder „13. …“, die Wortsuche findet sie nicht. `LEKTO_SEARCH_EMBED_TIMEOUT` auf 15 s und Ollamas `keep_alive` über Tobis Ansible-Session.
+
+**Umsetzung:**
+
+- `SearchPage.mode` (`hybrid`, `words`) und `reason` (Codes `search_no_embeddings`, `search_embed_timeout`, `search_embed_failed`, `search_embed_dimensions`); `semantic` bleibt als Ableitung. `503` mit `search_index_unavailable` bzw. `search_not_configured`.
+- Hintergrund-Einbettung: Eine zu langsame Anfrage rechnet weiter (höchstens acht zugleich), der Vektor bleibt zehn Minuten (auch fürs Blättern), `SearchMeaningReady` geht an die Event-Streams des Suchenden (`EventHub.deliver`, nicht über die Outbox); `meaning_pending` in der Antwort.
+- `POST /documents/search/warm`: eine Einbettung im Hintergrund, höchstens einmal pro Minute; die Web-UI ruft es beim Tippen (Suchfeld der Seite und des Kopfs).
+- Web: Hinweis über den Treffern (`SearchNote`), „Mit Bedeutung neu suchen“ nach dem Event, bis dahin für dieselbe Anfrage nur Wörter (`semantic_ratio=0`); nach 1,5 s „Die Suche nach Bedeutung braucht gerade länger …“; bei nicht erreichbarem Index „Liste ohne Suchwort zeigen“. MCP: `words_only_because`.
+- Ohne Embeddings zeigt die Web-UI nichts davon (Tobi, 24.10.2026: „ohne Embeddings konfiguriert soll man im UI von dem Feature nichts sehen“): `GET /pipeline` sagt `meaning_search`, ohne gibt es keinen Hinweis, keinen Wartetext und kein Vorwärmen.
+- Geprüft auf einer Wegwerf-Instanz mit Wegwerf-Index und dem Embedding-Dienst der Devinstanz (Timeout 50 ms): Hinweis, Event, Knopf, danach mit Bedeutung.
+
+**Offen:** Gleichstand der Wortsuche durch Bruchstücke der Zerlegung („en“); pflegbare Synonyme für die Wortsuche („Weihnachtsgeld“ ↔ „Einmalzahlung“, „13. Gehalt“) als nächste Idee.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

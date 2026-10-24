@@ -11,6 +11,7 @@ from lekto.core.domain.errors import (
     NotFoundError,
     SearchUnavailableError,
 )
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.ports.event_bus import EventBus
 from lekto.core.services.auth import AuthService
 from lekto.core.services.classifier import ClassifierService
@@ -79,12 +80,12 @@ class ApiContext:
 
     def require_search(self) -> SearchService:
         if self.search is None:
-            raise SearchUnavailableError("search is not configured")
+            raise SearchUnavailableError(because(ReasonCode.SEARCH_NOT_CONFIGURED))
         return self.search
 
     def require_indexing(self) -> IndexingService:
         if self.indexing is None:
-            raise SearchUnavailableError("search is not configured")
+            raise SearchUnavailableError(because(ReasonCode.SEARCH_NOT_CONFIGURED))
         return self.indexing
 
     def require_classifier(self) -> ClassifierService:

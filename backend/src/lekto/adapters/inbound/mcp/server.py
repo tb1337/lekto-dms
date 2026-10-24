@@ -110,6 +110,9 @@ class SearchOut(BaseModel):
     items: list[SearchItem] = Field(description="Best first. A page may hold fewer than `limit`.")
     next_offset: int | None = Field(description="Pass as `offset` for more; null at the end.")
     semantic: bool = Field(description="Whether the meaning took part, not just the words.")
+    words_only_because: str | None = Field(
+        description="Why only the words were searched where the meaning was to take part."
+    )
 
 
 class TextOut(BaseModel):
@@ -346,6 +349,7 @@ def build_server(context: ApiContext) -> MCPServer:
             ],
             next_offset=page.next_offset,
             semantic=page.semantic,
+            words_only_because=None if page.reason is None else page.reason.text,
         )
 
     @server.tool(

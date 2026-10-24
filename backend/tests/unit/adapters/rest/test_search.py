@@ -172,7 +172,7 @@ async def test_without_a_search_index_the_endpoints_answer_503(api: Api) -> None
     rebuild = await api.client.post(f"{PREFIX}/search/reindex", headers=auth(admin))
     for response in (found, unchecked, rebuild):
         assert response.status_code == 503
-        assert response.json()["detail"] == "search is not configured"
+        assert response.json()["reason"]["code"] == "search_not_configured"
 
 
 async def test_an_unreachable_index_answers_503(api: Api) -> None:
@@ -185,7 +185,8 @@ async def test_an_unreachable_index_answers_503(api: Api) -> None:
     api.container.search_index.search = down  # type: ignore[method-assign,assignment]
     response = await api.client.get(SEARCH, params={"q": "x"}, headers=auth(user))
     assert response.status_code == 503
-    assert response.json()["detail"] == "the search index cannot be reached"
+    # What went wrong stays in the log; the caller learns that the list works without it.
+    assert response.json()["reason"] == {"code": "search_index_unavailable", "params": {}}
 
 
 async def test_only_admins_rebuild_the_index(api: Api) -> None:

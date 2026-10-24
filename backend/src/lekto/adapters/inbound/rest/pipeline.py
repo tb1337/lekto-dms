@@ -26,7 +26,8 @@ router = APIRouter(tags=["pipeline"], dependencies=PROTECTED)
         "The graph is fixed for a version of Lekto; `processing.nodes` of a document names the "
         "state of each node. `vision` names the vision language model documents can be read "
         "with, if one is configured; `logo_fetch` says whether Lekto fetches the logos of "
-        "contacts from their websites."
+        "contacts from their websites; `meaning_search` whether the search takes the meaning "
+        "into account."
     ),
     response_model=PipelineOut,
     responses=problem_responses(401),
@@ -37,6 +38,7 @@ async def pipeline(user: CurrentUser, context: Context) -> PipelineOut:
         nodes=[GraphNodeOut(node=node, requires=sorted(node.requires)) for node in NODES],
         vision=None if vision is None else VisionOut(model=vision.model, endpoint=vision.endpoint),
         logo_fetch=context.logos.fetching,
+        meaning_search=context.search is not None and context.search.meaning,
     )
 
 

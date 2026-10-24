@@ -1045,6 +1045,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/documents/search/warm': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Get the search ready
+		 * @description Has the model of the embeddings loaded before a search needs it, e.g. as soon as a person starts typing: one embedding in the background, at most once a minute. Answers at once.
+		 */
+		post: operations['warm_search_api_v1_documents_search_warm_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/search/reindex': {
 		parameters: {
 			query?: never;
@@ -1630,7 +1650,7 @@ export interface paths {
 		};
 		/**
 		 * The processing graph
-		 * @description The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Lekto; `processing.nodes` of a document names the state of each node. `vision` names the vision language model documents can be read with, if one is configured; `logo_fetch` says whether Lekto fetches the logos of contacts from their websites.
+		 * @description The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Lekto; `processing.nodes` of a document names the state of each node. `vision` names the vision language model documents can be read with, if one is configured; `logo_fetch` says whether Lekto fetches the logos of contacts from their websites; `meaning_search` whether the search takes the meaning into account.
 		 */
 		get: operations['pipeline_api_v1_pipeline_get'];
 		put?: never;
@@ -1670,7 +1690,7 @@ export interface paths {
 		};
 		/**
 		 * Progress of documents (server-sent events)
-		 * @description A stream of document events (`document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Active admins also get `classifier.trained` (a new model, with its `number` and `examples`), unless the stream follows one document. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream starts with the comment `: ready` once it is registered: every event after that reaches it. It checks regularly that its session or token is still valid and ends otherwise.
+		 * @description A stream of document events (`document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Active admins also get `classifier.trained` (a new model, with its `number` and `examples`), unless the stream follows one document. A searcher gets `search.meaning_ready` (with the `query`) when the meaning of a query that had to go by words alone is ready (`meaning_pending` of the search), unless the stream follows one document. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream starts with the comment `: ready` once it is registered: every event after that reaches it. It checks regularly that its session or token is still valid and ends otherwise.
 		 */
 		get: operations['events_api_v1_events_get'];
 		put?: never;
@@ -5056,6 +5076,7 @@ export interface components {
 		 * PipelineOut
 		 * @example {
 		 *       "logo_fetch": false,
+		 *       "meaning_search": true,
 		 *       "nodes": [
 		 *         {
 		 *           "node": "receive",
@@ -5106,6 +5127,11 @@ export interface components {
 			 * @description Whether Lekto fetches the logos of contacts from their websites (`LEKTO_LOGO_FETCH`; `POST /contacts/{id}/logo/fetch`).
 			 */
 			logo_fetch: boolean;
+			/**
+			 * Meaning Search
+			 * @description Whether the search takes the meaning into account besides the words (a search index and embeddings are set up): only then does a client say how a search searched (`mode`, `reason`) and warm the model (`POST /documents/search/warm`).
+			 */
+			meaning_search: boolean;
 		};
 		/** Processing */
 		Processing: {
@@ -5563,7 +5589,13 @@ export interface components {
 			| 'card_field_unknown'
 			| 'due_field_not_date'
 			| 'sort_field_invalid'
-			| 'pattern_invalid';
+			| 'pattern_invalid'
+			| 'search_no_embeddings'
+			| 'search_embed_timeout'
+			| 'search_embed_failed'
+			| 'search_embed_dimensions'
+			| 'search_index_unavailable'
+			| 'search_not_configured';
 		/**
 		 * ReasonOut
 		 * @description A reason with its code: a client translates `code` with `params`; the English text
@@ -6083,6 +6115,11 @@ export interface components {
 			 */
 			calls: components['schemas']['ModelCallOut'][];
 		};
+		/**
+		 * SearchMode
+		 * @enum {string}
+		 */
+		SearchMode: 'hybrid' | 'words';
 		/** SearchResultItem */
 		SearchResultItem: {
 			document: components['schemas']['ListedDocument'];
@@ -6116,9 +6153,18 @@ export interface components {
 			next_offset: number | null;
 			/**
 			 * Semantic
-			 * @description Whether the meaning took part. False without embeddings, with `semantic_ratio=0`, or when the embedding service did not answer in time: the result is by words only then.
+			 * @description Whether the meaning took part (`mode` is `hybrid`). False without embeddings, with `semantic_ratio=0`, or when the embedding service did not answer in time: the result is by words only then.
 			 */
 			semantic: boolean;
+			/** @description `hybrid`: by words and meaning; `words`: by words alone, the fallback that always stays. */
+			mode: components['schemas']['SearchMode'];
+			/** @description Why by words alone where the meaning was to take part (not for `semantic_ratio=0`): `search_no_embeddings`, `search_embed_timeout`, `search_embed_failed`, `search_embed_dimensions`. */
+			reason: components['schemas']['ReasonOut'] | null;
+			/**
+			 * Meaning Pending
+			 * @description The meaning of the query was not ready in time and is still being made: the event `search.meaning_ready` with this `query` follows on the caller's event stream, and the same search then takes the meaning into account.
+			 */
+			meaning_pending: boolean;
 		};
 		/**
 		 * SessionOut
@@ -7049,7 +7095,7 @@ export interface components {
 		 * EventMessage
 		 * @description A domain event, thin: fetch the document for details. Fields beyond `type`, `id`,
 		 *     `occurred_at` and `document_id` depend on the type (`classifier.trained`: `number` and
-		 *     `examples` of the new model).
+		 *     `examples` of the new model; `search.meaning_ready`: the `query`).
 		 */
 		EventMessage: {
 			/**
@@ -7069,7 +7115,7 @@ export interface components {
 			occurred_at: string;
 			/**
 			 * Document Id
-			 * @description The document; absent from `classifier.trained`.
+			 * @description The document; absent from `classifier.trained` and `search.meaning_ready`.
 			 * @default null
 			 */
 			document_id: string | null;
@@ -15764,6 +15810,92 @@ export interface operations {
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
 					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Service Unavailable",
+					 *       "status": 503,
+					 *       "detail": "database: unreachable"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	warm_search_api_v1_documents_search_warm_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

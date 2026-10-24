@@ -15,6 +15,7 @@ from lekto.adapters.inbound.rest.schemas.search import (
     SearchResultPage,
     SnippetSegment,
 )
+from lekto.adapters.inbound.schemas import ReasonOut
 from lekto.core.ports.search_index import MAX_HITS, MAX_LIMIT, SEARCH_PAGE
 
 router = APIRouter(tags=["search"], dependencies=PROTECTED)
@@ -80,7 +81,25 @@ async def search_documents(
         estimated_total=page.estimated_total,
         next_offset=page.next_offset,
         semantic=page.semantic,
+        mode=page.mode,
+        reason=None if page.reason is None else ReasonOut.of(page.reason),
+        meaning_pending=page.meaning_pending,
     )
+
+
+@router.post(
+    "/documents/search/warm",
+    status_code=204,
+    summary="Get the search ready",
+    description=(
+        "Has the model of the embeddings loaded before a search needs it, e.g. as soon as a "
+        "person starts typing: one embedding in the background, at most once a minute. "
+        "Answers at once."
+    ),
+    responses=problem_responses(401, 503),
+)
+async def warm_search(user: CurrentUser, search: Search) -> None:
+    await search.warm(user)
 
 
 @router.post(

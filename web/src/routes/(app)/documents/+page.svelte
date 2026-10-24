@@ -3,6 +3,7 @@
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import List from '@lucide/svelte/icons/list';
 	import SearchIcon from '@lucide/svelte/icons/search';
+	import Info from '@lucide/svelte/icons/info';
 	import X from '@lucide/svelte/icons/x';
 	import { onMount, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
@@ -10,6 +11,7 @@
 	import { page } from '$app/state';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
+	import { ApiError } from '#lib/api/problem.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import ActiveFilters from '#lib/components/ActiveFilters.svelte';
@@ -59,6 +61,9 @@
 	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { openLens } from '#lib/open-lens.svelte.ts';
 	import { PagedList } from '#lib/paging.svelte.ts';
+	import { reasonText } from '#lib/reasons.ts';
+	import { SearchNote } from '#lib/search-note.svelte.ts';
+	import { meaningSearch, warmSearch } from '#lib/meaning-search.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -202,22 +207,30 @@
 		}
 	}
 
+	// How the search searched: by words alone and why, the meaning still being made or ready;
+	// nothing of it where the installation has no search by meaning.
+	const searchNote = new SearchNote();
+	let meaning = $state(false);
+
 	const list = new PagedList<Item>(async (after) => {
 		const base = apiQuery(filters, scope.allUsers);
 		if (searching) {
+			const words = query;
 			const data = await unwrap(
 				api.GET('/api/v1/documents/search', {
 					params: {
 						query: {
 							...base,
-							q: query,
+							q: words,
 							// A search never sorts by a field (`sortOf`).
 							sort: sort as Exclude<Sort, FieldSort>,
-							offset: (after as number | null) ?? 0
+							offset: (after as number | null) ?? 0,
+							semantic_ratio: searchNote.ratio(words)
 						}
 					}
 				})
 			);
+			if (after === null) searchNote.answered(words, data);
 			const items = data.items.map((hit) => ({ document: hit.document, snippet: hit.snippet }));
 			return { items, next: data.next_offset, total: data.estimated_total };
 		}
@@ -241,6 +254,15 @@
 
 	// How many documents the filters leave: estimated while searching.
 	const shownCount = $derived(searching ? list.total : (facets?.total ?? null));
+
+	// While a search waits for its first page, the hint says when it takes long.
+	$effect(() => searchNote.waiting(meaning && searching && list.loading && !list.loaded));
+	// The index is not reachable: the list without words still works.
+	const indexDown = $derived(
+		list.error instanceof ApiError &&
+			list.error.problem?.reason?.code === 'search_index_unavailable'
+	);
+	const note = $derived(meaning && searching ? searchNote.about(query) : null);
 
 	// Reload when the words, filters or sort change, and after a reconnect of the event stream.
 	$effect(() => {
@@ -271,6 +293,7 @@
 			(error) => (lookupError = describeError(error))
 		);
 		void loadLenses();
+		void meaningSearch().then((value) => (meaning = value));
 		// Opened from the search icon of a narrow header: the field takes the focus.
 		if (location.hash === '#search') {
 			void tick().then(() => {
@@ -289,9 +312,13 @@
 			}, 400);
 		};
 		const stop = events.subscribe(refresh);
+		const stopMeaning = events.on('search.meaning_ready', (event) =>
+			searchNote.meaningReady(String(event.query ?? ''))
+		);
 		return () => {
 			clearTimeout(timer);
 			stop();
+			stopMeaning();
 		};
 	});
 
@@ -406,6 +433,7 @@ row of filters, on a desktop narrow by the title. -->
 			type="search"
 			aria-label={m.documents_search_label()}
 			placeholder={lens ? m.header_search_in({ name: lens.name }) : m.search_placeholder()}
+			oninput={() => warmSearch()}
 			class="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
 		/>
 		{#if query}
@@ -618,10 +646,50 @@ row of filters, on a desktop narrow by the title. -->
 				{/if}
 			</div>
 
+			{#if meaning && searching && searchNote.slow}
+				<p class="text-sm text-muted-foreground" aria-live="polite">{m.search_slow()}</p>
+			{:else if note}
+				<div
+					class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border bg-card px-3 py-2 text-sm text-muted-foreground"
+					aria-live="polite"
+				>
+					<Info class="size-4 shrink-0" aria-hidden="true" />
+					<p class="min-w-0 flex-1">
+						{reasonText(note.reason)}
+						{#if note.pending}{m.search_meaning_pending()}{/if}
+					</p>
+					{#if note.ready}
+						<Button
+							variant="outline"
+							size="sm"
+							onclick={() => {
+								searchNote.withMeaning();
+								void list.reload();
+							}}
+						>
+							{m.search_with_meaning()}
+						</Button>
+					{/if}
+				</div>
+			{/if}
+
 			{#if list.error}
 				<div class="flex flex-col items-start gap-3" role="alert">
 					<p class="text-destructive">{describeError(list.error)}</p>
-					<Button variant="outline" onclick={() => list.reload()}>{m.retry()}</Button>
+					<div class="flex flex-wrap gap-2">
+						<Button variant="outline" onclick={() => list.reload()}>{m.retry()}</Button>
+						{#if indexDown}
+							<Button
+								variant="outline"
+								onclick={() => {
+									text = '';
+									search('');
+								}}
+							>
+								{m.search_without_words()}
+							</Button>
+						{/if}
+					</div>
 				</div>
 			{:else if list.empty}
 				<p

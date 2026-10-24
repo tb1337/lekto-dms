@@ -379,7 +379,16 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	card_field_unknown: entry(m.reason_card_field_unknown),
 	due_field_not_date: entry(m.reason_due_field_not_date),
 	sort_field_invalid: entry(m.reason_sort_field_invalid),
-	pattern_invalid: entry(m.reason_pattern_invalid)
+	pattern_invalid: entry(m.reason_pattern_invalid),
+	search_no_embeddings: entry(m.reason_search_no_embeddings),
+	search_embed_timeout: entry(m.reason_search_embed_timeout, { seconds: 'number' }),
+	search_embed_failed: entry(m.reason_search_embed_failed),
+	search_embed_dimensions: entry(m.reason_search_embed_dimensions, {
+		got: 'number',
+		wanted: 'number'
+	}),
+	search_index_unavailable: entry(m.reason_search_index_unavailable),
+	search_not_configured: entry(m.reason_search_not_configured)
 };
 
 /** The nouns the API names things by (the kind `thing`), in the user's language. */

@@ -7,26 +7,53 @@ from datetime import timedelta
 
 import pytest
 
-from lekto.adapters.outbound.memory import FakeEmbeddings
+from lekto.adapters.outbound.memory import FakeEmbeddings, ManualClock
 from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.errors import (
     AuthenticationError,
+    EmbeddingsError,
     PermissionDeniedError,
     SearchUnavailableError,
     ValidationError,
 )
+from lekto.core.domain.events import SearchMeaningReady
 from lekto.core.domain.ids import DocumentId
 from lekto.core.domain.pipeline import Node
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.ports.embeddings import EmbeddingResult, Embeddings
 from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.search_index import SearchQuery, SearchResult
-from lekto.core.services.search import SearchPolicy, SearchService
+from lekto.core.services.search import (
+    KEEP_VECTORS,
+    WARM_EVERY,
+    SearchMode,
+    SearchPolicy,
+    SearchService,
+)
 from tests import builders
 from tests.builders import UNCERTAIN, Returns
 from tests.unit.services.search_support import BrokenEmbeddings, Setup
 from tests.unit.services.support import World
+
+
+class Gated:
+    """An embedding service that answers once its gate is open (a model being loaded)."""
+
+    model = "fake-embeddings 1"
+
+    def __init__(self, *, fails: bool = False) -> None:
+        self.gate = asyncio.Event()
+        self.calls: list[list[str]] = []
+        self._fails = fails
+
+    async def embed(self, texts: Sequence[str]) -> EmbeddingResult:
+        self.calls.append(list(texts))
+        await self.gate.wait()
+        if self._fails:
+            raise EmbeddingsError("the model could not be loaded")
+        return await FakeEmbeddings(model=self.model).embed(texts)
 
 
 @dataclass
@@ -251,6 +278,7 @@ async def test_a_query_vector_of_another_length_goes_by_words(scene: Scene) -> N
     service = scene.search(replace(builders.SEARCH, dimensions=3))  # the fake vectors have more
     page = await service.search(scene.owner.id, "Stromrechnung", semantic_ratio=0.5)
     assert page.semantic is False
+    assert page.reason == because(ReasonCode.SEARCH_EMBED_DIMENSIONS, got=16, wanted=3)
     assert [item.document.id for item in page.items] == [scene.shared_document.id]
 
 
@@ -277,34 +305,89 @@ async def test_a_ratio_of_zero_embeds_nothing(scene: Scene) -> None:
     assert isinstance(embeddings, FakeEmbeddings)
     before = len(embeddings.calls)
     page = await scene.search().search(scene.owner.id, "Strom", semantic_ratio=0)
-    assert not page.semantic
+    assert (page.mode, page.reason) == (SearchMode.WORDS, None)  # asked for: no reason
     assert len(embeddings.calls) == before
 
 
 async def test_without_embeddings_it_is_full_text(scene: Scene) -> None:
     page = await scene.search(embeddings=None).search(scene.owner.id, "Stromrechnung")
-    assert not page.semantic
+    assert (page.mode, page.reason) == (
+        SearchMode.WORDS,
+        because(ReasonCode.SEARCH_NO_EMBEDDINGS),
+    )
     assert [item.document.id for item in page.items] == [scene.shared_document.id]
 
 
 async def test_a_down_embedding_service_leaves_full_text(scene: Scene) -> None:
     page = await scene.search(embeddings=BrokenEmbeddings()).search(scene.owner.id, "Stromrechnung")
-    assert not page.semantic
+    assert (page.semantic, page.reason) == (False, because(ReasonCode.SEARCH_EMBED_FAILED))
+    assert not page.meaning_pending
     assert [item.document.id for item in page.items] == [scene.shared_document.id]
 
 
-async def test_a_slow_embedding_service_leaves_full_text(scene: Scene) -> None:
-    class Slow:
-        model = "slow"
-
-        async def embed(self, texts: Sequence[str]) -> EmbeddingResult:
-            await asyncio.sleep(5)
-            raise AssertionError("too slow")
-
+async def test_a_slow_meaning_leaves_the_words_and_comes_later(scene: Scene) -> None:
+    """The meaning of the query is not ready in time (a model is being loaded): the words
+    answer, the embedding goes on, and the searcher learns when it is ready; the same search
+    then takes the meaning into account, without asking the service again."""
+    slow = Gated()
     policy = replace(builders.SEARCH, embed_timeout=timedelta(milliseconds=20))
-    page = await scene.search(policy, Slow()).search(scene.owner.id, "Stromrechnung")
-    assert not page.semantic
+    service = scene.search(policy, slow)
+    ready: list[SearchMeaningReady] = []
+    service.listen(ready.append)
+    page = await service.search(scene.owner.id, "Stromrechnung")
+    assert (page.mode, page.meaning_pending) == (SearchMode.WORDS, True)
+    assert page.reason == because(ReasonCode.SEARCH_EMBED_TIMEOUT, seconds=0.02)
     assert len(page.items) == 1
+    slow.gate.set()
+    await service.settled()
+    assert [(event.user_id, event.query) for event in ready] == [(scene.owner.id, "Stromrechnung")]
+    again = await service.search(scene.owner.id, "Stromrechnung")
+    assert (again.mode, again.reason, again.meaning_pending) == (SearchMode.HYBRID, None, False)
+    assert slow.calls == [["Stromrechnung"]]
+
+
+async def test_a_meaning_that_fails_later_tells_nobody(scene: Scene) -> None:
+    slow = Gated(fails=True)
+    service = scene.search(replace(builders.SEARCH, embed_timeout=timedelta(milliseconds=20)), slow)
+    ready: list[SearchMeaningReady] = []
+    service.listen(ready.append)
+    assert (await service.search(scene.owner.id, "Strom")).meaning_pending
+    slow.gate.set()
+    await service.settled()
+    assert ready == []
+    assert not (await service.search(scene.owner.id, "Strom")).semantic
+
+
+async def test_the_meaning_of_a_query_is_kept_a_while(scene: Scene) -> None:
+    """Paging through a search embeds the query once; after `KEEP_VECTORS` it is asked again."""
+    embeddings = FakeEmbeddings()
+    clock = ManualClock(builders.NOW)
+    service = SearchService(
+        scene.setup.world.uow, scene.setup.index, builders.SEARCH, embeddings, clock
+    )
+    for offset in (0, 1):
+        page = await service.search(scene.owner.id, "Rechnung", offset=offset, limit=1)
+        assert page.semantic
+    assert embeddings.calls == [["Rechnung"]]
+    clock.advance(KEEP_VECTORS)
+    await service.search(scene.owner.id, "Rechnung")
+    assert embeddings.calls == [["Rechnung"], ["Rechnung"]]
+
+
+async def test_warming_loads_the_model_at_most_once_a_minute(scene: Scene) -> None:
+    embeddings = FakeEmbeddings()
+    clock = ManualClock(builders.NOW)
+    service = SearchService(
+        scene.setup.world.uow, scene.setup.index, builders.SEARCH, embeddings, clock
+    )
+    assert await service.warm(scene.owner.id)
+    assert not await service.warm(scene.reader.id)
+    await service.settled()
+    clock.advance(WARM_EVERY)
+    assert await service.warm(scene.owner.id)
+    await service.settled()
+    assert len(embeddings.calls) == 2
+    assert not await scene.search(embeddings=None).warm(scene.owner.id)
 
 
 async def test_an_unreachable_index_raises(scene: Scene) -> None:
@@ -313,8 +396,9 @@ async def test_an_unreachable_index_raises(scene: Scene) -> None:
             raise SearchUnavailableError("connection refused")
 
     service = SearchService(scene.setup.world.uow, Down(), builders.SEARCH)  # type: ignore[arg-type]
-    with pytest.raises(SearchUnavailableError):
+    with pytest.raises(SearchUnavailableError) as raised:
         await service.search(scene.owner.id, "Strom")
+    assert raised.value.reason == because(ReasonCode.SEARCH_INDEX_UNAVAILABLE)
 
 
 async def test_the_query_is_checked(scene: Scene) -> None:
@@ -371,3 +455,8 @@ async def test_admins_search_their_reach_or_everything(scene: Scene) -> None:
     await scene.setup.world.users.update(other.id, admin.id, active=False)
     with pytest.raises(AuthenticationError):
         await search.search(admin.id, "Stromrechnung", all_users=True)
+
+
+async def test_the_search_tells_whether_it_takes_the_meaning_into_account(scene: Scene) -> None:
+    assert scene.search().meaning
+    assert not scene.search(embeddings=None).meaning

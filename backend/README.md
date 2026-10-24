@@ -1007,8 +1007,13 @@ Hybrid search in Meilisearch: full text and meaning (vectors) in one query. With
 only. `GET /api/v1/documents/search?q=…` takes the filters of `GET /documents`, `limit`,
 `offset` (at most 1000 hits can be reached) and `semantic_ratio` (0 words only, 1 meaning only;
 default `LEKTO_SEARCH_SEMANTIC_RATIO`). Each hit carries the document as `GET /documents/{id}`
-does, a score and a snippet whose matches are marked. `semantic` in the answer tells whether the
-meaning took part.
+does, a score and a snippet whose matches are marked. The answer tells how it searched
+(`mode`: `hybrid`, or `words`, the fallback that always stays; `semantic` is `mode` as a flag),
+and why by words alone where the meaning was to take part (`reason` with a code:
+`search_no_embeddings`, `search_embed_timeout`, `search_embed_failed`,
+`search_embed_dimensions`; none for `semantic_ratio=0`). An unreachable index is `503` with
+`search_index_unavailable` (the list without words works on), a missing one
+`search_not_configured`; what went wrong stays in the log.
 
 - **The index follows the documents.** The indexing service subscribes to the document events
   (`search.index`) and queues a job per change, but one at a time per document: while one waits,
@@ -1050,7 +1055,17 @@ meaning took part.
   ancestors: nesting a tag elsewhere costs no embedding). `LEKTO_SEARCH_MAX_CHUNKS=1`
   gives one vector per document. A vector is made again only when model or section texts change.
 - **Embeddings.** The query is embedded at request time (`LEKTO_SEARCH_EMBED_TIMEOUT`); if the
-  endpoint is down or slow, the search falls back to words (`semantic: false`).
+  endpoint is down or slow, the search falls back to words (`mode: words` with its `reason`).
+  A query too slow goes on being embedded in the background (at most eight at once): the answer
+  says `meaning_pending`, and once the vector is ready the searcher's event stream gets
+  `search.meaning_ready` with the `query`; the web UI then offers to search again with meaning
+  and keeps the words until asked (the list does not change under one's hands). The vector of a
+  query is kept ten minutes in the API process, so paging and the search again do not embed it
+  anew. Without embeddings the web UI shows nothing of this (`GET /pipeline`:
+  `meaning_search`). `POST /documents/search/warm` (the web UI as soon as one types, at most once a minute)
+  has the model loaded before the search needs it: Ollama unloads an unused model after a
+  while, and loading Qwen3-Embedding 4B takes about seven seconds, one embedding then well under
+  one.
   The model is Qwen3-Embedding 4B (`hf.co/Qwen/Qwen3-Embedding-4B-GGUF:Q8_0` in Ollama, 2560
   dimensions) with an instruction before each query and none before the documents
   (`LEKTO_EMBEDDING_QUERY_PREFIX='Instruct: Given a search query, retrieve the German personal
@@ -1164,7 +1179,8 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `PUT /document-types/{id}/fields` | The fields of a document type, each required or optional, set from the type in one transaction (admins); answers its fields. A global field is `422`; taking off a field that has values on its documents or that the type's title pattern uses is `409` |
 | `POST /contacts/{id}/identifiers` | Attach one identifier to a contact, entered by hand (admins), optionally with a `topic_id` the contact enables and, for a customer or personnel number, the `user_id` it belongs to; the others stay; `409` if another contact has it by hand or it is a person's. `PATCH` replaces the whole list; a person's kinds are `422` |
 | `GET/POST /spaces`, `GET/PATCH/DELETE /spaces/{id}`, `PUT/DELETE /spaces/{id}/members/{user_id}` | Spaces the caller is a member of (admins: all), with `personal_of`, the caller's `role`, the `members` and the `description` (what belongs in it, for the language model, at most 300 characters); create (`members`, `description`; the caller edits it, an admin may give the members alone), rename and describe (`PATCH` with `name` and/or `description`, null removes it; a personal space keeps its name), delete (empty, never a personal space), members with `role` `read` or `edit` and their `username` and `active` (editors; of a personal space its user); every member leaves a space themselves (`204`) |
-| `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `sort` (`relevance`, the default, or a key of `GET /documents`; relevance breaks ties), `limit`, `offset`, `semantic_ratio`; hits with snippet (the document with `in_inbox`, as in `GET /documents`), `estimated_total`, `next_offset`, `semantic` |
+| `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `sort` (`relevance`, the default, or a key of `GET /documents`; relevance breaks ties), `limit`, `offset`, `semantic_ratio`; hits with snippet (the document with `in_inbox`, as in `GET /documents`), `estimated_total`, `next_offset`, `mode` with `reason` and `meaning_pending` (and `semantic`) |
+| `POST /documents/search/warm` | Have the model of the embeddings loaded before a search needs it (`204`, one embedding in the background, at most once a minute) |
 | `POST /search/reindex` | Rebuild the search index in the background (admins); `202` |
 | `GET /documents` | Readable documents, each with `in_inbox` (it stands open in the caller's inbox); `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), `field`, `-field` (the value of the field `sort_field_id`: a date, a period by its first day, a number, an amount by its value; `422` for other types), documents without a date or value last either way; filters `contact_id`, `document_type_id`, `space_id` (each repeats, one of them must match), `tag_id` (with the tags below it; repeats, all must match), `contact_group_id` and `document_type_group_id` (the document's contact or type in the group or one below it; each repeats, one of them must match), `topic_id` (the topic or one below it; repeats, one of them must match), `document_date_from` and `document_date_to` (the document date lies between them, both days included, either end open; a document without a date does not match; `422` if the end lies before the start), `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (`next_cursor` of the page before, an opaque value naming its last document; its sort value is looked up, `422` if that document is gone) |
 | `GET /documents/facets` | Counts for the filters of the document view, with the filters of `GET /documents` and `all_users` (admins): `total`, per contact and type (`id` null: without one), group of contacts and of types, topic and tag (each with the documents of those below it, once), year and its months of the document date (`undated`: without one). Contacts, types, groups, topics and the period combine as either-or and count without their own choice, so each tells what one more would add; tags count with the whole filter |
@@ -1181,7 +1197,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /documents/{id}/reprocess` | `{"from_node": "ocr"}`: process again from a node, with every node after it (editors and admins) |
 | `POST /documents/{id}/vision` | Process again from OCR with the vision language model reading every page (editors and admins); `409` without a model |
 | `GET /documents/{id}/reading` | How the archive's text was read: by the vision model or not, each recognised page, the advice to read with the model (editors and admins) |
-| `GET /pipeline` | The graph: every node and what it needs, in graph order; the vision model, if one is configured; whether logos are fetched (`logo_fetch`) |
+| `GET /pipeline` | The graph: every node and what it needs, in graph order; the vision model, if one is configured; whether logos are fetched (`logo_fetch`); whether the search takes the meaning into account (`meaning_search`) |
 | `POST /pipeline/reparse` | Read the text of every document again in the background (admins, after the update to 0.2); `202` with `queued` |
 | `GET /inbox` | The caller's inbox (see Inbox), newest first, with open nodes and fields: everything open, or one `tab` (`new`, `review`, `intervene`, `processing`, `done` with how, when and by whom, newest first by when it left); `limit`, `cursor`, `all_users` (admins) |
 | `GET /inbox/summary` | The count of each tab, `open` (all but done) and the worst lane among the open documents; `all_users` (admins) |

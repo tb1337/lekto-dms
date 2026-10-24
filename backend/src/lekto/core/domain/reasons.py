@@ -362,6 +362,13 @@ class ReasonCode(StrEnum):
     DUE_FIELD_NOT_DATE = "due_field_not_date"
     SORT_FIELD_INVALID = "sort_field_invalid"
     PATTERN_INVALID = "pattern_invalid"
+    # how a search searched
+    SEARCH_NO_EMBEDDINGS = "search_no_embeddings"
+    SEARCH_EMBED_TIMEOUT = "search_embed_timeout"
+    SEARCH_EMBED_FAILED = "search_embed_failed"
+    SEARCH_EMBED_DIMENSIONS = "search_embed_dimensions"
+    SEARCH_INDEX_UNAVAILABLE = "search_index_unavailable"
+    SEARCH_NOT_CONFIGURED = "search_not_configured"
 
 
 TEMPLATES: Mapping[ReasonCode, str] = {
@@ -790,6 +797,22 @@ TEMPLATES: Mapping[ReasonCode, str] = {
         "sort_field_id: not a field a list sorts by (date, period, number or amount)"
     ),
     ReasonCode.PATTERN_INVALID: "invalid pattern '{pattern}': {detail}",
+    ReasonCode.SEARCH_NO_EMBEDDINGS: "searched by words only: no embeddings are set up",
+    ReasonCode.SEARCH_EMBED_TIMEOUT: (
+        "searched by words only: the meaning of the query was not ready within "
+        "{seconds:number} seconds"
+    ),
+    ReasonCode.SEARCH_EMBED_FAILED: (
+        "searched by words only: the embedding service could not give the meaning of the query"
+    ),
+    ReasonCode.SEARCH_EMBED_DIMENSIONS: (
+        "searched by words only: the query's vector has {got:number} numbers, the index "
+        "{wanted:number}"
+    ),
+    ReasonCode.SEARCH_INDEX_UNAVAILABLE: (
+        "the full-text search cannot be reached; the list and its filters work without it"
+    ),
+    ReasonCode.SEARCH_NOT_CONFIGURED: "this installation has no search index",
 }
 
 

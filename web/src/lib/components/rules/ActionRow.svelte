@@ -120,7 +120,13 @@
 					class="h-10"
 				/>
 			{:else if action.type === 'set_title'}
-				<TemplateInput id="title-{action.key}" {label} {invalid} bind:value={action.template} />
+				<TemplateInput
+					id="title-{action.key}"
+					{label}
+					{invalid}
+					fields={lookup.fields}
+					bind:value={action.template}
+				/>
 			{:else if action.type === 'add_tags' || action.type === 'remove_tags'}
 				<MultiPicker
 					{label}
@@ -150,6 +156,7 @@
 						{field}
 						{invalid}
 						template
+						fields={lookup.fields}
 						id="value-{action.key}"
 						label={m.rule_condition_value()}
 						value={action.value}
@@ -164,6 +171,7 @@
 					id="reason-{action.key}"
 					label={m.rule_review_reason()}
 					{invalid}
+					fields={lookup.fields}
 					bind:value={action.reason}
 				/>
 			{/if}

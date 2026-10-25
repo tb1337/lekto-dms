@@ -1045,6 +1045,17 @@ and why by words alone where the meaning was to take part (`reason` with a code:
   `<index>-rebuild` from the database and the object store, 50 documents per request, while the
   active index keeps serving, swaps it in and reconciles what changed meanwhile. The index holds
   no information that is not in the database.
+- **State.** `GET /search/status` (every user, the page "System") counts the documents of the
+  database and of the index, those with vectors and the vectors (`SearchIndex.stats`, from
+  Meilisearch's index stats), the index jobs running and waiting with an estimate of when they
+  are through (from the index jobs done in the last ten minutes), and how long index jobs ran
+  with and without embedding (from the latest 2000 done within `LEKTO_RETENTION`, counted at
+  most once a minute per API process): an index job reports the sections it embedded
+  (`{"sections": n}` in its result) and whether it wrote without vectors because the embedding
+  failed (`"embedding_failed": true`; such a job measures neither kind). `POST /search/check`
+  (admins) compares like the
+  reconciliation (`IndexingService.compare`) but only counts: current, missing, outdated,
+  vectors of another model, left over.
 - **Rights.** The index query contains the rights (every document of the spaces the caller
   edits, in any lane; green documents of the spaces they read). Every hit is checked against
   the database once more and the filter applied again, so a removed member finds nothing of

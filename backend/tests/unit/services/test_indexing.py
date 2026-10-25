@@ -2,7 +2,7 @@
 
 from collections.abc import Awaitable, Sequence
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 from uuid import UUID
 
 import pytest
@@ -23,6 +23,7 @@ from lekto.core.domain.pipeline import Lane, Node, Outcome
 from lekto.core.domain.search import LAYOUT, IndexDocument
 from lekto.core.domain.users import Role
 from lekto.core.services.indexing import (
+    _RETRIES,
     INDEX_JOB,
     RECONCILE_JOB,
     REFRESH_JOB,
@@ -647,6 +648,88 @@ async def test_only_admins_request_a_rebuild(setup: Setup) -> None:
     assert await setup.indexing.run_next_job()
     assert not await setup.indexing.run_next_job()
     assert set(setup.index.documents) == {document.id}
+
+
+async def test_an_index_job_reports_the_sections_it_embedded(setup: Setup) -> None:
+    owner = await setup.world.user()
+    document = await setup.document(owner, "Stromrechnung September")
+    done = [job for job in index_jobs(setup.world) if job.status is JobStatus.DONE]
+    assert done and all(job.result is not None for job in done)
+    sections = [job.result.get("sections") for job in done if job.result is not None]
+    assert any(isinstance(count, int) and count >= 1 for count in sections)
+    assert (await setup.indexing.index_document(document.id)).sections == 0  # the vectors stay
+
+
+async def test_a_job_whose_embedding_failed_measures_no_duration(world: World) -> None:
+    setup = Setup(world, policy=replace(builders.INDEXING, dimensions=3))  # the fakes have more
+    owner = await world.user()
+    received = await world.pipeline().receive(owner.id, incoming(b"%PDF-1 f"), filename="f.pdf")
+    await setup.put_text(received.id, "Text")
+    indexed = await setup.indexing.index_document(received.id, tolerate_embedding_failure=True)
+    assert (indexed.sections, indexed.embedding_failed) == (0, True)
+    assert indexed.to_json() == {"sections": 0, "embedding_failed": True}
+    async with world.uow() as uow:
+        job = await uow.jobs.enqueue(INDEX_JOB, {"document_id": str(received.id)}, run_at=NOW)
+        await uow.commit()
+    assert job is not None
+    for _ in range(_RETRIES[INDEX_JOB].max_attempts):  # the last attempt tolerates the failure
+        world.clock.advance(HOUR)
+        assert await setup.indexing.run_next_job()
+    async with world.uow() as uow:
+        done = await uow.jobs.get(job)
+    assert done.status is JobStatus.DONE
+    assert done.result == {"sections": 0, "embedding_failed": True}
+
+    status = await setup.indexing.status(owner.id)
+
+    assert (status.embedded, status.plain, status.per_section) == (None, None, None)
+
+
+async def test_a_check_counts_without_queuing_or_removing(setup: Setup) -> None:
+    admin, owner = await setup.world.user(role=Role.ADMIN), await setup.world.user()
+    await setup.document(owner, "current")
+    stale = await setup.document(owner, "stale")
+    await setup.world.pipeline().receive(owner.id, incoming(b"%PDF-1 f"), filename="f.pdf")
+    await setup.index.upsert([index_document(id=stale.id, version=stale.version - 1)])
+    orphan = index_document()
+    await setup.index.upsert([orphan])
+    jobs = len(index_jobs(setup.world))
+
+    with pytest.raises(PermissionDeniedError):
+        await setup.indexing.check(owner.id)
+    checked = await setup.indexing.check(admin.id)
+
+    found = checked.comparison
+    assert (found.current, len(found.missing), len(found.outdated), found.extra) == (
+        1,
+        1,
+        1,
+        (orphan.id,),
+    )
+    assert found.other_model == () and found.asked == ()
+    assert len(index_jobs(setup.world)) == jobs
+    assert orphan.id in setup.index.documents
+
+
+async def test_the_status_of_the_index(setup: Setup) -> None:
+    owner = await setup.world.user()
+    first = await setup.document(owner, "eins")
+    await setup.document(owner, "zwei")
+    async with setup.world.uow() as uow:
+        for _ in range(3):
+            await uow.jobs.enqueue(INDEX_JOB, {"document_id": str(first.id)}, run_at=NOW + HOUR)
+        await uow.commit()
+
+    status = await setup.indexing.status(owner.id)
+
+    assert (status.documents, status.stats.documents, status.stats.embedded) == (2, 2, 2)
+    assert (status.running, status.queued) == (0, 3)
+    done = [job for job in index_jobs(setup.world) if job.status is JobStatus.DONE]
+    assert status.remaining == timedelta(minutes=10) * 3 / len(done)
+    assert status.embedded is not None and status.embedded.count >= 2
+    assert status.per_section == timedelta(0)  # the test clock stands still
+    assert status.model == "fake-embeddings 1"
+    assert status.since == NOW - builders.INDEXING.durations_window
 
 
 # --- sections ------------------------------------------------------------------------------------

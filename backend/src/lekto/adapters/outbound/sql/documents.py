@@ -250,6 +250,10 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         ).all()
         return await self._entities(rows)
 
+    async def count_all(self) -> int:
+        statement = select(func.count()).select_from(t.documents)
+        return int((await self._tx.read(statement)).scalar_one())
+
     async def count_confirmed(self, *, after: datetime | None = None) -> int:
         decided = (t.documents.c.confirmed_at, t.documents.c.space_confirmed_at)
         if after is None:

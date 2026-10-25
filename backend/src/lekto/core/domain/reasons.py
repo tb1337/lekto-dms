@@ -839,6 +839,7 @@ class Action(StrEnum):
     TRAIN_CLASSIFIER = "train_classifier"
     REBUILD_INDEX = "rebuild_index"
     RETRY_JOBS = "retry_jobs"
+    CHECK_INDEX = "check_index"
     REPARSE_ALL = "reparse_all"
     MAKE_GLOBAL_RULES = "make_global_rules"
     CHANGE_GLOBAL_RULES = "change_global_rules"
@@ -868,6 +869,7 @@ ACTIONS: Mapping[Action, str] = {
     Action.TRAIN_CLASSIFIER: "train the classifier",
     Action.REBUILD_INDEX: "rebuild the search index",
     Action.RETRY_JOBS: "try failed jobs again",
+    Action.CHECK_INDEX: "check the search index against the documents",
     Action.REPARSE_ALL: "read the text of all documents again",
     Action.MAKE_GLOBAL_RULES: "make global rules",
     Action.CHANGE_GLOBAL_RULES: "change global rules",

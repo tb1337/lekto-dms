@@ -1085,6 +1085,46 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/search/status': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The state of the search index
+		 * @description How many documents the database and the index hold, how many have vectors, the index jobs running and waiting with an estimate of when they are through, how long index jobs ran with and without embedding, and the embedding model. Every user. 503 without a search index or when it cannot be reached.
+		 */
+		get: operations['search_status_api_v1_search_status_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/search/check': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Check the search index
+		 * @description Admins only. Compares every document in the database with the index and counts what is current, missing, stale and left over; nothing is queued or removed (the next reconciliation does that). Reads the whole index: seconds for some thousand documents.
+		 */
+		post: operations['check_index_api_v1_search_check_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/classifier': {
 		parameters: {
 			query?: never;
@@ -4198,6 +4238,64 @@ export interface components {
 		 * @enum {string}
 		 */
 		InboxTab: 'new' | 'review' | 'intervene' | 'processing' | 'done';
+		/** IndexCheckOut */
+		IndexCheckOut: {
+			/**
+			 * Current
+			 * @description Documents indexed as they are.
+			 */
+			current: number;
+			/**
+			 * Missing
+			 * @description Documents not in the index.
+			 */
+			missing: number;
+			/**
+			 * Outdated
+			 * @description Indexed in another version or an older layout.
+			 */
+			outdated: number;
+			/**
+			 * Other Model
+			 * @description Indexed with vectors of no or another model.
+			 */
+			other_model: number;
+			/**
+			 * Extra
+			 * @description Entries of documents that no longer exist.
+			 */
+			extra: number;
+			/** Took Ms */
+			took_ms: number;
+		};
+		/** IndexStatsOut */
+		IndexStatsOut: {
+			/**
+			 * Documents
+			 * @description Documents in the index.
+			 */
+			documents: number;
+			/**
+			 * Embedded
+			 * @description Of them, those with vectors (of any model).
+			 */
+			embedded: number;
+			/**
+			 * Vectors
+			 * @description Vectors in all, one per section of a text.
+			 */
+			vectors: number;
+			/**
+			 * Indexing
+			 * @description Whether the index is writing right now.
+			 */
+			indexing: boolean;
+			/**
+			 * Size Bytes
+			 * @description Its size on disk, if the index tells.
+			 */
+			size_bytes: number | null;
+		};
 		/** JobDocumentOut */
 		JobDocumentOut: {
 			/**
@@ -4301,6 +4399,18 @@ export interface components {
 		 * @enum {string}
 		 */
 		JobState: 'running' | 'due' | 'planned' | 'done' | 'failed';
+		/** JobTimesOut */
+		JobTimesOut: {
+			/**
+			 * Count
+			 * @description Index jobs done in the period.
+			 */
+			count: number;
+			/** Median Ms */
+			median_ms: number;
+			/** P90 Ms */
+			p90_ms: number;
+		};
 		/** JobsSummaryOut */
 		JobsSummaryOut: {
 			/**
@@ -6470,6 +6580,55 @@ export interface components {
 			 * @description The meaning of the query was not ready in time and is still being made: the event `search.meaning_ready` with this `query` follows on the caller's event stream, and the same search then takes the meaning into account.
 			 */
 			meaning_pending: boolean;
+		};
+		/** SearchStatusOut */
+		SearchStatusOut: {
+			/**
+			 * Documents
+			 * @description Documents in the database.
+			 */
+			documents: number;
+			index: components['schemas']['IndexStatsOut'];
+			/**
+			 * Running
+			 * @description Index jobs running now.
+			 */
+			running: number;
+			/**
+			 * Queued
+			 * @description Index jobs waiting (due or planned).
+			 */
+			queued: number;
+			/**
+			 * Remaining Ms
+			 * @description When the waiting index jobs are through, estimated from those done in the last ten minutes; 0 without any waiting, null without a recent one to go by.
+			 */
+			remaining_ms: number | null;
+			/** @description How long the index jobs ran that embedded sections (since `since`). */
+			embedded_jobs: components['schemas']['JobTimesOut'] | null;
+			/** @description How long the index jobs ran that only wrote (the text was the same). */
+			plain_jobs: components['schemas']['JobTimesOut'] | null;
+			/**
+			 * Per Section Ms
+			 * @description Time of the jobs that embedded, per section they embedded.
+			 */
+			per_section_ms: number | null;
+			/**
+			 * Model
+			 * @description The embedding model; null without embeddings.
+			 */
+			model: string | null;
+			/**
+			 * Dimensions
+			 * @description The length of its vectors, if configured.
+			 */
+			dimensions: number | null;
+			/**
+			 * Since
+			 * Format: date-time
+			 * @description The durations count the jobs done from then on.
+			 */
+			since: string;
 		};
 		/**
 		 * SessionOut
@@ -16257,6 +16416,165 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content?: never;
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Service Unavailable",
+					 *       "status": 503,
+					 *       "detail": "database: unreachable"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	search_status_api_v1_search_status_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SearchStatusOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Service Unavailable",
+					 *       "status": 503,
+					 *       "detail": "database: unreachable"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	check_index_api_v1_search_check_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['IndexCheckOut'];
+				};
 			};
 			/** @description Unauthorized */
 			401: {

@@ -10176,6 +10176,178 @@
         ]
       }
     },
+    "/api/v1/search/status": {
+      "get": {
+        "tags": [
+          "search"
+        ],
+        "summary": "The state of the search index",
+        "description": "How many documents the database and the index hold, how many have vectors, the index jobs running and waiting with an estimate of when they are through, how long index jobs ran with and without embedding, and the embedding model. Every user. 503 without a search index or when it cannot be reached.",
+        "operationId": "search_status_api_v1_search_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchStatusOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "database: unreachable"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/search/check": {
+      "post": {
+        "tags": [
+          "search"
+        ],
+        "summary": "Check the search index",
+        "description": "Admins only. Compares every document in the database with the index and counts what is current, missing, stale and left over; nothing is queued or removed (the next reconciliation does that). Reads the whole index: seconds for some thousand documents.",
+        "operationId": "check_index_api_v1_search_check_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexCheckOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "database: unreachable"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/classifier": {
       "get": {
         "tags": [
@@ -21698,6 +21870,94 @@
         ],
         "title": "InboxTab"
       },
+      "IndexCheckOut": {
+        "properties": {
+          "current": {
+            "type": "integer",
+            "title": "Current",
+            "description": "Documents indexed as they are."
+          },
+          "missing": {
+            "type": "integer",
+            "title": "Missing",
+            "description": "Documents not in the index."
+          },
+          "outdated": {
+            "type": "integer",
+            "title": "Outdated",
+            "description": "Indexed in another version or an older layout."
+          },
+          "other_model": {
+            "type": "integer",
+            "title": "Other Model",
+            "description": "Indexed with vectors of no or another model."
+          },
+          "extra": {
+            "type": "integer",
+            "title": "Extra",
+            "description": "Entries of documents that no longer exist."
+          },
+          "took_ms": {
+            "type": "number",
+            "title": "Took Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "current",
+          "missing",
+          "outdated",
+          "other_model",
+          "extra",
+          "took_ms"
+        ],
+        "title": "IndexCheckOut"
+      },
+      "IndexStatsOut": {
+        "properties": {
+          "documents": {
+            "type": "integer",
+            "title": "Documents",
+            "description": "Documents in the index."
+          },
+          "embedded": {
+            "type": "integer",
+            "title": "Embedded",
+            "description": "Of them, those with vectors (of any model)."
+          },
+          "vectors": {
+            "type": "integer",
+            "title": "Vectors",
+            "description": "Vectors in all, one per section of a text."
+          },
+          "indexing": {
+            "type": "boolean",
+            "title": "Indexing",
+            "description": "Whether the index is writing right now."
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes",
+            "description": "Its size on disk, if the index tells."
+          }
+        },
+        "type": "object",
+        "required": [
+          "documents",
+          "embedded",
+          "vectors",
+          "indexing",
+          "size_bytes"
+        ],
+        "title": "IndexStatsOut"
+      },
       "JobDocumentOut": {
         "properties": {
           "id": {
@@ -21923,6 +22183,30 @@
         ],
         "title": "JobState",
         "description": "Where a job stands for the people looking at it: a queued job is due once its time has\ncome, planned before (a repetition, a recurring job)."
+      },
+      "JobTimesOut": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Index jobs done in the period."
+          },
+          "median_ms": {
+            "type": "number",
+            "title": "Median Ms"
+          },
+          "p90_ms": {
+            "type": "number",
+            "title": "P90 Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "median_ms",
+          "p90_ms"
+        ],
+        "title": "JobTimesOut"
       },
       "JobsSummaryOut": {
         "properties": {
@@ -25970,6 +26254,119 @@
           "meaning_pending"
         ],
         "title": "SearchResultPage"
+      },
+      "SearchStatusOut": {
+        "properties": {
+          "documents": {
+            "type": "integer",
+            "title": "Documents",
+            "description": "Documents in the database."
+          },
+          "index": {
+            "$ref": "#/components/schemas/IndexStatsOut"
+          },
+          "running": {
+            "type": "integer",
+            "title": "Running",
+            "description": "Index jobs running now."
+          },
+          "queued": {
+            "type": "integer",
+            "title": "Queued",
+            "description": "Index jobs waiting (due or planned)."
+          },
+          "remaining_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Ms",
+            "description": "When the waiting index jobs are through, estimated from those done in the last ten minutes; 0 without any waiting, null without a recent one to go by."
+          },
+          "embedded_jobs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobTimesOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How long the index jobs ran that embedded sections (since `since`)."
+          },
+          "plain_jobs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobTimesOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How long the index jobs ran that only wrote (the text was the same)."
+          },
+          "per_section_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Section Ms",
+            "description": "Time of the jobs that embedded, per section they embedded."
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "The embedding model; null without embeddings."
+          },
+          "dimensions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimensions",
+            "description": "The length of its vectors, if configured."
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Since",
+            "description": "The durations count the jobs done from then on."
+          }
+        },
+        "type": "object",
+        "required": [
+          "documents",
+          "index",
+          "running",
+          "queued",
+          "remaining_ms",
+          "embedded_jobs",
+          "plain_jobs",
+          "per_section_ms",
+          "model",
+          "dimensions",
+          "since"
+        ],
+        "title": "SearchStatusOut"
       },
       "SessionOut": {
         "properties": {

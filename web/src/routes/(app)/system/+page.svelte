@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import ClassifierTab from '#lib/components/system/ClassifierTab.svelte';
 	import JobsTab from '#lib/components/system/JobsTab.svelte';
+	import SearchTab from '#lib/components/system/SearchTab.svelte';
 	import TabBar from '#lib/components/TabBar.svelte';
 	import { m } from '#lib/paraglide/messages.js';
 	import { SYSTEM_TABS, systemTab, type SystemTab } from '#lib/system.ts';
@@ -11,6 +12,7 @@
 	const tab = $derived(systemTab(page.url.searchParams));
 	const LABELS: Record<SystemTab, () => string> = {
 		classifier: m.system_tab_classifier,
+		search: m.system_tab_search,
 		jobs: m.system_tab_jobs
 	};
 </script>
@@ -31,6 +33,8 @@
 	{#key tab}
 		{#if tab === 'jobs'}
 			<JobsTab />
+		{:else if tab === 'search'}
+			<SearchTab />
 		{:else}
 			<ClassifierTab />
 		{/if}

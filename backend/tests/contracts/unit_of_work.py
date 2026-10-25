@@ -1087,6 +1087,7 @@ class UnitOfWorkContract:
             assert [document.id for document in open_] == [never.id]
             assert await uow.documents.count_confirmed() == 2
             assert await uow.documents.count_confirmed(after=NOW) == 1
+            assert await uow.documents.count_all() == 3
 
     async def test_decided_spaces(self, uow_factory: UnitOfWorkFactory) -> None:
         """When a person decided a document's space is kept; such documents are labelled (the

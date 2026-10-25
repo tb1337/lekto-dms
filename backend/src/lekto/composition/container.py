@@ -600,6 +600,7 @@ def indexing_policy_of(settings: Settings) -> IndexingPolicy:
         job_lease=3 * (settings.embedding_timeout + settings.meilisearch_task_timeout)
         + WORK_LEASE_MARGIN,
         rebuild_lease=settings.search_rebuild_timeout,
+        durations_window=settings.retention,
     )
 
 

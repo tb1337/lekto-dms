@@ -4,7 +4,8 @@ asked for a new document's contact, type, topic and tags (the signal `signal_cla
 A recurring check queues a training once enough documents were confirmed since the last one
 (or, without a model, once there are enough at all); an admin can ask for one. Training also
 learns identifiers of contacts from the same documents (`identifiers.mine_identifiers`), and
-keeps the latest `KEPT_MODELS` models.
+keeps the files of the latest `KEPT_MODELS` models; every model's row stays, for the history of
+what the models learned and how well (the page "System").
 """
 
 import asyncio
@@ -294,9 +295,8 @@ class ClassifierService:
                 summary=summary,
             )
             await uow.classifier_models.add(model)
-            old = (await uow.classifier_models.list_all())[KEPT_MODELS:]  # newest first
-            for item in old:
-                await uow.classifier_models.remove(item.id)
+            # Newest first: the model that falls out of the kept ones now loses its file.
+            old = (await uow.classifier_models.list_all())[KEPT_MODELS : KEPT_MODELS + 1]
             await uow.outbox.add(
                 [ClassifierTrained(occurred_at=now, number=number, examples=examples)]
             )

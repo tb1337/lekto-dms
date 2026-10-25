@@ -723,7 +723,7 @@ members see it (the pay slips in a personal space teach the employer a number it
 sees). A learned customer or personnel number belongs to a user when every one of its documents
 is surely theirs alone: in their personal space, or naming them by more than their name (one of
 their numbers, a number entered by hand that names them, their birth date). The model is stored as `npz`
-without pickle (`classifier/model-<n>.npz`, the latest three are kept) and predicted with numpy
+without pickle (`classifier/model-<n>.npz`, the files of the latest three are kept; every model's row stays, for the history of its accuracy) and predicted with numpy
 alone, so a new scikit-learn version cannot break it. It sees about the first 8,000 and the last
 4,000 characters of a longer text, a run of spaces counted once (12,000 in all, `TEXT_LIMIT`).
 `GET /classifier` tells its state to every user (the page "System"); training on request is for

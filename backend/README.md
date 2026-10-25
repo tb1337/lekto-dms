@@ -334,7 +334,9 @@ process (`services/_kept.py`).
   returns both. Documents processed before this have none until they are processed again.
 - What the model nodes (`signal_llm`, `fields`, and `ocr` when the vision model read) send is
   kept beside the document, one file per node with every run
-  (`documents/{id}/exchanges/<node>.json`: system and user message, the raw answer and the
+  (`documents/{id}/exchanges/<node>.json`: what each call sent – the system prompt, the
+  document, the task and, after an unfit answer, the note to answer again; one `user` message for
+  a page the VLM read, a webhook's context and calls before `propose-6` – the raw answer and the
   endpoint's whole usage report); editors and admins read it through
   `GET /documents/{id}/exchanges/{node}`. The files go with the document's other derivatives.
 - Deleting a document queues `documents.remove_files` in the same transaction: the worker
@@ -476,7 +478,7 @@ and the space, the fields node reads the fields of the decided type and the titl
 (`core/services/classification`, the rules in `core/domain/verdict.py`).
 
 - **`signal_llm`**: one request to an OpenAI-compatible chat completions endpoint
-  (`adapters/outbound/openai_compat`, `LEKTO_LLM_*`, prompt `propose-5`) for sender and recipient,
+  (`adapters/outbound/openai_compat`, `LEKTO_LLM_*`, prompt `propose-6`) for sender and recipient,
   the topic (one of the automatic topics the listed contacts enable, or none; the prompt lists
   them at each of the at most 20 preselected contacts), type, tags (the automatic document
   tags), date, a title, the language, and the values of the fields of the type it chooses
@@ -492,6 +494,22 @@ and the space, the fields node reads the fields of the decided type and the titl
   support); an answer that does not fit is asked for once more, then the signal fails (red).
   Without a configured model (`LEKTO_LLM_BASE_URL` and `LEKTO_LLM_MODEL`) it abstains with "no language
   model is configured", and a person classifies.
+- **The form of a request** (`StructuredRequest`, issue #145): every call to the model sends
+  `messages[0]` the system prompt, the same for every call (`prompts.SYSTEM`: data, not
+  instructions; one JSON object; no invented values; quotes and labels); `messages[1]` the
+  document in its markers, as the person's message, never in the system prompt; `messages[2]`
+  the task (the lists, the fields and what each part of the answer is); after an answer that
+  does not fit, the note what was wrong, last. Calls about one document so begin alike (both
+  shorten the text to `LEKTO_LLM_INPUT_BUDGET` the same way), and an endpoint that caches a
+  shared beginning computes system prompt and document once. Lekto sets no cache marks: Ollama
+  (while the model stays loaded) and Groq cache by themselves; for Anthropic a LiteLLM proxy sets
+  them (`cache_control_injection_points` by role or index, or `enable_anthropic_prompt_caching`).
+  Some providers put a `response_format` schema before the system prompt (OpenAI; Claude behaves
+  alike), and Lekto's schema differs per document and call: there `LEKTO_LLM_RESPONSE_FORMAT=json_object`
+  sends the schema as a message after the task instead, and the beginning is shared. The log
+  names, per call, the prompt tokens the endpoint took from its cache where it reports them
+  (`output.tokens[].cached`: `prompt_tokens_details.cached_tokens`, or
+  `cache_read_input_tokens` through LiteLLM); the web UI shows them in the token details.
 - **`signal_classifier`**: TF-IDF of words and word pairs and a logistic regression per target
   (contact, topic, type, each automatic document tag, the space), trained on the confirmed
   documents (`LEKTO_CLASSIFIER`, see Classifier). The space is learned from the documents whose
@@ -574,7 +592,7 @@ and no signal recognised anything.
 The fields node reads the fields of the decided type and the global ones. If the model asked
 for the type the judge decided, its values are taken over; otherwise (after a type correction,
 or for a document from before the signals) it asks the model for the missing ones (prompt
-`extract-5`). Each field is required or optional per type it is assigned to, a global one by its
+`extract-6`, the same system prompt and document as the signal's, its own task). Each field is required or optional per type it is assigned to, a global one by its
 own switch:
 
 | Field | Check | Not passed |
@@ -1458,9 +1476,10 @@ language model of `LEKTO_LLM_*`, for every document (an exception to "webhooks s
 owner may read"). Of the active webhooks of active admins at most one serves each kind (`409`
 `model_call_taken`); a webhook switched off, deleted, or whose owner is no admin any more serves
 no more, and the language model answers again (without one `signal_llm` abstains).
-`propose` takes over `signal_llm` (prompt `propose-5`), `extract` the request of `fields` for
+`propose` takes over `signal_llm` (prompt `propose-6`), `extract` the request of `fields` for
 the fields the proposal did not give (another type decided, or no proposal; prompt
-`extract-5`). The node sends a task
+`extract-6`). The context does not follow the prompt's form: the contracts stay
+`propose-ext-1` and `extract-ext-1`. The node sends a task
 whose body is always the context, whatever the webhook's `body`: `contract` (`propose-ext-1`,
 `extract-ext-1`), `task` (`id`, `kind`, `document_id`, `run`, `deadline`, `callback`, `token`),
 `document` (`filename`, `media_type`, `pages`, `received`, the text in full, and signed links to
@@ -1742,7 +1761,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `LEKTO_LLM_TEMPERATURE` | Worker | `0` | 0 to 2; 0 for repeatable answers; `none` sends none (for models that reject one, such as Claude Sonnet 5.5) |
 | `LEKTO_LLM_SEED` | Worker | unset | Passed to the endpoint, if set |
 | `LEKTO_LLM_TIMEOUT` | Worker | `300` | Seconds per request (`600` on a CPU) |
-| `LEKTO_LLM_RESPONSE_FORMAT` | Worker | `json_schema` | `json_object` for providers without JSON schema support |
+| `LEKTO_LLM_RESPONSE_FORMAT` | Worker | `json_schema` | `json_object` for providers without JSON schema support; the schema then goes as a message after the task (also for prompt caching where a provider puts the schema before the system prompt) |
 | `LEKTO_LLM_INPUT_BUDGET` | Worker | `12000` | Characters of document text per request (a run of spaces counts once) |
 | `LEKTO_LLM_MAX_TAGS` | Worker | `200` | Tags listed per request |
 | `LEKTO_EMBEDDING_BASE_URL` | both | unset | OpenAI-compatible endpoint; set together with the model or neither (the worker embeds sections, the API embeds queries) |

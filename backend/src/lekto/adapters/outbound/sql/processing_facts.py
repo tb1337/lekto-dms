@@ -25,6 +25,10 @@ _SIGNALS: dict[Node, Any] = {
 }
 
 
+_NODES = {node.value: node for node in Node}
+_MICROSECOND = timedelta(microseconds=1)
+
+
 class SqlProcessingFacts:
     def __init__(self, transaction: Transaction) -> None:
         self._tx = transaction
@@ -143,14 +147,22 @@ class SqlProcessingFacts:
 
     async def run_times(self, scope: FactsScope) -> RunTimes:
         query = _runs_of(scope).add_columns(_runs.c.started_at, _runs.c.stopped_at, _runs.c.steps)
-        times = RunTimes(durations=[], work=[], steps={})
+        durations: list[int] = []
+        work: list[int] = []
+        steps: dict[str, list[int]] = {}
         for row in await self._tx.read(query):
-            steps = _steps(row.steps)
-            times.durations.append(row.stopped_at - row.started_at)
-            times.work.append(sum(steps.values(), timedelta(0)))
-            for node, step in steps.items():
-                times.steps.setdefault(node, []).append(step)
-        return times
+            durations.append((row.stopped_at - row.started_at) // _MICROSECOND)
+            work.append(sum(row.steps.values()))
+            for node, micros in row.steps.items():
+                if node in steps:
+                    steps[node].append(micros)
+                else:
+                    steps[node] = [micros]
+        return RunTimes(
+            durations=durations,
+            work=work,
+            steps={_NODES[node]: values for node, values in steps.items() if node in _NODES},
+        )
 
     async def verdict_counts(self, scope: FactsScope) -> dict[tuple[str, Verdict], int]:
         verdicts = _verdicts_of(scope).add_columns(_verdicts.c.verdict).subquery()
@@ -212,7 +224,7 @@ def _count(condition: ColumnElement[bool]) -> ColumnElement[int]:
 
 
 def _micros(step: timedelta) -> int:
-    return step // timedelta(microseconds=1)
+    return step // _MICROSECOND
 
 
 def _steps(data: dict[str, int]) -> dict[Node, timedelta]:

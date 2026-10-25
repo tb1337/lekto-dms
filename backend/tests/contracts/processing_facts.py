@@ -20,6 +20,8 @@ from tests.builders import FAILED, NOW, UNCERTAIN
 from tests.contracts.unit_of_work import owner_with_space
 
 SECOND = timedelta(seconds=1)
+MICROSECOND = timedelta(microseconds=1)
+MICROS = SECOND // MICROSECOND  # a second in microseconds
 DAY = timedelta(days=1)
 
 
@@ -249,7 +251,7 @@ class ProcessingFactsContract:
             LaneCount(first_lane=Lane.GREEN, lane=Lane.GREEN, decided=False, count=1),
             LaneCount(first_lane=Lane.YELLOW, lane=Lane.YELLOW, decided=False, count=1),
         ]
-        assert sorted(times.durations) == [DAY, DAY]
+        assert sorted(times.durations) == [DAY // MICROSECOND] * 2
         assert len(every.durations) == 4
 
     async def test_lanes_by_period_count_from_each_start_to_the_next(
@@ -306,11 +308,11 @@ class ProcessingFactsContract:
         async with uow_factory() as uow:
             times = await uow.processing_facts.run_times(FactsScope())
 
-        assert sorted(times.durations) == [10 * SECOND, 600 * SECOND]
-        assert sorted(times.work) == [SECOND, 32 * SECOND]
+        assert sorted(times.durations) == [10 * MICROS, 600 * MICROS]  # microseconds
+        assert sorted(times.work) == [MICROS, 32 * MICROS]
         assert {node: sorted(steps) for node, steps in times.steps.items()} == {
-            Node.RECEIVE: [SECOND, 2 * SECOND],
-            Node.SIGNAL_LLM: [30 * SECOND],
+            Node.RECEIVE: [MICROS, 2 * MICROS],
+            Node.SIGNAL_LLM: [30 * MICROS],
         }
 
     async def test_verdicts_count_by_field_and_kind_in_scope(

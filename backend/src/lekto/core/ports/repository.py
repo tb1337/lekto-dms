@@ -19,7 +19,7 @@ Common rules for every adapter:
 
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Protocol
@@ -598,13 +598,14 @@ class LaneCount:
 
 @dataclass(frozen=True)
 class RunTimes:
-    """The times of the first runs, one value per document, in no particular order: how long
-    each took (`durations`) and worked (`work`); per node, how long it worked in each first run
-    it ran in (`steps`)."""
+    """The times of the first runs in microseconds, one value per document, in no particular
+    order: how long each took (`durations`) and worked (`work`); per node, how long it worked in
+    each first run it ran in (`steps`). Plain numbers: a page reads them by the hundred
+    thousand."""
 
-    durations: list[timedelta]
-    work: list[timedelta]
-    steps: dict[Node, list[timedelta]]
+    durations: list[int]
+    work: list[int]
+    steps: dict[Node, list[int]]
 
 
 @dataclass(frozen=True)

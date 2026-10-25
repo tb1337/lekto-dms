@@ -5,7 +5,7 @@ the SQL adapter's inserts are: the first write wins, no version is checked."""
 from collections import Counter
 from collections.abc import Collection, Iterator, Sequence
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from lekto.adapters.outbound.memory.database import DOCUMENTS
@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from lekto.adapters.outbound.memory.unit_of_work import MemoryUnitOfWork
 
 type VerdictKey = tuple[DocumentId, str]
+
+MICROSECOND = timedelta(microseconds=1)
 
 
 class MemoryProcessingFacts:
@@ -79,10 +81,10 @@ class MemoryProcessingFacts:
     async def run_times(self, scope: FactsScope) -> RunTimes:
         times = RunTimes(durations=[], work=[], steps={})
         for _, run in self._first_runs(scope):
-            times.durations.append(run.duration)
-            times.work.append(run.work)
+            times.durations.append(run.duration // MICROSECOND)
+            times.work.append(run.work // MICROSECOND)
             for node, step in run.steps.items():
-                times.steps.setdefault(node, []).append(step)
+                times.steps.setdefault(node, []).append(step // MICROSECOND)
         return times
 
     async def verdict_counts(self, scope: FactsScope) -> dict[tuple[str, Verdict], int]:

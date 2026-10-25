@@ -1691,6 +1691,8 @@ Mock: https://claude.ai/artifact/CZha1VoRbf2KxJQCAZx5ma (vier Reiter hell und du
 
 **A gebaut (24.10.2026):** `jobs.created_at` entfällt: Die Wartezeit rechnet ab `run_at` (fällig), das ist bei Wiederholungen ohnehin richtig. `JobQueue.complete` und `fail` nehmen die Zeit (`now`), damit Start und Ende von derselben Uhr kommen wie `claim`. Neu im Port: `retry`, `overview` (ein `GROUP BY` über einer Unterabfrage, Postgres sähe sonst zwei Ausdrücke mit je eigenem Parameter), `find`, `finished`. Die Dauern sind ein eigener Endpunkt (`GET /jobs/durations`, jede Minute), die Zahlen (`GET /jobs/summary`) und die Liste (`GET /jobs`, Versatz statt Cursor, „Mehr laden“) alle fünf Sekunden. Ein fehlgeschlagener Verarbeitungsschritt wird am Dokument wiederholt (`POST /documents/{id}/retry`, `retry: document`), sonst geht das Dokument nicht weiter; `POST /jobs/{id}/retry` lehnt ihn ab (`job_retry_in_document`). „Versuch 3 von 8“ steht ohne „von 8“: Wie oft eine Art es versucht, weiß die Queue nicht. `classifier.trained` geht jetzt an alle Ereignisströme. Die Reiter der Seite kommen mit ihren PRs (A: Klassifikator, Jobs; B: Suchindex; C2: Automatisierung vorn).
 
+**Review A (25.10.2026, zweite Session, nur lesend; behoben vor dem Merge):** `GET /jobs/durations` las alle erledigten Jobs der Aufbewahrung in den Speicher (eine Migration hinterlässt über eine Million in sieben Tagen), für jede offene Seite jede Minute. Jetzt liest `JobQueue.finished` mit `limit` die jüngsten 2000 je Art (`JobsService.SAMPLE`), und der Bericht wird je API-Prozess eine Minute gehalten (`services/_kept.py`, wie der Cache der Automatisierung in C2).
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

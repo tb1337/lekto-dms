@@ -596,3 +596,11 @@ class JobQueueContract:
             NOW + timedelta(seconds=20),
             NOW + timedelta(seconds=30),
         ]
+        async with uow_factory() as uow:  # the latest ones, still earliest first
+            latest = await uow.jobs.finished(since=NOW, limit=2)
+            none = await uow.jobs.finished(since=NOW, limit=0)
+        assert [job.finished_at for job in latest] == [
+            NOW + timedelta(seconds=30),
+            NOW + timedelta(seconds=40),
+        ]
+        assert none == []

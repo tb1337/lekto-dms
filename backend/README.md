@@ -1324,7 +1324,8 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
   page "System" to every user (`JobsService`): counts by kind and state (`GET /jobs/summary`,
   one `GROUP BY`), the jobs (`GET /jobs`; a document named only to those who may read it, the
   last error only to admins), how long the done ones waited and ran within `LEKTO_RETENTION`
-  (`GET /jobs/durations`: median and 90th percentile by nearest rank), and an admin queues a
+  (`GET /jobs/durations`: median and 90th percentile by nearest rank, from the latest 2000 done
+  jobs of each kind, counted at most once a minute per API process), and an admin queues a
   failed one again (`POST /jobs/{id}/retry`; a failed processing step goes through
   `POST /documents/{id}/retry`, so that its document's processing goes on).
 

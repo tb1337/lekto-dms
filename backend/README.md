@@ -549,8 +549,15 @@ and the space, the fields node reads the fields of the decided type and the titl
   OCR node deletes it with a new archive, a reprocessing from the judge takes it): an
   identifier in a code counts as one in the text, the payee of a GiroCode as a name in the
   text, which proposes nothing alone. Reading the codes may fail; the signal warns and goes on
-  without them. Which identifiers the document shows goes to `document_identifiers`, which
-  tells on the confirmed documents of how many contacts an identifier stands. It also finds
+  without them. The identifiers the document shows are its facts (`document_facts`, issue
+  #145, `domain.document_facts`): kind and normalised value, the role (`contact`, `target`,
+  `own`, `thread`, `refers`, `person`; until the language model reads facts, the role of the
+  kind), where it comes from (`pattern`, `code`, later `model`, `person`), as written and
+  where it stands first in the text (reading order), and whether a person decided it. A run of
+  the signal replaces the facts found before; a person's decision stays. The facts tell on the
+  confirmed documents of how many contacts an identifier stands; `GET /documents/{id}/facts`
+  names each identifier's `role` and `origins`. Revision 0047 takes over the rows of
+  `document_identifiers` (role of their kind, origin `pattern`). It also finds
   persons (`persons`: user id, strength, kinds of evidence, never the values): one of their
   own identifiers, or a contact's customer or personnel number that names them, is `hard`;
   their birth date in the text `medium`; their display name or an alias `weak` (an address
@@ -781,7 +788,7 @@ what every model learned and how well, oldest first; training on request is for 
    classifier is trained on the new texts afterwards (`train`).
 3. 0.2 reads the bar and QR codes on the pages. `lekto read-codes` has
    the worker read them for the documents from before and keep the identifiers each document
-   shows (`document_identifiers`), so that the warning when attaching an identifier counts
+   shows (`document_facts`, until 0047 `document_identifiers`), so that the warning when attaching an identifier counts
    every confirmed document. It reads locally and sends nothing out; nodes, lane and metadata
    stay as they are. Documents taken over get their codes only this way: the signals abstain
    for them. Run it once `reparse` is through, which changes the text the identifiers are read

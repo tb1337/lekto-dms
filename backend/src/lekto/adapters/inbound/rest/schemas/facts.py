@@ -6,7 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from lekto.adapters.inbound.rest.schemas.inbox import BoxOut, LocationOut
 from lekto.adapters.inbound.schemas import MoneyValue
-from lekto.core.domain.facts import Span, Strength
+from lekto.core.domain.document_facts import FactOrigin, FactRole, role_of
+from lekto.core.domain.facts import FoundIdentifier, Span, Strength
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.services.documents import CodeFacts, DocumentFacts
 
@@ -51,6 +52,17 @@ class FoundIdentifierOut(BaseModel):
     in_text: bool
     in_code: bool = Field(description="A code on the pages holds it.")
     spans: list[SpanOut] = Field(description="Where it stands in the text.")
+    role: FactRole = Field(
+        description=(
+            "What it is to the document (`contact`: points to the contact, `target`: to what a "
+            "series refers to, `own`: marks the document, `thread`: joins a strand, `refers`: "
+            "refers to another document, `person`: points to a person). As kept for the "
+            "document; until the facts signal ran again after 0.7, the role of its kind."
+        )
+    )
+    origins: list[FactOrigin] = Field(
+        description="Where it comes from: `pattern` (the text), `code`, `model`, `person`."
+    )
     other_contacts: int | None = Field(
         description=(
             "For admins: on the confirmed documents of how many contacts other than the "
@@ -180,6 +192,8 @@ class FactsOut(BaseModel):
                                     ],
                                 }
                             ],
+                            "role": "contact",
+                            "origins": ["pattern"],
                             "other_contacts": 0,
                             "other_contact_ids": [],
                         }
@@ -234,6 +248,8 @@ class FactsOut(BaseModel):
                     in_text=item.in_text,
                     in_code=item.in_code,
                     spans=[SpanOut.of(span) for span in item.spans],
+                    role=_role(report, item),
+                    origins=_origins(report, item),
                     other_contacts=None if others is None else len(others.get(item.key, ())),
                     other_contact_ids=(
                         None if others is None else sorted(others.get(item.key, frozenset()))
@@ -257,3 +273,18 @@ class FactsOut(BaseModel):
                 ]
             ),
         )
+
+
+def _role(report: DocumentFacts, item: FoundIdentifier) -> FactRole:
+    kept = report.stored.get(item.key)
+    return role_of(item.kind) if kept is None else kept.role
+
+
+def _origins(report: DocumentFacts, item: FoundIdentifier) -> list[FactOrigin]:
+    kept = report.stored.get(item.key)
+    if kept is not None:
+        return sorted(kept.origins)
+    return [
+        *([FactOrigin.PATTERN] if item.in_text else []),
+        *([FactOrigin.CODE] if item.in_code else []),
+    ]

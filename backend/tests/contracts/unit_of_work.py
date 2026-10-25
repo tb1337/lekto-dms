@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Awaitable, Callable, Collection
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
@@ -8,6 +9,13 @@ import pytest
 
 from lekto.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSource
 from lekto.core.domain.classifier import ClassifierModel
+from lekto.core.domain.document_facts import (
+    DocumentFact,
+    FactOrigin,
+    FactRole,
+    FactState,
+    role_of,
+)
 from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
 from lekto.core.domain.fields import FieldDefinition, FieldType, Money, Url
@@ -970,10 +978,10 @@ class UnitOfWorkContract:
             assert (await uow.documents.get(document.id)).uploaded_by is None
             assert not await uow.documents.exists(uploaded_by=leaving.id)
 
-    async def test_document_identifiers_tell_the_contacts_that_show_them(
+    async def test_document_facts_tell_the_contacts_that_show_them(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
-        """Only confirmed documents with a contact count."""
+        """Only confirmed documents with a contact count, and facts not rejected."""
         owner, space = await owner_with_space(uow_factory)
         utility, bank = (Contact.create(name=name, now=NOW) for name in ("Stadtwerke", "Bank"))
         own = (IdentifierKind.IBAN, "DE02120300000000202051")
@@ -988,24 +996,64 @@ class UnitOfWorkContract:
         async with uow_factory() as uow:
             await uow.contacts.add(utility)
             await uow.contacts.add(bank)
-            for document, identifiers in zip(documents, shows, strict=True):
+            for document, keys in zip(documents, shows, strict=True):
                 await uow.documents.add(document)
-                await uow.document_identifiers.replace(document.id, identifiers)
+                await uow.document_facts.replace_found(document.id, [found(*key) for key in keys])
             await uow.commit()
         unknown = (IdentifierKind.EMAIL_DOMAIN, "example.org")
         async with uow_factory() as uow:
-            assert await uow.document_identifiers.contacts_of([own, customer, other, unknown]) == {
+            assert await uow.document_facts.contacts_of([own, customer, other, unknown]) == {
                 own: frozenset({utility.id, bank.id}),
                 customer: frozenset({utility.id}),
             }
-            assert await uow.document_identifiers.contacts_of([]) == {}
-            await uow.document_identifiers.replace(documents[0].id, [customer])
+            assert await uow.document_facts.contacts_of([]) == {}
+            await uow.document_facts.replace_found(documents[0].id, [found(*customer)])
             await uow.documents.remove(documents[1].id)
             await uow.commit()
         async with uow_factory() as uow:
-            assert await uow.document_identifiers.contacts_of([own, customer]) == {
+            assert await uow.document_facts.contacts_of([own, customer]) == {
                 customer: frozenset({utility.id})
             }
+
+    async def test_document_facts_keep_what_they_are_and_a_person_s_decision(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """A fact keeps its role, origins, as written and position; the facts found again
+        replace those found before, but not what a person decided."""
+        owner, space = await owner_with_space(uow_factory)
+        document = builders.processed(owner, space)
+        iban = DocumentFact(
+            kind=IdentifierKind.IBAN,
+            value="DE02120300000000202051",
+            role=FactRole.CONTACT,
+            origins=frozenset({FactOrigin.PATTERN, FactOrigin.CODE}),
+            written="DE02 1203 0000 0000 2020 51",
+            position=120,
+        )
+        vat = found(IdentifierKind.VAT_ID, "DE312456789", position=40)
+        coded = found(IdentifierKind.CUSTOMER_NUMBER, "777", position=None)
+        async with uow_factory() as uow:
+            await uow.documents.add(document)
+            assert await uow.document_facts.of_document(document.id) == []
+            await uow.document_facts.replace_found(document.id, [iban, coded, vat])
+            await uow.commit()
+        async with uow_factory() as uow:
+            # As the text reads: by position, those only in a code last.
+            assert await uow.document_facts.of_document(document.id) == [vat, iban, coded]
+        rejected = replace(vat, state=FactState.REJECTED)
+        async with uow_factory() as uow:
+            await uow.document_facts.replace_found(document.id, [rejected])
+            await uow.commit()
+        again = replace(vat, written="DE 312 456 789")
+        async with uow_factory() as uow:
+            await uow.document_facts.replace_found(document.id, [again, coded])
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.document_facts.of_document(document.id) == [rejected, coded]
+            await uow.documents.remove(document.id)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.document_facts.of_document(document.id) == []
 
     async def test_remove_document(self, uow_factory: UnitOfWorkFactory) -> None:
         owner, space = await owner_with_space(uow_factory)
@@ -2048,3 +2096,14 @@ class UnitOfWorkContract:
             assert not await uow.documents.exists(sha256=builders.sha256("other"))
             with pytest.raises(ValueError):
                 await uow.documents.exists()
+
+
+def found(kind: IdentifierKind, value: str, *, position: int | None = 0) -> DocumentFact:
+    """A fact the patterns of the text found, with the role of its kind."""
+    return DocumentFact(
+        kind=kind,
+        value=value,
+        role=role_of(kind),
+        origins=frozenset({FactOrigin.PATTERN if position is not None else FactOrigin.CODE}),
+        position=position,
+    )

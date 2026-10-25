@@ -29,6 +29,7 @@ from lekto.core.domain.codes import (
     codes_from_json,
     codes_to_json,
 )
+from lekto.core.domain.document_facts import DocumentFact, found_facts
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import (
     ClassifierError,
@@ -120,8 +121,10 @@ class FactsSignal:
 
     The codes are read from the archive once (`codes`, without a reader none) and kept beside
     the document (`codes_key`); the OCR node drops them with a new archive. A code that cannot
-    be read never fails the signal. The identifiers found are kept for the document
-    (`DocumentIdentifierRepository`), applied with the result."""
+    be read never fails the signal. The identifiers found are the document's facts, with
+    where they come from (the text's patterns, a code) and the role of their kind
+    (`domain.document_facts`), kept with the result (`DocumentFactRepository.replace_found`: a
+    person's decisions stay)."""
 
     def __init__(
         self, uow: UnitOfWorkFactory, store: ObjectStore, codes: CodeReader | None = None
@@ -142,11 +145,13 @@ class FactsSignal:
         output = await asyncio.to_thread(facts_of, text, contacts, codes or (), persons)
         if codes is not None:
             output["codes"] = len(codes)
-        found = await asyncio.to_thread(identifiers_in, text)
+        in_text = await asyncio.to_thread(identifiers_in, text)
+        in_codes: set[tuple[IdentifierKind, str]] = set()
         for code in codes or ():
-            found |= code_identifiers(code)
+            in_codes |= code_identifiers(code)
+        found = await asyncio.to_thread(found_facts, text, in_text, in_codes)
         result = NodeResult(outcome=Outcome.OK, model_version=FACTS, output=output)
-        return FactsResult(result, frozenset(found))
+        return FactsResult(result, found)
 
     async def codes(self, document: Document) -> tuple[Code, ...] | None:
         """The codes on the archive's pages, read before or now; None without a reader, an
@@ -182,18 +187,23 @@ class FactsSignal:
 
 @dataclass(frozen=True)
 class FactsResult:
-    """The facts, and the identifiers the document shows: kept for it when the result is
+    """The signal's result, and the facts the document shows: kept for it when the result is
     recorded."""
 
     result: NodeResult
-    identifiers: frozenset[tuple[IdentifierKind, str]]
+    facts: tuple[DocumentFact, ...]
 
     @property
     def output(self) -> JsonObject:
         return self.result.output
 
+    @property
+    def identifiers(self) -> frozenset[tuple[IdentifierKind, str]]:
+        """The kind and value of each fact."""
+        return frozenset(fact.key for fact in self.facts)
+
     async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
-        await uow.document_identifiers.replace(document.id, self.identifiers)
+        await uow.document_facts.replace_found(document.id, self.facts)
         return self.result
 
 

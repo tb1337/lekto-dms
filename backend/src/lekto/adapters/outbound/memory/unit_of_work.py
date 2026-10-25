@@ -22,7 +22,7 @@ from lekto.adapters.outbound.memory.database import (
     CLASSIFIER_MODELS,
     CONTACTS,
     CREDENTIALS,
-    DOCUMENT_IDENTIFIERS,
+    DOCUMENT_FACTS,
     DOCUMENT_TYPES,
     DOCUMENTS,
     EXTERNAL_IDENTITIES,
@@ -38,7 +38,7 @@ from lekto.adapters.outbound.memory.database import (
     TASKS,
     USERS,
     WEBHOOKS,
-    IdentifiersRow,
+    FactsRow,
     MemoryDatabase,
     SeenMark,
     Table,
@@ -61,6 +61,7 @@ from lekto.adapters.outbound.memory.rules import (
 )
 from lekto.adapters.outbound.memory.tasks import MemoryTaskRepository
 from lekto.adapters.outbound.memory.webhooks import MemoryWebhookRepository
+from lekto.core.domain.document_facts import DocumentFact, FactState, merged
 from lekto.core.domain.documents import Document, Sha256
 from lekto.core.domain.entity import Entity
 from lekto.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
@@ -134,7 +135,7 @@ class MemoryUnitOfWork:
         self.documents = MemoryDocumentRepository(self, DOCUMENTS)
         self.processing_log = MemoryProcessingLog(self)
         self.processing_facts = MemoryProcessingFacts(self)
-        self.document_identifiers = MemoryDocumentIdentifierRepository(self)
+        self.document_facts = MemoryDocumentFactRepository(self)
         self.inbox = MemoryInboxRepository(self)
         self.rules = MemoryRuleRepository(self, RULES)
         self.rule_applications = MemoryRuleApplicationRepository(self, RULE_APPLICATIONS)
@@ -608,18 +609,26 @@ class MemoryProcessingLog:
         return [entry for entry in entries if entry.document_id == document]
 
 
-class MemoryDocumentIdentifierRepository:
+class MemoryDocumentFactRepository:
     def __init__(self, uow: MemoryUnitOfWork) -> None:
         self._uow = uow
 
-    async def replace(
-        self, document: DocumentId, identifiers: Collection[tuple[IdentifierKind, str]]
-    ) -> None:
+    async def of_document(self, document: DocumentId) -> list[DocumentFact]:
         self._uow._check_open()
-        current = self._uow._row(DOCUMENT_IDENTIFIERS, document)
+        if self._uow._row(DOCUMENTS, document) is _REMOVED:
+            return []  # its facts go with it, as the database cascades
+        row = self._uow._row(DOCUMENT_FACTS, document)
+        return [] if row is _REMOVED else list(row.facts)
+
+    async def replace_found(self, document: DocumentId, found: Collection[DocumentFact]) -> None:
+        self._uow._check_open()
+        current = self._uow._row(DOCUMENT_FACTS, document)
+        kept = () if current is _REMOVED else current.facts
         version = 1 if current is _REMOVED else current.version + 1
-        row = IdentifiersRow(id=document, identifiers=frozenset(identifiers), version=version)
-        self._uow._write(DOCUMENT_IDENTIFIERS, document, row)
+        facts = tuple(merged(kept, found))
+        self._uow._write(
+            DOCUMENT_FACTS, document, FactsRow(id=document, facts=facts, version=version)
+        )
 
     async def contacts_of(
         self, identifiers: Collection[tuple[IdentifierKind, str]]
@@ -630,8 +639,13 @@ class MemoryDocumentIdentifierRepository:
         for document in self._uow._rows(DOCUMENTS):
             if document.confirmed_at is None or document.contact_id is None:
                 continue
-            shown = self._uow._row(DOCUMENT_IDENTIFIERS, document.id)
-            for key in wanted & (set() if shown is _REMOVED else shown.identifiers):
+            row = self._uow._row(DOCUMENT_FACTS, document.id)
+            shown = {
+                fact.key
+                for fact in (() if row is _REMOVED else row.facts)
+                if fact.state is not FactState.REJECTED
+            }
+            for key in wanted & shown:
                 found.setdefault(key, set()).add(document.contact_id)
         return {key: frozenset(contacts) for key, contacts in found.items()}
 

@@ -7,12 +7,12 @@ from datetime import datetime
 from uuid import UUID
 
 from lekto.core.domain.classifier import ClassifierModel
+from lekto.core.domain.document_facts import DocumentFact
 from lekto.core.domain.documents import Document
 from lekto.core.domain.entity import Entity
 from lekto.core.domain.events import DomainEvent
 from lekto.core.domain.fields import FieldDefinition
 from lekto.core.domain.first_runs import FieldVerdict, FirstRun
-from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.identity import ApiToken, ExternalIdentity, Session
 from lekto.core.domain.ids import DocumentId, EventId, JobId, UserId
 from lekto.core.domain.inbox import Confirmation
@@ -34,11 +34,11 @@ class Table[E: Entity[UUID]]:
 
 
 @dataclass
-class IdentifiersRow:
-    """The identifiers one document shows (a row keyed by the document's id)."""
+class FactsRow:
+    """The facts of one document (a row keyed by the document's id)."""
 
     id: DocumentId
-    identifiers: frozenset[tuple[IdentifierKind, str]]
+    facts: tuple[DocumentFact, ...]
     version: int
 
 
@@ -115,7 +115,7 @@ LOGIN_FAILURES = Table("login failures", _no_keys)
 RULES = Table("rule", _no_keys)
 RULE_VERSIONS = Table("rule version", _no_keys)
 RULE_APPLICATIONS = Table("rule application", _no_keys)
-DOCUMENT_IDENTIFIERS = Table[IdentifiersRow]("document identifiers", _no_keys)
+DOCUMENT_FACTS = Table[FactsRow]("document facts", _no_keys)
 CLASSIFIER_MODELS = Table("classifier model", _classifier_model_keys)
 WEBHOOKS = Table("webhook", _no_keys)
 WEBHOOK_DELIVERIES = Table("webhook delivery", _no_keys)

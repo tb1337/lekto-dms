@@ -26,6 +26,7 @@ from typing import Protocol
 from uuid import UUID
 
 from lekto.core.domain.classifier import ClassifierModel
+from lekto.core.domain.document_facts import DocumentFact
 from lekto.core.domain.documents import Channel, Document, Sha256
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.fields import FieldDefinition, sort_value
@@ -448,22 +449,27 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         ...
 
 
-class DocumentIdentifierRepository(Protocol):
-    """The identifiers each document shows, in its text or its codes, as the facts signal last
-    found them: for telling on how many contacts' documents a value stands (the IBAN of the
-    owner's own account stands on many)."""
+class DocumentFactRepository(Protocol):
+    """The facts of each document (`domain.document_facts`): what its sources found, as the
+    facts signal last ran, and what a person decided. They tell on how many contacts' documents
+    a value stands (the IBAN of the owner's own account stands on many)."""
 
-    async def replace(
-        self, document: DocumentId, identifiers: Collection[tuple[IdentifierKind, str]]
-    ) -> None:
-        """Make `identifiers` (kind and normalised value) those of `document`."""
+    async def of_document(self, document: DocumentId) -> list[DocumentFact]:
+        """The facts of `document` as the text reads (`reading_order`), those a person rejected
+        included."""
+        ...
+
+    async def replace_found(self, document: DocumentId, found: Collection[DocumentFact]) -> None:
+        """Make `found` the facts the sources found for `document`: those found before go, what
+        a person decided stays and is not replaced by a fact found of its kind and value
+        (`document_facts.merged`)."""
         ...
 
     async def contacts_of(
         self, identifiers: Collection[tuple[IdentifierKind, str]]
     ) -> dict[tuple[IdentifierKind, str], frozenset[ContactId]]:
-        """For each of `identifiers`, the contacts of the confirmed documents that show it;
-        one that no confirmed document with a contact shows is left out."""
+        """For each of `identifiers`, the contacts of the confirmed documents that show it (a
+        fact not rejected); one that no confirmed document with a contact shows is left out."""
         ...
 
 

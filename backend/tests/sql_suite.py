@@ -1349,7 +1349,7 @@ class MigrationSuite:
             )
         rows += [
             (t.document_tags, {"document_id": ids["first"], "tag_id": ids["tax"]}),
-            (t.document_identifiers, {"document_id": ids["first"], "kind": "iban", "value": "X"}),
+            (_DOCUMENT_IDENTIFIERS, {"document_id": ids["first"], "kind": "iban", "value": "X"}),
             (
                 t.contact_identifiers,
                 {"contact_id": ids["contact"], "kind": "iban", "value": "X", "source": "manual"},
@@ -1374,7 +1374,7 @@ class MigrationSuite:
             "documents": select(documents),
             "identifiers": select(identifiers),
             "document_tags": select(t.document_tags),
-            "document_identifiers": select(t.document_identifiers),
+            "document_identifiers": select(_DOCUMENT_IDENTIFIERS),
             "tags": select(t.tags.c.id, t.tags.c.scope),
         }
 
@@ -3207,6 +3207,79 @@ class MigrationSuite:
         async with empty_database.reading() as connection:
             assert await connection.run_sync(_schema) == schema
 
+    async def test_document_identifiers_become_facts_with_revision_0047_and_back(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0047: each identifier a document showed becomes its fact, with the role of
+        its kind, as found by the patterns of the text; the downgrade keeps kind and value of
+        every fact but those a person rejected."""
+        await migrate(empty_database, "0046")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        ids = {name: new_id() for name in ("user", "space", "document")}
+        await _insert(
+            empty_database,
+            [
+                (
+                    t.users,
+                    {"id": ids["user"], "username": "anna", "username_key": "anna", "role": "user"},
+                ),
+                (
+                    t.spaces,
+                    {
+                        "id": ids["space"],
+                        "name": "Anna",
+                        "name_key": "anna",
+                        "personal_of": ids["user"],
+                        "created_at": NOW,
+                        "version": 1,
+                    },
+                ),
+                (
+                    t.documents,
+                    {
+                        "id": ids["document"],
+                        "space_id": ids["space"],
+                        "sha256": "0" * 64,
+                        "title": "Rechnung",
+                    },
+                ),
+                *(
+                    (_DOCUMENT_IDENTIFIERS, {"document_id": ids["document"], "kind": k, "value": v})
+                    for k, v in (("iban", "DE02120300000000202051"), ("tax_id", "12345678995"))
+                ),
+            ],
+        )
+        await migrate(empty_database)
+        facts = t.document_facts
+        async with empty_database.reading() as connection:
+            rows = await _read_all(
+                connection,
+                select(
+                    facts.c.kind,
+                    facts.c.role,
+                    facts.c.origins,
+                    facts.c.written,
+                    facts.c.position,
+                    facts.c.state,
+                ).order_by(facts.c.kind),
+            )
+        assert rows == [
+            ("iban", "contact", "pattern", None, None, "found"),
+            ("tax_id", "person", "pattern", None, None, "found"),
+        ]
+        async with empty_database.writing() as connection:
+            await connection.execute(
+                sa.update(facts).where(facts.c.kind == "tax_id").values(state="rejected")
+            )
+        await downgrade(empty_database, "0046")
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+            kept = await _read_all(
+                connection, select(_DOCUMENT_IDENTIFIERS.c.kind, _DOCUMENT_IDENTIFIERS.c.value)
+            )
+        assert kept == [("iban", "DE02120300000000202051")]
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -3475,6 +3548,15 @@ def _before_0041(table: sa.Table) -> sa.TableClause:
             if c.name not in added.get(table.name, ())
         ),
     )
+
+
+_DOCUMENT_IDENTIFIERS = sa.table(
+    "document_identifiers",
+    sa.column("document_id", sa.Uuid()),
+    sa.column("kind", sa.Text()),
+    sa.column("value", sa.Text()),
+)
+"""What a document showed until revision 0047 (then `document_facts`)."""
 
 
 def _before_0040(table: sa.Table) -> sa.TableClause:

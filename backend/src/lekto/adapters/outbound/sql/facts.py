@@ -1,35 +1,46 @@
-"""The identifiers each document shows, in `document_identifiers`."""
+"""The facts of each document, in `document_facts`."""
 
 from collections import defaultdict
 from collections.abc import Collection
+from typing import Any
 
-from sqlalchemy import and_, delete, insert, or_, select
+from sqlalchemy import Row, and_, delete, insert, or_, select
 
 from lekto.adapters.outbound.sql import tables as t
 from lekto.adapters.outbound.sql.repositories import KEYS_PER_QUERY
 from lekto.adapters.outbound.sql.transaction import Transaction
+from lekto.core.domain.document_facts import (
+    DocumentFact,
+    FactOrigin,
+    FactRole,
+    FactState,
+    merged,
+    reading_order,
+)
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import ContactId, DocumentId
 
 type Key = tuple[IdentifierKind, str]
 
 
-class SqlDocumentIdentifierRepository:
+class SqlDocumentFactRepository:
     def __init__(self, transaction: Transaction) -> None:
         self._tx = transaction
 
-    async def replace(self, document: DocumentId, identifiers: Collection[Key]) -> None:
-        table = t.document_identifiers
+    async def of_document(self, document: DocumentId) -> list[DocumentFact]:
+        table = t.document_facts
+        rows = await self._tx.read(select(table).where(table.c.document_id == document))
+        return sorted((_fact(row) for row in rows), key=reading_order)
+
+    async def replace_found(self, document: DocumentId, found: Collection[DocumentFact]) -> None:
+        table = t.document_facts
+        facts = merged(await self.of_document(document), found)
         await self._tx.write(delete(table).where(table.c.document_id == document))
-        rows = [
-            {"document_id": document, "kind": kind.value, "value": value}
-            for kind, value in sorted(set(identifiers))
-        ]
-        if rows:
-            await self._tx.write(insert(table), rows)
+        if facts:
+            await self._tx.write(insert(table), [_row(document, fact) for fact in facts])
 
     async def contacts_of(self, identifiers: Collection[Key]) -> dict[Key, frozenset[ContactId]]:
-        table, documents = t.document_identifiers, t.documents
+        table, documents = t.document_facts, t.documents
         found: dict[Key, set[ContactId]] = defaultdict(set)
         keys = sorted(set(identifiers))
         for start in range(0, len(keys), KEYS_PER_QUERY):
@@ -44,6 +55,7 @@ class SqlDocumentIdentifierRepository:
                 .join(documents, documents.c.id == table.c.document_id)
                 .where(
                     wanted,
+                    table.c.state != FactState.REJECTED.value,
                     documents.c.confirmed_at.is_not(None),
                     documents.c.contact_id.is_not(None),
                 )
@@ -52,3 +64,28 @@ class SqlDocumentIdentifierRepository:
             for row in await self._tx.read(query):
                 found[(IdentifierKind(row.kind), row.value)].add(ContactId(row.contact_id))
         return {key: frozenset(contacts) for key, contacts in found.items()}
+
+
+def _row(document: DocumentId, fact: DocumentFact) -> dict[str, object]:
+    return {
+        "document_id": document,
+        "kind": fact.kind.value,
+        "value": fact.value,
+        "role": fact.role.value,
+        "origins": ",".join(sorted(origin.value for origin in fact.origins)),
+        "written": fact.written,
+        "position": fact.position,
+        "state": fact.state.value,
+    }
+
+
+def _fact(row: Row[Any]) -> DocumentFact:
+    return DocumentFact(
+        kind=IdentifierKind(row.kind),
+        value=row.value,
+        role=FactRole(row.role),
+        origins=frozenset(FactOrigin(item) for item in row.origins.split(",")),
+        written=row.written,
+        position=row.position,
+        state=FactState(row.state),
+    )

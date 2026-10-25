@@ -4,8 +4,8 @@ import hashlib
 import json
 import logging
 from collections import Counter
-from collections.abc import Collection, Sequence
-from dataclasses import dataclass, replace
+from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from uuid import UUID
@@ -13,6 +13,7 @@ from uuid import UUID
 from lekto.core.domain import media_types
 from lekto.core.domain.classification import CONFIRMING, SPACE
 from lekto.core.domain.codes import Code, GiroCode, code_identifiers, codes_from_json, giro_code
+from lekto.core.domain.document_facts import DocumentFact
 from lekto.core.domain.documents import Channel, Document, DocumentChanges, confirms
 from lekto.core.domain.errors import (
     ConflictError,
@@ -181,6 +182,9 @@ class DocumentFacts:
     # The names of the persons found, for the editors of the document's space and admins; None
     # for readers, whose facts then hold no persons.
     person_names: dict[UserId, str] | None = None
+    # The facts kept for the document (`domain.document_facts`) by kind and value: their role
+    # and where they come from; one the facts signal has not kept yet has none.
+    stored: Mapping[tuple[IdentifierKind, str], DocumentFact] = field(default_factory=dict)
 
 
 async def _check_sortable(uow: UnitOfWork, order: DocumentOrder) -> None:
@@ -364,6 +368,7 @@ class DocumentService:
             editor = document_access(user, document, space) is SpaceRole.EDIT
             persons = await matching_persons(uow, user)
             labels = {item.id: item.label for item in await uow.users.list_all()}
+            stored = {fact.key: fact for fact in await uow.document_facts.of_document(id)}
         try:
             text = (await load_text(store, id)).decode("utf-8", errors="replace")
         except NotFoundError:
@@ -388,7 +393,7 @@ class DocumentService:
         others = None
         if user.is_active_admin:
             async with self._uow() as uow:
-                carrying = await uow.document_identifiers.contacts_of(
+                carrying = await uow.document_facts.contacts_of(
                     [item.key for item in facts.identifiers]
                 )
             others = {key: contacts_ - {document.contact_id} for key, contacts_ in carrying.items()}
@@ -405,6 +410,7 @@ class DocumentService:
                 if editor
                 else None
             ),
+            stored=stored,
         )
 
     async def _codes(self, id: DocumentId) -> tuple[Code, ...] | None:

@@ -7,6 +7,7 @@ from pathlib import Path
 from lekto.adapters.outbound.memory import FAKE_GIRO_CODE, FakeCodeReader, FakeOcr
 from lekto.adapters.outbound.memory.processing import FAKE_PDF
 from lekto.core.domain.codes import Code
+from lekto.core.domain.document_facts import FactOrigin, FactRole
 from lekto.core.domain.documents import Document
 from lekto.core.domain.identifiers import Identifier, IdentifierKind
 from lekto.core.domain.ids import ContactId
@@ -104,7 +105,7 @@ async def confirmed(world: World, contact: Contact, codes: list[Code]) -> Docume
 async def contacts_of(world: World, iban: str) -> frozenset[ContactId]:
     key = (IdentifierKind.IBAN, iban)
     async with world.uow() as uow:
-        return (await uow.document_identifiers.contacts_of([key])).get(key, frozenset())
+        return (await uow.document_facts.contacts_of([key])).get(key, frozenset())
 
 
 async def test_the_identifiers_a_document_shows_are_kept(world: World) -> None:
@@ -115,6 +116,23 @@ async def test_the_identifiers_a_document_shows_are_kept(world: World) -> None:
     # The owner's own IBAN stands on both; the GiroCode's only on the utility's.
     assert await contacts_of(world, OWN_IBAN) == {utility.id, bank.id}
     assert await contacts_of(world, GIRO_IBAN) == {utility.id}
+
+
+async def test_the_facts_keep_where_they_come_from_and_their_role(world: World) -> None:
+    """The text's IBAN by its pattern, where it stands and as written; the GiroCode's by the
+    code; both with the role of their kind; the report names both."""
+    utility = Contact.create(name="Werke", now=builders.NOW)
+    await contacts(world, utility)
+    document = await confirmed(world, utility, [FAKE_GIRO_CODE])
+    async with world.uow() as uow:
+        kept = {fact.value: fact for fact in await uow.document_facts.of_document(document.id)}
+    own, giro = kept[OWN_IBAN], kept[GIRO_IBAN]
+    assert (own.origins, own.role) == (frozenset({FactOrigin.PATTERN}), FactRole.CONTACT)
+    assert own.position is not None and own.written is not None
+    assert TEXT[own.position :].startswith(own.written)
+    assert (giro.origins, giro.position) == (frozenset({FactOrigin.CODE}), None)
+    report = await world.documents.facts((await world.user(role=Role.ADMIN)).id, document.id)
+    assert report.stored[(IdentifierKind.IBAN, GIRO_IBAN)].origins == {FactOrigin.CODE}
 
 
 async def test_admins_learn_which_other_contacts_show_an_identifier(world: World) -> None:

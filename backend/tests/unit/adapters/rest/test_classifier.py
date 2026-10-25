@@ -1,4 +1,5 @@
-"""The classifier's status and training on request: admins only, 503 without a classifier."""
+"""The classifier's status (every user) and training on request (admins), 503 without a
+classifier."""
 
 from dataclasses import replace
 
@@ -13,9 +14,11 @@ from tests.unit.adapters.rest.support import Api
 
 async def test_status_and_training(api: Api) -> None:
     admin, user = await api.admin(), await api.user()
-    assert (await api.client.get(f"{PREFIX}/classifier", headers=auth(user))).status_code == 403
-    response = await api.client.get(f"{PREFIX}/classifier", headers=auth(admin))
+    response = await api.client.get(f"{PREFIX}/classifier", headers=auth(user))
     assert response.status_code == 200
+    assert (await api.client.get(f"{PREFIX}/classifier", headers=auth(admin))).json() == (
+        response.json()
+    )
     assert response.json() == {
         "model": None,
         "confirmed": 0,
@@ -37,6 +40,7 @@ async def test_without_a_classifier_the_endpoints_answer_503(api: Api) -> None:
     for response in (
         await api.client.get(f"{PREFIX}/classifier", headers=auth(admin)),
         await api.client.post(f"{PREFIX}/classifier/train", headers=auth(admin)),
+        await api.client.get(f"{PREFIX}/classifier/models", headers=auth(admin)),
     ):
         assert response.status_code == 503
         assert response.json()["detail"] == "no classifier is configured"
@@ -73,3 +77,7 @@ async def test_the_status_of_a_trained_model(api: Api) -> None:
     }
     assert (model["learned_identifiers"], model["accuracy"]) == (0, None)
     assert model["method"] == "fake classifier"
+    await api.services.classifier.train()
+    history = await api.client.get(f"{PREFIX}/classifier/models", headers=auth(owner))
+    assert history.status_code == 200
+    assert [item["number"] for item in history.json()] == [1, 2]  # oldest first

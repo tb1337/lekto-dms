@@ -8,6 +8,7 @@ still has the version it had when the unit first touched it, and that uniqueness
 import asyncio
 import copy
 import dataclasses
+from collections import Counter
 from collections.abc import Callable, Collection, Hashable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -52,6 +53,7 @@ from lekto.adapters.outbound.memory.identity import (
 from lekto.adapters.outbound.memory.inbox import MemoryInboxRepository, SeenKey
 from lekto.adapters.outbound.memory.lenses import MemoryLensRepository
 from lekto.adapters.outbound.memory.ordering import Rank, rank
+from lekto.adapters.outbound.memory.processing_facts import MemoryProcessingFacts, VerdictKey
 from lekto.adapters.outbound.memory.rows import _REMOVED, MemoryRepository, _copy
 from lekto.adapters.outbound.memory.rules import (
     MemoryRuleApplicationRepository,
@@ -64,6 +66,7 @@ from lekto.core.domain.entity import Entity
 from lekto.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
 from lekto.core.domain.events import DomainEvent
 from lekto.core.domain.fields import FieldDefinition
+from lekto.core.domain.first_runs import FieldVerdict, FirstRun
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import (
     ContactId,
@@ -77,12 +80,13 @@ from lekto.core.domain.ids import (
     new_id,
 )
 from lekto.core.domain.inbox import Confirmation
-from lekto.core.domain.jobs import Job, JobStatus
-from lekto.core.domain.json_value import JsonValue
+from lekto.core.domain.jobs import FinishedJob, Job, JobCount, JobOverview, JobState, JobStatus
+from lekto.core.domain.json_value import JsonObject, JsonValue
 from lekto.core.domain.master_data import Contact, DocumentType, MasterData, Tag, TagScope
 from lekto.core.domain.permissions import Reach
 from lekto.core.domain.pipeline import NodeRun
 from lekto.core.domain.profiles import Profile
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import User
 from lekto.core.domain.validation import name_key, require_utc
@@ -114,6 +118,9 @@ class MemoryUnitOfWork:
         # The inbox's marks this unit wrote; None removes one.
         self._seen: dict[SeenKey, SeenMark | None] = {}
         self._confirmations: dict[DocumentId, Confirmation | None] = {}
+        # The processing facts this unit wrote.
+        self._first_runs: dict[DocumentId, FirstRun] = {}
+        self._verdicts: dict[VerdictKey, FieldVerdict] = {}
 
         self.users = MemoryUserRepository(self, USERS)
         self.profiles = MemoryRepository[UserId, Profile](self, PROFILES)
@@ -126,6 +133,7 @@ class MemoryUnitOfWork:
         self.fields = MemoryNamedRepository[FieldId, FieldDefinition](self, FIELDS)
         self.documents = MemoryDocumentRepository(self, DOCUMENTS)
         self.processing_log = MemoryProcessingLog(self)
+        self.processing_facts = MemoryProcessingFacts(self)
         self.document_identifiers = MemoryDocumentIdentifierRepository(self)
         self.inbox = MemoryInboxRepository(self)
         self.rules = MemoryRuleRepository(self, RULES)
@@ -196,6 +204,7 @@ class MemoryUnitOfWork:
             entry for entry in self._db.processing_log if entry.document_id not in removed
         ]
         self._commit_inbox(removed)
+        self._commit_facts(removed)
         self._db.outbox.extend(self._events)
         recorded_at = datetime.now(UTC)
         self._db.recorded_at.update((event.id, recorded_at) for event in self._events)
@@ -220,6 +229,18 @@ class MemoryUnitOfWork:
             del self._db.seen[key]
         for id in removed:
             self._db.confirmations.pop(DocumentId(id), None)
+
+    def _commit_facts(self, removed: set[UUID]) -> None:
+        """Add the processing facts, first write winning; those of removed documents go with
+        them."""
+        for document, run in self._first_runs.items():
+            self._db.first_runs.setdefault(document, run)
+        for key, verdict in self._verdicts.items():
+            self._db.verdicts.setdefault(key, verdict)
+        for id in removed:
+            self._db.first_runs.pop(DocumentId(id), None)
+        for key in [key for key in self._db.verdicts if key[0] in removed]:
+            del self._db.verdicts[key]
 
     async def rollback(self) -> None:
         self._check_open()
@@ -510,6 +531,9 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
                 counts[key] = counts.get(key, 0) + 1
         return counts
 
+    async def count_all(self) -> int:
+        return len(self._all())
+
     async def count_confirmed(self, *, after: datetime | None = None) -> int:
         def decided(at: datetime | None) -> bool:
             return at is not None and (after is None or at > after)
@@ -682,6 +706,7 @@ class MemoryJobQueue:
             attempts=job.attempts + 1,
             locked_until=now + lease,
             coalesce_key=None,
+            started_at=now,
         )
         self._write(claimed)
         return copy.deepcopy(claimed)
@@ -690,9 +715,17 @@ class MemoryJobQueue:
         current = await self._claimed(job)
         self._write(dataclasses.replace(current, locked_until=require_utc(until, "until")))
 
-    async def complete(self, job: Job) -> None:
+    async def complete(self, job: Job, *, now: datetime, result: JsonObject | None = None) -> None:
         current = await self._claimed(job)
-        self._write(dataclasses.replace(current, status=JobStatus.DONE, locked_until=None))
+        self._write(
+            dataclasses.replace(
+                current,
+                status=JobStatus.DONE,
+                locked_until=None,
+                finished_at=require_utc(now, "now"),
+                result=copy.deepcopy(dict(result)) if result is not None else None,
+            )
+        )
 
     async def reschedule(self, job: Job, *, run_at: datetime, error: str) -> None:
         current = await self._claimed(job)
@@ -719,13 +752,93 @@ class MemoryJobQueue:
             )
         )
 
-    async def fail(self, job: Job, *, error: str) -> None:
+    async def fail(self, job: Job, *, now: datetime, error: str) -> None:
         current = await self._claimed(job)
         self._write(
             dataclasses.replace(
-                current, status=JobStatus.FAILED, locked_until=None, last_error=error
+                current,
+                status=JobStatus.FAILED,
+                locked_until=None,
+                last_error=error,
+                finished_at=require_utc(now, "now"),
             )
         )
+
+    async def retry(self, job: JobId, *, now: datetime) -> Job:
+        current = await self.get(job)
+        if current.status is not JobStatus.FAILED:
+            raise ConflictError(because(ReasonCode.JOB_NOT_FAILED))
+        if current.dedup_key is not None and any(
+            other.dedup_key == current.dedup_key and other.status.is_active for other in self._all()
+        ):
+            raise ConflictError(because(ReasonCode.JOB_ALREADY_QUEUED))
+        queued = dataclasses.replace(
+            current,
+            status=JobStatus.QUEUED,
+            run_at=require_utc(now, "now"),
+            attempts=0,
+            releases=0,
+            locked_until=None,
+            started_at=None,
+            finished_at=None,
+            result=None,
+        )
+        self._write(queued)
+        return copy.deepcopy(queued)
+
+    async def overview(self, *, now: datetime) -> JobOverview:
+        counts = Counter((job.kind, job.state(now)) for job in self._all())
+        started = [job.started_at for job in self._all() if job.started_at is not None]
+        return JobOverview(
+            counts=tuple(
+                JobCount(kind, state, count) for (kind, state), count in sorted(counts.items())
+            ),
+            last_started=max(started, default=None),
+        )
+
+    async def find(
+        self,
+        *,
+        now: datetime,
+        states: Collection[JobState],
+        kind: str | None = None,
+        offset: int = 0,
+        limit: int,
+    ) -> list[Job]:
+        found = [
+            job
+            for job in self._all()
+            if job.state(now) in states and (kind is None or job.kind == kind)
+        ]
+        found.sort(key=lambda job: _job_order(job, now))
+        return copy.deepcopy(found[offset : offset + limit])
+
+    async def finished(
+        self, *, since: datetime, kinds: Collection[str] | None = None, limit: int | None = None
+    ) -> list[FinishedJob]:
+        done = [
+            job
+            for job in self._all()
+            if job.status is JobStatus.DONE
+            and job.started_at is not None
+            and job.finished_at is not None
+            and job.finished_at >= since
+            and (kinds is None or job.kind in kinds)
+        ]
+        done.sort(key=lambda job: (job.finished_at, job.id))
+        if limit is not None:
+            done = done[max(0, len(done) - limit) :]
+        return [
+            FinishedJob(
+                kind=job.kind,
+                run_at=job.run_at,
+                started_at=job.started_at,
+                finished_at=job.finished_at,
+                result=copy.deepcopy(job.result),
+            )
+            for job in done
+            if job.started_at is not None and job.finished_at is not None
+        ]
 
     async def _claimed(self, job: Job) -> Job:
         current = await self.get(job.id)
@@ -812,3 +925,25 @@ def _rank(document: Document, order: DocumentOrder) -> Rank:
 
 def _rank_of(position: DocumentPosition, order: DocumentOrder) -> Rank:
     return rank(order, position.id, position.value, ties_by_id=True)
+
+
+_JOB_RANKS = {
+    JobState.RUNNING: 0,
+    JobState.DUE: 1,
+    JobState.PLANNED: 2,
+    JobState.FAILED: 3,
+    JobState.DONE: 4,
+}
+
+
+def _job_order(job: Job, now: datetime) -> tuple[Any, ...]:
+    """The order of `JobQueue.find`: by state, then by when it started (running), is due
+    (queued) or finished, latest first (failed, done); then by id."""
+    state = job.state(now)
+    if state is JobState.RUNNING:
+        when = (job.started_at or datetime.max.replace(tzinfo=UTC)).timestamp()
+    elif state in {JobState.DUE, JobState.PLANNED}:
+        when = job.run_at.timestamp()
+    else:
+        when = -(job.finished_at.timestamp()) if job.finished_at is not None else float("inf")
+    return (_JOB_RANKS[state], when, job.id)

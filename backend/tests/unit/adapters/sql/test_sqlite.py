@@ -17,6 +17,7 @@ from tests.contracts.identity import IdentityRepositoriesContract
 from tests.contracts.inbox import InboxRepositoryContract
 from tests.contracts.job_queue import JobQueueContract
 from tests.contracts.lenses import LensRepositoryContract
+from tests.contracts.processing_facts import ProcessingFactsContract
 from tests.contracts.rules import RuleRepositoriesContract
 from tests.contracts.tasks import TaskRepositoryContract
 from tests.contracts.unit_of_work import UnitOfWorkContract, owner_with_space
@@ -29,6 +30,10 @@ class TestSqliteUnitOfWork(UnitOfWorkContract):
 
 
 class TestSqliteInboxRepository(InboxRepositoryContract):
+    pass
+
+
+class TestSqliteProcessingFacts(ProcessingFactsContract):
     pass
 
 

@@ -1085,6 +1085,46 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/search/status': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The state of the search index
+		 * @description How many documents the database and the index hold, how many have vectors, the index jobs running and waiting with an estimate of when they are through, how long index jobs ran with and without embedding, and the embedding model. Every user. 503 without a search index or when it cannot be reached.
+		 */
+		get: operations['search_status_api_v1_search_status_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/search/check': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Check the search index
+		 * @description Admins only. Compares every document in the database with the index and counts what is current, missing, stale and left over; nothing is queued or removed (the next reconciliation does that). Reads the whole index: seconds for some thousand documents.
+		 */
+		post: operations['check_index_api_v1_search_check_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/classifier': {
 		parameters: {
 			query?: never;
@@ -1094,9 +1134,29 @@ export interface paths {
 		};
 		/**
 		 * The classifier's status
-		 * @description Admins only. The latest model (trained from the documents a person confirmed or that were taken over with metadata) and the confirmations since. 503 without a classifier.
+		 * @description The latest model (trained from the documents a person confirmed or that were taken over with metadata) and the confirmations since; every user sees it. 503 without a classifier.
 		 */
 		get: operations['status_api_v1_classifier_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/classifier/models': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Every model trained
+		 * @description What each model learned and how well it did, oldest first (only the latest ones keep their files); every user sees them. 503 without a classifier.
+		 */
+		get: operations['models_api_v1_classifier_models_get'];
 		put?: never;
 		post?: never;
 		delete?: never;
@@ -1690,7 +1750,7 @@ export interface paths {
 		};
 		/**
 		 * Progress of documents (server-sent events)
-		 * @description A stream of document events (`document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Active admins also get `classifier.trained` (a new model, with its `number` and `examples`), unless the stream follows one document. A searcher gets `search.meaning_ready` (with the `query`) when the meaning of a query that had to go by words alone is ready (`meaning_pending` of the search), unless the stream follows one document. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream starts with the comment `: ready` once it is registered: every event after that reaches it. It checks regularly that its session or token is still valid and ends otherwise.
+		 * @description A stream of document events (`document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Every user also gets `classifier.trained` (a new model, with its `number` and `examples`), unless the stream follows one document. A searcher gets `search.meaning_ready` (with the `query`) when the meaning of a query that had to go by words alone is ready (`meaning_pending` of the search), unless the stream follows one document. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream starts with the comment `: ready` once it is registered: every event after that reaches it. It checks regularly that its session or token is still valid and ends otherwise.
 		 */
 		get: operations['events_api_v1_events_get'];
 		put?: never;
@@ -1929,6 +1989,126 @@ export interface paths {
 		 * @description Checks as when creating. Only its owner sees and changes a lens; other users' lenses are not found (404).
 		 */
 		patch: operations['update_lens_api_v1_lenses__id__patch'];
+		trace?: never;
+	};
+	'/api/v1/jobs/summary': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Jobs by kind and state
+		 * @description How many jobs of each kind are running, due, planned, failed and done (failed and done ones within the retention period, `LEKTO_RETENTION`), and when a worker last claimed one. Cheap enough to ask every few seconds.
+		 */
+		get: operations['summary_api_v1_jobs_summary_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/jobs': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List jobs
+		 * @description The jobs in the given states (without `state`: the open ones, running, due and planned), of one kind if given: running ones first, longest running first; then due and planned ones by when they are due; then failed and done ones, latest first. Every user sees the jobs; a job names a document only to those who may read it, and its error only to admins.
+		 */
+		get: operations['list_jobs_api_v1_jobs_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/jobs/durations': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * How long jobs wait and run
+		 * @description For each kind, how long its jobs done within the retention period waited (from due to started) and ran (from started to done): median and 90th percentile. Jobs from before the jobs kept their times are left out.
+		 */
+		get: operations['durations_api_v1_jobs_durations_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/jobs/{id}/retry': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Try a failed job again
+		 * @description Admins only. Queues the failed job again, due now, without its attempts; its last error stays until it runs. 409 if it did not fail, if the same work is queued or running already, or for a failed processing step: that one is repeated at its document (`POST /documents/{id}/retry`).
+		 */
+		post: operations['retry_api_v1_jobs__id__retry_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/automation': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * How the automation did
+		 * @description The documents by the lane their first run stopped in, what became of them, the history by month, how long the first runs took and worked (per step too), and how people judged what the automation set, per field, at their first decision on it. For the documents of the channels given (by default `web` and `api`: migrated documents bring the metadata of the source system) and the period (30 days, the current month and the eleven before it, or all time; the history by month reaches back five years at most); the whole system's numbers, naming no document. Counted again at most once a minute.
+		 */
+		get: operations['automation_api_v1_automation_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/automation/signals': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * How often each signal hit
+		 * @description Per field and signal (language model, classifier, similar documents, facts in the text), how often the signal's best value was the one a person decided at their first decision on the field, and how often another. For the documents of the channels given (by default `web` and `api`: migrated documents bring the metadata of the source system) and the period (30 days, the current month and the eleven before it, or all time; the history by month reaches back five years at most); the whole system's numbers, naming no document. Counted again at most once a minute.
+		 */
+		get: operations['signals_api_v1_automation_signals_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
 		trace?: never;
 	};
 	'/api/v1/health': {
@@ -2396,6 +2576,53 @@ export interface components {
 			 * @description Send the browser there.
 			 */
 			authorization_url: string;
+		};
+		/** AutomationOut */
+		AutomationOut: {
+			/** Channels */
+			channels: components['schemas']['Channel'][];
+			period: components['schemas']['Period'];
+			/**
+			 * Since
+			 * @description From when the period counts; null: all time.
+			 */
+			since: string | null;
+			/** @description The documents by the lane their first run stopped in. */
+			lanes: components['schemas']['LanesOut'];
+			/**
+			 * Flow
+			 * @description What became of them: their lane now.
+			 */
+			flow: components['schemas']['FlowOut'][];
+			/**
+			 * Decided
+			 * @description Of them, those a person decided a field of.
+			 */
+			decided: number;
+			/**
+			 * Untouched
+			 * @description Of them, the green ones nobody decided a field of: not contradicted, no hit.
+			 */
+			untouched: number;
+			/**
+			 * Months
+			 * @description By the month their first run stopped, oldest first: the last 12 months, for all time from the first month with documents (at most 60).
+			 */
+			months: components['schemas']['MonthOut'][];
+			/** @description From the start of receiving to the first stop, with the waits for a worker. */
+			duration: components['schemas']['TimesOut'];
+			/** @description The sum of the steps (side by side ones each counted). */
+			work: components['schemas']['TimesOut'];
+			/**
+			 * Steps
+			 * @description Per node, in the order of the graph.
+			 */
+			steps: components['schemas']['StepTimesOut'][];
+			/**
+			 * Fields
+			 * @description The verdicts at the first decision of a person on each field, by when they were decided: the fields every document has first, then the custom ones by name.
+			 */
+			fields: components['schemas']['FieldVerdictsOut'][];
 		};
 		/**
 		 * BlockingSpaceOut
@@ -4095,6 +4322,26 @@ export interface components {
 		 * @enum {string}
 		 */
 		FieldType: 'text' | 'number' | 'amount' | 'date' | 'boolean' | 'choice' | 'link' | 'period';
+		/** FieldVerdictsOut */
+		FieldVerdictsOut: {
+			/**
+			 * Field
+			 * @description The field as checks name it: `contact`, `document_type`, `topic`, `document_date`, `space`, `tags`, or `field:<id>` for a custom field.
+			 * @example contact
+			 */
+			field: string;
+			/**
+			 * Name
+			 * @description A custom field's name; null for the others.
+			 */
+			name: string | null;
+			verdicts: components['schemas']['VerdictsOut'];
+			/**
+			 * Early
+			 * @description Decided before the first run stopped: nothing to judge, counted apart.
+			 */
+			early: number;
+		};
 		/** FileMetadataOut */
 		FileMetadataOut: {
 			/**
@@ -4136,6 +4383,14 @@ export interface components {
 			 * @description In the file's order.
 			 */
 			entries: components['schemas']['MetadataEntryOut'][];
+		};
+		/** FlowOut */
+		FlowOut: {
+			first_lane: components['schemas']['Lane'];
+			/** @description Where they lie now; null: being processed again. */
+			lane: components['schemas']['Lane'] | null;
+			/** Count */
+			count: number;
 		};
 		/** ForceReviewAction */
 		ForceReviewAction: {
@@ -4463,6 +4718,272 @@ export interface components {
 		 * @enum {string}
 		 */
 		InboxTab: 'new' | 'review' | 'intervene' | 'processing' | 'done';
+		/** IndexCheckOut */
+		IndexCheckOut: {
+			/**
+			 * Current
+			 * @description Documents indexed as they are.
+			 */
+			current: number;
+			/**
+			 * Missing
+			 * @description Documents not in the index.
+			 */
+			missing: number;
+			/**
+			 * Outdated
+			 * @description Indexed in another version or an older layout.
+			 */
+			outdated: number;
+			/**
+			 * Other Model
+			 * @description Indexed with vectors of no or another model.
+			 */
+			other_model: number;
+			/**
+			 * Extra
+			 * @description Entries of documents that no longer exist.
+			 */
+			extra: number;
+			/** Took Ms */
+			took_ms: number;
+		};
+		/** IndexStatsOut */
+		IndexStatsOut: {
+			/**
+			 * Documents
+			 * @description Documents in the index.
+			 */
+			documents: number;
+			/**
+			 * Embedded
+			 * @description Of them, those with vectors (of any model).
+			 */
+			embedded: number;
+			/**
+			 * Vectors
+			 * @description Vectors in all, one per section of a text.
+			 */
+			vectors: number;
+			/**
+			 * Indexing
+			 * @description Whether the index is writing right now.
+			 */
+			indexing: boolean;
+			/**
+			 * Size Bytes
+			 * @description Its size on disk, if the index tells.
+			 */
+			size_bytes: number | null;
+		};
+		/** JobDocumentOut */
+		JobDocumentOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Title */
+			title: string;
+		};
+		/** JobDurationsOut */
+		JobDurationsOut: {
+			/**
+			 * Kinds
+			 * @description By kind; kinds without done jobs left out.
+			 */
+			kinds: components['schemas']['KindDurationsOut'][];
+			/**
+			 * Since
+			 * Format: date-time
+			 * @description The jobs done from then on count.
+			 */
+			since: string;
+		};
+		/** JobOut */
+		JobOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/**
+			 * Kind
+			 * @description What the job does, as Lekto names it internally (`pipeline.node`, `search.index`, `webhooks.deliver`, ...); new kinds may come.
+			 * @example pipeline.node
+			 */
+			kind: string;
+			state: components['schemas']['JobState'];
+			/**
+			 * Attempts
+			 * @description Attempts that counted, the current one included; claims given back because a worker stopped are left out.
+			 */
+			attempts: number;
+			/**
+			 * Run At
+			 * Format: date-time
+			 * @description When it is or was due.
+			 */
+			run_at: string;
+			/**
+			 * Started At
+			 * @description When its latest attempt began; null before the first.
+			 */
+			started_at: string | null;
+			/**
+			 * Finished At
+			 * @description When it was done or given up.
+			 */
+			finished_at: string | null;
+			/** @description The document it works on, if the caller may read it. */
+			document: components['schemas']['JobDocumentOut'] | null;
+			/**
+			 * Document Hidden
+			 * @description It works on a document the caller may not read (or one deleted since).
+			 */
+			document_hidden: boolean;
+			/** @description The processing step it runs, for `pipeline.node`. */
+			node: components['schemas']['Node'] | null;
+			/**
+			 * Contact
+			 * @description The name of the contact it works on.
+			 */
+			contact: string | null;
+			/**
+			 * Error
+			 * @description Why its last attempt failed, as the worker wrote it (English, for admins; null for other users).
+			 */
+			error: string | null;
+			/** @description For an admin and a failed job: `job` to queue it again (`POST /jobs/{id}/retry`), `document` to repeat the failed step at its document (`POST /documents/{id}/retry`); null otherwise. */
+			retry: components['schemas']['RetryWay'] | null;
+		};
+		/** JobPageOut */
+		JobPageOut: {
+			/** Items */
+			items: components['schemas']['JobOut'][];
+			/**
+			 * Total
+			 * @description How many jobs match in all.
+			 */
+			total: number;
+			/**
+			 * Next Offset
+			 * @description Pass as `offset` for the next page; null on the last page.
+			 */
+			next_offset: number | null;
+		};
+		/**
+		 * JobState
+		 * @description Where a job stands for the people looking at it: a queued job is due once its time has
+		 *     come, planned before (a repetition, a recurring job).
+		 * @enum {string}
+		 */
+		JobState: 'running' | 'due' | 'planned' | 'done' | 'failed';
+		/** JobTimesOut */
+		JobTimesOut: {
+			/**
+			 * Count
+			 * @description Index jobs done in the period.
+			 */
+			count: number;
+			/** Median Ms */
+			median_ms: number;
+			/** P90 Ms */
+			p90_ms: number;
+		};
+		/** JobsSummaryOut */
+		JobsSummaryOut: {
+			/**
+			 * Kinds
+			 * @description By kind; kinds without jobs left out.
+			 */
+			kinds: components['schemas']['KindSummaryOut'][];
+			/**
+			 * Last Started At
+			 * @description When a worker last claimed a job; null if none did since the jobs keep their times. Long ago while jobs are due: no worker runs.
+			 */
+			last_started_at: string | null;
+			/**
+			 * Now
+			 * Format: date-time
+			 * @description The server's time the counts are of.
+			 */
+			now: string;
+			/**
+			 * Kept Since
+			 * Format: date-time
+			 * @description Done and failed jobs are kept from then on (the retention period); older ones are removed.
+			 */
+			kept_since: string;
+		};
+		/** KindDurationsOut */
+		KindDurationsOut: {
+			/**
+			 * Kind
+			 * @description What the job does, as Lekto names it internally (`pipeline.node`, `search.index`, `webhooks.deliver`, ...); new kinds may come.
+			 * @example pipeline.node
+			 */
+			kind: string;
+			/**
+			 * Count
+			 * @description Jobs done within the retention period.
+			 */
+			count: number;
+			/**
+			 * Wait Median Ms
+			 * @description From due to started, median.
+			 */
+			wait_median_ms: number;
+			/**
+			 * Wait P90 Ms
+			 * @description From due to started, 90th percentile.
+			 */
+			wait_p90_ms: number;
+			/**
+			 * Run Median Ms
+			 * @description From started to done, median.
+			 */
+			run_median_ms: number;
+			/**
+			 * Run P90 Ms
+			 * @description From started to done, 90th percentile.
+			 */
+			run_p90_ms: number;
+		};
+		/** KindSummaryOut */
+		KindSummaryOut: {
+			/**
+			 * Kind
+			 * @description What the job does, as Lekto names it internally (`pipeline.node`, `search.index`, `webhooks.deliver`, ...); new kinds may come.
+			 * @example pipeline.node
+			 */
+			kind: string;
+			/**
+			 * Running
+			 * @description Claimed by a worker now.
+			 */
+			running: number;
+			/**
+			 * Due
+			 * @description Queued, their time has come: waiting for a worker.
+			 */
+			due: number;
+			/**
+			 * Planned
+			 * @description Queued for later: a repetition or a recurring job.
+			 */
+			planned: number;
+			/**
+			 * Failed
+			 * @description Given up, within the retention period.
+			 */
+			failed: number;
+			/**
+			 * Done
+			 * @description Done, within the retention period.
+			 */
+			done: number;
+		};
 		/**
 		 * LabelCheckOut
 		 * @description The label the model gave for a field's value, and whether the value stands by it.
@@ -4493,6 +5014,24 @@ export interface components {
 		 * @enum {string}
 		 */
 		LaneFilter: 'green' | 'yellow' | 'red' | 'processing';
+		/** LanesOut */
+		LanesOut: {
+			/**
+			 * Green
+			 * @description Went through without a person.
+			 */
+			green: number;
+			/**
+			 * Yellow
+			 * @description Stopped for a review.
+			 */
+			yellow: number;
+			/**
+			 * Red
+			 * @description Failed.
+			 */
+			red: number;
+		};
 		/**
 		 * Layout
 		 * @enum {string}
@@ -5284,6 +5823,17 @@ export interface components {
 			/** Count */
 			count: number;
 		};
+		/** MonthOut */
+		MonthOut: {
+			/**
+			 * Start
+			 * Format: date
+			 * @description The month's first day, in the time zone asked for.
+			 */
+			start: string;
+			/** @description The documents whose first run stopped that month. */
+			lanes: components['schemas']['LanesOut'];
+		};
 		/**
 		 * MoveRequest
 		 * @example {
@@ -5537,6 +6087,13 @@ export interface components {
 			 */
 			revoke_tokens: boolean;
 		};
+		/**
+		 * Period
+		 * @description The period the numbers cover, up to now: 30 days, the current month and the eleven
+		 *     before it, or all time.
+		 * @enum {string}
+		 */
+		Period: '30d' | '12m' | 'all';
 		/** PeriodValue */
 		PeriodValue: {
 			/**
@@ -6008,6 +6565,9 @@ export interface components {
 			| 'logo_type'
 			| 'logo_upload_type'
 			| 'training_needs_examples'
+			| 'job_not_failed'
+			| 'job_already_queued'
+			| 'job_retry_in_document'
 			| 'rule_follows_type'
 			| 'personal_space_undeletable'
 			| 'space_not_empty'
@@ -6275,6 +6835,13 @@ export interface components {
 		 * @enum {string}
 		 */
 		ResumeNode: 'fields' | 'apply_rules';
+		/**
+		 * RetryWay
+		 * @description How an admin tries a failed job again: the job itself, or (a processing step) its
+		 *     document.
+		 * @enum {string}
+		 */
+		RetryWay: 'job' | 'document';
 		/** ReviewOut */
 		ReviewOut: {
 			document: components['schemas']['DocumentDetails'];
@@ -6843,6 +7410,55 @@ export interface components {
 			 */
 			meaning_pending: boolean;
 		};
+		/** SearchStatusOut */
+		SearchStatusOut: {
+			/**
+			 * Documents
+			 * @description Documents in the database.
+			 */
+			documents: number;
+			index: components['schemas']['IndexStatsOut'];
+			/**
+			 * Running
+			 * @description Index jobs running now.
+			 */
+			running: number;
+			/**
+			 * Queued
+			 * @description Index jobs waiting (due or planned).
+			 */
+			queued: number;
+			/**
+			 * Remaining Ms
+			 * @description When the waiting index jobs are through, estimated from those done in the last ten minutes; 0 without any waiting, null without a recent one to go by.
+			 */
+			remaining_ms: number | null;
+			/** @description How long the index jobs ran that embedded sections (since `since`). */
+			embedded_jobs: components['schemas']['JobTimesOut'] | null;
+			/** @description How long the index jobs ran that only wrote (the text was the same). */
+			plain_jobs: components['schemas']['JobTimesOut'] | null;
+			/**
+			 * Per Section Ms
+			 * @description Time of the jobs that embedded, per section they embedded.
+			 */
+			per_section_ms: number | null;
+			/**
+			 * Model
+			 * @description The embedding model; null without embeddings.
+			 */
+			model: string | null;
+			/**
+			 * Dimensions
+			 * @description The length of its vectors, if configured.
+			 */
+			dimensions: number | null;
+			/**
+			 * Since
+			 * Format: date-time
+			 * @description The durations count the jobs done from then on.
+			 */
+			since: string;
+		};
 		/** SendWebhookAction */
 		SendWebhookAction: {
 			/**
@@ -7061,6 +7677,44 @@ export interface components {
 		 * @enum {string}
 		 */
 		Signal: 'signal_llm' | 'signal_classifier' | 'signal_neighbours' | 'signal_facts';
+		/** SignalHitsOut */
+		SignalHitsOut: {
+			/**
+			 * Field
+			 * @description The field as checks name it: `contact`, `document_type`, `topic`, `document_date`, `space`, `tags`, or `field:<id>` for a custom field.
+			 * @example contact
+			 */
+			field: string;
+			signal: components['schemas']['Node'];
+			/**
+			 * Hits
+			 * @description Its best value was the one the person decided.
+			 */
+			hits: number;
+			/**
+			 * Misses
+			 * @description Its best value was another.
+			 */
+			misses: number;
+			/**
+			 * Decided
+			 * @description Decisions on the field, whether the signal named one or not.
+			 */
+			decided: number;
+		};
+		/** SignalsOut */
+		SignalsOut: {
+			/** Channels */
+			channels: components['schemas']['Channel'][];
+			period: components['schemas']['Period'];
+			/** Since */
+			since: string | null;
+			/**
+			 * Signals
+			 * @description Per field and signal that named a value for it. The date has no candidates of the signals: the language model's are its verdicts (taken over or accepted a hit, corrected a miss).
+			 */
+			signals: components['schemas']['SignalHitsOut'][];
+		};
 		/** SkippedOut */
 		SkippedOut: {
 			/**
@@ -7226,6 +7880,22 @@ export interface components {
 			 * @description Where it stands on the archive's pages, a box per line; empty where the words of the text have no boxes (a text parsed before 0.2).
 			 */
 			locations: components['schemas']['LocationOut'][];
+		};
+		/** StepTimesOut */
+		StepTimesOut: {
+			/**
+			 * Count
+			 * @description Documents measured.
+			 */
+			count: number;
+			/** Median Ms */
+			median_ms: number | null;
+			/**
+			 * P90 Ms
+			 * @description 90th percentile, by nearest rank.
+			 */
+			p90_ms: number | null;
+			node: components['schemas']['Node'];
 		};
 		/** StoredFileOut */
 		StoredFileOut: {
@@ -7449,6 +8119,21 @@ export interface components {
 				[key: string]: string;
 			} | null;
 		};
+		/** TimesOut */
+		TimesOut: {
+			/**
+			 * Count
+			 * @description Documents measured.
+			 */
+			count: number;
+			/** Median Ms */
+			median_ms: number | null;
+			/**
+			 * P90 Ms
+			 * @description 90th percentile, by nearest rank.
+			 */
+			p90_ms: number | null;
+		};
 		/**
 		 * TokenCreate
 		 * @example {
@@ -7670,6 +8355,29 @@ export interface components {
 			id: string | null;
 			/** Count */
 			count: number;
+		};
+		/** VerdictsOut */
+		VerdictsOut: {
+			/**
+			 * Taken
+			 * @description The automation's value stood.
+			 */
+			taken: number;
+			/**
+			 * Accepted
+			 * @description The suggestion of an uncertain field was taken.
+			 */
+			accepted: number;
+			/**
+			 * Corrected
+			 * @description The automation had a value or suggestion; another one won.
+			 */
+			corrected: number;
+			/**
+			 * Added
+			 * @description The automation had none; the person gave one.
+			 */
+			added: number;
 		};
 		/**
 		 * VisibilityOut
@@ -16957,6 +17665,165 @@ export interface operations {
 			};
 		};
 	};
+	search_status_api_v1_search_status_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SearchStatusOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Service Unavailable",
+					 *       "status": 503,
+					 *       "detail": "database: unreachable"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	check_index_api_v1_search_check_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['IndexCheckOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Service Unavailable",
+					 *       "status": 503,
+					 *       "detail": "database: unreachable"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
 	status_api_v1_classifier_get: {
 		parameters: {
 			query?: never;
@@ -16992,8 +17859,8 @@ export interface operations {
 					'application/problem+json': components['schemas']['Problem'];
 				};
 			};
-			/** @description Forbidden */
-			403: {
+			/** @description Internal Server Error */
+			500: {
 				headers: {
 					[name: string]: unknown;
 				};
@@ -17001,9 +17868,63 @@ export interface operations {
 					/**
 					 * @example {
 					 *       "type": "about:blank",
-					 *       "title": "Forbidden",
-					 *       "status": 403,
-					 *       "detail": "only editors and admins control the processing of this document"
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Service Unavailable",
+					 *       "status": 503,
+					 *       "detail": "database: unreachable"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	models_api_v1_classifier_models_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ClassifierModelOut'][];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -22455,6 +23376,469 @@ export interface operations {
 					 *       "title": "Content Too Large",
 					 *       "status": 413,
 					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	summary_api_v1_jobs_summary_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['JobsSummaryOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	list_jobs_api_v1_jobs_get: {
+		parameters: {
+			query?: {
+				/** @description Repeat for several. */
+				state?: components['schemas']['JobState'][] | null;
+				kind?: string | null;
+				offset?: number;
+				limit?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['JobPageOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	durations_api_v1_jobs_durations_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['JobDurationsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	retry_api_v1_jobs__id__retry_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['JobOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	automation_api_v1_automation_get: {
+		parameters: {
+			query?: {
+				/** @description Repeat for several. */
+				channel?: components['schemas']['Channel'][] | null;
+				period?: components['schemas']['Period'];
+				/** @description The IANA time zone the months begin in. */
+				tz?: string;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['AutomationOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	signals_api_v1_automation_signals_get: {
+		parameters: {
+			query?: {
+				/** @description Repeat for several. */
+				channel?: components['schemas']['Channel'][] | null;
+				period?: components['schemas']['Period'];
+				/** @description The IANA time zone the months begin in. */
+				tz?: string;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SignalsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

@@ -1,7 +1,7 @@
 """Webhooks as model calls, and what a task's node needs to read its answer
 
-Revision ID: 0044
-Revises: 0043
+Revision ID: 0046
+Revises: 0045
 Create Date: 2026-10-25 22:00:00.000000
 
 An admin's webhook may take over a request to the language model (Tobi, 25.10.2026,
@@ -18,8 +18,8 @@ from alembic import op
 
 from lekto.adapters.outbound.sql import types
 
-revision: str = "0044"
-down_revision: str | None = "0043"
+revision: str = "0046"
+down_revision: str | None = "0045"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

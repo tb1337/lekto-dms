@@ -1,7 +1,7 @@
 """Webhooks: a full body or one of their own template
 
-Revision ID: 0042
-Revises: 0041
+Revision ID: 0044
+Revises: 0043
 Create Date: 2026-10-25 14:00:00.000000
 
 What a webhook's requests carry (Tobi, 25.10.2026, `webhooks-und-auftraege.md`):
@@ -14,8 +14,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0042"
-down_revision: str | None = "0041"
+revision: str = "0044"
+down_revision: str | None = "0043"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

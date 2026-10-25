@@ -1,7 +1,7 @@
 """Tasks: requests through a webhook that expect an answer
 
-Revision ID: 0043
-Revises: 0042
+Revision ID: 0045
+Revises: 0044
 Create Date: 2026-10-25 18:00:00.000000
 
 A rule step that asks a webhook hands its request to a task and waits for the answer (Tobi,
@@ -17,8 +17,8 @@ from alembic import op
 
 from lekto.adapters.outbound.sql import types
 
-revision: str = "0043"
-down_revision: str | None = "0042"
+revision: str = "0045"
+down_revision: str | None = "0044"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

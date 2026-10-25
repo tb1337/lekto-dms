@@ -66,6 +66,7 @@ from tests.contracts.processing import (
     ParserContract,
     TextLocatorContract,
 )
+from tests.contracts.processing_facts import ProcessingFactsContract
 from tests.contracts.rules import RuleRepositoriesContract
 from tests.contracts.search_index import DIMENSIONS, SearchIndexContract
 from tests.contracts.tasks import TaskRepositoryContract
@@ -109,6 +110,10 @@ class TestMemoryUnitOfWork(UnitOfWorkContract):
 
 
 class TestMemoryInboxRepository(InboxRepositoryContract):
+    pass
+
+
+class TestMemoryProcessingFacts(ProcessingFactsContract):
     pass
 
 

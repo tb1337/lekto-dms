@@ -115,14 +115,22 @@ class JobRunner:
             raise
         return True
 
-    async def end(self, job: Job, *, error: str | None = None, also: Step | None = None) -> None:
-        """Complete the job, or fail it with `error`; `also` adds to the same commit."""
+    async def end(
+        self,
+        job: Job,
+        *,
+        error: str | None = None,
+        also: Step | None = None,
+        result: JsonObject | None = None,
+    ) -> None:
+        """Complete the job (with what it reports, `result`), or fail it with `error`; `also`
+        adds to the same commit."""
         try:
             async with self._uow() as uow:
                 if error is None:
-                    await uow.jobs.complete(job)
+                    await uow.jobs.complete(job, now=self._clock.now(), result=result)
                 else:
-                    await uow.jobs.fail(job, error=error)
+                    await uow.jobs.fail(job, now=self._clock.now(), error=error)
                 if also is not None:
                     await also(uow)
                 await uow.commit()
@@ -148,7 +156,7 @@ class JobRunner:
         try:
             async with self._uow() as uow:
                 if run_at is None:
-                    await uow.jobs.fail(job, error=error)
+                    await uow.jobs.fail(job, now=self._clock.now(), error=error)
                 else:
                     await uow.jobs.reschedule(job, run_at=run_at, error=error)
                 if also is not None:

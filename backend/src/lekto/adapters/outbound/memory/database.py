@@ -11,6 +11,7 @@ from lekto.core.domain.documents import Document
 from lekto.core.domain.entity import Entity
 from lekto.core.domain.events import DomainEvent
 from lekto.core.domain.fields import FieldDefinition
+from lekto.core.domain.first_runs import FieldVerdict, FirstRun
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.identity import ApiToken, ExternalIdentity, Session
 from lekto.core.domain.ids import DocumentId, EventId, JobId, UserId
@@ -163,3 +164,6 @@ class MemoryDatabase:
     # What the inbox keeps: when each user saw a document last, who confirmed it last.
     seen: dict[tuple[UserId, DocumentId], "SeenMark"] = field(default_factory=dict)
     confirmations: dict[DocumentId, Confirmation] = field(default_factory=dict)
+    # What processing facts keep: the first runs, the verdicts by document and field.
+    first_runs: dict[DocumentId, FirstRun] = field(default_factory=dict)
+    verdicts: dict[tuple[DocumentId, str], FieldVerdict] = field(default_factory=dict)

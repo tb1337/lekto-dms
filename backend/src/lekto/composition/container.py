@@ -84,6 +84,7 @@ from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from lekto.core.ports.webhook_sender import WebhookSender
 from lekto.core.services.auth import AuthService, SessionPolicy
+from lekto.core.services.automation import AutomationService
 from lekto.core.services.classification.nodes import (
     ClassificationPolicy,
     FieldsNode,
@@ -101,6 +102,7 @@ from lekto.core.services.documents import DocumentService
 from lekto.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
 from lekto.core.services.inbox import InboxService
 from lekto.core.services.indexing import IndexingPolicy, IndexingService
+from lekto.core.services.jobs import JobsService
 from lekto.core.services.lenses import LensService
 from lekto.core.services.logos import LogoService
 from lekto.core.services.maintenance import MaintenanceService
@@ -493,6 +495,8 @@ class Services:
     inbox: InboxService
     pipeline: PipelineService
     maintenance: MaintenanceService
+    jobs: JobsService
+    automation: AutomationService
     indexing: IndexingService | None  # with a search index
     search: SearchService | None  # with a search index
     classifier: ClassifierService | None  # with a classifier
@@ -601,6 +605,7 @@ def indexing_policy_of(settings: Settings) -> IndexingPolicy:
         job_lease=3 * (settings.embedding_timeout + settings.meilisearch_task_timeout)
         + WORK_LEASE_MARGIN,
         rebuild_lease=settings.search_rebuild_timeout,
+        durations_window=settings.retention,
     )
 
 
@@ -755,6 +760,8 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         ),
         lenses=LensService(uow, clock),
         tasks=TaskService(uow, clock, container.cipher, store),
+        jobs=JobsService(uow, clock, retention=settings.retention),
+        automation=AutomationService(uow, clock),
         webhook_delivery=WebhookDeliveryService(
             uow,
             clock,

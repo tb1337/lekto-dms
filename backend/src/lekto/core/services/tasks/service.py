@@ -160,7 +160,7 @@ class TaskService:
                     name = str(task.webhook_id) if webhook is None else webhook.name
                     task.expire(because(ReasonCode.TASK_NO_ANSWER, webhook=name), now)
                     await end_task(uow, task, now)
-                await uow.jobs.complete(job)
+                await uow.jobs.complete(job, now=now)
                 await uow.commit()
 
         await self._jobs.storing(job, expire)

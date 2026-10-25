@@ -91,6 +91,18 @@ class SearchResult:
     semantic: bool  # whether vectors took part
 
 
+@dataclass(frozen=True, kw_only=True)
+class IndexStats:
+    """What the index says of itself: its documents, those that hold vectors and the vectors
+    (one per section), whether it is writing right now, and its size on disk if it tells."""
+
+    documents: int
+    embedded: int
+    vectors: int
+    indexing: bool = False
+    size_bytes: int | None = None
+
+
 class IndexBuild(Protocol):
     """A new index being filled next to the active one, which keeps serving searches."""
 
@@ -141,4 +153,8 @@ class SearchIndex(Protocol):
 
     async def check(self) -> None:
         """Raise SearchUnavailableError unless the index is reachable and healthy."""
+        ...
+
+    async def stats(self) -> IndexStats:
+        """How many documents and vectors the index holds."""
         ...

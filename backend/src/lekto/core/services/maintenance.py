@@ -135,7 +135,7 @@ class MaintenanceService:
                 shared = await uow.documents.exists(sha256=sha256)
                 if not shared:
                     await self._store.delete(original)
-                await uow.jobs.complete(job)
+                await uow.jobs.complete(job, now=self._clock.now())
                 await uow.commit()
         except ConcurrencyError:
             lost(job)
@@ -166,7 +166,7 @@ class MaintenanceService:
                 tasks = await uow.tasks.purge(before=before)
                 secrets = await _drop_expired_secrets(uow, now)
                 inbox = await uow.inbox.purge(before=now - DONE_PERIOD)
-                await uow.jobs.complete(job)
+                await uow.jobs.complete(job, now=now)
                 await uow.jobs.enqueue(CLEANUP_JOB, {}, run_at=next_run, dedup_key=CLEANUP_JOB)
                 await uow.commit()
         except ConcurrencyError:

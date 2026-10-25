@@ -260,7 +260,7 @@ class WebhookDeliveryService:
             webhook = await uow.webhooks.find(webhook_id)
             if webhook is None:
                 # Deleted since: nothing to log it in.
-                await uow.jobs.complete(job)
+                await uow.jobs.complete(job, now=now)
                 await uow.commit()
                 return
             reason = await _reason_to_drop(uow, webhook, event_type, document_id)
@@ -416,7 +416,7 @@ class WebhookDeliveryService:
                             job, run_at=next_attempt, error=response.error or _status_text(response)
                         )
                     else:
-                        await uow.jobs.complete(job)
+                        await uow.jobs.complete(job, now=now)
                     await uow.commit()
             except ConcurrencyError:
                 if round_ + 1 == _RESULT_ROUNDS:
@@ -561,7 +561,7 @@ class WebhookDeliveryService:
                             job, run_at=next_attempt, error=response.error or _status_text(response)
                         )
                     else:
-                        await uow.jobs.complete(job)
+                        await uow.jobs.complete(job, now=self._clock.now())
                     await uow.commit()
             except ConcurrencyError:
                 if round_ + 1 == _RESULT_ROUNDS:

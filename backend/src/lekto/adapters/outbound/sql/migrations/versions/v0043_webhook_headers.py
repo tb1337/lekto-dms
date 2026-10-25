@@ -1,7 +1,7 @@
 """Webhooks: headers of their own, and a secret only if they sign
 
-Revision ID: 0041
-Revises: 0040
+Revision ID: 0043
+Revises: 0042
 Create Date: 2026-10-25 12:00:00.000000
 
 A webhook may set headers of its own (`Authorization`, ...) and may go without a secret, unsigned
@@ -22,8 +22,8 @@ from alembic import op
 
 from lekto.adapters.outbound.sql import types
 
-revision: str = "0041"
-down_revision: str | None = "0040"
+revision: str = "0043"
+down_revision: str | None = "0042"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -76,7 +76,7 @@ def _rebuild(*, headers: bool) -> None:
     before; its rows stay."""
     connection = op.get_bind()
     count = int(connection.exec_driver_sql("SELECT count(*) FROM webhooks").scalar() or 0)
-    op.execute("CREATE TEMP TABLE _webhooks_0041 AS SELECT * FROM webhooks")
+    op.execute("CREATE TEMP TABLE _webhooks_0043 AS SELECT * FROM webhooks")
     op.drop_index(op.f("ix_webhooks_owner_id"), table_name="webhooks")
     op.drop_table("webhooks")
     columns: list[sa.schema.SchemaItem] = [
@@ -110,8 +110,8 @@ def _rebuild(*, headers: bool) -> None:
     )
     op.create_index(op.f("ix_webhooks_owner_id"), "webhooks", ["owner_id"])
     names = ", ".join(_KEPT)
-    op.execute(f"INSERT INTO webhooks ({names}) SELECT {names} FROM _webhooks_0041")
-    op.execute("DROP TABLE _webhooks_0041")
+    op.execute(f"INSERT INTO webhooks ({names}) SELECT {names} FROM _webhooks_0043")
+    op.execute("DROP TABLE _webhooks_0043")
     copied = connection.exec_driver_sql("SELECT count(*) FROM webhooks").scalar()
     if copied != count:
-        raise RuntimeError(f"revision 0041 copied {copied} of {count} webhooks")
+        raise RuntimeError(f"revision 0043 copied {copied} of {count} webhooks")

@@ -10176,21 +10176,99 @@
         ]
       }
     },
-    "/api/v1/classifier": {
+    "/api/v1/search/status": {
       "get": {
         "tags": [
-          "classifier"
+          "search"
         ],
-        "summary": "The classifier's status",
-        "description": "Admins only. The latest model (trained from the documents a person confirmed or that were taken over with metadata) and the confirmations since. 503 without a classifier.",
-        "operationId": "status_api_v1_classifier_get",
+        "summary": "The state of the search index",
+        "description": "How many documents the database and the index hold, how many have vectors, the index jobs running and waiting with an estimate of when they are through, how long index jobs ran with and without embedding, and the embedding model. Every user. 503 without a search index or when it cannot be reached.",
+        "operationId": "search_status_api_v1_search_status_get",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ClassifierStatusOut"
+                  "$ref": "#/components/schemas/SearchStatusOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "database: unreachable"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/search/check": {
+      "post": {
+        "tags": [
+          "search"
+        ],
+        "summary": "Check the search index",
+        "description": "Admins only. Compares every document in the database with the index and counts what is current, missing, stale and left over; nothing is queued or removed (the next reconciliation does that). Reads the whole index: seconds for some thousand documents.",
+        "operationId": "check_index_api_v1_search_check_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexCheckOut"
                 }
               }
             }
@@ -10223,6 +10301,166 @@
                   "title": "Forbidden",
                   "status": 403,
                   "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "database: unreachable"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/classifier": {
+      "get": {
+        "tags": [
+          "classifier"
+        ],
+        "summary": "The classifier's status",
+        "description": "The latest model (trained from the documents a person confirmed or that were taken over with metadata) and the confirmations since; every user sees it. 503 without a classifier.",
+        "operationId": "status_api_v1_classifier_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassifierStatusOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "database: unreachable"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/classifier/models": {
+      "get": {
+        "tags": [
+          "classifier"
+        ],
+        "summary": "Every model trained",
+        "description": "What each model learned and how well it did, oldest first (only the latest ones keep their files); every user sees them. 503 without a classifier.",
+        "operationId": "models_api_v1_classifier_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClassifierModelOut"
+                  },
+                  "type": "array",
+                  "title": "Response Models Api V1 Classifier Models Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
                 }
               }
             }
@@ -14848,7 +15086,7 @@
           "events"
         ],
         "summary": "Progress of documents (server-sent events)",
-        "description": "A stream of document events (`document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Active admins also get `classifier.trained` (a new model, with its `number` and `examples`), unless the stream follows one document. A searcher gets `search.meaning_ready` (with the `query`) when the meaning of a query that had to go by words alone is ready (`meaning_pending` of the search), unless the stream follows one document. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream starts with the comment `: ready` once it is registered: every event after that reaches it. It checks regularly that its session or token is still valid and ends otherwise.",
+        "description": "A stream of document events (`document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Every user also gets `classifier.trained` (a new model, with its `number` and `examples`), unless the stream follows one document. A searcher gets `search.meaning_ready` (with the `query`) when the meaning of a query that had to go by words alone is ready (`meaning_pending` of the search), unless the stream follows one document. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream starts with the comment `: ready` once it is registered: every event after that reaches it. It checks regularly that its session or token is still valid and ends otherwise.",
         "operationId": "events_api_v1_events_get",
         "parameters": [
           {
@@ -17128,6 +17366,661 @@
         ]
       }
     },
+    "/api/v1/jobs/summary": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Jobs by kind and state",
+        "description": "How many jobs of each kind are running, due, planned, failed and done (failed and done ones within the retention period, `LEKTO_RETENTION`), and when a worker last claimed one. Cheap enough to ask every few seconds.",
+        "operationId": "summary_api_v1_jobs_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobsSummaryOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/jobs": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "List jobs",
+        "description": "The jobs in the given states (without `state`: the open ones, running, due and planned), of one kind if given: running ones first, longest running first; then due and planned ones by when they are due; then failed and done ones, latest first. Every user sees the jobs; a job names a document only to those who may read it, and its error only to admins.",
+        "operationId": "list_jobs_api_v1_jobs_get",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JobState"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeat for several.",
+              "title": "State"
+            },
+            "description": "Repeat for several."
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobPageOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/jobs/durations": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "How long jobs wait and run",
+        "description": "For each kind, how long its jobs done within the retention period waited (from due to started) and ran (from started to done): median and 90th percentile. Jobs from before the jobs kept their times are left out.",
+        "operationId": "durations_api_v1_jobs_durations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDurationsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/jobs/{id}/retry": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Try a failed job again",
+        "description": "Admins only. Queues the failed job again, due now, without its attempts; its last error stays until it runs. 409 if it did not fail, if the same work is queued or running already, or for a failed processing step: that one is repeated at its document (`POST /documents/{id}/retry`).",
+        "operationId": "retry_api_v1_jobs__id__retry_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/automation": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "How the automation did",
+        "description": "The documents by the lane their first run stopped in, what became of them, the history by month, how long the first runs took and worked (per step too), and how people judged what the automation set, per field, at their first decision on it. For the documents of the channels given (by default `web` and `api`: migrated documents bring the metadata of the source system) and the period (30 days, the current month and the eleven before it, or all time; the history by month reaches back five years at most); the whole system's numbers, naming no document. Counted again at most once a minute.",
+        "operationId": "automation_api_v1_automation_get",
+        "parameters": [
+          {
+            "name": "channel",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Channel"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeat for several.",
+              "title": "Channel"
+            },
+            "description": "Repeat for several."
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Period",
+              "default": "12m"
+            }
+          },
+          {
+            "name": "tz",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "The IANA time zone the months begin in.",
+              "examples": [
+                "Europe/Berlin"
+              ],
+              "default": "UTC",
+              "title": "Tz"
+            },
+            "description": "The IANA time zone the months begin in."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/automation/signals": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "How often each signal hit",
+        "description": "Per field and signal (language model, classifier, similar documents, facts in the text), how often the signal's best value was the one a person decided at their first decision on the field, and how often another. For the documents of the channels given (by default `web` and `api`: migrated documents bring the metadata of the source system) and the period (30 days, the current month and the eleven before it, or all time; the history by month reaches back five years at most); the whole system's numbers, naming no document. Counted again at most once a minute.",
+        "operationId": "signals_api_v1_automation_signals_get",
+        "parameters": [
+          {
+            "name": "channel",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Channel"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeat for several.",
+              "title": "Channel"
+            },
+            "description": "Repeat for several."
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Period",
+              "default": "12m"
+            }
+          },
+          {
+            "name": "tz",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "The IANA time zone the months begin in.",
+              "examples": [
+                "Europe/Berlin"
+              ],
+              "default": "UTC",
+              "title": "Tz"
+            },
+            "description": "The IANA time zone the months begin in."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "tags": [
@@ -18211,6 +19104,103 @@
           "authorization_url"
         ],
         "title": "AuthorizationUrl"
+      },
+      "AutomationOut": {
+        "properties": {
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/Channel"
+            },
+            "type": "array",
+            "title": "Channels"
+          },
+          "period": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since",
+            "description": "From when the period counts; null: all time."
+          },
+          "lanes": {
+            "$ref": "#/components/schemas/LanesOut",
+            "description": "The documents by the lane their first run stopped in."
+          },
+          "flow": {
+            "items": {
+              "$ref": "#/components/schemas/FlowOut"
+            },
+            "type": "array",
+            "title": "Flow",
+            "description": "What became of them: their lane now."
+          },
+          "decided": {
+            "type": "integer",
+            "title": "Decided",
+            "description": "Of them, those a person decided a field of."
+          },
+          "untouched": {
+            "type": "integer",
+            "title": "Untouched",
+            "description": "Of them, the green ones nobody decided a field of: not contradicted, no hit."
+          },
+          "months": {
+            "items": {
+              "$ref": "#/components/schemas/MonthOut"
+            },
+            "type": "array",
+            "title": "Months",
+            "description": "By the month their first run stopped, oldest first: the last 12 months, for all time from the first month with documents (at most 60)."
+          },
+          "duration": {
+            "$ref": "#/components/schemas/TimesOut",
+            "description": "From the start of receiving to the first stop, with the waits for a worker."
+          },
+          "work": {
+            "$ref": "#/components/schemas/TimesOut",
+            "description": "The sum of the steps (side by side ones each counted)."
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/StepTimesOut"
+            },
+            "type": "array",
+            "title": "Steps",
+            "description": "Per node, in the order of the graph."
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldVerdictsOut"
+            },
+            "type": "array",
+            "title": "Fields",
+            "description": "The verdicts at the first decision of a person on each field, by when they were decided: the fields every document has first, then the custom ones by name."
+          }
+        },
+        "type": "object",
+        "required": [
+          "channels",
+          "period",
+          "since",
+          "lanes",
+          "flow",
+          "decided",
+          "untouched",
+          "months",
+          "duration",
+          "work",
+          "steps",
+          "fields"
+        ],
+        "title": "AutomationOut"
       },
       "BlockingSpaceOut": {
         "properties": {
@@ -21644,6 +22634,46 @@
         ],
         "title": "FieldType"
       },
+      "FieldVerdictsOut": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "description": "The field as checks name it: `contact`, `document_type`, `topic`, `document_date`, `space`, `tags`, or `field:<id>` for a custom field.",
+            "examples": [
+              "contact"
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "A custom field's name; null for the others."
+          },
+          "verdicts": {
+            "$ref": "#/components/schemas/VerdictsOut"
+          },
+          "early": {
+            "type": "integer",
+            "title": "Early",
+            "description": "Decided before the first run stopped: nothing to judge, counted apart."
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "name",
+          "verdicts",
+          "early"
+        ],
+        "title": "FieldVerdictsOut"
+      },
       "FileMetadataOut": {
         "properties": {
           "format": {
@@ -21751,6 +22781,35 @@
           "entries"
         ],
         "title": "FileMetadataOut"
+      },
+      "FlowOut": {
+        "properties": {
+          "first_lane": {
+            "$ref": "#/components/schemas/Lane"
+          },
+          "lane": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lane"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where they lie now; null: being processed again."
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "first_lane",
+          "lane",
+          "count"
+        ],
+        "title": "FlowOut"
       },
       "ForceReviewAction": {
         "properties": {
@@ -22442,6 +23501,483 @@
         ],
         "title": "InboxTab"
       },
+      "IndexCheckOut": {
+        "properties": {
+          "current": {
+            "type": "integer",
+            "title": "Current",
+            "description": "Documents indexed as they are."
+          },
+          "missing": {
+            "type": "integer",
+            "title": "Missing",
+            "description": "Documents not in the index."
+          },
+          "outdated": {
+            "type": "integer",
+            "title": "Outdated",
+            "description": "Indexed in another version or an older layout."
+          },
+          "other_model": {
+            "type": "integer",
+            "title": "Other Model",
+            "description": "Indexed with vectors of no or another model."
+          },
+          "extra": {
+            "type": "integer",
+            "title": "Extra",
+            "description": "Entries of documents that no longer exist."
+          },
+          "took_ms": {
+            "type": "number",
+            "title": "Took Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "current",
+          "missing",
+          "outdated",
+          "other_model",
+          "extra",
+          "took_ms"
+        ],
+        "title": "IndexCheckOut"
+      },
+      "IndexStatsOut": {
+        "properties": {
+          "documents": {
+            "type": "integer",
+            "title": "Documents",
+            "description": "Documents in the index."
+          },
+          "embedded": {
+            "type": "integer",
+            "title": "Embedded",
+            "description": "Of them, those with vectors (of any model)."
+          },
+          "vectors": {
+            "type": "integer",
+            "title": "Vectors",
+            "description": "Vectors in all, one per section of a text."
+          },
+          "indexing": {
+            "type": "boolean",
+            "title": "Indexing",
+            "description": "Whether the index is writing right now."
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes",
+            "description": "Its size on disk, if the index tells."
+          }
+        },
+        "type": "object",
+        "required": [
+          "documents",
+          "embedded",
+          "vectors",
+          "indexing",
+          "size_bytes"
+        ],
+        "title": "IndexStatsOut"
+      },
+      "JobDocumentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "JobDocumentOut"
+      },
+      "JobDurationsOut": {
+        "properties": {
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/KindDurationsOut"
+            },
+            "type": "array",
+            "title": "Kinds",
+            "description": "By kind; kinds without done jobs left out."
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Since",
+            "description": "The jobs done from then on count."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kinds",
+          "since"
+        ],
+        "title": "JobDurationsOut"
+      },
+      "JobOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "What the job does, as Lekto names it internally (`pipeline.node`, `search.index`, `webhooks.deliver`, ...); new kinds may come.",
+            "examples": [
+              "pipeline.node"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/JobState"
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts",
+            "description": "Attempts that counted, the current one included; claims given back because a worker stopped are left out."
+          },
+          "run_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Run At",
+            "description": "When it is or was due."
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At",
+            "description": "When its latest attempt began; null before the first."
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At",
+            "description": "When it was done or given up."
+          },
+          "document": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobDocumentOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The document it works on, if the caller may read it."
+          },
+          "document_hidden": {
+            "type": "boolean",
+            "title": "Document Hidden",
+            "description": "It works on a document the caller may not read (or one deleted since)."
+          },
+          "node": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Node"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The processing step it runs, for `pipeline.node`."
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact",
+            "description": "The name of the contact it works on."
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Why its last attempt failed, as the worker wrote it (English, for admins; null for other users)."
+          },
+          "retry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RetryWay"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For an admin and a failed job: `job` to queue it again (`POST /jobs/{id}/retry`), `document` to repeat the failed step at its document (`POST /documents/{id}/retry`); null otherwise."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "state",
+          "attempts",
+          "run_at",
+          "started_at",
+          "finished_at",
+          "document",
+          "document_hidden",
+          "node",
+          "contact",
+          "error",
+          "retry"
+        ],
+        "title": "JobOut"
+      },
+      "JobPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JobOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "How many jobs match in all."
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset",
+            "description": "Pass as `offset` for the next page; null on the last page."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "next_offset"
+        ],
+        "title": "JobPageOut"
+      },
+      "JobState": {
+        "type": "string",
+        "enum": [
+          "running",
+          "due",
+          "planned",
+          "done",
+          "failed"
+        ],
+        "title": "JobState",
+        "description": "Where a job stands for the people looking at it: a queued job is due once its time has\ncome, planned before (a repetition, a recurring job)."
+      },
+      "JobTimesOut": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Index jobs done in the period."
+          },
+          "median_ms": {
+            "type": "number",
+            "title": "Median Ms"
+          },
+          "p90_ms": {
+            "type": "number",
+            "title": "P90 Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "median_ms",
+          "p90_ms"
+        ],
+        "title": "JobTimesOut"
+      },
+      "JobsSummaryOut": {
+        "properties": {
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/KindSummaryOut"
+            },
+            "type": "array",
+            "title": "Kinds",
+            "description": "By kind; kinds without jobs left out."
+          },
+          "last_started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Started At",
+            "description": "When a worker last claimed a job; null if none did since the jobs keep their times. Long ago while jobs are due: no worker runs."
+          },
+          "now": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Now",
+            "description": "The server's time the counts are of."
+          },
+          "kept_since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Kept Since",
+            "description": "Done and failed jobs are kept from then on (the retention period); older ones are removed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kinds",
+          "last_started_at",
+          "now",
+          "kept_since"
+        ],
+        "title": "JobsSummaryOut"
+      },
+      "KindDurationsOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "What the job does, as Lekto names it internally (`pipeline.node`, `search.index`, `webhooks.deliver`, ...); new kinds may come.",
+            "examples": [
+              "pipeline.node"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Jobs done within the retention period."
+          },
+          "wait_median_ms": {
+            "type": "number",
+            "title": "Wait Median Ms",
+            "description": "From due to started, median."
+          },
+          "wait_p90_ms": {
+            "type": "number",
+            "title": "Wait P90 Ms",
+            "description": "From due to started, 90th percentile."
+          },
+          "run_median_ms": {
+            "type": "number",
+            "title": "Run Median Ms",
+            "description": "From started to done, median."
+          },
+          "run_p90_ms": {
+            "type": "number",
+            "title": "Run P90 Ms",
+            "description": "From started to done, 90th percentile."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "count",
+          "wait_median_ms",
+          "wait_p90_ms",
+          "run_median_ms",
+          "run_p90_ms"
+        ],
+        "title": "KindDurationsOut"
+      },
+      "KindSummaryOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "What the job does, as Lekto names it internally (`pipeline.node`, `search.index`, `webhooks.deliver`, ...); new kinds may come.",
+            "examples": [
+              "pipeline.node"
+            ]
+          },
+          "running": {
+            "type": "integer",
+            "title": "Running",
+            "description": "Claimed by a worker now."
+          },
+          "due": {
+            "type": "integer",
+            "title": "Due",
+            "description": "Queued, their time has come: waiting for a worker."
+          },
+          "planned": {
+            "type": "integer",
+            "title": "Planned",
+            "description": "Queued for later: a repetition or a recurring job."
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed",
+            "description": "Given up, within the retention period."
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done",
+            "description": "Done, within the retention period."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "running",
+          "due",
+          "planned",
+          "failed",
+          "done"
+        ],
+        "title": "KindSummaryOut"
+      },
       "LabelCheckOut": {
         "properties": {
           "text": {
@@ -22500,6 +24036,32 @@
         ],
         "title": "LaneFilter",
         "description": "A lane, or `processing`: documents that have no lane yet."
+      },
+      "LanesOut": {
+        "properties": {
+          "green": {
+            "type": "integer",
+            "title": "Green",
+            "description": "Went through without a person."
+          },
+          "yellow": {
+            "type": "integer",
+            "title": "Yellow",
+            "description": "Stopped for a review."
+          },
+          "red": {
+            "type": "integer",
+            "title": "Red",
+            "description": "Failed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "green",
+          "yellow",
+          "red"
+        ],
+        "title": "LanesOut"
       },
       "Layout": {
         "type": "string",
@@ -24181,6 +25743,26 @@
         ],
         "title": "MonthCount"
       },
+      "MonthOut": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date",
+            "title": "Start",
+            "description": "The month's first day, in the time zone asked for."
+          },
+          "lanes": {
+            "$ref": "#/components/schemas/LanesOut",
+            "description": "The documents whose first run stopped that month."
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "lanes"
+        ],
+        "title": "MonthOut"
+      },
       "MoveRequest": {
         "properties": {
           "space_id": {
@@ -24681,6 +26263,16 @@
             "revoke_tokens": true
           }
         ]
+      },
+      "Period": {
+        "type": "string",
+        "enum": [
+          "30d",
+          "12m",
+          "all"
+        ],
+        "title": "Period",
+        "description": "The period the numbers cover, up to now: 30 days, the current month and the eleven\nbefore it, or all time."
       },
       "PeriodValue": {
         "properties": {
@@ -25376,6 +26968,9 @@
           "logo_type",
           "logo_upload_type",
           "training_needs_examples",
+          "job_not_failed",
+          "job_already_queued",
+          "job_retry_in_document",
           "rule_follows_type",
           "personal_space_undeletable",
           "space_not_empty",
@@ -25727,6 +27322,15 @@
           "apply_rules"
         ],
         "title": "ResumeNode"
+      },
+      "RetryWay": {
+        "type": "string",
+        "enum": [
+          "job",
+          "document"
+        ],
+        "title": "RetryWay",
+        "description": "How an admin tries a failed job again: the job itself, or (a processing step) its\ndocument."
       },
       "ReviewOut": {
         "properties": {
@@ -26927,6 +28531,119 @@
         ],
         "title": "SearchResultPage"
       },
+      "SearchStatusOut": {
+        "properties": {
+          "documents": {
+            "type": "integer",
+            "title": "Documents",
+            "description": "Documents in the database."
+          },
+          "index": {
+            "$ref": "#/components/schemas/IndexStatsOut"
+          },
+          "running": {
+            "type": "integer",
+            "title": "Running",
+            "description": "Index jobs running now."
+          },
+          "queued": {
+            "type": "integer",
+            "title": "Queued",
+            "description": "Index jobs waiting (due or planned)."
+          },
+          "remaining_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Ms",
+            "description": "When the waiting index jobs are through, estimated from those done in the last ten minutes; 0 without any waiting, null without a recent one to go by."
+          },
+          "embedded_jobs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobTimesOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How long the index jobs ran that embedded sections (since `since`)."
+          },
+          "plain_jobs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobTimesOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How long the index jobs ran that only wrote (the text was the same)."
+          },
+          "per_section_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Section Ms",
+            "description": "Time of the jobs that embedded, per section they embedded."
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "The embedding model; null without embeddings."
+          },
+          "dimensions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimensions",
+            "description": "The length of its vectors, if configured."
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Since",
+            "description": "The durations count the jobs done from then on."
+          }
+        },
+        "type": "object",
+        "required": [
+          "documents",
+          "index",
+          "running",
+          "queued",
+          "remaining_ms",
+          "embedded_jobs",
+          "plain_jobs",
+          "per_section_ms",
+          "model",
+          "dimensions",
+          "since"
+        ],
+        "title": "SearchStatusOut"
+      },
       "SendWebhookAction": {
         "properties": {
           "type": {
@@ -27361,6 +29078,87 @@
         ],
         "title": "Signal"
       },
+      "SignalHitsOut": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "description": "The field as checks name it: `contact`, `document_type`, `topic`, `document_date`, `space`, `tags`, or `field:<id>` for a custom field.",
+            "examples": [
+              "contact"
+            ]
+          },
+          "signal": {
+            "$ref": "#/components/schemas/Node"
+          },
+          "hits": {
+            "type": "integer",
+            "title": "Hits",
+            "description": "Its best value was the one the person decided."
+          },
+          "misses": {
+            "type": "integer",
+            "title": "Misses",
+            "description": "Its best value was another."
+          },
+          "decided": {
+            "type": "integer",
+            "title": "Decided",
+            "description": "Decisions on the field, whether the signal named one or not."
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "signal",
+          "hits",
+          "misses",
+          "decided"
+        ],
+        "title": "SignalHitsOut"
+      },
+      "SignalsOut": {
+        "properties": {
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/Channel"
+            },
+            "type": "array",
+            "title": "Channels"
+          },
+          "period": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "signals": {
+            "items": {
+              "$ref": "#/components/schemas/SignalHitsOut"
+            },
+            "type": "array",
+            "title": "Signals",
+            "description": "Per field and signal that named a value for it. The date has no candidates of the signals: the language model's are its verdicts (taken over or accepted a hit, corrected a miss)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "channels",
+          "period",
+          "since",
+          "signals"
+        ],
+        "title": "SignalsOut"
+      },
       "SkippedOut": {
         "properties": {
           "document_id": {
@@ -27696,6 +29494,49 @@
           "locations"
         ],
         "title": "SpanOut"
+      },
+      "StepTimesOut": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Documents measured."
+          },
+          "median_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Ms"
+          },
+          "p90_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P90 Ms",
+            "description": "90th percentile, by nearest rank."
+          },
+          "node": {
+            "$ref": "#/components/schemas/Node"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "median_ms",
+          "p90_ms",
+          "node"
+        ],
+        "title": "StepTimesOut"
       },
       "StoredFileOut": {
         "properties": {
@@ -28231,6 +30072,45 @@
         ],
         "title": "TemplatePreviewOut"
       },
+      "TimesOut": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Documents measured."
+          },
+          "median_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Ms"
+          },
+          "p90_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P90 Ms",
+            "description": "90th percentile, by nearest rank."
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "median_ms",
+          "p90_ms"
+        ],
+        "title": "TimesOut"
+      },
       "TokenCreate": {
         "properties": {
           "name": {
@@ -28698,6 +30578,38 @@
           "count"
         ],
         "title": "ValueCount"
+      },
+      "VerdictsOut": {
+        "properties": {
+          "taken": {
+            "type": "integer",
+            "title": "Taken",
+            "description": "The automation's value stood."
+          },
+          "accepted": {
+            "type": "integer",
+            "title": "Accepted",
+            "description": "The suggestion of an uncertain field was taken."
+          },
+          "corrected": {
+            "type": "integer",
+            "title": "Corrected",
+            "description": "The automation had a value or suggestion; another one won."
+          },
+          "added": {
+            "type": "integer",
+            "title": "Added",
+            "description": "The automation had none; the person gave one."
+          }
+        },
+        "type": "object",
+        "required": [
+          "taken",
+          "accepted",
+          "corrected",
+          "added"
+        ],
+        "title": "VerdictsOut"
       },
       "VisibilityOut": {
         "properties": {
@@ -30080,6 +31992,9 @@
       "confirmed": "number",
       "needed": "number"
     },
+    "job_not_failed": {},
+    "job_already_queued": {},
+    "job_retry_in_document": {},
     "rule_follows_type": {
       "type": "text"
     },

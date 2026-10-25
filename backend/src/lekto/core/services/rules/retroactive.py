@@ -316,7 +316,9 @@ class RuleApplicationService:
         """An unexpected error: end the application, so it does not run again and again."""
         try:
             async with self._uow() as uow:
-                await uow.jobs.fail(job, error=f"{type(error).__name__}: {error}")
+                await uow.jobs.fail(
+                    job, now=self._clock.now(), error=f"{type(error).__name__}: {error}"
+                )
                 application = await uow.rule_applications.find(
                     RuleApplicationId(UUID(str(job.payload.get("application_id"))))
                 )
@@ -337,11 +339,11 @@ class RuleApplicationService:
             done = await self._next_document(id)
             if done:
                 async with self._uow() as uow:
-                    await uow.jobs.complete(job)
+                    await uow.jobs.complete(job, now=self._clock.now())
                     await uow.commit()
                 return
         async with self._uow() as uow:
-            await uow.jobs.complete(job)
+            await uow.jobs.complete(job, now=self._clock.now())
             await _enqueue(uow, id, self._clock.now())
             await uow.commit()
 

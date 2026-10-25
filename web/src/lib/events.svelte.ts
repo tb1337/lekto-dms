@@ -30,9 +30,9 @@ export const WEBHOOK_EVENT_TYPES = [
 ] as const;
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number];
 
-/** The events without a document, for admins only. */
-export const ADMIN_EVENT_TYPES = ['classifier.trained'] as const;
-export type AdminEventType = (typeof ADMIN_EVENT_TYPES)[number];
+/** The events without a document for every user: a new model of the classifier. */
+export const SYSTEM_EVENT_TYPES = ['classifier.trained'] as const;
+export type SystemEventType = (typeof SYSTEM_EVENT_TYPES)[number];
 
 /** The events of the caller's own searches: the meaning of a query is ready (`query`). */
 export const SEARCH_EVENT_TYPES = ['search.meaning_ready'] as const;
@@ -58,7 +58,7 @@ export interface DocumentEvent {
 /** `classifier.trained`: `number` and `examples` of the new model; `search.meaning_ready`:
  * `query`. */
 export interface AdminEvent {
-	type: AdminEventType | SearchEventType;
+	type: SystemEventType | SearchEventType;
 	id: string;
 	occurred_at: string;
 	[key: string]: unknown;
@@ -73,7 +73,7 @@ class EventStream {
 	connected = $state(false);
 	#source: EventSource | null = null;
 	#handlers = new Set<Handler>();
-	#adminHandlers = new Set<{ type: AdminEventType | SearchEventType; handler: AdminHandler }>();
+	#adminHandlers = new Set<{ type: SystemEventType | SearchEventType; handler: AdminHandler }>();
 	// Whether a stream was open before: every later `onopen` is a reconnect (after a network
 	// break, or after the server closed the stream and the caller started it again). `stop()`
 	// forgets it: the first stream of the next sign-in is no reconnect.
@@ -93,7 +93,7 @@ class EventStream {
 
 	/** Listen to one of the events without a document (an admin's, a search's); returns the
 	 * function that stops listening. */
-	on(type: AdminEventType | SearchEventType, handler: AdminHandler): () => void {
+	on(type: SystemEventType | SearchEventType, handler: AdminHandler): () => void {
 		const entry = { type, handler };
 		this.#adminHandlers.add(entry);
 		return () => this.#adminHandlers.delete(entry);
@@ -126,7 +126,7 @@ class EventStream {
 				if (event) for (const handler of this.#handlers) handler(event);
 			});
 		}
-		for (const type of [...ADMIN_EVENT_TYPES, ...SEARCH_EVENT_TYPES]) {
+		for (const type of [...SYSTEM_EVENT_TYPES, ...SEARCH_EVENT_TYPES]) {
 			source.addEventListener(type, (message) => {
 				const event = parsed<AdminEvent>(message);
 				if (!event) return;

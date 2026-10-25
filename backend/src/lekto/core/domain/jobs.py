@@ -19,6 +19,24 @@ class JobStatus(StrEnum):
         return self in {JobStatus.QUEUED, JobStatus.RUNNING}
 
 
+class JobState(StrEnum):
+    """Where a job stands for the people looking at it: a queued job is due once its time has
+    come, planned before (a repetition, a recurring job)."""
+
+    RUNNING = "running"
+    DUE = "due"
+    PLANNED = "planned"
+    DONE = "done"
+    FAILED = "failed"
+
+    @property
+    def is_open(self) -> bool:
+        return self in OPEN_STATES
+
+
+OPEN_STATES = frozenset({JobState.RUNNING, JobState.DUE, JobState.PLANNED})
+
+
 @dataclass(frozen=True, kw_only=True)
 class Job:
     """A snapshot of a job as stored by the job queue.
@@ -28,6 +46,9 @@ class Job:
     `coalesce_key`: while a job with this key is queued, enqueueing another one with the same key
     does nothing; claiming the job clears it, so a change that comes after its work has begun
     queues a new job. For work that reads the current state when it runs (the search index).
+    `started_at`: when the latest claim took it; `finished_at`: when it was done or given up;
+    `result`: what a done job reports of its work (the search index: how many sections it
+    embedded). None in jobs from before revision 0041.
     """
 
     id: JobId
@@ -41,11 +62,55 @@ class Job:
     last_error: str | None = None
     releases: int = 0  # claims given back unfinished (`JobQueue.release`)
     coalesce_key: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    result: JsonObject | None = None
 
     @property
     def tries(self) -> int:
         """Claims that counted: the attempts without the released ones."""
         return self.attempts - self.releases
+
+    def state(self, now: datetime) -> JobState:
+        match self.status:
+            case JobStatus.RUNNING:
+                return JobState.RUNNING
+            case JobStatus.QUEUED:
+                return JobState.DUE if self.run_at <= now else JobState.PLANNED
+            case JobStatus.DONE:
+                return JobState.DONE
+            case JobStatus.FAILED:
+                return JobState.FAILED
+
+
+@dataclass(frozen=True)
+class JobCount:
+    """How many jobs of a kind stand in a state."""
+
+    kind: str
+    state: JobState
+    count: int
+
+
+@dataclass(frozen=True)
+class JobOverview:
+    """The jobs by kind and state, and when a worker last claimed one (None: never, or only
+    before revision 0041)."""
+
+    counts: tuple[JobCount, ...]
+    last_started: datetime | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class FinishedJob:
+    """A done job's times and result, for its durations: due at `run_at`, started at
+    `started_at` (by its last claim), done at `finished_at`."""
+
+    kind: str
+    run_at: datetime
+    started_at: datetime
+    finished_at: datetime
+    result: JsonObject | None = None
 
 
 WORK_LEASE_MARGIN = timedelta(minutes=2)

@@ -207,7 +207,20 @@ signals that ask no model, so new aliases, identifiers or a new model count); bo
 jobs of the old run are recognised as stale. A document keeps the lane its first run ended in
 (`first_lane`: green went through without a review, yellow needed one, red failed); neither
 a confirmation nor a later run changes it, so reports can tell how many documents went straight
-through.
+through. For the page "System", Lekto keeps more as it happens (`core/domain/first_runs.py`,
+port `ProcessingFacts`): the first run (when receiving began, when the run first stopped, how
+long each node worked; `first_runs`), and per field the verdict at a person's first decision on
+it (`field_verdicts`: `taken`, `accepted`, `corrected`, `added`, or `early` before the first run
+stopped), with whether each signal named the person's value. Confirming in the inbox decides
+every field, a confirming change the fields it sets and those the automation had set, a move the
+space; a field keeps its first verdict. The statistics over both are counted live. `GET /automation`
+shows them on the page "System" to every user (`AutomationService`): the documents by the lane of
+their first run, what became of them, the history by month, the times (median and 90th
+percentile, per step too) and the verdicts per field; `GET /automation/signals` the hits of each
+signal per field. Both take the channels (`channel`, by default `web` and `api`), the period
+(`period`: `30d`, `12m`, `all`; the history by month of all time reaches back five years at
+most) and the time zone the months begin in (`tz`); a report is kept for a minute per API
+process (`services/_kept.py`).
 
 | Node | Input | Derivatives (object store) | Outcome |
 | --- | --- | --- | --- |
@@ -717,10 +730,11 @@ members see it (the pay slips in a personal space teach the employer a number it
 sees). A learned customer or personnel number belongs to a user when every one of its documents
 is surely theirs alone: in their personal space, or naming them by more than their name (one of
 their numbers, a number entered by hand that names them, their birth date). The model is stored as `npz`
-without pickle (`classifier/model-<n>.npz`, the latest three are kept) and predicted with numpy
+without pickle (`classifier/model-<n>.npz`, the files of the latest three are kept; every model's row stays, for the history of its accuracy) and predicted with numpy
 alone, so a new scikit-learn version cannot break it. It sees about the first 8,000 and the last
 4,000 characters of a longer text, a run of spaces counted once (12,000 in all, `TEXT_LIMIT`).
-`GET /classifier` tells its state.
+`GET /classifier` tells its state to every user (the page "System"), `GET /classifier/models`
+what every model learned and how well, oldest first; training on request is for admins.
 
 **After the update to 0.2.** Three things, in this order:
 
@@ -834,6 +848,14 @@ Revision 0040 (issue #82) adds the spaces a learned identifier was learned in
 (`contact_identifiers.user_id` is `ON DELETE CASCADE`: a deleted user's number would otherwise
 be everyone's to see). Identifiers learned before have no spaces: until the next training
 (`lekto train`, `POST /classifier/train`) only admins see them.
+
+Revision 0042 adds the first runs (`first_runs`) and the verdicts per field (`field_verdicts`)
+and reads them back from the log as far as it tells: the first run of each document whose first
+lane is known (the first entry of each node in run 1 up to the stop: filing for green, the
+failed node for red, the last node for yellow); the verdicts of people on documents of the web
+and the API (confirmations, changes, moves; an entered value is judged by the value the document
+holds now if nothing touched the field since, else by whether it differs from before, where that
+tells). Migrated documents get no verdicts: their changes are mostly the migration's alignment.
 
 **Evaluation.** `lekto evaluate [--fake]` runs the synthetic documents in
 `evaluation/` cold and trained and writes a report; see [evaluation/README.md](evaluation/README.md).
@@ -1068,6 +1090,17 @@ and why by words alone where the meaning was to take part (`reason` with a code:
   `<index>-rebuild` from the database and the object store, 50 documents per request, while the
   active index keeps serving, swaps it in and reconciles what changed meanwhile. The index holds
   no information that is not in the database.
+- **State.** `GET /search/status` (every user, the page "System") counts the documents of the
+  database and of the index, those with vectors and the vectors (`SearchIndex.stats`, from
+  Meilisearch's index stats), the index jobs running and waiting with an estimate of when they
+  are through (from the index jobs done in the last ten minutes), and how long index jobs ran
+  with and without embedding (from the latest 2000 done within `LEKTO_RETENTION`, counted at
+  most once a minute per API process): an index job reports the sections it embedded
+  (`{"sections": n}` in its result) and whether it wrote without vectors because the embedding
+  failed (`"embedding_failed": true`; such a job measures neither kind). `POST /search/check`
+  (admins) compares like the
+  reconciliation (`IndexingService.compare`) but only counts: current, missing, outdated,
+  vectors of another model, left over.
 - **Rights.** The index query contains the rights (every document of the spaces the caller
   edits, in any lane; green documents of the spaces they read). Every hit is checked against
   the database once more and the filter applied again, so a removed member finds nothing of
@@ -1342,6 +1375,15 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
   most `LEKTO_EVENTS_MAX_ATTEMPTS` times. Several dispatchers under the same subscriber name
   may deliver an event twice (at least once is allowed).
 - Every loop runs its units of work one after another, never nested, as SQLite requires.
+- A job keeps when its latest claim took it, when it was done or given up, and what a done job
+  reports (`jobs.started_at`, `finished_at`, `result`; revision 0041). `/jobs` shows them on the
+  page "System" to every user (`JobsService`): counts by kind and state (`GET /jobs/summary`,
+  one `GROUP BY`), the jobs (`GET /jobs`; a document named only to those who may read it, the
+  last error only to admins), how long the done ones waited and ran within `LEKTO_RETENTION`
+  (`GET /jobs/durations`: median and 90th percentile by nearest rank, from the latest 2000 done
+  jobs of each kind, counted at most once a minute per API process), and an admin queues a
+  failed one again (`POST /jobs/{id}/retry`; a failed processing step goes through
+  `POST /documents/{id}/retry`, so that its document's processing goes on).
 
 ## Webhooks
 

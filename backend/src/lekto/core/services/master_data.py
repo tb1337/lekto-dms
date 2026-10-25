@@ -450,7 +450,7 @@ class MasterDataService:
                 changed, last = await normalise_tagged(
                     uow, tag, start, self._now(), batch=self._normalise_batch
                 )
-                await uow.jobs.complete(job)
+                await uow.jobs.complete(job, now=self._now())
                 if last is not None:
                     await uow.jobs.enqueue(
                         NORMALISE_JOB,

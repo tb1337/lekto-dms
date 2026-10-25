@@ -170,7 +170,9 @@ async def test_without_a_search_index_the_endpoints_answer_503(api: Api) -> None
     # Without the service, the query is not looked at.
     unchecked = await api.client.get(SEARCH, headers=auth(admin))
     rebuild = await api.client.post(f"{PREFIX}/search/reindex", headers=auth(admin))
-    for response in (found, unchecked, rebuild):
+    status = await api.client.get(f"{PREFIX}/search/status", headers=auth(admin))
+    check = await api.client.post(f"{PREFIX}/search/check", headers=auth(admin))
+    for response in (found, unchecked, rebuild, status, check):
         assert response.status_code == 503
         assert response.json()["reason"]["code"] == "search_not_configured"
 
@@ -229,3 +231,20 @@ async def test_hits_by_relevance_or_sorted(api: Api) -> None:
         SEARCH, params={"q": "pdf", "sort": "size"}, headers=scene.headers["admin"]
     )
     assert bad.status_code == 422
+
+
+async def test_every_user_sees_the_state_of_the_index_admins_check_it(api: Api) -> None:
+    scene = await indexed_scene(api)
+    status = await api.client.get(f"{PREFIX}/search/status", headers=scene.headers["stranger"])
+    assert status.status_code == 200
+    body = status.json()
+    assert body["documents"] == body["index"]["documents"] > 0
+    assert (body["queued"], body["remaining_ms"]) == (0, 0.0)
+    assert set(body) >= {"model", "dimensions", "since", "per_section_ms", "embedded_jobs"}
+
+    url = f"{PREFIX}/search/check"
+    assert (await api.client.post(url, headers=scene.headers["owner"])).status_code == 403
+    check = await api.client.post(url, headers=scene.headers["admin"])
+    assert check.status_code == 200
+    assert check.json() == {**check.json(), "missing": 0, "outdated": 0, "extra": 0}
+    assert check.json()["current"] == body["documents"]

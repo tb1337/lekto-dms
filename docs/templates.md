@@ -126,10 +126,11 @@ When a template is saved, Lekto checks it: Liquid syntax, known filters, and kno
 A rule sets a field of any type with a template. What the template writes is read as the
 field's type has it, the way Lekto reads a value a document shows:
 
-1. First the forms templates write themselves: a number as its decimal text (`1234.5`;
+1. First the forms templates write themselves: a number as its decimal text (`1234.5`, `.5`;
    `1.234` is one point two three four), a day in ISO 8601 (`2026-03-14`), a period as above
-   (`2026-Q3`, `2026-W38`, `2026-09-01/2026-09-14`), yes or no as `true` or `false`, an amount
-   as a number with a currency code before or after it, or without one.
+   (`2026-Q3`, `2026-W38`, `2026-09-01/2026-09-14`; `2026-Q5` is none), yes or no as `true` or
+   `false`, an amount as a number with a currency code (ISO 4217) before or after it, or without
+   one.
 2. Otherwise as a person writes it: `2.111,68 €`, `3.650,00 EUR`, `14. März 2026`, `14.03.26`,
    `KW 38/2026`, `September 2026`, `ja`, `nein`. A number that reads two ways (`1.234`)
    counts as the language of `LEKTO_TEMPLATE_LOCALE` means it; an amount without a currency
@@ -148,8 +149,11 @@ field's type has it, the way Lekto reads a value a document shows:
 
 What cannot be read sets nothing, like a missing value: the action is skipped with the note
 "'later' cannot be read as a date", and the document does not wait for a person because of it.
-A period without a year (`September`) is not read: a rule does not guess the year. A choice
-must be one of the field's options as written. Text without `{{` or `{%` writes itself and is
+A number or an amount is only the value, without words but a currency's: `7 Stück` is no
+number, `Fällig in 14 Tagen` no amount (`{{ x | remove: ' Stück' }}` takes the word out). A
+period without a year (`September`) is not read: a rule does not guess the year. A choice
+must be one of the field's options as written; an option is a fixed value even where it holds
+braces. Text without `{{` or `{%` writes itself and is
 read when the rule is saved: `12,50 €` is a fixed amount, `zwölf` is refused. The template
 editor shows what the field gets from the document you chose. In the rule builder a field
 that is not text has a fixed value or a template; an amount, a period or yes/no given as JSON

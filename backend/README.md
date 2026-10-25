@@ -1003,13 +1003,17 @@ where it is and edits where it goes (global: admins); every version names its sp
   (`1234.5`, `2026-03-14`, `2026-Q3`, `true`, an amount with or without a currency code), else
   as a person writes it (`2.111,68 €`, `14. März 2026`, `KW 38/2026`, `ja`), an ambiguous
   number as `LEKTO_TEMPLATE_LOCALE`'s language means it, an amount without currency in
-  `LEKTO_DEFAULT_CURRENCY`, a two-digit year nearest to the day the document came in; a period
-  without a year is not read. What cannot be read sets nothing (note `skipped`,
+  `LEKTO_DEFAULT_CURRENCY`, a two-digit year nearest to the day the document came in; a number
+  or an amount has no words but a currency's, a currency code is an ISO 4217 one, a period
+  without a year is not read, nor one in ISO form that names none (`2026-Q5`). What cannot be read sets nothing (note `skipped`,
   `template_unreadable`, no yellow). An amount, a period or yes/no as JSON is a fixed value;
   fixed values that are text in their JSON form (`"12.50"`, `"2026-03-31"`, a choice, a link)
-  write themselves and read as before. Text without markup is read when the rule is saved
-  (422 if it cannot be). Templates of fields see the fields as they were, not what other field
-  actions set.
+  write themselves and read as before (also `.5`, `1e3`, `20260314`), and a choice's option is
+  fixed even where it holds braces. Text without markup is read when the rule is saved (422 if
+  it cannot be). Rules setting one field keep their order with templates; values are compared
+  by what they are (`84.2` and `84.20` are one amount). A stored value that is no valid
+  template blocks neither renaming nor deleting a field, and a rename rewrites only values with
+  markup. Templates of fields see the fields as they were, not what other field actions set.
 - **Evaluation.** All conditions see the state before any rule acts; a rule's action never makes
   another rule match in the same run. Contact, topic, type and tags the model set and no
   person confirmed are distrusted, and so are the groups of such a contact or type: a rule that

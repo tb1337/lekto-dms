@@ -1,3 +1,5 @@
+// The tab "Classifier": the latest model, the next training, the accuracy over the models and
+// the hit rate of each signal; training on request for admins.
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -30,6 +32,38 @@ const trained = {
 	threshold: 0.8
 };
 
+const models = [
+	{
+		...trained.model,
+		number: 1,
+		examples: 900,
+		accuracy: { tested: 180, contact: 0.8, document_type: 0.7 }
+	},
+	trained.model
+];
+
+const signals = {
+	channels: ['api', 'web'],
+	period: '12m',
+	since: '2025-11-01T00:00:00Z',
+	signals: [
+		{ field: 'contact', signal: 'signal_llm', hits: 2, misses: 1, decided: 4 },
+		{ field: 'contact', signal: 'signal_facts', hits: 1, misses: 0, decided: 4 },
+		{ field: 'document_date', signal: 'signal_llm', hits: 3, misses: 1, decided: 4 }
+	]
+};
+
+/** The classifier's endpoints, with `status` as its status. */
+function answer(status: unknown = trained) {
+	return async (request: Request) => {
+		const path = new URL(request.url).pathname;
+		if (request.method === 'POST') return new Response(null, { status: 202 });
+		if (path === '/api/v1/classifier/models') return json(200, models);
+		if (path === '/api/v1/automation/signals') return json(200, signals);
+		return json(200, status);
+	};
+}
+
 beforeEach(() => {
 	session.start({
 		user: { id: 'admin', username: 'admin', role: 'admin' },
@@ -48,12 +82,15 @@ afterEach(() => {
 
 describe('the classifier tab', () => {
 	it('shows what the model learned and trains on request', async () => {
-		fetchMock.mockImplementation(async (request) =>
-			request.method === 'POST' ? new Response(null, { status: 202 }) : json(200, trained)
-		);
+		fetchMock.mockImplementation(answer());
 		render(Page);
-		expect(await screen.findByText(m.classifier_identifiers({ count: '42' }))).toBeTruthy();
-		expect(screen.getByText(m.classifier_next({ since: '5', needed: '25' }))).toBeTruthy();
+		expect(
+			await screen.findByRole('heading', { name: m.classifier_model_title({ number: 2 }) })
+		).toBeTruthy();
+		expect(screen.getByText(m.classifier_class_identifiers())).toBeTruthy();
+		expect(screen.getByText('42')).toBeTruthy();
+		expect(screen.getByText(m.classifier_next_of({ needed: '25' }))).toBeTruthy();
+		expect(screen.getByText(m.classifier_next_text({ number: 2 }))).toBeTruthy();
 		await userEvent.click(screen.getByRole('button', { name: m.classifier_train() }));
 		const post = fetchMock.mock.calls.map((call) => call[0]).find((call) => call.method === 'POST');
 		expect(new URL(post!.url).pathname).toBe('/api/v1/classifier/train');
@@ -66,9 +103,11 @@ describe('the classifier tab', () => {
 			expires_at: '2026-10-14T12:00:00Z',
 			csrf_token: 'token'
 		});
-		fetchMock.mockImplementation(async () => json(200, trained));
+		fetchMock.mockImplementation(answer());
 		render(Page);
-		expect(await screen.findByText(m.classifier_identifiers({ count: '42' }))).toBeTruthy();
+		expect(
+			await screen.findByRole('heading', { name: m.classifier_model_title({ number: 2 }) })
+		).toBeTruthy();
 		expect(screen.queryByRole('button', { name: m.classifier_train() })).toBeNull();
 	});
 
@@ -84,21 +123,45 @@ describe('the classifier tab', () => {
 				}) as unknown as EventSource
 		);
 		events.start(() => {});
-		let current = trained;
-		fetchMock.mockImplementation(async () => json(200, current));
+		let current: unknown = trained;
+		fetchMock.mockImplementation((request) => answer(current)(request));
 		render(Page);
-		expect(await screen.findByText(m.classifier_identifiers({ count: '42' }))).toBeTruthy();
+		expect(
+			await screen.findByRole('heading', { name: m.classifier_model_title({ number: 2 }) })
+		).toBeTruthy();
 
-		current = { ...trained, model: { ...trained.model, number: 3, learned_identifiers: 44 } };
+		current = { ...trained, model: { ...trained.model, number: 3 } };
 		emit?.({
 			data: JSON.stringify({ type: 'classifier.trained', id: 'e1', occurred_at: '', number: 3 })
 		});
-		expect(await screen.findByText(m.classifier_identifiers({ count: '44' }))).toBeTruthy();
+		expect(
+			await screen.findByRole('heading', { name: m.classifier_model_title({ number: 3 }) })
+		).toBeTruthy();
 		events.stop();
 	});
 
+	it('draws the accuracy over the models', async () => {
+		fetchMock.mockImplementation(answer());
+		render(Page);
+		expect(await screen.findByRole('img', { name: m.classifier_history_label() })).toBeTruthy();
+		expect(screen.queryByText(m.classifier_history_none())).toBeNull();
+	});
+
+	it('tells the hit rate of each signal and marks the best', async () => {
+		fetchMock.mockImplementation(answer());
+		render(Page);
+		const table = await screen.findByRole('table');
+		const rows = Array.from(table.querySelectorAll('tbody tr'));
+		const llm = rows.find((row) => row.textContent?.includes(m.node_signal_llm()))!;
+		expect(llm.textContent).toContain(m.classifier_signal_of({ count: '3', decided: '4' }));
+		expect(llm.textContent).toContain(m.classifier_signal_best()); // the date: it alone
+		const facts = rows.find((row) => row.textContent?.includes(m.node_signal_facts()))!;
+		expect(facts.textContent).toContain(m.classifier_signal_best()); // the contact: all hits
+		expect(facts.querySelectorAll(`[aria-label="${m.classifier_signal_none()}"]`)).toHaveLength(4);
+	});
+
 	it('says so when there is no classifier', async () => {
-		fetchMock.mockResolvedValue(
+		fetchMock.mockImplementation(async () =>
 			json(
 				503,
 				{ type: 'about:blank', title: 'Unavailable', status: 503 },

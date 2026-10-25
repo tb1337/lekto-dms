@@ -1145,6 +1145,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/classifier/models': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Every model trained
+		 * @description What each model learned and how well it did, oldest first (only the latest ones keep their files); every user sees them. 503 without a classifier.
+		 */
+		get: operations['models_api_v1_classifier_models_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/classifier/train': {
 		parameters: {
 			query?: never;
@@ -2005,6 +2025,46 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/automation': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * How the automation did
+		 * @description The documents by the lane their first run stopped in, what became of them, the history by month, how long the first runs took and worked (per step too), and how people judged what the automation set, per field, at their first decision on it. For the documents of the channels given (by default `web` and `api`: migrated documents bring the metadata of the source system) and the period (30 days, the current month and the eleven before it, or all time); the whole system's numbers, naming no document. Counted again at most once a minute.
+		 */
+		get: operations['automation_api_v1_automation_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/automation/signals': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * How often each signal hit
+		 * @description Per field and signal (language model, classifier, similar documents, facts in the text), how often the signal's best value was the one a person decided at their first decision on the field, and how often another. For the documents of the channels given (by default `web` and `api`: migrated documents bring the metadata of the source system) and the period (30 days, the current month and the eleven before it, or all time); the whole system's numbers, naming no document. Counted again at most once a minute.
+		 */
+		get: operations['signals_api_v1_automation_signals_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/health': {
 		parameters: {
 			query?: never;
@@ -2322,6 +2382,53 @@ export interface components {
 			 * @description Send the browser there.
 			 */
 			authorization_url: string;
+		};
+		/** AutomationOut */
+		AutomationOut: {
+			/** Channels */
+			channels: components['schemas']['Channel'][];
+			period: components['schemas']['Period'];
+			/**
+			 * Since
+			 * @description From when the period counts; null: all time.
+			 */
+			since: string | null;
+			/** @description The documents by the lane their first run stopped in. */
+			lanes: components['schemas']['LanesOut'];
+			/**
+			 * Flow
+			 * @description What became of them: their lane now.
+			 */
+			flow: components['schemas']['FlowOut'][];
+			/**
+			 * Decided
+			 * @description Of them, those a person decided a field of.
+			 */
+			decided: number;
+			/**
+			 * Untouched
+			 * @description Of them, the green ones nobody decided a field of: not contradicted, no hit.
+			 */
+			untouched: number;
+			/**
+			 * Months
+			 * @description By the month their first run stopped, oldest first: the last 12 months, for all time from the first month with documents (at most 60).
+			 */
+			months: components['schemas']['MonthOut'][];
+			/** @description From the start of receiving to the first stop, with the waits for a worker. */
+			duration: components['schemas']['TimesOut'];
+			/** @description The sum of the steps (side by side ones each counted). */
+			work: components['schemas']['TimesOut'];
+			/**
+			 * Steps
+			 * @description Per node, in the order of the graph.
+			 */
+			steps: components['schemas']['StepTimesOut'][];
+			/**
+			 * Fields
+			 * @description The verdicts at the first decision of a person on each field, by when they were decided: the fields every document has first, then the custom ones by name.
+			 */
+			fields: components['schemas']['FieldVerdictsOut'][];
 		};
 		/**
 		 * BlockingSpaceOut
@@ -3903,6 +4010,26 @@ export interface components {
 		 * @enum {string}
 		 */
 		FieldType: 'text' | 'number' | 'amount' | 'date' | 'boolean' | 'choice' | 'link' | 'period';
+		/** FieldVerdictsOut */
+		FieldVerdictsOut: {
+			/**
+			 * Field
+			 * @description The field as checks name it: `contact`, `document_type`, `topic`, `document_date`, `space`, `tags`, or `field:<id>` for a custom field.
+			 * @example contact
+			 */
+			field: string;
+			/**
+			 * Name
+			 * @description A custom field's name; null for the others.
+			 */
+			name: string | null;
+			verdicts: components['schemas']['VerdictsOut'];
+			/**
+			 * Early
+			 * @description Decided before the first run stopped: nothing to judge, counted apart.
+			 */
+			early: number;
+		};
 		/** FileMetadataOut */
 		FileMetadataOut: {
 			/**
@@ -3944,6 +4071,14 @@ export interface components {
 			 * @description In the file's order.
 			 */
 			entries: components['schemas']['MetadataEntryOut'][];
+		};
+		/** FlowOut */
+		FlowOut: {
+			first_lane: components['schemas']['Lane'];
+			/** @description Where they lie now; null: being processed again. */
+			lane: components['schemas']['Lane'] | null;
+			/** Count */
+			count: number;
 		};
 		/** ForceReviewAction */
 		ForceReviewAction: {
@@ -4534,6 +4669,24 @@ export interface components {
 		 * @enum {string}
 		 */
 		LaneFilter: 'green' | 'yellow' | 'red' | 'processing';
+		/** LanesOut */
+		LanesOut: {
+			/**
+			 * Green
+			 * @description Went through without a person.
+			 */
+			green: number;
+			/**
+			 * Yellow
+			 * @description Stopped for a review.
+			 */
+			yellow: number;
+			/**
+			 * Red
+			 * @description Failed.
+			 */
+			red: number;
+		};
 		/**
 		 * Layout
 		 * @enum {string}
@@ -5188,6 +5341,17 @@ export interface components {
 			/** Count */
 			count: number;
 		};
+		/** MonthOut */
+		MonthOut: {
+			/**
+			 * Start
+			 * Format: date
+			 * @description The month's first day, in the time zone asked for.
+			 */
+			start: string;
+			/** @description The documents whose first run stopped that month. */
+			lanes: components['schemas']['LanesOut'];
+		};
 		/**
 		 * MoveRequest
 		 * @example {
@@ -5426,6 +5590,13 @@ export interface components {
 			 */
 			revoke_tokens: boolean;
 		};
+		/**
+		 * Period
+		 * @description The period the numbers cover, up to now: 30 days, the current month and the eleven
+		 *     before it, or all time.
+		 * @enum {string}
+		 */
+		Period: '30d' | '12m' | 'all';
 		/** PeriodValue */
 		PeriodValue: {
 			/**
@@ -6753,6 +6924,44 @@ export interface components {
 		 * @enum {string}
 		 */
 		Signal: 'signal_llm' | 'signal_classifier' | 'signal_neighbours' | 'signal_facts';
+		/** SignalHitsOut */
+		SignalHitsOut: {
+			/**
+			 * Field
+			 * @description The field as checks name it: `contact`, `document_type`, `topic`, `document_date`, `space`, `tags`, or `field:<id>` for a custom field.
+			 * @example contact
+			 */
+			field: string;
+			signal: components['schemas']['Node'];
+			/**
+			 * Hits
+			 * @description Its best value was the one the person decided.
+			 */
+			hits: number;
+			/**
+			 * Misses
+			 * @description Its best value was another.
+			 */
+			misses: number;
+			/**
+			 * Decided
+			 * @description Decisions on the field, whether the signal named one or not.
+			 */
+			decided: number;
+		};
+		/** SignalsOut */
+		SignalsOut: {
+			/** Channels */
+			channels: components['schemas']['Channel'][];
+			period: components['schemas']['Period'];
+			/** Since */
+			since: string | null;
+			/**
+			 * Signals
+			 * @description Per field and signal that named a value for it. The date has no candidates of the signals: the language model's are its verdicts (taken over or accepted a hit, corrected a miss).
+			 */
+			signals: components['schemas']['SignalHitsOut'][];
+		};
 		/** SkippedOut */
 		SkippedOut: {
 			/**
@@ -6918,6 +7127,22 @@ export interface components {
 			 * @description Where it stands on the archive's pages, a box per line; empty where the words of the text have no boxes (a text parsed before 0.2).
 			 */
 			locations: components['schemas']['LocationOut'][];
+		};
+		/** StepTimesOut */
+		StepTimesOut: {
+			/**
+			 * Count
+			 * @description Documents measured.
+			 */
+			count: number;
+			/** Median Ms */
+			median_ms: number | null;
+			/**
+			 * P90 Ms
+			 * @description 90th percentile, by nearest rank.
+			 */
+			p90_ms: number | null;
+			node: components['schemas']['Node'];
 		};
 		/** StoredFileOut */
 		StoredFileOut: {
@@ -7133,6 +7358,21 @@ export interface components {
 			values: {
 				[key: string]: string;
 			} | null;
+		};
+		/** TimesOut */
+		TimesOut: {
+			/**
+			 * Count
+			 * @description Documents measured.
+			 */
+			count: number;
+			/** Median Ms */
+			median_ms: number | null;
+			/**
+			 * P90 Ms
+			 * @description 90th percentile, by nearest rank.
+			 */
+			p90_ms: number | null;
 		};
 		/**
 		 * TokenCreate
@@ -7355,6 +7595,29 @@ export interface components {
 			id: string | null;
 			/** Count */
 			count: number;
+		};
+		/** VerdictsOut */
+		VerdictsOut: {
+			/**
+			 * Taken
+			 * @description The automation's value stood.
+			 */
+			taken: number;
+			/**
+			 * Accepted
+			 * @description The suggestion of an uncertain field was taken.
+			 */
+			accepted: number;
+			/**
+			 * Corrected
+			 * @description The automation had a value or suggestion; another one won.
+			 */
+			corrected: number;
+			/**
+			 * Added
+			 * @description The automation had none; the person gave one.
+			 */
+			added: number;
 		};
 		/**
 		 * VisibilityOut
@@ -16717,6 +16980,77 @@ export interface operations {
 			};
 		};
 	};
+	models_api_v1_classifier_models_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ClassifierModelOut'][];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Service Unavailable",
+					 *       "status": 503,
+					 *       "detail": "database: unreachable"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
 	train_api_v1_classifier_train_post: {
 		parameters: {
 			query?: never;
@@ -22106,6 +22440,160 @@ export interface operations {
 					 *       "title": "Conflict",
 					 *       "status": 409,
 					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	automation_api_v1_automation_get: {
+		parameters: {
+			query?: {
+				/** @description Repeat for several. */
+				channel?: components['schemas']['Channel'][] | null;
+				period?: components['schemas']['Period'];
+				/** @description The IANA time zone the months begin in. */
+				tz?: string;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['AutomationOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	signals_api_v1_automation_signals_get: {
+		parameters: {
+			query?: {
+				/** @description Repeat for several. */
+				channel?: components['schemas']['Channel'][] | null;
+				period?: components['schemas']['Period'];
+				/** @description The IANA time zone the months begin in. */
+				tz?: string;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SignalsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

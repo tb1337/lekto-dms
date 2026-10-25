@@ -1698,9 +1698,27 @@ Mock: https://claude.ai/artifact/CZha1VoRbf2KxJQCAZx5ma (vier Reiter hell und du
 - **Befund korrigiert:** Eine Änderung in der Dokumentansicht hält sehr wohl fest, was sich änderte: Seit dem 07.10. schreibt sie einen Eintrag `rules:change` mit `changed`, `corrected`, `tags_added` und `tags_removed`; ein Verschieben schreibt `person:space`. Lauf 1 endet immer am ersten Stopp: Bestätigen, Wiederholen und neu Verarbeiten beginnen einen neuen Lauf.
 - **Zwei Tabellen** statt einer (Tobi: „ok“): `first_runs` (eine Zeile je Dokument: Beginn von Lauf 1, erster Stopp, Arbeitszeit, Dauer je Schritt) und `field_verdicts` (eine Zeile je Dokument und Feld: Urteil, wann und wo entschieden, je Signal genannt/anders/nicht genannt). So zählt SQL die Urteile mit `GROUP BY`, auf SQLite und Postgres gleich. `first_lane` und `channel` bleiben am Dokument.
 - **Urteil je Feld beim ersten Entscheid über dieses Feld** (Empfehlung Claude, angenommen): Bestätigen im Posteingang entscheidet alle Felder; eine bestätigende Änderung in der Dokumentansicht die geänderten und die, die die Automatik sicher gesetzt hat; Verschieben oder Übergeben nur den Space. Ein Feld mit Urteil behält es. Nichts entscheiden der Abgleich der Migration (`confirm=False`), ein beim Upload gewählter Space und ein Dokument, an dem eine Person schon in Lauf 1 etwas änderte (kein Urteil).
-- **Urteile:** vorher ein Wert, danach derselbe: übernommen; vorher leer, danach der Vorschlag: Vorschlag angenommen; es gab Wert oder Vorschlag, danach etwas anderes oder nichts: korrigiert; weder noch, danach ein Wert: ergänzt; beide leer: kein Urteil. Tags als Menge ohne die von Hand gesetzten. Signale nur für Felder mit einem Wert (Kontakt, Typ, Thema, Space; das Datum nur das Sprachmodell).
+- **Urteile:** vorher ein Wert, danach derselbe: übernommen; vorher leer, danach der Vorschlag: Vorschlag angenommen; es gab Wert oder Vorschlag, danach etwas anderes oder nichts: korrigiert; weder noch, danach ein Wert: ergänzt; beide leer: kein Urteil. Tags als Menge ohne die von Hand gesetzten. Signale nur für Felder mit einem Wert, die die Signale nennen (Kontakt, Typ, Thema, Space).
 - **Nachtrag** (Tobi: „okay machen“, abweichend von Entscheidung 7): aus den Bestätigungen im Posteingang und den Änderungen in der Dokumentansicht (`rules:change` einer Person), korrigiert oder ergänzt nach der Prüfung des Judge davor. Treffer der Signale nur, wo der entschiedene Wert bekannt ist.
 - **Messung** mit einem Skript außerhalb des Repos; das Ergebnis steht hier.
+
+**C1 gebaut (25.10.2026):** Domäne `core/domain/first_runs.py`, Port `ProcessingFacts` (im UnitOfWork `processing_facts`) mit Speicher- und SQL-Adapter und Contract-Suite, Revision 0042 mit Nachtrag. Erfasst wird in `PipelineService._record_once` (erster Stopp), `PipelineService.confirm`, `DocumentService.change_metadata` und `DocumentService.move` (nicht beim Verschieben der Dokumente eines gelöschten Nutzers). Abweichungen und Befunde:
+
+- Das Datum hat keine Kandidaten der Signale; sein Urteil ist der Treffer des Sprachmodells. Signale also nur für Kontakt, Typ, Thema und Space.
+- Die Web-UI schickt beim Bestätigen jeden offenen Wert als eingetragen (`entered`), nicht als angenommenen Vorschlag; live vergleicht Lekto die Werte, im Nachtrag bleibt ein eingetragener Wert, wo es einen Vorschlag gab, ohne Urteil, wenn das Feld seitdem berührt wurde (dann ist der damalige Wert unbekannt).
+- Nachtrag der Urteile nur für web und api: Der Abgleich des Migrationsclients schreibt dieselben Einträge wie eine Person (`rules:change` mit Akteur), und die Trefferquote lässt migrierte Dokumente ohnehin aus.
+- `RunTimes` liefert Mikrosekunden als Zahlen und `statistics.percentiles` sortiert einmal je Liste: mit `timedelta` dauerte die Auswertung über 100.000 Dokumente 1,8 s.
+- Messung mit 100.000 Dokumenten (60 % migration, 30 % web, 10 % api; 390.000 Urteile), Median aus fünf Läufen:
+
+| Abfrage | SQLite alle | SQLite web+api 12 Monate | SQLite web+api 30 Tage | Postgres alle | Postgres web+api 12 Monate | Postgres web+api 30 Tage |
+| --- | --- | --- | --- | --- | --- | --- |
+| `lane_counts` | 203 ms | 375 ms | 68 ms | 79 ms | 66 ms | 62 ms |
+| `lanes_by_period` (13 Monate) | 157 ms | 311 ms | 24 ms | 48 ms | 38 ms | 24 ms |
+| `run_times` mit Median und P90 je Schritt | 778 ms | 535 ms | 40 ms | 857 ms | 294 ms | 41 ms |
+| `verdict_counts` | 339 ms | 342 ms | 29 ms | 38 ms | 28 ms | 18 ms |
+| `signal_counts` | 357 ms | 348 ms | 31 ms | 45 ms | 32 ms | 19 ms |
+
+  Über 300 ms liegen die Zeiten bei großen Zeiträumen (vor allem `run_times`: 100.000 Zeilen mit JSON nach Python). C2 cacht die Statistik kurz (wie geplant); die Zähler auf Postgres brauchen das nicht.
 
 ### M16 – Lesen
 

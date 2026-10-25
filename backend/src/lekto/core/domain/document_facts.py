@@ -14,14 +14,14 @@ a person's correction (`FactState`, later) outlasts it.
 """
 
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.evidence import normalise
 from lekto.core.domain.facts import identifier_spans
-from lekto.core.domain.identifiers import IdentifierKind, Key, type_of
+from lekto.core.domain.identifiers import TYPES, IdentifierKind, Key, type_of
 
 
 class FactRole(StrEnum):
@@ -67,9 +67,34 @@ ROLES: Mapping[IdentifierKind, FactRole] = {
     IdentifierKind.SOCIAL_SECURITY_NUMBER: FactRole.PERSON,
     IdentifierKind.HEALTH_INSURANCE_NUMBER: FactRole.PERSON,
     IdentifierKind.EMAIL_ADDRESS: FactRole.PERSON,
+    IdentifierKind.CREDITOR_ID: FactRole.CONTACT,
+    IdentifierKind.COMMERCIAL_REGISTER: FactRole.CONTACT,
+    IdentifierKind.TAX_NUMBER: FactRole.CONTACT,
+    IdentifierKind.CONTRACT_NUMBER: FactRole.TARGET,
+    IdentifierKind.POLICY_NUMBER: FactRole.TARGET,
+    IdentifierKind.MEMBERSHIP_NUMBER: FactRole.TARGET,
+    IdentifierKind.METER_NUMBER: FactRole.TARGET,
+    IdentifierKind.LOAN_NUMBER: FactRole.TARGET,
+    IdentifierKind.MANDATE_REFERENCE: FactRole.TARGET,
+    IdentifierKind.LICENSE_PLATE: FactRole.TARGET,
+    IdentifierKind.INVOICE_NUMBER: FactRole.OWN,
+    IdentifierKind.CREDIT_NOTE_NUMBER: FactRole.OWN,
+    IdentifierKind.ORDER_NUMBER: FactRole.OWN,
+    IdentifierKind.FILE_REFERENCE: FactRole.THREAD,
+    IdentifierKind.OUR_REFERENCE: FactRole.THREAD,
+    IdentifierKind.CLAIM_NUMBER: FactRole.THREAD,
+    IdentifierKind.TICKET_NUMBER: FactRole.THREAD,
+    IdentifierKind.YOUR_REFERENCE: FactRole.REFERS,
+    IdentifierKind.CHILD_BENEFIT_NUMBER: FactRole.PERSON,
 }
 """The role a fact of each kind has until a source tells (a test holds that no kind is
 missing)."""
+
+NUMBER_KINDS = frozenset(
+    kind for kind in IdentifierKind if not (TYPES[kind].for_contacts or TYPES[kind].for_persons)
+)
+"""The kinds of the numbers a document has of its own, of a strand or of another document it
+refers to: no contact's or person's identifiers (invoice number, file reference)."""
 
 MAX_WRITTEN = 200
 """Characters of a fact as written that are kept."""
@@ -114,11 +139,14 @@ def found_facts(
     in_text: Iterable[Key],
     in_codes: Iterable[Key] = (),
     places: Mapping[Key, int] | None = None,
+    referred: Collection[Key] = (),
 ) -> tuple[DocumentFact, ...]:
     """The facts a document shows: the identifiers in its text (`identifiers_in`) and in the
     codes on its pages (`code_identifiers`), each once, as the text reads (those only in a code
-    last), with the role of its kind. Where one stands first is where its reader took it
-    (`places`: in the normalised text, `places_in`), else where its value stands first."""
+    last), with the role of its kind; one the text shows only as another's (`referred_in`:
+    "Ihre Rechnung Nr. 4711") refers to that document. Where one stands first is where its
+    reader took it (`places`: in the normalised text, `places_in`), else where its value stands
+    first."""
     texts, codes = set(in_text), set(in_codes)
     normalised = normalise(text) if places else ""
     facts = []
@@ -132,7 +160,7 @@ def found_facts(
             DocumentFact(
                 kind=kind,
                 value=value,
-                role=role_of(kind),
+                role=FactRole.REFERS if (kind, value) in referred else role_of(kind),
                 origins=frozenset(origins),
                 written=None if where is None else text[where[0] : where[1]],
                 position=None if where is None else where[0],

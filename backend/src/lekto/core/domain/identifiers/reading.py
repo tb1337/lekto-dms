@@ -50,6 +50,18 @@ def places_in(text: str) -> dict[Key, int]:
     return places
 
 
+def referred_in(text: str) -> set[Key]:
+    """The numbers `text` shows only after "Ihr", "Ihre" or "your" before their label ("Ihre
+    Rechnung Nr. 4711"): those of another's document, which this one refers to (`refers`);
+    one that also stands after its label alone ("Rechnungsnummer 4711") is not."""
+    alone: dict[Key, bool] = {}
+    for candidate in candidates_in(text):
+        with suppress(ValidationError):
+            key = (candidate.kind, TYPES[candidate.kind].normalise(candidate.raw))
+            alone[key] = alone.get(key, False) or not candidate.refers
+    return {key for key, own in alone.items() if not own}
+
+
 def identifiers_from(candidates: Iterable[Candidate]) -> set[Key]:
     """The identifiers among `candidates`, normalised: those of their kind (the others are left
     out); a customer or personnel number only if it is none of the person's numbers found, does

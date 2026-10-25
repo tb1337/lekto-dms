@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FieldDefinition, Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
-import { newAction } from '#lib/rules/model.ts';
+import { newAction, newModel } from '#lib/rules/model.ts';
 import { session } from '#lib/session.svelte.ts';
 import ActionRow from './ActionRow.svelte';
 
@@ -80,5 +80,24 @@ describe('sending through a webhook', () => {
 	it('explains what goes out through an own webhook', () => {
 		send([{ id: 'w2', name: 'Home Assistant', owner_id: 'anna' }]);
 		expect(screen.getByText(m.rule_send_webhook_hint())).toBeTruthy();
+	});
+});
+
+describe('steps that ask and check', () => {
+	it('asks with a name, a time in minutes and what happens without an answer', () => {
+		const action = newAction('ask_webhook');
+		render(ActionRow, { action, lookup, targets, onremove: vi.fn() });
+		expect(screen.getByLabelText(m.rule_ask_name())).toBeTruthy();
+		expect((screen.getByLabelText(m.rule_ask_timeout()) as HTMLInputElement).value).toBe('5');
+		expect(screen.getByText(m.rule_ask_name_hint())).toBeTruthy();
+	});
+
+	it('checks what a step before brought', () => {
+		const model = newModel();
+		const action = newAction('condition');
+		model.actions = [action];
+		render(ActionRow, { action, lookup, targets, model, steps: ['flow'], onremove: vi.fn() });
+		expect(screen.getByLabelText(m.rule_step_path())).toBeTruthy();
+		expect(screen.getByText(m.rule_condition_step_hint())).toBeTruthy();
 	});
 });

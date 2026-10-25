@@ -17,6 +17,7 @@
 	import {
 		CHANNELS,
 		CONDITION_FIELDS,
+		STEP_CONDITION_FIELDS,
 		TAG_FIELDS,
 		changeField,
 		changeConditionField,
@@ -29,11 +30,14 @@
 	} from '#lib/rules/model.ts';
 
 	// One condition: condition field (and the field), comparison and the value it needs.
-	// `onunreadable` says while the value's text cannot be read (see `ValueInput`).
+	// `onunreadable` says while the value's text cannot be read (see `ValueInput`). In a
+	// condition step (`steps`: the names of the steps before that ask) it may look at what a
+	// step brought too.
 	let {
 		condition,
 		lookup,
 		error,
+		steps = null,
 		onremove,
 		onup,
 		ondown,
@@ -42,6 +46,7 @@
 		condition: ConditionNode;
 		lookup: Lookup;
 		error?: string;
+		steps?: readonly string[] | null;
 		onunreadable?: (unreadable: boolean) => void;
 		onremove: () => void;
 		onup?: () => void;
@@ -50,10 +55,45 @@
 
 	const field = $derived(lookup.fields.find((entry) => entry.id === condition.fieldId) ?? null);
 	const operators = $derived(operatorsFor(condition, lookup.fields));
-	const conditionFieldOptions = CONDITION_FIELDS.map((field) => ({
-		value: field,
-		label: fieldLabel(field)
-	}));
+	const conditionFieldOptions = $derived(
+		(steps === null ? CONDITION_FIELDS : STEP_CONDITION_FIELDS).map((field) => ({
+			value: field,
+			label: fieldLabel(field)
+		}))
+	);
+	// What a step condition compares with: a text, a number or true/false; after or before a
+	// number or a date.
+	type Kind = 'text' | 'number' | 'date' | 'true' | 'false';
+	const ordered = $derived(condition.op === 'gt' || condition.op === 'lt');
+	const kinds = $derived(
+		(ordered
+			? (['number', 'date'] as const)
+			: condition.op === 'contains'
+				? (['text'] as const)
+				: (['text', 'number', 'true', 'false'] as const)
+		).map((kind) => ({ value: kind, label: KIND_LABELS[kind]() }))
+	);
+	const KIND_LABELS: Record<Kind, () => string> = {
+		text: m.rule_value_text,
+		number: m.rule_value_number,
+		date: m.rule_value_date,
+		true: m.rule_value_true,
+		false: m.rule_value_false
+	};
+	const kind = $derived.by((): Kind => {
+		const value = condition.value;
+		if (typeof value === 'boolean') return value ? 'true' : 'false';
+		if (typeof value === 'number') return 'number';
+		return ordered ? 'date' : 'text';
+	});
+	function setKind(next: string) {
+		if (next === 'true' || next === 'false') condition.value = next === 'true';
+		else if (next === 'number') condition.value = 0;
+		else condition.value = '';
+	}
+	function stepInput(text: string) {
+		condition.value = kind === 'number' ? Number(text.replace(',', '.')) : text;
+	}
 	const operatorOptions = $derived(
 		operators.map((op) => ({
 			value: op,
@@ -85,7 +125,7 @@
 		}
 	});
 	const single = $derived(typeof condition.value === 'string' ? condition.value : '');
-	const list = $derived(Array.isArray(condition.value) ? condition.value : []);
+	const list = $derived(Array.isArray(condition.value) ? condition.value.map(String) : []);
 	const textual = $derived(
 		condition.field === 'text' || condition.op === 'contains' || condition.op === 'matches'
 	);
@@ -102,6 +142,17 @@
 			onchange={(field) => changeConditionField(condition, field as ConditionField, lookup.fields)}
 			class="h-10 w-full sm:w-44"
 		/>
+		{#if condition.field === 'step'}
+			<Input
+				aria-label={m.rule_step_path()}
+				aria-invalid={invalid || undefined}
+				placeholder={steps?.length ? `${steps[0]}.` : ''}
+				title={m.rule_step_path_hint()}
+				value={condition.path ?? ''}
+				oninput={(event) => (condition.path = event.currentTarget.value.trim())}
+				class="h-10 w-full font-mono sm:w-44"
+			/>
+		{/if}
 		{#if condition.field === 'field'}
 			<Select
 				aria-label={m.rule_condition_field()}
@@ -171,6 +222,27 @@
 					onchange={(next) => (condition.value = next)}
 					class="h-10"
 				/>
+			{:else if condition.field === 'step'}
+				<div class="flex gap-1">
+					{#if kinds.length > 1}
+						<Select
+							aria-label={m.rule_value_kind()}
+							value={kind}
+							options={kinds}
+							onchange={setKind}
+							class="h-10 w-28 shrink-0"
+						/>
+					{/if}
+					{#if kind === 'number' || kind === 'text' || kind === 'date'}
+						<Input
+							type={kind === 'number' ? 'number' : kind === 'date' ? 'date' : 'text'}
+							aria-label={valueLabel}
+							aria-invalid={invalid || undefined}
+							value={typeof condition.value === 'number' ? String(condition.value) : single}
+							oninput={(event) => stepInput(event.currentTarget.value)}
+						/>
+					{/if}
+				</div>
 			{:else if condition.field === 'document_date'}
 				<Input
 					type={single === '' || /^\d{4}-\d{2}-\d{2}$/.test(single) ? 'date' : 'text'}

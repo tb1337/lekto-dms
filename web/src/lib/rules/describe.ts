@@ -27,7 +27,8 @@ const CONDITION_FIELDS: Record<Exclude<ConditionField, 'field'>, () => string> =
 	tags: m.field_tags,
 	channel: m.rule_field_channel,
 	text: m.rule_field_text,
-	document_date: m.field_date
+	document_date: m.field_date,
+	step: m.rule_field_step
 };
 
 export function fieldLabel(field: ConditionField): string {
@@ -55,7 +56,9 @@ export const ACTION_LABELS: Record<ActionType, () => string> = {
 	remove_tags: m.rule_action_remove_tags,
 	set_field: m.rule_action_set_field,
 	force_review: m.rule_action_force_review,
-	send_webhook: m.rule_action_send_webhook
+	send_webhook: m.rule_action_send_webhook,
+	ask_webhook: m.rule_action_ask_webhook,
+	condition: m.rule_action_condition
 };
 
 const OPERATORS: Record<Operator, () => string> = {
@@ -123,7 +126,12 @@ const PROBLEMS: Record<Problem['code'], (params: Record<string, string | number>
 	depth: (params) => m.rule_error_depth({ max: params.max }),
 	actions_none: () => m.rule_error_actions_none(),
 	actions_many: (params) => m.rule_error_actions_many({ max: params.max }),
-	twice: () => m.rule_error_twice()
+	twice: () => m.rule_error_twice(),
+	triggers_ask: () => m.rule_error_triggers_ask(),
+	step_name: () => m.rule_error_step_name(),
+	timeout: (params) => m.rule_error_timeout({ max: params.max }),
+	path: () => m.rule_error_path(),
+	step_unknown: () => m.rule_error_step_unknown()
 };
 
 export function problemText(problem: Problem): string {
@@ -143,7 +151,11 @@ function fieldOf(id: string | null, lookup: Lookup | null) {
 export function describeCondition(condition: ConditionNode, lookup: Lookup | null): string {
 	const field = fieldOf(condition.fieldId, lookup);
 	const subject =
-		condition.field === 'field' ? (field?.name ?? m.rule_unknown()) : fieldLabel(condition.field);
+		condition.field === 'field'
+			? (field?.name ?? m.rule_unknown())
+			: condition.field === 'step'
+				? `steps.${condition.path ?? ''}`
+				: fieldLabel(condition.field);
 	const op = operatorLabel(condition.field, condition.op, field?.data_type ?? null);
 	if (condition.value === null) return `${subject} ${op}`;
 	const values = Array.isArray(condition.value) ? condition.value : [condition.value];
@@ -234,5 +246,12 @@ export function describeAction(action: ActionNode | ApiAction, lookup: Lookup | 
 			const webhook = lookup?.webhooks?.find((entry) => entry.id === action.webhook_id);
 			return `${label}: ${webhook?.name ?? m.rule_webhook_unknown()}`;
 		}
+		case 'ask_webhook': {
+			const webhook = lookup?.webhooks?.find((entry) => entry.id === action.webhook_id);
+			const name = webhook?.name ?? m.rule_webhook_unknown();
+			return `${label}: ${name} ${m.rule_ask_as({ name: action.name })}`;
+		}
+		case 'condition':
+			return label;
 	}
 }

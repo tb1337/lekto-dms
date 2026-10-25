@@ -2223,6 +2223,37 @@ export interface components {
 			/** @description The same with its code. */
 			problem_reason?: components['schemas']['ReasonOut'] | null;
 		};
+		/** AskWebhookAction */
+		AskWebhookAction: {
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			type: 'ask_webhook';
+			/**
+			 * Name
+			 * @description Small letters, digits and `_`, unique in the rule: the steps after it see the answer as `steps.<name>`.
+			 * @example accounting
+			 */
+			name: string;
+			/**
+			 * Webhook Id
+			 * Format: uuid
+			 * @description A webhook of whoever saves the rule (someone else's is not found). It gets a task (`rule.ask`, with `task` and the headers `lekto-*`) and answers at `/external/tasks/{id}/result`. Its owner must be able to read the document, otherwise the document waits for a person (unless one decided already). Needs `LEKTO_PUBLIC_URL`.
+			 */
+			webhook_id: string;
+			/**
+			 * Timeout Seconds
+			 * @description The time to answer, from sending (the request may wait for its webhook).
+			 * @default 300
+			 */
+			timeout_seconds: number;
+			/**
+			 * @description Without an answer (none in time, an error, an invalid one): `red` fails the node (no rule acts), `yellow` ends the rule here (its steps before count) and holds the document for a person, `continue` goes on without `steps.<name>`. After a person decided in the run, it is only reported.
+			 * @default red
+			 */
+			missing: components['schemas']['Missing'];
+		};
 		/**
 		 * Assignment
 		 * @description Who sets a value: Lekto's classification (`auto`: the signals propose it, the model is
@@ -2552,6 +2583,7 @@ export interface components {
 		 * @enum {string}
 		 */
 		ConditionField:
+			| 'step'
 			| 'contact'
 			| 'contact_group'
 			| 'document_type'
@@ -2575,7 +2607,10 @@ export interface components {
 		 *     fields: `is`, `in`, `contains`, `matches`, `present`, `missing`; choice: `is`, `in`,
 		 *     `present`, `missing`; boolean: `is`, `present`, `missing`; period fields: `is`,
 		 *     `overlaps` (shares a day with the given period), `gt` (starts after the date), `lt` (ends
-		 *     before the date), `present`, `missing`.
+		 *     before the date), `present`, `missing`; step (in a condition step only: what a step that
+		 *     asks brought, at `path`): `is`, `in` (texts without case, numbers as numbers, true or
+		 *     false), `contains` (a text in a text, an item of a list), `gt`, `lt` (a number or a date),
+		 *     `present`, `missing`.
 		 * @example {
 		 *       "field": "contact",
 		 *       "op": "is",
@@ -2593,14 +2628,16 @@ export interface components {
 			op: components['schemas']['Operator'];
 			/**
 			 * Value
-			 * @description None for `present` and `missing`, a list for `in`, otherwise one value: an id, a channel, a text or pattern, a date `YYYY-MM-DD` (also for `gt` and `lt` of a period field), or a field value as in `fields` of a document.
+			 * @description None for `present` and `missing`, a list for `in`, otherwise one value: an id, a channel, a text or pattern, a date `YYYY-MM-DD` (also for `gt` and `lt` of a period field), a field value as in `fields` of a document, or (for `step`) a text, a number or true/false.
 			 */
 			value?:
 				| string
 				| boolean
+				| number
 				| components['schemas']['MoneyValue']
 				| components['schemas']['PeriodValue']
 				| string[]
+				| (string | boolean | number)[]
 				| null;
 			/**
 			 * Field Id
@@ -2608,11 +2645,44 @@ export interface components {
 			 */
 			field_id?: string | null;
 			/**
+			 * Path
+			 * @description Only when `field` is `step`: the name of a step before that asks, then keys of its answer (a number for an item of a list), separated by dots.
+			 * @example accounting.paid
+			 */
+			path?: string | null;
+			/**
 			 * Case Sensitive
 			 * @description For `matches` only; other comparisons ignore case.
 			 * @default false
 			 */
 			case_sensitive: boolean;
+		};
+		/** ConditionStepAction */
+		'ConditionStepAction-Input': {
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			type: 'condition';
+			/**
+			 * Conditions
+			 * @description On the document as the rule's steps before left it, and on `step` (what a step that asks brought). If they do not hold, the rule ends here; its steps before count.
+			 */
+			conditions: components['schemas']['AllGroup-Input'] | components['schemas']['AnyGroup-Input'];
+		};
+		/** ConditionStepAction */
+		'ConditionStepAction-Output': {
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			type: 'condition';
+			/**
+			 * Conditions
+			 * @description On the document as the rule's steps before left it, and on `step` (what a step that asks brought). If they do not hold, the rule ends here; its steps before count.
+			 */
+			conditions:
+				components['schemas']['AllGroup-Output'] | components['schemas']['AnyGroup-Output'];
 		};
 		/**
 		 * ConfirmRequest
@@ -4812,6 +4882,13 @@ export interface components {
 		 */
 		MetadataSource: 'info' | 'xmp' | 'exif';
 		/**
+		 * Missing
+		 * @description What a step that asks does without an answer (none in time, an error, an invalid
+		 *     one).
+		 * @enum {string}
+		 */
+		Missing: 'red' | 'yellow' | 'continue';
+		/**
 		 * ModelCallOut
 		 * @description One request to the language model and its answer.
 		 */
@@ -5610,6 +5687,7 @@ export interface components {
 			| 'task_too_large'
 			| 'task_undelivered'
 			| 'task_run_over'
+			| 'rule_asks_on_arrival'
 			| 'skip_changed_meanwhile'
 			| 'skip_not_available'
 			| 'not_iban'
@@ -5906,7 +5984,7 @@ export interface components {
 			priority: number;
 			/**
 			 * Triggers
-			 * @description `ingest`: when a document arrives; `change`: when a person changes it.
+			 * @description `ingest`: when a document arrives; `change`: when a person changes it. A rule with a step that asks a webhook: `ingest` only.
 			 */
 			triggers?: components['schemas']['Trigger'][];
 			/**
@@ -5914,7 +5992,10 @@ export interface components {
 			 * @description Nested at most 5 deep, at most 50 conditions.
 			 */
 			conditions: components['schemas']['AllGroup-Input'] | components['schemas']['AnyGroup-Input'];
-			/** Actions */
+			/**
+			 * Actions
+			 * @description The steps, in order: actions, steps that ask a webhook and condition steps. Each rule works on its own copy of the document and sees what its own steps before set; the actions of all rules are combined at the end.
+			 */
 			actions: (
 				| components['schemas']['SetSpaceAction']
 				| components['schemas']['SetContactAction']
@@ -5926,6 +6007,8 @@ export interface components {
 				| components['schemas']['SetFieldAction']
 				| components['schemas']['ForceReviewAction']
 				| components['schemas']['SendWebhookAction']
+				| components['schemas']['AskWebhookAction']
+				| components['schemas']['ConditionStepAction-Input']
 			)[];
 			/** @description Moves the rule: `space`, into `space_id` (one the caller edits; default: the caller's personal space); `global` (admins). Without it the rule stays where it is. */
 			scope?: components['schemas']['RuleScope'] | null;
@@ -5989,7 +6072,7 @@ export interface components {
 			priority: number;
 			/**
 			 * Triggers
-			 * @description `ingest`: when a document arrives; `change`: when a person changes it.
+			 * @description `ingest`: when a document arrives; `change`: when a person changes it. A rule with a step that asks a webhook: `ingest` only.
 			 */
 			triggers?: components['schemas']['Trigger'][];
 			/**
@@ -5997,7 +6080,10 @@ export interface components {
 			 * @description Nested at most 5 deep, at most 50 conditions.
 			 */
 			conditions: components['schemas']['AllGroup-Input'] | components['schemas']['AnyGroup-Input'];
-			/** Actions */
+			/**
+			 * Actions
+			 * @description The steps, in order: actions, steps that ask a webhook and condition steps. Each rule works on its own copy of the document and sees what its own steps before set; the actions of all rules are combined at the end.
+			 */
 			actions: (
 				| components['schemas']['SetSpaceAction']
 				| components['schemas']['SetContactAction']
@@ -6009,6 +6095,8 @@ export interface components {
 				| components['schemas']['SetFieldAction']
 				| components['schemas']['ForceReviewAction']
 				| components['schemas']['SendWebhookAction']
+				| components['schemas']['AskWebhookAction']
+				| components['schemas']['ConditionStepAction-Input']
 			)[];
 			/**
 			 * @description `space`: a rule of the space `space_id` (one the caller edits; default: the caller's personal space), for the documents in it. `global` (admins): for every document.
@@ -6079,6 +6167,8 @@ export interface components {
 				| components['schemas']['SetFieldAction']
 				| components['schemas']['ForceReviewAction']
 				| components['schemas']['SendWebhookAction']
+				| components['schemas']['AskWebhookAction']
+				| components['schemas']['ConditionStepAction-Output']
 			)[];
 			/**
 			 * Id
@@ -6190,6 +6280,8 @@ export interface components {
 				| components['schemas']['SetFieldAction']
 				| components['schemas']['ForceReviewAction']
 				| components['schemas']['SendWebhookAction']
+				| components['schemas']['AskWebhookAction']
+				| components['schemas']['ConditionStepAction-Output']
 			)[];
 			/**
 			 * Rule Id

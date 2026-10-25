@@ -12,6 +12,7 @@
 		ACTION_TYPES,
 		LIMITS,
 		TRIGGERS,
+		asksBefore,
 		move,
 		newAction,
 		type ActionType,
@@ -58,6 +59,7 @@
 		...ACTION_TYPES.map((type) => ({ value: type, label: ACTION_LABELS[type]() }))
 	]);
 	let adding = $state('');
+	const asks = $derived(model.actions.some((action) => action.type === 'ask_webhook'));
 	let unreadable = $state<Record<string, boolean>>({});
 	const blocked = $derived(Object.values(unreadable).some(Boolean));
 
@@ -140,6 +142,7 @@
 				{TRIGGER_LABELS[trigger]()}
 			</label>
 		{/each}
+		{#if asks}<p class="text-sm text-muted-foreground">{m.rule_triggers_ask_hint()}</p>{/if}
 		{#if errors.triggers}<Field.Error>{errors.triggers}</Field.Error>{/if}
 	</fieldset>
 
@@ -155,8 +158,12 @@
 				{action}
 				{lookup}
 				{targets}
+				{model}
+				{errors}
+				steps={asksBefore(model, index)}
 				error={errors[action.key]}
 				onunreadable={(unreadable) => mark(action.key, unreadable)}
+				onconditionunreadable={mark}
 				onremove={() => model.actions.splice(index, 1)}
 				onup={index > 0 ? () => move(model.actions, index, -1) : undefined}
 				ondown={index < model.actions.length - 1 ? () => move(model.actions, index, 1) : undefined}

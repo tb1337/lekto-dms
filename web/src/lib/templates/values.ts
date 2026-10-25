@@ -51,7 +51,11 @@ export const WEBHOOK_TEMPLATE_NAMES = [
 	'lane',
 	'link',
 	'rule.name',
-	'rule.id'
+	'rule.id',
+	'task.id',
+	'task.callback',
+	'task.token',
+	'task.deadline'
 ] as const;
 export type WebhookTemplateName = (typeof WEBHOOK_TEMPLATE_NAMES)[number];
 
@@ -63,7 +67,11 @@ export const WEBHOOK_TEMPLATE_NAME_LABELS: Record<WebhookTemplateName, () => str
 	lane: m.template_value_lane,
 	link: m.template_value_link,
 	'rule.name': m.template_value_rule_name,
-	'rule.id': m.template_value_rule_id
+	'rule.id': m.template_value_rule_id,
+	'task.id': m.template_value_task_id,
+	'task.callback': m.template_value_task_callback,
+	'task.token': m.template_value_task_token,
+	'task.deadline': m.template_value_task_deadline
 };
 
 /** The values a template of `purpose` sees, with their names, for completion and lists. */

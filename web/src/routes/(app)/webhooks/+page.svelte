@@ -117,6 +117,13 @@
 							{#if !hook.signed}
 								<Badge variant="outline">{m.webhook_unsigned()}</Badge>
 							{/if}
+							{#if hook.model_call}
+								<Badge variant="outline">
+									{hook.model_call.kind === 'propose'
+										? m.webhook_model_call_propose()
+										: m.webhook_model_call_extract()}
+								</Badge>
+							{/if}
 							{#if session.isAdmin && hook.owner_id !== session.user?.id}
 								<Badge variant="outline">{ownerName(hook.owner_id)}</Badge>
 							{/if}

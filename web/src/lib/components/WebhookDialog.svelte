@@ -7,16 +7,19 @@
 	import type { components } from '#lib/api/schema.ts';
 	import FormDialog from '#lib/components/FormDialog.svelte';
 	import Segmented from '#lib/components/Segmented.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { WEBHOOK_EVENT_TYPES, type WebhookEventType } from '#lib/events.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { session } from '#lib/session.svelte.ts';
 
 	type Webhook = components['schemas']['WebhookOut'];
 	type Created = components['schemas']['WebhookCreated'];
 	type Body = components['schemas']['BodyFormat'];
+	type ModelCall = components['schemas']['ModelCallKind'];
 	// A header of the webhook's own. `kept`: it is stored already, its value hidden; left empty,
 	// the value stays as it is.
 	type Header = { name: string; value: string; kept: boolean };
@@ -45,6 +48,24 @@
 	let body = $state<Body>('thin');
 	let template = $state('');
 	let openTasks = $state(4);
+	// The model call the webhook answers instead of the language model ('' for none) and its
+	// time to answer, in minutes. Only admins give it, to an admin's webhook (the API checks the
+	// owner); one they see on another's webhook they may take away.
+	let modelCall = $state<ModelCall | ''>('');
+	let callMinutes = $state(5);
+
+	const modelCalls = $derived([
+		{ value: '', label: m.webhook_model_call_none() },
+		{ value: 'propose', label: m.webhook_model_call_propose() },
+		{ value: 'extract', label: m.webhook_model_call_extract() }
+	]);
+	const showsModelCall = $derived(
+		session.isAdmin &&
+			(!webhook || webhook.owner_id === session.user?.id || webhook.model_call !== null)
+	);
+	const callMinutesValid = $derived(
+		modelCall === '' || (Number.isFinite(callMinutes) && callMinutes >= 0.5 && callMinutes <= 1440)
+	);
 
 	const bodies = $derived([
 		{ value: 'thin', label: m.webhook_body_thin(), hint: m.webhook_body_thin_hint() },
@@ -80,7 +101,15 @@
 		body = webhook?.body ?? 'thin';
 		template = webhook?.body_template ?? '';
 		openTasks = webhook?.max_open_tasks ?? 4;
+		modelCall = webhook?.model_call?.kind ?? '';
+		callMinutes = (webhook?.model_call?.timeout_seconds ?? 300) / 60;
 	});
+
+	function modelCallBody() {
+		return modelCall === ''
+			? null
+			: { kind: modelCall, timeout_seconds: Math.round(callMinutes * 60) };
+	}
 
 	// A new header needs a value; a kept one may stay empty (unchanged).
 	const headersComplete = $derived(
@@ -106,7 +135,8 @@
 		const content = {
 			body,
 			body_template: body === 'template' ? template : null,
-			max_open_tasks: openTasks
+			max_open_tasks: openTasks,
+			...(showsModelCall ? { model_call: modelCallBody() } : {})
 		};
 		if (webhook) {
 			await unwrap(
@@ -156,7 +186,8 @@
 		url.trim() === '' ||
 		!headersComplete ||
 		(body === 'template' && template.trim() === '') ||
-		!(Number.isInteger(openTasks) && openTasks >= 1 && openTasks <= 64)}
+		!(Number.isInteger(openTasks) && openTasks >= 1 && openTasks <= 64) ||
+		!callMinutesValid}
 	class="max-w-lg"
 	action={save}
 >
@@ -261,6 +292,37 @@
 		/>
 		<Field.Description>{m.webhook_open_tasks_hint()}</Field.Description>
 	</Field.Field>
+	{#if showsModelCall}
+		<div class="flex flex-col gap-2">
+			<div class="flex flex-wrap items-end gap-3">
+				<Field.Field class="min-w-48 flex-1">
+					<Field.Label for="wh-model-call">{m.webhook_model_call()}</Field.Label>
+					<Select
+						id="wh-model-call"
+						value={modelCall}
+						options={modelCalls}
+						onchange={(next) => (modelCall = next as ModelCall | '')}
+						class="h-10"
+					/>
+				</Field.Field>
+				{#if modelCall !== ''}
+					<Field.Field class="w-40">
+						<Field.Label for="wh-model-call-time">{m.webhook_model_call_time()}</Field.Label>
+						<Input
+							id="wh-model-call-time"
+							type="number"
+							min={0.5}
+							max={1440}
+							step={0.5}
+							aria-invalid={!callMinutesValid || undefined}
+							bind:value={callMinutes}
+						/>
+					</Field.Field>
+				{/if}
+			</div>
+			<p class="text-sm text-muted-foreground">{m.webhook_model_call_hint()}</p>
+		</div>
+	{/if}
 	<Field.Field>
 		<label class="flex items-center gap-2 text-sm">
 			<input type="checkbox" bind:checked={signed} class="size-4 accent-primary" />

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { components } from '#lib/api/schema.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { choose, selectedValue } from '#lib/testing/select.ts';
 import { session } from '#lib/session.svelte.ts';
 import WebhookDialog from './WebhookDialog.svelte';
 
@@ -145,5 +146,52 @@ describe('WebhookDialog', () => {
 		await userEvent.type(field, '8');
 		await userEvent.click(save);
 		expect((sent[0].body as { max_open_tasks: number }).max_open_tasks).toBe(8);
+	});
+
+	it('shows users no model call', async () => {
+		render(WebhookDialog, { open: true, onsaved: () => {}, oncreated: () => {} });
+		await screen.findByLabelText(m.field_name());
+		expect(screen.queryByLabelText(m.webhook_model_call())).toBeNull();
+	});
+
+	it('lets an admin make a webhook serve as a model call, with its time to answer', async () => {
+		session.start({
+			user: { id: 'anna', username: 'anna', role: 'admin' },
+			method: 'password',
+			expires_at: '2026-10-26T12:00:00Z',
+			csrf_token: 'token'
+		});
+		render(WebhookDialog, { open: true, webhook: stored, onsaved: () => {}, oncreated: () => {} });
+		const user = userEvent.setup();
+		await choose(
+			user,
+			await screen.findByRole('combobox', { name: m.webhook_model_call() }),
+			'propose'
+		);
+		const time = screen.getByLabelText(m.webhook_model_call_time());
+		await user.clear(time);
+		await user.type(time, '10');
+		await user.click(screen.getByRole('button', { name: m.save() }));
+		expect((sent[0].body as { model_call: unknown }).model_call).toEqual({
+			kind: 'propose',
+			timeout_seconds: 600
+		});
+	});
+
+	it('lets an admin take the model call away', async () => {
+		session.start({
+			user: { id: 'boss', username: 'boss', role: 'admin' },
+			method: 'password',
+			expires_at: '2026-10-26T12:00:00Z',
+			csrf_token: 'token'
+		});
+		const serving = { ...stored, model_call: { kind: 'extract' as const, timeout_seconds: 300 } };
+		render(WebhookDialog, { open: true, webhook: serving, onsaved: () => {}, oncreated: () => {} });
+		const user = userEvent.setup();
+		const field = await screen.findByRole('combobox', { name: m.webhook_model_call() });
+		expect(selectedValue(field)).toBe('extract');
+		await choose(user, field, '');
+		await user.click(screen.getByRole('button', { name: m.save() }));
+		expect((sent[0].body as { model_call: unknown }).model_call).toBeNull();
 	});
 });

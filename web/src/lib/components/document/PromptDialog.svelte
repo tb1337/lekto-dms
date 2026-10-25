@@ -9,10 +9,17 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { splitInput } from '#lib/usage.ts';
 
+	const PARTS: { part: 'system' | 'user' | 'answer'; label: () => string }[] = [
+		{ part: 'system', label: m.prompt_system },
+		{ part: 'user', label: m.prompt_user },
+		{ part: 'answer', label: m.prompt_answer }
+	];
+
 	type Call = components['schemas']['ModelCallOut'];
 
 	// What a node sent to the language model and what came back: system and user message and
-	// the answer, each with its length and tokens (the input tokens split by characters).
+	// the answer, each with its length and tokens (the input tokens split by characters). A
+	// webhook that answered for the model got no system message: the context and its answer.
 	let {
 		open = $bindable(false),
 		title,
@@ -21,13 +28,19 @@
 	}: { open?: boolean; title: string; meta: string; calls: readonly Call[] } = $props();
 
 	type Part = 'system' | 'user' | 'answer';
-	let part = $state<Part>('system');
+	let chosenPart = $state<Part>('system');
 	// The attempt chosen, among the calls it was chosen from: another prompt in the same dialog
 	// starts at the first again.
 	let chosen = $state.raw<{ among: readonly Call[]; index: number } | null>(null);
 	const attempt = $derived(chosen?.among === calls ? chosen.index : 0);
 
 	const call = $derived(calls[Math.min(attempt, calls.length - 1)] ?? null);
+	const shown = $derived(
+		call?.system === '' ? PARTS.filter((entry) => entry.part !== 'system') : PARTS
+	);
+	const part = $derived(
+		shown.some((entry) => entry.part === chosenPart) ? chosenPart : shown[0].part
+	);
 	const body = $derived(call ? call[part] : '');
 	const counted = (value: unknown) => (typeof value === 'number' ? value : null);
 	const size = $derived.by(() => {
@@ -46,12 +59,6 @@
 	});
 
 	const copy = () => copyText(body);
-
-	const parts: { part: Part; label: () => string }[] = [
-		{ part: 'system', label: m.prompt_system },
-		{ part: 'user', label: m.prompt_user },
-		{ part: 'answer', label: m.prompt_answer }
-	];
 </script>
 
 <Dialog.Root bind:open>
@@ -64,8 +71,8 @@
 			<Segmented
 				label={m.prompt_part()}
 				value={part}
-				options={parts.map((entry) => ({ value: entry.part, label: entry.label() }))}
-				onchange={(next) => (part = next as Part)}
+				options={shown.map((entry) => ({ value: entry.part, label: entry.label() }))}
+				onchange={(next) => (chosenPart = next as Part)}
 			/>
 			{#if calls.length > 1}
 				<Segmented

@@ -47,7 +47,7 @@ Rechnung hat zehn Beträge), mit Beschriftung ist er ein Feld; Felder haben die 
 | --- | --- | --- |
 | zeigt auf den Kontakt | Kundennummer, Personalnummer, Gläubiger-ID, Handelsregisternummer, Steuernummer eines Unternehmens | Kontakt, Thema |
 | zeigt auf ein Bezugsziel | Vertrags-, Policen-, Mitglieds-, Zähler-, Darlehensnummer, Mandatsreferenz, Kfz-Kennzeichen | Serie, Bezug zum Vertrag |
-| kennzeichnet das Dokument | Rechnungs-, Gutschrift-, Bestell- oder Auftragsnummer, ASN aus Code oder Etikett | Ziel für Bezüge, Feld |
+| kennzeichnet das Dokument | Rechnungs-, Gutschrift-, Bestell- oder Auftragsnummer | Ziel für Bezüge, Feld |
 | verbindet einen Strang | Aktenzeichen, „Unser Zeichen“, Schaden-, Ticketnummer | Abzweig im Stream |
 | verweist auf ein Dokument | „Ihre Rechnung Nr. …“, „Ihr Schreiben vom …“, „Ihr Zeichen“ | Bezug |
 | zeigt auf eine Person | Steuer-ID, Steuernummer, Kindergeldnummer (und die vorhandenen) | Personen, Space |
@@ -66,7 +66,8 @@ Rechnung, und eine zweite Mahnung ebenso auf die Rechnung, nicht auf die erste M
 3. Die Rolle eines Fakts („eigene Nummer“ oder „Verweis“) bestimmt das Sprachmodell; eine
    Faustregel (das älteste Dokument mit der Nummer besitzt sie) gibt es nicht.
 4. `customer_number` wird getrennt in Kunden-, Vertrags- und Policennummer.
-5. Der Katalog oben ist vorerst vollständig; die Rufnummer entfällt.
+5. Der Katalog oben ist vorerst vollständig; die Rufnummer entfällt. Die Archivnummer (ASN) wird
+   kein Fakt: Sie bleibt ein Feld, weil nicht jede Installation sie nutzt (Tobi).
 6. Fakten werden durchsuchbar und filterbar, auch für Nutzer (etwa „Rechnungsnummer = 4711“).
 7. Fakten sind korrigierbar (aus „4661VF“ wird „4661“):
    - Wer das Dokument bearbeiten darf (Bearbeiter des Space, Admins), ergänzt, korrigiert oder
@@ -87,6 +88,20 @@ Rechnung, und eine zweite Mahnung ebenso auf die Rechnung, nicht auf die erste M
 12. Lekto bleibt neutral gegenüber dem Anbieter und setzt keine Cache-Marken. Für Anthropic setzt
     sie der LiteLLM-Proxy (Konfiguration außerhalb von Lekto, Tobi); Groq und Ollama cachen von
     selbst.
+13. Templates sehen die Fakten so:
+    - `facts.<art>`: der eigene Wert dieser Art, der erste in Lesereihenfolge
+      (`{{ facts.invoice_number }}`);
+    - `facts.refers.<art>`: der erste Wert dieser Art mit Rolle „Verweis“
+      (`Mahnung zu Rechnung {{ facts.refers.invoice_number }}`);
+    - `facts.girocode.*`: eine maschinenlesbare Quelle mit ihren Werten
+      (`{{ facts.girocode.amount }}`);
+    - `fact_list`: alle Fakten mit `kind`, `value` (normalisiert, wie Lekto vergleicht),
+      `written` (wie im Text), `role` und `origin`, für Sonderfälle mit den Standardfiltern
+      (`{{ fact_list | where: "kind", "iban" | map: "value" | join: ", " }}`).
+
+    Die Schlüssel sind die Arten aus dem Code, englisch und fest; der Template-Editor bietet
+    sie mit Beschriftung an. Verworfene Fakten fehlen, korrigierte liefern den Wert der Person;
+    ohne Fakt setzt die Aktion nichts (vermerkt, ohne Gelb).
 
 ## Sprachmodell: mehrere Aufrufe, ein Dokument
 

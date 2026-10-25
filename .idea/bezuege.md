@@ -99,6 +99,15 @@ und von Bezügen zwischen Dokumenten (Tobi).
     Service, der später auf Lekto aufsetzt. Fast alles, was ein Vorgang zeigt, ergibt sich aus
     Bezügen; „offen“ decken manuelle Status-Tags ab (`architektur.md`, Tags, Gruppen und Themen).
 
+**Schnittstellen**
+
+19. MCP: `get_document` liefert die Bezüge mit, die der Nutzer sehen darf (ID, Titel, Typ,
+    Datum, Richtung); dazu ein Werkzeug `list_expected`. Bezüge setzt MCP nicht: Ein Assistent
+    liest fremden Dokumenttext, eine Anweisung darin könnte still falsche Bezüge setzen.
+20. Webhooks: zuerst keine Ereignisse für Bezüge. Später `document.updated` mit
+    `fields: ["relations"]` an beiden Dokumenten, nur wenn der Empfänger beide Enden lesen
+    darf, nicht beim Lauf über den Bestand; nach dem laufenden Umbau der Webhooks.
+
 ## Was es schon gibt
 
 - Feldtyp Zeitraum mit Bezugszeitraum (`architektur.md`, Ingest-Workflow; `core/domain/periods.py`).

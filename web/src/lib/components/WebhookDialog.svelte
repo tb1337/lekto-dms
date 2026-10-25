@@ -1,9 +1,12 @@
 <script lang="ts">
+	import Plus from '@lucide/svelte/icons/plus';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import FormDialog from '#lib/components/FormDialog.svelte';
+	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { DOCUMENT_EVENT_TYPES, type DocumentEventType } from '#lib/events.svelte.ts';
@@ -11,8 +14,12 @@
 
 	type Webhook = components['schemas']['WebhookOut'];
 	type Created = components['schemas']['WebhookCreated'];
+	// A header of the webhook's own. `kept`: it is stored already, its value hidden; left empty,
+	// the value stays as it is.
+	type Header = { name: string; value: string; kept: boolean };
 
-	// Create or change a webhook. A new one answers with its secret, handed on to `oncreated`.
+	// Create or change a webhook. A new secret (creating a signed webhook, or switching signing
+	// on) is handed on to `oncreated`, which shows it once.
 	let {
 		open = $bindable(false),
 		webhook = null,
@@ -30,6 +37,8 @@
 	let all = $state(true);
 	let types = $state<string[]>([]);
 	let active = $state(true);
+	let signed = $state(true);
+	let headers = $state<Header[]>([]);
 
 	const labels: Record<DocumentEventType, () => string> = {
 		'document.received': m.event_received,
@@ -49,7 +58,28 @@
 		all = webhook ? webhook.event_types.includes('*') : true;
 		types = webhook ? webhook.event_types.filter((type) => type !== '*') : [];
 		active = webhook?.active ?? true;
+		signed = webhook?.signed ?? true;
+		headers = (webhook?.headers ?? []).map((header) => ({ name: header, value: '', kept: true }));
 	});
+
+	// A new header needs a value; a kept one may stay empty (unchanged).
+	const headersComplete = $derived(
+		headers.every((header) => header.name.trim() !== '' && (header.kept || header.value !== ''))
+	);
+	// Only changed headers go to the API: a value that cannot be read any more is not asked for
+	// when the headers were not touched.
+	const headersChanged = $derived(
+		headers.some((header) => header.value !== '' || !header.kept) ||
+			headers.map((header) => header.name.trim()).join('\n') !== (webhook?.headers ?? []).join('\n')
+	);
+
+	function headerBody() {
+		return headers.map((header) =>
+			header.value === ''
+				? { name: header.name.trim() }
+				: { name: header.name.trim(), value: header.value }
+		);
+	}
 
 	async function save() {
 		const event_types = all ? ['*'] : types;
@@ -57,15 +87,32 @@
 			await unwrap(
 				api.PATCH('/api/v1/webhooks/{id}', {
 					params: { path: { id: webhook.id } },
-					body: { name: name.trim(), url: url.trim(), event_types, active }
+					body: {
+						name: name.trim(),
+						url: url.trim(),
+						event_types,
+						active,
+						...(headersChanged ? { headers: headerBody() } : {})
+					}
 				})
 			);
+			const path = { params: { path: { id: webhook.id } } };
+			if (signed && !webhook.signed)
+				oncreated(await unwrap(api.POST('/api/v1/webhooks/{id}/secret', path)));
+			if (!signed && webhook.signed) await unwrap(api.DELETE('/api/v1/webhooks/{id}/secret', path));
 			toast.success(m.webhook_saved());
 			onsaved();
 		} else {
 			const created = await unwrap(
 				api.POST('/api/v1/webhooks', {
-					body: { name: name.trim(), url: url.trim(), event_types, active }
+					body: {
+						name: name.trim(),
+						url: url.trim(),
+						event_types,
+						active,
+						signed,
+						headers: headers.map((header) => ({ name: header.name.trim(), value: header.value }))
+					}
 				})
 			);
 			onsaved();
@@ -78,7 +125,10 @@
 	bind:open
 	title={webhook ? m.webhook_edit() : m.webhook_new()}
 	submitLabel={webhook ? m.save() : m.create()}
-	disabled={name.trim() === '' || url.trim() === '' || (!all && types.length === 0)}
+	disabled={name.trim() === '' ||
+		url.trim() === '' ||
+		(!all && types.length === 0) ||
+		!headersComplete}
 	class="max-w-lg"
 	action={save}
 >
@@ -106,6 +156,57 @@
 			{/each}
 		{/if}
 	</fieldset>
+	<fieldset class="flex flex-col gap-2">
+		<legend class="mb-1 text-sm font-medium">{m.webhook_headers()}</legend>
+		{#each headers as header, index (index)}
+			<div class="flex items-center gap-2">
+				<Input
+					aria-label={m.webhook_header_name()}
+					class="font-mono"
+					bind:value={header.name}
+					maxlength={100}
+					required
+				/>
+				<Input
+					aria-label={m.webhook_header_value()}
+					type="password"
+					autocomplete="new-password"
+					class="font-mono"
+					placeholder={header.kept ? m.webhook_header_kept() : ''}
+					bind:value={header.value}
+					maxlength={4096}
+				/>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					aria-label={m.webhook_header_remove({ name: header.name })}
+					onclick={() => headers.splice(index, 1)}
+				>
+					<Trash2 aria-hidden="true" />
+				</Button>
+			</div>
+		{/each}
+		<div>
+			<Button
+				type="button"
+				variant="outline"
+				disabled={headers.length >= 20}
+				onclick={() => headers.push({ name: '', value: '', kept: false })}
+			>
+				<Plus aria-hidden="true" />
+				{m.webhook_header_add()}
+			</Button>
+		</div>
+		<p class="text-sm text-muted-foreground">{m.webhook_headers_hint()}</p>
+	</fieldset>
+	<Field.Field>
+		<label class="flex items-center gap-2 text-sm">
+			<input type="checkbox" bind:checked={signed} class="size-4 accent-primary" />
+			{m.webhook_signed()}
+		</label>
+		<Field.Description>{m.webhook_signed_hint()}</Field.Description>
+	</Field.Field>
 	<label class="flex items-center gap-2 text-sm">
 		<input type="checkbox" bind:checked={active} class="size-4 accent-primary" />
 		{m.webhook_active()}

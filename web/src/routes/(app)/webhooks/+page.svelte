@@ -63,7 +63,7 @@
 		const renewed = await unwrap(
 			api.POST('/api/v1/webhooks/{id}/secret', { params: { path: { id: renewing.id } } })
 		);
-		secret = { webhook: renewed.name, value: renewed.secret };
+		if (renewed.secret) secret = { webhook: renewed.name, value: renewed.secret };
 		await load();
 	}
 
@@ -114,6 +114,9 @@
 							<Badge variant={hook.active ? 'secondary' : 'outline'}>
 								{hook.active ? m.webhook_on() : m.webhook_off()}
 							</Badge>
+							{#if !hook.signed}
+								<Badge variant="outline">{m.webhook_unsigned()}</Badge>
+							{/if}
 							{#if session.isAdmin && hook.owner_id !== session.user?.id}
 								<Badge variant="outline">{ownerName(hook.owner_id)}</Badge>
 							{/if}
@@ -144,7 +147,7 @@
 						>
 							<History aria-hidden="true" />
 						</a>
-						{#if canManageWebhook(hook, session.user)}
+						{#if canManageWebhook(hook, session.user) && hook.signed}
 							<Button
 								variant="ghost"
 								size="icon"
@@ -177,7 +180,9 @@
 	bind:open={() => editing !== null, (open) => !open && (editing = null)}
 	webhook={editing === 'new' ? null : editing}
 	onsaved={load}
-	oncreated={(created) => (secret = { webhook: created.name, value: created.secret })}
+	oncreated={(created) => {
+		if (created.secret) secret = { webhook: created.name, value: created.secret };
+	}}
 />
 <ConfirmDialog
 	bind:open={() => removing !== null, (open) => !open && (removing = null)}

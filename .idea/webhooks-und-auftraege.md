@@ -404,6 +404,11 @@ Beim Bauen von M21 entschieden, zur Bestätigung durch Tobi:
    `external`.
 10. Das Beispiel liegt unter `examples/model-calls/` (Skript, Compose-Erweiterung, README); ein
     optionales `OLLAMA_API_KEY` erlaubt einen Proxy vor Ollama.
+11. Ein Modellaufruf, der noch auf Platz wartet, wird abgebrochen, wenn sein Webhook geht oder
+    nicht mehr dient; der Knoten fragt dann neu (einen anderen Webhook oder das Modell), statt
+    rot zu werden. Ein schon gesendeter läuft bis zur Frist (Entscheidung 29).
+12. Ist der Lauf inzwischen gescheitert (ein anderes Signal rot), geht nichts mehr hinaus; ein
+    wartender Auftrag gibt seinen Platz frei.
 
 ## Entscheidungen (Tobi, 25.10.2026)
 

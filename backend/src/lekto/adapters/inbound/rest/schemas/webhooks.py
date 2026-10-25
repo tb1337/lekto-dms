@@ -1,10 +1,12 @@
 """Webhooks and the log of their deliveries."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from lekto.core.domain.documents import UNSET, Unset
+from lekto.core.domain.tasks import DEFAULT_TIMEOUT, MAX_TIMEOUT, MIN_TIMEOUT
 from lekto.core.domain.validation import MAX_URL_LENGTH
 from lekto.core.domain.webhooks import (
     ALL_EVENTS,
@@ -16,6 +18,8 @@ from lekto.core.domain.webhooks import (
     MAX_OPEN_TASKS,
     BodyFormat,
     DeliveryOutcome,
+    ModelCallKind,
+    ModelCallRole,
     Webhook,
     WebhookDelivery,
     event_type_names,
@@ -53,6 +57,41 @@ OPEN_TASKS_HELP = (
     f"takes at the same time, 1 to {MAX_OPEN_TASKS}; more wait in Lekto, and their time to "
     "answer starts when they are sent."
 )
+
+
+MODEL_CALL_HELP = (
+    "The request to the language model the webhook takes over, for every document: `propose` "
+    "(the proposal of `signal_llm`) or `extract` (the values of the fields the proposal did not "
+    "give, in `fields`). Lekto sends it as a task with a fixed contract (`external.propose`, "
+    "`external.extract` under `webhooks`), whatever `body` says. Only an admin gives it to an "
+    "admin's webhook; of the active webhooks at most one serves each kind (409). null: none."
+)
+
+
+class WebhookModelCallIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: ModelCallKind
+    timeout_seconds: int = Field(
+        default=int(DEFAULT_TIMEOUT.total_seconds()),
+        ge=int(MIN_TIMEOUT.total_seconds()),
+        le=int(MAX_TIMEOUT.total_seconds()),
+        description="How long the consumer has to answer, from sending.",
+    )
+
+    def role(self) -> ModelCallRole:
+        return ModelCallRole(self.kind, timedelta(seconds=self.timeout_seconds))
+
+
+class WebhookModelCallOut(BaseModel):
+    kind: ModelCallKind
+    timeout_seconds: int
+
+    @classmethod
+    def of(cls, role: ModelCallRole | None) -> "WebhookModelCallOut | None":
+        if role is None:
+            return None
+        return cls(kind=role.kind, timeout_seconds=int(role.timeout.total_seconds()))
 
 
 class HeaderIn(BaseModel):
@@ -123,6 +162,7 @@ class WebhookCreate(BaseModel):
     max_open_tasks: int = Field(
         default=DEFAULT_OPEN_TASKS, ge=1, le=MAX_OPEN_TASKS, description=OPEN_TASKS_HELP
     )
+    model_call: WebhookModelCallIn | None = Field(default=None, description=MODEL_CALL_HELP)
 
 
 class WebhookPatch(BaseModel):
@@ -154,6 +194,15 @@ class WebhookPatch(BaseModel):
     max_open_tasks: int | None = Field(
         default=None, ge=1, le=MAX_OPEN_TASKS, description=OPEN_TASKS_HELP
     )
+    model_call: WebhookModelCallIn | None = Field(
+        default=None, description=MODEL_CALL_HELP + " Left out: it stays."
+    )
+
+    def model_call_change(self) -> ModelCallRole | Unset | None:
+        """The model call from now on; UNSET if it was left out."""
+        if "model_call" not in self.model_fields_set:
+            return UNSET
+        return None if self.model_call is None else self.model_call.role()
 
 
 class WebhookOut(BaseModel):
@@ -168,6 +217,7 @@ class WebhookOut(BaseModel):
     body: BodyFormat = Field(description=BODY_HELP)
     body_template: str | None = Field(description=BODY_TEMPLATE_HELP)
     max_open_tasks: int = Field(description=OPEN_TASKS_HELP)
+    model_call: WebhookModelCallOut | None = Field(description=MODEL_CALL_HELP)
     disabled_reason: str | None = Field(
         description="`failing`: Lekto switched the webhook off after repeated failed deliveries."
     )
@@ -195,6 +245,7 @@ class WebhookOut(BaseModel):
             body=webhook.body,
             body_template=webhook.body_template,
             max_open_tasks=webhook.max_open_tasks,
+            model_call=WebhookModelCallOut.of(webhook.model_call),
             disabled_reason=webhook.disabled_reason,
             failed_streak=webhook.failed_streak,
             previous_secret_valid_until=webhook.previous_valid_until,

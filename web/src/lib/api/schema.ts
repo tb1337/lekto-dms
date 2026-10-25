@@ -4889,6 +4889,12 @@ export interface components {
 		 */
 		Missing: 'red' | 'yellow' | 'continue';
 		/**
+		 * ModelCallKind
+		 * @description A request to the language model a webhook may take over.
+		 * @enum {string}
+		 */
+		ModelCallKind: 'propose' | 'extract';
+		/**
 		 * ModelCallOut
 		 * @description One request to the language model and its answer.
 		 */
@@ -5623,6 +5629,8 @@ export interface components {
 			| 'username_of_other'
 			| 'lenses_limit'
 			| 'webhooks_limit'
+			| 'model_call_taken'
+			| 'model_call_admins'
 			| 'open_fields'
 			| 'duplicate_of'
 			| 'duplicate_unseen'
@@ -7213,6 +7221,8 @@ export interface components {
 			 * @default 4
 			 */
 			max_open_tasks: number;
+			/** @description The request to the language model the webhook takes over, for every document: `propose` (the proposal of `signal_llm`) or `extract` (the values of the fields the proposal did not give, in `fields`). Lekto sends it as a task with a fixed contract (`external.propose`, `external.extract` under `webhooks`), whatever `body` says. Only an admin gives it to an admin's webhook; of the active webhooks at most one serves each kind (409). null: none. */
+			model_call?: components['schemas']['WebhookModelCallIn'] | null;
 		};
 		/** WebhookCreated */
 		WebhookCreated: {
@@ -7256,6 +7266,8 @@ export interface components {
 			 * @description How many tasks (requests that expect an answer, e.g. a rule step that asks) the webhook takes at the same time, 1 to 64; more wait in Lekto, and their time to answer starts when they are sent.
 			 */
 			max_open_tasks: number;
+			/** @description The request to the language model the webhook takes over, for every document: `propose` (the proposal of `signal_llm`) or `extract` (the values of the fields the proposal did not give, in `fields`). Lekto sends it as a task with a fixed contract (`external.propose`, `external.extract` under `webhooks`), whatever `body` says. Only an admin gives it to an admin's webhook; of the active webhooks at most one serves each kind (409). null: none. */
+			model_call: components['schemas']['WebhookModelCallOut'] | null;
 			/**
 			 * Disabled Reason
 			 * @description `failing`: Lekto switched the webhook off after repeated failed deliveries.
@@ -7287,6 +7299,22 @@ export interface components {
 			 * @example whsec_<secret shown once>
 			 */
 			secret: string | null;
+		};
+		/** WebhookModelCallIn */
+		WebhookModelCallIn: {
+			kind: components['schemas']['ModelCallKind'];
+			/**
+			 * Timeout Seconds
+			 * @description How long the consumer has to answer, from sending.
+			 * @default 300
+			 */
+			timeout_seconds: number;
+		};
+		/** WebhookModelCallOut */
+		WebhookModelCallOut: {
+			kind: components['schemas']['ModelCallKind'];
+			/** Timeout Seconds */
+			timeout_seconds: number;
 		};
 		/** WebhookOut */
 		WebhookOut: {
@@ -7330,6 +7358,8 @@ export interface components {
 			 * @description How many tasks (requests that expect an answer, e.g. a rule step that asks) the webhook takes at the same time, 1 to 64; more wait in Lekto, and their time to answer starts when they are sent.
 			 */
 			max_open_tasks: number;
+			/** @description The request to the language model the webhook takes over, for every document: `propose` (the proposal of `signal_llm`) or `extract` (the values of the fields the proposal did not give, in `fields`). Lekto sends it as a task with a fixed contract (`external.propose`, `external.extract` under `webhooks`), whatever `body` says. Only an admin gives it to an admin's webhook; of the active webhooks at most one serves each kind (409). null: none. */
+			model_call: components['schemas']['WebhookModelCallOut'] | null;
 			/**
 			 * Disabled Reason
 			 * @description `failing`: Lekto switched the webhook off after repeated failed deliveries.
@@ -7395,6 +7425,8 @@ export interface components {
 			 * @description How many tasks (requests that expect an answer, e.g. a rule step that asks) the webhook takes at the same time, 1 to 64; more wait in Lekto, and their time to answer starts when they are sent.
 			 */
 			max_open_tasks?: number | null;
+			/** @description The request to the language model the webhook takes over, for every document: `propose` (the proposal of `signal_llm`) or `extract` (the values of the fields the proposal did not give, in `fields`). Lekto sends it as a task with a fixed contract (`external.propose`, `external.extract` under `webhooks`), whatever `body` says. Only an admin gives it to an admin's webhook; of the active webhooks at most one serves each kind (409). null: none. Left out: it stays. */
+			model_call?: components['schemas']['WebhookModelCallIn'] | null;
 		};
 		/** YearCount */
 		YearCount: {

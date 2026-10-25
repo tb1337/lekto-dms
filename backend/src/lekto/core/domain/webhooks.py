@@ -15,6 +15,10 @@ still has its predecessor alongside). A webhook without a secret is not signed (
 The body (`BodyFormat`) is thin (the event's type, id, time and document), full (the document
 too, as it is when the request goes) or what the webhook's template (Liquid) makes of the
 event and the document, which must be JSON.
+
+An admin's webhook may serve as a model call (`ModelCallRole`): it takes over a request to the
+language model, as a task with a fixed contract (`classification.external`), whatever its
+body.
 """
 
 import base64
@@ -36,6 +40,7 @@ from lekto.core.domain.events import DOCUMENT_EVENT_TYPES
 from lekto.core.domain.ids import DeliveryId, DocumentId, EventId, UserId, WebhookId, new_id
 from lekto.core.domain.json_value import JsonObject
 from lekto.core.domain.reasons import ReasonCode, because
+from lekto.core.domain.tasks import DEFAULT_TIMEOUT, validate_timeout
 from lekto.core.domain.validation import (
     MAX_URL_LENGTH,
     has_control_characters,
@@ -75,6 +80,26 @@ class BodyFormat(StrEnum):
     THIN = "thin"  # the event: type, id, time, document id
     FULL = "full"  # the event and the document as it is
     TEMPLATE = "template"  # what the webhook's template makes of them (JSON)
+
+
+class ModelCallKind(StrEnum):
+    """A request to the language model a webhook may take over."""
+
+    PROPOSE = "propose"  # the language model's proposal (`signal_llm`)
+    EXTRACT = "extract"  # the values of fields the proposal did not give (`fields`)
+
+
+@dataclass(frozen=True)
+class ModelCallRole:
+    """A webhook serving as the model call `kind`: its consumer answers within `timeout` from
+    sending (30 seconds to 24 hours)."""
+
+    kind: ModelCallKind
+    timeout: timedelta = DEFAULT_TIMEOUT
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "kind", ModelCallKind(self.kind))
+        object.__setattr__(self, "timeout", validate_timeout(self.timeout))
 
 
 MAX_HEADERS = 20
@@ -294,7 +319,9 @@ class Webhook:
     """A user's subscription. `encrypted_secret` is the secret as `SecretCipher` made it, None
     if the webhook does not sign; `previous_secret` still signs next to it until
     `previous_valid_until`. `header_names`: the webhook's own headers, in the order given;
-    `encrypted_headers` their values (`headers_to_bytes`, encrypted), None without headers."""
+    `encrypted_headers` their values (`headers_to_bytes`, encrypted), None without headers.
+    `model_call`: the model call the webhook serves as, if any (an admin's webhook only; the
+    services check that)."""
 
     id: WebhookId
     owner_id: UserId
@@ -312,6 +339,7 @@ class Webhook:
     previous_secret: bytes | None = field(default=None, repr=False)
     previous_valid_until: datetime | None = None
     max_open_tasks: int = DEFAULT_OPEN_TASKS
+    model_call: ModelCallRole | None = None
     created_at: datetime
     updated_at: datetime
     version: int = 1
@@ -412,6 +440,11 @@ class Webhook:
         """What the requests carry (`BodyFormat`); `template` exactly for `template`."""
         self.body_template = validate_body(BodyFormat(body), template)
         self.body = BodyFormat(body)
+        self.updated_at = now
+
+    def serve(self, role: ModelCallRole | None, *, now: datetime) -> None:
+        """Serve as the model call `role` from now on (None: as none)."""
+        self.model_call = role
         self.updated_at = now
 
     def set_headers(self, names: Iterable[str], encrypted: bytes | None, *, now: datetime) -> None:

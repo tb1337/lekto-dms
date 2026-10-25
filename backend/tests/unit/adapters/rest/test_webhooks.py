@@ -6,6 +6,7 @@ from lekto.adapters.inbound.rest import PREFIX
 from lekto.adapters.outbound.memory import FakeWebhookSender
 from lekto.core.domain.identity import TokenScope
 from lekto.core.domain.ids import DocumentId, EventId, WebhookId, new_id
+from lekto.core.domain.users import Role
 from lekto.core.domain.webhooks import DeliveryOutcome, WebhookDelivery
 from tests.api import auth, bearer
 from tests.unit.adapters.rest.support import Api, post
@@ -292,3 +293,35 @@ async def test_test_requests_answer_429_beyond_the_limit(api: Api) -> None:
     assert refused.headers["Retry-After"] == "60"
     sender = api.container.webhook_sender
     assert isinstance(sender, FakeWebhookSender) and len(sender.requests) == 10
+
+
+async def test_an_admins_webhook_serves_as_a_model_call(api: Api) -> None:
+    admin, user = await api.user(role=Role.ADMIN), await api.user()
+    body = BODY | {"event_types": [], "model_call": {"kind": "propose"}}
+    created = await post(api, "/webhooks", body, auth(admin))
+    assert created["model_call"] == {"kind": "propose", "timeout_seconds": 300}
+    url = f"{PREFIX}/webhooks/{created['id']}"
+    # Left out it stays, given it changes, null ends it.
+    kept = await api.client.patch(url, json={"name": "agent"}, headers=auth(admin))
+    assert kept.json()["model_call"] == {"kind": "propose", "timeout_seconds": 300}
+    changed = await api.client.patch(
+        url, json={"model_call": {"kind": "extract", "timeout_seconds": 900}}, headers=auth(admin)
+    )
+    assert changed.json()["model_call"] == {"kind": "extract", "timeout_seconds": 900}
+    # A second one of the same kind conflicts; a user may not; the time is limited.
+    second = await api.client.post(
+        f"{PREFIX}/webhooks",
+        json=BODY | {"model_call": {"kind": "extract"}},
+        headers=auth(admin),
+    )
+    assert second.status_code == 409
+    assert second.json()["reason"]["code"] == "model_call_taken"
+    refused = await api.client.post(f"{PREFIX}/webhooks", json=body, headers=auth(user))
+    assert refused.status_code == 403
+    assert refused.json()["reason"]["code"] == "model_call_admins"
+    short = await api.client.patch(
+        url, json={"model_call": {"kind": "extract", "timeout_seconds": 5}}, headers=auth(admin)
+    )
+    assert short.status_code == 422
+    ended = await api.client.patch(url, json={"model_call": None}, headers=auth(admin))
+    assert ended.json()["model_call"] is None

@@ -61,6 +61,9 @@ class MemoryWebhookRepository(MemoryRepository[WebhookId, Webhook]):
             row for row in self._all() if row.active and row.wants(event_type)
         )
 
+    async def list_model_calls(self) -> list[Webhook]:
+        return self._oldest_first(row for row in self._all() if row.model_call is not None)
+
     async def add_delivery(self, delivery: WebhookDelivery) -> None:
         if self._uow._row(self._table, delivery.webhook_id) is _REMOVED:
             raise NotFoundError("webhook", delivery.webhook_id)

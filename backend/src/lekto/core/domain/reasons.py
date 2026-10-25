@@ -235,6 +235,8 @@ class ReasonCode(StrEnum):
     USERNAME_OF_OTHER = "username_of_other"
     LENSES_LIMIT = "lenses_limit"
     WEBHOOKS_LIMIT = "webhooks_limit"
+    MODEL_CALL_TAKEN = "model_call_taken"
+    MODEL_CALL_ADMINS = "model_call_admins"
     OPEN_FIELDS = "open_fields"
     DUPLICATE_OF = "duplicate_of"
     DUPLICATE_UNSEEN = "duplicate_unseen"
@@ -652,6 +654,8 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.USERNAME_OF_OTHER: "username '{username}' is another user's name",
     ReasonCode.LENSES_LIMIT: "at most {max:number} lenses per user",
     ReasonCode.WEBHOOKS_LIMIT: "at most {max:number} webhooks per user",
+    ReasonCode.MODEL_CALL_TAKEN: "webhook '{webhook}' serves as the model call '{kind}' already",
+    ReasonCode.MODEL_CALL_ADMINS: "only an admin's webhook serves as a model call",
     ReasonCode.OPEN_FIELDS: "decide the open fields first: {fields:fields}",
     ReasonCode.DUPLICATE_OF: "duplicate of document {id}",
     ReasonCode.DUPLICATE_UNSEEN: "the file lies in Lekto already, in a space you cannot see",

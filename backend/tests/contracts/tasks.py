@@ -58,9 +58,21 @@ class TaskRepositoryContract:
         null = a_task()
         null.open("hash4", b"\x01request", NOW)
         null.answered(None, None, NOW)
-        await store(uow_factory, queued, sent, answered, failed, null)
+        proposed = Task.create(
+            kind=TaskKind.PROPOSE,
+            document_id=DocumentId(new_id()),
+            node=Node.SIGNAL_LLM,
+            run=2,
+            webhook_id=WebhookId(new_id()),
+            owner_id=UserId(new_id()),
+            step=None,
+            timeout=10 * MINUTE,
+            now=NOW,
+        )
+        proposed.open("hash5", b"\x01request", NOW, context={"fields": {"a1": "id"}})
+        await store(uow_factory, queued, sent, answered, failed, null, proposed)
         async with uow_factory() as uow:
-            for task in (queued, sent, answered, failed, null):
+            for task in (queued, sent, answered, failed, null, proposed):
                 assert await uow.tasks.get(task.id) == task
                 assert await uow.tasks.find(task.id) == task
 

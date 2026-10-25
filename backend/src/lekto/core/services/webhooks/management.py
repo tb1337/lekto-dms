@@ -5,13 +5,23 @@ its secret and tests it. Admins may do all of that to every webhook (Tobi, 08.10
 they renew is shown to them, once. The secret is never shown again, nor are the values of the
 webhook's own headers (their names are). Other users do not learn that someone else's webhook
 exists (NotFoundError).
+
+Only an admin makes an admin's webhook serve as a model call (`ModelCallRole`), and of the
+webhooks that serve (active, an active admin's) at most one serves each kind
+(`serving_model_call`).
 """
 
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from lekto.core.domain.errors import ConflictError, NotFoundError, ValidationError
+from lekto.core.domain.documents import UNSET, Unset
+from lekto.core.domain.errors import (
+    ConflictError,
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from lekto.core.domain.ids import DeliveryId, UserId, WebhookId, new_id
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.templates import WEBHOOK_NAMES, unknown_values
@@ -19,6 +29,8 @@ from lekto.core.domain.users import User
 from lekto.core.domain.webhooks import (
     DEFAULT_OPEN_TASKS,
     BodyFormat,
+    ModelCallKind,
+    ModelCallRole,
     Webhook,
     WebhookDelivery,
     headers_from_bytes,
@@ -36,6 +48,10 @@ from lekto.core.services._access import load_actor
 from lekto.core.services.rules.references import disable_rules, refers_to
 from lekto.core.services.tasks.settling import drop_queued, wake_queue
 from lekto.core.services.webhooks.policy import WebhookPolicy
+
+MODEL_CALLS_LOCK = "model-calls"
+"""The name a unit of work locks while it checks which webhook serves a model call, so two
+never come to serve the same kind."""
 
 
 @dataclass(frozen=True)
@@ -85,12 +101,17 @@ class WebhookService:
         body: BodyFormat = BodyFormat.THIN,
         body_template: str | None = None,
         max_open_tasks: int = DEFAULT_OPEN_TASKS,
+        model_call: ModelCallRole | None = None,
     ) -> CreatedWebhook:
         """`signed`: with a secret (shown once in the answer); `headers`: the webhook's own,
         name to value; `body`, with its template for `template`; `max_open_tasks`: how many
-        tasks it takes at the same time. ValidationError for a bad URL, event type, header,
-        template or number, ConflictError at the user's limit."""
+        tasks it takes at the same time; `model_call`: the model call it serves as (admins
+        only). ValidationError for a bad URL, event type, header, template or number,
+        ConflictError at the user's limit or for a model call another webhook serves,
+        PermissionDeniedError for a model call of a user who is not an admin."""
         async with self._uow() as uow:
+            if model_call is not None:
+                await uow.lock(MODEL_CALLS_LOCK)
             user = await load_actor(uow, actor)
             if await uow.webhooks.count_for_owner(user.id) >= self._policy.per_user:
                 raise ConflictError(because(ReasonCode.WEBHOOKS_LIMIT, max=self._policy.per_user))
@@ -111,6 +132,9 @@ class WebhookService:
             given = dict(headers or {})
             webhook.set_headers(given, self._encrypt_headers(id, given), now=now)
             webhook.set_body(body, await self._checked(uow, body, body_template), now=now)
+            if model_call is not None:
+                webhook.serve(model_call, now=now)
+                await _check_model_call(uow, user, webhook)
             await uow.webhooks.add(webhook)
             await uow.commit()
         return CreatedWebhook(webhook, secret)
@@ -145,14 +169,22 @@ class WebhookService:
         body: BodyFormat | None = None,
         body_template: str | None = None,
         max_open_tasks: int | None = None,
+        model_call: ModelCallRole | Unset | None = UNSET,
     ) -> Webhook:
         """`headers`: all of the webhook's own headers from now on, in order; a value None keeps
         the value the header has (ValidationError for a header it does not have yet). `body`:
         with its template for `template` (None: both stay). More room for tasks goes to those
-        that wait at once."""
+        that wait at once. `model_call`: the model call it serves as from now on (None: none;
+        left out: it stays), as for `create`."""
         async with self._uow() as uow:
-            webhook = await manageable_webhook(uow, await load_actor(uow, actor), id)
+            user = await load_actor(uow, actor)
+            webhook = await manageable_webhook(uow, user, id)
             now = self._clock.now()
+            switched_on = active is True and not webhook.active
+            if isinstance(model_call, ModelCallRole) or (
+                switched_on and webhook.model_call is not None
+            ):
+                await uow.lock(MODEL_CALLS_LOCK)
             more_room = max_open_tasks is not None and max_open_tasks > webhook.max_open_tasks
             webhook.change(
                 now=now,
@@ -169,6 +201,11 @@ class WebhookService:
                 webhook.set_body(body, await self._checked(uow, body, body_template), now=now)
             elif body_template is not None:
                 raise ValidationError("give body_template together with body")
+            if not isinstance(model_call, Unset) and model_call != webhook.model_call:
+                webhook.serve(model_call, now=now)
+                await _check_model_call(uow, user, webhook)
+            elif switched_on and webhook.model_call is not None:
+                await _check_model_call(uow, user, webhook, granted=True)
             await uow.webhooks.update(webhook)
             if more_room:
                 await wake_queue(uow, webhook.id, now)
@@ -287,6 +324,47 @@ async def disable_sending_rules(
             now,
             because(ReasonCode.RULE_DISABLED_DELETED, kind="webhook", name=webhook.name),
             refers_to(lambda references: references.webhooks, webhook.id),
+        )
+
+
+async def serving_model_call(uow: UnitOfWork, kind: ModelCallKind) -> Webhook | None:
+    """The webhook that serves as the model call `kind`: an active one with that role whose
+    owner is an active admin (the oldest, should there be two); None: the language model of
+    the configuration answers, if there is one."""
+    for webhook in await uow.webhooks.list_model_calls():
+        if (
+            webhook.active
+            and webhook.model_call is not None
+            and webhook.model_call.kind is kind
+            and await _admins(uow, webhook)
+        ):
+            return webhook
+    return None
+
+
+async def _admins(uow: UnitOfWork, webhook: Webhook) -> bool:
+    owner = await uow.users.find(webhook.owner_id)
+    return owner is not None and owner.is_active_admin
+
+
+async def _check_model_call(
+    uow: UnitOfWork, actor: User, webhook: Webhook, *, granted: bool = False
+) -> None:
+    """The model call `webhook` serves as from now on may be: an admin gives it to an admin's
+    webhook (`granted`: it was given before), and no other webhook serves that kind.
+    PermissionDeniedError or ConflictError otherwise."""
+    role = webhook.model_call
+    if role is None:
+        return
+    admins = await _admins(uow, webhook)
+    if not granted and not (actor.is_active_admin and admins):
+        raise PermissionDeniedError(because(ReasonCode.MODEL_CALL_ADMINS))
+    if not (webhook.active and admins):
+        return  # it does not serve
+    serving = await serving_model_call(uow, role.kind)
+    if serving is not None and serving.id != webhook.id:
+        raise ConflictError(
+            because(ReasonCode.MODEL_CALL_TAKEN, webhook=serving.name, kind=role.kind.value)
         )
 
 

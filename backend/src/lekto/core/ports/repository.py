@@ -703,6 +703,11 @@ class WebhookRepository(Protocol):
         """The active webhooks that want the event type (it is listed, or they want all)."""
         ...
 
+    async def list_model_calls(self) -> list[Webhook]:
+        """The webhooks that serve as a model call (`Webhook.model_call`), active or not, oldest
+        first."""
+        ...
+
     async def add_delivery(self, delivery: WebhookDelivery) -> None:
         """Log an attempt. The webhook must exist (NotFoundError otherwise): one that was
         deleted meanwhile has nothing to log for."""

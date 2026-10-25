@@ -256,6 +256,8 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	username_of_other: entry(m.reason_username_of_other),
 	lenses_limit: entry(m.reason_lenses_limit, { max: 'number' }),
 	webhooks_limit: entry(m.reason_webhooks_limit, { max: 'number' }),
+	model_call_taken: entry(m.reason_model_call_taken),
+	model_call_admins: entry(m.reason_model_call_admins),
 	open_fields: entry(m.reason_open_fields, { fields: 'fields' }),
 	duplicate_of: entry(m.reason_duplicate_of),
 	duplicate_unseen: entry(m.reason_duplicate_unseen),

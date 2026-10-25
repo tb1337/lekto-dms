@@ -1,7 +1,8 @@
 """Tasks: requests through a webhook that expect an answer (`webhooks-und-auftraege.md`).
 
-A node that needs something from outside (a rule step that asks) hands it to a task and waits
-for its answer ("running externally", `NodeStatus.DELEGATED`). A task:
+A node that needs something from outside (a rule step that asks, a model call a webhook takes
+over) hands it to a task and waits for its answer ("running externally",
+`NodeStatus.DELEGATED`). A task:
 
 1. waits in Lekto (`QUEUED`) while its webhook has as many open tasks as it takes
    (`Webhook.max_open_tasks`);
@@ -42,6 +43,8 @@ MAX_TIMEOUT = timedelta(hours=24)
 
 class TaskKind(StrEnum):
     ASK = "rule.ask"  # a rule step asks a webhook (`rules.AskWebhook`)
+    PROPOSE = "external.propose"  # a model call: the language model's proposal (`signal_llm`)
+    EXTRACT = "external.extract"  # a model call: the values of fields (`fields`)
 
 
 class TaskStatus(StrEnum):
@@ -102,8 +105,9 @@ class Task:
     `owner_id`: whose webhook it goes through (the rights are theirs). `timeout`: how long the
     consumer has from sending. `token_hash`: of the one-time token, from sending on;
     `encrypted_request` the request with the token (`SecretCipher`), from sending until it is
-    delivered or the task ends. `answer` and `producer` come with the answer; `reason` says why
-    a task failed, expired or was cancelled."""
+    delivered or the task ends. `context`: what the node needs to read the answer, kept from
+    sending on (a model call: the keys it sent). `answer` and `producer` come with the answer;
+    `reason` says why a task failed, expired or was cancelled."""
 
     id: TaskId
     kind: TaskKind
@@ -117,6 +121,7 @@ class Task:
     status: TaskStatus = TaskStatus.QUEUED
     token_hash: str | None = field(default=None, repr=False)
     encrypted_request: bytes | None = field(default=None, repr=False)
+    context: JsonObject = field(default_factory=dict)
     answer: JsonValue = None
     producer: str | None = None
     reason: Reason | None = None
@@ -190,12 +195,22 @@ class Task:
         """Identifies what the task asks for among the tasks of its node's run."""
         return self.kind.value if self.step is None else self.step.key
 
-    def open(self, token_hash: str, encrypted_request: bytes, now: datetime) -> None:
-        """Sent from now on: the deadline starts."""
+    def open(
+        self,
+        token_hash: str,
+        encrypted_request: bytes,
+        now: datetime,
+        *,
+        context: JsonObject | None = None,
+    ) -> None:
+        """Sent from now on: the deadline starts. `context`: what the node needs to read the
+        answer to the request that goes."""
         self._require(TaskStatus.QUEUED)
         self.status = TaskStatus.OPEN
         self.token_hash = token_hash
         self.encrypted_request = encrypted_request
+        if context is not None:
+            self.context = context
         self.opened_at = require_utc(now, "opened_at")
         self.deadline = self.opened_at + self.timeout
 

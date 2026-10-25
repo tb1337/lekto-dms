@@ -9,6 +9,7 @@ from lekto.core.domain.errors import (
     AuthenticationError,
     ConflictError,
     NotFoundError,
+    PermissionDeniedError,
     ValidationError,
 )
 from lekto.core.domain.ids import WebhookId, new_id
@@ -16,11 +17,17 @@ from lekto.core.domain.users import Role
 from lekto.core.domain.webhooks import (
     DISABLED_FAILING,
     BodyFormat,
+    ModelCallKind,
+    ModelCallRole,
     headers_from_bytes,
     new_secret,
 )
 from lekto.core.services.webhooks import WebhookService
-from lekto.core.services.webhooks.management import headers_context, secret_context
+from lekto.core.services.webhooks.management import (
+    headers_context,
+    secret_context,
+    serving_model_call,
+)
 from tests import builders
 from tests.unit.services.support import World
 
@@ -286,3 +293,75 @@ async def test_a_template_body_is_checked_when_saved(world: World) -> None:
 
 def test_new_secrets_do_not_repeat() -> None:
     assert new_secret() != new_secret()
+
+
+async def test_an_admin_makes_an_admins_webhook_serve_as_a_model_call(world: World) -> None:
+    admin, user = await world.user(role=Role.ADMIN), await world.user()
+    service = world.webhooks
+    role = ModelCallRole(ModelCallKind.PROPOSE, timedelta(minutes=10))
+    created = await service.create(admin.id, name="agent", url=URL, event_types=[], model_call=role)
+    assert created.webhook.model_call == role
+    async with world.uow() as uow:
+        assert await serving_model_call(uow, ModelCallKind.PROPOSE) == created.webhook
+        assert await serving_model_call(uow, ModelCallKind.EXTRACT) is None
+    # Not on a user's webhook, not by a user, not even an admin on a user's.
+    own = (await service.create(user.id, name="x", url=URL, event_types=[])).webhook
+    extract = ModelCallRole(ModelCallKind.EXTRACT)
+    with pytest.raises(PermissionDeniedError):
+        await service.create(user.id, name="x", url=URL, event_types=[], model_call=extract)
+    with pytest.raises(PermissionDeniedError):
+        await service.update(user.id, own.id, model_call=extract)
+    with pytest.raises(PermissionDeniedError):
+        await service.update(admin.id, own.id, model_call=extract)
+    # A change that leaves it alone keeps it; None ends it.
+    assert (await service.update(admin.id, created.webhook.id, name="a")).model_call == role
+    assert (await service.update(admin.id, created.webhook.id, model_call=None)).model_call is None
+
+
+async def test_one_active_webhook_serves_each_model_call(world: World) -> None:
+    admin, other = await world.user(role=Role.ADMIN), await world.user(role=Role.ADMIN)
+    service = world.webhooks
+    propose = ModelCallRole(ModelCallKind.PROPOSE)
+    first = (
+        await service.create(admin.id, name="first", url=URL, event_types=[], model_call=propose)
+    ).webhook
+    with pytest.raises(ConflictError, match="'first' serves as the model call 'propose'"):
+        await service.create(other.id, name="second", url=URL, event_types=[], model_call=propose)
+    # Switched off, it serves no more: another may, and switching it on again conflicts.
+    off = await service.create(
+        other.id, name="off", url=URL, event_types=[], active=False, model_call=propose
+    )
+    await service.update(admin.id, first.id, active=False)
+    second = (
+        await service.create(other.id, name="second", url=URL, event_types=[], model_call=propose)
+    ).webhook
+    with pytest.raises(ConflictError):
+        await service.update(admin.id, first.id, active=True)
+    with pytest.raises(ConflictError):
+        await service.update(other.id, off.webhook.id, active=True)
+    async with world.uow() as uow:
+        assert await serving_model_call(uow, ModelCallKind.PROPOSE) == second
+    # The other kind is free.
+    extract = ModelCallRole(ModelCallKind.EXTRACT)
+    assert (await service.update(admin.id, first.id, model_call=extract)).model_call == extract
+
+
+async def test_a_model_call_of_an_admin_no_more_serves_no_more(world: World) -> None:
+    admin = await world.user(role=Role.ADMIN)
+    created = await world.webhooks.create(
+        admin.id,
+        name="agent",
+        url=URL,
+        event_types=[],
+        model_call=ModelCallRole(ModelCallKind.EXTRACT),
+    )
+    async with world.uow() as uow:
+        user = await uow.users.get(admin.id)
+        user.role = Role.USER
+        await uow.users.update(user)
+        await uow.commit()
+    async with world.uow() as uow:
+        assert await serving_model_call(uow, ModelCallKind.EXTRACT) is None
+    # Its owner may still take the role away.
+    webhook = await world.webhooks.update(admin.id, created.webhook.id, model_call=None)
+    assert webhook.model_call is None

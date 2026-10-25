@@ -79,6 +79,7 @@ async def create_webhook(
         body=body.body,
         body_template=body.body_template,
         max_open_tasks=body.max_open_tasks,
+        model_call=None if body.model_call is None else body.model_call.role(),
     )
     return WebhookCreated.created(created)
 
@@ -117,6 +118,7 @@ async def update_webhook(
         body=body.body,
         body_template=body.body_template,
         max_open_tasks=body.max_open_tasks,
+        model_call=body.model_call_change(),
     )
     return WebhookOut.of(webhook)
 

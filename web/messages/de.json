@@ -1800,6 +1800,8 @@
 	"reason_username_of_other": "„{username}“ ist der Benutzername eines anderen Nutzers.",
 	"reason_lenses_limit": "Höchstens {max} Lenses je Nutzer.",
 	"reason_webhooks_limit": "Höchstens {max} Webhooks je Nutzer.",
+	"reason_model_call_taken": "Webhook „{webhook}“ dient schon als Modellaufruf „{kind}“.",
+	"reason_model_call_admins": "Nur der Webhook eines Admins dient als Modellaufruf.",
 	"reason_open_fields": "Entscheide zuerst die offenen Felder: {fields}.",
 	"reason_duplicate_of": "Diese Datei ist schon in Lekto.",
 	"reason_duplicate_unseen": "Diese Datei ist schon in Lekto, in einem Space, den du nicht siehst.",

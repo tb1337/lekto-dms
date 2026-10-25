@@ -714,6 +714,10 @@ webhooks = Table(
     Column("previous_valid_until", UtcDateTime, nullable=True),
     # How many tasks the webhook takes at the same time (`Webhook.max_open_tasks`).
     Column("max_open_tasks", Integer, nullable=False, server_default="4"),
+    # The model call the webhook serves as (`webhooks.ModelCallKind`) and its consumer's time
+    # to answer; both NULL for none.
+    Column("model_call", Text, nullable=True),
+    Column("model_call_timeout_seconds", Integer, nullable=True),
     Column("active", Boolean, nullable=False),
     Column("disabled_reason", Text, nullable=True),
     Column("failed_streak", Integer, nullable=False),
@@ -787,6 +791,8 @@ tasks = Table(
     Column("status", Text, nullable=False),
     Column("token_hash", Text, nullable=True),
     Column("request", LargeBinary, nullable=True),
+    # What the node needs to read the answer (`Task.context`), a JSON object.
+    Column("context", json_type(), nullable=False, server_default="{}"),
     Column("answer", json_type(), nullable=True),
     Column("producer", Text, nullable=True),
     Column("reason", json_type(), nullable=True),

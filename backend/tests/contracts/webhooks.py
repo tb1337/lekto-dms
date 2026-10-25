@@ -12,6 +12,8 @@ from lekto.core.domain.webhooks import (
     ALL_EVENTS,
     BodyFormat,
     DeliveryOutcome,
+    ModelCallKind,
+    ModelCallRole,
     Webhook,
     WebhookDelivery,
 )
@@ -67,6 +69,7 @@ class WebhookRepositoryContract:
         webhook.renew_secret(b"\x01second", now=NOW + HOUR, grace=timedelta(hours=24))
         webhook.failed_streak = 4
         webhook.change(now=NOW + HOUR, max_open_tasks=7)
+        webhook.serve(ModelCallRole(ModelCallKind.EXTRACT, timedelta(minutes=20)), now=NOW + HOUR)
         async with uow_factory() as uow:
             await uow.webhooks.add(webhook)
             await uow.commit()
@@ -161,6 +164,24 @@ class WebhookRepositoryContract:
             names = [w.name for w in await uow.webhooks.list_active_for("document.filed")]
             assert names == ["all", "filed"]
             assert [w.name for w in await uow.webhooks.list_active_for("webhook.other")] == ["all"]
+
+    async def test_model_calls_are_listed_active_or_not(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner = await a_user(uow_factory)
+        extract = a_webhook(owner, name="extract", at=HOUR, active=False)
+        extract.serve(ModelCallRole(ModelCallKind.EXTRACT), now=NOW)
+        propose = a_webhook(owner, name="propose")
+        propose.serve(ModelCallRole(ModelCallKind.PROPOSE), now=NOW)
+        plain = a_webhook(owner, name="plain", at=2 * HOUR)
+        async with uow_factory() as uow:
+            for webhook in (extract, propose, plain):
+                await uow.webhooks.add(webhook)
+            await uow.commit()
+        async with uow_factory() as uow:
+            listed = await uow.webhooks.list_model_calls()
+        assert [webhook.name for webhook in listed] == ["propose", "extract"]
+        assert listed[1].model_call == ModelCallRole(ModelCallKind.EXTRACT)
 
     async def test_remove_takes_the_deliveries_along_and_missing_is_a_no_op(
         self, uow_factory: UnitOfWorkFactory

@@ -30,6 +30,7 @@ const stored: Webhook = {
 	body: 'thin',
 	body_template: null,
 	max_open_tasks: 4,
+	model_call: null,
 	disabled_reason: null,
 	failed_streak: 0,
 	previous_secret_valid_until: null,

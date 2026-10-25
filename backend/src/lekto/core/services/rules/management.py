@@ -13,7 +13,7 @@ Who may do what:
   admins). The new version names the space, so the history shows the move.
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 
 from lekto.core.domain.errors import (
@@ -24,7 +24,7 @@ from lekto.core.domain.errors import (
     SpaceWriteDeniedError,
     ValidationError,
 )
-from lekto.core.domain.fields import FieldValue, read_written
+from lekto.core.domain.fields import FieldDefinition, FieldValue, read_written
 from lekto.core.domain.ids import (
     DocumentId,
     DocumentTypeId,
@@ -39,6 +39,7 @@ from lekto.core.domain.permissions import space_role
 from lekto.core.domain.reasons import Action, ReasonCode, because
 from lekto.core.domain.rules import (
     MAX_TEXT,
+    TEMPLATE_MARKUP,
     AskWebhook,
     ForceReview,
     Rule,
@@ -48,6 +49,7 @@ from lekto.core.domain.rules import (
     SetField,
     SetTitle,
     check_fields,
+    is_template,
 )
 from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.templates import (
@@ -417,7 +419,7 @@ async def check_templates(
     template has (ValidationError naming the action)."""
     fields = await uow.fields.list_all()
     keys = {field.key for field in fields}
-    for index, template in action_templates(definition):
+    for index, template in action_templates(definition, fields):
         try:
             used = templates.check(template)
         except ValidationError as error:
@@ -436,28 +438,40 @@ async def check_templates(
             )
 
 
-def action_templates(definition: RuleDefinition) -> list[tuple[int, str]]:
+def action_templates(
+    definition: RuleDefinition, fields: Iterable[FieldDefinition] | None = None
+) -> list[tuple[int, str]]:
     """The templates among the actions, with their place: a title, a field's value given as
-    text, a review's reason."""
+    text, a review's reason. With `fields`, a choice field's value that is one of its options is
+    no template (`rules.is_template`)."""
+    by_id = None if fields is None else {field.id: field for field in fields}
     found: list[tuple[int, str]] = []
     for index, action in enumerate(definition.actions):
         match action:
             case SetTitle(template=template) | ForceReview(reason=template):
                 found.append((index, template))
-            case SetField(value=str() as value):
-                found.append((index, value))
+            case SetField(field_id=field, value=str() as value):
+                definition_of = None if by_id is None else by_id.get(field)
+                if definition_of is None or is_template(definition_of, value):
+                    found.append((index, value))
     return found
 
 
 def uses_field(templates: TemplateRenderer, definition: RuleDefinition, key: str) -> bool:
-    """Whether a template of the definition uses the field with `key`."""
-    return any(
-        field_used(templates.check(template), key) for _, template in action_templates(definition)
-    )
+    """Whether a template of the definition uses the field with `key`; one that is no valid
+    template (a fixed value stored before every type took one) uses none."""
+    for _, template in action_templates(definition):
+        try:
+            if field_used(templates.check(template), key):
+                return True
+        except ValidationError:
+            continue
+    return False
 
 
 def renamed_field(definition: RuleDefinition, old: str, new: str) -> RuleDefinition:
-    """The definition with `field.<old>` written `field.<new>` in its templates."""
+    """The definition with `field.<old>` written `field.<new>` in its templates; a field's value
+    without markup is a fixed one and stays (a link may hold `field.betrag`)."""
     actions = []
     for action in definition.actions:
         match action:
@@ -465,7 +479,7 @@ def renamed_field(definition: RuleDefinition, old: str, new: str) -> RuleDefinit
                 action = replace(action, template=rename_field_key(template, old, new))
             case ForceReview(reason=reason):
                 action = replace(action, reason=rename_field_key(reason, old, new))
-            case SetField(value=str() as value):
+            case SetField(value=str() as value) if TEMPLATE_MARKUP.search(value):
                 action = replace(action, value=rename_field_key(value, old, new))
         actions.append(action)
     return replace(definition, actions=tuple(actions))

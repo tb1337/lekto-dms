@@ -91,6 +91,7 @@ from lekto.core.domain.rules import (
     SetTitle,
     SetTopic,
     StepCondition,
+    is_template,
 )
 from lekto.core.domain.templates import STEPS, Render, TemplateValue, template_values
 
@@ -330,7 +331,7 @@ class _Planner:
         self._adds: dict[TagId, list[RuleReport]] = {}
         self._removes: dict[TagId, list[RuleReport]] = {}
         self._titles: list[tuple[RuleReport, SetTitle, Match]] = []
-        self._templated: list[tuple[RuleReport, SetField, Match]] = []
+        self._templated: list[tuple[SetField, _Candidate]] = []
         self._review_reasons: list[tuple[RuleReport, str]] = []
 
     def run(self) -> RulePlan:
@@ -442,10 +443,12 @@ class _Planner:
                         Note(name, NoteKind.SKIPPED, because(ReasonCode.FIELD_GONE))
                     )
                     return
-                if isinstance(value, str):
-                    # Rendered once the single fields are known; the field keeps its place.
-                    self._templated.append((report, action, match))
-                    self._candidates.setdefault(name, [])
+                if is_template(definition, value):
+                    # Rendered once the single fields are known; it keeps its place among the
+                    # rules that set the field (`_field_templates` fills it in or drops it).
+                    slot = _Candidate(report, None, match)
+                    self._templated.append((action, slot))
+                    self._candidates.setdefault(name, []).append(slot)
                     return
                 try:
                     field_from_json(definition, value)
@@ -533,7 +536,8 @@ class _Planner:
             return
         s = self._s
         current = self._current(field_name)
-        values = list(dict.fromkeys(_key(candidate.value) for candidate in candidates))
+        key = self._key
+        values = list(dict.fromkeys(key(field_name, candidate.value) for candidate in candidates))
         if len(values) > 1:
             listed: list[JsonValue] = [
                 {"rule": candidate.report.name, "value": self._shown(field_name, candidate.value)}
@@ -546,7 +550,7 @@ class _Planner:
                 self._uncertain(field_name, disagree, suggestion=candidates[0].value)
             return
         value = candidates[0].value
-        if _key(value) == _key(current):
+        if key(field_name, value) == key(field_name, current):
             return
         reason: Reason | None = None
         kind = NoteKind.CONFLICT
@@ -557,7 +561,9 @@ class _Planner:
                 )
         elif field_name in s.locked:
             kind, reason = NoteKind.OVERRULED, because(ReasonCode.PERSON_DECIDED_FIELD)
-        elif field_name in s.model_values and _key(s.model_values[field_name]) == _key(current):
+        elif field_name in s.model_values and key(field_name, s.model_values[field_name]) == key(
+            field_name, current
+        ):
             shown = self._shown(field_name, current)
             chained = field_name in s.chained
             reason = because(
@@ -719,28 +725,28 @@ class _Planner:
             return
         values = self._values(result, type_after, {}, None)
         received = self._document.created_at.date()
-        for report, action, match in self._templated:
+        for action, slot in self._templated:
+            report = slot.report
             name = field_key(action.field_id)
             definition = self._s.definitions[action.field_id]
             rendered = self._render(report, name, str(action.value), values)
-            if rendered is None:
-                continue
-            if not rendered.strip():
+            read = None
+            if rendered is not None and not rendered.strip():
                 empty = because(ReasonCode.VALUE_EMPTY)
                 report.notes.append(Note(name, NoteKind.SKIPPED, empty))
-                continue
-            read = read_written(definition, rendered, self._s.writing, received=received)
+            elif rendered is not None:
+                read = read_written(definition, rendered, self._s.writing, received=received)
+                if read is None:
+                    unreadable = because(
+                        ReasonCode.TEMPLATE_UNREADABLE,
+                        value=_shortened(rendered),
+                        type=definition.data_type.value,
+                    )
+                    report.notes.append(Note(name, NoteKind.SKIPPED, unreadable))
             if read is None:
-                unreadable = because(
-                    ReasonCode.TEMPLATE_UNREADABLE,
-                    value=_shortened(rendered),
-                    type=definition.data_type.value,
-                )
-                report.notes.append(Note(name, NoteKind.SKIPPED, unreadable))
-                continue
-            self._candidates.setdefault(name, []).append(
-                _Candidate(report, field_to_json(read), match)
-            )
+                self._candidates[name].remove(slot)
+            else:
+                slot.value = field_to_json(read)
 
     def _values(
         self,
@@ -841,6 +847,24 @@ class _Planner:
         field = field_id_of(field_name)
         definition = None if field is None else s.definitions.get(field)
         return str(value) if definition is None else _value_text(definition, value)
+
+    def _key(self, field_name: str, value: JsonValue) -> str:
+        """Comparable form of a value of `field_name`: a field's value by what it is (`84.2` and
+        `84.20` are one amount), anything else as it is written."""
+        field = field_id_of(field_name)
+        definition = None if field is None else self._s.definitions.get(field)
+        if definition is None or value is None:
+            return _key(value)
+        try:
+            parsed = field_from_json(definition, value)
+        except ValidationError:
+            return _key(value)
+        match parsed:
+            case Money():
+                return repr((parsed.amount.normalize(), parsed.currency))
+            case Decimal():
+                return repr(parsed.normalize())
+        return repr(parsed)
 
     def _tag(self, tag: TagId) -> str:
         """A tag (of any scope) as a reason names it: its name; its id if it is gone."""

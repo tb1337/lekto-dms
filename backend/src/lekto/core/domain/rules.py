@@ -743,19 +743,27 @@ def check_fields(
         if isinstance(action, SetField):
             with _at(f"actions[{index}]"):
                 field = _field(definitions, action.field_id)
-                if not isinstance(action.value, str):
+                if not is_template(field, action.value):
                     field_from_json(field, action.value)
                 elif (
                     # Text without markup writes itself: it must be readable now. A template's
                     # syntax and values are checked where the rule is saved (a port renders it).
-                    not _TEMPLATE_MARKUP.search(action.value)
-                    and read_written(field, action.value, Writing()) is None
+                    not TEMPLATE_MARKUP.search(str(action.value))
+                    and read_written(field, str(action.value), Writing()) is None
                 ):
                     raise field.refusal(action.value)
 
 
-_TEMPLATE_MARKUP = re.compile(r"\{[{%#]")
-"""Where Liquid begins an output, a tag or a comment."""
+TEMPLATE_MARKUP = re.compile(r"\{[{%]")
+"""Where Liquid begins an output or a tag."""
+
+
+def is_template(field: FieldDefinition, value: JsonValue) -> bool:
+    """Whether a `set_field` value for `field` is a template: text, unless it is one of a choice
+    field's options as written (a fixed value, whatever it holds: `Projekt {{A}}`)."""
+    if not isinstance(value, str):
+        return False
+    return not (field.data_type is FieldType.CHOICE and value in field.choices)
 
 
 def condition_value(field: FieldDefinition, op: Operator, value: JsonValue) -> FieldValue:

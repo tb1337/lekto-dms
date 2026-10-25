@@ -408,6 +408,33 @@ async def test_a_field_a_template_uses_is_not_deleted(world: World) -> None:
     await service.delete_field(r.admin.id, gross.id)
 
 
+async def test_fixed_values_with_braces_block_nothing(world: World) -> None:
+    """A choice that holds Liquid's markup is a fixed value; renaming and deleting another field
+    pass by it, and a fixed link that names a field's key keeps it."""
+    r = await rule_world(world)
+    owner = await world.user()
+    service = world.master_data
+    kind = await service.create_field(r.admin.id, "Art", FieldType.CHOICE, choices=["A {{ B", "C"])
+    link = await service.create_field(r.admin.id, "Portal", FieldType.LINK)
+    gross = await service.create_field(r.admin.id, "Betrag", FieldType.AMOUNT)
+    actions = (
+        SetField(kind.id, "A {{ B"),
+        SetField(link.id, "https://portal.example/field.betrag"),
+        SetTitle("{{ field.betrag }}"),
+    )
+    rule = await r.personal_rule(owner, definition("Fest", channel_api(), *actions))
+
+    await service.change_field(r.admin.id, gross.id, name="Brutto")
+    changed = await r.rules.get(owner.id, rule.id)
+    assert changed.definition.actions == (
+        actions[0],
+        actions[1],
+        SetTitle("{{ field.brutto }}"),
+    )
+    other = await service.create_field(r.admin.id, "Notiz", FieldType.TEXT)
+    await service.delete_field(r.admin.id, other.id)
+
+
 async def test_a_pattern_is_checked_by_the_matcher_that_runs_it(world: World) -> None:
     """Of the `regex` package, which knows Unicode properties that `re` refuses."""
     r = await rule_world(world)

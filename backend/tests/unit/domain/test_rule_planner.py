@@ -78,6 +78,7 @@ from tests.unit.domain.rules_support import (
     check_or_none,
     cond,
     doc,
+    field,
     notes,
     rule,
     run,
@@ -733,7 +734,7 @@ def test_a_template_reads_as_a_person_writes() -> None:
     means it; an amount without a currency in the default currency."""
     document = doc(fields={AMOUNT.id: Money(Decimal("3650.00"), "EUR")})
     actions = (
-        SetField(COUNT.id, "1.234,5 Stück"),
+        SetField(COUNT.id, "1.234,5"),
         SetField(AMOUNT.id, "{{ field.amount }}"),
         SetField(DUE.id, "15. März 2026"),
         SetField(SPAN.id, "KW 38/2026"),
@@ -795,6 +796,44 @@ def test_a_field_from_what_a_step_brought() -> None:
     )
 
     assert result.changes.fields == {AMOUNT.id: Money(Decimal("84.2"), "EUR")}
+
+
+def test_rules_that_disagree_keep_their_order_with_templates() -> None:
+    """The first rule's value is the suggestion and stands first in the reason, a template's as
+    a fixed one's."""
+    result = run(
+        [
+            rule(SetField(COUNT.id, "{{ 7 }}"), name="a", priority=200),
+            rule(SetField(COUNT.id, "9"), name="b", priority=100),
+        ],
+        situation(doc(), definitions=DEFINITIONS),
+    )
+    item = check(result, field_key(COUNT.id))
+    assert item.suggestion == "7"
+    assert texts(item.reasons)[0].startswith("rules set different values ('a': 7, 'b': 9)")
+
+
+def test_values_are_compared_by_what_they_are() -> None:
+    """An amount of 84.2 from a step's answer is the 84.20 another rule sets and the document
+    holds: no disagreement, no change."""
+    asks = rule(SetField(AMOUNT.id, "{{ steps.erp.total }} EUR"), name="a")
+    fixed = rule(SetField(AMOUNT.id, {"amount": "84.20", "currency": "EUR"}), name="b")
+    where = situation(
+        doc(fields={AMOUNT.id: Money(Decimal("84.20"), "EUR")}),
+        definitions=DEFINITIONS,
+        steps={asks.id: {"erp": json_value({"total": 84.2})}},
+    )
+    result = run([asks, fixed], where)
+    assert (result.checks, result.changes.fields, result.effects) == ([], {}, [])
+
+
+def test_a_choice_that_holds_markup_is_a_fixed_value() -> None:
+    braces = field(FieldType.CHOICE, "Projekt {{A}}", "B")
+    result = run(
+        [rule(SetField(braces.id, "Projekt {{A}}"))],
+        situation(doc(), definitions={braces.id: braces}),
+    )
+    assert result.changes.fields == {braces.id: "Projekt {{A}}"}
 
 
 def test_fixed_values_stay_as_they_were() -> None:

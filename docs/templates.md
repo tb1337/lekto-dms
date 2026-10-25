@@ -157,7 +157,9 @@ the values above it sees:
 | `document_id` | the document's ID |
 | `lane` | `green`, `yellow` or `red`; missing while it is processed |
 | `link` | the document in the web UI (`LEKTO_PUBLIC_URL/ui/documents/<id>`); missing without `LEKTO_PUBLIC_URL` |
-| `rule.id`, `rule.name` | the rule that sends it (`send_webhook`); missing for an event |
+| `rule.id`, `rule.name` | the rule that sends or asks; missing for an event |
+| `task.id`, `task.callback`, `task.token`, `task.deadline` | a task's request (it expects an answer): where and with which token to answer, and by when; missing otherwise |
+| `steps.<name>` | in a task of a rule's step: what the rule's steps before brought; missing otherwise |
 
 Write every value with `json`, and a value that may be missing with `| default: nil | json`
 (`null` then). A Home Assistant notification:

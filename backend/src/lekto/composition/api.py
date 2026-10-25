@@ -82,6 +82,7 @@ def api_context(container: Container, settings: Settings, services: Services) ->
         rule_applications=services.rule_applications,
         webhooks=services.webhooks,
         webhook_delivery=services.webhook_delivery,
+        tasks=services.tasks,
         lenses=services.lenses,
         event_bus=container.event_bus,
         health_checks=health_checks(container),

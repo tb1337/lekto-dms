@@ -48,8 +48,17 @@ SECURITY_SCHEMES = {
         "scheme": "bearer",
         "description": "Personal API token (`lekto_…`); scope `read` allows reading only.",
     },
+    "taskToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": (
+            "The one-time token of a task (`lkt_…`), from its request (`lekto-task-token`); "
+            "only for answering that task."
+        ),
+    },
 }
 SECURITY: list[dict[str, list[str]]] = [{"session": []}, {"token": []}]
+TASK_TOKEN: list[dict[str, list[str]]] = [{"taskToken": []}]
 SESSION_ONLY: list[dict[str, list[str]]] = [{"session": []}]
 
 

@@ -22,6 +22,7 @@ from tests.contracts.inbox import InboxRepositoryContract
 from tests.contracts.job_queue import JobQueueContract
 from tests.contracts.lenses import LensRepositoryContract
 from tests.contracts.rules import RuleRepositoriesContract
+from tests.contracts.tasks import TaskRepositoryContract
 from tests.contracts.unit_of_work import UnitOfWorkContract
 from tests.contracts.webhooks import WebhookRepositoryContract
 from tests.sql_suite import MigrationSuite, SqlAdapterSuite
@@ -48,6 +49,10 @@ class TestPostgresRuleRepositories(RuleRepositoriesContract):
 
 
 class TestPostgresWebhookRepository(WebhookRepositoryContract):
+    pass
+
+
+class TestPostgresTaskRepository(TaskRepositoryContract):
     pass
 
 

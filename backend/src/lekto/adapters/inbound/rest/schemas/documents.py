@@ -50,12 +50,20 @@ class NodeStateOut(BaseModel):
     status: NodeStatus = Field(
         description=(
             "`waiting`: not run yet (it runs once the nodes it needs are done); `running`: a "
-            "worker is at it; `done`: has an outcome; `skipped`: left out in this run."
+            "worker is at it; `delegated`: waits for answers to its tasks (running "
+            "externally); `done`: has an outcome; `skipped`: left out in this run."
         )
     )
     outcome: Outcome | None = Field(description="Set once the node is done.")
     started_at: datetime | None
     finished_at: datetime | None
+    deadline: datetime | None = Field(
+        default=None,
+        description=(
+            "A delegated node: when the last of its open tasks ends at the latest; none while "
+            "they wait to be sent."
+        ),
+    )
 
     @classmethod
     def of(cls, node: Node, state: NodeState) -> "NodeStateOut":
@@ -65,6 +73,7 @@ class NodeStateOut(BaseModel):
             outcome=state.outcome,
             started_at=state.started_at,
             finished_at=state.finished_at,
+            deadline=state.deadline,
         )
 
 

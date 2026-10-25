@@ -97,6 +97,7 @@ from lekto.core.services.objects import (
 from lekto.core.services.profiles import matching_persons
 from lekto.core.services.rules.changes import ChangeRules
 from lekto.core.services.rules.running import Prepared, RuleRun
+from lekto.core.services.tasks.settling import cancel_tasks
 
 log = logging.getLogger(__name__)
 
@@ -802,11 +803,13 @@ class DocumentService:
 
     async def delete(self, actor: UserId, id: DocumentId) -> None:
         """Editors and admins. Removes the metadata and queues the removal of its files
-        (derivatives, and the original unless another document has the same file)."""
+        (derivatives, and the original unless another document has the same file). Its tasks
+        end (a late answer is refused)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             document, _ = await controllable_document(uow, user, id, Action.DELETE_DOCUMENT)
             document.delete(self._clock.now(), await _readers(uow, document))
+            await cancel_tasks(uow, id, self._clock.now())
             await uow.documents.remove(id)
             await uow.outbox.add(document.pull_events())
             await uow.jobs.enqueue(

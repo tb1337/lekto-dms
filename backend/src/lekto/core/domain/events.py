@@ -56,6 +56,22 @@ class NodeDeferred(DocumentEvent):
 
 
 @dataclass(frozen=True, kw_only=True)
+class NodeDelegated(DocumentEvent):
+    """The node waits for answers to its tasks ("running externally"); `deadline`: when the
+    last of its open tasks ends at the latest (None while they wait to be sent)."""
+
+    type: ClassVar[str] = "document.node_delegated"
+    node: Node
+    run: int
+    deadline: datetime | None
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.deadline is not None:
+            object.__setattr__(self, "deadline", require_utc(self.deadline, "deadline"))
+
+
+@dataclass(frozen=True, kw_only=True)
 class NodeCompleted(DocumentEvent):
     type: ClassVar[str] = "document.node_completed"
     node: Node
@@ -148,6 +164,7 @@ DOCUMENT_EVENT_TYPES: dict[str, type[DocumentEvent]] = {
         DocumentReceived,
         NodeStarted,
         NodeDeferred,
+        NodeDelegated,
         NodeCompleted,
         LaneChanged,
         ReviewRequired,

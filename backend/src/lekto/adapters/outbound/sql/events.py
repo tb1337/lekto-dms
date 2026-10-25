@@ -31,6 +31,10 @@ _FIELDS: dict[str, tuple[Callable[[Any], JsonValue], Callable[[Any], object]]] =
     "node": (lambda node: node.value, Node),
     "run": (int, int),
     "retry_at": (lambda at: at.isoformat(), datetime.fromisoformat),
+    "deadline": (
+        lambda at: None if at is None else at.isoformat(),
+        lambda value: None if value is None else datetime.fromisoformat(value),
+    ),
     "outcome": (lambda outcome: outcome.value, Outcome),
     "old": (_lane_out, _lane),
     "new": (_lane_out, _lane),

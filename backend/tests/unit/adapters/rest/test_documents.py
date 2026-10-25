@@ -61,6 +61,7 @@ async def test_upload_is_accepted_and_processed(api: Api) -> None:
         "outcome": "ok",
         "started_at": "2026-10-06T12:00:00Z",
         "finished_at": "2026-10-06T12:00:00Z",
+        "deadline": None,
     }
     assert processing["nodes"][1] == {
         "node": "ocr",
@@ -68,6 +69,7 @@ async def test_upload_is_accepted_and_processed(api: Api) -> None:
         "outcome": None,
         "started_at": None,
         "finished_at": None,
+        "deadline": None,
     }
 
     await api.drain()

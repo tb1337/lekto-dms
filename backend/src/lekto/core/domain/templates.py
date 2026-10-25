@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from lekto.core.domain.documents import Document
 from lekto.core.domain.fields import FieldDefinition, FieldValue, Money, Url
+from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.periods import Period
 from lekto.core.domain.sorting import sort_key
 
@@ -56,10 +57,14 @@ NAMES = tuple(item.name for item in dataclasses.fields(_Given))
 FIELD = "field"
 EVENT = "event"
 RULE = "rule"
-WEBHOOK_NAMES = (*NAMES, EVENT, "document_id", "lane", "link", RULE)
+TASK = "task"
+STEPS = "steps"
+WEBHOOK_NAMES = (*NAMES, EVENT, "document_id", "lane", "link", RULE, TASK, STEPS)
 """What the template of a webhook's body sees besides a rule's values: the event (`event.type`,
-`event.id`, `event.occurred_at`), the document's id, lane and link into the web UI, and the rule
-that sends it (`rule.id`, `rule.name`; only then)."""
+`event.id`, `event.occurred_at`), the document's id, lane and link into the web UI, the rule
+that sends or asks (`rule.id`, `rule.name`; only then), and for a task (`domain.tasks`) the task
+(`task.id`, `task.callback`, `task.token`, `task.deadline`) and what the rule's steps before
+brought (`steps.<name>`)."""
 
 
 def template_values(
@@ -154,3 +159,22 @@ def rename_field_key(template: str, old: str, new: str) -> str:
 def uses_field(paths: Iterable[str], key: str) -> bool:
     """Whether the paths a template uses (`TemplateRenderer.check`) name the field `key`."""
     return any(path == f"{FIELD}.{key}" or path.startswith(f"{FIELD}.{key}.") for path in paths)
+
+
+def json_value(value: JsonValue) -> TemplateValue | None:
+    """A JSON value from outside (an answer to a task) as templates see it: a fraction as a
+    decimal number, objects and lists with their items; null is missing (left out)."""
+    match value:
+        case None:
+            return None
+        case bool() | int() | str():
+            return value
+        case float():
+            return Decimal(repr(value))
+        case list():
+            return [item for entry in value if (item := json_value(entry)) is not None]
+        case dict():
+            return {
+                key: item for key, entry in value.items() if (item := json_value(entry)) is not None
+            }
+    raise TypeError(f"not a JSON value: {value!r}")

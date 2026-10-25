@@ -42,6 +42,7 @@ from lekto.core.services.profiles import USER_NAMES_LOCK, check_display_name, ch
 from lekto.core.services.rules.changes import ChangeRules
 from lekto.core.services.rules.references import disable_rules, refers_to
 from lekto.core.services.rules.running import Prepared
+from lekto.core.services.tasks.settling import drop_queued
 from lekto.core.services.webhooks.management import disable_sending_rules
 
 log = logging.getLogger(__name__)
@@ -328,7 +329,10 @@ class UserService:
                     refers_to(lambda refs: refs.spaces, space_id),
                 )
             await uow.rules.remove_applications_by(id)
-            await disable_sending_rules(uow, await uow.webhooks.list_for_owner(id), now)
+            webhooks = await uow.webhooks.list_for_owner(id)
+            await disable_sending_rules(uow, webhooks, now)
+            for webhook in webhooks:
+                await drop_queued(uow, webhook, now)
             await uow.webhooks.remove_for_owner(id)
             await uow.lenses.remove_for_owner(id)
             await uow.sessions.remove_for_user(id)

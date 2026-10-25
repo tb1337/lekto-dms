@@ -115,6 +115,7 @@ from lekto.core.services.rules.nodes import ApplyRulesNode, FileNode
 from lekto.core.services.rules.retroactive import RuleApplicationService
 from lekto.core.services.search import SearchPolicy, SearchService
 from lekto.core.services.spaces import SpaceService
+from lekto.core.services.tasks.service import TaskService
 from lekto.core.services.users import UserService
 from lekto.core.services.webhooks import (
     WebhookDeliveryService,
@@ -485,6 +486,7 @@ class Services:
     rule_applications: RuleApplicationService
     webhooks: WebhookService
     webhook_delivery: WebhookDeliveryService
+    tasks: TaskService
     lenses: LensService
     documents: DocumentService
     inbox: InboxService
@@ -741,6 +743,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             uow, clock, container.cipher, webhook_policy_of(settings), container.templates
         ),
         lenses=LensService(uow, clock),
+        tasks=TaskService(uow, clock),
         webhook_delivery=WebhookDeliveryService(
             uow,
             clock,

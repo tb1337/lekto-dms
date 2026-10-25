@@ -10,6 +10,7 @@ from lekto.core.domain.events import (
     LaneChanged,
     NodeCompleted,
     NodeDeferred,
+    NodeDelegated,
     NodeStarted,
     ReviewRequired,
 )
@@ -718,3 +719,67 @@ def test_event_ids_are_unique() -> None:
     ids = [event.id for event in document.pull_events()]
     assert len(set(ids)) == len(ids)
     assert new_id() not in ids
+
+
+def up_to_the_rules(*, pages_running: bool = False) -> Document:
+    """A document whose rules a worker started; `pages_running`: the page images are still
+    being made."""
+    document = builders.received()
+    if pages_running:
+        document.start_node(Node.PAGES, 1, NOW)
+    while due := [node for node in document.processing.due() if node is not Node.APPLY_RULES]:
+        document.record_result(due[0], 1, OK, NOW)
+    document.start_node(Node.APPLY_RULES, 1, NOW)
+    document.pull_events()
+    return document
+
+
+def test_a_delegated_node_waits_for_its_tasks_without_a_worker() -> None:
+    document = up_to_the_rules()
+    deadline = NOW + timedelta(minutes=5)
+    document.delegate_node(Node.APPLY_RULES, 1, deadline, LATER)
+    state = document.processing.nodes[Node.APPLY_RULES]
+    assert (state.status, state.started_at, state.deadline) == (
+        NodeStatus.DELEGATED,
+        NOW,
+        deadline,
+    )
+    assert status(document) is ProcessingStatus.PROCESSING and document.processing.is_open()
+    assert not document.is_awaiting(Node.APPLY_RULES, 1)  # its job is done
+    (event,) = document.pull_events()
+    assert isinstance(event, NodeDelegated)
+    assert (event.node, event.run, event.deadline) == (Node.APPLY_RULES, 1, deadline)
+    with pytest.raises(InvalidTransitionError, match="not due"):
+        document.delegate_node(Node.APPLY_RULES, 1, None, LATER)
+
+
+def test_a_delegated_node_runs_anew_when_a_task_ends() -> None:
+    document = up_to_the_rules()
+    document.delegate_node(Node.APPLY_RULES, 1, None, LATER)
+    assert not document.resume_node(Node.APPLY_RULES, 2, LATER)  # another run
+    assert document.resume_node(Node.APPLY_RULES, 1, LATER)
+    assert document.processing.nodes[Node.APPLY_RULES] == NodeState()
+    assert document.is_awaiting(Node.APPLY_RULES, 1)
+    assert not document.resume_node(Node.APPLY_RULES, 1, LATER)  # not delegated now
+    assert document.updated_at == LATER
+
+
+def test_only_a_delegated_node_has_a_deadline() -> None:
+    with pytest.raises(ValidationError, match="deadline"):
+        NodeState(status=NodeStatus.RUNNING, started_at=NOW, deadline=NOW)
+    with pytest.raises(ValidationError, match="start"):
+        NodeState(status=NodeStatus.DELEGATED)
+
+
+def test_a_delegated_node_waits_out_a_failure_and_a_retry_repeats_it() -> None:
+    document = up_to_the_rules(pages_running=True)
+    document.delegate_node(Node.APPLY_RULES, 1, None, LATER)
+    document.record_result(Node.PAGES, 1, FAILED, LATER)
+    assert (status(document), document.lane) == (ProcessingStatus.FAILED, Lane.RED)
+    with pytest.raises(InvalidTransitionError, match="still running"):
+        document.confirm(Node.APPLY_RULES, LATER)
+    assert not document.resume_node(Node.APPLY_RULES, 1, LATER)  # nothing new starts
+    assert document.processing.nodes[Node.APPLY_RULES] == NodeState()
+    document.retry(LATER)
+    assert document.processing.run == 2
+    assert document.processing.nodes[Node.APPLY_RULES] == NodeState()

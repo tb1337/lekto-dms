@@ -8,10 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from lekto.core.domain.validation import MAX_URL_LENGTH
 from lekto.core.domain.webhooks import (
     ALL_EVENTS,
+    DEFAULT_OPEN_TASKS,
     MAX_BODY_TEMPLATE,
     MAX_HEADER_VALUE,
     MAX_HEADERS,
     MAX_NAME_LENGTH,
+    MAX_OPEN_TASKS,
     BodyFormat,
     DeliveryOutcome,
     Webhook,
@@ -42,8 +44,14 @@ BODY_HELP = (
 BODY_TEMPLATE_HELP = (
     "For `body: template`: Liquid that makes JSON. It sees what a rule's template sees "
     "(`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), "
-    "`document_id`, `lane` and `link`; the filter `json` writes a value as JSON "
-    "(`{{ title | json }}`), `| default: nil` a missing one as `null`."
+    "`document_id`, `lane` and `link`; in a rule's request `rule` (`id`, `name`), in a task's "
+    "also `task` (`id`, `callback`, `token`, `deadline`) and `steps.<name>`. The filter `json` "
+    "writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`."
+)
+OPEN_TASKS_HELP = (
+    f"How many tasks (requests that expect an answer, e.g. a rule step that asks) the webhook "
+    f"takes at the same time, 1 to {MAX_OPEN_TASKS}; more wait in Lekto, and their time to "
+    "answer starts when they are sent."
 )
 
 
@@ -112,6 +120,9 @@ class WebhookCreate(BaseModel):
     body_template: str | None = Field(
         default=None, max_length=MAX_BODY_TEMPLATE, description=BODY_TEMPLATE_HELP
     )
+    max_open_tasks: int = Field(
+        default=DEFAULT_OPEN_TASKS, ge=1, le=MAX_OPEN_TASKS, description=OPEN_TASKS_HELP
+    )
 
 
 class WebhookPatch(BaseModel):
@@ -140,6 +151,9 @@ class WebhookPatch(BaseModel):
         max_length=MAX_BODY_TEMPLATE,
         description=BODY_TEMPLATE_HELP + " Only together with `body`.",
     )
+    max_open_tasks: int | None = Field(
+        default=None, ge=1, le=MAX_OPEN_TASKS, description=OPEN_TASKS_HELP
+    )
 
 
 class WebhookOut(BaseModel):
@@ -153,6 +167,7 @@ class WebhookOut(BaseModel):
     headers: list[str] = Field(description="The names of the webhook's own headers, in order.")
     body: BodyFormat = Field(description=BODY_HELP)
     body_template: str | None = Field(description=BODY_TEMPLATE_HELP)
+    max_open_tasks: int = Field(description=OPEN_TASKS_HELP)
     disabled_reason: str | None = Field(
         description="`failing`: Lekto switched the webhook off after repeated failed deliveries."
     )
@@ -179,6 +194,7 @@ class WebhookOut(BaseModel):
             headers=list(webhook.header_names),
             body=webhook.body,
             body_template=webhook.body_template,
+            max_open_tasks=webhook.max_open_tasks,
             disabled_reason=webhook.disabled_reason,
             failed_streak=webhook.failed_streak,
             previous_secret_valid_until=webhook.previous_valid_until,

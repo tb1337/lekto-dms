@@ -17,6 +17,7 @@ from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.templates import WEBHOOK_NAMES, unknown_values
 from lekto.core.domain.users import User
 from lekto.core.domain.webhooks import (
+    DEFAULT_OPEN_TASKS,
     BodyFormat,
     Webhook,
     WebhookDelivery,
@@ -33,6 +34,7 @@ from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import load_actor
 from lekto.core.services.rules.references import disable_rules, refers_to
+from lekto.core.services.tasks.settling import drop_queued, wake_queue
 from lekto.core.services.webhooks.policy import WebhookPolicy
 
 
@@ -82,10 +84,12 @@ class WebhookService:
         headers: Mapping[str, str] | None = None,
         body: BodyFormat = BodyFormat.THIN,
         body_template: str | None = None,
+        max_open_tasks: int = DEFAULT_OPEN_TASKS,
     ) -> CreatedWebhook:
         """`signed`: with a secret (shown once in the answer); `headers`: the webhook's own,
-        name to value; `body`, with its template for `template`. ValidationError for a bad URL,
-        event type, header or template, ConflictError at the user's limit."""
+        name to value; `body`, with its template for `template`; `max_open_tasks`: how many
+        tasks it takes at the same time. ValidationError for a bad URL, event type, header,
+        template or number, ConflictError at the user's limit."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             if await uow.webhooks.count_for_owner(user.id) >= self._policy.per_user:
@@ -102,6 +106,7 @@ class WebhookService:
                 encrypted_secret=None if secret is None else self._encrypt(id, secret),
                 now=now,
                 active=active,
+                max_open_tasks=max_open_tasks,
             )
             given = dict(headers or {})
             webhook.set_headers(given, self._encrypt_headers(id, given), now=now)
@@ -139,14 +144,24 @@ class WebhookService:
         headers: Sequence[tuple[str, str | None]] | None = None,
         body: BodyFormat | None = None,
         body_template: str | None = None,
+        max_open_tasks: int | None = None,
     ) -> Webhook:
         """`headers`: all of the webhook's own headers from now on, in order; a value None keeps
         the value the header has (ValidationError for a header it does not have yet). `body`:
-        with its template for `template` (None: both stay)."""
+        with its template for `template` (None: both stay). More room for tasks goes to those
+        that wait at once."""
         async with self._uow() as uow:
             webhook = await manageable_webhook(uow, await load_actor(uow, actor), id)
             now = self._clock.now()
-            webhook.change(now=now, name=name, url=url, event_types=event_types, active=active)
+            more_room = max_open_tasks is not None and max_open_tasks > webhook.max_open_tasks
+            webhook.change(
+                now=now,
+                name=name,
+                url=url,
+                event_types=event_types,
+                active=active,
+                max_open_tasks=max_open_tasks,
+            )
             if headers is not None:
                 given = self._merge_headers(webhook, headers)
                 webhook.set_headers(given, self._encrypt_headers(webhook.id, given), now=now)
@@ -155,16 +170,21 @@ class WebhookService:
             elif body_template is not None:
                 raise ValidationError("give body_template together with body")
             await uow.webhooks.update(webhook)
+            if more_room:
+                await wake_queue(uow, webhook.id, now)
             await uow.commit()
             return webhook
 
     async def delete(self, actor: UserId, id: WebhookId) -> None:
         """The webhook and its log. Deliveries that are queued find it gone and stop; the rules
         that send through it are disabled, with the reason (as when master data they refer to
-        is deleted)."""
+        is deleted). Its tasks that wait to be sent fail; its open tasks run to their deadline
+        (an answer is still taken)."""
         async with self._uow() as uow:
             webhook = await manageable_webhook(uow, await load_actor(uow, actor), id)
-            await disable_sending_rules(uow, [webhook], self._clock.now())
+            now = self._clock.now()
+            await disable_sending_rules(uow, [webhook], now)
+            await drop_queued(uow, webhook, now)
             await uow.webhooks.remove(webhook.id)
             await uow.commit()
 

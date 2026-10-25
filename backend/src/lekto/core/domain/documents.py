@@ -33,6 +33,7 @@ from lekto.core.domain.events import (
     LaneChanged,
     NodeCompleted,
     NodeDeferred,
+    NodeDelegated,
     NodeStarted,
     ReviewRequired,
 )
@@ -353,6 +354,37 @@ class Document:
         )
         self._touch(now)
 
+    def delegate_node(self, node: Node, run: int, deadline: datetime | None, now: datetime) -> None:
+        """The running node handed work to tasks: it waits for their answers without a worker
+        ("running externally") until `resume_node`. `deadline`: when the last of its open
+        tasks ends at the latest (None while they wait to be sent)."""
+        self._require_awaiting(node, run)
+        state = self.processing.nodes[node]
+        if state.status is not NodeStatus.RUNNING:
+            raise InvalidTransitionError(f"document {self.id}: node {node} is not running")
+        self.processing.nodes[node] = NodeState(
+            status=NodeStatus.DELEGATED, started_at=state.started_at, deadline=deadline
+        )
+        self._record(
+            NodeDelegated(
+                document_id=self.id, occurred_at=now, node=node, run=run, deadline=deadline
+            )
+        )
+        self._touch(now)
+
+    def resume_node(self, node: Node, run: int, now: datetime) -> bool:
+        """A task of `node` in `run` was answered, ended or may be sent now: a delegated node
+        is due again and runs anew with what its tasks brought. Returns whether it is due (a
+        job is to run it). In any other state the document is only touched, so a run of the
+        node that read its tasks before this change stores nothing (its version is stale) and
+        reads them again."""
+        self._touch(now)
+        processing = self.processing
+        if run != processing.run or processing.nodes[node].status is not NodeStatus.DELEGATED:
+            return False
+        processing.nodes[node] = NodeState()
+        return processing.status is ProcessingStatus.PROCESSING and node in processing.due()
+
     def record_result(
         self, node: Node, run: int, result: NodeResult, now: datetime
     ) -> tuple[Node, ...]:
@@ -462,7 +494,7 @@ class Document:
             raise InvalidTransitionError(
                 because(ReasonCode.NOT_WAITING_FOR_CONFIRMATION, id=str(self.id))
             )
-        if running := processing.running():
+        if running := processing.running() + processing.delegated():
             # Its result would overwrite what the person decided; it ends soon.
             raise InvalidTransitionError(
                 because(ReasonCode.STILL_RUNNING, id=str(self.id), nodes=list(running))
@@ -574,12 +606,14 @@ class Document:
             )
 
     def _reset_set(self, nodes: Iterable[Node]) -> frozenset[Node]:
-        """`nodes`, the nodes after them, and the nodes still running: what a new run repeats."""
+        """`nodes`, the nodes after them, and the nodes still running or delegated: what a new
+        run repeats."""
         chosen = set(nodes)
         return frozenset(
             chosen
             | {later for node in chosen for later in node.descendants}
             | set(self.processing.running())
+            | set(self.processing.delegated())
         )
 
     def _reset(self, nodes: Iterable[Node], now: datetime) -> tuple[Node, ...]:

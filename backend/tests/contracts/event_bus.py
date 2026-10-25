@@ -18,6 +18,7 @@ from lekto.core.domain.events import (
     LaneChanged,
     NodeCompleted,
     NodeDeferred,
+    NodeDelegated,
     NodeStarted,
     ReviewRequired,
 )
@@ -102,6 +103,16 @@ class EventBusContract:
                 node=Node.OCR,
                 run=2,
                 retry_at=NOW + timedelta(seconds=30),
+            ),
+            NodeDelegated(
+                document_id=document,
+                occurred_at=NOW,
+                node=Node.APPLY_RULES,
+                run=2,
+                deadline=NOW + timedelta(minutes=5),
+            ),
+            NodeDelegated(
+                document_id=document, occurred_at=NOW, node=Node.APPLY_RULES, run=2, deadline=None
             ),
             NodeCompleted(
                 document_id=document, occurred_at=NOW, node=Node.OCR, run=2, outcome=Outcome.OK

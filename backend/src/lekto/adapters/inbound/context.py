@@ -28,6 +28,7 @@ from lekto.core.services.rules import RuleService
 from lekto.core.services.rules.retroactive import RuleApplicationService
 from lekto.core.services.search import SearchService
 from lekto.core.services.spaces import SpaceService
+from lekto.core.services.tasks.service import TaskService
 from lekto.core.services.users import UserService
 from lekto.core.services.webhooks import WebhookDeliveryService, WebhookService
 
@@ -52,6 +53,7 @@ class ApiContext:
     rule_applications: RuleApplicationService
     webhooks: WebhookService
     webhook_delivery: WebhookDeliveryService
+    tasks: TaskService
     lenses: LensService
     event_bus: EventBus
     health_checks: Mapping[str, HealthCheck]

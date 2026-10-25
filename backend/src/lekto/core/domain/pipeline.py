@@ -269,26 +269,33 @@ class NodeStatus(StrEnum):
     RUNNING = "running"  # a worker is at it
     DONE = "done"  # has an outcome
     SKIPPED = "skipped"  # left out in this processing run; counts as done for the nodes after it
+    DELEGATED = "delegated"  # waits for answers to its tasks ("running externally"); no worker
 
 
 @dataclass(kw_only=True)
 class NodeState:
-    """The state of one node in the current processing run."""
+    """The state of one node in the current processing run. `deadline`: of a delegated node,
+    when the last of its open tasks ends at the latest (None while they wait to be sent)."""
 
     status: NodeStatus = NodeStatus.WAITING
     outcome: Outcome | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    deadline: datetime | None = None
 
     def __post_init__(self) -> None:
         if self.started_at is not None:
             self.started_at = require_utc(self.started_at, "started_at")
         if self.finished_at is not None:
             self.finished_at = require_utc(self.finished_at, "finished_at")
+        if self.deadline is not None:
+            self.deadline = require_utc(self.deadline, "deadline")
+            if self.status is not NodeStatus.DELEGATED:
+                raise ValidationError("only a delegated node has a deadline")
         if (self.status is NodeStatus.DONE) != (self.outcome is not None):
             raise ValidationError("exactly the done nodes have an outcome")
-        if self.status is NodeStatus.RUNNING and self.started_at is None:
-            raise ValidationError("a running node has a start")
+        if self.status in (NodeStatus.RUNNING, NodeStatus.DELEGATED) and self.started_at is None:
+            raise ValidationError(f"a {self.status} node has a start")
         if self.status is NodeStatus.DONE and self.finished_at is None:
             raise ValidationError("a done node has an end")
 
@@ -301,8 +308,8 @@ class NodeState:
 
     @property
     def open(self) -> bool:
-        """True while the node is still to run or running."""
-        return self.status in (NodeStatus.WAITING, NodeStatus.RUNNING)
+        """True while the node is still to run, running or delegated."""
+        return self.status in (NodeStatus.WAITING, NodeStatus.RUNNING, NodeStatus.DELEGATED)
 
 
 NOT_GREEN = "not green"
@@ -391,6 +398,10 @@ class Processing:
 
     def running(self) -> tuple[Node, ...]:
         return self._with(lambda state: state.status is NodeStatus.RUNNING)
+
+    def delegated(self) -> tuple[Node, ...]:
+        """The nodes waiting for answers to their tasks."""
+        return self._with(lambda state: state.status is NodeStatus.DELEGATED)
 
     def failed(self) -> tuple[Node, ...]:
         return self._with(lambda state: state.outcome is Outcome.FAILED)

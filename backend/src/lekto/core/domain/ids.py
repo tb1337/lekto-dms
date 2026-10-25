@@ -22,6 +22,7 @@ RuleId = NewType("RuleId", UUID)
 RuleApplicationId = NewType("RuleApplicationId", UUID)
 WebhookId = NewType("WebhookId", UUID)
 DeliveryId = NewType("DeliveryId", UUID)
+TaskId = NewType("TaskId", UUID)
 LensId = NewType("LensId", UUID)
 
 _TIMESTAMP_BITS = 48

@@ -9,14 +9,18 @@ and changes nothing; an attempt that failed runs again when a `RetryPolicy` says
 import asyncio
 import logging
 import random
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Self
 from uuid import UUID
 
+from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import ConcurrencyError
-from lekto.core.domain.ids import DocumentId
+from lekto.core.domain.ids import DocumentId, JobId
 from lekto.core.domain.jobs import Job, JobStatus
 from lekto.core.domain.json_value import JsonObject
+from lekto.core.domain.pipeline import Node
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 
@@ -33,6 +37,48 @@ up to `STORE_BACKOFF` seconds times the attempt, at random (workers finishing si
 
 type Step = Callable[[UnitOfWork], Awaitable[None]]
 """More to do in the commit that ends a job."""
+
+
+NODE_JOB = "pipeline.node"
+"""Job kind of a pipeline node; payload: `NodeJob`."""
+
+
+@dataclass(frozen=True)
+class NodeJob:
+    """The payload of a job that runs a node of a document in a processing run."""
+
+    document_id: DocumentId
+    node: Node
+    run: int
+
+    def to_json(self) -> JsonObject:
+        return document_payload(self.document_id) | {"node": self.node.value, "run": self.run}
+
+    @classmethod
+    def from_json(cls, payload: JsonObject) -> Self:
+        """KeyError, TypeError or ValueError for a payload that is none."""
+        run = payload["run"]
+        if not isinstance(run, int):
+            raise ValueError(f"invalid node job payload {payload!r}")
+        return cls(payload_document(payload), Node(str(payload["node"])), run)
+
+
+async def enqueue_nodes(
+    uow: UnitOfWork, document: Document, nodes: Iterable[Node], now: datetime
+) -> list[JobId]:
+    """One job per node, due now, in the document's current run."""
+    run = document.processing.run
+    jobs = []
+    for node in nodes:
+        job = await uow.jobs.enqueue(
+            NODE_JOB,
+            NodeJob(document.id, node, run).to_json(),
+            run_at=now,
+            dedup_key=f"{document.id}:{run}:{node.value}",
+        )
+        if job is not None:
+            jobs.append(job)
+    return jobs
 
 
 def document_payload(id: DocumentId) -> JsonObject:

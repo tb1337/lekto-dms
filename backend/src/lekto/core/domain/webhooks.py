@@ -49,6 +49,12 @@ TEST_EVENT = "webhook.test"
 """The event type of the test request; it has no document."""
 RULE_SEND = "rule.send"
 """The type of a request a rule sends (`rules.SendWebhook`); its body names the rule too."""
+RULE_ASK = "rule.ask"
+"""The type of a request a rule step asks with (a task, `domain.tasks`)."""
+DEFAULT_OPEN_TASKS = 4
+MAX_OPEN_TASKS = 64
+"""How many tasks a webhook takes at the same time (1 to `MAX_OPEN_TASKS`); more wait in
+Lekto."""
 
 SECRET_PREFIX = "whsec_"
 SECRET_BYTES = 32
@@ -222,10 +228,13 @@ def event_body(
     document: JsonObject | None = None,
     full: bool = False,
     rule: JsonObject | None = None,
+    task: JsonObject | None = None,
+    steps: JsonObject | None = None,
 ) -> bytes:
     """The body of a request: compact JSON in UTF-8, signed exactly as sent. Thin: the event;
-    `full`: with `document` too (None: the document is gone, or there is none). `rule`: the
-    rule that sends it (`id`, `name`)."""
+    `full`: with `document` too (None: the document is gone, or there is none), and `steps`,
+    what the rule's steps before brought. `rule`: the rule that sends or asks (`id`, `name`);
+    `task`: the task a request is (`id`, `callback`, `token`, `deadline`)."""
     occurred_at = require_utc(occurred_at, "occurred_at")
     payload: JsonObject = {
         "id": str(event_id),
@@ -235,9 +244,21 @@ def event_body(
     }
     if rule is not None:
         payload["rule"] = rule
+    if task is not None:
+        payload["task"] = task
     if full:
         payload["document"] = document
+        if steps is not None:
+            payload["steps"] = steps
     return json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def validate_open_tasks(value: int) -> int:
+    """How many tasks a webhook takes at the same time; ValidationError outside 1 to
+    `MAX_OPEN_TASKS`."""
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= MAX_OPEN_TASKS:
+        raise ValidationError(f"open tasks: 1 to {MAX_OPEN_TASKS}, not {value!r}")
+    return value
 
 
 def rendered_body(text: str) -> bytes:
@@ -290,12 +311,14 @@ class Webhook:
     failed_streak: int = 0
     previous_secret: bytes | None = field(default=None, repr=False)
     previous_valid_until: datetime | None = None
+    max_open_tasks: int = DEFAULT_OPEN_TASKS
     created_at: datetime
     updated_at: datetime
     version: int = 1
 
     def __post_init__(self) -> None:
         self.name = require_name(self.name, "webhook name", max_length=MAX_NAME_LENGTH)
+        self.max_open_tasks = validate_open_tasks(self.max_open_tasks)
         self.url = validate_url(self.url)
         self.event_types = validate_event_types(self.event_types)
         self.header_names = validate_header_names(self.header_names)
@@ -320,6 +343,7 @@ class Webhook:
         now: datetime,
         active: bool = True,
         id: WebhookId | None = None,
+        max_open_tasks: int = DEFAULT_OPEN_TASKS,
     ) -> "Webhook":
         """`id`: given when the secret or header values were encrypted for it beforehand."""
         return cls(
@@ -330,6 +354,7 @@ class Webhook:
             event_types=frozenset(event_types),
             encrypted_secret=encrypted_secret,
             active=active,
+            max_open_tasks=max_open_tasks,
             created_at=now,
             updated_at=now,
         )
@@ -349,8 +374,11 @@ class Webhook:
         url: str | None = None,
         event_types: Collection[str] | None = None,
         active: bool | None = None,
+        max_open_tasks: int | None = None,
     ) -> None:
         """Change what is given. Switching on (again) clears the failures and the reason."""
+        if max_open_tasks is not None:
+            self.max_open_tasks = validate_open_tasks(max_open_tasks)
         if name is not None:
             self.name = require_name(name, "webhook name", max_length=MAX_NAME_LENGTH)
         if url is not None:

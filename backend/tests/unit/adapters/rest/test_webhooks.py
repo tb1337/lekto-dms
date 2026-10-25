@@ -21,6 +21,7 @@ async def test_a_webhook_is_created_changed_switched_off_and_deleted(api: Api) -
     user = await api.user()
     created = await post(api, "/webhooks", BODY, auth(user))
     assert created["secret"].startswith("whsec_")
+    assert created["max_open_tasks"] == 4
     assert created["active"] is True and created["event_types"] == [
         "document.filed",
         "document.lane_changed",
@@ -34,7 +35,9 @@ async def test_a_webhook_is_created_changed_switched_off_and_deleted(api: Api) -
     assert all("secret" not in item for item in listed)
 
     changed = await api.client.patch(
-        url, json={"name": "HA", "event_types": ["*"], "active": False}, headers=auth(user)
+        url,
+        json={"name": "HA", "event_types": ["*"], "active": False, "max_open_tasks": 8},
+        headers=auth(user),
     )
     assert changed.status_code == 200, changed.text
     assert (changed.json()["name"], changed.json()["event_types"], changed.json()["active"]) == (
@@ -42,6 +45,9 @@ async def test_a_webhook_is_created_changed_switched_off_and_deleted(api: Api) -
         ["*"],
         False,
     )
+    assert changed.json()["max_open_tasks"] == 8
+    too_many = await api.client.patch(url, json={"max_open_tasks": 65}, headers=auth(user))
+    assert too_many.status_code == 422
     assert (await api.client.delete(url, headers=auth(user))).status_code == 204
     assert (await api.client.get(url, headers=auth(user))).status_code == 404
 

@@ -26,12 +26,22 @@ Two steps, both idempotent and safe to repeat (events arrive at least once):
    Repetitions wait `retry_delay`, doubling, at most `max_retry_delay`. After `disable_after`
    given-up deliveries in a row the webhook is switched off (`disabled_reason` `failing`).
 
+A task's request (`domain.tasks`, payload with `task_id`) goes the same way, with these
+differences: its body was made when the task was sent and waits encrypted with the task's token
+(`TaskDesk`); it carries the headers `lekto-task-id`, `lekto-callback`, `lekto-task-token` and
+`lekto-deadline`; it is repeated until the task's deadline, however often; and a request that
+does not arrive fails the task (its node goes on as without an answer) instead of counting
+towards switching the webhook off (a webhook that takes tasks is never switched off, Tobi,
+25.10.2026). Once delivered, the request and its token are forgotten.
+
 Secrets are decrypted only for signing; neither they nor the receiver's answer are logged or
 stored.
 """
 
+import json
 import logging
 from collections import deque
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
@@ -44,10 +54,12 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.events import DocumentDeleted, DocumentEvent, DocumentFiled, DomainEvent
-from lekto.core.domain.ids import DocumentId, EventId, UserId, WebhookId, new_id
+from lekto.core.domain.ids import DocumentId, EventId, TaskId, UserId, WebhookId, new_id
 from lekto.core.domain.jobs import Job, RetryPolicy
 from lekto.core.domain.json_value import JsonObject, as_object
 from lekto.core.domain.permissions import in_reach
+from lekto.core.domain.reasons import ReasonCode, because
+from lekto.core.domain.tasks import Task, TaskStatus
 from lekto.core.domain.templates import RULE
 from lekto.core.domain.users import User
 from lekto.core.domain.webhooks import (
@@ -70,6 +82,7 @@ from lekto.core.ports.webhook_sender import WebhookRequest, WebhookResponse, Web
 from lekto.core.services._access import load_actor
 from lekto.core.services._jobs import JobRunner, lost
 from lekto.core.services._templates import document_json, event_values, webhook_values
+from lekto.core.services.tasks.settling import end_task
 from lekto.core.services.webhooks.management import (
     headers_context,
     manageable_webhook,
@@ -82,7 +95,12 @@ log = logging.getLogger(__name__)
 SUBSCRIBER = "webhooks.fanout"
 DELIVER_JOB = "webhooks.deliver"
 """Payload: `webhook_id`, `event_id`, `type`, `occurred_at` (ISO 8601) and `document_id`; a
-rule's request (`RULE_SEND`) also `rule` (`id`, `name`)."""
+rule's request (`RULE_SEND`) also `rule` (`id`, `name`), a task's request `task_id`."""
+TASK_RETRY = RetryPolicy(
+    max_attempts=1 << 30, delay=timedelta(seconds=15), max_delay=timedelta(minutes=5)
+)
+"""How a task's request is repeated: until its deadline, waiting 15 seconds, doubling, at most
+5 minutes."""
 
 _RETRY_STATUS = frozenset({408, 425, 429})
 _RESULT_ROUNDS = 3  # tries to write the result when the webhook is changed at the same time
@@ -208,13 +226,18 @@ class WebhookDeliveryService:
             raw_document = job.payload.get("document_id")
             document_id = None if raw_document is None else DocumentId(UUID(str(raw_document)))
             rule = as_object(job.payload.get("rule"))
+            raw_task = job.payload.get("task_id")
+            task_id = None if raw_task is None else TaskId(UUID(str(raw_task)))
         except (KeyError, TypeError, ValueError) as error:
             await self._jobs.invalid(job, error)
             return
         try:
-            await self._attempt(
-                job, webhook_id, event_id, event_type, occurred_at, document_id, rule
-            )
+            if task_id is not None:
+                await self._attempt_task(job, webhook_id, task_id, event_type, document_id)
+            else:
+                await self._attempt(
+                    job, webhook_id, event_id, event_type, occurred_at, document_id, rule
+                )
         except ConcurrencyError:
             lost(job)
         except Exception as error:
@@ -278,6 +301,128 @@ class WebhookDeliveryService:
         await self._settle_attempt(
             job, webhook_id, event_id, event_type, document_id, attempt, now, response, outcome
         )
+
+    async def _attempt_task(
+        self,
+        job: Job,
+        webhook_id: WebhookId,
+        task_id: TaskId,
+        event_type: str,
+        document_id: DocumentId | None,
+    ) -> None:
+        """One attempt of a task's request: its webhook's headers, the task's and the body
+        made when it was sent. A task that ended or was delivered meanwhile needs nothing."""
+        now = self._clock.now()
+        async with self._uow() as uow:
+            task = await uow.tasks.find(task_id)
+            webhook = await uow.webhooks.find(webhook_id)
+            reason = (
+                None
+                if webhook is None or task is None
+                else await _reason_to_drop(uow, webhook, event_type, document_id)
+            )
+        if task is None or task.status is not TaskStatus.OPEN or task.encrypted_request is None:
+            await self._jobs.end(job)
+            return
+        attempt = job.tries
+        if webhook is None:
+            response = WebhookResponse(
+                status_code=None, duration_ms=0, error="the webhook was deleted"
+            )
+            outcome = DeliveryOutcome.GAVE_UP
+        elif reason is not None:
+            response = WebhookResponse(status_code=None, duration_ms=0, error=reason)
+            outcome = DeliveryOutcome.DROPPED
+        else:
+            try:
+                secrets, own = self._decrypt(webhook, now)
+                request = TaskRequestText.decrypt(self._cipher, task)
+            except (DecryptionError, ValueError):
+                response, outcome = _unusable_secret(webhook_id), DeliveryOutcome.GAVE_UP
+            else:
+                response = await self._send(
+                    webhook,
+                    secrets,
+                    {**own, **request.headers(task)},
+                    EventId(task.id),
+                    request.body,
+                )
+                outcome = self._task_outcome(response, attempt, task)
+        await self._settle_task_attempt(job, task, event_type, attempt, now, response, outcome)
+
+    def _task_outcome(self, response: WebhookResponse, attempt: int, task: Task) -> DeliveryOutcome:
+        if _is_success(response):
+            return DeliveryOutcome.DELIVERED
+        next_attempt = TASK_RETRY.next_run(attempt, self._clock.now())
+        if (
+            _is_temporary(response)
+            and next_attempt is not None
+            and task.deadline is not None
+            and next_attempt < task.deadline
+        ):
+            return DeliveryOutcome.RETRYING
+        return DeliveryOutcome.GAVE_UP
+
+    async def _settle_task_attempt(
+        self,
+        job: Job,
+        task: Task,
+        event_type: str,
+        attempt: int,
+        started: datetime,
+        response: WebhookResponse,
+        outcome: DeliveryOutcome,
+    ) -> None:
+        """One transaction: log row (if the webhook is still there), the task (delivered, or
+        failed: its node goes on as without an answer), the job. If the task changed at the
+        same moment (answered at once), read it again."""
+        for round_ in range(_RESULT_ROUNDS):
+            now = self._clock.now()
+            next_attempt = (
+                TASK_RETRY.next_run(attempt, now) if outcome is DeliveryOutcome.RETRYING else None
+            )
+            try:
+                async with self._uow() as uow:
+                    webhook = await uow.webhooks.find(task.webhook_id)
+                    if webhook is not None:
+                        await uow.webhooks.add_delivery(
+                            _row(
+                                webhook,
+                                EventId(task.id),
+                                event_type,
+                                task.document_id,
+                                attempt,
+                                started,
+                                response,
+                                outcome,
+                                next_attempt,
+                            )
+                        )
+                    current = await uow.tasks.find(task.id)
+                    if current is not None and current.status is TaskStatus.OPEN:
+                        if outcome is DeliveryOutcome.DELIVERED:
+                            current.delivered()
+                            await uow.tasks.update(current)
+                        elif next_attempt is None:
+                            name = webhook.name if webhook is not None else str(task.webhook_id)
+                            error = response.error or _status_text(response)
+                            current.fail(
+                                because(ReasonCode.TASK_UNDELIVERED, webhook=name, error=error),
+                                now,
+                            )
+                            await end_task(uow, current, now)
+                    if next_attempt is not None:
+                        await uow.jobs.reschedule(
+                            job, run_at=next_attempt, error=response.error or _status_text(response)
+                        )
+                    else:
+                        await uow.jobs.complete(job)
+                    await uow.commit()
+            except ConcurrencyError:
+                if round_ + 1 == _RESULT_ROUNDS:
+                    raise
+                continue
+            return
 
     def _outcome(self, response: WebhookResponse, attempt: int) -> DeliveryOutcome:
         if _is_success(response):
@@ -444,7 +589,7 @@ class WebhookDeliveryService:
                 return None
 
 
-# --- a rule's request ---------------------------------------------------------------------------
+# --- a rule's request and a task's ---------------------------------------------------------------
 
 
 async def queue_rule_send(
@@ -468,6 +613,63 @@ async def queue_rule_send(
         "rule": rule,
     }
     await uow.jobs.enqueue(DELIVER_JOB, payload, run_at=now, dedup_key=f"{webhook_id}:{event_id}")
+
+
+async def queue_task_delivery(uow: UnitOfWork, task: Task, now: datetime) -> None:
+    """Queue the delivery of a task that was just sent (`TaskDesk`), in its unit of work."""
+    payload: JsonObject = {
+        "webhook_id": str(task.webhook_id),
+        "event_id": str(task.id),
+        "type": task.kind.value,
+        "occurred_at": now.isoformat(),
+        "document_id": str(task.document_id),
+        "task_id": str(task.id),
+    }
+    await uow.jobs.enqueue(DELIVER_JOB, payload, run_at=now, dedup_key=f"task:{task.id}")
+
+
+@dataclass(frozen=True)
+class TaskRequestText:
+    """A task's request as it waits, encrypted, until it is delivered: the body, the one-time
+    token, where the consumer answers and by when (the headers `lekto-*`)."""
+
+    body: bytes
+    token: str
+    callback: str
+    deadline: str
+
+    def headers(self, task: Task) -> dict[str, str]:
+        return {
+            "lekto-task-id": str(task.id),
+            "lekto-callback": self.callback,
+            "lekto-task-token": self.token,
+            "lekto-deadline": self.deadline,
+        }
+
+    def encrypt(self, cipher: SecretCipher, task: Task) -> bytes:
+        plain = {
+            "body": self.body.decode("utf-8"),
+            "token": self.token,
+            "callback": self.callback,
+            "deadline": self.deadline,
+        }
+        return cipher.encrypt(json.dumps(plain).encode("utf-8"), context=_task_context(task))
+
+    @classmethod
+    def decrypt(cls, cipher: SecretCipher, task: Task) -> "TaskRequestText":
+        """DecryptionError or ValueError if it cannot be read."""
+        assert task.encrypted_request is not None
+        data = json.loads(cipher.decrypt(task.encrypted_request, context=_task_context(task)))
+        return cls(
+            body=str(data["body"]).encode("utf-8"),
+            token=str(data["token"]),
+            callback=str(data["callback"]),
+            deadline=str(data["deadline"]),
+        )
+
+
+def _task_context(task: Task) -> bytes:
+    return f"task:{task.id}".encode()
 
 
 # --- rights -------------------------------------------------------------------------------------

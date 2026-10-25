@@ -1332,7 +1332,9 @@ an admin reads includes the target URL (which may be a capability URL), the name
 and, in the log, the document IDs and event types of that user's deliveries.
 At most `LEKTO_WEBHOOKS_PER_USER` (20) per user.
 
-**Events.** `document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`,
+**Events.** `document.received`, `document.node_started`, `document.node_deferred`,
+`document.node_delegated` (a node waits for the answers to its tasks, `deadline`),
+`document.node_completed`, `document.lane_changed`,
 `document.filed`, `document.updated`, `document.deleted`, or `*` for all, also future ones;
 none for a webhook that only rules use. Three more say in a receiver's words what the others
 tell: `document.review_required` (it waits in the inbox, yellow or red; `lane`),
@@ -1359,6 +1361,30 @@ ends up: on arrival the document turns yellow otherwise (`rule_webhook_unreadabl
 person decided in this run already (then, and outside processing, it is only reported in the
 log, `sends_refused`). Deleting a webhook disables the rules that send through it, with the
 reason; so does deleting its owner.
+
+**Tasks** (requests that expect an answer, Tobi, 25.10.2026, `.idea/webhooks-und-auftraege.md`).
+A node that needs an answer from outside hands the request to a task and waits for it without
+a worker: its state is `delegated` (the web UI says "running externally", with the minutes
+left), and `deadline` says when the last of its tasks ends at the latest. Whenever one of its
+tasks ends, the node runs anew and reads what its tasks brought. A webhook takes at most
+`max_open_tasks` tasks at the same time (4; 1 to 64); more wait in Lekto, and their time to
+answer starts when they are sent. A task's request goes like any other (body format, headers,
+signature) and carries four headers more: `lekto-task-id`, `lekto-callback` (where to answer),
+`lekto-task-token` (a one-time token; Lekto keeps only its hash once the request was delivered)
+and `lekto-deadline`; `thin` and `full` bodies hold them as `task` (`id`, `callback`, `token`,
+`deadline`), a template sees `task.*`. The request is repeated until the deadline while the
+receiver is unreachable; one that is refused, or a template that does not make JSON, ends the
+task at once. A webhook that takes tasks is never switched off.
+
+The consumer answers with `POST /api/v1/external/tasks/{id}/result`, the token as
+`Authorization: Bearer` (never in the URL), and an envelope: `{"status": "ok", "answer": ...,
+"producer": "..."}` (any JSON; `producer` is optional and goes into the log) or `{"status":
+"error", "reason": "..."}`. `204`: taken. An `error`, an envelope that is not valid (`422`, the
+answer says why) and one larger than 1 MB (`413`) count as no answer, and use the token up.
+`409`: the task was answered before, or its document was processed again or deleted. `401`:
+unknown task or token, or the deadline has passed. Without `LEKTO_PUBLIC_URL` no task can be
+sent (the consumer would not know where to answer). Deleting a webhook fails the tasks that
+wait for it; those it sent run to their deadline, and an answer is still taken.
 
 **The request.** `POST <url>`, `Content-Type: application/json`, `User-Agent: Lekto/<version>`,
 the webhook's own headers, and a body as the webhook chooses (`body`):

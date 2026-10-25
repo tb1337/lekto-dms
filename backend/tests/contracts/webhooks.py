@@ -66,6 +66,7 @@ class WebhookRepositoryContract:
         webhook = a_webhook(owner, types=("document.filed", "document.deleted"))
         webhook.renew_secret(b"\x01second", now=NOW + HOUR, grace=timedelta(hours=24))
         webhook.failed_streak = 4
+        webhook.change(now=NOW + HOUR, max_open_tasks=7)
         async with uow_factory() as uow:
             await uow.webhooks.add(webhook)
             await uow.commit()

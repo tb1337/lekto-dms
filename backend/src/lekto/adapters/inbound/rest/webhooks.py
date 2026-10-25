@@ -78,6 +78,7 @@ async def create_webhook(
         headers=_headers(body.headers),
         body=body.body,
         body_template=body.body_template,
+        max_open_tasks=body.max_open_tasks,
     )
     return WebhookCreated.created(created)
 
@@ -115,6 +116,7 @@ async def update_webhook(
         else [(header.name, header.value) for header in body.headers],
         body=body.body,
         body_template=body.body_template,
+        max_open_tasks=body.max_open_tasks,
     )
     return WebhookOut.of(webhook)
 

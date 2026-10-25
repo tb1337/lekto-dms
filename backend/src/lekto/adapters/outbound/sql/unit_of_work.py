@@ -42,6 +42,7 @@ from lekto.adapters.outbound.sql.master_data import (
 )
 from lekto.adapters.outbound.sql.rules import SqlRuleApplicationRepository, SqlRuleRepository
 from lekto.adapters.outbound.sql.spaces import SqlSpaceRepository
+from lekto.adapters.outbound.sql.tasks import SqlTaskRepository
 from lekto.adapters.outbound.sql.transaction import Transaction
 from lekto.adapters.outbound.sql.users import SqlProfileRepository, SqlUserRepository
 from lekto.adapters.outbound.sql.webhooks import SqlWebhookRepository
@@ -105,6 +106,7 @@ class SqlUnitOfWork:
         self.rule_applications = SqlRuleApplicationRepository(self._tx)
         self.classifier_models = SqlClassifierModelRepository(self._tx)
         self.webhooks = SqlWebhookRepository(self._tx)
+        self.tasks = SqlTaskRepository(self._tx)
         self.lenses = SqlLensRepository(self._tx)
         self.outbox = SqlOutbox(self._tx)
         self.jobs = SqlJobQueue(self._tx)

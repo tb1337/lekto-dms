@@ -41,10 +41,10 @@ from lekto.core.domain.pipeline import (
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.users import Role, User
+from lekto.core.services._jobs import NODE_JOB
 from lekto.core.services.objects import original_key
 from lekto.core.services.pipeline import (
     CATCH_UP_JOB,
-    NODE_JOB,
     REPARSE_JOB,
     MetadataResult,
     PipelineService,

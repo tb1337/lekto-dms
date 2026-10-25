@@ -2526,6 +2526,48 @@ class MigrationSuite:
         async with empty_database.reading() as connection:
             assert await connection.run_sync(_schema) == schema
 
+    async def test_tasks_of_revision_0043_come_and_go(self, empty_database: Database) -> None:
+        """Revision 0043: existing webhooks take 4 tasks at a time; the tasks have a table of
+        their own; the downgrade drops both."""
+        await migrate(empty_database, "0042")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        ids = {name: new_id() for name in ("user", "webhook")}
+        await _insert(
+            empty_database,
+            [
+                (
+                    t.users,
+                    {"id": ids["user"], "username": "anna", "username_key": "anna", "role": "user"},
+                ),
+                (
+                    _before_0043(t.webhooks),
+                    {
+                        "id": ids["webhook"],
+                        "owner_id": ids["user"],
+                        "name": "n8n",
+                        "url": "https://example.org/hook",
+                        "event_types": ["*"],
+                        "header_names": [],
+                        "body": "thin",
+                        "active": True,
+                        "failed_streak": 0,
+                        "created_at": NOW,
+                        "updated_at": NOW,
+                        "version": 1,
+                    },
+                ),
+            ],
+        )
+        await migrate(empty_database)
+        async with empty_database.reading() as connection:
+            rows = await _read_all(connection, select(t.webhooks.c.id, t.webhooks.c.max_open_tasks))
+            tasks = await _read_all(connection, select(t.tasks.c.id))
+        assert (rows, tasks) == ([(ids["webhook"], 4)], [])
+        await downgrade(empty_database, "0042")
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -2734,12 +2776,25 @@ def _drawer(table: sa.TableClause) -> sa.TableClause:
 _INBOX_COLUMNS = frozenset({"new_at", "processing_baseline", "processing_decided"})
 
 
+def _before_0043(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0043 had it: no limit of a webhook's open tasks."""
+    added = {"webhooks": {"max_open_tasks"}}
+    return sa.table(
+        table.name,
+        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+    )
+
+
 def _before_0042(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0042 had it: no body of a webhook's choice."""
     added = {"webhooks": {"body", "body_template"}}
     return sa.table(
         table.name,
-        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+        *(
+            sa.column(c.name, c.type)
+            for c in _before_0043(table).c
+            if c.name not in added.get(table.name, ())
+        ),
     )
 
 

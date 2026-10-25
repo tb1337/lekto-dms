@@ -294,6 +294,12 @@ class ReasonCode(StrEnum):
     RULE_DISABLED_CHOICE = "rule_disabled_choice"
     RULE_WEBHOOK_GONE = "rule_webhook_gone"
     RULE_WEBHOOK_UNREADABLE = "rule_webhook_unreadable"
+    TASK_NO_ANSWER = "task_no_answer"
+    TASK_ERROR = "task_error"
+    TASK_INVALID = "task_invalid"
+    TASK_TOO_LARGE = "task_too_large"
+    TASK_UNDELIVERED = "task_undelivered"
+    TASK_RUN_OVER = "task_run_over"
     SKIP_CHANGED_MEANWHILE = "skip_changed_meanwhile"
     SKIP_NOT_AVAILABLE = "skip_not_available"
     # value checks a person meets in the UI
@@ -718,6 +724,14 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.RULE_WEBHOOK_UNREADABLE: (
         "rule '{rule}': the owner of its webhook may not read the document; nothing sent"
     ),
+    ReasonCode.TASK_NO_ANSWER: "webhook '{webhook}' gave no answer in time",
+    ReasonCode.TASK_ERROR: "webhook '{webhook}' answered with an error: {reason}",
+    ReasonCode.TASK_INVALID: "the answer of webhook '{webhook}' is invalid: {detail}",
+    ReasonCode.TASK_TOO_LARGE: "the answer of webhook '{webhook}' is larger than {limit} bytes",
+    ReasonCode.TASK_UNDELIVERED: (
+        "the request could not be delivered to webhook '{webhook}': {error}"
+    ),
+    ReasonCode.TASK_RUN_OVER: "the document was processed again or deleted",
     ReasonCode.SKIP_CHANGED_MEANWHILE: "changed meanwhile; not applied",
     ReasonCode.SKIP_NOT_AVAILABLE: "not available",
     ReasonCode.NOT_IBAN: "'{value}' is not a valid IBAN",

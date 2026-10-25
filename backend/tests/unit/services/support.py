@@ -33,10 +33,15 @@ from lekto.core.services.master_data import NORMALISE_BATCH, MasterDataService
 from lekto.core.services.oidc import OidcService
 from lekto.core.services.pipeline import NodeExecutor, PipelineService
 from lekto.core.services.spaces import SpaceService
+from lekto.core.services.tasks.desk import TaskDesk
+from lekto.core.services.tasks.service import TaskService
 from lekto.core.services.users import UserService
 from lekto.core.services.webhooks import WebhookDeliveryService, WebhookPolicy, WebhookService
 from tests import builders
 from tests.builders import PlaceholderNode
+
+LINK_BASE = "https://lekto.example.org"
+"""`LEKTO_PUBLIC_URL` of the services that need it."""
 
 
 class Raises:
@@ -154,8 +159,16 @@ class World:
             self.sender,
             policy or builders.WEBHOOKS,
             builders.TEMPLATES,
-            link_base="https://lekto.example.org",
+            link_base=LINK_BASE,
         )
+
+    @property
+    def tasks(self) -> TaskService:
+        return TaskService(self.uow, self.clock)
+
+    def desk(self, link_base: str | None = None) -> TaskDesk:
+        """Places tasks; without `link_base` at `LINK_BASE`."""
+        return TaskDesk(self.cipher, builders.TEMPLATES, link_base=link_base or LINK_BASE)
 
     def pipeline(
         self,

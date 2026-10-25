@@ -19,7 +19,7 @@ from lekto.core.domain.fields import FieldDefinition
 from lekto.core.domain.ids import FieldId, SpaceId
 from lekto.core.domain.json_value import JsonObject, JsonValue, as_list
 from lekto.core.domain.pipeline import RULES, TRIGGER, Node, NodeResult, NodeRun, Outcome
-from lekto.core.domain.reasons import Reason, ReasonCode, because
+from lekto.core.domain.reasons import Reason, ReasonCode, because, reasons_to_json
 from lekto.core.domain.rule_planner import Mode
 from lekto.core.domain.rules import Rule, Trigger
 from lekto.core.domain.sorting import sort_key
@@ -30,14 +30,19 @@ from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import field_definitions, space_label
 from lekto.core.services.inbox import MODEL_NODES, latest_entries
 from lekto.core.services.rules.running import (
+    SENDS,
+    SENDS_REFUSED,
     Chain,
     Prepared,
+    Send,
     active_rules,
     apply_plan,
     back_and_forth,
     checked_rules,
+    deliverable,
     prepare,
     provenance,
+    queue_sends,
     reachable_rules,
     run_rules,
     space_rules,
@@ -55,7 +60,10 @@ class ApplyRulesNode:
     transaction; the rules are evaluated and applied when the result is stored, on the state
     that is stored. Conflicts, refused actions and forced reviews make the node uncertain: the
     document waits in the inbox before it is filed. So does a required field set by hand that
-    has no value after the rules (issue #52)."""
+    has no value after the rules (issue #52), and a rule's request through a webhook whose
+    owner may not read the document, unless a person decided in this run (it is only reported
+    then: no click can grant the right). The requests the rules send go when the document is
+    filed (`FileNode`), from the output's `sends`."""
 
     def __init__(
         self,
@@ -99,6 +107,8 @@ class RulesResult:
         looked: list[Rule] = []
         output: JsonObject = {}
         reasons: list[Reason] = []
+        sends: list[Send] = []
+        refused: list[Reason] = []
         while True:
             # The first space with the global rules, every one it enters with its own.
             rules = (
@@ -137,6 +147,9 @@ class RulesResult:
                 break
             problem = await apply_plan(uow, document, run.plan, definitions, now)
             reasons += [problem] if problem else []
+            ok, not_sent = await deliverable(uow, run.sends, document)
+            sends += ok
+            refused += not_sent
             chain.record(run.plan, document)
             if document.space_id == visited[-1]:
                 break
@@ -151,6 +164,12 @@ class RulesResult:
                 document.settle(Node.JUDGE, now)
         if earlier:
             input["chain"] = [str(space) for space in earlier]
+        if sends:
+            output[SENDS] = [send.to_json() for send in sends]
+        if refused:
+            output[SENDS_REFUSED] = reasons_to_json(refused)
+            if not document.processing.decided:
+                reasons += refused
         if reasons:
             result = NodeResult(
                 outcome=Outcome.UNCERTAIN,
@@ -258,7 +277,9 @@ def _waiting_for_hand(
 
 class FileNode:
     """Files the document into its space. Rights hang on the space; whoever put the document
-    there (an upload, a person, a rule) was allowed to, so filing always succeeds."""
+    there (an upload, a person, a rule) was allowed to, so filing always succeeds. The requests
+    the rules of this run send through webhooks go now (Tobi, 25.10.2026): a green document at
+    once, a yellow one once a person confirmed it, a red one never, and none twice."""
 
     async def run(self, document: Document) -> "FileResult":
         return FileResult()
@@ -267,4 +288,23 @@ class FileNode:
 @dataclass(frozen=True)
 class FileResult:
     async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
-        return NodeResult(outcome=Outcome.OK)
+        run = document.processing.run
+        entry = next(
+            (
+                item
+                for item in reversed(await uow.processing_log.list_for(document.id))
+                if item.node is Node.APPLY_RULES
+                and item.run == run
+                and item.result.model_version == RULES
+            ),
+            None,
+        )
+        sends = [] if entry is None else _sends(entry.result.output)
+        await queue_sends(uow, sends, document, now)
+        if not sends:
+            return NodeResult(outcome=Outcome.OK)
+        return NodeResult(outcome=Outcome.OK, output={SENDS: [send.to_json() for send in sends]})
+
+
+def _sends(output: JsonObject) -> list[Send]:
+    return [send for item in as_list(output.get(SENDS)) if (send := Send.from_json(item))]

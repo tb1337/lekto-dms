@@ -46,10 +46,12 @@ from lekto.core.domain.errors import (
 from lekto.core.domain.events import DocumentDeleted, DocumentEvent, DocumentFiled, DomainEvent
 from lekto.core.domain.ids import DocumentId, EventId, UserId, WebhookId, new_id
 from lekto.core.domain.jobs import Job, RetryPolicy
-from lekto.core.domain.json_value import JsonObject
+from lekto.core.domain.json_value import JsonObject, as_object
 from lekto.core.domain.permissions import in_reach
+from lekto.core.domain.templates import RULE
 from lekto.core.domain.users import User
 from lekto.core.domain.webhooks import (
+    RULE_SEND,
     TEST_EVENT,
     BodyFormat,
     DeliveryOutcome,
@@ -79,7 +81,8 @@ log = logging.getLogger(__name__)
 
 SUBSCRIBER = "webhooks.fanout"
 DELIVER_JOB = "webhooks.deliver"
-"""Payload: `webhook_id`, `event_id`, `type`, `occurred_at` (ISO 8601) and `document_id`."""
+"""Payload: `webhook_id`, `event_id`, `type`, `occurred_at` (ISO 8601) and `document_id`; a
+rule's request (`RULE_SEND`) also `rule` (`id`, `name`)."""
 
 _RETRY_STATUS = frozenset({408, 425, 429})
 _RESULT_ROUNDS = 3  # tries to write the result when the webhook is changed at the same time
@@ -204,11 +207,14 @@ class WebhookDeliveryService:
             occurred_at = datetime.fromisoformat(str(job.payload["occurred_at"]))
             raw_document = job.payload.get("document_id")
             document_id = None if raw_document is None else DocumentId(UUID(str(raw_document)))
+            rule = as_object(job.payload.get("rule"))
         except (KeyError, TypeError, ValueError) as error:
             await self._jobs.invalid(job, error)
             return
         try:
-            await self._attempt(job, webhook_id, event_id, event_type, occurred_at, document_id)
+            await self._attempt(
+                job, webhook_id, event_id, event_type, occurred_at, document_id, rule
+            )
         except ConcurrencyError:
             lost(job)
         except Exception as error:
@@ -224,6 +230,7 @@ class WebhookDeliveryService:
         event_type: str,
         occurred_at: datetime,
         document_id: DocumentId | None,
+        rule: JsonObject | None = None,
     ) -> None:
         now = self._clock.now()
         async with self._uow() as uow:
@@ -237,7 +244,9 @@ class WebhookDeliveryService:
             body = (
                 None
                 if reason is not None
-                else await self._body(uow, webhook, event_id, event_type, occurred_at, document_id)
+                else await self._body(
+                    uow, webhook, event_id, event_type, occurred_at, document_id, rule
+                )
             )
         attempt = job.tries
         if reason is not None:
@@ -285,9 +294,11 @@ class WebhookDeliveryService:
         event_type: str,
         occurred_at: datetime,
         document_id: DocumentId | None,
+        rule: JsonObject | None = None,
     ) -> bytes | WebhookResponse:
-        """The body of the request, made with the document as it is now; for a template that
-        cannot be rendered into JSON the answer that gives up (without sending), naming why."""
+        """The body of the request, made with the document as it is now (and `rule`, the rule
+        that sends it); for a template that cannot be rendered into JSON the answer that gives
+        up (without sending), naming why."""
         document = None
         if webhook.body is not BodyFormat.THIN and document_id is not None:
             document = await uow.documents.find(document_id)
@@ -305,6 +316,7 @@ class WebhookDeliveryService:
                     document_id=document_id,
                     document=data,
                     full=webhook.body is BodyFormat.FULL,
+                    rule=rule,
                 )
         assert webhook.body_template is not None
         values = event_values(event_id, event_type, occurred_at)
@@ -312,6 +324,8 @@ class WebhookDeliveryService:
             values |= await webhook_values(uow, document, self._link_base)
         elif document_id is not None:
             values["document_id"] = str(document_id)
+        if rule is not None:
+            values[RULE] = {key: str(value) for key, value in rule.items() if value is not None}
         try:
             return rendered_body(self._templates.render(webhook.body_template, values))
         except MissingValueError as missing:
@@ -428,6 +442,32 @@ class WebhookDeliveryService:
                 return webhook.gave_up(disable_after=self._policy.disable_after, now=now)
             case _:
                 return None
+
+
+# --- a rule's request ---------------------------------------------------------------------------
+
+
+async def queue_rule_send(
+    uow: UnitOfWork,
+    *,
+    webhook_id: WebhookId,
+    document_id: DocumentId,
+    rule: JsonObject,
+    now: datetime,
+) -> None:
+    """Queue the request a rule sends through a webhook (`rules.SendWebhook`) about a document,
+    in the unit of work that stores what the rules did: it goes only if that is committed.
+    `rule`: its `id` and `name`. The rights are checked again before every attempt."""
+    event_id = EventId(new_id())
+    payload: JsonObject = {
+        "webhook_id": str(webhook_id),
+        "event_id": str(event_id),
+        "type": RULE_SEND,
+        "occurred_at": now.isoformat(),
+        "document_id": str(document_id),
+        "rule": rule,
+    }
+    await uow.jobs.enqueue(DELIVER_JOB, payload, run_at=now, dedup_key=f"{webhook_id}:{event_id}")
 
 
 # --- rights -------------------------------------------------------------------------------------

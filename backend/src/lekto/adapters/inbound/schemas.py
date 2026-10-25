@@ -1,5 +1,6 @@
 """Response bodies that more than one inbound adapter (REST, MCP) returns."""
 
+from collections.abc import Iterable
 from datetime import date
 from typing import Annotated, Any
 from uuid import UUID
@@ -10,6 +11,7 @@ from lekto.core.domain.fields import FieldValue, field_to_json
 from lekto.core.domain.reasons import Reason, ReasonCode
 from lekto.core.domain.rule_planner import Effect, Note, NoteKind, RuleReport
 from lekto.core.domain.rules import RuleScope
+from lekto.core.services.rules.running import Send
 
 
 class MoneyValue(BaseModel):
@@ -124,7 +126,17 @@ class RuleReportOut(BaseModel):
     scope: RuleScope
     applied: list[RuleEffectOut]
     notes: list[RuleNoteOut] = Field(description="Actions that were not applied, and why.")
+    sends: list[UUID] = Field(
+        default_factory=list,
+        description=(
+            "The webhooks the rule sends through (`send_webhook`): once the document is filed, "
+            "or, after a change, once it is stored, if their owner may read the document."
+        ),
+    )
 
     @classmethod
-    def of(cls, report: RuleReport) -> "RuleReportOut":
-        return cls.model_validate(report.to_json())
+    def of(cls, report: RuleReport, sends: Iterable[Send] = ()) -> "RuleReportOut":
+        """`sends`: those of the run; the report's rule's are shown."""
+        data = report.to_json()
+        data["sends"] = [str(send.webhook_id) for send in sends if send.rule_id == report.rule_id]
+        return cls.model_validate(data)

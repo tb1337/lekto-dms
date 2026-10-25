@@ -208,6 +208,21 @@ class ForceReviewAction(BaseModel):
     )
 
 
+class SendWebhookAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["send_webhook"]
+    webhook_id: UUID = Field(
+        description=(
+            "A webhook of whoever saves the rule (someone else's is not found). It gets a "
+            "request of type `rule.send` with the rule's `id` and `name`, in the webhook's body "
+            "format: on arrival once the document is filed (a yellow one after it was "
+            "confirmed, a red one never), after a change once it is stored. Its owner must be "
+            "able to read the document: on arrival the document turns yellow otherwise (unless "
+            "a person decided already), else it is only reported."
+        )
+    )
+
+
 ActionSchema = Annotated[
     SetSpaceAction
     | SetContactAction
@@ -217,7 +232,8 @@ ActionSchema = Annotated[
     | AddTagsAction
     | RemoveTagsAction
     | SetFieldAction
-    | ForceReviewAction,
+    | ForceReviewAction
+    | SendWebhookAction,
     Field(discriminator="type"),
 ]
 
@@ -545,6 +561,14 @@ class ApplyPreviewItemOut(BaseModel):
     )
     accepted: ApplyOutcomeOut | None = Field(
         description="With its conflicts accepted (only for documents with conflicts)."
+    )
+    sends: list[UUID] = Field(
+        default_factory=list,
+        description="The webhooks applying would send a request through, about this document.",
+    )
+    sends_refused: list[ReasonOut] = Field(
+        default_factory=list,
+        description="Requests that would not go, and why (the owner may not read the document).",
     )
 
 

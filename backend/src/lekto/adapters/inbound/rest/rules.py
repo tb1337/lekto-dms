@@ -24,7 +24,7 @@ from lekto.adapters.inbound.rest.schemas.rules import (
     TemplatePreviewIn,
     TemplatePreviewOut,
 )
-from lekto.adapters.inbound.schemas import RuleEffectOut, RuleNoteOut
+from lekto.adapters.inbound.schemas import ReasonOut, RuleEffectOut, RuleNoteOut
 from lekto.core.domain.ids import DocumentId, DocumentTypeId, RuleApplicationId, RuleId, SpaceId
 from lekto.core.domain.rules import RuleScope
 from lekto.core.domain.rules_json import definition_from_json
@@ -219,6 +219,8 @@ async def preview_apply(
                 notes=[RuleNoteOut.of(note) for note in item.notes],
                 outcome=ApplyOutcomeOut.of(item.outcome),
                 accepted=None if item.accepted is None else ApplyOutcomeOut.of(item.accepted),
+                sends=[send.webhook_id for send in item.sends],
+                sends_refused=[ReasonOut.of(reason) for reason in item.refused],
             )
             for item in preview.items
         ],

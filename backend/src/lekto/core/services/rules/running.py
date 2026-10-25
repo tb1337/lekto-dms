@@ -36,8 +36,10 @@ from lekto.core.domain.ids import (
     SpaceId,
     TagId,
     UserId,
+    WebhookId,
 )
-from lekto.core.domain.json_value import JsonObject, JsonValue, as_list
+from lekto.core.domain.json_value import JsonObject, JsonValue, as_list, as_object, as_uuid
+from lekto.core.domain.permissions import in_reach
 from lekto.core.domain.pipeline import (
     ACCEPTED,
     ACTOR,
@@ -58,7 +60,7 @@ from lekto.core.domain.pipeline import (
     NodeRun,
     Outcome,
 )
-from lekto.core.domain.reasons import Reason, ReasonCode, because
+from lekto.core.domain.reasons import Reason, ReasonCode, because, reasons_to_json
 from lekto.core.domain.rule_conditions import (
     TEXT_TARGET,
     Facts,
@@ -85,6 +87,7 @@ from lekto.core.services._tags import tag_tree
 from lekto.core.services.inbox import MODEL_NODES, arrived, field_checks, latest_entries
 from lekto.core.services.objects import load_text
 from lekto.core.services.titles import machine_title
+from lekto.core.services.webhooks.delivery import queue_rule_send
 
 log = logging.getLogger(__name__)
 
@@ -622,11 +625,109 @@ class Chain:
 
 
 @dataclass(frozen=True)
+class Send:
+    """A request a matching rule sends through a webhook (`rules.SendWebhook`): queued when the
+    document is filed (on arrival) or once the run is stored (a change, a move, applying a rule
+    to existing documents). `author`: who saved the rule's version, whose webhook it must be."""
+
+    rule_id: RuleId
+    version: int
+    name: str
+    author: UserId | None
+    webhook_id: WebhookId
+
+    def to_json(self) -> JsonObject:
+        return {
+            "rule_id": str(self.rule_id),
+            "version": self.version,
+            "name": self.name,
+            "webhook_id": str(self.webhook_id),
+            **({} if self.author is None else {"author": str(self.author)}),
+        }
+
+    @classmethod
+    def from_json(cls, data: JsonValue) -> "Send | None":
+        """The send of a log entry's output; None if it is not one."""
+        item = as_object(data) or {}
+        rule, webhook = as_uuid(item.get("rule_id")), as_uuid(item.get("webhook_id"))
+        version, name, author = item.get("version"), item.get("name"), as_uuid(item.get("author"))
+        if rule is None or webhook is None or not isinstance(version, int):
+            return None
+        return cls(
+            rule_id=RuleId(rule),
+            version=version,
+            name=name if isinstance(name, str) else "",
+            author=None if author is None else UserId(author),
+            webhook_id=WebhookId(webhook),
+        )
+
+    @property
+    def rule(self) -> JsonObject:
+        """The rule as the request names it."""
+        return {"id": str(self.rule_id), "name": self.name}
+
+
+SENDS = "sends"
+"""Key of the requests a rule run sends, in its log entry's output."""
+SENDS_REFUSED = "sends_refused"
+"""Key of the requests it could not send, with why, in its log entry's output."""
+
+
+async def deliverable(
+    uow: UnitOfWork, sends: Iterable[Send], document: Document
+) -> tuple[list[Send], list[Reason]]:
+    """Of `sends`, those whose webhook is there, still its rule author's, and whose owner may
+    read `document` where it lies now; and why the others are not."""
+    space = await uow.spaces.find(document.space_id)
+    ok: list[Send] = []
+    refused: list[Reason] = []
+    for send in sends:
+        webhook = await uow.webhooks.find(send.webhook_id)
+        owner = None if webhook is None else await uow.users.find(webhook.owner_id)
+        if owner is None or not owner.active or owner.id != send.author:
+            refused.append(because(ReasonCode.RULE_WEBHOOK_GONE, rule=send.name))
+        elif space is None or not in_reach(owner, document, space):
+            refused.append(because(ReasonCode.RULE_WEBHOOK_UNREADABLE, rule=send.name))
+        else:
+            ok.append(send)
+    return ok, refused
+
+
+async def queue_sends(
+    uow: UnitOfWork, sends: Iterable[Send], document: Document, now: datetime
+) -> None:
+    """Queue the requests in the unit of work that stores the document: they go only if it is
+    committed."""
+    for send in sends:
+        await queue_rule_send(
+            uow, webhook_id=send.webhook_id, document_id=document.id, rule=send.rule, now=now
+        )
+
+
+async def send_now(
+    uow: UnitOfWork, sends: Iterable[Send], document: Document, now: datetime
+) -> JsonObject:
+    """Outside processing (a change, a move, applying a rule to existing documents): queue the
+    requests that may go, and report those that may not (nothing turns yellow there). The part
+    of the log entry's output that says so."""
+    ok, refused = await deliverable(uow, sends, document)
+    await queue_sends(uow, ok, document, now)
+    output: JsonObject = {}
+    if ok:
+        output[SENDS] = [send.to_json() for send in ok]
+    if refused:
+        output[SENDS_REFUSED] = reasons_to_json(refused)
+    return output
+
+
+@dataclass(frozen=True)
 class RuleRun:
-    """The plan of one rule run, with the patterns that could not run."""
+    """The plan of one rule run, with the patterns that could not run and the requests the
+    matching rules send (`sends`)."""
 
     plan: RulePlan
     problems: tuple[str, ...]
+    sends: tuple[Send, ...] = ()
 
     def output(self) -> JsonObject:
         data = self.plan.to_json()
@@ -676,7 +777,18 @@ async def run_rules(
         loaded=loaded,
         applier=applier,
     )
-    return RuleRun(plan(matched, context), prepared.problems + problems)
+    sends = tuple(
+        Send(
+            rule_id=match.rule.id,
+            version=match.rule.current.number,
+            name=match.rule.definition.name,
+            author=match.rule.current.created_by,
+            webhook_id=action.webhook_id,
+        )
+        for match in matched
+        for action in match.rule.definition.sends
+    )
+    return RuleRun(plan(matched, context), prepared.problems + problems, sends)
 
 
 async def apply_plan(

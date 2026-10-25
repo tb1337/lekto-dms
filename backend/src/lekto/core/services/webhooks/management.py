@@ -7,8 +7,9 @@ webhook's own headers (their names are). Other users do not learn that someone e
 exists (NotFoundError).
 """
 
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from lekto.core.domain.errors import ConflictError, NotFoundError, ValidationError
 from lekto.core.domain.ids import DeliveryId, UserId, WebhookId, new_id
@@ -31,6 +32,7 @@ from lekto.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
 from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import load_actor
+from lekto.core.services.rules.references import disable_rules, refers_to
 from lekto.core.services.webhooks.policy import WebhookPolicy
 
 
@@ -157,9 +159,12 @@ class WebhookService:
             return webhook
 
     async def delete(self, actor: UserId, id: WebhookId) -> None:
-        """The webhook and its log. Deliveries that are queued find it gone and stop."""
+        """The webhook and its log. Deliveries that are queued find it gone and stop; the rules
+        that send through it are disabled, with the reason (as when master data they refer to
+        is deleted)."""
         async with self._uow() as uow:
             webhook = await manageable_webhook(uow, await load_actor(uow, actor), id)
+            await disable_sending_rules(uow, [webhook], self._clock.now())
             await uow.webhooks.remove(webhook.id)
             await uow.commit()
 
@@ -250,6 +255,19 @@ class WebhookService:
                 raise ValidationError(because(ReasonCode.HEADER_TWICE, name=name))
             merged[name] = value
         return merged
+
+
+async def disable_sending_rules(
+    uow: UnitOfWork, webhooks: Iterable[Webhook], now: datetime
+) -> None:
+    """Disable the rules that send through `webhooks`, which are about to go."""
+    for webhook in webhooks:
+        await disable_rules(
+            uow,
+            now,
+            because(ReasonCode.RULE_DISABLED_DELETED, kind="webhook", name=webhook.name),
+            refers_to(lambda references: references.webhooks, webhook.id),
+        )
 
 
 async def visible_webhook(uow: UnitOfWork, user: User, id: WebhookId) -> Webhook:

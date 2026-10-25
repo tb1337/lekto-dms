@@ -292,6 +292,8 @@ class ReasonCode(StrEnum):
     RULE_DISABLED_DELETED = "rule_disabled_deleted"
     RULE_DISABLED_PERSONAL_SPACE = "rule_disabled_personal_space"
     RULE_DISABLED_CHOICE = "rule_disabled_choice"
+    RULE_WEBHOOK_GONE = "rule_webhook_gone"
+    RULE_WEBHOOK_UNREADABLE = "rule_webhook_unreadable"
     SKIP_CHANGED_MEANWHILE = "skip_changed_meanwhile"
     SKIP_NOT_AVAILABLE = "skip_not_available"
     # value checks a person meets in the UI
@@ -709,6 +711,13 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.RULE_DISABLED_DELETED: "{kind:thing} '{name}' was deleted",
     ReasonCode.RULE_DISABLED_PERSONAL_SPACE: "the personal space of '{user}' was deleted",
     ReasonCode.RULE_DISABLED_CHOICE: "field '{field}' no longer allows a value the rule uses",
+    ReasonCode.RULE_WEBHOOK_GONE: (
+        "rule '{rule}': its webhook is gone or no longer belongs to whoever saved the rule; "
+        "nothing sent"
+    ),
+    ReasonCode.RULE_WEBHOOK_UNREADABLE: (
+        "rule '{rule}': the owner of its webhook may not read the document; nothing sent"
+    ),
     ReasonCode.SKIP_CHANGED_MEANWHILE: "changed meanwhile; not applied",
     ReasonCode.SKIP_NOT_AVAILABLE: "not available",
     ReasonCode.NOT_IBAN: "'{value}' is not a valid IBAN",

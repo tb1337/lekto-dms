@@ -21,12 +21,14 @@ from lekto.core.domain.events import (
 from lekto.core.domain.fields import FieldDefinition, FieldType, Money
 from lekto.core.domain.ids import DocumentId, WebhookId, new_id
 from lekto.core.domain.jobs import Job, JobStatus
+from lekto.core.domain.json_value import JsonObject
 from lekto.core.domain.master_data import Contact, DocumentType
 from lekto.core.domain.pipeline import Lane
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.domain.webhooks import (
     DISABLED_FAILING,
+    RULE_SEND,
     TEST_EVENT,
     BodyFormat,
     DeliveryOutcome,
@@ -35,6 +37,7 @@ from lekto.core.domain.webhooks import (
 )
 from lekto.core.ports.webhook_sender import WebhookRequest
 from lekto.core.services.webhooks import DELIVER_JOB, WebhookDeliveryService
+from lekto.core.services.webhooks.delivery import queue_rule_send
 from tests import builders
 from tests.builders import NOW
 from tests.unit.services.support import World
@@ -516,6 +519,37 @@ async def test_a_template_that_makes_no_json_gives_up_without_sending(
     (row,) = await log(world, created.webhook)
     assert row.outcome is DeliveryOutcome.GAVE_UP
     assert (row.error or "").startswith(error)
+
+
+async def test_a_rule_s_request_names_the_rule(world: World) -> None:
+    user = await world.user()
+    document = await seed(world, user)
+    thin = (await world.webhooks.create(user.id, name="thin", url=URL, event_types=[])).webhook
+    templated = (
+        await world.webhooks.create(
+            user.id,
+            name="template",
+            url=URL,
+            event_types=[],
+            body=BodyFormat.TEMPLATE,
+            body_template='{"by": {{ rule.name | json }}, "type": {{ event.type | json }}}',
+        )
+    ).webhook
+    rule: JsonObject = {"id": "r1", "name": "Notify"}
+    async with world.uow() as uow:
+        for webhook in (thin, templated):
+            await queue_rule_send(
+                uow, webhook_id=webhook.id, document_id=document.id, rule=rule, now=NOW
+            )
+        await uow.commit()
+    service = world.webhook_delivery()
+    await run_all(service)
+    bodies = sorted(
+        (json.loads(request.body) for request in world.sender.requests), key=lambda body: len(body)
+    )
+    assert bodies[0] == {"by": "Notify", "type": RULE_SEND}
+    assert bodies[1]["rule"] == rule and bodies[1]["type"] == RULE_SEND
+    assert bodies[1]["document_id"] == str(document.id)
 
 
 # --- rights at the time of the attempt ----------------------------------------------------------

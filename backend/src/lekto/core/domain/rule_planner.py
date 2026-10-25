@@ -81,6 +81,7 @@ from lekto.core.domain.rules import (
     ForceReview,
     RemoveTags,
     RuleScope,
+    SendWebhook,
     SetContact,
     SetDocumentType,
     SetField,
@@ -442,6 +443,8 @@ class _Planner:
                 self._candidates.setdefault(name, []).append(_Candidate(report, value, match))
             case ForceReview(reason=reason):
                 self._review_reasons.append((report, reason))
+            case SendWebhook():
+                pass  # no change of the document: the run sends apart (`running.Send`)
 
     def _candidate(
         self, field_name: str, value: str, id: object, match: Match, report: RuleReport

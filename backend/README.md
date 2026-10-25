@@ -922,7 +922,8 @@ where it is and edits where it goes (global: admins); every version names its sp
   document get two seconds together, a preview page twenty; the patterns left do not match. The text is the parsed text without
   markup, at most `LEKTO_RULES_MAX_TEXT` characters; it is loaded only if a rule looks at it.
 - **Actions.** `set_space`, `set_contact`, `set_topic`, `set_document_type`, `set_title`,
-  `add_tags`, `remove_tags`, `set_field`, `force_review` (with a reason). `set_topic` is for
+  `add_tags`, `remove_tags`, `set_field`, `force_review` (with a reason), `send_webhook` (see
+  below). `set_topic` is for
   every rule; it is skipped (and noted) if the contact the document ends up with does not
   enable the topic. `add_tags` and `remove_tags` take document tags (also those set by hand);
   a tag above one the document keeps or gets is not added, a parent gives way to a child
@@ -1345,6 +1346,19 @@ between gets nothing (the log shows `dropped`). The body carries no lane, so a r
 that wants the state of the document fetches it; `document.filed` is not sent while the document
 is still being processed. `document.deleted` goes to those who could read the document
 when it was deleted.
+
+**Rules that send** (`send_webhook`, Tobi, 25.10.2026). A rule sends a request through a webhook
+of whoever saves it (someone else's is not found, `404`); the type is `rule.send`, the body
+names the rule (`rule`: `id`, `name`) and follows the webhook's body format. On arrival the
+request goes once the document is filed: a green one at once, a yellow one after a person
+confirmed it, a red one never, and none twice although the rules run again after the
+confirmation. After a change, a move or applying a rule to existing documents (one request per
+document; the preview lists them) it goes once that is stored. It is queued in the transaction
+that stores what the rules did. The webhook's owner must be able to read the document where it
+ends up: on arrival the document turns yellow otherwise (`rule_webhook_unreadable`), unless a
+person decided in this run already (then, and outside processing, it is only reported in the
+log, `sends_refused`). Deleting a webhook disables the rules that send through it, with the
+reason; so does deleting its owner.
 
 **The request.** `POST <url>`, `Content-Type: application/json`, `User-Agent: Lekto/<version>`,
 the webhook's own headers, and a body as the webhook chooses (`body`):

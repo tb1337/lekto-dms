@@ -47,6 +47,8 @@ ALL_EVENTS = "*"
 """In `event_types`: every event type, also those that come later."""
 TEST_EVENT = "webhook.test"
 """The event type of the test request; it has no document."""
+RULE_SEND = "rule.send"
+"""The type of a request a rule sends (`rules.SendWebhook`); its body names the rule too."""
 
 SECRET_PREFIX = "whsec_"
 SECRET_BYTES = 32
@@ -219,9 +221,11 @@ def event_body(
     document_id: DocumentId | None,
     document: JsonObject | None = None,
     full: bool = False,
+    rule: JsonObject | None = None,
 ) -> bytes:
     """The body of a request: compact JSON in UTF-8, signed exactly as sent. Thin: the event;
-    `full`: with `document` too (None: the document is gone, or there is none)."""
+    `full`: with `document` too (None: the document is gone, or there is none). `rule`: the
+    rule that sends it (`id`, `name`)."""
     occurred_at = require_utc(occurred_at, "occurred_at")
     payload: JsonObject = {
         "id": str(event_id),
@@ -229,6 +233,8 @@ def event_body(
         "occurred_at": occurred_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "document_id": None if document_id is None else str(document_id),
     }
+    if rule is not None:
+        payload["rule"] = rule
     if full:
         payload["document"] = document
     return json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")

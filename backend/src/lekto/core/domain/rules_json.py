@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from enum import StrEnum
 
 from lekto.core.domain.errors import ValidationError
-from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId
+from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId, WebhookId
 from lekto.core.domain.json_value import JsonObject, JsonValue, require_object, require_uuid
 from lekto.core.domain.rules import (
     DEFAULT_PRIORITY,
@@ -22,6 +22,7 @@ from lekto.core.domain.rules import (
     Operator,
     RemoveTags,
     RuleDefinition,
+    SendWebhook,
     SetContact,
     SetDocumentType,
     SetField,
@@ -83,6 +84,8 @@ def action_to_json(action: Action) -> JsonObject:
             return {"type": action.type, "field_id": str(field), "value": value}
         case ForceReview(reason=reason):
             return {"type": action.type, "reason": reason}
+        case SendWebhook(webhook_id=webhook):
+            return {"type": action.type, "webhook_id": str(webhook)}
 
 
 def definition_from_json(data: JsonValue) -> RuleDefinition:
@@ -200,6 +203,9 @@ def action_from_json(data: JsonValue, where: str = "action") -> Action:
                 if not isinstance(reason, str):
                     raise ValidationError("reason: expected text")
                 return ForceReview(reason)
+            case "send_webhook":
+                _only(object_, {"type", "webhook_id"}, where)
+                return SendWebhook(WebhookId(require_uuid(object_.get("webhook_id"), "webhook_id")))
     except ValidationError as error:
         raise ValidationError(f"{where}: {error}") from None
     raise ValidationError(f"{where}.type: unknown action {kind!r}")

@@ -322,10 +322,15 @@ async def check_references(
     """Everything the definition refers to exists (NotFoundError otherwise), field
     conditions and values fit their field, tags are of the scope their place asks for (groups
     in the conditions on groups, topics in those on the topic and in "set topic", document
-    tags elsewhere; ValidationError), and the rule's `author` may file into the spaces it
+    tags elsewhere; ValidationError), the rule's `author` may file into the spaces it
     files into, unless one is the personal space of another, active user (handing over;
-    PermissionDeniedError; checked again whenever it runs)."""
+    PermissionDeniedError; checked again whenever it runs), and sends only through their own
+    webhooks (someone else's is not found)."""
     references = definition.references()
+    for webhook_id in references.webhooks:
+        webhook = await uow.webhooks.find(webhook_id)
+        if webhook is None or author is None or webhook.owner_id != author.id:
+            raise NotFoundError("webhook", webhook_id)
     for contact in references.contacts:
         await uow.contacts.get(contact)
     for document_type in references.document_types:

@@ -11,7 +11,7 @@ A rule has a scope, triggers, a tree of conditions and actions:
 - Conditions: groups of `all` (and) or `any` (or), each may be negated; a condition is field,
   operator and value.
 - Actions: set space, contact, type, topic, title or a field, add or remove tags, force a
-  review.
+  review, send a webhook (a notification through a webhook of whoever saved the rule).
 
 The definition (name, priority, triggers, conditions, actions) is versioned: every change makes
 a new version; old versions stay readable so the processing log can refer to them. Enabling and
@@ -44,6 +44,7 @@ from lekto.core.domain.ids import (
     SpaceId,
     TagId,
     UserId,
+    WebhookId,
     new_id,
 )
 from lekto.core.domain.json_value import JsonValue, require_date, require_uuid
@@ -349,6 +350,16 @@ class ForceReview:
         _text(self.reason, MAX_TEXT)
 
 
+@dataclass(frozen=True)
+class SendWebhook:
+    """A notification through the webhook (`webhooks.Webhook`, of whoever saved the rule) about
+    the document as the rules leave it: on arrival when the document is filed, on a change once
+    it is stored (Tobi, 25.10.2026). Its owner must be able to read the document."""
+
+    webhook_id: WebhookId
+    type: Literal["send_webhook"] = "send_webhook"
+
+
 type Action = (
     SetSpace
     | SetContact
@@ -359,6 +370,7 @@ type Action = (
     | RemoveTags
     | SetField
     | ForceReview
+    | SendWebhook
 )
 
 # --- definition -------------------------------------------------------------------------------
@@ -375,6 +387,7 @@ class References:
     fields: frozenset[FieldId] = frozenset()
     spaces: frozenset[SpaceId] = frozenset()
     tag_scopes: tuple[tuple[TagId, TagScope], ...] = ()
+    webhooks: frozenset[WebhookId] = frozenset()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -425,6 +438,7 @@ class RuleDefinition:
         tags: set[TagId] = set()
         fields: set[FieldId] = set()
         spaces: set[SpaceId] = set()
+        webhooks: set[WebhookId] = set()
         scopes: dict[tuple[TagId, TagScope], None] = {}
         for condition in self.conditions.conditions():
             match condition.field:
@@ -455,6 +469,8 @@ class RuleDefinition:
                     scopes.update(((id, TagScope.DOCUMENT), None) for id in sorted(ids))
                 case SetField(field_id=field):
                     fields.add(field)
+                case SendWebhook(webhook_id=webhook):
+                    webhooks.add(webhook)
         return References(
             frozenset(contacts),
             frozenset(types),
@@ -462,7 +478,13 @@ class RuleDefinition:
             frozenset(fields),
             frozenset(spaces),
             tuple(scopes),
+            frozenset(webhooks),
         )
+
+    @property
+    def sends(self) -> tuple[SendWebhook, ...]:
+        """The webhooks the rule sends through, in order."""
+        return tuple(action for action in self.actions if isinstance(action, SendWebhook))
 
     @property
     def uses_text(self) -> bool:
@@ -489,10 +511,13 @@ def _ids(condition: Condition) -> list[UUID]:
 
 
 def _single_key(action: Action) -> str | None:
-    """The field an action sets alone; two such actions in one rule contradict each other."""
+    """The field an action sets alone; two such actions in one rule contradict each other (a
+    webhook twice would send twice)."""
     match action:
         case SetField(field_id=field):
             return field_key(field)
+        case SendWebhook(webhook_id=webhook):
+            return f"{action.type}:{webhook}"
         case AddTags() | RemoveTags() | ForceReview():
             return None
     return action.type

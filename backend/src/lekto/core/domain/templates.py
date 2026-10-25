@@ -55,9 +55,11 @@ class _Given:
 NAMES = tuple(item.name for item in dataclasses.fields(_Given))
 FIELD = "field"
 EVENT = "event"
-WEBHOOK_NAMES = (*NAMES, EVENT, "document_id", "lane", "link")
+RULE = "rule"
+WEBHOOK_NAMES = (*NAMES, EVENT, "document_id", "lane", "link", RULE)
 """What the template of a webhook's body sees besides a rule's values: the event (`event.type`,
-`event.id`, `event.occurred_at`), the document's id, lane and link into the web UI."""
+`event.id`, `event.occurred_at`), the document's id, lane and link into the web UI, and the rule
+that sends it (`rule.id`, `rule.name`; only then)."""
 
 
 def template_values(

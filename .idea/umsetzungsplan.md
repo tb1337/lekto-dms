@@ -1691,7 +1691,11 @@ Mock: https://claude.ai/artifact/CZha1VoRbf2KxJQCAZx5ma (vier Reiter hell und du
 
 **A gebaut (24.10.2026):** `jobs.created_at` entfällt: Die Wartezeit rechnet ab `run_at` (fällig), das ist bei Wiederholungen ohnehin richtig. `JobQueue.complete` und `fail` nehmen die Zeit (`now`), damit Start und Ende von derselben Uhr kommen wie `claim`. Neu im Port: `retry`, `overview` (ein `GROUP BY` über einer Unterabfrage, Postgres sähe sonst zwei Ausdrücke mit je eigenem Parameter), `find`, `finished`. Die Dauern sind ein eigener Endpunkt (`GET /jobs/durations`, jede Minute), die Zahlen (`GET /jobs/summary`) und die Liste (`GET /jobs`, Versatz statt Cursor, „Mehr laden“) alle fünf Sekunden. Ein fehlgeschlagener Verarbeitungsschritt wird am Dokument wiederholt (`POST /documents/{id}/retry`, `retry: document`), sonst geht das Dokument nicht weiter; `POST /jobs/{id}/retry` lehnt ihn ab (`job_retry_in_document`). „Versuch 3 von 8“ steht ohne „von 8“: Wie oft eine Art es versucht, weiß die Queue nicht. `classifier.trained` geht jetzt an alle Ereignisströme. Die Reiter der Seite kommen mit ihren PRs (A: Klassifikator, Jobs; B: Suchindex; C2: Automatisierung vorn).
 
+**Review A (25.10.2026, zweite Session, nur lesend; behoben vor dem Merge):** `GET /jobs/durations` las alle erledigten Jobs der Aufbewahrung in den Speicher (eine Migration hinterlässt über eine Million in sieben Tagen), für jede offene Seite jede Minute. Jetzt liest `JobQueue.finished` mit `limit` die jüngsten 2000 je Art (`JobsService.SAMPLE`), und der Bericht wird je API-Prozess eine Minute gehalten (`services/_kept.py`, wie der Cache der Automatisierung in C2).
+
 **B gebaut (24.10.2026):** Die Routen stehen neben `POST /search/reindex`: `GET /search/status` und `POST /search/check` (nicht unter `/documents/search`, das ist die Suche selbst). Das letzte Ergebnis von „Genau prüfen“ hält die Seite nur, solange sie offen ist („Gerade geprüft · dauerte 3,4s“); wer wann zuletzt prüfte, merkt sich Lekto nicht. Die Dokumente der Datenbank zählt `DocumentRepository.count_all`. Der Reiter fragt alle zehn Sekunden.
+
+**Review B (25.10.2026, behoben vor dem Merge):** `GET /search/status` las wie die Dauern der Jobs alle erledigten Index-Jobs der Aufbewahrung; jetzt die jüngsten 2000 (`limit`), eine Minute gehalten; die Rate der offenen Jobs kommt weiter jedes Mal aus den letzten zehn Minuten. Ein Index-Job, der nach gescheitertem Embedding ohne Vektoren schrieb, meldet `embedding_failed` und zählt weder zu „mit“ noch zu „ohne Embedding“ (er hat die Embedding-Zeit verbraucht, ohne einzubetten).
 
 **C1 – Entwurf (Frage-Antwort-Runde 25.10.2026):**
 
@@ -1719,6 +1723,15 @@ Mock: https://claude.ai/artifact/CZha1VoRbf2KxJQCAZx5ma (vier Reiter hell und du
 | `signal_counts` | 357 ms | 348 ms | 31 ms | 45 ms | 32 ms | 19 ms |
 
   Über 300 ms liegen die Zeiten bei großen Zeiträumen (vor allem `run_times`: 100.000 Zeilen mit JSON nach Python). C2 cacht die Statistik kurz (wie geplant); die Zähler auf Postgres brauchen das nicht.
+
+**Review C1 (25.10.2026, behoben vor dem Merge):**
+
+- Der Nachtrag beurteilte die Signale des Space gegen `None`, wo der Judge den Space ohne eigenen Wert liegen ließ (Check OK, `value` leer): jeder nennende Kandidat ein Fehltreffer. Jetzt gegen den Space, den das Dokument hält (wie live).
+- Vorschläge neben OK-Checks (Tags und Thema, die die Signale nannten, aber nicht setzten; ein Space, in dem es liegen könnte) zählen: nimmt die Person sie, ist das „Vorschlag angenommen“ (Tags: zu den gesetzten hinzugefügt, keiner entfernt), nicht „ergänzt“ oder „korrigiert“. Live und Nachtrag.
+- Ein Space, den die Automatik weder wählte noch vorschlug (uneinige Signale), bekommt kein Urteil: Ein Dokument liegt immer irgendwo, „ergänzt“ täuschte.
+- `FirstRun.of` wirft nicht mehr, wenn der Stopp vor dem Beginn liegt (Annahme im API-Prozess, Stopp im Worker, Uhren verschieden): Der Lauf beginnt dann am Stopp, mit Warnung; der Knoten scheiterte sonst bei jedem Versuch.
+- Ein beim Upload gewählter Space entscheidet nichts, außer der Judge hat seitdem nach dem Space gefragt (offener Check): Die Antwort darauf ist das erste Urteil.
+- Nachtrag: `early` nur bei bekanntem Stopp oder solange das Dokument in Lauf 1 steht (ohne Receive-Eintrag wurde sonst jede Änderung in Lauf 1 `early`); Regeln, die nach dem Entscheid ein Feld setzten (`rules`, `rules:apply`, `rules:change`, die `applied`-Effekte), machen den heutigen Wert unbekannt; beim gelben Stopp zählt ein Seiten-Catch-up nicht, der eine Stunde oder mehr nach dem Ende aller anderen Knoten begann; die Abfrage liest nur noch Judge, Felder, Regeln und Entscheide (die OCR-Einträge halten die Wörter jeder Seite). Der Migrationstest deckt jetzt auch `kept`, `accepted`, den liegen gelassenen Space mit Signalen, Thema- und Tag-Vorschläge, ein eigenes Feld, eine Regel nach dem Entscheid, einen Upload-Space mit offenem Check, fehlenden Receive-Eintrag, Catch-up und ein laufendes Dokument ab.
 
 **C2 gebaut (25.10.2026, `feature/system-automation`):**
 

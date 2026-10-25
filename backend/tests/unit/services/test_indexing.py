@@ -23,6 +23,7 @@ from lekto.core.domain.pipeline import Lane, Node, Outcome
 from lekto.core.domain.search import LAYOUT, IndexDocument
 from lekto.core.domain.users import Role
 from lekto.core.services.indexing import (
+    _RETRIES,
     INDEX_JOB,
     RECONCILE_JOB,
     REFRESH_JOB,
@@ -656,7 +657,32 @@ async def test_an_index_job_reports_the_sections_it_embedded(setup: Setup) -> No
     assert done and all(job.result is not None for job in done)
     sections = [job.result.get("sections") for job in done if job.result is not None]
     assert any(isinstance(count, int) and count >= 1 for count in sections)
-    assert await setup.indexing.index_document(document.id) == 0  # the vectors stay
+    assert (await setup.indexing.index_document(document.id)).sections == 0  # the vectors stay
+
+
+async def test_a_job_whose_embedding_failed_measures_no_duration(world: World) -> None:
+    setup = Setup(world, policy=replace(builders.INDEXING, dimensions=3))  # the fakes have more
+    owner = await world.user()
+    received = await world.pipeline().receive(owner.id, incoming(b"%PDF-1 f"), filename="f.pdf")
+    await setup.put_text(received.id, "Text")
+    indexed = await setup.indexing.index_document(received.id, tolerate_embedding_failure=True)
+    assert (indexed.sections, indexed.embedding_failed) == (0, True)
+    assert indexed.to_json() == {"sections": 0, "embedding_failed": True}
+    async with world.uow() as uow:
+        job = await uow.jobs.enqueue(INDEX_JOB, {"document_id": str(received.id)}, run_at=NOW)
+        await uow.commit()
+    assert job is not None
+    for _ in range(_RETRIES[INDEX_JOB].max_attempts):  # the last attempt tolerates the failure
+        world.clock.advance(HOUR)
+        assert await setup.indexing.run_next_job()
+    async with world.uow() as uow:
+        done = await uow.jobs.get(job)
+    assert done.status is JobStatus.DONE
+    assert done.result == {"sections": 0, "embedding_failed": True}
+
+    status = await setup.indexing.status(owner.id)
+
+    assert (status.embedded, status.plain, status.per_section) == (None, None, None)
 
 
 async def test_a_check_counts_without_queuing_or_removing(setup: Setup) -> None:

@@ -152,6 +152,18 @@ def test_a_node_written_twice_in_the_first_run_counts_both_times() -> None:
     assert FirstRun.of(ID, log, NOW + 5 * SECOND).steps[Node.PAGES] == 2 * SECOND
 
 
+def test_a_first_run_that_stopped_before_it_started_began_at_its_stop() -> None:
+    # The receiving is logged by the API, the stop by a worker: their clocks may disagree.
+    log = [entry(Node.RECEIVE, at=2 * SECOND), entry(Node.OCR, at=3 * SECOND)]
+    run = FirstRun.of(ID, log, NOW + SECOND)
+    assert (run.started_at, run.stopped_at, run.duration) == (
+        NOW + SECOND,
+        NOW + SECOND,
+        timedelta(0),
+    )
+    assert run.steps == {Node.RECEIVE: SECOND, Node.OCR: SECOND}
+
+
 def test_a_first_run_needs_its_entries_and_stops_after_it_began() -> None:
     with pytest.raises(ValidationError):
         FirstRun.of(ID, [entry(Node.OCR, run=2)], NOW)
@@ -208,6 +220,27 @@ def test_tags_compare_as_a_set() -> None:
     assert getattr(judge(TAGS, [A, B], [A], ok(TAGS, [A, B])), "verdict", None) is (
         Verdict.CORRECTED
     )
+
+
+def test_a_suggestion_beside_an_ok_check_is_accepted_when_taken() -> None:
+    # Tags and a topic the signals proposed but did not set, a space the document could lie in.
+    topic = FieldCheck(field=TOPIC, outcome=Outcome.OK, confidence=1, suggestion=A)
+    assert getattr(judge(TOPIC, None, A, topic), "verdict", None) is Verdict.ACCEPTED
+    assert getattr(judge(TOPIC, None, B, topic), "verdict", None) is Verdict.CORRECTED
+    assert judge(TOPIC, None, None, topic) is not None  # left empty against the suggestion
+    tags = FieldCheck(field=TAGS, outcome=Outcome.OK, confidence=1, value=[A], suggestion=[B, C])
+    assert getattr(judge(TAGS, [A], [A, B], tags), "verdict", None) is Verdict.ACCEPTED
+    assert getattr(judge(TAGS, [A], [C, B, A], tags), "verdict", None) is Verdict.ACCEPTED
+    assert getattr(judge(TAGS, [A], [A], tags), "verdict", None) is Verdict.TAKEN
+    assert getattr(judge(TAGS, [A], [B], tags), "verdict", None) is Verdict.CORRECTED  # A gone
+    stays = FieldCheck(field=SPACE, outcome=Outcome.OK, confidence=1, suggestion=B)
+    assert getattr(judge(SPACE, A, A, stays), "verdict", None) is Verdict.TAKEN
+    assert getattr(judge(SPACE, A, B, stays), "verdict", None) is Verdict.ACCEPTED
+
+
+def test_a_space_the_automation_neither_chose_nor_suggested_gets_no_verdict() -> None:
+    assert judge(SPACE, A, A, uncertain(SPACE)) is None  # the signals disagreed, it stayed
+    assert judge(SPACE, A, B, uncertain(SPACE)) is None  # or the person moved it
 
 
 def test_each_signal_tells_whether_it_named_the_persons_value() -> None:

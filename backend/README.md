@@ -1069,8 +1069,11 @@ and why by words alone where the meaning was to take part (`reason` with a code:
   database and of the index, those with vectors and the vectors (`SearchIndex.stats`, from
   Meilisearch's index stats), the index jobs running and waiting with an estimate of when they
   are through (from the index jobs done in the last ten minutes), and how long index jobs ran
-  with and without embedding within `LEKTO_RETENTION`: an index job reports the sections it
-  embedded (`{"sections": n}` in its result). `POST /search/check` (admins) compares like the
+  with and without embedding (from the latest 2000 done within `LEKTO_RETENTION`, counted at
+  most once a minute per API process): an index job reports the sections it embedded
+  (`{"sections": n}` in its result) and whether it wrote without vectors because the embedding
+  failed (`"embedding_failed": true`; such a job measures neither kind). `POST /search/check`
+  (admins) compares like the
   reconciliation (`IndexingService.compare`) but only counts: current, missing, outdated,
   vectors of another model, left over.
 - **Rights.** The index query contains the rights (every document of the spaces the caller
@@ -1352,7 +1355,8 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
   page "System" to every user (`JobsService`): counts by kind and state (`GET /jobs/summary`,
   one `GROUP BY`), the jobs (`GET /jobs`; a document named only to those who may read it, the
   last error only to admins), how long the done ones waited and ran within `LEKTO_RETENTION`
-  (`GET /jobs/durations`: median and 90th percentile by nearest rank), and an admin queues a
+  (`GET /jobs/durations`: median and 90th percentile by nearest rank, from the latest 2000 done
+  jobs of each kind, counted at most once a minute per API process), and an admin queues a
   failed one again (`POST /jobs/{id}/retry`; a failed processing step goes through
   `POST /documents/{id}/retry`, so that its document's processing goes on).
 

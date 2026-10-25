@@ -12,7 +12,10 @@ from urllib.parse import urlsplit
 
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.evidence import (
+    currencies_in,
     fold_umlauts,
+    is_currency_code,
+    normalise,
     read_amount,
     read_date,
     read_number,
@@ -343,12 +346,10 @@ class Writing:
     currency: str = "EUR"
 
 
-_DECIMAL = r"-?\d+(?:\.\d+)?"
-_PLAIN_NUMBER = re.compile(_DECIMAL)
 _PLAIN_AMOUNT = re.compile(
-    rf"(?P<before>[A-Z]{{3}})?\s*(?P<amount>{_DECIMAL})\s*(?P<after>[A-Z]{{3}})?"
+    r"(?:(?P<before>[A-Z]{3})\s*)?(?P<amount>[+-]?(?:\d+(?:\.\d*)?|\.\d+))(?:\s*(?P<after>[A-Z]{3}))?"
 )
-_ISO_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+_WORDS = re.compile(r"[^\W\d_]+\.?")
 
 
 def read_written(
@@ -359,36 +360,36 @@ def read_written(
     received: date | None = None,
 ) -> FieldValue | None:
     """The value of `definition` that `text` writes (what a rule's template rendered); None if it
-    cannot be read. First the forms in which templates write values themselves: a number as its
-    decimal text (`1234.5`, `1.234` is one point two three four), a day in ISO 8601, a period as
-    `Period.notation` (`2026-Q3`), an amount as a number with a currency code or without one.
-    Otherwise as a person writes it, as Lekto reads a model's value (`2.111,68 €`, `12. März
-    2026`, `KW 38/2026`, `ja`): an ambiguous number the way `writing.language` means it, an
-    amount without a currency in `writing.currency`, a two-digit year the reading nearest to
-    `received` (the day the document came in). A period without a year (`September`) is not
-    read: a rule does not guess it. A choice must be one of the options; text is the text
-    without the spaces around it, never empty."""
+    cannot be read. First the forms in which templates write values themselves, the field's JSON
+    form (`field_from_json`: a number as its decimal text, `1234.5`, `.5`, `1.234` is one point
+    two three four; a day in ISO 8601), a period as `Period.notation` (`2026-Q3`; one in that form
+    that names no period, `2026-Q5`, is none), an amount as such a number with an ISO 4217 code
+    before or after it, or without one. Otherwise as a person writes it, as Lekto reads a model's
+    value (`2.111,68 €`, `12. März 2026`, `KW 38/2026`, `ja`): an ambiguous number the way
+    `writing.language` means it, an amount without a currency in `writing.currency`, a two-digit
+    year the reading nearest to `received` (the day the document came in). A number or an amount
+    is only the value: no words but a currency's (`Fällig in 14 Tagen` is no amount, `7 Stück`
+    no number). A period without a year (`September`) is not read: a rule does not guess it. A
+    choice must be one of the options as written; text and links are taken without the spaces
+    around them; nothing is empty."""
     raw = " ".join(text.split())
     if not raw:
         return None
+    kind = definition.data_type
+    if kind in (FieldType.NUMBER, FieldType.DATE):
+        try:
+            return field_from_json(definition, raw)
+        except ValidationError:
+            pass  # not the JSON form: as a person writes it
     value: object = None
     try:
-        match definition.data_type:
-            case FieldType.TEXT:
+        match kind:
+            case FieldType.TEXT | FieldType.CHOICE:
                 value = text.strip()
-            case FieldType.NUMBER if _PLAIN_NUMBER.fullmatch(raw):
-                value = Decimal(raw)
-            case FieldType.NUMBER:
+            case FieldType.NUMBER if _only_currencies(raw, allowed=False):
                 value = read_number(raw, language=writing.language)
             case FieldType.AMOUNT:
-                plain = _PLAIN_AMOUNT.fullmatch(raw)
-                if plain and not (plain["before"] and plain["after"]):
-                    code = plain["before"] or plain["after"] or writing.currency
-                    value = Money(Decimal(plain["amount"]), code)
-                elif found := read_amount(raw, language=writing.language, default=writing.currency):
-                    value = Money(*found)
-            case FieldType.DATE if _ISO_DAY.fullmatch(raw):
-                value = date.fromisoformat(raw)
+                value = _amount(raw, writing)
             case FieldType.DATE:
                 value = read_date(raw, received=received)
             case FieldType.PERIOD:
@@ -398,13 +399,30 @@ def read_written(
                     value = None if read is None or read[1] else read[0]
             case FieldType.BOOLEAN:
                 value = truth_value(raw)
-            case FieldType.CHOICE:
-                value = raw
             case FieldType.LINK:
-                value = Url(raw)
+                value = Url(text.strip())
         return None if value is None else definition.validate(value)
     except (InvalidOperation, ValueError, ValidationError):
         return None
+
+
+def _amount(raw: str, writing: Writing) -> Money | None:
+    plain = _PLAIN_AMOUNT.fullmatch(raw)
+    if plain and not (plain["before"] and plain["after"]):
+        code = plain["before"] or plain["after"]
+        if code is None:
+            return Money(Decimal(plain["amount"]), writing.currency)
+        return Money(Decimal(plain["amount"]), code) if is_currency_code(code) else None
+    if not _only_currencies(raw, allowed=True):
+        return None
+    found = read_amount(raw, language=writing.language, default=writing.currency)
+    return None if found is None else Money(*found)
+
+
+def _only_currencies(raw: str, *, allowed: bool) -> bool:
+    """Whether `raw` has no words but those of a currency (`EUR`, `Euro`), or none at all."""
+    words = _WORDS.findall(normalise(raw))
+    return all(allowed and currencies_in(word) for word in words)
 
 
 _NOT_KEY = re.compile(r"[^a-z0-9]+")

@@ -155,7 +155,9 @@ class Period:
     @classmethod
     def from_notation(cls, text: str) -> Self | None:
         """The period `notation` writes (`2026`, `2026-Q3`, `2026-09`, `2026-W38`, `2026-09-15`,
-        `2026-09-01/2026-09-14`); None for any other text."""
+        `2026-09-01/2026-09-14`); None for text in no such form. ValidationError for text in one
+        of them that names no period (`2026-Q5`, `2027-W53`, `2026-02-30/2026-03-01`): it is not
+        to be read another way."""
         found = _NOTATION.fullmatch(text.strip())
         if found is None:
             return None
@@ -173,7 +175,7 @@ class Period:
                 return cls(date.fromisoformat(found["start"]), date.fromisoformat(found["end"]))
             return cls.year(year)
         except (ValueError, ValidationError):
-            return None
+            raise ValidationError(f"{text.strip()!r} names no period") from None
 
     def overlaps(self, other: "Period") -> bool:
         return self.start <= other.end and other.start <= self.end

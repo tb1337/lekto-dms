@@ -144,11 +144,27 @@ def test_a_period_is_written_in_iso_8601(period: Period, notation: str) -> None:
     assert Period.from_notation(notation) == period
 
 
-@pytest.mark.parametrize(
-    "text", ["", "September 2026", "2026-13", "2026-Q5", "2026-W54", "2026-09-30/2026-09-01", "26"]
-)
+@pytest.mark.parametrize("text", ["", "September 2026", "Q3 2026", "26", "2026-9"])
 def test_only_the_iso_notation_is_read_back(text: str) -> None:
     assert Period.from_notation(text) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "2026-13",
+        "2026-Q5",
+        "2026-Q0",
+        "2026-W00",
+        "2027-W53",
+        "2026-09-30/2026-09-01",
+        "2026-02-30/2026-03-01",
+    ],
+)
+def test_the_notation_of_no_period_is_refused(text: str) -> None:
+    """Not read another way (as the whole year, or the day it ends): it is no period."""
+    with pytest.raises(ValidationError, match="names no period"):
+        Period.from_notation(text)
 
 
 def test_a_period_knows_its_quarter_and_iso_week() -> None:
@@ -266,6 +282,12 @@ RECEIVED = date(2026, 10, 1)
         # The forms templates write themselves come first.
         (FieldType.NUMBER, "1.234", Decimal("1.234")),
         (FieldType.NUMBER, "-12", Decimal(-12)),
+        (FieldType.NUMBER, ".5", Decimal("0.5")),
+        (FieldType.NUMBER, "-.5", Decimal("-0.5")),
+        (FieldType.NUMBER, "1e3", Decimal(1000)),
+        (FieldType.DATE, "20260314", date(2026, 3, 14)),
+        (FieldType.DATE, "2026-W11-4", date(2026, 3, 12)),
+        (FieldType.AMOUNT, ".5 EUR", Money(Decimal("0.5"), "EUR")),
         (FieldType.AMOUNT, "1.234", Money(Decimal("1.234"), "EUR")),
         (FieldType.AMOUNT, "84.20 USD", Money(Decimal("84.20"), "USD")),
         (FieldType.AMOUNT, "CHF 5", Money(Decimal(5), "CHF")),
@@ -275,7 +297,7 @@ RECEIVED = date(2026, 10, 1)
         (FieldType.BOOLEAN, "false", False),
         # Then as a person writes it.
         (FieldType.NUMBER, "1.234,5", Decimal("1234.5")),
-        (FieldType.NUMBER, "  7 Stück ", Decimal(7)),
+        (FieldType.NUMBER, "  -7 ", Decimal(-7)),
         (FieldType.AMOUNT, "3.650,00 EUR", Money(Decimal("3650.00"), "EUR")),
         (FieldType.AMOUNT, "€ 84,20", Money(Decimal("84.20"), "EUR")),
         (FieldType.DATE, "12. März 2026", date(2026, 3, 12)),
@@ -285,11 +307,19 @@ RECEIVED = date(2026, 10, 1)
         (FieldType.BOOLEAN, "Ja", True),
         (FieldType.TEXT, "  A  text\n", "A  text"),
         (FieldType.CHOICE, " yearly ", "yearly"),
+        (FieldType.CHOICE, "Typ  A", "Typ  A"),
         (FieldType.LINK, " https://example.org/a ", Url("https://example.org/a")),
         # What cannot be read.
         (FieldType.NUMBER, "seven", None),
         (FieldType.NUMBER, "1 and 2", None),
+        # A number or an amount is only the value: no words but a currency's.
+        (FieldType.NUMBER, "7 Stück", None),
+        (FieldType.NUMBER, "Rechnung 4711", None),
+        (FieldType.AMOUNT, "Fällig in 14 Tagen", None),
+        (FieldType.AMOUNT, "12.50 PCS", None),
         (FieldType.AMOUNT, "12 EUR USD", None),
+        (FieldType.PERIOD, "2026-Q5", None),
+        (FieldType.PERIOD, "2026-02-30/2026-03-01", None),
         (FieldType.DATE, "31.02.2026", None),
         (FieldType.PERIOD, "September", None),
         (FieldType.BOOLEAN, "maybe", None),
@@ -301,7 +331,7 @@ RECEIVED = date(2026, 10, 1)
 def test_a_template_value_is_read_as_its_field_has_it(
     data_type: FieldType, text: str, expected: FieldValue | None
 ) -> None:
-    choices = ("monthly", "yearly") if data_type is FieldType.CHOICE else ()
+    choices = ("monthly", "yearly", "Typ  A") if data_type is FieldType.CHOICE else ()
     definition = FieldDefinition.create(name="F", data_type=data_type, now=NOW, choices=choices)
 
     assert read_written(definition, text, Writing(), received=RECEIVED) == expected

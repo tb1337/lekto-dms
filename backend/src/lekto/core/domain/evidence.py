@@ -446,6 +446,11 @@ _ISO_4217 = frozenset(_ISO_4217_CODES.split())
 _WORD = re.compile(r"[^\W\d_]+\.?|[€$£¥]")
 
 
+def is_currency_code(code: str) -> bool:
+    """Whether `code` is an active ISO 4217 code (`EUR`), not any three capitals (`PCS`)."""
+    return code in _ISO_4217
+
+
 def currencies_in(text: str) -> set[str]:
     """ISO 4217 codes the normalised `text` shows: as code (`EUR`), sign (`€`) or word
     (`Euro`)."""

@@ -45,7 +45,7 @@ from lekto.core.services.classification.nodes import (
     JudgeNode,
     LlmSignal,
 )
-from lekto.core.services.classification.prompts import EXTRACT_SYSTEM, PROPOSE_SYSTEM
+from lekto.core.services.classification.prompts import SYSTEM
 from lekto.core.services.classification.signals import (
     ABSTAINED,
     ClassifierSignal,
@@ -338,7 +338,7 @@ async def test_the_signal_asks_once_and_keeps_the_proposal(world: World) -> None
 
     (request,) = fake.requests
     assert request.schema_name == "proposal"
-    assert request.system == PROPOSE_SYSTEM
+    assert request.system == SYSTEM
     assert (
         "Fields:\n"
         '- a2: "Fällig am" (date)\n'
@@ -348,11 +348,11 @@ async def test_the_signal_asks_once_and_keeps_the_proposal(world: World) -> None
         "Document types, each with the keys of its fields:\n- Rechnung — fields: a2, a3, a4\n"
         "- Vertrag\n\n"
         "Fields for every document:\na1\n\n"
-    ) in request.user
-    assert "- Strom\n- Versicherung" in request.user
+    ) in request.task
+    assert "- Strom\n- Versicherung" in request.task
     # Contacts the text names (half of "Stadtwerke Beispielstadt"), not "AOK Bayern".
-    assert "Contacts:\n- Stadtwerke Musterstadt GmbH\n- Stadtwerke Beispielstadt\n" in request.user
-    assert "Postfach 12 34" in request.user
+    assert "Contacts:\n- Stadtwerke Musterstadt GmbH\n- Stadtwerke Beispielstadt\n" in request.task
+    assert "Postfach 12 34" in request.document
 
 
 async def test_without_a_model_the_signal_abstains(world: World) -> None:
@@ -367,8 +367,15 @@ async def test_an_unfit_answer_is_asked_again(world: World) -> None:
     assert result.outcome is Outcome.OK
     assert output(result)["attempts"] == 2
     first, second = fake.requests
-    assert second.user.startswith(first.user)
-    assert "Your previous answer was not valid: the answer is not JSON" in second.user
+    # Once more as before, with the note last: the two calls begin alike.
+    assert (second.system, second.document, second.task) == (
+        first.system,
+        first.document,
+        first.task,
+    )
+    assert first.retry is None
+    assert second.retry is not None
+    assert "Your previous answer was not valid: the answer is not JSON" in second.retry
 
 
 async def test_two_unfit_answers_fail_the_signal(world: World) -> None:
@@ -406,9 +413,11 @@ async def test_what_was_sent_is_kept_per_run(world: World) -> None:
     (kept,) = await exchanges(world, document, Node.SIGNAL_LLM)
     assert kept.run == document.processing.run
     first, second = kept.calls
-    assert (first.system, first.user) == (PROPOSE_SYSTEM, fake.requests[0].user)
+    sent = fake.requests[0]
+    assert (first.system, first.document, first.task) == (SYSTEM, sent.document, sent.task)
+    assert (first.user, first.retry) == ("", None)
     assert first.answer == "Sure! Here is the JSON."
-    assert second.user == fake.requests[1].user
+    assert second.retry == fake.requests[1].retry is not None
     assert json.loads(second.answer) == proposal()
     assert (second.model, second.usage) == ("fake-llm 1", {})
 
@@ -458,8 +467,8 @@ async def test_long_texts_are_shortened_but_checked_in_full(world: World) -> Non
     outcome = await judge(world, await document_with(world, text), fake, input_budget=2000)
     assert isinstance(outcome, MetadataResult)
     assert outcome.result.input["truncated"] is True
-    assert "characters left out" in fake.requests[0].user
-    assert len(fake.requests[0].user) < 3000
+    assert "characters left out" in fake.requests[0].document
+    assert len(fake.requests[0].document) < 3000
     assert checks(outcome.result)["document_date"].ok
 
 
@@ -473,8 +482,8 @@ async def test_many_tags_list_those_named_in_the_text_first(world: World) -> Non
     text = INVOICE + "\nTarif: Strom Basis\n"
     await signal_step(world, fake, max_tags=3).run(await document_with(world, text))
     request = fake.requests[0]
-    assert "- Strom" in request.user
-    assert request.user.count("- Aaa") == 2
+    assert "- Strom" in request.task
+    assert request.task.count("- Aaa") == 2
 
 
 async def add_contact(world: World, name: str, *aliases: str) -> Contact:
@@ -496,7 +505,7 @@ async def test_contacts_the_text_names_most_are_listed(world: World) -> None:
     fake = model(proposal())
     text = EXAMPLE_LETTER + "\nINTER, Südstadt\n"
     result = await signal_step(world, fake, max_contacts=3).run(await document_with(world, text))
-    contacts = fake.requests[0].user.split("\n\nFields:")[0]
+    contacts = fake.requests[0].task.split("\n\nFields:")[0].split("\n\n", 1)[1]
     assert contacts == (
         "Contacts:\n"
         "- Nord Versicherungsgruppe (also written as: Nord Krankenversicherung AG)\n"
@@ -515,7 +524,7 @@ async def test_type_descriptions_are_listed(world: World) -> None:
         await uow.commit()
     fake = model(proposal())
     await signal_step(world, fake).run(await document_with(world))
-    assert "- Lohnabrechnung: Entgeltbescheinigung\n- Rechnung — fields: " in fake.requests[0].user
+    assert "- Lohnabrechnung: Entgeltbescheinigung\n- Rechnung — fields: " in fake.requests[0].task
 
 
 # --- the judge --------------------------------------------------------------------------------
@@ -723,8 +732,8 @@ async def test_tags_set_by_hand_are_neither_listed_nor_set(world: World) -> None
         await uow.commit()
     fake = model(proposal(tags=["Strom", "Bezahlt", "Versorger"]))
     result = await judge(world, await document_with(world, INVOICE), fake)
-    assert "- Bezahlt" not in fake.requests[0].user and "- Versorger" not in fake.requests[0].user
-    assert "- Strom" in fake.requests[0].user
+    assert "- Bezahlt" not in fake.requests[0].task and "- Versorger" not in fake.requests[0].task
+    assert "- Strom" in fake.requests[0].task
     assert isinstance(result, MetadataResult)
     assert result.add_tags == frozenset({seeded.tags["Strom"].id})
 
@@ -1606,8 +1615,8 @@ async def test_extraction_prompt_names_type_and_fields(world: World) -> None:
     fake = model(extraction())
     await fields_step(world, fake).run(await document_with(world, type=seeded.types["Rechnung"]))
     (request,) = fake.requests
-    assert 'The document is of type "Rechnung".' in request.user
-    assert '- a3: "Rechnungsbetrag" (object with amount' in request.user
+    assert 'The document is of type "Rechnung".' in request.task
+    assert '- a3: "Rechnungsbetrag" (object with amount' in request.task
     assert request.schema_name == "fields"
 
 
@@ -1630,7 +1639,7 @@ async def test_a_field_set_by_hand_is_never_asked_for(world: World) -> None:
     fake = model(proposal())
     await signal_step(world, fake).run(document)
     (request,) = fake.requests
-    assert "Rechnungsnummer" not in request.user and "Bezahlt" not in request.user
+    assert "Rechnungsnummer" not in request.task and "Bezahlt" not in request.task
 
     given = extraction()["fields"]
     assert isinstance(given, dict)
@@ -1639,7 +1648,7 @@ async def test_a_field_set_by_hand_is_never_asked_for(world: World) -> None:
     outcome = await fields_step(world, fake).run(document)
     assert isinstance(outcome, MetadataResult)
     (request,) = fake.requests
-    assert "Rechnungsnummer" not in request.user and "Bezahlt" not in request.user
+    assert "Rechnungsnummer" not in request.task and "Bezahlt" not in request.task
     assert outcome.result.outcome is Outcome.OK
     check = field_check(seeded, outcome, "Rechnungsnummer")
     assert check.ok and check.reason == "'Rechnungsnummer' is set by hand"
@@ -1654,6 +1663,26 @@ async def signalled(
     result = await signal_step(world, model(answer)).run(document)
     await record(world, document, Node.SIGNAL_LLM, result)
     return document, result
+
+
+async def test_the_calls_about_a_document_begin_alike(world: World) -> None:
+    """For prompt caching: the signal and the fields node send the same system prompt and the
+    same document, and differ only in their tasks after it."""
+    seeded = await seed(world)
+    document = await document_with(world, type=seeded.types["Rechnung"])
+    proposing = model(proposal(document_type="Vertrag"))
+    result = await signal_step(world, proposing).run(document)
+    await record(world, document, Node.SIGNAL_LLM, result)
+    extracting = model(extraction())
+    await fields_step(world, extracting).run(document)
+
+    assert result.outcome is Outcome.OK, result.reasons
+    (first,) = proposing.requests
+    assert extracting.requests  # the judge took the type the model did not choose
+    for second in extracting.requests:  # also once more after an answer that did not fit
+        assert (first.system, first.document) == (second.system, second.document)
+        assert first.task != second.task
+    assert first.document.startswith("The document follows between <document-")
 
 
 async def test_the_signal_s_values_are_taken_over_for_its_type(world: World) -> None:
@@ -1701,8 +1730,8 @@ async def test_after_a_type_correction_the_fields_are_asked_for(world: World) ->
 
     assert isinstance(outcome, MetadataResult)
     (request,) = fake.requests
-    assert '- a1: "Fällig am"' in request.user
-    assert "Bezahlt" not in request.user
+    assert '- a1: "Fällig am"' in request.task
+    assert "Bezahlt" not in request.task
     assert outcome.result.input["taken_over"] == 1
     assert outcome.result.outcome is Outcome.OK
     assert outcome.changes.fields[seeded.fields["Bezahlt"].id] is True
@@ -1710,7 +1739,7 @@ async def test_after_a_type_correction_the_fields_are_asked_for(world: World) ->
         Decimal("84.20"), "EUR"
     )
     (kept,) = await exchanges(world, document, Node.FIELDS)
-    assert kept.calls[0].system == EXTRACT_SYSTEM
+    assert kept.calls[0].system == SYSTEM
 
 
 async def test_an_optional_field_the_model_misreads_is_uncertain(world: World) -> None:

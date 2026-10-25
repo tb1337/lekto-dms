@@ -142,8 +142,8 @@ class FakeAnswer:
         """The answer to a request of the language model's signal (`proposal`) or of the fields
         node."""
         if request.schema_name == PROPOSE_SCHEMA:
-            return self._proposal(request.user)
-        keys = dict(_KEY_LINE.findall(_before_document(request.user)))
+            return self._proposal(request.task)
+        keys = dict(_KEY_LINE.findall(request.task))
         empty: JsonObject = {"value": None, "evidence": None, "label": None}
         return {"fields": {key: self.fields.get(name, empty) for key, name in keys.items()}}
 
@@ -246,17 +246,13 @@ def load_set(path: Path) -> EvaluationSet:
     return EvaluationSet(path, master, cases, training)
 
 
-# The fixed answer learns the field keys it is asked for only from the rendered prompt, so the
-# three below follow the wording of `core/services/classification/prompts.py` (`propose_message`,
-# `extract_message`): the line that opens the document, the field lines `- a1: "Name"`, the
-# headings "Fields", "Document types" and "Fields for every document", and a type's keys after
-# `FIELDS_OF_TYPE`; the spaces under `SPACES_HEADING` as `- s1: label`. A change there leaves
-# the fields of the fixed answers empty; `tests/unit/test_evaluation.py` renders the prompts to
-# hold the two together.
-
-
-def _before_document(message: str) -> str:
-    return message.split("The document follows", 1)[0]
+# The fixed answer learns the field keys it is asked for only from the rendered task, so the
+# functions below follow the wording of `core/services/classification/prompts.py`
+# (`propose_task`, `extract_task`): the field lines `- a1: "Name"`, the headings "Fields",
+# "Document types" and "Fields for every document", and a type's keys after `FIELDS_OF_TYPE`;
+# the spaces under `SPACES_HEADING` as `- s1: label`. A change there leaves the fields of the
+# fixed answers empty; `tests/unit/test_evaluation.py` renders the tasks to hold the two
+# together.
 
 
 _KEY_LINE = re.compile(r'^\s*- (a\d+): "([^"\n]*)"', re.M)
@@ -268,7 +264,7 @@ def _proposal_keys(message: str, document_type: JsonValue) -> dict[str, str]:
     names: dict[str, str] = {}
     wanted: list[str] = []
     section = None
-    for line in _before_document(message).splitlines():
+    for line in message.splitlines():
         if not line.startswith(" ") and line.endswith(":"):
             section = line
             continue
@@ -291,10 +287,9 @@ _SPACE_LINE = re.compile(r"^- (s\d+): (.*)$")
 
 def _space_keys(message: str) -> dict[str, str]:
     """The keys of the spaces the request lists, by their labels; empty without spaces."""
-    before = _before_document(message)
-    if SPACES_HEADING not in before:
+    if SPACES_HEADING not in message:
         return {}
-    listed = before.split(SPACES_HEADING, 1)[1]
+    listed = message.split(SPACES_HEADING, 1)[1]
     return {
         found[2]: found[1]
         for line in listed.splitlines()

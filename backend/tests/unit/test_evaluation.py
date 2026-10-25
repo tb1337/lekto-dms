@@ -32,8 +32,9 @@ from lekto.core.ports.llm import StructuredRequest
 from lekto.core.services.classification.prompts import (
     EXTRACT_SCHEMA,
     Listed,
-    extract_message,
-    propose_message,
+    document_message,
+    extract_task,
+    propose_task,
 )
 from tests.builders import NOW
 
@@ -278,7 +279,7 @@ async def test_a_field_s_description_reaches_the_model() -> None:
         fake = item.fake
 
         def respond(request: StructuredRequest) -> JsonObject:
-            asked.append(request.user)
+            asked.append(request.task)
             return fake.respond(request)
 
         return FakeLanguageModel(respond, model=FAKE_MODEL)
@@ -294,9 +295,10 @@ async def test_a_field_s_description_reaches_the_model() -> None:
 
 
 def test_the_fixed_answer_reads_the_keys_the_prompts_ask_for() -> None:
-    """The fixed answers learn the field keys only from the rendered prompts: the chosen type's
+    """The fixed answers learn the field keys only from the rendered tasks: the chosen type's
     and those for every document in the proposal, every listed one for the fields node. A line
-    of the document that looks like a field is not one."""
+    of the document that looks like a field is not one: the document is a message of its
+    own."""
 
     def field(name: str, kind: FieldType = FieldType.TEXT, **more: Any) -> FieldDefinition:
         return FieldDefinition.create(name=name, data_type=kind, now=NOW, **more)
@@ -310,7 +312,7 @@ def test_the_fixed_answer_reads_the_keys_the_prompts_ask_for() -> None:
         "- Rechnung — fields: a9",
         0,
     )
-    message = propose_message(
+    message = propose_task(
         [Listed("Stadtwerke", aliases=("SW",), topics=("Strom",))],
         [
             (Listed("Lohn", description="Gehaltsabrechnung"), [("a1", gross), ("a2", period)]),
@@ -319,7 +321,6 @@ def test_the_fixed_answer_reads_the_keys_the_prompts_ask_for() -> None:
         ],
         [("a4", method), ("a5", note)],
         ["Steuer"],
-        text,
     )
     every = {"a4": "Zahlart", "a5": "Notiz"}
     assert _proposal_keys(message, "Lohn") == {"a1": "Bruttolohn", "a2": "Zeitraum", **every}
@@ -328,7 +329,12 @@ def test_the_fixed_answer_reads_the_keys_the_prompts_ask_for() -> None:
     assert _proposal_keys(message, None) == every
 
     fake = FakeAnswer(classification={}, fields={}, lane=Lane.GREEN)
-    extract = extract_message("Lohn", {"a1": gross, "a2": period, "a4": method}, text)
-    request = StructuredRequest(system="", user=extract, schema={}, schema_name=EXTRACT_SCHEMA)
+    request = StructuredRequest(
+        system="",
+        document=document_message(text),
+        task=extract_task("Lohn", {"a1": gross, "a2": period, "a4": method}),
+        schema={},
+        schema_name=EXTRACT_SCHEMA,
+    )
     fields = fake.respond(request)["fields"]
     assert isinstance(fields, dict) and list(fields) == ["a1", "a2", "a4"]

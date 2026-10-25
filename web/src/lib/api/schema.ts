@@ -5731,19 +5731,36 @@ export interface components {
 		ModelCallKind: 'propose' | 'extract';
 		/**
 		 * ModelCallOut
-		 * @description One request to the language model and its answer.
+		 * @description One request to the language model and its answer. A call of the signal or the fields node
+		 *     (since `propose-6`, `extract-6`) sent `system`, `document`, `task` and, after an unfit
+		 *     answer, `retry`, each a message in this order; a call of one message has it in `user`.
 		 */
 		ModelCallOut: {
 			/**
 			 * System
-			 * @description The system message.
+			 * @description The system message, the same for every call.
 			 */
 			system: string;
 			/**
 			 * User
-			 * @description The user message, with the document's text.
+			 * @description The one message of a call that sent one: a page the VLM read, the context a webhook got for a model call, a call before `propose-6`; else empty.
 			 */
 			user: string;
+			/**
+			 * Document
+			 * @description The document's text in its markers; else empty.
+			 */
+			document: string;
+			/**
+			 * Task
+			 * @description What the call wanted, after the document; else empty.
+			 */
+			task: string;
+			/**
+			 * Retry
+			 * @description After an answer that did not fit: what was wrong, sent last.
+			 */
+			retry: string | null;
 			/**
 			 * Answer
 			 * @description The model's text as it came.

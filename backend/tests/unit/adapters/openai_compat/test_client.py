@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import json
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 import httpx2
@@ -15,6 +16,7 @@ from lekto.adapters.outbound.openai_compat import (
     OpenAiCompatEmbeddings,
     OpenAiCompatLanguageModel,
 )
+from lekto.adapters.outbound.openai_compat.client import SCHEMA_MESSAGE
 from lekto.core.domain.errors import EmbeddingsError, LanguageModelError
 from tests.builders import DEFAULT_SETTINGS
 from tests.contracts.language_model import REQUEST, EmbeddingsContract, LanguageModelContract
@@ -140,9 +142,11 @@ async def test_sends_a_strict_json_schema_request(endpoint: SimulatedEndpoint) -
     assert request.headers["authorization"] == "Bearer sk-secret"
     body = endpoint.body()
     assert body["model"] == "qwen3"
+    # The fixed form a proxy relies on: system, document, task.
     assert body["messages"] == [
         {"role": "system", "content": REQUEST.system},
-        {"role": "user", "content": REQUEST.user},
+        {"role": "user", "content": REQUEST.document},
+        {"role": "user", "content": REQUEST.task},
     ]
     assert body["temperature"] == 0
     assert body["seed"] == 7
@@ -171,6 +175,25 @@ async def test_json_object_format_and_no_key(endpoint: SimulatedEndpoint) -> Non
     assert body["response_format"] == {"type": "json_object"}
     assert body["temperature"] == 0.3
     assert "seed" not in body
+    # The schema follows the task: the calls about a document still begin alike.
+    schema = json.dumps(REQUEST.schema, ensure_ascii=False, separators=(",", ":"))
+    assert [message["content"] for message in body["messages"]] == [
+        REQUEST.system,
+        REQUEST.document,
+        REQUEST.task,
+        SCHEMA_MESSAGE + schema,
+    ]
+
+
+async def test_a_note_to_answer_again_comes_last(endpoint: SimulatedEndpoint) -> None:
+    again = replace(REQUEST, retry="Your previous answer was not valid.")
+    await language_model(endpoint.transport).complete(again)
+    await language_model(endpoint.transport, response_format="json_object").complete(again)
+
+    first, second = (json.loads(request.content)["messages"] for request in endpoint.requests)
+    assert first[:3] == second[:3]  # system, document, task
+    assert first[3:] == [{"role": "user", "content": again.retry}]
+    assert second[4:] == [{"role": "user", "content": again.retry}]
 
 
 async def test_without_a_temperature_the_endpoint_chooses(endpoint: SimulatedEndpoint) -> None:

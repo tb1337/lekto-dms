@@ -7,6 +7,7 @@
 import type { components } from '#lib/api/schema.ts';
 import { fieldLabel } from '#lib/describe.ts';
 import { fieldTypeLabel, isFieldType } from '#lib/fields.ts';
+import { labelOfKind } from '#lib/identifiers.ts';
 import { formatDate, formatNumber, formatPercent, getLocale, regionalLocale } from '#lib/i18n.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { NODE_LABELS } from '#lib/node-labels.ts';
@@ -31,7 +32,8 @@ export type ReasonKind =
 	| 'nodes'
 	| 'thing'
 	| 'action'
-	| 'field_type';
+	| 'field_type'
+	| 'identifier_kind';
 
 /** A message of `#lib/paraglide/messages.js`, whatever it takes. */
 type Message = (inputs: never) => string;
@@ -335,6 +337,7 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	not_iban: entry(m.reason_not_iban),
 	not_vat_id: entry(m.reason_not_vat_id),
 	not_customer_number: entry(m.reason_not_customer_number),
+	not_of_kind: entry(m.reason_not_of_kind, { kind: 'identifier_kind' }),
 	not_personnel_number: entry(m.reason_not_personnel_number),
 	not_domain: entry(m.reason_not_domain),
 	free_mail_domain: entry(m.reason_free_mail_domain),
@@ -555,6 +558,8 @@ function write(value: unknown, kind: ReasonKind | undefined, options: ReasonOpti
 			return own(ACTIONS, String(value))?.() ?? String(value);
 		case 'field_type':
 			return isFieldType(value) ? fieldTypeLabel(value) : String(value);
+		case 'identifier_kind':
+			return labelOfKind(String(value));
 		case 'nodes':
 			return new Intl.ListFormat(listLocale(), { type: 'conjunction' }).format(
 				items(value).map((node) => {

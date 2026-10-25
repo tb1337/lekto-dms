@@ -6,6 +6,7 @@ import hmac
 import json
 from dataclasses import replace
 from datetime import timedelta
+from decimal import Decimal
 
 import pytest
 
@@ -17,14 +18,17 @@ from lekto.core.domain.events import (
     DocumentReceived,
     LaneChanged,
 )
+from lekto.core.domain.fields import FieldDefinition, FieldType, Money
 from lekto.core.domain.ids import DocumentId, WebhookId, new_id
 from lekto.core.domain.jobs import Job, JobStatus
+from lekto.core.domain.master_data import Contact, DocumentType
 from lekto.core.domain.pipeline import Lane
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.domain.webhooks import (
     DISABLED_FAILING,
     TEST_EVENT,
+    BodyFormat,
     DeliveryOutcome,
     Webhook,
     WebhookDelivery,
@@ -413,6 +417,105 @@ async def test_header_values_that_cannot_be_decrypted_give_up_without_sending(
     assert world.sender.requests == []
     (row,) = await log(world, created.webhook)
     assert row.outcome is DeliveryOutcome.GAVE_UP and "header values" in (row.error or "")
+
+
+async def described(world: World, owner: User) -> Document:
+    """A green document of the owner with a contact, a type and an amount."""
+    contact = Contact.create(name="Stadtwerke", now=NOW)
+    kind = DocumentType.create(name="Rechnung", now=NOW)
+    amount = FieldDefinition.create(
+        name="Betrag", data_type=FieldType.AMOUNT, document_type_ids=[kind.id], now=NOW
+    )
+    document = builders.processed(owner, await world.personal_space(owner))
+    document.title = "Strom März"
+    document.contact_id, document.document_type_id = contact.id, kind.id
+    document.fields = {amount.id: Money(Decimal("120.50"), "EUR")}
+    async with world.uow() as uow:
+        await uow.contacts.add(contact)
+        await uow.document_types.add(kind)
+        await uow.fields.add(amount)
+        await uow.documents.add(document)
+        await uow.commit()
+    return document
+
+
+async def test_a_full_body_carries_the_document_as_it_is(world: World) -> None:
+    user = await world.user()
+    document = await described(world, user)
+    await world.webhooks.create(
+        user.id, name="HA", url=URL, event_types=["*"], signed=False, body=BodyFormat.FULL
+    )
+    service = world.webhook_delivery()
+    event = await queue(world, document, service)
+    await service.run_next_job()
+    body = json.loads(world.sender.requests[0].body)
+    assert body["id"] == str(event.id) and body["document_id"] == str(document.id)
+    shown = body["document"]
+    assert shown["title"] == "Strom März"
+    assert shown["contact"]["name"] == "Stadtwerke"
+    assert shown["document_type"]["name"] == "Rechnung"
+    assert shown["fields"] == {"betrag": {"amount": "120.50", "currency": "EUR"}}
+    assert shown["lane"] == "green"
+    assert shown["link"] == f"https://lekto.example.org/ui/documents/{document.id}"
+
+
+async def test_a_template_body_is_what_the_template_makes(world: World) -> None:
+    user = await world.user()
+    document = await described(world, user)
+    template = (
+        '{"message": {{ title | json }}, "amount": {{ field.betrag.amount | json }}, '
+        '"from": {{ contact | json }}, "event": {{ event.type | json }}, '
+        '"topic": {{ topic | default: nil | json }}, "open": {{ link | json }}}'
+    )
+    await world.webhooks.create(
+        user.id,
+        name="HA",
+        url=URL,
+        event_types=["*"],
+        signed=False,
+        body=BodyFormat.TEMPLATE,
+        body_template=template,
+    )
+    service = world.webhook_delivery()
+    await queue(world, document, service)
+    await service.run_next_job()
+    assert json.loads(world.sender.requests[0].body) == {
+        "message": "Strom März",
+        "amount": "120.50",
+        "from": "Stadtwerke",
+        "event": "document.lane_changed",
+        "topic": None,
+        "open": f"https://lekto.example.org/ui/documents/{document.id}",
+    }
+
+
+@pytest.mark.parametrize(
+    ("template", "error"),
+    [
+        ('{"t": {{ topic | json }}}', "the template writes a missing value: topic"),
+        ('{"t": {{ title }}}', "the template does not make JSON"),
+    ],
+)
+async def test_a_template_that_makes_no_json_gives_up_without_sending(
+    world: World, template: str, error: str
+) -> None:
+    user = await world.user()
+    document = await described(world, user)
+    created = await world.webhooks.create(
+        user.id,
+        name="HA",
+        url=URL,
+        event_types=["*"],
+        body=BodyFormat.TEMPLATE,
+        body_template=template,
+    )
+    service = world.webhook_delivery()
+    await queue(world, document, service)
+    await service.run_next_job()
+    assert world.sender.requests == []
+    (row,) = await log(world, created.webhook)
+    assert row.outcome is DeliveryOutcome.GAVE_UP
+    assert (row.error or "").startswith(error)
 
 
 # --- rights at the time of the attempt ----------------------------------------------------------

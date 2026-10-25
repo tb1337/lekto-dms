@@ -730,11 +730,25 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             fetch_logos=container.logo_fetcher is not None,
         ),
         logos=LogoService(uow, clock, store, container.images, container.logo_fetcher),
-        rules=RuleService(uow, clock, container.templates, container.patterns),
-        webhooks=WebhookService(uow, clock, container.cipher, webhook_policy_of(settings)),
+        rules=RuleService(
+            uow,
+            clock,
+            container.templates,
+            container.patterns,
+            link_base=None if settings.public_url is None else str(settings.public_url),
+        ),
+        webhooks=WebhookService(
+            uow, clock, container.cipher, webhook_policy_of(settings), container.templates
+        ),
         lenses=LensService(uow, clock),
         webhook_delivery=WebhookDeliveryService(
-            uow, clock, container.cipher, container.webhook_sender, webhook_policy_of(settings)
+            uow,
+            clock,
+            container.cipher,
+            container.webhook_sender,
+            webhook_policy_of(settings),
+            container.templates,
+            link_base=None if settings.public_url is None else str(settings.public_url),
         ),
         rule_applications=RuleApplicationService(
             uow,

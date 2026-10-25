@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -10,10 +11,12 @@ from lekto.core.domain.webhooks import (
     ALL_EVENTS,
     DISABLED_FAILING,
     ID_HEADER,
+    MAX_BODY_TEMPLATE,
     MAX_HEADER_VALUE,
     MAX_HEADERS,
     SIGNATURE_HEADER,
     TIMESTAMP_HEADER,
+    BodyFormat,
     DeliveryOutcome,
     Webhook,
     WebhookDelivery,
@@ -21,6 +24,7 @@ from lekto.core.domain.webhooks import (
     headers_from_bytes,
     headers_to_bytes,
     new_secret,
+    rendered_body,
     sign,
     signed_headers,
     validate_event_types,
@@ -310,3 +314,56 @@ def test_without_a_secret_a_request_has_id_and_timestamp_but_no_signature() -> N
     headers = signed_headers([], "msg_1", 1_700_000_000, b"{}")
     assert headers == {ID_HEADER: "msg_1", TIMESTAMP_HEADER: "1700000000"}
     assert SIGNATURE_HEADER not in headers
+
+
+# --- body -----------------------------------------------------------------------------------------
+
+
+def body_of(webhook: Webhook) -> tuple[BodyFormat, str | None]:
+    return webhook.body, webhook.body_template
+
+
+def test_a_webhook_is_thin_unless_set_otherwise_and_a_template_comes_with_its_body() -> None:
+    webhook = hook()
+    assert body_of(webhook) == (BodyFormat.THIN, None)
+    template = '{"title": {{ title | json }}}'
+    webhook.set_body(BodyFormat.TEMPLATE, template, now=NOW)
+    assert body_of(webhook) == (BodyFormat.TEMPLATE, template)
+    webhook.set_body(BodyFormat.FULL, None, now=NOW)
+    assert body_of(webhook) == (BodyFormat.FULL, None)
+    for body, given in (
+        (BodyFormat.TEMPLATE, None),
+        (BodyFormat.TEMPLATE, "  "),
+        (BodyFormat.TEMPLATE, "x" * (MAX_BODY_TEMPLATE + 1)),
+        (BodyFormat.THIN, "{}"),
+        (BodyFormat.FULL, "{}"),
+    ):
+        with pytest.raises(ValidationError):
+            webhook.set_body(body, given, now=NOW)
+    assert body_of(webhook) == (BodyFormat.FULL, None)
+
+
+def test_a_full_body_carries_the_document_and_a_thin_one_does_not() -> None:
+    event, document = EventId(new_id()), DocumentId(new_id())
+    thin = event_body(event_id=event, type="document.filed", occurred_at=NOW, document_id=document)
+    assert "document" not in json.loads(thin)
+    full = event_body(
+        event_id=event,
+        type="document.filed",
+        occurred_at=NOW,
+        document_id=document,
+        document={"title": "Rechnung"},
+        full=True,
+    )
+    assert json.loads(full)["document"] == {"title": "Rechnung"}
+    gone = event_body(
+        event_id=event, type="document.deleted", occurred_at=NOW, document_id=document, full=True
+    )
+    assert json.loads(gone)["document"] is None
+
+
+def test_a_rendered_body_must_be_json_and_goes_as_it_is() -> None:
+    text = '{ "title": "Rechnung März" }\n'
+    assert rendered_body(text) == text.encode("utf-8")
+    with pytest.raises(ValueError, match="does not make JSON"):
+        rendered_body('{"title": Rechnung}')

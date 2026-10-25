@@ -524,3 +524,31 @@ async def test_a_template_is_previewed_with_a_document(api: Api) -> None:
     other = await api.user()
     response = await api.client.post(f"{PREFIX}/templates/preview", json=title, headers=auth(other))
     assert response.status_code == 404
+
+
+async def test_a_webhook_template_is_previewed_as_json(api: Api) -> None:
+    user = await api.user()
+    u = auth(user)
+    id = await upload(api, u)
+
+    async def preview(template: str) -> dict[str, Any]:
+        body = {"template": template, "document_id": id, "purpose": "webhook"}
+        response = await api.client.post(f"{PREFIX}/templates/preview", json=body, headers=u)
+        assert response.status_code == 200, response.text
+        result: dict[str, Any] = response.json()
+        return result
+
+    shown = await preview(
+        '{\n  "file": {{ filename | json }},\n  "id": {{ document_id | json }},\n'
+        '  "event": {{ event.type | json }}\n}'
+    )
+    assert shown["error"] is None and shown["missing"] is None
+    # As it is, whitespace kept: what the receiver gets.
+    assert shown["rendered"] == (
+        f'{{\n  "file": "Bill 2026",\n  "id": "{id}",\n  "event": "webhook.test"\n}}'
+    )
+    not_json = await preview('{"file": {{ filename }}}')
+    assert not_json["error"].startswith("the template does not make JSON")
+    long = {"template": "x" * 501, "document_id": id}
+    response = await api.client.post(f"{PREFIX}/templates/preview", json=long, headers=u)
+    assert response.json()["error"] == "the template has more than 500 characters"

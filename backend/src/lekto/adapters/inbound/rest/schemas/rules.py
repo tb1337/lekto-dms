@@ -40,6 +40,7 @@ from lekto.core.domain.rules import (
 )
 from lekto.core.domain.rules_json import definition_to_json
 from lekto.core.domain.validation import MAX_NAME
+from lekto.core.domain.webhooks import MAX_BODY_TEMPLATE
 from lekto.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
 from lekto.core.services.rules.changes import ArrivalStep
 from lekto.core.services.rules.retroactive import Outcome
@@ -431,9 +432,21 @@ class TemplatePreviewIn(BaseModel):
         },
     )
 
-    template: str = Field(max_length=MAX_TEXT, description=TEMPLATE_DESCRIPTION)
+    template: str = Field(
+        max_length=MAX_BODY_TEMPLATE,
+        description=TEMPLATE_DESCRIPTION
+        + f" At most {MAX_TEXT} characters, a webhook's body {MAX_BODY_TEMPLATE}.",
+    )
     document_id: UUID | None = Field(
         default=None, description="A document the caller may read, to render the template with."
+    )
+    purpose: Literal["rule", "webhook"] = Field(
+        default="rule",
+        description=(
+            "`webhook`: the template of a webhook's body. It sees `event` (here a "
+            "`webhook.test`), `document_id`, `lane` and `link` too, is rendered as it is "
+            "(whitespace kept) and must make JSON."
+        ),
     )
     document_type_id: UUID | None = Field(
         default=None,

@@ -76,6 +76,8 @@ async def create_webhook(
         active=body.active,
         signed=body.signed,
         headers=_headers(body.headers),
+        body=body.body,
+        body_template=body.body_template,
     )
     return WebhookCreated.created(created)
 
@@ -111,6 +113,8 @@ async def update_webhook(
         headers=None
         if body.headers is None
         else [(header.name, header.value) for header in body.headers],
+        body=body.body,
+        body_template=body.body_template,
     )
     return WebhookOut.of(webhook)
 

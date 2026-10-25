@@ -112,6 +112,38 @@ async def test_reserved_or_repeated_headers_are_a_422(api: Api) -> None:
         assert response.status_code == 422, (headers, response.text)
 
 
+async def test_a_webhook_with_a_template_body_and_its_preview(api: Api) -> None:
+    user = await api.user()
+    template = '{"message": {{ title | json }}, "event": {{ event.type | json }}}'
+    created = await post(
+        api, "/webhooks", {**BODY, "body": "template", "body_template": template}, auth(user)
+    )
+    assert (created["body"], created["body_template"]) == ("template", template)
+    bad = await api.client.post(
+        f"{PREFIX}/webhooks",
+        json={**BODY, "body": "template", "body_template": '{"x": {{ nonsense }}}'},
+        headers=auth(user),
+    )
+    assert bad.status_code == 422, bad.text
+    changed = await api.client.patch(
+        f"{PREFIX}/webhooks/{created['id']}", json={"body": "full"}, headers=auth(user)
+    )
+    assert (changed.json()["body"], changed.json()["body_template"]) == ("full", None)
+
+    preview = await api.client.post(
+        f"{PREFIX}/templates/preview",
+        json={"template": template, "purpose": "webhook"},
+        headers=auth(user),
+    )
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["error"] is None
+    assert set(preview.json()["used"]) == {"title", "event.type"}
+    rule = await api.client.post(
+        f"{PREFIX}/templates/preview", json={"template": "{{ event.type }}"}, headers=auth(user)
+    )
+    assert rule.json()["error"] == "unknown value event.type"
+
+
 async def test_invalid_input_is_a_422(api: Api) -> None:
     user = await api.user()
     for body in (

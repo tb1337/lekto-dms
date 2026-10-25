@@ -16,7 +16,6 @@ Who may do what:
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 
-from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import (
     ConflictError,
     MissingValueError,
@@ -26,10 +25,19 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.fields import FieldDefinition, FieldType
-from lekto.core.domain.ids import DocumentId, DocumentTypeId, RuleId, SpaceId, UserId
+from lekto.core.domain.ids import (
+    DocumentId,
+    DocumentTypeId,
+    EventId,
+    RuleId,
+    SpaceId,
+    UserId,
+    new_id,
+)
 from lekto.core.domain.permissions import space_role
 from lekto.core.domain.reasons import Action, ReasonCode, because
 from lekto.core.domain.rules import (
+    MAX_TEXT,
     ForceReview,
     Rule,
     RuleDefinition,
@@ -43,14 +51,15 @@ from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.templates import (
     FIELD,
     NAMES,
+    WEBHOOK_NAMES,
     TemplateValue,
     rename_field_key,
-    template_values,
     unknown_values,
     writing_templates,
 )
 from lekto.core.domain.templates import uses_field as field_used
 from lekto.core.domain.users import User
+from lekto.core.domain.webhooks import MAX_BODY_TEMPLATE, TEST_EVENT, rendered_body
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.patterns import PatternMatcher
 from lekto.core.ports.templates import TemplateRenderer
@@ -61,15 +70,16 @@ from lekto.core.services._access import (
     load_actor,
     load_lister,
     readable_document,
-    space_label,
 )
 from lekto.core.services._tags import tag_tree
+from lekto.core.services._templates import document_values, event_values, webhook_values
 
 
 @dataclass(frozen=True)
 class TemplatePreview:
     """What a template gives for a document: the values it uses, the rendered text
-    (whitespace collapsed, as in a title), or the missing value or the error that stops it.
+    (whitespace collapsed, as in a title; a webhook's body as it is), or the missing value or
+    the error that stops it.
     `values`: what the document has, each value as a template writes it (by its path, such as
     `field.la_brutto`); None without a document."""
 
@@ -87,11 +97,15 @@ class RuleService:
         clock: Clock,
         templates: TemplateRenderer,
         patterns: PatternMatcher,
+        *,
+        link_base: str | None = None,
     ) -> None:
+        """`link_base` (`LEKTO_PUBLIC_URL`): the link to a document a webhook's template sees."""
         self._uow = uow
         self._clock = clock
         self._templates = templates
         self._patterns = patterns
+        self._link_base = link_base
 
     async def list_rules(
         self,
@@ -181,10 +195,18 @@ class RuleService:
         *,
         document: DocumentId | None = None,
         document_type: DocumentTypeId | None = None,
+        webhook: bool = False,
     ) -> TemplatePreview:
         """`template` checked (syntax, values; the fields of `document_type`, or of the
         document's type, else all) and rendered with a document the caller may read, as it
-        is, with the document's values whatever the template. Nothing is stored."""
+        is, with the document's values whatever the template. Nothing is stored.
+
+        `webhook`: the template of a webhook's body (`webhooks.BodyFormat.TEMPLATE`): it sees
+        `event` (here a `webhook.test`), `document_id`, `lane` and `link` too, is rendered as
+        it is and must make JSON."""
+        limit = MAX_BODY_TEMPLATE if webhook else MAX_TEXT
+        if len(template) > limit:
+            return TemplatePreview(error=f"the template has more than {limit} characters")
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             found = None if document is None else (await readable_document(uow, user, document))[0]
@@ -193,23 +215,34 @@ class RuleService:
                 await uow.document_types.get(kind)
             fields = await uow.fields.list_all()
             applying = [item for item in fields if kind is None or item.applies_to(kind)]
-            values = None if found is None else await document_values(uow, found, kind, applying)
+            if found is None:
+                values = None
+            elif webhook:
+                values = await webhook_values(uow, found, self._link_base)
+            else:
+                values = await document_values(uow, found, kind, applying)
         written = None if values is None else self._written(values)
         try:
             used = self._templates.check(template)
         except ValidationError as invalid:
             return TemplatePreview(error=str(invalid), values=written)
         paths = tuple(sorted(used))
-        unknown = unknown_values(used, {item.key for item in applying})
+        names = WEBHOOK_NAMES if webhook else NAMES
+        unknown = unknown_values(used, {item.key for item in applying}, names)
         if unknown:
             return TemplatePreview(used=paths, error=f"unknown value {unknown[0]}", values=written)
         if values is None:
             return TemplatePreview(used=paths)
+        if webhook:
+            values |= event_values(EventId(new_id()), TEST_EVENT, self._clock.now())
         try:
-            rendered = " ".join(self._templates.render(template, values).split())
+            text = self._templates.render(template, values)
+            rendered = text if webhook else " ".join(text.split())
+            if webhook:
+                rendered_body(rendered)
         except MissingValueError as missing:
             return TemplatePreview(used=paths, missing=missing.path, values=written)
-        except ValidationError as invalid:
+        except (ValidationError, ValueError) as invalid:
             return TemplatePreview(used=paths, error=str(invalid), values=written)
         return TemplatePreview(used=paths, rendered=rendered, values=written)
 
@@ -480,32 +513,3 @@ async def _edited_spaces(uow: UnitOfWork, user: User) -> list[SpaceId]:
         for space in await uow.spaces.list_accessible(user.id)
         if space.role_of(user.id) is SpaceRole.EDIT
     ]
-
-
-async def document_values(
-    uow: UnitOfWork,
-    document: Document,
-    document_type: DocumentTypeId | None,
-    fields: Iterable[FieldDefinition],
-) -> dict[str, TemplateValue]:
-    """The values a template sees of `document` as it is (`templates.template_values`)."""
-    contact = None if document.contact_id is None else await uow.contacts.find(document.contact_id)
-    kind = None if document_type is None else await uow.document_types.find(document_type)
-    space = await uow.spaces.find(document.space_id)
-    users = {user.id: user for user in await uow.users.list_all()}
-    uploader = None if document.uploaded_by is None else users.get(document.uploaded_by)
-    names = {tag.id: tag.name for tag in await uow.tags.list_all()}
-    tags = [names[id] for id in document.tag_ids if id in names]
-    return template_values(
-        document,
-        contact=None if contact is None else contact.name,
-        document_type=None if kind is None else kind.name,
-        space=None if space is None else space_label(space, users),
-        uploaded_by=None if uploader is None else uploader.label,
-        tags=tags,
-        document_date=document.document_date,
-        fields=[(item, document.fields.get(item.id)) for item in fields],
-        contact_groups=[names[id] for id in (contact.group_ids if contact else ()) if id in names],
-        document_type_groups=[names[id] for id in (kind.group_ids if kind else ()) if id in names],
-        topic=names.get(document.topic_id) if document.topic_id is not None else None,
-    )

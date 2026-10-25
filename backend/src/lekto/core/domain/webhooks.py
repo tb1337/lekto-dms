@@ -10,8 +10,11 @@ Requests follow the Standard Webhooks scheme (https://www.standardwebhooks.com):
 (Unix seconds of the attempt) and, with a secret, `webhook-signature` (`v1,<base64
 HMAC-SHA256>` of `<id>.<timestamp>.<body>`, several separated by spaces while a renewed secret
 still has its predecessor alongside). A webhook without a secret is not signed (Tobi,
-25.10.2026: Home Assistant, Node-RED and others check a header instead). The body is thin: the
-event's type, id, time and document.
+25.10.2026: Home Assistant, Node-RED and others check a header instead).
+
+The body (`BodyFormat`) is thin (the event's type, id, time and document), full (the document
+too, as it is when the request goes) or what the webhook's template (Liquid) makes of the
+event and the document, which must be JSON.
 """
 
 import base64
@@ -31,6 +34,7 @@ from uuid import UUID
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.events import DOCUMENT_EVENT_TYPES
 from lekto.core.domain.ids import DeliveryId, DocumentId, EventId, UserId, WebhookId, new_id
+from lekto.core.domain.json_value import JsonObject
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.validation import (
     MAX_URL_LENGTH,
@@ -55,6 +59,15 @@ SIGNATURE_VERSION = "v1"
 ID_HEADER = "webhook-id"
 TIMESTAMP_HEADER = "webhook-timestamp"
 SIGNATURE_HEADER = "webhook-signature"
+
+MAX_BODY_TEMPLATE = 10_000
+
+
+class BodyFormat(StrEnum):
+    THIN = "thin"  # the event: type, id, time, document id
+    FULL = "full"  # the event and the document as it is
+    TEMPLATE = "template"  # what the webhook's template makes of them (JSON)
+
 
 MAX_HEADERS = 20
 MAX_HEADER_VALUE = 4096
@@ -200,17 +213,54 @@ def signed_headers(
 
 
 def event_body(
-    *, event_id: EventId | UUID, type: str, occurred_at: datetime, document_id: DocumentId | None
+    *,
+    event_id: EventId | UUID,
+    type: str,
+    occurred_at: datetime,
+    document_id: DocumentId | None,
+    document: JsonObject | None = None,
+    full: bool = False,
 ) -> bytes:
-    """The thin body of a request: compact JSON in UTF-8, signed exactly as sent."""
+    """The body of a request: compact JSON in UTF-8, signed exactly as sent. Thin: the event;
+    `full`: with `document` too (None: the document is gone, or there is none)."""
     occurred_at = require_utc(occurred_at, "occurred_at")
-    payload = {
+    payload: JsonObject = {
         "id": str(event_id),
         "type": type,
         "occurred_at": occurred_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "document_id": None if document_id is None else str(document_id),
     }
+    if full:
+        payload["document"] = document
     return json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def rendered_body(text: str) -> bytes:
+    """What a template made, as the body goes: the text in UTF-8, as it is. ValueError if it is
+    not JSON."""
+    try:
+        json.loads(text)
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            f"the template does not make JSON: {error.msg} at line {error.lineno}, "
+            f"column {error.colno}"
+        ) from None
+    return text.encode("utf-8")
+
+
+def validate_body(body: BodyFormat, template: str | None) -> str | None:
+    """The template of a body: given exactly for `template`, 1 to `MAX_BODY_TEMPLATE`
+    characters (its syntax and values are checked where it is saved: the renderer is a port).
+    ValidationError otherwise."""
+    if body is not BodyFormat.TEMPLATE:
+        if template is not None:
+            raise ValidationError("body_template is given only for the body 'template'")
+        return None
+    if template is None or not template.strip():
+        raise ValidationError("the body 'template' needs a template")
+    if len(template) > MAX_BODY_TEMPLATE:
+        raise ValidationError(f"body_template: at most {MAX_BODY_TEMPLATE} characters")
+    return template
 
 
 @dataclass(kw_only=True)
@@ -228,6 +278,8 @@ class Webhook:
     encrypted_secret: bytes | None = field(repr=False)
     header_names: tuple[str, ...] = ()
     encrypted_headers: bytes | None = field(default=None, repr=False)
+    body: BodyFormat = BodyFormat.THIN
+    body_template: str | None = None
     active: bool = True
     disabled_reason: str | None = None
     failed_streak: int = 0
@@ -242,6 +294,8 @@ class Webhook:
         self.url = validate_url(self.url)
         self.event_types = validate_event_types(self.event_types)
         self.header_names = validate_header_names(self.header_names)
+        self.body = BodyFormat(self.body)
+        self.body_template = validate_body(self.body, self.body_template)
         if bool(self.header_names) != (self.encrypted_headers is not None):
             raise ValidationError("a webhook has header values exactly when it has headers")
         if self.encrypted_secret is None and self.previous_secret is not None:
@@ -319,6 +373,12 @@ class Webhook:
     def remove_secret(self, now: datetime) -> None:
         """Stop signing: the secret and its predecessor are gone."""
         self.encrypted_secret = self.previous_secret = self.previous_valid_until = None
+        self.updated_at = now
+
+    def set_body(self, body: BodyFormat, template: str | None, *, now: datetime) -> None:
+        """What the requests carry (`BodyFormat`); `template` exactly for `template`."""
+        self.body_template = validate_body(BodyFormat(body), template)
+        self.body = BodyFormat(body)
         self.updated_at = now
 
     def set_headers(self, names: Iterable[str], encrypted: bytes | None, *, now: datetime) -> None:

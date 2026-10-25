@@ -1341,13 +1341,38 @@ is still being processed. `document.deleted` goes to those who could read the do
 when it was deleted.
 
 **The request.** `POST <url>`, `Content-Type: application/json`, `User-Agent: Lekto/<version>`,
-the webhook's own headers, and a body that names the event only; the receiver fetches details
-through the API with a token of its own:
+the webhook's own headers, and a body as the webhook chooses (`body`):
 
-```json
-{"id": "01999d5e-...", "type": "document.filed", "occurred_at": "2026-10-08T12:00:00Z",
- "document_id": "01999d5e-..."}
-```
+- `thin` (the default) names the event only; the receiver fetches details through the API with
+  a token of its own:
+
+  ```json
+  {"id": "01999d5e-...", "type": "document.filed", "occurred_at": "2026-10-08T12:00:00Z",
+   "document_id": "01999d5e-..."}
+  ```
+
+- `full` adds `document`, as it is when the request goes (`null` once it is deleted): `id`,
+  `title`, `original_filename`, `contact`, `document_type`, `topic` and `space` (each `{id,
+  name}` or `null`), `tags` (`[{id, name}]`), `document_date`, `added`, `lane`, `channel`,
+  `pages`, `fields` (the fields with a value, by key, in the API's form: an amount as `{amount,
+  currency}`) and `link` (`LEKTO_PUBLIC_URL/ui/documents/<id>`; `null` without
+  `LEKTO_PUBLIC_URL`).
+- `template` sends what `body_template` makes: Liquid that has to give JSON (up to 10,000
+  characters). It sees what a rule's template sees (`title`, `contact`, `document_date`,
+  `field.<key>`, ...), and `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and
+  `link`. The filter `json` writes a value as JSON in the API's form, `| default: nil` a missing
+  one as `null`; writing a missing value without it fails. A Home Assistant notification:
+
+  ```liquid
+  {"title": {{ document_type | default: "Dokument" | json }},
+   "message": {{ title | json }}, "amount": {{ field.betrag.amount | default: nil | json }},
+   "url": {{ link | json }}}
+  ```
+
+  The template is checked when saved (syntax, known values) and is previewed with a document
+  like a rule's (`POST /templates/preview` with `purpose: webhook`). A request whose template
+  does not give JSON, or writes a missing value, is not sent: the log shows `gave_up` with the
+  reason, without repetition.
 
 `id` is the event id: it is the same in every repeated attempt, so a receiver can recognise
 events it has handled. Delivery is at least once and not in order; sort by `occurred_at`. The

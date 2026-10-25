@@ -9,7 +9,7 @@ from lekto.adapters.outbound.sql import tables as t
 from lekto.adapters.outbound.sql.repositories import SqlRepository, Values
 from lekto.core.domain.errors import NotFoundError
 from lekto.core.domain.ids import DeliveryId, DocumentId, EventId, UserId, WebhookId
-from lekto.core.domain.webhooks import DeliveryOutcome, Webhook, WebhookDelivery
+from lekto.core.domain.webhooks import BodyFormat, DeliveryOutcome, Webhook, WebhookDelivery
 from lekto.core.ports.repository import PAGE_SIZE
 
 
@@ -101,6 +101,8 @@ class SqlWebhookRepository(SqlRepository[WebhookId, Webhook]):
             encrypted_secret=None if row.secret is None else bytes(row.secret),
             header_names=tuple(row.header_names),
             encrypted_headers=None if row.headers is None else bytes(row.headers),
+            body=BodyFormat(row.body),
+            body_template=row.body_template,
             active=row.active,
             disabled_reason=row.disabled_reason,
             failed_streak=row.failed_streak,
@@ -121,6 +123,8 @@ class SqlWebhookRepository(SqlRepository[WebhookId, Webhook]):
             "secret": entity.encrypted_secret,
             "header_names": list(entity.header_names),
             "headers": entity.encrypted_headers,
+            "body": entity.body.value,
+            "body_template": entity.body_template,
             "previous_secret": entity.previous_secret,
             "previous_valid_until": entity.previous_valid_until,
             "active": entity.active,

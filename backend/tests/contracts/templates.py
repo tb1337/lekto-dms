@@ -1,5 +1,5 @@
-"""Contract suite for the `TemplateRenderer` port: templates of rules and title patterns, from
-users, in Liquid."""
+"""Contract suite for the `TemplateRenderer` port: templates of rules, title patterns and webhook
+bodies, from users, in Liquid."""
 
 from datetime import date
 from decimal import Decimal
@@ -8,6 +8,7 @@ import pytest
 
 from lekto.core.domain.errors import MissingValueError, ValidationError
 from lekto.core.domain.fields import Money
+from lekto.core.domain.periods import Period
 from lekto.core.domain.templates import TemplateValue
 from lekto.core.ports.templates import TemplateRenderer
 
@@ -53,6 +54,31 @@ class TemplateRendererContract:
         assert render("{{ field.netto }}", VALUES) == "2401.12"
         assert render("{{ field.betrag.amount | minus: field.netto }}", VALUES) == "1248.88"
         assert render("{% if field.betrag.amount > 3000 %}hoch{% endif %}", VALUES) == "hoch"
+
+    def test_json_writes_values_as_the_api_does(self, template_renderer: TemplateRenderer) -> None:
+        """For webhook bodies: each value as JSON in the API's form (`field_to_json`)."""
+        render = template_renderer.render
+        values: dict[str, TemplateValue] = {
+            **VALUES,
+            "title": 'Rechnung "März"',
+            "period": Period(date(2026, 9, 1), date(2026, 9, 30)),
+        }
+        assert render("{{ title | json }}", values) == '"Rechnung \\"März\\""'
+        assert render("{{ field.betrag | json }}", values) == (
+            '{"amount": "3650.00", "currency": "EUR"}'
+        )
+        assert render("{{ field.netto | json }}", values) == '"2401.12"'
+        assert render("{{ field.bezahlt | json }}", values) == "true"
+        assert render("{{ document_date | json }}", values) == '"2026-03-31"'
+        assert (
+            render("{{ period | json }}", values) == '{"start": "2026-09-01", "end": "2026-09-30"}'
+        )
+        assert render("{{ tags | json }}", values) == '["Strom", "Gas"]'
+        assert render("{{ pages | json }}", values) == "2"
+        assert render("{{ topic | default: nil | json }}", values) == "null"
+        with pytest.raises(MissingValueError) as missing:
+            render("{{ topic | json }}", values)
+        assert missing.value.path == "topic"
 
     def test_a_missing_value_can_be_tested_but_not_written(
         self, template_renderer: TemplateRenderer

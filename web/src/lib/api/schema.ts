@@ -2243,6 +2243,11 @@ export interface components {
 			choices: string[];
 		};
 		/**
+		 * BodyFormat
+		 * @enum {string}
+		 */
+		BodyFormat: 'thin' | 'full' | 'template';
+		/**
 		 * BoxOut
 		 * @description A rectangle on the page as shown (rotation applied), in fractions of its width and
 		 *     height from the top left corner.
@@ -6678,7 +6683,7 @@ export interface components {
 		TemplatePreviewIn: {
 			/**
 			 * Template
-			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md At most 500 characters, a webhook's body 10000.
 			 */
 			template: string;
 			/**
@@ -6686,6 +6691,13 @@ export interface components {
 			 * @description A document the caller may read, to render the template with.
 			 */
 			document_id?: string | null;
+			/**
+			 * Purpose
+			 * @description `webhook`: the template of a webhook's body. It sees `event` (here a `webhook.test`), `document_id`, `lane` and `link` too, is rendered as it is (whitespace kept) and must make JSON.
+			 * @default rule
+			 * @enum {string}
+			 */
+			purpose: 'rule' | 'webhook';
 			/**
 			 * Document Type Id
 			 * @description The type whose fields the template may use (a title pattern's); else the document's type, else every field.
@@ -7025,6 +7037,16 @@ export interface components {
 			 * @default []
 			 */
 			headers: components['schemas']['HeaderIn'][];
+			/**
+			 * @description What a request carries: `thin`, the event (`id`, `type`, `occurred_at`, `document_id`); `full`, the event and `document` as it is when the request goes (title, contact, type, topic, tags, date, space, lane, the fields with a value by key, `link` into the web UI); `template`, the JSON `body_template` makes of them.
+			 * @default thin
+			 */
+			body: components['schemas']['BodyFormat'];
+			/**
+			 * Body Template
+			 * @description For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; the filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`.
+			 */
+			body_template?: string | null;
 		};
 		/** WebhookCreated */
 		WebhookCreated: {
@@ -7056,6 +7078,13 @@ export interface components {
 			 * @description The names of the webhook's own headers, in order.
 			 */
 			headers: string[];
+			/** @description What a request carries: `thin`, the event (`id`, `type`, `occurred_at`, `document_id`); `full`, the event and `document` as it is when the request goes (title, contact, type, topic, tags, date, space, lane, the fields with a value by key, `link` into the web UI); `template`, the JSON `body_template` makes of them. */
+			body: components['schemas']['BodyFormat'];
+			/**
+			 * Body Template
+			 * @description For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; the filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`.
+			 */
+			body_template: string | null;
 			/**
 			 * Disabled Reason
 			 * @description `failing`: Lekto switched the webhook off after repeated failed deliveries.
@@ -7118,6 +7147,13 @@ export interface components {
 			 * @description The names of the webhook's own headers, in order.
 			 */
 			headers: string[];
+			/** @description What a request carries: `thin`, the event (`id`, `type`, `occurred_at`, `document_id`); `full`, the event and `document` as it is when the request goes (title, contact, type, topic, tags, date, space, lane, the fields with a value by key, `link` into the web UI); `template`, the JSON `body_template` makes of them. */
+			body: components['schemas']['BodyFormat'];
+			/**
+			 * Body Template
+			 * @description For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; the filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`.
+			 */
+			body_template: string | null;
 			/**
 			 * Disabled Reason
 			 * @description `failing`: Lekto switched the webhook off after repeated failed deliveries.
@@ -7171,6 +7207,13 @@ export interface components {
 			 * @description All of the webhook's own headers from now on (empty: none). Headers of the webhook's own, sent with every request (at most 20), e.g. `Authorization` for a token the receiver checks. Lekto sets `content-type`, `content-length`, `host`, `connection`, `transfer-encoding` and the headers beginning with `webhook-` or `lekto-` itself; those are refused. The values are stored encrypted and never shown again; the names are.
 			 */
 			headers?: components['schemas']['HeaderPatch'][] | null;
+			/** @description What a request carries: `thin`, the event (`id`, `type`, `occurred_at`, `document_id`); `full`, the event and `document` as it is when the request goes (title, contact, type, topic, tags, date, space, lane, the fields with a value by key, `link` into the web UI); `template`, the JSON `body_template` makes of them. Left out: body and template stay. */
+			body?: components['schemas']['BodyFormat'] | null;
+			/**
+			 * Body Template
+			 * @description For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; the filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`. Only together with `body`.
+			 */
+			body_template?: string | null;
 		};
 		/** YearCount */
 		YearCount: {

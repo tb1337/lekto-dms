@@ -13,8 +13,10 @@ from dataclasses import dataclass, field
 from lekto.core.domain.errors import ConflictError, NotFoundError, ValidationError
 from lekto.core.domain.ids import DeliveryId, UserId, WebhookId, new_id
 from lekto.core.domain.reasons import ReasonCode, because
+from lekto.core.domain.templates import WEBHOOK_NAMES, unknown_values
 from lekto.core.domain.users import User
 from lekto.core.domain.webhooks import (
+    BodyFormat,
     Webhook,
     WebhookDelivery,
     headers_from_bytes,
@@ -26,6 +28,7 @@ from lekto.core.domain.webhooks import (
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.identity import DecryptionError, SecretCipher
 from lekto.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
+from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import load_actor
 from lekto.core.services.webhooks.policy import WebhookPolicy
@@ -57,11 +60,13 @@ class WebhookService:
         clock: Clock,
         cipher: SecretCipher,
         policy: WebhookPolicy,
+        templates: TemplateRenderer,
     ) -> None:
         self._uow = uow
         self._clock = clock
         self._cipher = cipher
         self._policy = policy
+        self._templates = templates
 
     async def create(
         self,
@@ -73,10 +78,12 @@ class WebhookService:
         active: bool = True,
         signed: bool = True,
         headers: Mapping[str, str] | None = None,
+        body: BodyFormat = BodyFormat.THIN,
+        body_template: str | None = None,
     ) -> CreatedWebhook:
         """`signed`: with a secret (shown once in the answer); `headers`: the webhook's own,
-        name to value. ValidationError for a bad URL, event type or header, ConflictError at
-        the user's limit."""
+        name to value; `body`, with its template for `template`. ValidationError for a bad URL,
+        event type, header or template, ConflictError at the user's limit."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             if await uow.webhooks.count_for_owner(user.id) >= self._policy.per_user:
@@ -96,6 +103,7 @@ class WebhookService:
             )
             given = dict(headers or {})
             webhook.set_headers(given, self._encrypt_headers(id, given), now=now)
+            webhook.set_body(body, await self._checked(uow, body, body_template), now=now)
             await uow.webhooks.add(webhook)
             await uow.commit()
         return CreatedWebhook(webhook, secret)
@@ -127,9 +135,12 @@ class WebhookService:
         event_types: Collection[str] | None = None,
         active: bool | None = None,
         headers: Sequence[tuple[str, str | None]] | None = None,
+        body: BodyFormat | None = None,
+        body_template: str | None = None,
     ) -> Webhook:
         """`headers`: all of the webhook's own headers from now on, in order; a value None keeps
-        the value the header has (ValidationError for a header it does not have yet)."""
+        the value the header has (ValidationError for a header it does not have yet). `body`:
+        with its template for `template` (None: both stay)."""
         async with self._uow() as uow:
             webhook = await manageable_webhook(uow, await load_actor(uow, actor), id)
             now = self._clock.now()
@@ -137,6 +148,10 @@ class WebhookService:
             if headers is not None:
                 given = self._merge_headers(webhook, headers)
                 webhook.set_headers(given, self._encrypt_headers(webhook.id, given), now=now)
+            if body is not None:
+                webhook.set_body(body, await self._checked(uow, body, body_template), now=now)
+            elif body_template is not None:
+                raise ValidationError("give body_template together with body")
             await uow.webhooks.update(webhook)
             await uow.commit()
             return webhook
@@ -185,6 +200,18 @@ class WebhookService:
         async with self._uow() as uow:
             webhook = await visible_webhook(uow, await load_actor(uow, actor), id)
             return await uow.webhooks.deliveries(webhook.id, before=before, limit=limit)
+
+    async def _checked(self, uow: UnitOfWork, body: BodyFormat, template: str | None) -> str | None:
+        """The template of a `template` body, checked: its syntax, and that it uses only what a
+        webhook's template sees (a field by its key). ValidationError otherwise."""
+        if body is not BodyFormat.TEMPLATE or template is None:
+            return template
+        used = self._templates.check(template)
+        keys = {item.key for item in await uow.fields.list_all()}
+        unknown = unknown_values(used, keys, WEBHOOK_NAMES)
+        if unknown:
+            raise ValidationError(f"body_template: unknown value {unknown[0]}")
+        return template
 
     def _encrypt(self, id: WebhookId, secret: str) -> bytes:
         return self._cipher.encrypt(secret.encode("ascii"), context=secret_context(id))

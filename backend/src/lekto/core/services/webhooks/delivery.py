@@ -11,9 +11,11 @@ Two steps, both idempotent and safe to repeat (events arrive at least once):
    event (the document is gone); `document.filed` is skipped while the document has no lane
    (the pipeline's last `filed` comes after the lane is set).
 2. **Delivery** (`run_next_job`): each attempt checks the rights again against the current
-   state, so a user who lost access in the meantime gets nothing (`dropped`). Then it signs the
-   thin body with the webhook's secret(s), sends it, writes one delivery log row and settles the
-   job: delivered, repeated later, or given up.
+   state, so a user who lost access in the meantime gets nothing (`dropped`). Then it makes the
+   body (thin, full with the document as it is now, or the webhook's template rendered), signs
+   it with the webhook's secret(s) if it has any, sends it with the webhook's own headers,
+   writes one delivery log row and settles the job: delivered, repeated later, or given up. A
+   template that cannot be rendered into JSON gives up at once (repeating would not help).
 
    | answer                                        | result                               |
    | --------------------------------------------- | ------------------------------------ |
@@ -34,7 +36,13 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from lekto.core.domain.documents import Document
-from lekto.core.domain.errors import ConcurrencyError, NotFoundError, TooManyAttemptsError
+from lekto.core.domain.errors import (
+    ConcurrencyError,
+    MissingValueError,
+    NotFoundError,
+    TooManyAttemptsError,
+    ValidationError,
+)
 from lekto.core.domain.events import DocumentDeleted, DocumentEvent, DocumentFiled, DomainEvent
 from lekto.core.domain.ids import DocumentId, EventId, UserId, WebhookId, new_id
 from lekto.core.domain.jobs import Job, RetryPolicy
@@ -43,19 +51,23 @@ from lekto.core.domain.permissions import in_reach
 from lekto.core.domain.users import User
 from lekto.core.domain.webhooks import (
     TEST_EVENT,
+    BodyFormat,
     DeliveryOutcome,
     Webhook,
     WebhookDelivery,
     event_body,
     headers_from_bytes,
+    rendered_body,
     signed_headers,
 )
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.identity import DecryptionError, SecretCipher
+from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.ports.webhook_sender import WebhookRequest, WebhookResponse, WebhookSender
 from lekto.core.services._access import load_actor
 from lekto.core.services._jobs import JobRunner, lost
+from lekto.core.services._templates import document_json, event_values, webhook_values
 from lekto.core.services.webhooks.management import (
     headers_context,
     manageable_webhook,
@@ -84,12 +96,19 @@ class WebhookDeliveryService:
         cipher: SecretCipher,
         sender: WebhookSender,
         policy: WebhookPolicy,
+        templates: TemplateRenderer,
+        *,
+        link_base: str | None = None,
     ) -> None:
+        """`templates` renders the bodies of webhooks with a template; `link_base`
+        (`LEKTO_PUBLIC_URL`) makes the link to a document in the web UI."""
         self._uow = uow
         self._clock = clock
         self._cipher = cipher
         self._sender = sender
         self._policy = policy
+        self._templates = templates
+        self._link_base = link_base
         self._retry = RetryPolicy(
             max_attempts=self._policy.max_attempts,
             delay=self._policy.retry_delay,
@@ -147,14 +166,20 @@ class WebhookDeliveryService:
         `policy.test_window`; beyond that TooManyAttemptsError says when the next one may go."""
         async with self._uow() as uow:
             webhook = await manageable_webhook(uow, await load_actor(uow, actor), id)
-        now = self._clock.now()
-        self._count_test_request(actor, now)
-        event_id = EventId(new_id())
+            now = self._clock.now()
+            self._count_test_request(actor, now)
+            event_id = EventId(new_id())
+            body = await self._body(uow, webhook, event_id, TEST_EVENT, now, None)
         try:
             secrets, own = self._decrypt(webhook, now)
-            response = await self._send(webhook, secrets, own, event_id, TEST_EVENT, now, None)
         except (DecryptionError, ValueError):
             response = _unusable_secret(id)
+        else:
+            response = (
+                body
+                if isinstance(body, WebhookResponse)
+                else await self._send(webhook, secrets, own, event_id, body)
+            )
         outcome = DeliveryOutcome.DELIVERED if _is_success(response) else DeliveryOutcome.GAVE_UP
         delivery = _row(webhook, event_id, TEST_EVENT, None, 1, now, response, outcome)
         async with self._uow() as uow:
@@ -209,6 +234,11 @@ class WebhookDeliveryService:
                 await uow.commit()
                 return
             reason = await _reason_to_drop(uow, webhook, event_type, document_id)
+            body = (
+                None
+                if reason is not None
+                else await self._body(uow, webhook, event_id, event_type, occurred_at, document_id)
+            )
         attempt = job.tries
         if reason is not None:
             response = WebhookResponse(status_code=None, duration_ms=0, error=reason)
@@ -224,16 +254,18 @@ class WebhookDeliveryService:
                 DeliveryOutcome.DROPPED,
             )
             return
+        assert body is not None
         try:
             secrets, own = self._decrypt(webhook, now)
-            response = await self._send(
-                webhook, secrets, own, event_id, event_type, occurred_at, document_id
-            )
         except (DecryptionError, ValueError):
             response = _unusable_secret(webhook_id)
             outcome = DeliveryOutcome.GAVE_UP
         else:
-            outcome = self._outcome(response, attempt)
+            if isinstance(body, WebhookResponse):
+                response, outcome = body, DeliveryOutcome.GAVE_UP
+            else:
+                response = await self._send(webhook, secrets, own, event_id, body)
+                outcome = self._outcome(response, attempt)
         await self._settle_attempt(
             job, webhook_id, event_id, event_type, document_id, attempt, now, response, outcome
         )
@@ -245,21 +277,59 @@ class WebhookDeliveryService:
             return DeliveryOutcome.RETRYING
         return DeliveryOutcome.GAVE_UP
 
+    async def _body(
+        self,
+        uow: UnitOfWork,
+        webhook: Webhook,
+        event_id: EventId,
+        event_type: str,
+        occurred_at: datetime,
+        document_id: DocumentId | None,
+    ) -> bytes | WebhookResponse:
+        """The body of the request, made with the document as it is now; for a template that
+        cannot be rendered into JSON the answer that gives up (without sending), naming why."""
+        document = None
+        if webhook.body is not BodyFormat.THIN and document_id is not None:
+            document = await uow.documents.find(document_id)
+        match webhook.body:
+            case BodyFormat.THIN | BodyFormat.FULL:
+                data = (
+                    None
+                    if document is None
+                    else await document_json(uow, document, self._link_base)
+                )
+                return event_body(
+                    event_id=event_id,
+                    type=event_type,
+                    occurred_at=occurred_at,
+                    document_id=document_id,
+                    document=data,
+                    full=webhook.body is BodyFormat.FULL,
+                )
+        assert webhook.body_template is not None
+        values = event_values(event_id, event_type, occurred_at)
+        if document is not None:
+            values |= await webhook_values(uow, document, self._link_base)
+        elif document_id is not None:
+            values["document_id"] = str(document_id)
+        try:
+            return rendered_body(self._templates.render(webhook.body_template, values))
+        except MissingValueError as missing:
+            error = f"the template writes a missing value: {missing.path}"
+        except (ValidationError, ValueError) as invalid:
+            error = str(invalid)
+        return WebhookResponse(status_code=None, duration_ms=0, error=error)
+
     async def _send(
         self,
         webhook: Webhook,
         secrets: list[str],
         own: dict[str, str],
         event_id: EventId,
-        event_type: str,
-        occurred_at: datetime,
-        document_id: DocumentId | None,
+        body: bytes,
     ) -> WebhookResponse:
         """`own`: the webhook's own headers; Lekto's (content type, id, timestamp, signature)
         cannot be among them (`validate_header_names`)."""
-        body = event_body(
-            event_id=event_id, type=event_type, occurred_at=occurred_at, document_id=document_id
-        )
         headers = {
             **own,
             "Content-Type": "application/json",

@@ -17548,6 +17548,15 @@
         "title": "BlockingSpaceOut",
         "description": "A space that stops deleting a user until the deletion settles it."
       },
+      "BodyFormat": {
+        "type": "string",
+        "enum": [
+          "thin",
+          "full",
+          "template"
+        ],
+        "title": "BodyFormat"
+      },
       "BoxOut": {
         "properties": {
           "x": {
@@ -26341,9 +26350,9 @@
         "properties": {
           "template": {
             "type": "string",
-            "maxLength": 500,
+            "maxLength": 10000,
             "title": "Template",
-            "description": "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md"
+            "description": "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md At most 500 characters, a webhook's body 10000."
           },
           "document_id": {
             "anyOf": [
@@ -26357,6 +26366,16 @@
             ],
             "title": "Document Id",
             "description": "A document the caller may read, to render the template with."
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "rule",
+              "webhook"
+            ],
+            "title": "Purpose",
+            "description": "`webhook`: the template of a webhook's body. It sees `event` (here a `webhook.test`), `document_id`, `lane` and `link` too, is rendered as it is (whitespace kept) and must make JSON.",
+            "default": "rule"
           },
           "document_type_id": {
             "anyOf": [
@@ -27027,6 +27046,24 @@
             "title": "Headers",
             "description": "Headers of the webhook's own, sent with every request (at most 20), e.g. `Authorization` for a token the receiver checks. Lekto sets `content-type`, `content-length`, `host`, `connection`, `transfer-encoding` and the headers beginning with `webhook-` or `lekto-` itself; those are refused. The values are stored encrypted and never shown again; the names are.",
             "default": []
+          },
+          "body": {
+            "$ref": "#/components/schemas/BodyFormat",
+            "description": "What a request carries: `thin`, the event (`id`, `type`, `occurred_at`, `document_id`); `full`, the event and `document` as it is when the request goes (title, contact, type, topic, tags, date, space, lane, the fields with a value by key, `link` into the web UI); `template`, the JSON `body_template` makes of them.",
+            "default": "thin"
+          },
+          "body_template": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 10000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Template",
+            "description": "For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; the filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`."
           }
         },
         "additionalProperties": false,
@@ -27091,6 +27128,22 @@
             "type": "array",
             "title": "Headers",
             "description": "The names of the webhook's own headers, in order."
+          },
+          "body": {
+            "$ref": "#/components/schemas/BodyFormat",
+            "description": "What a request carries: `thin`, the event (`id`, `type`, `occurred_at`, `document_id`); `full`, the event and `document` as it is when the request goes (title, contact, type, topic, tags, date, space, lane, the fields with a value by key, `link` into the web UI); `template`, the JSON `body_template` makes of them."
+          },
+          "body_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Template",
+            "description": "For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; the filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`."
           },
           "disabled_reason": {
             "anyOf": [
@@ -27158,6 +27211,8 @@
           "active",
           "signed",
           "headers",
+          "body",
+          "body_template",
           "disabled_reason",
           "failed_streak",
           "previous_secret_valid_until",
@@ -27211,6 +27266,22 @@
             "title": "Headers",
             "description": "The names of the webhook's own headers, in order."
           },
+          "body": {
+            "$ref": "#/components/schemas/BodyFormat",
+            "description": "What a request carries: `thin`, the event (`id`, `type`, `occurred_at`, `document_id`); `full`, the event and `document` as it is when the request goes (title, contact, type, topic, tags, date, space, lane, the fields with a value by key, `link` into the web UI); `template`, the JSON `body_template` makes of them."
+          },
+          "body_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Template",
+            "description": "For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; the filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`."
+          },
           "disabled_reason": {
             "anyOf": [
               {
@@ -27262,6 +27333,8 @@
           "active",
           "signed",
           "headers",
+          "body",
+          "body_template",
           "disabled_reason",
           "failed_streak",
           "previous_secret_valid_until",
@@ -27340,6 +27413,30 @@
             ],
             "title": "Headers",
             "description": "All of the webhook's own headers from now on (empty: none). Headers of the webhook's own, sent with every request (at most 20), e.g. `Authorization` for a token the receiver checks. Lekto sets `content-type`, `content-length`, `host`, `connection`, `transfer-encoding` and the headers beginning with `webhook-` or `lekto-` itself; those are refused. The values are stored encrypted and never shown again; the names are."
+          },
+          "body": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BodyFormat"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What a request carries: `thin`, the event (`id`, `type`, `occurred_at`, `document_id`); `full`, the event and `document` as it is when the request goes (title, contact, type, topic, tags, date, space, lane, the fields with a value by key, `link` into the web UI); `template`, the JSON `body_template` makes of them. Left out: body and template stay."
+          },
+          "body_template": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 10000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Template",
+            "description": "For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; the filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`. Only together with `body`."
           }
         },
         "additionalProperties": false,

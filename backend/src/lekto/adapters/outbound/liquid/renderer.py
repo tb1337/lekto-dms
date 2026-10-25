@@ -7,9 +7,11 @@ number is a float that writes itself as its exact decimal text (Liquid's arithme
 know no `Decimal`), an amount a mapping of `amount` and `currency` that writes itself in the
 locale (`3.650,00 EUR` in `de`), a date stays a date. The filters `datetime`, `currency` and
 `decimal` format in the locale (Babel); `datetime` takes a date without shifting it into a time
-zone.
+zone. `json` writes a value as JSON in the forms of the API (`fields.field_to_json`), for the
+bodies of webhooks.
 """
 
+import json
 import re
 from collections.abc import Iterator, Mapping, Sequence
 from datetime import date, datetime
@@ -20,9 +22,10 @@ from typing import Any
 from babel import Locale, UnknownLocaleError
 from babel.dates import format_date
 from babel.numbers import format_currency
-from liquid import BoundTemplate, Environment, FalsyStrictUndefined
+from liquid import BoundTemplate, Environment, FalsyStrictUndefined, Undefined
 from liquid.exceptions import LiquidError, UndefinedError
 from liquid.extra import Currency, DateTime, Number
+from liquid.filter import liquid_filter
 
 from lekto.core.domain.errors import MissingValueError, ValidationError
 from lekto.core.domain.fields import Money
@@ -64,6 +67,43 @@ class _DateTime(DateTime):
         return str(super().__call__(left, *args, **kwargs))
 
 
+class _Json:
+    """`json`: a value as JSON text, as the API writes it (`fields.field_to_json`): a number as
+    its exact decimal text, an amount as `{amount, currency}`, a date in ISO 8601, a period as
+    `{start, end}`; text, yes/no, lists and mappings as they are. A missing value is missing
+    (`| default: nil` makes it `null`)."""
+
+    name = "json"
+
+    @liquid_filter
+    def __call__(self, value: object) -> str:
+        return json.dumps(_plain(value), ensure_ascii=False)
+
+
+def _plain(value: object) -> object:
+    match value:
+        case Undefined():
+            str(value)  # raises UndefinedError, naming the value
+            return None
+        case _Number():
+            return str(value)
+        case _Amount():
+            return {"amount": str(value["amount"]), "currency": value["currency"]}
+        case _Period():
+            start, end = value["start"], value["end"]
+            assert isinstance(start, date) and isinstance(end, date)
+            return {"start": start.isoformat(), "end": end.isoformat()}
+        case date():
+            return value.isoformat()
+        case None | bool() | int() | float() | str():
+            return value
+        case Mapping():
+            return {str(key): _plain(item) for key, item in value.items()}
+        case Sequence():
+            return [_plain(item) for item in value]
+    raise TypeError(f"not a template value: {type(value).__name__}")
+
+
 class LiquidTemplateRenderer:
     def __init__(self, *, locale: str, currency: str) -> None:
         """`locale` writes dates and amounts (`LEKTO_TEMPLATE_LOCALE`); `currency` is that
@@ -77,6 +117,7 @@ class LiquidTemplateRenderer:
             default_locale=self._locale, default_currency_code=currency
         )
         environment.filters["decimal"] = Number(default_locale=self._locale)
+        environment.filters["json"] = _Json()
         self._environment = environment
         self._parse = lru_cache(maxsize=512)(self._parsed)
 

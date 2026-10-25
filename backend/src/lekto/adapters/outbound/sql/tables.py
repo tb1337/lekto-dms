@@ -706,6 +706,9 @@ webhooks = Table(
     # (`webhooks.headers_to_bytes`, encrypted; NULL without headers).
     Column("header_names", json_type(), nullable=False, server_default="[]"),
     Column("headers", LargeBinary, nullable=True),
+    # What the requests carry (`webhooks.BodyFormat`), and the template of a `template` body.
+    Column("body", Text, nullable=False, server_default="thin"),
+    Column("body_template", Text, nullable=True),
     Column("previous_secret", LargeBinary, nullable=True),
     Column("previous_valid_until", UtcDateTime, nullable=True),
     Column("active", Boolean, nullable=False),

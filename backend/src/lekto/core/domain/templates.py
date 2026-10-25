@@ -54,6 +54,10 @@ class _Given:
 
 NAMES = tuple(item.name for item in dataclasses.fields(_Given))
 FIELD = "field"
+EVENT = "event"
+WEBHOOK_NAMES = (*NAMES, EVENT, "document_id", "lane", "link")
+"""What the template of a webhook's body sees besides a rule's values: the event (`event.type`,
+`event.id`, `event.occurred_at`), the document's id, lane and link into the web UI."""
 
 
 def template_values(
@@ -122,14 +126,16 @@ def writing_templates(values: Mapping[str, TemplateValue]) -> dict[str, str]:
     }
 
 
-def unknown_values(paths: Iterable[str], field_keys: Collection[str]) -> list[str]:
+def unknown_values(
+    paths: Iterable[str], field_keys: Collection[str], names: Collection[str] = NAMES
+) -> list[str]:
     """The paths of a template (`TemplateRenderer.check`) that name nothing a template can
-    use: an unknown name, or a field that is not among `field_keys`."""
+    use: an unknown name (not among `names`), or a field that is not among `field_keys`."""
     unknown: list[str] = []
     for path in sorted(paths):
         name, _, rest = path.partition(".")
         known_field = name != FIELD or rest.partition(".")[0] in field_keys
-        if name not in NAMES or not known_field:
+        if name not in names or not known_field:
             unknown.append(path)
     return unknown
 

@@ -13,7 +13,12 @@ from lekto.core.domain.errors import (
 )
 from lekto.core.domain.ids import WebhookId, new_id
 from lekto.core.domain.users import Role
-from lekto.core.domain.webhooks import DISABLED_FAILING, headers_from_bytes, new_secret
+from lekto.core.domain.webhooks import (
+    DISABLED_FAILING,
+    BodyFormat,
+    headers_from_bytes,
+    new_secret,
+)
 from lekto.core.services.webhooks import WebhookService
 from lekto.core.services.webhooks.management import headers_context, secret_context
 from tests import builders
@@ -54,7 +59,11 @@ async def test_a_bad_url_or_event_type_is_refused(world: World) -> None:
 async def test_the_number_of_webhooks_per_user_is_limited(world: World) -> None:
     user, other = await world.user(), await world.user()
     service = WebhookService(
-        world.uow, world.clock, world.cipher, replace(builders.WEBHOOKS, per_user=2)
+        world.uow,
+        world.clock,
+        world.cipher,
+        replace(builders.WEBHOOKS, per_user=2),
+        builders.TEMPLATES,
     )
     for _ in range(2):
         await service.create(user.id, name="x", url=URL, event_types=["*"])
@@ -242,6 +251,37 @@ async def test_header_values_that_cannot_be_decrypted_must_be_given_anew(world: 
         await world.webhooks.update(user.id, hook.id, headers=[("X-Token", None)])
     changed = await world.webhooks.update(user.id, hook.id, headers=[("X-Token", "b")])
     assert stored_headers(world, hook.id, changed.encrypted_headers) == {"X-Token": "b"}
+
+
+async def test_a_template_body_is_checked_when_saved(world: World) -> None:
+    user = await world.user()
+    service = world.webhooks
+    good = (
+        '{"title": {{ title | json }}, "event": {{ event.type | json }}, "lane": {{ lane | json }}}'
+    )
+    hook = (
+        await service.create(
+            user.id,
+            name="HA",
+            url=URL,
+            event_types=["*"],
+            body=BodyFormat.TEMPLATE,
+            body_template=good,
+        )
+    ).webhook
+    assert (hook.body, hook.body_template) == (BodyFormat.TEMPLATE, good)
+    for template, error in (
+        ('{"x": {{ nonsense }}}', "unknown value nonsense"),
+        ('{"x": {{ field.betrag }}}', "unknown value field.betrag"),
+        ('{"x": {{ title | nofilter }}}', "unknown filter"),
+        ('{"x": {% if %}}', "invalid template"),
+    ):
+        with pytest.raises(ValidationError, match=error):
+            await service.update(user.id, hook.id, body=BodyFormat.TEMPLATE, body_template=template)
+    with pytest.raises(ValidationError):
+        await service.update(user.id, hook.id, body_template=good)  # without the body
+    full = await service.update(user.id, hook.id, body=BodyFormat.FULL)
+    assert (full.body, full.body_template) == (BodyFormat.FULL, None)
 
 
 def test_new_secrets_do_not_repeat() -> None:

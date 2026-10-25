@@ -8,9 +8,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from lekto.core.domain.validation import MAX_URL_LENGTH
 from lekto.core.domain.webhooks import (
     ALL_EVENTS,
+    MAX_BODY_TEMPLATE,
     MAX_HEADER_VALUE,
     MAX_HEADERS,
     MAX_NAME_LENGTH,
+    BodyFormat,
     DeliveryOutcome,
     Webhook,
     WebhookDelivery,
@@ -28,6 +30,20 @@ HEADERS_HELP = (
     "`content-length`, `host`, `connection`, `transfer-encoding` and the headers beginning "
     "with `webhook-` or `lekto-` itself; those are refused. The values are stored encrypted "
     "and never shown again; the names are."
+)
+
+
+BODY_HELP = (
+    "What a request carries: `thin`, the event (`id`, `type`, `occurred_at`, `document_id`); "
+    "`full`, the event and `document` as it is when the request goes (title, contact, type, "
+    "topic, tags, date, space, lane, the fields with a value by key, `link` into the web UI); "
+    "`template`, the JSON `body_template` makes of them."
+)
+BODY_TEMPLATE_HELP = (
+    "For `body: template`: Liquid that makes JSON. It sees what a rule's template sees "
+    "(`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), "
+    "`document_id`, `lane` and `link`; the filter `json` writes a value as JSON "
+    "(`{{ title | json }}`), `| default: nil` a missing one as `null`."
 )
 
 
@@ -90,6 +106,10 @@ class WebhookCreate(BaseModel):
         ),
     )
     headers: list[HeaderIn] = Field(default=[], max_length=MAX_HEADERS, description=HEADERS_HELP)
+    body: BodyFormat = Field(default=BodyFormat.THIN, description=BODY_HELP)
+    body_template: str | None = Field(
+        default=None, max_length=MAX_BODY_TEMPLATE, description=BODY_TEMPLATE_HELP
+    )
 
 
 class WebhookPatch(BaseModel):
@@ -108,6 +128,14 @@ class WebhookPatch(BaseModel):
         max_length=MAX_HEADERS,
         description="All of the webhook's own headers from now on (empty: none). " + HEADERS_HELP,
     )
+    body: BodyFormat | None = Field(
+        default=None, description=BODY_HELP + " Left out: body and template stay."
+    )
+    body_template: str | None = Field(
+        default=None,
+        max_length=MAX_BODY_TEMPLATE,
+        description=BODY_TEMPLATE_HELP + " Only together with `body`.",
+    )
 
 
 class WebhookOut(BaseModel):
@@ -119,6 +147,8 @@ class WebhookOut(BaseModel):
     active: bool
     signed: bool = Field(description="Whether requests carry a `webhook-signature`.")
     headers: list[str] = Field(description="The names of the webhook's own headers, in order.")
+    body: BodyFormat = Field(description=BODY_HELP)
+    body_template: str | None = Field(description=BODY_TEMPLATE_HELP)
     disabled_reason: str | None = Field(
         description="`failing`: Lekto switched the webhook off after repeated failed deliveries."
     )
@@ -143,6 +173,8 @@ class WebhookOut(BaseModel):
             active=webhook.active,
             signed=webhook.signed,
             headers=list(webhook.header_names),
+            body=webhook.body,
+            body_template=webhook.body_template,
             disabled_reason=webhook.disabled_reason,
             failed_streak=webhook.failed_streak,
             previous_secret_valid_until=webhook.previous_valid_until,

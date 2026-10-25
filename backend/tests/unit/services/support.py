@@ -138,7 +138,9 @@ class World:
 
     @property
     def webhooks(self) -> WebhookService:
-        return WebhookService(self.uow, self.clock, self.cipher, builders.WEBHOOKS)
+        return WebhookService(
+            self.uow, self.clock, self.cipher, builders.WEBHOOKS, builders.TEMPLATES
+        )
 
     @property
     def lenses(self) -> LensService:
@@ -146,7 +148,13 @@ class World:
 
     def webhook_delivery(self, policy: WebhookPolicy | None = None) -> WebhookDeliveryService:
         return WebhookDeliveryService(
-            self.uow, self.clock, self.cipher, self.sender, policy or builders.WEBHOOKS
+            self.uow,
+            self.clock,
+            self.cipher,
+            self.sender,
+            policy or builders.WEBHOOKS,
+            builders.TEMPLATES,
+            link_base="https://lekto.example.org",
         )
 
     def pipeline(

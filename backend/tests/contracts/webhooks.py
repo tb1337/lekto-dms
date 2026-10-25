@@ -10,6 +10,7 @@ from lekto.core.domain.ids import DocumentId, EventId, new_id
 from lekto.core.domain.users import User
 from lekto.core.domain.webhooks import (
     ALL_EVENTS,
+    BodyFormat,
     DeliveryOutcome,
     Webhook,
     WebhookDelivery,
@@ -78,6 +79,7 @@ class WebhookRepositoryContract:
         owner = await a_user(uow_factory)
         webhook = a_webhook(owner, encrypted_secret=None)
         webhook.set_headers(["Authorization", "X-Tenant"], b"\x02values", now=NOW)
+        webhook.set_body(BodyFormat.TEMPLATE, '{"t": {{ title | json }}}', now=NOW)
         async with uow_factory() as uow:
             await uow.webhooks.add(webhook)
             await uow.commit()

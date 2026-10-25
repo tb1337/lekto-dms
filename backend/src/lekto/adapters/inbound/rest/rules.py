@@ -294,6 +294,7 @@ async def preview_template(
         document_type=(
             None if body.document_type_id is None else DocumentTypeId(body.document_type_id)
         ),
+        webhook=body.purpose == "webhook",
     )
     return TemplatePreviewOut(
         used=list(preview.used),

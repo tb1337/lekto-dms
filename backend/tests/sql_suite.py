@@ -2482,6 +2482,50 @@ class MigrationSuite:
         assert kept == [(ids["signed"],)]
         assert delivered == [(ids["signed"],)]
 
+    async def test_webhook_bodies_of_revision_0042_come_and_go(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0042: webhooks stay thin; the downgrade drops the body and its template."""
+        await migrate(empty_database, "0041")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        ids = {name: new_id() for name in ("user", "webhook")}
+        await _insert(
+            empty_database,
+            [
+                (
+                    t.users,
+                    {"id": ids["user"], "username": "anna", "username_key": "anna", "role": "user"},
+                ),
+                (
+                    _before_0042(t.webhooks),
+                    {
+                        "id": ids["webhook"],
+                        "owner_id": ids["user"],
+                        "name": "n8n",
+                        "url": "https://example.org/hook",
+                        "event_types": ["*"],
+                        "header_names": [],
+                        "active": True,
+                        "failed_streak": 0,
+                        "created_at": NOW,
+                        "updated_at": NOW,
+                        "version": 1,
+                    },
+                ),
+            ],
+        )
+        await migrate(empty_database)
+        webhooks = t.webhooks
+        async with empty_database.reading() as connection:
+            rows = await _read_all(
+                connection, select(webhooks.c.id, webhooks.c.body, webhooks.c.body_template)
+            )
+        assert rows == [(ids["webhook"], "thin", None)]
+        await downgrade(empty_database, "0041")
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -2690,12 +2734,25 @@ def _drawer(table: sa.TableClause) -> sa.TableClause:
 _INBOX_COLUMNS = frozenset({"new_at", "processing_baseline", "processing_decided"})
 
 
+def _before_0042(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0042 had it: no body of a webhook's choice."""
+    added = {"webhooks": {"body", "body_template"}}
+    return sa.table(
+        table.name,
+        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+    )
+
+
 def _before_0041(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0041 had it: no headers of a webhook's own."""
     added = {"webhooks": {"header_names", "headers"}}
     return sa.table(
         table.name,
-        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+        *(
+            sa.column(c.name, c.type)
+            for c in _before_0042(table).c
+            if c.name not in added.get(table.name, ())
+        ),
     )
 
 

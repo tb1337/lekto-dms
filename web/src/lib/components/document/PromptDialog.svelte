@@ -1,5 +1,11 @@
 <script lang="ts">
 	import Copy from '@lucide/svelte/icons/copy';
+	import FileText from '@lucide/svelte/icons/file-text';
+	import ListTodo from '@lucide/svelte/icons/list-todo';
+	import MessageSquare from '@lucide/svelte/icons/message-square';
+	import MessageSquareReply from '@lucide/svelte/icons/message-square-reply';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import Settings2 from '@lucide/svelte/icons/settings-2';
 	import type { components } from '#lib/api/schema.ts';
 	import { copyText } from '#lib/clipboard.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -10,14 +16,14 @@
 	import { splitInput } from '#lib/usage.ts';
 
 	type Part = 'system' | 'document' | 'task' | 'retry' | 'user' | 'answer';
-	// In the order they were sent; the answer last.
-	const PARTS: { part: Part; label: () => string }[] = [
-		{ part: 'system', label: m.prompt_system },
-		{ part: 'document', label: m.prompt_document },
-		{ part: 'task', label: m.prompt_task },
-		{ part: 'retry', label: m.prompt_retry },
-		{ part: 'user', label: m.prompt_user },
-		{ part: 'answer', label: m.prompt_answer }
+	// In the order they were sent; the answer last. On a phone the icons only (up to five parts).
+	const PARTS: { part: Part; label: () => string; icon: typeof Copy }[] = [
+		{ part: 'system', label: m.prompt_system, icon: Settings2 },
+		{ part: 'document', label: m.prompt_document, icon: FileText },
+		{ part: 'task', label: m.prompt_task, icon: ListTodo },
+		{ part: 'retry', label: m.prompt_retry, icon: RotateCcw },
+		{ part: 'user', label: m.prompt_user, icon: MessageSquare },
+		{ part: 'answer', label: m.prompt_answer, icon: MessageSquareReply }
 	];
 	const SENT: readonly Part[] = ['system', 'document', 'task', 'retry', 'user'];
 
@@ -84,7 +90,12 @@
 			<Segmented
 				label={m.prompt_part()}
 				value={part}
-				options={shown.map((entry) => ({ value: entry.part, label: entry.label() }))}
+				names="wide"
+				options={shown.map((entry) => ({
+					value: entry.part,
+					label: entry.label(),
+					icon: entry.icon
+				}))}
 				onchange={(next) => (chosenPart = next as Part)}
 			/>
 			{#if calls.length > 1}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { components } from '#lib/api/schema.ts';
-import { moves, placeOf, rulePlaces } from '#lib/rules/places.ts';
+import { m } from '#lib/paraglide/messages.js';
+import { moves, placeLabel, placeOf, rulePlaces } from '#lib/rules/places.ts';
 import { GLOBAL } from '#lib/rules/save.ts';
 
 type Space = components['schemas']['SpaceOut'];
@@ -29,6 +30,15 @@ describe('where a rule belongs', () => {
 		]);
 		// Where the rule is stays among them, even a space one does not edit.
 		expect(rulePlaces(spaces, [], ME, false, 'read')[0]?.value).toBe('read');
+	});
+
+	it('names a place: the global wording as asked, a space, unknown', () => {
+		const spaces = [space('mine', 'Personal', 'edit', ME), space('household', 'Household', 'edit')];
+		expect(placeLabel(GLOBAL, spaces, [], ME)).toBe(m.rule_scope_global());
+		expect(placeLabel(GLOBAL, spaces, [], ME, m.rule_global)).toBe(m.rule_global());
+		expect(placeLabel('mine', spaces, [], ME)).toBe(m.space_personal());
+		expect(placeLabel('household', spaces, [], ME)).toBe('Household');
+		expect(placeLabel('gone', spaces, [], ME)).toBe(m.rule_unknown());
 	});
 
 	it('finds the versions that moved the rule', () => {

@@ -1,11 +1,12 @@
 <script lang="ts">
-	import SearchIcon from '@lucide/svelte/icons/search';
 	import type { FacetItem } from '#lib/components/FacetList.svelte';
+	import SearchField from '#lib/components/SearchField.svelte';
 	import TypeIcon from '#lib/components/TypeIcon.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import { formatNumber } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { matchesWords, searchWords, toggled } from '#lib/picking.ts';
 
 	// Every value of a group of the filters, to search and choose from: by name, under their
 	// first letter, each with its count and what it belongs to (`hint`). Choices apply at once.
@@ -27,9 +28,9 @@
 
 	let query = $state('');
 	const sections = $derived.by(() => {
-		const words = query.trim().toLocaleLowerCase();
+		const words = searchWords(query);
 		const found = items
-			.filter((item) => !words || item.label.toLocaleLowerCase().includes(words))
+			.filter((item) => matchesWords(item.label, words))
 			.toSorted((a, b) => a.label.localeCompare(b.label));
 		const byLetter: { letter: string; items: FacetItem[] }[] = [];
 		for (const item of found) {
@@ -42,7 +43,7 @@
 	});
 
 	function toggle(id: string, checked: boolean) {
-		onchange(checked ? [...selected, id] : selected.filter((entry) => entry !== id));
+		onchange(toggled(selected, id, checked));
 	}
 </script>
 
@@ -51,18 +52,11 @@
 		<Dialog.Header>
 			<Dialog.Title>{title}</Dialog.Title>
 		</Dialog.Header>
-		<label
-			class="flex h-10 items-center gap-2 rounded-lg border border-input bg-background px-3 focus-within:border-ring"
-		>
-			<SearchIcon class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-			<input
-				type="search"
-				bind:value={query}
-				aria-label={searchLabel}
-				placeholder={searchLabel}
-				class="h-full min-w-0 flex-1 bg-transparent text-base outline-none sm:text-sm"
-			/>
-		</label>
+		<SearchField
+			bind:value={query}
+			label={searchLabel}
+			class="h-10 rounded-lg border border-input bg-background px-3 focus-within:border-ring"
+		/>
 		<div class="-mx-2 min-h-0 flex-1 overflow-y-auto px-2">
 			{#each sections as section (section.letter)}
 				<div class="px-2 pt-2 pb-0.5 text-xs font-semibold text-muted-foreground">

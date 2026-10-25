@@ -10,6 +10,7 @@
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
+	import { copyText } from '#lib/clipboard.ts';
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
 	import CodeThumb from '#lib/components/document/CodeThumb.svelte';
 	import SourceChip from '#lib/components/document/SourceChip.svelte';
@@ -190,14 +191,7 @@
 		}
 	}
 
-	async function copy(text: string) {
-		try {
-			await navigator.clipboard.writeText(text);
-			toast.success(m.content_copied());
-		} catch (error) {
-			reportError(error);
-		}
-	}
+	const copy = (text: string) => copyText(text);
 
 	const fieldName = (id: string) => lookup?.fields.find((field) => field.id === id)?.name ?? '…';
 	// The contact an IBAN of a code belongs to, as the identifiers of the facts say.

@@ -15,6 +15,7 @@
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
+	import { moveTargets, retryProcessing } from '#lib/components/document/actions.ts';
 	import FieldGroup from '#lib/components/document/FieldGroup.svelte';
 	import FieldShell from '#lib/components/document/FieldShell.svelte';
 	import FilingBox from '#lib/components/document/FilingBox.svelte';
@@ -28,6 +29,7 @@
 	import TypeIcon from '#lib/components/TypeIcon.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
+	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { describeValue, fieldLabel } from '#lib/describe.ts';
 	import {
@@ -198,6 +200,8 @@
 	);
 	// Where the document goes on confirming: empty while nothing is chosen.
 	const spaceTarget = $derived(spaceChoice === 'other' ? otherSpace : spaceChoice);
+	// "Move" in the filing box: there is somewhere to move it (the head's button says the same).
+	const canMove = $derived(moveTargets(lookup, session.user, document.space_id).length > 0);
 	const filingHint = $derived(
 		filing ? confirmHint(spaceTarget, document.space_id, lookup, viewer) : null
 	);
@@ -524,9 +528,7 @@
 	async function retry() {
 		busy = true;
 		try {
-			await unwrap(
-				api.POST('/api/v1/documents/{id}/retry', { params: { path: { id: document.id } } })
-			);
+			await retryProcessing(document.id);
 			toast.success(m.retry_started());
 		} catch (error) {
 			formError = describeError(error);
@@ -947,7 +949,15 @@
 		{/if}
 
 		{#if !filing}
-			<FilingBox {document} {lookup} {viewer} unseen={settledUnseen} {editable} {onmove} />
+			<FilingBox
+				{document}
+				{lookup}
+				{viewer}
+				unseen={settledUnseen}
+				{editable}
+				{canMove}
+				{onmove}
+			/>
 		{/if}
 
 		{#if reviewing && decisions.length === 0 && !failedNode && ruleNotes.length === 0 && nodeNotes.length === 0 && !hasSpace}
@@ -956,7 +966,7 @@
 	</div>
 
 	<div class="flex flex-col gap-2.5 border-t bg-card px-5 py-3.5">
-		{#if formError}<p class="text-sm text-destructive" role="alert">{formError}</p>{/if}
+		{#if formError}<Field.Error>{formError}</Field.Error>{/if}
 		{#if !editable}
 			<p class="text-sm text-muted-foreground">{m.edit_read_only()}</p>
 		{:else if confirming}

@@ -13,7 +13,11 @@ function words(query: string): string[] {
 		.filter((word) => word !== '');
 }
 
-function found(query: string, texts: readonly (string | null | undefined)[]): boolean {
+/** Whether every word of `query` stands in one of `texts`, regardless of case. */
+export function matchesWords(
+	query: string,
+	texts: readonly (string | null | undefined)[]
+): boolean {
 	const haystack = texts
 		.filter((text): text is string => !!text)
 		.join('\n')
@@ -28,19 +32,19 @@ export function contactMatches(
 	const values = (contact.identifiers ?? [])
 		.filter((entry) => entry.source !== 'rejected')
 		.flatMap((entry) => [entry.value, entry.value.replace(/\s+/g, '')]);
-	return found(query, [contact.name, ...(contact.aliases ?? []), ...values]);
+	return matchesWords(query, [contact.name, ...(contact.aliases ?? []), ...values]);
 }
 
 export function typeMatches(
 	type: Pick<DocumentType, 'name'> & Partial<Pick<DocumentType, 'description'>>,
 	query: string
 ): boolean {
-	return found(query, [type.name, type.description]);
+	return matchesWords(query, [type.name, type.description]);
 }
 
 export function fieldMatches(
 	field: Pick<FieldDefinition, 'name' | 'key' | 'description'>,
 	query: string
 ): boolean {
-	return found(query, [field.name, field.key, `field.${field.key}`, field.description]);
+	return matchesWords(query, [field.name, field.key, `field.${field.key}`, field.description]);
 }

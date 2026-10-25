@@ -1,11 +1,10 @@
 <script lang="ts">
 	import Copy from '@lucide/svelte/icons/copy';
-	import { toast } from 'svelte-sonner';
 	import type { components } from '#lib/api/schema.ts';
+	import { copyText } from '#lib/clipboard.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import Segmented from '#lib/components/Segmented.svelte';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
-	import { describeError } from '#lib/errors.ts';
 	import { formatNumber } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { splitInput } from '#lib/usage.ts';
@@ -23,7 +22,10 @@
 
 	type Part = 'system' | 'user' | 'answer';
 	let part = $state<Part>('system');
-	let attempt = $state(0);
+	// The attempt chosen, among the calls it was chosen from: another prompt in the same dialog
+	// starts at the first again.
+	let chosen = $state.raw<{ among: readonly Call[]; index: number } | null>(null);
+	const attempt = $derived(chosen?.among === calls ? chosen.index : 0);
 
 	const call = $derived(calls[Math.min(attempt, calls.length - 1)] ?? null);
 	const body = $derived(call ? call[part] : '');
@@ -43,14 +45,7 @@
 		return m.prompt_input({ characters, tokens: formatNumber(part === 'system' ? system : user) });
 	});
 
-	async function copy() {
-		try {
-			await navigator.clipboard.writeText(body);
-			toast.success(m.content_copied());
-		} catch (error) {
-			toast.error(describeError(error));
-		}
-	}
+	const copy = () => copyText(body);
 
 	const parts: { part: Part; label: () => string }[] = [
 		{ part: 'system', label: m.prompt_system },
@@ -80,7 +75,7 @@
 						value: String(index),
 						label: m.prompt_attempt({ number: index + 1, total: calls.length })
 					}))}
-					onchange={(next) => (attempt = Number(next))}
+					onchange={(next) => (chosen = { among: calls, index: Number(next) })}
 				/>
 			{/if}
 			<span class="text-sm text-muted-foreground">{size}</span>

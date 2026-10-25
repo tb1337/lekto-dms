@@ -56,11 +56,14 @@ export interface Segment {
 	marked: boolean;
 }
 
+/** A form feed on a line of its own: how the text keeps its pages apart. */
+export const PAGE_BREAK = /\n?\f\n?/;
+
 /** Where each page of the text starts and ends: pages are apart by a form feed on a line of
  * its own, as the text view splits them. */
 export function pageRanges(text: string): { start: number; end: number }[] {
 	const ranges: { start: number; end: number }[] = [];
-	const separator = /\n?\f\n?/g;
+	const separator = new RegExp(PAGE_BREAK.source, 'g');
 	let start = 0;
 	for (let match = separator.exec(text); match !== null; match = separator.exec(text)) {
 		ranges.push({ start, end: match.index });

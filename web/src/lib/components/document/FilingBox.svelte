@@ -3,6 +3,7 @@
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Users from '@lucide/svelte/icons/users';
 	import type { components } from '#lib/api/schema.ts';
+	import FieldGroup from '#lib/components/document/FieldGroup.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { memberChips, spaceName, whereText, type Filing, type Viewer } from '#lib/filing.ts';
@@ -27,6 +28,7 @@
 		otherOptions = [],
 		unseen = [],
 		editable,
+		canMove = false,
 		onmove
 	}: {
 		document: Document;
@@ -42,6 +44,9 @@
 		/** Users the document names who do not see it where the choice leads, by id. */
 		unseen?: readonly string[];
 		editable: boolean;
+		/** There is a space to move the document into (the head knows; without one its own
+		 * button is disabled too). */
+		canMove?: boolean;
 		/** "Move": the move dialog of the document's head. */
 		onmove?: () => void;
 	} = $props();
@@ -129,7 +134,7 @@
 						</span>
 						{#if option.chips.length > 0}
 							<span class="flex flex-wrap gap-1.5">
-								{#each option.chips as chip (chip.text)}
+								{#each option.chips as chip, index (index)}
 									<span
 										class={cn(
 											'rounded-full px-2.5 py-0.5 text-xs',
@@ -173,39 +178,38 @@
 		</fieldset>
 	</section>
 {:else}
-	<section
-		aria-labelledby="filing-title"
-		data-testid="filing-calm"
-		class="flex flex-col gap-3 rounded-2xl border bg-card px-4 pt-3.5 pb-4"
-	>
-		<div class="flex items-center gap-2.5 border-b border-muted pb-2.5">
-			<span
-				class="grid size-[30px] shrink-0 place-items-center rounded-lg bg-panel text-brand"
-				aria-hidden="true"
+	{#snippet move()}
+		{#if editable && onmove}
+			<Button
+				type="button"
+				variant="outline"
+				size="sm"
+				class="ml-auto"
+				disabled={!canMove}
+				onclick={onmove}
 			>
-				<Folder class="size-4" />
-			</span>
-			<div class="flex min-w-0 flex-col">
-				<h3 id="filing-title" class="text-[0.95rem] leading-tight font-semibold">
-					{m.filing_title()}
-				</h3>
-				<span class="text-xs text-muted-foreground">{m.filing_hint()}</span>
-			</div>
-			{#if editable && onmove}
-				<Button type="button" variant="outline" size="sm" class="ml-auto" onclick={onmove}>
-					{m.filing_move_action()}
-				</Button>
-			{/if}
-		</div>
+				{m.filing_move_action()}
+			</Button>
+		{/if}
+	{/snippet}
+	<FieldGroup
+		id="filing-title"
+		icon={Folder}
+		title={m.filing_title()}
+		hint={m.filing_hint()}
+		action={move}
+		class="gap-3 pb-4"
+		data-testid="filing-calm"
+	>
 		<dl class="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] gap-x-3 gap-y-2.5 text-sm">
 			<dt class="text-muted-foreground">{m.filing_space()}</dt>
 			<dd class="font-semibold">{spaceName(document.space_id, lookup, viewer)}</dd>
 			{#if space}
 				<dt class="text-muted-foreground">{m.filing_visible()}</dt>
 				<dd class="flex flex-wrap gap-1.5">
-					{#each memberChips(space.members, viewer, green) as chip (chip)}
+					{#each memberChips(space.members, viewer, green) as chip (chip.key)}
 						<span class="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground"
-							>{chip}</span
+							>{chip.text}</span
 						>
 					{/each}
 				</dd>
@@ -220,5 +224,5 @@
 			</dd>
 		</dl>
 		{@render note()}
-	</section>
+	</FieldGroup>
 {/if}

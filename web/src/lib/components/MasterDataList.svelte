@@ -8,9 +8,11 @@
 	import { BASE } from '#lib/base.ts';
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
 	import MasterRow from '#lib/components/MasterRow.svelte';
+	import PanelState from '#lib/components/PanelState.svelte';
 	import TagChip from '#lib/components/TagChip.svelte';
 	import TypeIcon from '#lib/components/TypeIcon.svelte';
 	import { describeError } from '#lib/errors.ts';
+	import { latest } from '#lib/latest.ts';
 	import { contactMatches, typeMatches } from '#lib/master-search.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { type Item, KINDS } from '#lib/masterdata-api.ts';
@@ -60,16 +62,20 @@
 		return list;
 	});
 
+	const begin = latest();
 	async function load() {
+		const current = begin();
 		try {
-			[items, tags, fields] = await Promise.all([
+			const found = await Promise.all([
 				ops.list({ counts: true, allUsers: scope.allUsers }),
 				unwrap(api.GET('/api/v1/tags')),
 				kind === 'document-types' ? unwrap(api.GET('/api/v1/fields')) : Promise.resolve([])
 			]);
+			if (!current()) return;
+			[items, tags, fields] = found;
 			problem = null;
 		} catch (error) {
-			problem = describeError(error);
+			if (current()) problem = describeError(error);
 		}
 	}
 
@@ -179,17 +185,16 @@
 			</span>
 		</div>
 	{/if}
-	{#if problem}
-		<p class="text-destructive" role="alert">{problem}</p>
-	{:else if !items}
-		<p class="text-muted-foreground">{m.loading()}</p>
-	{:else if listed.length === 0}
-		<p
-			class="rounded-2xl border border-dashed bg-card px-6 py-10 text-center text-muted-foreground"
-		>
-			{items.length === 0 ? m.master_none() : m.assignment_none_found()}
-		</p>
-	{:else}
+	<PanelState
+		{problem}
+		loading={!items}
+		empty={listed.length > 0
+			? null
+			: items?.length === 0
+				? m.master_none()
+				: m.assignment_none_found()}
+		onretry={load}
+	>
 		<ul class="divide-y overflow-hidden rounded-2xl border bg-card" aria-label={ops.title()}>
 			{#each listed as item (item.id)}
 				{@const groups = groupsOf(item)}
@@ -228,5 +233,5 @@
 				</MasterRow>
 			{/each}
 		</ul>
-	{/if}
+	</PanelState>
 </div>

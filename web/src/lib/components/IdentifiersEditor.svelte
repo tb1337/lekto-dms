@@ -1,16 +1,15 @@
 <script lang="ts">
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Plus from '@lucide/svelte/icons/plus';
-	import SearchIcon from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
 	import { tick } from 'svelte';
 	import InfoHint from '#lib/components/InfoHint.svelte';
+	import SearchField from '#lib/components/SearchField.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import TagChip from '#lib/components/TagChip.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
-	import { api } from '#lib/api/client.ts';
 	import {
 		IDENTIFIER_KINDS,
 		type IdentifierKind,
@@ -38,8 +37,8 @@
 	// rejected (training does not learn it again); a rejected one can be allowed again. Enter
 	// in the value closes the line. A search finds them by value, kind and topic; a new one
 	// opens empty. `errors` (by row key) show in their open line. `kinds`: those offered (a
-	// person's in the profile); `withUsers`: a customer or personnel number may name the user it
-	// belongs to (the contact dialog). `contacts`: the lines are a user's numbers at these
+	// person's in the profile); `users`: a customer or personnel number may name the user it
+	// belongs to, one of these (the contact dialog). `contacts`: the lines are a user's numbers at these
 	// contacts (the profile, issue #82): each names its contact, offers the topics that contact
 	// enables, and a learned one is taken over or declined as not theirs.
 	let {
@@ -49,7 +48,7 @@
 		errors = {},
 		hint,
 		kinds: offered = IDENTIFIER_KINDS,
-		withUsers = false,
+		users = null,
 		contacts
 	}: {
 		rows: IdentifierRow[];
@@ -59,29 +58,19 @@
 		/** The help of the identifiers, behind an info button beside the search. */
 		hint?: string;
 		kinds?: readonly IdentifierKind[];
-		withUsers?: boolean;
+		/** Without the list, a number still shows whose it is by id; it only cannot be chosen. */
+		users?: readonly UserName[] | null;
 		contacts?: readonly Pick<Contact, 'id' | 'name' | 'topic_ids'>[];
 	} = $props();
 
 	const uid = $props.id();
 	let query = $state('');
-	let users = $state<UserName[]>([]);
 	const kinds = $derived(offered.map((kind) => ({ value: kind, label: kindLabel(kind) })));
+	const withUsers = $derived(users !== null);
 	const userOptions = $derived([
 		{ value: '', label: m.identifier_user_none() },
-		...users.map((user) => ({ value: user.id, label: userChoice(user) }))
+		...(users ?? []).map((user) => ({ value: user.id, label: userChoice(user) }))
 	]);
-
-	$effect(() => {
-		if (!withUsers) return;
-		// Without the list, a number still shows whose it is by id; it only cannot be chosen.
-		void api
-			.GET('/api/v1/users')
-			.then(({ data }) => {
-				if (Array.isArray(data)) users = data;
-			})
-			.catch(() => {});
-	});
 	const contactOptions = $derived([
 		{ value: '', label: m.number_contact_choose() },
 		...(contacts ?? []).map((contact) => ({ value: contact.id, label: contact.name }))
@@ -165,18 +154,11 @@
 
 <div class="flex flex-col gap-1" role="group" aria-label={m.master_identifiers()}>
 	<div class="flex items-center gap-2 pb-1">
-		<label
-			class="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full border border-input bg-card px-3.5 text-muted-foreground focus-within:border-ring sm:h-10 dark:bg-input/30"
-		>
-			<SearchIcon class="size-4 shrink-0" aria-hidden="true" />
-			<input
-				type="search"
-				bind:value={query}
-				placeholder={m.identifier_search()}
-				aria-label={m.identifier_search()}
-				class="h-full min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground sm:text-sm"
-			/>
-		</label>
+		<SearchField
+			bind:value={query}
+			label={m.identifier_search()}
+			class="h-11 min-w-0 flex-1 rounded-full border border-input bg-card px-3.5 focus-within:border-ring sm:h-10 dark:bg-input/30"
+		/>
 		{#if hint}<InfoHint text={hint} about={m.master_identifiers()} />{/if}
 		{#if phone.current}
 			<Button
@@ -253,7 +235,7 @@
 							{/if}
 							{#if topic}<TagChip tag={topic} topic size="sm" />{/if}
 							{#if withUsers && item.user_id}
-								<Badge variant="outline">{userName(users, item.user_id)}</Badge>
+								<Badge variant="outline">{userName(users ?? [], item.user_id)}</Badge>
 							{/if}
 							{#if errors[item.key]}
 								<span class="size-[7px] shrink-0 rounded-full bg-destructive" aria-hidden="true"

@@ -50,9 +50,9 @@
 	// Plain bookkeeping, nothing in the markup reads these.
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
 	const tasks = new Map<number, pdfjs.RenderTask>();
-	// The width in CSS pixels each page was last drawn for.
+	// The width in CSS pixels and the device pixel ratio each page was last drawn for.
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const drawn = new Map<number, number>();
+	const drawn = new Map<number, string>();
 
 	async function open() {
 		loading = true;
@@ -71,6 +71,9 @@
 			}
 			if (!response) throw new Error(m.pdf_missing());
 			const data = new Uint8Array(await response.arrayBuffer());
+			// The viewer may have closed while the file was on its way: then no document is opened
+			// (it would never be destroyed), and one that finished opening meanwhile is dropped.
+			if (destroyed) return;
 			loadingTask = pdfjs.getDocument({
 				data,
 				wasmUrl: `${BASE}/pdfjs/wasm/`,
@@ -79,6 +82,10 @@
 				cMapPacked: true
 			});
 			doc = await loadingTask.promise;
+			if (destroyed) {
+				void loadingTask.destroy();
+				return;
+			}
 			await measure();
 		} catch (error) {
 			problem =
@@ -108,13 +115,16 @@
 	async function draw(number: number, node: HTMLElement) {
 		const canvas = node.querySelector('canvas');
 		const width = Math.round(node.clientWidth);
-		if (!doc || destroyed || !canvas || width === 0 || drawn.get(number) === width) return;
-		drawn.set(number, width);
+		const ratio = window.devicePixelRatio || 1;
+		// The same CSS width on a screen of another density (the window moved) is drawn anew.
+		const target = `${width}@${ratio}`;
+		if (!doc || destroyed || !canvas || width === 0 || drawn.get(number) === target) return;
+		drawn.set(number, target);
 		tasks.get(number)?.cancel();
 		const page = await doc.getPage(number);
 		if (destroyed) return;
 		const unscaled = page.getViewport({ scale: 1 });
-		let scale = (width / unscaled.width) * (window.devicePixelRatio || 1);
+		let scale = (width / unscaled.width) * ratio;
 		const pixels = unscaled.width * unscaled.height * scale * scale;
 		if (pixels > MOST_PIXELS) scale *= Math.sqrt(MOST_PIXELS / pixels);
 		const viewport = page.getViewport({ scale });
@@ -127,7 +137,7 @@
 			await task.promise;
 		} catch {
 			// Cancelled by a newer drawing of the page, or the viewer is gone.
-			if (drawn.get(number) === width) drawn.delete(number);
+			if (drawn.get(number) === target) drawn.delete(number);
 			return;
 		}
 		if (tasks.get(number) === task) tasks.delete(number);

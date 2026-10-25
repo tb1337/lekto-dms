@@ -3,7 +3,8 @@
  * stands on the page), and the place of a document among those waiting in the inbox.
  */
 import type { components } from '#lib/api/schema.ts';
-import { BASE } from '#lib/base.ts';
+import { BASE_API } from '#lib/api/base.ts';
+import { documentHref } from '#lib/candidates.ts';
 import { sameValue, type ApiValue } from '#lib/fields.ts';
 
 export type Check = components['schemas']['FieldCheckOut'];
@@ -129,9 +130,24 @@ type Viewed = Pick<components['schemas']['DocumentDetails'], 'id' | 'media_type'
  * page image exists). Nothing is asked for that cannot be there yet.
  */
 export function viewerSources(document: Viewed, archive: boolean): string[] {
-	const base = `/api/v1/documents/${document.id}`;
+	const base = documentApi(document.id);
 	if (archive) return [`${base}/archive`];
 	return document.media_type === 'application/pdf' ? [`${base}/original`] : [];
+}
+
+/** The document's place in the API; the id as a path segment, whatever it contains. */
+export function documentApi(id: string): string {
+	return `${BASE_API}/documents/${encodeURIComponent(id)}`;
+}
+
+/** The image of a page of the document. */
+export function pageImageHref(id: string, page: number): string {
+	return `${documentApi(id)}/pages/${page}`;
+}
+
+/** The preview of the document: its first page, small. */
+export function previewHref(id: string): string {
+	return `${documentApi(id)}/preview`;
 }
 
 export interface FieldEvidence {
@@ -276,7 +292,7 @@ export function nextDecision(places: readonly InboxPlace[], id: string): string 
 
 /** A document opened from the inbox: its neighbours are the inbox's. */
 export function inboxDocument(id: string): string {
-	return `${BASE}/documents/${id}?from=inbox`;
+	return `${documentHref(id)}?from=inbox`;
 }
 
 /** The places of a quote by page: one per page, with the boxes of every place on it, in

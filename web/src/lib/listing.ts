@@ -7,6 +7,7 @@
  * lens may; that is not remembered.
  */
 
+import { isoDayLocal } from '#lib/dates.ts';
 import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 
@@ -143,8 +144,7 @@ export function monthOf(
 	}
 	if (sort === '-created_at' || sort === 'created_at') {
 		// In the browser's time, as the date shows.
-		const added = new Date(document.created_at);
-		return `${added.getFullYear()}-${String(added.getMonth() + 1).padStart(2, '0')}`;
+		return isoDayLocal(new Date(document.created_at)).slice(0, 7);
 	}
 	return null;
 }

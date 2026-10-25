@@ -88,10 +88,11 @@ export function spaceLabel(
 	return userName(users, space.personal_of);
 }
 
-/** A user's name by id; the id while unknown. */
-export function userName(users: readonly UserName[], id: string): string {
-	const user = byId(users).get(id);
-	return user ? userLabel(user) : id;
+/** A user's name by id; "unknown" for one the list lacks (none, or a user deleted since): an
+ * id says nothing to a reader. */
+export function userName(users: readonly UserName[], id: string | null | undefined): string {
+	const user = id ? byId(users).get(id) : undefined;
+	return user ? userLabel(user) : m.user_unknown();
 }
 
 /** How a user is shown: their display name, else their username. */
@@ -107,6 +108,30 @@ export function userChoice(user: { username: string; display_name?: string | nul
 	return shown.toLowerCase() === user.username.toLowerCase()
 		? shown
 		: `${shown} (${user.username})`;
+}
+
+/** The user whose personal space `spaceId` is, as far as `users` tell. */
+export function holderOf(users: readonly UserName[], spaceId: string): UserName | undefined {
+	return users.find((user) => user.personal_space_id === spaceId);
+}
+
+/**
+ * A space as the caller names it: by its label if they see it; another user's personal space,
+ * which they need not see, by that user ("Personal" for their own); a space they cannot tell
+ * by `unseen`.
+ */
+export function spaceNameFor(
+	spaceId: string,
+	lookup: Pick<Lookup, 'spaces' | 'users'> | null,
+	me: string | undefined,
+	unseen: string = m.space_unseen()
+): string {
+	if (!lookup) return unseen;
+	const space = byId(lookup.spaces).get(spaceId);
+	if (space) return spaceLabel(space, lookup.users, me);
+	const holder = holderOf(lookup.users, spaceId);
+	if (holder) return holder.id === me ? m.space_personal() : userLabel(holder);
+	return unseen;
 }
 
 /** The name of a space the caller is no member of (an admin sees every space), for a badge on a

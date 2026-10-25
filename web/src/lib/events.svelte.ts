@@ -62,7 +62,8 @@ class EventStream {
 	#handlers = new Set<Handler>();
 	#adminHandlers = new Set<{ type: SystemEventType | SearchEventType; handler: AdminHandler }>();
 	// Whether a stream was open before: every later `onopen` is a reconnect (after a network
-	// break, or after the server closed the stream and the caller started it again).
+	// break, or after the server closed the stream and the caller started it again). `stop()`
+	// forgets it: the first stream of the next sign-in is no reconnect.
 	#opened = false;
 	#factory: (url: string) => EventSource = (url) => new EventSource(url);
 
@@ -102,7 +103,7 @@ class EventStream {
 			this.connected = false;
 			// Network breaks are retried by the browser itself; a closed source is not.
 			if (source.readyState === 2) {
-				this.stop();
+				this.#close();
 				onClosed();
 			}
 		};
@@ -121,7 +122,13 @@ class EventStream {
 		}
 	}
 
+	/** Close the stream for good (sign-out): the next `start` opens a first stream again. */
 	stop(): void {
+		this.#close();
+		this.#opened = false;
+	}
+
+	#close(): void {
 		this.#source?.close();
 		this.#source = null;
 		this.connected = false;

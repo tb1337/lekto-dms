@@ -1,10 +1,12 @@
 /** Texts for values in a change: ids become names, the rest is shown plainly. */
+import { isIsoDay } from '#lib/dates.ts';
 import { isMoney, isPeriod } from '#lib/fields.ts';
 import { formatDate, formatMoney } from '#lib/i18n.ts';
-import { spaceLabel, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+import { spaceNameFor, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { writePeriod } from '#lib/periods.ts';
 import { session } from '#lib/session.svelte.ts';
+import { own } from '#lib/utils.ts';
 
 const FIELD_LABELS: Record<string, () => string> = {
 	title: m.field_title,
@@ -23,7 +25,7 @@ export function fieldLabel(field: string, lookup: Lookup | null): string {
 		const id = field.slice('field:'.length);
 		return lookup?.fields.find((entry) => entry.id === id)?.name ?? field;
 	}
-	return FIELD_LABELS[field]?.() ?? field;
+	return own(FIELD_LABELS, field)?.() ?? field;
 }
 
 /** A value as the user reads it. */
@@ -40,13 +42,11 @@ export function describeValue(value: unknown, lookup: Lookup | null): string {
 			(entry) => entry.id === text
 		);
 		if (named) return named.name;
-		const space = lookup.spaces.find((entry) => entry.id === text);
-		if (space) return spaceLabel(space, lookup.users, session.user?.id);
-		// Another user's personal space the caller is no member of: named by its user.
-		const holder = lookup.users.find((entry) => entry.personal_space_id === text);
-		if (holder) return holder.id === session.user?.id ? m.space_personal() : userLabel(holder);
+		// A space, also another user's personal one the caller is no member of.
+		const space = spaceNameFor(text, lookup, session.user?.id, '');
+		if (space) return space;
 		const user = lookup.users.find((entry) => entry.id === text);
 		if (user) return userLabel(user);
 	}
-	return /^\d{4}-\d{2}-\d{2}$/.test(text) ? formatDate(text) : text;
+	return isIsoDay(text) ? formatDate(text) : text;
 }

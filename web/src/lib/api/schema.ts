@@ -3995,6 +3995,18 @@ export interface components {
 			};
 		};
 		/**
+		 * FactOrigin
+		 * @description Where a fact comes from; one fact may come from several sources.
+		 * @enum {string}
+		 */
+		FactOrigin: 'pattern' | 'code' | 'model' | 'person';
+		/**
+		 * FactRole
+		 * @description What a fact is to the document that shows it (`fakten.md`, Rollen).
+		 * @enum {string}
+		 */
+		FactRole: 'contact' | 'target' | 'own' | 'thread' | 'refers' | 'person';
+		/**
 		 * FactsOut
 		 * @example {
 		 *       "codes": [],
@@ -4004,8 +4016,12 @@ export interface components {
 		 *           "in_code": false,
 		 *           "in_text": true,
 		 *           "kind": "customer_number",
+		 *           "origins": [
+		 *             "pattern"
+		 *           ],
 		 *           "other_contact_ids": [],
 		 *           "other_contacts": 0,
+		 *           "role": "contact",
 		 *           "spans": [
 		 *             {
 		 *               "end": 421,
@@ -4436,6 +4452,13 @@ export interface components {
 			 * @description Where it stands in the text.
 			 */
 			spans: components['schemas']['SpanOut'][];
+			/** @description What it is to the document (`contact`: points to the contact, `target`: to what a series refers to, `own`: marks the document, `thread`: joins a strand, `refers`: refers to another document, `person`: points to a person). As kept for the document; until the facts signal ran again after 0.7, the role of its kind. */
+			role: components['schemas']['FactRole'];
+			/**
+			 * Origins
+			 * @description Where it comes from: `pattern` (the text), `code`, `model`, `person`.
+			 */
+			origins: components['schemas']['FactOrigin'][];
 			/**
 			 * Other Contacts
 			 * @description For admins: on the confirmed documents of how many contacts other than the document's it stands (the IBAN of one's own account stands on many); null for others.

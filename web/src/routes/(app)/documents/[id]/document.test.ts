@@ -275,6 +275,8 @@ describe('the document tab', () => {
 				contact_id: null,
 				in_text: true,
 				in_code: false,
+				role: 'contact',
+				origins: ['pattern'],
 				spans: [{ start: 13, end: 20, locations: [] }],
 				other_contacts: null
 			}

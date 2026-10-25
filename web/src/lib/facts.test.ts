@@ -36,6 +36,8 @@ const FACTS: Facts = {
 			contact_id: CONTACT,
 			in_text: true,
 			in_code: true,
+			role: 'contact',
+			origins: ['pattern', 'code'],
 			spans: [{ start: 20, end: 47, locations: [] }],
 			other_contacts: null
 		},
@@ -45,6 +47,8 @@ const FACTS: Facts = {
 			contact_id: 'contact-2',
 			in_text: true,
 			in_code: false,
+			role: 'contact',
+			origins: ['pattern'],
 			spans: [],
 			other_contacts: null
 		},
@@ -54,6 +58,8 @@ const FACTS: Facts = {
 			contact_id: null,
 			in_text: true,
 			in_code: false,
+			role: 'contact',
+			origins: ['pattern'],
 			spans: [{ start: 60, end: 69, locations: [] }],
 			other_contacts: 0
 		}

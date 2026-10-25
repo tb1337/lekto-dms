@@ -13,9 +13,9 @@ from lekto.core.domain.errors import (
 )
 from lekto.core.domain.ids import WebhookId, new_id
 from lekto.core.domain.users import Role
-from lekto.core.domain.webhooks import DISABLED_FAILING, new_secret
+from lekto.core.domain.webhooks import DISABLED_FAILING, headers_from_bytes, new_secret
 from lekto.core.services.webhooks import WebhookService
-from lekto.core.services.webhooks.management import secret_context
+from lekto.core.services.webhooks.management import headers_context, secret_context
 from tests import builders
 from tests.unit.services.support import World
 
@@ -27,11 +27,12 @@ async def test_a_user_creates_a_webhook_and_sees_the_secret_once(world: World) -
     created = await world.webhooks.create(
         user.id, name="n8n", url=URL, event_types=["document.filed"]
     )
-    assert created.secret.startswith("whsec_")
+    assert created.secret is not None and created.secret.startswith("whsec_")
     assert created.webhook.owner_id == user.id and created.webhook.active
     async with world.uow() as uow:
         stored = await uow.webhooks.get(created.webhook.id)
     # Stored encrypted, bound to the webhook: not the plain secret.
+    assert stored.encrypted_secret is not None
     assert created.secret.encode() not in stored.encrypted_secret
     assert (
         world.cipher.decrypt(stored.encrypted_secret, context=secret_context(stored.id)).decode()
@@ -89,7 +90,7 @@ async def test_admins_change_renew_and_delete_other_users_webhooks(world: World)
     hook = (await service.create(owner.id, name="x", url=URL, event_types=["*"])).webhook
     assert (await service.update(admin.id, hook.id, name="by admin")).name == "by admin"
     renewed = await service.renew_secret(admin.id, hook.id)
-    assert renewed.secret.startswith("whsec_")
+    assert renewed.secret is not None and renewed.secret.startswith("whsec_")
     assert (await service.get(owner.id, hook.id)).owner_id == owner.id
     await service.delete(admin.id, hook.id)
     with pytest.raises(NotFoundError):
@@ -162,6 +163,85 @@ async def test_a_deactivated_user_cannot_use_webhooks(world: World) -> None:
         await world.webhooks.list_webhooks(user.id)
     with pytest.raises(AuthenticationError):
         await world.webhooks.create(user.id, name="y", url=URL, event_types=["*"])
+
+
+async def test_a_webhook_may_go_unsigned_and_sign_again_later(world: World) -> None:
+    user = await world.user()
+    service = world.webhooks
+    created = await service.create(user.id, name="HA", url=URL, event_types=["*"], signed=False)
+    assert created.secret is None and not created.webhook.signed
+    renewed = await service.renew_secret(user.id, created.webhook.id)
+    assert renewed.secret is not None and renewed.webhook.signed
+    # Nothing signed before: no old secret with a grace period.
+    assert renewed.webhook.previous_valid_until is None
+    removed = await service.remove_secret(user.id, created.webhook.id)
+    assert not removed.signed and removed.previous_secret is None
+    assert not (await service.get(user.id, created.webhook.id)).signed
+
+
+def stored_headers(world: World, webhook_id: WebhookId, encrypted: bytes | None) -> dict[str, str]:
+    assert encrypted is not None
+    return headers_from_bytes(world.cipher.decrypt(encrypted, context=headers_context(webhook_id)))
+
+
+async def test_header_values_are_stored_encrypted_and_kept_by_name(world: World) -> None:
+    user = await world.user()
+    service = world.webhooks
+    created = await service.create(
+        user.id,
+        name="HA",
+        url=URL,
+        event_types=["*"],
+        headers={"Authorization": "Bearer t0ken", "X-Tenant": "home"},
+    )
+    hook = created.webhook
+    assert hook.header_names == ("Authorization", "X-Tenant")
+    assert hook.encrypted_headers is not None and b"t0ken" not in hook.encrypted_headers
+    assert stored_headers(world, hook.id, hook.encrypted_headers) == {
+        "Authorization": "Bearer t0ken",
+        "X-Tenant": "home",
+    }
+    # A value left out keeps the stored one (by name, ignoring case); the order follows.
+    changed = await service.update(
+        user.id, hook.id, headers=[("X-Tenant", "work"), ("authorization", None)]
+    )
+    assert changed.header_names == ("X-Tenant", "authorization")
+    assert stored_headers(world, hook.id, changed.encrypted_headers) == {
+        "X-Tenant": "work",
+        "authorization": "Bearer t0ken",
+    }
+    with pytest.raises(ValidationError, match="new header 'X-New'"):
+        await service.update(user.id, hook.id, headers=[("X-New", None)])
+    cleared = await service.update(user.id, hook.id, headers=[])
+    assert cleared.header_names == () and cleared.encrypted_headers is None
+
+
+async def test_reserved_or_broken_headers_are_refused(world: World) -> None:
+    user = await world.user()
+    for headers in ({"Webhook-Signature": "x"}, {"Lekto-Task-Token": "x"}, {"X": "a\nb"}):
+        with pytest.raises(ValidationError):
+            await world.webhooks.create(
+                user.id, name="x", url=URL, event_types=["*"], headers=headers
+            )
+    assert await world.webhooks.list_webhooks(user.id) == []
+
+
+async def test_header_values_that_cannot_be_decrypted_must_be_given_anew(world: World) -> None:
+    user = await world.user()
+    hook = (
+        await world.webhooks.create(
+            user.id, name="x", url=URL, event_types=["*"], headers={"X-Token": "a"}
+        )
+    ).webhook
+    async with world.uow() as uow:
+        webhook = await uow.webhooks.get(hook.id)
+        webhook.encrypted_headers = b"garbage"
+        await uow.webhooks.update(webhook)
+        await uow.commit()
+    with pytest.raises(ValidationError, match="new header 'X-Token'"):
+        await world.webhooks.update(user.id, hook.id, headers=[("X-Token", None)])
+    changed = await world.webhooks.update(user.id, hook.id, headers=[("X-Token", "b")])
+    assert stored_headers(world, hook.id, changed.encrypted_headers) == {"X-Token": "b"}
 
 
 def test_new_secrets_do_not_repeat() -> None:

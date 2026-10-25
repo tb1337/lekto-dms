@@ -72,6 +72,20 @@ class WebhookRepositoryContract:
             assert await uow.webhooks.get(webhook.id) == webhook
             assert await uow.webhooks.find(webhook.id) == webhook
 
+    async def test_a_webhook_round_trips_with_headers_and_without_a_secret(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner = await a_user(uow_factory)
+        webhook = a_webhook(owner, encrypted_secret=None)
+        webhook.set_headers(["Authorization", "X-Tenant"], b"\x02values", now=NOW)
+        async with uow_factory() as uow:
+            await uow.webhooks.add(webhook)
+            await uow.commit()
+        async with uow_factory() as uow:
+            stored = await uow.webhooks.get(webhook.id)
+        assert stored == webhook
+        assert stored.header_names == ("Authorization", "X-Tenant") and not stored.signed
+
     async def test_a_missing_webhook_is_not_found(self, uow_factory: UnitOfWorkFactory) -> None:
         async with uow_factory() as uow:
             assert await uow.webhooks.find(a_webhook(builders.user()).id) is None

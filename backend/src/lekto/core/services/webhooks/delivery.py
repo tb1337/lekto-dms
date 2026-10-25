@@ -47,6 +47,7 @@ from lekto.core.domain.webhooks import (
     Webhook,
     WebhookDelivery,
     event_body,
+    headers_from_bytes,
     signed_headers,
 )
 from lekto.core.ports.clock import Clock
@@ -55,7 +56,11 @@ from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.ports.webhook_sender import WebhookRequest, WebhookResponse, WebhookSender
 from lekto.core.services._access import load_actor
 from lekto.core.services._jobs import JobRunner, lost
-from lekto.core.services.webhooks.management import manageable_webhook, secret_context
+from lekto.core.services.webhooks.management import (
+    headers_context,
+    manageable_webhook,
+    secret_context,
+)
 from lekto.core.services.webhooks.policy import WebhookPolicy
 
 log = logging.getLogger(__name__)
@@ -146,8 +151,8 @@ class WebhookDeliveryService:
         self._count_test_request(actor, now)
         event_id = EventId(new_id())
         try:
-            secrets = self._decrypt(webhook, now)
-            response = await self._send(webhook, secrets, event_id, TEST_EVENT, now, None)
+            secrets, own = self._decrypt(webhook, now)
+            response = await self._send(webhook, secrets, own, event_id, TEST_EVENT, now, None)
         except (DecryptionError, ValueError):
             response = _unusable_secret(id)
         outcome = DeliveryOutcome.DELIVERED if _is_success(response) else DeliveryOutcome.GAVE_UP
@@ -220,9 +225,9 @@ class WebhookDeliveryService:
             )
             return
         try:
-            secrets = self._decrypt(webhook, now)
+            secrets, own = self._decrypt(webhook, now)
             response = await self._send(
-                webhook, secrets, event_id, event_type, occurred_at, document_id
+                webhook, secrets, own, event_id, event_type, occurred_at, document_id
             )
         except (DecryptionError, ValueError):
             response = _unusable_secret(webhook_id)
@@ -244,15 +249,19 @@ class WebhookDeliveryService:
         self,
         webhook: Webhook,
         secrets: list[str],
+        own: dict[str, str],
         event_id: EventId,
         event_type: str,
         occurred_at: datetime,
         document_id: DocumentId | None,
     ) -> WebhookResponse:
+        """`own`: the webhook's own headers; Lekto's (content type, id, timestamp, signature)
+        cannot be among them (`validate_header_names`)."""
         body = event_body(
             event_id=event_id, type=event_type, occurred_at=occurred_at, document_id=document_id
         )
         headers = {
+            **own,
             "Content-Type": "application/json",
             **signed_headers(secrets, str(event_id), int(self._clock.now().timestamp()), body),
         }
@@ -262,12 +271,20 @@ class WebhookDeliveryService:
             )
         )
 
-    def _decrypt(self, webhook: Webhook, now: datetime) -> list[str]:
+    def _decrypt(self, webhook: Webhook, now: datetime) -> tuple[list[str], dict[str, str]]:
+        """The secrets that sign now, and the webhook's own headers with their values."""
         context = secret_context(webhook.id)
-        return [
+        secrets = [
             self._cipher.decrypt(encrypted, context=context).decode("ascii")
             for encrypted in webhook.encrypted_secrets(now)
         ]
+        own: dict[str, str] = {}
+        if webhook.encrypted_headers is not None:
+            values = headers_from_bytes(
+                self._cipher.decrypt(webhook.encrypted_headers, context=headers_context(webhook.id))
+            )
+            own = {name: values[name] for name in webhook.header_names}
+        return secrets, own
 
     # --- result ---------------------------------------------------------------------------------
 
@@ -400,12 +417,13 @@ async def _may_read(uow: UnitOfWork, user: User, document: Document) -> bool:
 
 
 def _unusable_secret(webhook_id: WebhookId) -> WebhookResponse:
-    """The answer of a request that was not sent: the webhook's secret cannot be decrypted."""
+    """The answer of a request that was not sent: the webhook's secret or header values cannot
+    be decrypted."""
     log.error("webhook secret unusable", extra={"webhook_id": str(webhook_id)})
     return WebhookResponse(
         status_code=None,
         duration_ms=0,
-        error="the secret cannot be used (was the secret key changed?)",
+        error="the secret or the header values cannot be used (was the secret key changed?)",
     )
 
 

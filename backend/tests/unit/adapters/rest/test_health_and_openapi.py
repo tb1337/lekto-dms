@@ -179,6 +179,7 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
         (f"{PREFIX}/webhooks/{{id}}", "patch"),
         (f"{PREFIX}/webhooks/{{id}}", "delete"),
         (f"{PREFIX}/webhooks/{{id}}/secret", "post"),
+        (f"{PREFIX}/webhooks/{{id}}/secret", "delete"),
         (f"{PREFIX}/webhooks/{{id}}/deliveries", "get"),
         (f"{PREFIX}/webhooks/{{id}}/test", "post"),
         (f"{PREFIX}/lenses", "get"),

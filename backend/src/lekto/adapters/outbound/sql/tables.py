@@ -699,9 +699,13 @@ webhooks = Table(
     Column("name", Text, nullable=False),
     Column("url", Text, nullable=False),
     Column("event_types", json_type(), nullable=False),
-    # The signing secrets as `SecretCipher` made them; the previous one only during the grace
-    # period after renewing.
-    Column("secret", LargeBinary, nullable=False),
+    # The signing secrets as `SecretCipher` made them, none if the webhook does not sign; the
+    # previous one only during the grace period after renewing.
+    Column("secret", LargeBinary, nullable=True),
+    # The webhook's own headers: their names (a JSON list, in order) and their values
+    # (`webhooks.headers_to_bytes`, encrypted; NULL without headers).
+    Column("header_names", json_type(), nullable=False, server_default="[]"),
+    Column("headers", LargeBinary, nullable=True),
     Column("previous_secret", LargeBinary, nullable=True),
     Column("previous_valid_until", UtcDateTime, nullable=True),
     Column("active", Boolean, nullable=False),

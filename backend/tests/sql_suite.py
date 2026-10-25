@@ -2406,6 +2406,82 @@ class MigrationSuite:
             kept = await _read_all(connection, select(before.c.value, before.c.user_id))
         assert sorted(kept) == [("K0815", None), ("K1", None)]
 
+    async def test_webhook_headers_of_revision_0041_come_and_go(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0041: webhooks keep their secret and get no headers; a webhook may go
+        unsigned. The downgrade drops the headers and the unsigned webhooks with their
+        deliveries."""
+        await migrate(empty_database, "0040")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        ids = {name: new_id() for name in ("user", "signed", "unsigned")}
+        webhook = {
+            "owner_id": ids["user"],
+            "name": "n8n",
+            "url": "https://example.org/hook",
+            "event_types": ["*"],
+            "active": True,
+            "failed_streak": 0,
+            "created_at": NOW,
+            "updated_at": NOW,
+            "version": 1,
+        }
+        await _insert(
+            empty_database,
+            [
+                (
+                    t.users,
+                    {"id": ids["user"], "username": "anna", "username_key": "anna", "role": "user"},
+                ),
+                (_before_0041(t.webhooks), webhook | {"id": ids["signed"], "secret": b"s"}),
+            ],
+        )
+
+        await migrate(empty_database)
+        webhooks = t.webhooks
+        async with empty_database.reading() as connection:
+            rows = await _read_all(
+                connection,
+                select(
+                    webhooks.c.id, webhooks.c.secret, webhooks.c.header_names, webhooks.c.headers
+                ),
+            )
+        assert rows == [(ids["signed"], b"s", [], None)]
+        delivery = {
+            "event_id": new_id(),
+            "event_type": "document.filed",
+            "attempt": 1,
+            "started_at": NOW,
+            "duration_ms": 1,
+            "outcome": "delivered",
+        }
+        await _insert(
+            empty_database,
+            [
+                (
+                    webhooks,
+                    webhook
+                    | {
+                        "id": ids["unsigned"],
+                        "secret": None,
+                        "header_names": ["X"],
+                        "headers": b"h",
+                    },
+                ),
+                (t.webhook_deliveries, delivery | {"id": new_id(), "webhook_id": ids["signed"]}),
+                (t.webhook_deliveries, delivery | {"id": new_id(), "webhook_id": ids["unsigned"]}),
+            ],
+        )
+
+        await downgrade(empty_database, "0040")
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+            kept = await _read_all(connection, select(_before_0041(webhooks).c.id))
+            delivered = await _read_all(connection, select(t.webhook_deliveries.c.webhook_id))
+        assert kept == [(ids["signed"],)]
+        assert delivered == [(ids["signed"],)]
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -2572,7 +2648,9 @@ async def _node_names(database: Database, *, old: bool) -> dict[str, Any]:
     async with database.reading() as connection:
         document, log = await _only_rows(connection, documents, log_table)
         job, event = await _only_rows(connection, _before_0037(t.jobs), t.outbox)
-        webhook, delivery = await _only_rows(connection, t.webhooks, t.webhook_deliveries)
+        webhook, delivery = await _only_rows(
+            connection, _before_0041(t.webhooks), t.webhook_deliveries
+        )
     return {
         "document": (
             document.processing_step if old else _current_and_outcomes(document.processing_nodes)[0]
@@ -2612,13 +2690,26 @@ def _drawer(table: sa.TableClause) -> sa.TableClause:
 _INBOX_COLUMNS = frozenset({"new_at", "processing_baseline", "processing_decided"})
 
 
+def _before_0041(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0041 had it: no headers of a webhook's own."""
+    added = {"webhooks": {"header_names", "headers"}}
+    return sa.table(
+        table.name,
+        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+    )
+
+
 def _before_0040(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0040 had it: no spaces a learned identifier was learned
     in."""
     added = {"contact_identifiers": {"learned_in"}}
     return sa.table(
         table.name,
-        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+        *(
+            sa.column(c.name, c.type)
+            for c in _before_0041(table).c
+            if c.name not in added.get(table.name, ())
+        ),
     )
 
 

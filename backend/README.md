@@ -1208,7 +1208,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /rules/{id}/apply/preview`, `POST /rules/{id}/apply`, `GET /rule-applications/{id}` | Apply a rule to existing documents: preview, start (`202`), progress |
 | `GET /events` | Server-sent events of the documents the caller may read, for admins also `classifier.trained`; `?document_id=` |
 | `GET/POST /webhooks`, `GET/PATCH/DELETE /webhooks/{id}` | Webhooks: the caller's own (admins read everybody's, `?owner=`); create (the answer shows the secret once), change, switch on or off, delete; see Webhooks |
-| `POST /webhooks/{id}/secret`, `POST /webhooks/{id}/test`, `GET /webhooks/{id}/deliveries` | Renew the secret (the old one signs 24 hours longer), send a test request, the delivery log (`before`, `limit`) |
+| `POST/DELETE /webhooks/{id}/secret`, `POST /webhooks/{id}/test`, `GET /webhooks/{id}/deliveries` | Renew the secret (the old one signs 24 hours longer; an unsigned webhook signs from then on) or stop signing, send a test request, the delivery log (`before`, `limit`) |
 | `GET/POST /lenses`, `GET/PATCH/DELETE /lenses/{id}`, `PUT /lenses/order` | Lenses, the caller's saved looks at the documents (only theirs; others' are `404`, also for admins): `filter` (the filters of `GET /documents` as lists, `document_period` `this_year`, `last_12_months` or `last_year` moves with the day), `query`, `sort` (`relevance` only with `query`, `field` only without), `sort_field_id`, `grouping` (`none`, `month`, `due`, `document_type`, `contact`), `layout` (`grid`, `list`), `card_field_ids` (at most three), `due_field_id` (a date field); names unique per user, at most 100; deleted master data and fields are left out when a lens is read; `order` takes each lens once |
 | `GET /health` | Database, bucket or storage directory and, if configured, the search index reachable; `200` (`ok`, or `degraded` if only the search is down) or `503`, no authentication; not written to the access log |
 
@@ -1321,13 +1321,14 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 
 ## Webhooks
 
-A user subscribes to document events and Lekto sends a signed `POST` to a URL (n8n, Home
-Assistant, any service). Webhooks belong to the user who created them; the API is under
-`/webhooks` (create, list, change, switch off, delete, renew the secret, test, delivery log).
-Admins may do everything with every webhook: read it and its log, change, delete, test, renew the
-secret (which then shows to them, once). Nobody sees a secret again after it was shown. What an
-admin reads includes the target URL (which may be a capability URL) and, in the log, the document
-IDs and event types of that user's deliveries.
+A user subscribes to document events and Lekto sends a `POST` to a URL (n8n, Home Assistant,
+Node-RED, any service), signed unless the webhook goes without a secret. Webhooks belong to the
+user who created them; the API is under `/webhooks` (create, list, change, switch off, delete,
+renew or remove the secret, test, delivery log). Admins may do everything with every webhook:
+read it and its log, change, delete, test, renew the secret (which then shows to them, once).
+Nobody sees a secret again after it was shown, nor the value of a header the webhook sets. What
+an admin reads includes the target URL (which may be a capability URL), the names of its headers
+and, in the log, the document IDs and event types of that user's deliveries.
 At most `LEKTO_WEBHOOKS_PER_USER` (20) per user.
 
 **Events.** `document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`,
@@ -1340,8 +1341,8 @@ is still being processed. `document.deleted` goes to those who could read the do
 when it was deleted.
 
 **The request.** `POST <url>`, `Content-Type: application/json`, `User-Agent: Lekto/<version>`,
-and a body that names the event only; the receiver fetches details through the API with a token
-of its own:
+the webhook's own headers, and a body that names the event only; the receiver fetches details
+through the API with a token of its own:
 
 ```json
 {"id": "01999d5e-...", "type": "document.filed", "occurred_at": "2026-10-08T12:00:00Z",
@@ -1354,9 +1355,22 @@ test request (`POST /webhooks/{id}/test`) has `type: "webhook.test"` and `docume
 it goes out at once, to whatever address the webhook names, so a user may send at most ten per
 minute (`429` with `Retry-After` beyond that; counted per API process).
 
+**Headers of its own.** A webhook may set up to 20 headers that go with every request, e.g.
+`Authorization: Bearer <token>` for a receiver that checks a token instead of a signature (Home
+Assistant and Node-RED do not verify signatures by themselves). Names are HTTP tokens; Lekto sets
+`content-type`, `content-length`, `host`, `connection`, `transfer-encoding` and every header
+beginning with `webhook-` or `lekto-` itself, so those are refused. Values are printable ASCII
+(up to 4096 characters, spaces only inside), stored encrypted with `LEKTO_SECRET_KEY` and never
+shown again; the API shows the names. Changing the headers (`PATCH`, `headers`) gives all of
+them in order; a header given without a value keeps the one it has. A `User-Agent` of its own
+replaces Lekto's.
+
 **Signature** ([Standard Webhooks](https://www.standardwebhooks.com), so ready-made verification
-libraries work). Three headers: `webhook-id` (the event id), `webhook-timestamp` (Unix seconds
-of this attempt) and `webhook-signature`, `v1,<base64>` of the HMAC-SHA256 over
+libraries work). A webhook created with `"signed": false`, or whose secret was removed (`DELETE
+/webhooks/{id}/secret`), sends `webhook-id` and `webhook-timestamp` but no signature; renewing
+the secret makes it sign again. A signed request has three headers: `webhook-id` (the event id),
+`webhook-timestamp` (Unix seconds of this attempt) and `webhook-signature`, `v1,<base64>` of the
+HMAC-SHA256 over
 `<webhook-id>.<webhook-timestamp>.<raw body>` with the secret (`whsec_` and 32 bytes in Base64;
 the key is the Base64-decoded part after the prefix). Right after the secret was renewed the
 header holds two signatures separated by a space, one per secret; accept the request if one
@@ -1410,7 +1424,9 @@ removed after `LEKTO_RETENTION`.
 or renewing its secret. It is stored encrypted with `LEKTO_SECRET_KEY` (the worker needs the key
 too, to sign). Renewing keeps the old secret signing next to the new one for
 `LEKTO_WEBHOOK_SECRET_GRACE` (24 hours), so the receiver can switch without a gap; renewing again
-ends that at once.
+ends that at once. Removing the secret ends signing at once, the old one included. If the key
+changes, secrets and header values cannot be read any more: deliveries give up (`gave_up`, "the
+secret or the header values cannot be used"); renew the secret and give the header values anew.
 
 **Targets.** `http` and `https` to any host and port, including the own network. `https`
 certificates are verified; there is no switch against that (use `http` or a valid certificate).
@@ -1504,7 +1520,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `LEKTO_REQUEST_MAX_SIZE` | API | `1MiB` | Largest body of every other request (JSON); larger ones get `413` |
 | `LEKTO_UI_DIR` | API | unset; image: `/opt/lekto/ui` | The built web UI (`web/build`), served below `/ui`; `/` leads there. Must contain `index.html`; unset serves the API only |
 | `LEKTO_FORWARDED_ALLOW_IPS` | API | unset; required with `LEKTO_COOKIE_SECURE=true` | Reverse proxies whose `X-Forwarded-For` is trusted (comma-separated). Secure cookies mean a TLS-terminating proxy in front of Lekto: name its address, or the per-source throttle sees only the proxy. `*` only if the proxy sets the header itself, replacing what clients send |
-| `LEKTO_SECRET_KEY` | both | required | *secret*; 32 bytes base64 (`openssl rand -base64 32`); encrypts TOTP and webhook secrets, the worker decrypts the latter to sign. Keep it: without it they cannot be read. The development key is refused with secure cookies |
+| `LEKTO_SECRET_KEY` | both | required | *secret*; 32 bytes base64 (`openssl rand -base64 32`); encrypts TOTP and webhook secrets and header values, the worker decrypts the latter to send. Keep it: without it they cannot be read. The development key is refused with secure cookies |
 | `LEKTO_ADMIN_USERNAME` | API | unset | The first admin, created at API start while there is no active admin; set together with the password |
 | `LEKTO_ADMIN_PASSWORD` | API | unset | *secret*; see above |
 | `LEKTO_SESSION_IDLE_TIMEOUT` | API | `P1D` | A session ends when unused this long |

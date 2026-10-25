@@ -46,7 +46,7 @@ verwendet.
 | Eigenschaft | Inhalt |
 | --- | --- |
 | Name, URL | wie heute (`http`/`https`, keine Zugangsdaten in der URL) |
-| Header | frei wählbar, Name und Wert (`Authorization: Bearer …`, `X-Tenant`); verschlüsselt gespeichert wie das Geheimnis, nach dem Speichern nur die Namen sichtbar. Gesperrt: `webhook-*`, `lekto-*`, `content-type`, `content-length`, `host`; Namen nach RFC 9110, Werte ohne Steuerzeichen |
+| Header | frei wählbar, Name und Wert (`Authorization: Bearer …`, `X-Tenant`); verschlüsselt gespeichert wie das Geheimnis, nach dem Speichern nur die Namen sichtbar. Gesperrt: `webhook-*`, `lekto-*`, `content-type`, `content-length`, `host`, dazu `connection` und `transfer-encoding` (setzt HTTP selbst); Namen nach RFC 9110, Werte druckbares ASCII ohne Steuerzeichen, Leerzeichen nur innen |
 | Geheimnis | optional; ist eines gesetzt, signiert Lekto nach Standard Webhooks wie heute |
 | Body | `thin` (schlank, wie heute), `full` (voll, festes JSON) oder `template` (Liquid erzeugt JSON) |
 | Ereignistypen | optional; ohne Ereignistyp dient der Webhook nur Regeln und Aufträgen |

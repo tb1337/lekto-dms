@@ -1,14 +1,17 @@
 """Webhooks: a user's subscription to document events, and the log of the deliveries.
 
-A webhook has a target URL, the event types it wants (or all of them) and a secret that signs
-every request. The secret is stored encrypted (it is needed to sign, so a hash would not do);
-the plain text exists only in the answer to creating or renewing it.
+A webhook has a target URL, the event types it wants (or all of them), headers of its own and,
+if it signs, a secret. Secret and header values are stored encrypted (they are needed to send,
+so a hash would not do); the secret's plain text exists only in the answer to creating or
+renewing it, the header values only in what the owner gives (the names stay readable).
 
 Requests follow the Standard Webhooks scheme (https://www.standardwebhooks.com): the headers
 `webhook-id` (the event id, for receivers to recognise repetitions), `webhook-timestamp`
-(Unix seconds of the attempt) and `webhook-signature` (`v1,<base64 HMAC-SHA256>` of
-`<id>.<timestamp>.<body>`, several separated by spaces while a renewed secret still has its
-predecessor alongside). The body is thin: the event's type, id, time and document.
+(Unix seconds of the attempt) and, with a secret, `webhook-signature` (`v1,<base64
+HMAC-SHA256>` of `<id>.<timestamp>.<body>`, several separated by spaces while a renewed secret
+still has its predecessor alongside). A webhook without a secret is not signed (Tobi,
+25.10.2026: Home Assistant, Node-RED and others check a header instead). The body is thin: the
+event's type, id, time and document.
 """
 
 import base64
@@ -16,8 +19,9 @@ import binascii
 import hashlib
 import hmac
 import json
+import re
 import secrets
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -52,6 +56,16 @@ ID_HEADER = "webhook-id"
 TIMESTAMP_HEADER = "webhook-timestamp"
 SIGNATURE_HEADER = "webhook-signature"
 
+MAX_HEADERS = 20
+MAX_HEADER_VALUE = 4096
+_HEADER_NAME = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]{1,100}")
+"""A header name: a token of RFC 9110 (section 5.1), at most 100 characters."""
+RESERVED_HEADERS = frozenset(
+    {"content-type", "content-length", "host", "connection", "transfer-encoding"}
+)
+RESERVED_PREFIXES = ("webhook-", "lekto-")
+"""Headers Lekto or HTTP set themselves; a webhook cannot set them (compared in lower case)."""
+
 
 def event_type_names() -> list[str]:
     return sorted(DOCUMENT_EVENT_TYPES)
@@ -79,6 +93,63 @@ def validate_url(url: str) -> str:
     if parts.fragment:
         raise ValidationError(because(ReasonCode.URL_FRAGMENT))
     return url
+
+
+def validate_header_names(names: Iterable[str]) -> tuple[str, ...]:
+    """The names of a webhook's own headers, as given: tokens, none reserved, none twice
+    (ignoring case), at most `MAX_HEADERS`. ValidationError otherwise."""
+    checked: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        if not isinstance(name, str) or not _HEADER_NAME.fullmatch(name):
+            raise ValidationError(because(ReasonCode.HEADER_NAME_INVALID, name=str(name)))
+        key = name.lower()
+        if key in RESERVED_HEADERS or key.startswith(RESERVED_PREFIXES):
+            raise ValidationError(because(ReasonCode.HEADER_RESERVED, name=name))
+        if key in seen:
+            raise ValidationError(because(ReasonCode.HEADER_TWICE, name=name))
+        seen.add(key)
+        checked.append(name)
+    if len(checked) > MAX_HEADERS:
+        raise ValidationError(because(ReasonCode.HEADERS_LIMIT, max=MAX_HEADERS))
+    return tuple(checked)
+
+
+_HEADER_VALUE = re.compile(r"[!-~]([ !-~]*[!-~])?")
+"""Printable ASCII, spaces only inside: no line break can start another header, and every HTTP
+client sends it as it is."""
+
+
+def validate_header_value(name: str, value: str) -> str:
+    """A header's value: 1 to `MAX_HEADER_VALUE` characters of printable ASCII, spaces only
+    inside. ValidationError otherwise."""
+    if (
+        not isinstance(value, str)
+        or len(value) > MAX_HEADER_VALUE
+        or not _HEADER_VALUE.fullmatch(value)
+    ):
+        raise ValidationError(
+            because(ReasonCode.HEADER_VALUE_INVALID, name=name, max=MAX_HEADER_VALUE)
+        )
+    return value
+
+
+def headers_to_bytes(headers: Mapping[str, str]) -> bytes:
+    """The header values as they are encrypted: a JSON object, name to value."""
+    return json.dumps(dict(headers), separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def headers_from_bytes(data: bytes) -> dict[str, str]:
+    """The header values from their decrypted form; ValueError if it is not that form."""
+    try:
+        loaded = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("not the header values of a webhook") from error
+    if not isinstance(loaded, dict) or not all(
+        isinstance(key, str) and isinstance(value, str) for key, value in loaded.items()
+    ):
+        raise ValueError("not the header values of a webhook")
+    return loaded
 
 
 def validate_event_types(types: Collection[str]) -> frozenset[str]:
@@ -119,14 +190,13 @@ def sign(secret: str, message_id: str, timestamp: int, body: bytes) -> str:
 def signed_headers(
     secrets_in_use: Iterable[str], message_id: str, timestamp: int, body: bytes
 ) -> dict[str, str]:
-    """The headers of a request: id, timestamp and one signature per secret in use."""
-    return {
-        ID_HEADER: message_id,
-        TIMESTAMP_HEADER: str(timestamp),
-        SIGNATURE_HEADER: " ".join(
-            sign(secret, message_id, timestamp, body) for secret in secrets_in_use
-        ),
-    }
+    """The headers of a request: id, timestamp and one signature per secret in use; without a
+    secret, no signature."""
+    headers = {ID_HEADER: message_id, TIMESTAMP_HEADER: str(timestamp)}
+    signatures = [sign(secret, message_id, timestamp, body) for secret in secrets_in_use]
+    if signatures:
+        headers[SIGNATURE_HEADER] = " ".join(signatures)
+    return headers
 
 
 def event_body(
@@ -145,15 +215,19 @@ def event_body(
 
 @dataclass(kw_only=True)
 class Webhook:
-    """A user's subscription. `encrypted_secret` is the secret as `SecretCipher` made it;
-    `previous_secret` still signs next to it until `previous_valid_until`."""
+    """A user's subscription. `encrypted_secret` is the secret as `SecretCipher` made it, None
+    if the webhook does not sign; `previous_secret` still signs next to it until
+    `previous_valid_until`. `header_names`: the webhook's own headers, in the order given;
+    `encrypted_headers` their values (`headers_to_bytes`, encrypted), None without headers."""
 
     id: WebhookId
     owner_id: UserId
     name: str
     url: str
     event_types: frozenset[str]
-    encrypted_secret: bytes = field(repr=False)
+    encrypted_secret: bytes | None = field(repr=False)
+    header_names: tuple[str, ...] = ()
+    encrypted_headers: bytes | None = field(default=None, repr=False)
     active: bool = True
     disabled_reason: str | None = None
     failed_streak: int = 0
@@ -167,6 +241,11 @@ class Webhook:
         self.name = require_name(self.name, "webhook name", max_length=MAX_NAME_LENGTH)
         self.url = validate_url(self.url)
         self.event_types = validate_event_types(self.event_types)
+        self.header_names = validate_header_names(self.header_names)
+        if bool(self.header_names) != (self.encrypted_headers is not None):
+            raise ValidationError("a webhook has header values exactly when it has headers")
+        if self.encrypted_secret is None and self.previous_secret is not None:
+            raise ValidationError("a webhook without a secret has no previous one")
         self.created_at = require_utc(self.created_at, "created_at")
         self.updated_at = require_utc(self.updated_at, "updated_at")
 
@@ -178,12 +257,14 @@ class Webhook:
         name: str,
         url: str,
         event_types: Collection[str],
-        encrypted_secret: bytes,
+        encrypted_secret: bytes | None,
         now: datetime,
         active: bool = True,
+        id: WebhookId | None = None,
     ) -> "Webhook":
+        """`id`: given when the secret or header values were encrypted for it beforehand."""
         return cls(
-            id=WebhookId(new_id()),
+            id=WebhookId(new_id()) if id is None else id,
             owner_id=owner_id,
             name=name,
             url=url,
@@ -193,6 +274,10 @@ class Webhook:
             created_at=now,
             updated_at=now,
         )
+
+    @property
+    def signed(self) -> bool:
+        return self.encrypted_secret is not None
 
     def wants(self, event_type: str) -> bool:
         return ALL_EVENTS in self.event_types or event_type in self.event_types
@@ -221,10 +306,28 @@ class Webhook:
         self.updated_at = now
 
     def renew_secret(self, encrypted_secret: bytes, *, now: datetime, grace: timedelta) -> None:
-        """A new secret; the old one keeps signing for `grace` (renewing again drops it)."""
-        self.previous_secret = self.encrypted_secret
-        self.previous_valid_until = now + grace
+        """A new secret; the old one keeps signing for `grace` (renewing again drops it). A
+        webhook that did not sign signs from now on."""
+        if self.encrypted_secret is None:
+            self.previous_secret = self.previous_valid_until = None
+        else:
+            self.previous_secret = self.encrypted_secret
+            self.previous_valid_until = now + grace
         self.encrypted_secret = encrypted_secret
+        self.updated_at = now
+
+    def remove_secret(self, now: datetime) -> None:
+        """Stop signing: the secret and its predecessor are gone."""
+        self.encrypted_secret = self.previous_secret = self.previous_valid_until = None
+        self.updated_at = now
+
+    def set_headers(self, names: Iterable[str], encrypted: bytes | None, *, now: datetime) -> None:
+        """The webhook's own headers: their names and their values (encrypted; None for no
+        headers)."""
+        checked = validate_header_names(names)
+        if bool(checked) != (encrypted is not None):
+            raise ValidationError("a webhook has header values exactly when it has headers")
+        self.header_names, self.encrypted_headers = checked, encrypted
         self.updated_at = now
 
     def drop_expired_secret(self, now: datetime) -> bool:
@@ -239,7 +342,9 @@ class Webhook:
 
     def encrypted_secrets(self, now: datetime) -> list[bytes]:
         """The secrets that sign a request now: the current one, and the previous one during
-        the grace period."""
+        the grace period; none if the webhook does not sign."""
+        if self.encrypted_secret is None:
+            return []
         current = [self.encrypted_secret]
         if (
             self.previous_secret is not None

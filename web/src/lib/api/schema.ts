@@ -1716,7 +1716,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Create a webhook
-		 * @description Lekto sends a signed request to the URL for each event of the chosen types on documents within the reach of the webhook's owner: every document in the spaces they edit, the green ones in the spaces they read (an admin's webhooks too; the rights of an admin do not widen them). The answer holds the secret, shown only once. A user has at most as many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409).
+		 * @description Lekto sends a request to the URL for each event of the chosen types on documents within the reach of the webhook's owner: every document in the spaces they edit, the green ones in the spaces they read (an admin's webhooks too; the rights of an admin do not widen them). A signed webhook's answer holds the secret, shown only once. A user has at most as many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409).
 		 */
 		post: operations['create_webhook_api_v1_webhooks_post'];
 		delete?: never;
@@ -1764,10 +1764,14 @@ export interface paths {
 		put?: never;
 		/**
 		 * Renew the secret
-		 * @description A new secret, shown only now. The old one keeps signing next to it for a while (`previous_secret_valid_until`), so the receiver can switch without a gap; renewing again ends that at once. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).
+		 * @description A new secret, shown only now. The old one keeps signing next to it for a while (`previous_secret_valid_until`), so the receiver can switch without a gap; renewing again ends that at once. A webhook without a secret signs from now on. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).
 		 */
 		post: operations['renew_secret_api_v1_webhooks__id__secret_post'];
-		delete?: never;
+		/**
+		 * Stop signing
+		 * @description The secret goes (an old one still in its grace period too): requests carry no `webhook-signature` any more. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).
+		 */
+		delete: operations['remove_secret_api_v1_webhooks__id__secret_delete'];
 		options?: never;
 		head?: never;
 		patch?: never;
@@ -3942,6 +3946,33 @@ export interface components {
 		 * @enum {string}
 		 */
 		Grouping: 'none' | 'month' | 'due' | 'document_type' | 'contact';
+		/** HeaderIn */
+		HeaderIn: {
+			/**
+			 * Name
+			 * @example Authorization
+			 */
+			name: string;
+			/**
+			 * Value
+			 * @description Without line breaks or other control characters.
+			 * @example Bearer <token>
+			 */
+			value: string;
+		};
+		/** HeaderPatch */
+		HeaderPatch: {
+			/**
+			 * Name
+			 * @example Authorization
+			 */
+			name: string;
+			/**
+			 * Value
+			 * @description Left out or null: the header keeps the value it has (a new header needs one).
+			 */
+			value?: string | null;
+		};
 		/** Health */
 		Health: {
 			/**
@@ -5592,6 +5623,12 @@ export interface components {
 			| 'url_credentials'
 			| 'url_fragment'
 			| 'no_event_types'
+			| 'header_name_invalid'
+			| 'header_reserved'
+			| 'header_value_invalid'
+			| 'header_twice'
+			| 'headers_limit'
+			| 'header_value_missing'
 			| 'icon_invalid'
 			| 'colour_invalid'
 			| 'card_field_unknown'
@@ -6976,6 +7013,18 @@ export interface components {
 			 * @default true
 			 */
 			active: boolean;
+			/**
+			 * Signed
+			 * @description With a secret that signs every request (`webhook-signature`, Standard Webhooks), shown once in the answer. Without: no signature, e.g. for a receiver that checks a header instead.
+			 * @default true
+			 */
+			signed: boolean;
+			/**
+			 * Headers
+			 * @description Headers of the webhook's own, sent with every request (at most 20), e.g. `Authorization` for a token the receiver checks. Lekto sets `content-type`, `content-length`, `host`, `connection`, `transfer-encoding` and the headers beginning with `webhook-` or `lekto-` itself; those are refused. The values are stored encrypted and never shown again; the names are.
+			 * @default []
+			 */
+			headers: components['schemas']['HeaderIn'][];
 		};
 		/** WebhookCreated */
 		WebhookCreated: {
@@ -6997,6 +7046,16 @@ export interface components {
 			event_types: string[];
 			/** Active */
 			active: boolean;
+			/**
+			 * Signed
+			 * @description Whether requests carry a `webhook-signature`.
+			 */
+			signed: boolean;
+			/**
+			 * Headers
+			 * @description The names of the webhook's own headers, in order.
+			 */
+			headers: string[];
 			/**
 			 * Disabled Reason
 			 * @description `failing`: Lekto switched the webhook off after repeated failed deliveries.
@@ -7024,10 +7083,10 @@ export interface components {
 			updated_at: string;
 			/**
 			 * Secret
-			 * @description The signing secret (`whsec_…`); shown only now. Receivers verify the `webhook-signature` header with it.
+			 * @description The signing secret (`whsec_…`); shown only now. Receivers verify the `webhook-signature` header with it. null for a webhook created without one.
 			 * @example whsec_<secret shown once>
 			 */
-			secret: string;
+			secret: string | null;
 		};
 		/** WebhookOut */
 		WebhookOut: {
@@ -7049,6 +7108,16 @@ export interface components {
 			event_types: string[];
 			/** Active */
 			active: boolean;
+			/**
+			 * Signed
+			 * @description Whether requests carry a `webhook-signature`.
+			 */
+			signed: boolean;
+			/**
+			 * Headers
+			 * @description The names of the webhook's own headers, in order.
+			 */
+			headers: string[];
 			/**
 			 * Disabled Reason
 			 * @description `failing`: Lekto switched the webhook off after repeated failed deliveries.
@@ -7097,6 +7166,11 @@ export interface components {
 			 * @description Switching on clears the failure count and the reason.
 			 */
 			active?: boolean | null;
+			/**
+			 * Headers
+			 * @description All of the webhook's own headers from now on (empty: none). Headers of the webhook's own, sent with every request (at most 20), e.g. `Authorization` for a token the receiver checks. Lekto sets `content-type`, `content-length`, `host`, `connection`, `transfer-encoding` and the headers beginning with `webhook-` or `lekto-` itself; those are refused. The values are stored encrypted and never shown again; the names are.
+			 */
+			headers?: components['schemas']['HeaderPatch'][] | null;
 		};
 		/** YearCount */
 		YearCount: {
@@ -20298,6 +20372,113 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['WebhookCreated'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	remove_secret_api_v1_webhooks__id__secret_delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['WebhookOut'];
 				};
 			};
 			/** @description Unauthorized */

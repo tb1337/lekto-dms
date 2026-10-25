@@ -40,6 +40,7 @@ URL = "http://n8n.lan:5678/webhook/lekto"
 
 async def hook(world: World, owner: User, *types: str, url: str = URL) -> tuple[Webhook, str]:
     created = await world.webhooks.create(owner.id, name="n8n", url=url, event_types=types or ["*"])
+    assert created.secret is not None
     return created.webhook, created.secret
 
 
@@ -255,6 +256,7 @@ async def test_a_renewed_secret_signs_next_to_the_new_one_during_the_grace_perio
     document = await seed(world, user)
     webhook, old = await hook(world, user)
     new = (await world.webhooks.renew_secret(user.id, webhook.id)).secret
+    assert new is not None
     service = world.webhook_delivery()
     await queue(world, document, service)
     await service.run_next_job()
@@ -365,6 +367,52 @@ async def test_a_webhook_is_switched_off_after_repeated_failures_and_success_res
     before = len(deliveries(world))
     await service.on_event(lane_changed(document))
     assert len(deliveries(world)) == before
+
+
+async def test_own_headers_go_with_the_request_and_an_unsigned_one_has_no_signature(
+    world: World,
+) -> None:
+    user = await world.user()
+    document = await seed(world, user)
+    created = await world.webhooks.create(
+        user.id,
+        name="HA",
+        url=URL,
+        event_types=["*"],
+        signed=False,
+        headers={"Authorization": "Bearer t0ken", "User-Agent": "Mine"},
+    )
+    service = world.webhook_delivery()
+    await queue(world, document, service)
+    await service.run_next_job()
+    request = world.sender.requests[0]
+    assert request.headers["Authorization"] == "Bearer t0ken"
+    assert request.headers["User-Agent"] == "Mine"
+    assert request.headers["Content-Type"] == "application/json"
+    assert {"webhook-id", "webhook-timestamp"} <= set(request.headers)
+    assert "webhook-signature" not in request.headers
+    assert [row.outcome for row in await log(world, created.webhook)] == [DeliveryOutcome.DELIVERED]
+
+
+async def test_header_values_that_cannot_be_decrypted_give_up_without_sending(
+    world: World,
+) -> None:
+    user = await world.user()
+    document = await seed(world, user)
+    created = await world.webhooks.create(
+        user.id, name="HA", url=URL, event_types=["*"], headers={"X-Token": "a"}
+    )
+    async with world.uow() as uow:
+        webhook = await uow.webhooks.get(created.webhook.id)
+        webhook.encrypted_headers = b"garbage"
+        await uow.webhooks.update(webhook)
+        await uow.commit()
+    service = world.webhook_delivery()
+    await queue(world, document, service)
+    await service.run_next_job()
+    assert world.sender.requests == []
+    (row,) = await log(world, created.webhook)
+    assert row.outcome is DeliveryOutcome.GAVE_UP and "header values" in (row.error or "")
 
 
 # --- rights at the time of the attempt ----------------------------------------------------------

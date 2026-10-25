@@ -15091,7 +15091,7 @@
           "webhooks"
         ],
         "summary": "Create a webhook",
-        "description": "Lekto sends a signed request to the URL for each event of the chosen types on documents within the reach of the webhook's owner: every document in the spaces they edit, the green ones in the spaces they read (an admin's webhooks too; the rights of an admin do not widen them). The answer holds the secret, shown only once. A user has at most as many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409).",
+        "description": "Lekto sends a request to the URL for each event of the chosen types on documents within the reach of the webhook's owner: every document in the spaces they edit, the green ones in the spaces they read (an admin's webhooks too; the rights of an admin do not widen them). A signed webhook's answer holds the secret, shown only once. A user has at most as many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409).",
         "operationId": "create_webhook_api_v1_webhooks_post",
         "requestBody": {
           "required": true,
@@ -15608,7 +15608,7 @@
           "webhooks"
         ],
         "summary": "Renew the secret",
-        "description": "A new secret, shown only now. The old one keeps signing next to it for a while (`previous_secret_valid_until`), so the receiver can switch without a gap; renewing again ends that at once. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).",
+        "description": "A new secret, shown only now. The old one keeps signing next to it for a while (`previous_secret_valid_until`), so the receiver can switch without a gap; renewing again ends that at once. A webhook without a secret signs from now on. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).",
         "operationId": "renew_secret_api_v1_webhooks__id__secret_post",
         "parameters": [
           {
@@ -15629,6 +15629,126 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WebhookCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Stop signing",
+        "description": "The secret goes (an old one still in its grace period too): requests carry no `webhook-signature` any more. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).",
+        "operationId": "remove_secret_api_v1_webhooks__id__secret_delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookOut"
                 }
               }
             }
@@ -20944,6 +21064,69 @@
         "title": "Grouping",
         "description": "What the documents of a lens stand under: nothing, the month of their document date, how\nsoon their deadline is due, their type or their contact."
       },
+      "HeaderIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "examples": [
+              "Authorization"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Value",
+            "description": "Without line breaks or other control characters.",
+            "examples": [
+              "Bearer <token>"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "value"
+        ],
+        "title": "HeaderIn"
+      },
+      "HeaderPatch": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "examples": [
+              "Authorization"
+            ]
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "Left out or null: the header keeps the value it has (a new header needs one)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "HeaderPatch"
+      },
       "Health": {
         "properties": {
           "status": {
@@ -23979,6 +24162,12 @@
           "url_credentials",
           "url_fragment",
           "no_event_types",
+          "header_name_invalid",
+          "header_reserved",
+          "header_value_invalid",
+          "header_twice",
+          "headers_limit",
+          "header_value_missing",
           "icon_invalid",
           "colour_invalid",
           "card_field_unknown",
@@ -26822,6 +27011,22 @@
             "type": "boolean",
             "title": "Active",
             "default": true
+          },
+          "signed": {
+            "type": "boolean",
+            "title": "Signed",
+            "description": "With a secret that signs every request (`webhook-signature`, Standard Webhooks), shown once in the answer. Without: no signature, e.g. for a receiver that checks a header instead.",
+            "default": true
+          },
+          "headers": {
+            "items": {
+              "$ref": "#/components/schemas/HeaderIn"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Headers",
+            "description": "Headers of the webhook's own, sent with every request (at most 20), e.g. `Authorization` for a token the receiver checks. Lekto sets `content-type`, `content-length`, `host`, `connection`, `transfer-encoding` and the headers beginning with `webhook-` or `lekto-` itself; those are refused. The values are stored encrypted and never shown again; the names are.",
+            "default": []
           }
         },
         "additionalProperties": false,
@@ -26874,6 +27079,19 @@
             "type": "boolean",
             "title": "Active"
           },
+          "signed": {
+            "type": "boolean",
+            "title": "Signed",
+            "description": "Whether requests carry a `webhook-signature`."
+          },
+          "headers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Headers",
+            "description": "The names of the webhook's own headers, in order."
+          },
           "disabled_reason": {
             "anyOf": [
               {
@@ -26915,9 +27133,16 @@
             "title": "Updated At"
           },
           "secret": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Secret",
-            "description": "The signing secret (`whsec_…`); shown only now. Receivers verify the `webhook-signature` header with it.",
+            "description": "The signing secret (`whsec_…`); shown only now. Receivers verify the `webhook-signature` header with it. null for a webhook created without one.",
             "examples": [
               "whsec_<secret shown once>"
             ]
@@ -26931,6 +27156,8 @@
           "url",
           "event_types",
           "active",
+          "signed",
+          "headers",
           "disabled_reason",
           "failed_streak",
           "previous_secret_valid_until",
@@ -26970,6 +27197,19 @@
           "active": {
             "type": "boolean",
             "title": "Active"
+          },
+          "signed": {
+            "type": "boolean",
+            "title": "Signed",
+            "description": "Whether requests carry a `webhook-signature`."
+          },
+          "headers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Headers",
+            "description": "The names of the webhook's own headers, in order."
           },
           "disabled_reason": {
             "anyOf": [
@@ -27020,6 +27260,8 @@
           "url",
           "event_types",
           "active",
+          "signed",
+          "headers",
           "disabled_reason",
           "failed_streak",
           "previous_secret_valid_until",
@@ -27082,6 +27324,22 @@
             ],
             "title": "Active",
             "description": "Switching on clears the failure count and the reason."
+          },
+          "headers": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/HeaderPatch"
+                },
+                "type": "array",
+                "maxItems": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headers",
+            "description": "All of the webhook's own headers from now on (empty: none). Headers of the webhook's own, sent with every request (at most 20), e.g. `Authorization` for a token the receiver checks. Lekto sets `content-type`, `content-length`, `host`, `connection`, `transfer-encoding` and the headers beginning with `webhook-` or `lekto-` itself; those are refused. The values are stored encrypted and never shown again; the names are."
           }
         },
         "additionalProperties": false,
@@ -28075,6 +28333,25 @@
     "url_credentials": {},
     "url_fragment": {},
     "no_event_types": {},
+    "header_name_invalid": {
+      "name": "text"
+    },
+    "header_reserved": {
+      "name": "text"
+    },
+    "header_value_invalid": {
+      "name": "text",
+      "max": "number"
+    },
+    "header_twice": {
+      "name": "text"
+    },
+    "headers_limit": {
+      "max": "number"
+    },
+    "header_value_missing": {
+      "name": "text"
+    },
     "icon_invalid": {
       "icon": "text",
       "max": "number"

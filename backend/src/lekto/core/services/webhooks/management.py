@@ -1,21 +1,30 @@
 """Creating, changing and deleting webhooks, and reading their delivery log.
 
-Who may do what: a webhook belongs to its owner, who changes and deletes it, renews its secret
-and tests it. Admins may do all of that to every webhook (Tobi, 08.10.2026); a secret they renew
-is shown to them, once. The secret is never shown again. Other users do not learn that someone
-else's webhook exists (NotFoundError).
+Who may do what: a webhook belongs to its owner, who changes and deletes it, renews or removes
+its secret and tests it. Admins may do all of that to every webhook (Tobi, 08.10.2026); a secret
+they renew is shown to them, once. The secret is never shown again, nor are the values of the
+webhook's own headers (their names are). Other users do not learn that someone else's webhook
+exists (NotFoundError).
 """
 
-from collections.abc import Collection
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 
-from lekto.core.domain.errors import ConflictError, NotFoundError
-from lekto.core.domain.ids import DeliveryId, UserId, WebhookId
+from lekto.core.domain.errors import ConflictError, NotFoundError, ValidationError
+from lekto.core.domain.ids import DeliveryId, UserId, WebhookId, new_id
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.users import User
-from lekto.core.domain.webhooks import Webhook, WebhookDelivery, new_secret
+from lekto.core.domain.webhooks import (
+    Webhook,
+    WebhookDelivery,
+    headers_from_bytes,
+    headers_to_bytes,
+    new_secret,
+    validate_header_names,
+    validate_header_value,
+)
 from lekto.core.ports.clock import Clock
-from lekto.core.ports.identity import SecretCipher
+from lekto.core.ports.identity import DecryptionError, SecretCipher
 from lekto.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import load_actor
@@ -24,15 +33,21 @@ from lekto.core.services.webhooks.policy import WebhookPolicy
 
 @dataclass(frozen=True)
 class CreatedWebhook:
-    """A new or renewed secret is shown here and nowhere else."""
+    """A new or renewed secret is shown here and nowhere else; None for a webhook created
+    without one."""
 
     webhook: Webhook
-    secret: str = field(repr=False)
+    secret: str | None = field(repr=False)
 
 
 def secret_context(id: WebhookId) -> bytes:
     """Binds an encrypted secret to its webhook."""
     return b"webhook:" + id.bytes
+
+
+def headers_context(id: WebhookId) -> bytes:
+    """Binds the encrypted header values to their webhook."""
+    return b"webhook-headers:" + id.bytes
 
 
 class WebhookService:
@@ -56,23 +71,31 @@ class WebhookService:
         url: str,
         event_types: Collection[str],
         active: bool = True,
+        signed: bool = True,
+        headers: Mapping[str, str] | None = None,
     ) -> CreatedWebhook:
-        """ValidationError for a bad URL or event type, ConflictError at the user's limit."""
+        """`signed`: with a secret (shown once in the answer); `headers`: the webhook's own,
+        name to value. ValidationError for a bad URL, event type or header, ConflictError at
+        the user's limit."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             if await uow.webhooks.count_for_owner(user.id) >= self._policy.per_user:
                 raise ConflictError(because(ReasonCode.WEBHOOKS_LIMIT, max=self._policy.per_user))
-            secret = new_secret()
+            id = WebhookId(new_id())
+            secret = new_secret() if signed else None
+            now = self._clock.now()
             webhook = Webhook.create(
+                id=id,
                 owner_id=user.id,
                 name=name,
                 url=url,
                 event_types=event_types,
-                encrypted_secret=b"",
-                now=self._clock.now(),
+                encrypted_secret=None if secret is None else self._encrypt(id, secret),
+                now=now,
                 active=active,
             )
-            webhook.encrypted_secret = self._encrypt(webhook, secret)
+            given = dict(headers or {})
+            webhook.set_headers(given, self._encrypt_headers(id, given), now=now)
             await uow.webhooks.add(webhook)
             await uow.commit()
         return CreatedWebhook(webhook, secret)
@@ -103,12 +126,17 @@ class WebhookService:
         url: str | None = None,
         event_types: Collection[str] | None = None,
         active: bool | None = None,
+        headers: Sequence[tuple[str, str | None]] | None = None,
     ) -> Webhook:
+        """`headers`: all of the webhook's own headers from now on, in order; a value None keeps
+        the value the header has (ValidationError for a header it does not have yet)."""
         async with self._uow() as uow:
             webhook = await manageable_webhook(uow, await load_actor(uow, actor), id)
-            webhook.change(
-                now=self._clock.now(), name=name, url=url, event_types=event_types, active=active
-            )
+            now = self._clock.now()
+            webhook.change(now=now, name=name, url=url, event_types=event_types, active=active)
+            if headers is not None:
+                given = self._merge_headers(webhook, headers)
+                webhook.set_headers(given, self._encrypt_headers(webhook.id, given), now=now)
             await uow.webhooks.update(webhook)
             await uow.commit()
             return webhook
@@ -121,18 +149,28 @@ class WebhookService:
             await uow.commit()
 
     async def renew_secret(self, actor: UserId, id: WebhookId) -> CreatedWebhook:
-        """A new secret, shown once. The old one signs next to it for the grace period."""
+        """A new secret, shown once. The old one signs next to it for the grace period; a
+        webhook that did not sign signs from now on."""
         async with self._uow() as uow:
             webhook = await manageable_webhook(uow, await load_actor(uow, actor), id)
             secret = new_secret()
             webhook.renew_secret(
-                self._encrypt(webhook, secret),
+                self._encrypt(webhook.id, secret),
                 now=self._clock.now(),
                 grace=self._policy.secret_grace,
             )
             await uow.webhooks.update(webhook)
             await uow.commit()
         return CreatedWebhook(webhook, secret)
+
+    async def remove_secret(self, actor: UserId, id: WebhookId) -> Webhook:
+        """The webhook signs no more: its requests go without `webhook-signature`."""
+        async with self._uow() as uow:
+            webhook = await manageable_webhook(uow, await load_actor(uow, actor), id)
+            webhook.remove_secret(self._clock.now())
+            await uow.webhooks.update(webhook)
+            await uow.commit()
+            return webhook
 
     async def deliveries(
         self,
@@ -148,8 +186,43 @@ class WebhookService:
             webhook = await visible_webhook(uow, await load_actor(uow, actor), id)
             return await uow.webhooks.deliveries(webhook.id, before=before, limit=limit)
 
-    def _encrypt(self, webhook: Webhook, secret: str) -> bytes:
-        return self._cipher.encrypt(secret.encode("ascii"), context=secret_context(webhook.id))
+    def _encrypt(self, id: WebhookId, secret: str) -> bytes:
+        return self._cipher.encrypt(secret.encode("ascii"), context=secret_context(id))
+
+    def _encrypt_headers(self, id: WebhookId, headers: Mapping[str, str]) -> bytes | None:
+        """The values encrypted, None without headers. ValidationError for a bad name or
+        value."""
+        names = validate_header_names(headers)
+        values = {name: validate_header_value(name, headers[name]) for name in names}
+        if not values:
+            return None
+        return self._cipher.encrypt(headers_to_bytes(values), context=headers_context(id))
+
+    def _merge_headers(
+        self, webhook: Webhook, headers: Sequence[tuple[str, str | None]]
+    ) -> dict[str, str]:
+        """The headers given, a missing value taken from the webhook (by name, ignoring case)."""
+        known: dict[str, str] = {}
+        if any(value is None for _, value in headers) and webhook.encrypted_headers is not None:
+            try:
+                stored = headers_from_bytes(
+                    self._cipher.decrypt(
+                        webhook.encrypted_headers, context=headers_context(webhook.id)
+                    )
+                )
+            except (DecryptionError, ValueError):
+                stored = {}  # unreadable (another secret key): every value must be given anew
+            known = {name.lower(): value for name, value in stored.items()}
+        merged: dict[str, str] = {}
+        for name, value in headers:
+            if value is None:
+                value = known.get(name.lower())
+                if value is None:
+                    raise ValidationError(because(ReasonCode.HEADER_VALUE_MISSING, name=name))
+            if name in merged:
+                raise ValidationError(because(ReasonCode.HEADER_TWICE, name=name))
+            merged[name] = value
+        return merged
 
 
 async def visible_webhook(uow: UnitOfWork, user: User, id: WebhookId) -> Webhook:

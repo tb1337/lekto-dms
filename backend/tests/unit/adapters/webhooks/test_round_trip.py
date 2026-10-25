@@ -82,6 +82,7 @@ async def test_a_green_document_reaches_the_receiver_signed_after_a_failed_try()
             await asyncio.wait_for(task, timeout=10)
 
         first, second = receiver.received
+        assert created.secret is not None
         for request in (first, second):
             assert request.method == "POST" and request.path == "/hook"
             body = verify(created.secret, request)

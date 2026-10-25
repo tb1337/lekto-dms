@@ -60,6 +60,58 @@ async def test_the_secret_is_renewed_once_with_the_old_one_still_valid(api: Api)
     assert "secret" not in shown and shown["previous_secret_valid_until"] is not None
 
 
+async def test_a_webhook_with_own_headers_and_without_a_secret(api: Api) -> None:
+    user = await api.user()
+    body = {
+        **BODY,
+        "signed": False,
+        "headers": [
+            {"name": "Authorization", "value": "Bearer t0ken"},
+            {"name": "X-Tenant", "value": "home"},
+        ],
+    }
+    created = await post(api, "/webhooks", body, auth(user))
+    assert created["secret"] is None and created["signed"] is False
+    assert created["headers"] == ["Authorization", "X-Tenant"]
+    assert "t0ken" not in str(created)
+    url = f"{PREFIX}/webhooks/{created['id']}"
+
+    # A value left out is kept; only the names are ever shown.
+    changed = await api.client.patch(
+        url,
+        json={"headers": [{"name": "Authorization"}, {"name": "X-Other", "value": "1"}]},
+        headers=auth(user),
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["headers"] == ["Authorization", "X-Other"]
+    missing = await api.client.patch(url, json={"headers": [{"name": "X-New"}]}, headers=auth(user))
+    assert missing.status_code == 422, missing.text
+
+    signed = await api.client.post(f"{url}/secret", headers=auth(user))
+    assert signed.status_code == 200 and signed.json()["secret"].startswith("whsec_")
+    assert signed.json()["signed"] is True
+    unsigned = await api.client.delete(f"{url}/secret", headers=auth(user))
+    assert unsigned.status_code == 200, unsigned.text
+    assert unsigned.json()["signed"] is False
+    assert unsigned.json()["previous_secret_valid_until"] is None
+
+
+async def test_reserved_or_repeated_headers_are_a_422(api: Api) -> None:
+    user = await api.user()
+    for headers in (
+        [{"name": "Content-Type", "value": "text/plain"}],
+        [{"name": "webhook-signature", "value": "v1,x"}],
+        [{"name": "X", "value": "a"}, {"name": "X", "value": "b"}],
+        [{"name": "X", "value": "a"}, {"name": "x", "value": "b"}],
+        [{"name": "X Y", "value": "a"}],
+        [{"name": "X", "value": "line\nbreak"}],
+    ):
+        response = await api.client.post(
+            f"{PREFIX}/webhooks", json={**BODY, "headers": headers}, headers=auth(user)
+        )
+        assert response.status_code == 422, (headers, response.text)
+
+
 async def test_invalid_input_is_a_422(api: Api) -> None:
     user = await api.user()
     for body in (

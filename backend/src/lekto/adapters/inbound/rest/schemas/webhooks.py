@@ -8,6 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from lekto.core.domain.validation import MAX_URL_LENGTH
 from lekto.core.domain.webhooks import (
     ALL_EVENTS,
+    MAX_HEADER_VALUE,
+    MAX_HEADERS,
     MAX_NAME_LENGTH,
     DeliveryOutcome,
     Webhook,
@@ -20,6 +22,39 @@ EVENT_TYPES_HELP = (
     f"Event types: {', '.join(f'`{name}`' for name in event_type_names())}, or `{ALL_EVENTS}` "
     "for all, also future ones."
 )
+HEADERS_HELP = (
+    f"Headers of the webhook's own, sent with every request (at most {MAX_HEADERS}), e.g. "
+    "`Authorization` for a token the receiver checks. Lekto sets `content-type`, "
+    "`content-length`, `host`, `connection`, `transfer-encoding` and the headers beginning "
+    "with `webhook-` or `lekto-` itself; those are refused. The values are stored encrypted "
+    "and never shown again; the names are."
+)
+
+
+class HeaderIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=100, examples=["Authorization"])
+    value: str = Field(
+        min_length=1,
+        max_length=MAX_HEADER_VALUE,
+        repr=False,
+        description="Without line breaks or other control characters.",
+        examples=["Bearer <token>"],
+    )
+
+
+class HeaderPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=100, examples=["Authorization"])
+    value: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_HEADER_VALUE,
+        repr=False,
+        description="Left out or null: the header keeps the value it has (a new header needs one).",
+    )
 
 
 class WebhookCreate(BaseModel):
@@ -46,6 +81,15 @@ class WebhookCreate(BaseModel):
     )
     event_types: list[str] = Field(min_length=1, description=EVENT_TYPES_HELP)
     active: bool = True
+    signed: bool = Field(
+        default=True,
+        description=(
+            "With a secret that signs every request (`webhook-signature`, Standard Webhooks), "
+            "shown once in the answer. Without: no signature, e.g. for a receiver that checks "
+            "a header instead."
+        ),
+    )
+    headers: list[HeaderIn] = Field(default=[], max_length=MAX_HEADERS, description=HEADERS_HELP)
 
 
 class WebhookPatch(BaseModel):
@@ -59,6 +103,11 @@ class WebhookPatch(BaseModel):
     active: bool | None = Field(
         default=None, description="Switching on clears the failure count and the reason."
     )
+    headers: list[HeaderPatch] | None = Field(
+        default=None,
+        max_length=MAX_HEADERS,
+        description="All of the webhook's own headers from now on (empty: none). " + HEADERS_HELP,
+    )
 
 
 class WebhookOut(BaseModel):
@@ -68,6 +117,8 @@ class WebhookOut(BaseModel):
     url: str
     event_types: list[str]
     active: bool
+    signed: bool = Field(description="Whether requests carry a `webhook-signature`.")
+    headers: list[str] = Field(description="The names of the webhook's own headers, in order.")
     disabled_reason: str | None = Field(
         description="`failing`: Lekto switched the webhook off after repeated failed deliveries."
     )
@@ -90,6 +141,8 @@ class WebhookOut(BaseModel):
             url=webhook.url,
             event_types=sorted(webhook.event_types),
             active=webhook.active,
+            signed=webhook.signed,
+            headers=list(webhook.header_names),
             disabled_reason=webhook.disabled_reason,
             failed_streak=webhook.failed_streak,
             previous_secret_valid_until=webhook.previous_valid_until,
@@ -99,11 +152,11 @@ class WebhookOut(BaseModel):
 
 
 class WebhookCreated(WebhookOut):
-    secret: str = Field(
+    secret: str | None = Field(
         repr=False,
         description=(
             "The signing secret (`whsec_…`); shown only now. Receivers verify the "
-            "`webhook-signature` header with it."
+            "`webhook-signature` header with it. null for a webhook created without one."
         ),
         examples=["whsec_<secret shown once>"],
     )

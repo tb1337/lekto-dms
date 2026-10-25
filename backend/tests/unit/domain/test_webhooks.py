@@ -9,15 +9,23 @@ from lekto.core.domain.ids import DocumentId, EventId, UserId, new_id
 from lekto.core.domain.webhooks import (
     ALL_EVENTS,
     DISABLED_FAILING,
+    ID_HEADER,
+    MAX_HEADER_VALUE,
+    MAX_HEADERS,
     SIGNATURE_HEADER,
+    TIMESTAMP_HEADER,
     DeliveryOutcome,
     Webhook,
     WebhookDelivery,
     event_body,
+    headers_from_bytes,
+    headers_to_bytes,
     new_secret,
     sign,
     signed_headers,
     validate_event_types,
+    validate_header_names,
+    validate_header_value,
     validate_url,
 )
 from tests.builders import NOW
@@ -205,3 +213,100 @@ def test_a_delivery_keeps_only_a_short_error() -> None:
         error="x" * 1000,
     )
     assert delivery.error is not None and len(delivery.error) == 300
+
+
+# --- headers of its own and the secret ----------------------------------------------------------
+
+
+def test_header_names_are_tokens_kept_in_order() -> None:
+    names = ["Authorization", "X-Tenant", "x-api-key", "A!#$%&'*+-.^_`|~1"]
+    assert validate_header_names(names) == tuple(names)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Content-Type",
+        "content-length",
+        "Host",
+        "Connection",
+        "Transfer-Encoding",
+        "Webhook-Signature",
+        "webhook-id",
+        "Lekto-Task-Token",
+        "lekto-anything",
+    ],
+)
+def test_headers_lekto_or_http_set_cannot_be_set(name: str) -> None:
+    with pytest.raises(ValidationError, match="Lekto sets the header"):
+        validate_header_names([name])
+
+
+@pytest.mark.parametrize("name", ["", "X Tenant", "X:Tenant", "Ü", "x" * 101, "a\nb"])
+def test_a_header_name_is_a_token(name: str) -> None:
+    with pytest.raises(ValidationError, match="no valid header name"):
+        validate_header_names([name])
+
+
+def test_a_header_name_comes_once_ignoring_case_and_their_number_is_limited() -> None:
+    with pytest.raises(ValidationError, match="given twice"):
+        validate_header_names(["X-Token", "x-token"])
+    with pytest.raises(ValidationError, match=f"at most {MAX_HEADERS} headers"):
+        validate_header_names([f"X-{index}" for index in range(MAX_HEADERS + 1)])
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", "a\nb", "a\rb", "a\x00b", "a\tb", " a", "a ", "ä", "x" * (MAX_HEADER_VALUE + 1)],
+    ids=["empty", "newline", "return", "nul", "tab", "leading", "trailing", "umlaut", "long"],
+)
+def test_a_header_value_is_one_line_of_limited_length(value: str) -> None:
+    with pytest.raises(ValidationError, match="the value of 'X'"):
+        validate_header_value("X", value)
+    assert validate_header_value("X", "Bearer abc 123") == "Bearer abc 123"
+
+
+def test_header_values_round_trip_as_bytes_and_other_bytes_are_refused() -> None:
+    values = {"Authorization": "Bearer ä", "X-Tenant": "home"}  # bytes take any text
+    assert headers_from_bytes(headers_to_bytes(values)) == values
+    for data in (b"\xff", b"[]", b'{"a": 1}'):
+        with pytest.raises(ValueError):
+            headers_from_bytes(data)
+
+
+def test_a_webhook_has_header_values_exactly_when_it_has_headers() -> None:
+    webhook = hook()
+    assert not webhook.header_names and webhook.encrypted_headers is None
+    webhook.set_headers(["Authorization"], b"encrypted", now=NOW + timedelta(minutes=1))
+    assert webhook.header_names == ("Authorization",)
+    assert webhook.updated_at == NOW + timedelta(minutes=1)
+    with pytest.raises(ValidationError):
+        webhook.set_headers(["Authorization"], None, now=NOW)
+    with pytest.raises(ValidationError):
+        webhook.set_headers([], b"encrypted", now=NOW)
+    webhook.set_headers([], None, now=NOW)
+    assert not webhook.header_names and webhook.encrypted_headers is None
+
+
+def test_a_webhook_without_a_secret_signs_nothing_until_it_gets_one() -> None:
+    webhook = hook(encrypted_secret=None)
+    assert not webhook.signed and webhook.encrypted_secrets(NOW) == []
+    webhook.renew_secret(b"first", now=NOW, grace=timedelta(hours=24))
+    # Nothing signed before: no predecessor with a grace period.
+    assert webhook.signed and webhook.encrypted_secrets(NOW) == [b"first"]
+    assert webhook.previous_secret is None and webhook.previous_valid_until is None
+
+
+def test_removing_the_secret_ends_signing_with_the_predecessor_too() -> None:
+    webhook = hook()
+    webhook.renew_secret(b"second", now=NOW, grace=timedelta(hours=24))
+    webhook.remove_secret(NOW + timedelta(minutes=1))
+    assert not webhook.signed and webhook.encrypted_secrets(NOW) == []
+    assert webhook.previous_secret is None and webhook.previous_valid_until is None
+    assert webhook.updated_at == NOW + timedelta(minutes=1)
+
+
+def test_without_a_secret_a_request_has_id_and_timestamp_but_no_signature() -> None:
+    headers = signed_headers([], "msg_1", 1_700_000_000, b"{}")
+    assert headers == {ID_HEADER: "msg_1", TIMESTAMP_HEADER: "1700000000"}
+    assert SIGNATURE_HEADER not in headers

@@ -356,6 +356,12 @@ class ReasonCode(StrEnum):
     URL_CREDENTIALS = "url_credentials"
     URL_FRAGMENT = "url_fragment"
     NO_EVENT_TYPES = "no_event_types"
+    HEADER_NAME_INVALID = "header_name_invalid"
+    HEADER_RESERVED = "header_reserved"
+    HEADER_VALUE_INVALID = "header_value_invalid"
+    HEADER_TWICE = "header_twice"
+    HEADERS_LIMIT = "headers_limit"
+    HEADER_VALUE_MISSING = "header_value_missing"
     ICON_INVALID = "icon_invalid"
     COLOUR_INVALID = "colour_invalid"
     CARD_FIELD_UNKNOWN = "card_field_unknown"
@@ -786,6 +792,15 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.URL_CREDENTIALS: "the URL must not contain a user name or password",
     ReasonCode.URL_FRAGMENT: "the URL must not have a fragment",
     ReasonCode.NO_EVENT_TYPES: "choose at least one event type",
+    ReasonCode.HEADER_NAME_INVALID: "'{name}' is no valid header name",
+    ReasonCode.HEADER_RESERVED: "Lekto sets the header '{name}' itself",
+    ReasonCode.HEADER_VALUE_INVALID: (
+        "the value of '{name}' must have 1 to {max:number} printable ASCII characters, spaces "
+        "only inside"
+    ),
+    ReasonCode.HEADER_TWICE: "the header '{name}' is given twice",
+    ReasonCode.HEADERS_LIMIT: "at most {max:number} headers",
+    ReasonCode.HEADER_VALUE_MISSING: "give a value for the new header '{name}'",
     ReasonCode.ICON_INVALID: (
         "'{icon}' is no icon name (lower-case letters, digits and hyphens, at most "
         "{max:number} characters)"

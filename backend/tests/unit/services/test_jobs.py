@@ -193,3 +193,37 @@ async def test_durations_of_the_jobs_done_within_the_retention(world: World) -> 
     assert (index.wait_median, index.wait_p90) == (timedelta(seconds=3), timedelta(seconds=5))
     assert (index.run_median, index.run_p90) == (timedelta(seconds=4), timedelta(seconds=30))
     assert durations.since == world.clock.now() - RETENTION
+
+
+async def test_durations_come_from_the_latest_jobs_of_a_kind_and_are_kept_a_minute(
+    world: World,
+) -> None:
+    viewer = await world.user()
+    service = JobsService(world.uow, world.clock, retention=RETENTION, sample=2)
+    for ran in [100, 2, 4]:  # the earliest one falls out of the sample
+        await queue(world, "search.index", {}, world.clock.now() - NOW)
+        async with world.uow() as uow:
+            job = await uow.jobs.claim(now=world.clock.now(), lease=LEASE)
+            assert job is not None
+            world.clock.advance(timedelta(seconds=ran))
+            await uow.jobs.complete(job, now=world.clock.now())
+            await uow.commit()
+    await queue(world, "contacts.logo", {}, world.clock.now() - NOW)
+    await finish(world, kinds=["contacts.logo"])
+
+    first = await service.durations(viewer.id)
+    [logo, index] = first.kinds
+    assert (index.count, index.run_median, index.run_p90) == (
+        2,
+        timedelta(seconds=2),
+        timedelta(seconds=4),
+    )
+    assert (logo.kind, logo.count) == ("contacts.logo", 1)
+
+    await queue(world, "search.index", {}, world.clock.now() - NOW)
+    await finish(world, kinds=["search.index"])
+    world.clock.advance(timedelta(seconds=59))
+    assert await service.durations(viewer.id) == first  # kept
+    world.clock.advance(timedelta(seconds=2))
+    [_, counted] = (await service.durations(viewer.id)).kinds
+    assert (counted.count, counted.run_median) == (2, timedelta(seconds=0))

@@ -28,9 +28,14 @@ from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import load_actor, require_admin
+from lekto.core.services._kept import Kept
 from lekto.core.services.pipeline import NODE_JOB
 
 PAGE_LIMIT = 100
+SAMPLE = 2000
+"""The done jobs of a kind the durations are read from: the latest ones. A migration leaves
+more than a million done jobs within the retention; reading them all for every open page
+took seconds and the memory of a worker."""
 
 
 class RetryWay(StrEnum):
@@ -126,10 +131,14 @@ def durations_of(kind: str, jobs: Collection[FinishedJob]) -> KindDurations | No
 
 
 class JobsService:
-    def __init__(self, uow: UnitOfWorkFactory, clock: Clock, *, retention: timedelta) -> None:
+    def __init__(
+        self, uow: UnitOfWorkFactory, clock: Clock, *, retention: timedelta, sample: int = SAMPLE
+    ) -> None:
         self._uow = uow
         self._clock = clock
         self._retention = retention
+        self._sample = sample
+        self._kept = Kept(clock)
 
     async def summary(self, actor: UserId) -> JobsSummary:
         now = self._clock.now()
@@ -169,16 +178,29 @@ class JobsService:
         return JobsPage(tuple(views), total)
 
     async def durations(self, actor: UserId) -> JobDurations:
-        """How long the jobs done within the retention period waited and ran, by kind."""
-        since = self._clock.now() - self._retention
+        """How long the jobs done within the retention period waited and ran, by kind: from
+        the latest `sample` done jobs of each kind, counted at most once a minute."""
         async with self._uow() as uow:
             await load_actor(uow, actor)
-            finished = await uow.jobs.finished(since=since)
-        by_kind: dict[str, list[FinishedJob]] = defaultdict(list)
-        for job in finished:
-            by_kind[job.kind].append(job)
-        kinds = (durations_of(kind, jobs) for kind, jobs in sorted(by_kind.items()))
-        return JobDurations(tuple(item for item in kinds if item is not None), since)
+
+        async def count() -> JobDurations:
+            now = self._clock.now()
+            since = now - self._retention
+            async with self._uow() as uow:
+                overview = await uow.jobs.overview(now=now)
+                kinds = sorted(
+                    {item.kind for item in overview.counts if item.state is JobState.DONE}
+                )
+                found = [
+                    durations_of(
+                        kind,
+                        await uow.jobs.finished(since=since, kinds=[kind], limit=self._sample),
+                    )
+                    for kind in kinds
+                ]
+            return JobDurations(tuple(item for item in found if item is not None), since)
+
+        return await self._kept.get("durations", count)
 
     async def retry(self, actor: UserId, id: JobId) -> JobView:
         """Admins only: queue the failed job again (`JobQueue.retry`). A failed processing step

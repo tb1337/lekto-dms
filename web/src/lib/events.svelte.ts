@@ -18,6 +18,17 @@ export const DOCUMENT_EVENT_TYPES = [
 ] as const;
 export type DocumentEventType = (typeof DOCUMENT_EVENT_TYPES)[number];
 
+/** Events about a document for webhooks only: what the others say, in the words a receiver
+ * outside wants (waits for a review, confirmed, moved or handed over). The web UI does not
+ * listen to them. */
+export const WEBHOOK_EVENT_TYPES = [
+	...DOCUMENT_EVENT_TYPES,
+	'document.review_required',
+	'document.confirmed',
+	'document.moved'
+] as const;
+export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number];
+
 /** The events without a document, for admins only. */
 export const ADMIN_EVENT_TYPES = ['classifier.trained'] as const;
 export type AdminEventType = (typeof ADMIN_EVENT_TYPES)[number];

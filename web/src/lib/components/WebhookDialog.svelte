@@ -11,7 +11,7 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
-	import { DOCUMENT_EVENT_TYPES, type DocumentEventType } from '#lib/events.svelte.ts';
+	import { WEBHOOK_EVENT_TYPES, type WebhookEventType } from '#lib/events.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
 	type Webhook = components['schemas']['WebhookOut'];
@@ -52,7 +52,7 @@
 	]);
 	const bodyHint = $derived(bodies.find((option) => option.value === body)?.hint ?? '');
 
-	const labels: Record<DocumentEventType, () => string> = {
+	const labels: Record<WebhookEventType, () => string> = {
 		'document.received': m.event_received,
 		'document.node_started': m.event_node_started,
 		'document.node_deferred': m.event_node_deferred,
@@ -60,7 +60,10 @@
 		'document.lane_changed': m.event_lane_changed,
 		'document.filed': m.event_filed,
 		'document.updated': m.event_updated,
-		'document.deleted': m.event_deleted
+		'document.deleted': m.event_deleted,
+		'document.review_required': m.event_review_required,
+		'document.confirmed': m.event_confirmed,
+		'document.moved': m.event_moved
 	};
 
 	$effect(() => {
@@ -144,7 +147,6 @@
 	submitLabel={webhook ? m.save() : m.create()}
 	disabled={name.trim() === '' ||
 		url.trim() === '' ||
-		(!all && types.length === 0) ||
 		!headersComplete ||
 		(body === 'template' && template.trim() === '')}
 	class="max-w-lg"
@@ -166,7 +168,8 @@
 			{m.webhook_events_all()}
 		</label>
 		{#if !all}
-			{#each DOCUMENT_EVENT_TYPES as type (type)}
+			<p class="pl-6 text-sm text-muted-foreground">{m.webhook_events_none_hint()}</p>
+			{#each WEBHOOK_EVENT_TYPES as type (type)}
 				<label class="flex items-center gap-2 pl-6 text-sm">
 					<input type="checkbox" value={type} bind:group={types} class="size-4 accent-primary" />
 					{labels[type]()}

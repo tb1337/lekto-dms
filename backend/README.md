@@ -974,7 +974,7 @@ where it is and edits where it goes (global: admins); every version names its sp
   (`{{ steps.accounting.beleg }}`). The log shows each step (`steps`: a condition's `holds`,
   a question's task, status and answer).
 - **Templates** (in full, with examples: [docs/templates.md](../docs/templates.md)). A title,
-  the value of a text field and a review's reason are Liquid templates (`python-liquid`,
+  a field's value given as text and a review's reason are Liquid templates (`python-liquid`,
   `adapters/outbound/liquid`): `{{ contact }}`, `{% if field.la_brutto %}`,
   filters with `|`. They see `title`, `filename`, `original_filename`, `contact`, `topic`,
   `document_type`, `document_date`, `added`, `tags` (those set), `contact_groups` and
@@ -996,7 +996,20 @@ where it is and edits where it goes (global: admins); every version names its sp
   Renaming a field rewrites the templates that use it (a new version); a field a template uses
   is not deleted (409). `POST /templates/preview` checks a template and renders it with a
   document the caller may read, and gives that document's values as a template writes them
-  (`values`, for the template editor's list).
+  (`values`, for the template editor's list); with `field_id` it reads the result as that
+  field (`read`, `unreadable`), without a document too if the template uses no value.
+- **Setting a field** (`set_field`, issue #145). Text is a template for every field type; what
+  it renders is read as the type has it (`fields.read_written`): first the forms templates write
+  (`1234.5`, `2026-03-14`, `2026-Q3`, `true`, an amount with or without a currency code), else
+  as a person writes it (`2.111,68 €`, `14. März 2026`, `KW 38/2026`, `ja`), an ambiguous
+  number as `LEKTO_TEMPLATE_LOCALE`'s language means it, an amount without currency in
+  `LEKTO_DEFAULT_CURRENCY`, a two-digit year nearest to the day the document came in; a period
+  without a year is not read. What cannot be read sets nothing (note `skipped`,
+  `template_unreadable`, no yellow). An amount, a period or yes/no as JSON is a fixed value;
+  fixed values that are text in their JSON form (`"12.50"`, `"2026-03-31"`, a choice, a link)
+  write themselves and read as before. Text without markup is read when the rule is saved
+  (422 if it cannot be). Templates of fields see the fields as they were, not what other field
+  actions set.
 - **Evaluation.** All conditions see the state before any rule acts; a rule's action never makes
   another rule match in the same run. Contact, topic, type and tags the model set and no
   person confirmed are distrusted, and so are the groups of such a contact or type: a rule that

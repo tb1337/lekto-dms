@@ -13,6 +13,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { ACTION_LABELS } from '#lib/rules/describe.ts';
 	import { defaultValue, type ActionNode } from '#lib/rules/model.ts';
+	import { session } from '#lib/session.svelte.ts';
 	import { tagOptions } from '#lib/tags.ts';
 
 	// One action. `targets` are where the rule may file: the spaces whoever saves it edits, and
@@ -47,6 +48,13 @@
 		action.type === 'set_space' &&
 			action.space_id !== '' &&
 			!targets.some((entry) => entry.value === action.space_id)
+	);
+
+	// A rule sends only through the webhooks of whoever saves it.
+	const webhooks = $derived(
+		(lookup.webhooks ?? [])
+			.filter((webhook) => webhook.owner_id === session.user?.id)
+			.map((webhook) => ({ value: webhook.id, label: webhook.name }))
 	);
 
 	const field = $derived(
@@ -150,6 +158,17 @@
 					fields={lookup.fields}
 					bind:value={action.reason}
 				/>
+			{:else if action.type === 'send_webhook'}
+				<Select
+					aria-label={label}
+					aria-invalid={invalid || undefined}
+					bind:value={action.webhook_id}
+					options={withChoice(webhooks, action.webhook_id, m.rule_webhook_unknown())}
+					class="h-10"
+				/>
+				<p class="text-sm text-muted-foreground">
+					{webhooks.length ? m.rule_send_webhook_hint() : m.rule_send_webhook_none()}
+				</p>
 			{/if}
 		</div>
 		<div class="flex gap-0.5">

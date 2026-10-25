@@ -54,7 +54,8 @@ export const ACTION_LABELS: Record<ActionType, () => string> = {
 	add_tags: m.rule_action_add_tags,
 	remove_tags: m.rule_action_remove_tags,
 	set_field: m.rule_action_set_field,
-	force_review: m.rule_action_force_review
+	force_review: m.rule_action_force_review,
+	send_webhook: m.rule_action_send_webhook
 };
 
 const OPERATORS: Record<Operator, () => string> = {
@@ -229,5 +230,9 @@ export function describeAction(action: ActionNode | ApiAction, lookup: Lookup | 
 		}
 		case 'force_review':
 			return `${label}: ${m.rule_quoted({ text: action.reason })}`;
+		case 'send_webhook': {
+			const webhook = lookup?.webhooks?.find((entry) => entry.id === action.webhook_id);
+			return `${label}: ${webhook?.name ?? m.rule_webhook_unknown()}`;
+		}
 	}
 }

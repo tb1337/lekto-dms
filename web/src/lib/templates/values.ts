@@ -49,7 +49,9 @@ export const WEBHOOK_TEMPLATE_NAMES = [
 	'event.occurred_at',
 	'document_id',
 	'lane',
-	'link'
+	'link',
+	'rule.name',
+	'rule.id'
 ] as const;
 export type WebhookTemplateName = (typeof WEBHOOK_TEMPLATE_NAMES)[number];
 
@@ -59,7 +61,9 @@ export const WEBHOOK_TEMPLATE_NAME_LABELS: Record<WebhookTemplateName, () => str
 	'event.occurred_at': m.template_value_event_occurred_at,
 	document_id: m.template_value_document_id,
 	lane: m.template_value_lane,
-	link: m.template_value_link
+	link: m.template_value_link,
+	'rule.name': m.template_value_rule_name,
+	'rule.id': m.template_value_rule_id
 };
 
 /** The values a template of `purpose` sees, with their names, for completion and lists. */

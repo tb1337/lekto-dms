@@ -17268,6 +17268,23 @@
               }
             ],
             "description": "With its conflicts accepted (only for documents with conflicts)."
+          },
+          "sends": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Sends",
+            "description": "The webhooks applying would send a request through, about this document."
+          },
+          "sends_refused": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonOut"
+            },
+            "type": "array",
+            "title": "Sends Refused",
+            "description": "Requests that would not go, and why (the owner may not read the document)."
           }
         },
         "type": "object",
@@ -24108,6 +24125,8 @@
           "rule_disabled_deleted",
           "rule_disabled_personal_space",
           "rule_disabled_choice",
+          "rule_webhook_gone",
+          "rule_webhook_unreadable",
           "skip_changed_meanwhile",
           "skip_not_available",
           "not_iban",
@@ -24574,6 +24593,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/ForceReviewAction"
+                },
+                {
+                  "$ref": "#/components/schemas/SendWebhookAction"
                 }
               ],
               "discriminator": {
@@ -24582,6 +24604,7 @@
                   "add_tags": "#/components/schemas/AddTagsAction",
                   "force_review": "#/components/schemas/ForceReviewAction",
                   "remove_tags": "#/components/schemas/RemoveTagsAction",
+                  "send_webhook": "#/components/schemas/SendWebhookAction",
                   "set_contact": "#/components/schemas/SetContactAction",
                   "set_document_type": "#/components/schemas/SetDocumentTypeAction",
                   "set_field": "#/components/schemas/SetFieldAction",
@@ -24745,6 +24768,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/ForceReviewAction"
+                },
+                {
+                  "$ref": "#/components/schemas/SendWebhookAction"
                 }
               ],
               "discriminator": {
@@ -24753,6 +24779,7 @@
                   "add_tags": "#/components/schemas/AddTagsAction",
                   "force_review": "#/components/schemas/ForceReviewAction",
                   "remove_tags": "#/components/schemas/RemoveTagsAction",
+                  "send_webhook": "#/components/schemas/SendWebhookAction",
                   "set_contact": "#/components/schemas/SetContactAction",
                   "set_document_type": "#/components/schemas/SetDocumentTypeAction",
                   "set_field": "#/components/schemas/SetFieldAction",
@@ -24950,6 +24977,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/ForceReviewAction"
+                },
+                {
+                  "$ref": "#/components/schemas/SendWebhookAction"
                 }
               ],
               "discriminator": {
@@ -24958,6 +24988,7 @@
                   "add_tags": "#/components/schemas/AddTagsAction",
                   "force_review": "#/components/schemas/ForceReviewAction",
                   "remove_tags": "#/components/schemas/RemoveTagsAction",
+                  "send_webhook": "#/components/schemas/SendWebhookAction",
                   "set_contact": "#/components/schemas/SetContactAction",
                   "set_document_type": "#/components/schemas/SetDocumentTypeAction",
                   "set_field": "#/components/schemas/SetFieldAction",
@@ -25114,6 +25145,15 @@
             "type": "array",
             "title": "Notes",
             "description": "Actions that were not applied, and why."
+          },
+          "sends": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Sends",
+            "description": "The webhooks the rule sends through (`send_webhook`): once the document is filed, or, after a change, once it is stored, if their owner may read the document."
           }
         },
         "type": "object",
@@ -25193,6 +25233,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/ForceReviewAction"
+                },
+                {
+                  "$ref": "#/components/schemas/SendWebhookAction"
                 }
               ],
               "discriminator": {
@@ -25201,6 +25244,7 @@
                   "add_tags": "#/components/schemas/AddTagsAction",
                   "force_review": "#/components/schemas/ForceReviewAction",
                   "remove_tags": "#/components/schemas/RemoveTagsAction",
+                  "send_webhook": "#/components/schemas/SendWebhookAction",
                   "set_contact": "#/components/schemas/SetContactAction",
                   "set_document_type": "#/components/schemas/SetDocumentTypeAction",
                   "set_field": "#/components/schemas/SetFieldAction",
@@ -25403,6 +25447,28 @@
           "meaning_pending"
         ],
         "title": "SearchResultPage"
+      },
+      "SendWebhookAction": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "send_webhook",
+            "title": "Type"
+          },
+          "webhook_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Webhook Id",
+            "description": "A webhook of whoever saves the rule (someone else's is not found). It gets a request of type `rule.send` with the rule's `id` and `name`, in the webhook's body format: on arrival once the document is filed (a yellow one after it was confirmed, a red one never), after a change once it is stored. Its owner must be able to read the document: on arrival the document turns yellow otherwise (unless a person decided already), else it is only reported."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "webhook_id"
+        ],
+        "title": "SendWebhookAction"
       },
       "SessionOut": {
         "properties": {
@@ -28285,6 +28351,12 @@
     },
     "rule_disabled_choice": {
       "field": "text"
+    },
+    "rule_webhook_gone": {
+      "rule": "text"
+    },
+    "rule_webhook_unreadable": {
+      "rule": "text"
     },
     "skip_changed_meanwhile": {},
     "skip_not_available": {},

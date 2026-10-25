@@ -1036,7 +1036,12 @@
 								<li class="rounded-xl border p-3">
 									<span class="font-medium">{rule.name}</span>
 									<div class="mt-1">
-										<RuleEffects effects={rule.applied} notes={rule.notes} {lookup} />
+										<RuleEffects
+											effects={rule.applied}
+											notes={rule.notes}
+											sends={rule.sends}
+											{lookup}
+										/>
 									</div>
 								</li>
 							{/each}

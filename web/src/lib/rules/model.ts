@@ -153,7 +153,8 @@ export const ACTION_TYPES: readonly ActionType[] = [
 	'add_tags',
 	'remove_tags',
 	'set_field',
-	'force_review'
+	'force_review',
+	'send_webhook'
 ];
 
 let counter = 0;
@@ -290,6 +291,8 @@ export function newAction(type: ActionType): ActionNode {
 			return { key, type, field_id: '', value: '' };
 		case 'force_review':
 			return { key, type, reason: '' };
+		case 'send_webhook':
+			return { key, type, webhook_id: '' };
 	}
 }
 
@@ -424,9 +427,11 @@ export function move<T>(items: T[], index: number, by: -1 | 1): void {
 	[items[index], items[target]] = [items[target], items[index]];
 }
 
-/** The field an action sets alone; two such actions contradict each other. */
+/** The field an action sets alone; two such actions contradict each other (a webhook twice
+ * would send twice). */
 export function singleKey(action: ApiAction): string | null {
 	if (action.type === 'set_field') return `field:${action.field_id}`;
+	if (action.type === 'send_webhook') return `send_webhook:${action.webhook_id}`;
 	if (action.type === 'add_tags' || action.type === 'remove_tags') return null;
 	if (action.type === 'force_review') return null;
 	return action.type;
@@ -462,6 +467,8 @@ export function referencedIds(node: ConditionNode | ActionNode): string[] {
 			return [...action.tag_ids];
 		case 'set_field':
 			return [action.field_id];
+		case 'send_webhook':
+			return [action.webhook_id];
 		default:
 			return [];
 	}
@@ -670,5 +677,7 @@ function checkAction(action: ActionNode, fields: readonly FieldInfo[]): Problem 
 		}
 		case 'force_review':
 			return checkText(action.reason, LIMITS.text);
+		case 'send_webhook':
+			return action.webhook_id ? null : { code: 'choose' };
 	}
 }

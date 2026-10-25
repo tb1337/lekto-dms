@@ -164,8 +164,12 @@
 					{/each}
 					{#if purpose === 'webhook'}
 						{#each WEBHOOK_TEMPLATE_NAMES as name (name)}
-							<!-- The event is only known when it happens: no value to show. -->
-							{@render row(name, WEBHOOK_TEMPLATE_NAME_LABELS[name](), name.startsWith('event.'))}
+							<!-- Event and rule are only known when it happens: no value to show. -->
+							{@render row(
+								name,
+								WEBHOOK_TEMPLATE_NAME_LABELS[name](),
+								name.startsWith('event.') || name.startsWith('rule.')
+							)}
 						{/each}
 					{/if}
 				</ul>

@@ -27,6 +27,16 @@ export interface Lookup {
 	fields: FieldDefinition[];
 	spaces: Space[];
 	users: UserName[];
+	/** The webhooks the caller sees (their own; an admin's: everybody's), where a page loaded
+	 * them (the rule pages: a rule sends through its author's webhooks). */
+	webhooks?: WebhookName[];
+}
+
+/** A webhook as a rule names it. */
+export interface WebhookName {
+	id: string;
+	name: string;
+	owner_id: string;
 }
 
 /** The master data; the spaces follow the reach of the lists (`scope`): an admin gets every
@@ -42,6 +52,15 @@ export async function loadLookup(): Promise<Lookup> {
 		unwrap(api.GET('/api/v1/users'))
 	]);
 	return { contacts, documentTypes, tags, fields, spaces, users };
+}
+
+/** The master data with the webhooks the caller sees, for the rule pages. */
+export async function loadRuleLookup(): Promise<Lookup> {
+	const [lookup, webhooks] = await Promise.all([loadLookup(), unwrap(api.GET('/api/v1/webhooks'))]);
+	return {
+		...lookup,
+		webhooks: webhooks.map(({ id, name, owner_id }) => ({ id, name, owner_id }))
+	};
 }
 
 const indexes = new WeakMap<readonly { id: string }[], ReadonlyMap<string, { id: string }>>();

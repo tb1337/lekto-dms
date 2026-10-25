@@ -312,6 +312,8 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	rule_disabled_deleted: entry(m.reason_rule_disabled_deleted, { kind: 'thing' }),
 	rule_disabled_personal_space: entry(m.reason_rule_disabled_personal_space),
 	rule_disabled_choice: entry(m.reason_rule_disabled_choice),
+	rule_webhook_gone: entry(m.reason_rule_webhook_gone),
+	rule_webhook_unreadable: entry(m.reason_rule_webhook_unreadable),
 	skip_changed_meanwhile: entry(m.reason_skip_changed_meanwhile),
 	skip_not_available: entry(m.reason_skip_not_available),
 	not_iban: entry(m.reason_not_iban),

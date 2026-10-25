@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FieldDefinition, Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { newAction } from '#lib/rules/model.ts';
+import { session } from '#lib/session.svelte.ts';
 import ActionRow from './ActionRow.svelte';
 
 const fields = [
@@ -18,7 +19,10 @@ const lookup = {
 } as unknown as Lookup;
 const targets = [{ value: 'house', label: 'Haushalt' }];
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+	session.clear();
+	vi.unstubAllGlobals();
+});
 
 function fileInto(space: string) {
 	const action = newAction('set_space');
@@ -49,5 +53,32 @@ describe('a template of an action', () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		const asked = fetchMock.mock.calls.map(([request]) => new URL(request.url).pathname);
 		expect(asked).not.toContain('/api/v1/fields');
+	});
+});
+
+describe('sending through a webhook', () => {
+	function send(webhooks: Lookup['webhooks']) {
+		session.start({
+			user: { id: 'anna', username: 'anna', role: 'admin' },
+			method: 'password',
+			expires_at: '2026-10-26T12:00:00Z',
+			csrf_token: 'token'
+		});
+		render(ActionRow, {
+			action: newAction('send_webhook'),
+			lookup: { ...lookup, webhooks },
+			targets,
+			onremove: vi.fn()
+		});
+	}
+
+	it('offers only the webhooks of whoever saves the rule', () => {
+		send([{ id: 'w1', name: 'Node-RED', owner_id: 'ben' }]);
+		expect(screen.getByText(m.rule_send_webhook_none())).toBeTruthy();
+	});
+
+	it('explains what goes out through an own webhook', () => {
+		send([{ id: 'w2', name: 'Home Assistant', owner_id: 'anna' }]);
+		expect(screen.getByText(m.rule_send_webhook_hint())).toBeTruthy();
 	});
 });

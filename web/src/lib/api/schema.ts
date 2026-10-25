@@ -2094,6 +2094,16 @@ export interface components {
 			outcome: components['schemas']['ApplyOutcomeOut'];
 			/** @description With its conflicts accepted (only for documents with conflicts). */
 			accepted: components['schemas']['ApplyOutcomeOut'] | null;
+			/**
+			 * Sends
+			 * @description The webhooks applying would send a request through, about this document.
+			 */
+			sends?: string[];
+			/**
+			 * Sends Refused
+			 * @description Requests that would not go, and why (the owner may not read the document).
+			 */
+			sends_refused?: components['schemas']['ReasonOut'][];
 		};
 		/** ApplyPreviewOut */
 		ApplyPreviewOut: {
@@ -5565,6 +5575,8 @@ export interface components {
 			| 'rule_disabled_deleted'
 			| 'rule_disabled_personal_space'
 			| 'rule_disabled_choice'
+			| 'rule_webhook_gone'
+			| 'rule_webhook_unreadable'
 			| 'skip_changed_meanwhile'
 			| 'skip_not_available'
 			| 'not_iban'
@@ -5880,6 +5892,7 @@ export interface components {
 				| components['schemas']['RemoveTagsAction']
 				| components['schemas']['SetFieldAction']
 				| components['schemas']['ForceReviewAction']
+				| components['schemas']['SendWebhookAction']
 			)[];
 			/** @description Moves the rule: `space`, into `space_id` (one the caller edits; default: the caller's personal space); `global` (admins). Without it the rule stays where it is. */
 			scope?: components['schemas']['RuleScope'] | null;
@@ -5962,6 +5975,7 @@ export interface components {
 				| components['schemas']['RemoveTagsAction']
 				| components['schemas']['SetFieldAction']
 				| components['schemas']['ForceReviewAction']
+				| components['schemas']['SendWebhookAction']
 			)[];
 			/**
 			 * @description `space`: a rule of the space `space_id` (one the caller edits; default: the caller's personal space), for the documents in it. `global` (admins): for every document.
@@ -6031,6 +6045,7 @@ export interface components {
 				| components['schemas']['RemoveTagsAction']
 				| components['schemas']['SetFieldAction']
 				| components['schemas']['ForceReviewAction']
+				| components['schemas']['SendWebhookAction']
 			)[];
 			/**
 			 * Id
@@ -6108,6 +6123,11 @@ export interface components {
 			 * @description Actions that were not applied, and why.
 			 */
 			notes: components['schemas']['RuleNoteOut'][];
+			/**
+			 * Sends
+			 * @description The webhooks the rule sends through (`send_webhook`): once the document is filed, or, after a change, once it is stored, if their owner may read the document.
+			 */
+			sends?: string[];
 		};
 		/**
 		 * RuleScope
@@ -6136,6 +6156,7 @@ export interface components {
 				| components['schemas']['RemoveTagsAction']
 				| components['schemas']['SetFieldAction']
 				| components['schemas']['ForceReviewAction']
+				| components['schemas']['SendWebhookAction']
 			)[];
 			/**
 			 * Rule Id
@@ -6225,6 +6246,20 @@ export interface components {
 			 * @description The meaning of the query was not ready in time and is still being made: the event `search.meaning_ready` with this `query` follows on the caller's event stream, and the same search then takes the meaning into account.
 			 */
 			meaning_pending: boolean;
+		};
+		/** SendWebhookAction */
+		SendWebhookAction: {
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			type: 'send_webhook';
+			/**
+			 * Webhook Id
+			 * Format: uuid
+			 * @description A webhook of whoever saves the rule (someone else's is not found). It gets a request of type `rule.send` with the rule's `id` and `name`, in the webhook's body format: on arrival once the document is filed (a yellow one after it was confirmed, a red one never), after a change once it is stored. Its owner must be able to read the document: on arrival the document turns yellow otherwise (unless a person decided already), else it is only reported.
+			 */
+			webhook_id: string;
 		};
 		/**
 		 * SessionOut

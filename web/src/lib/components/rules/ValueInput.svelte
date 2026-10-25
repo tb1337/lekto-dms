@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Segmented from '#lib/components/Segmented.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
 	import { Input } from '#lib/components/ui/input/index.ts';
@@ -10,10 +11,11 @@
 
 	// One value of a field in its JSON form: text, number and date as text, yes/no as a
 	// boolean, an amount with its currency, a choice from the field's list. `textual` asks for
-	// plain text whatever the type (`contains`, `matches`); `template`: a text field's value is a
-	// template (an action's, not a condition's), `fields` the definitions a template may name.
-	// `onunreadable` says while a period's text cannot be read (the value then is not what the
-	// field shows; see `PeriodInput`).
+	// plain text whatever the type (`contains`, `matches`); `template`: an action's value, which
+	// may be a template (a text field's always; another type's with `templated`, switched with
+	// `ontemplated`), `fields` the definitions a template may name. `onunreadable` says while a
+	// period's text cannot be read (the value then is not what the field shows; see
+	// `PeriodInput`).
 	let {
 		field,
 		value,
@@ -23,6 +25,8 @@
 		invalid = false,
 		textual = false,
 		template = false,
+		templated = false,
+		ontemplated,
 		fields = undefined,
 		steps = [],
 		onunreadable
@@ -35,6 +39,10 @@
 		invalid?: boolean;
 		textual?: boolean;
 		template?: boolean;
+		/** An action's value of a field that is not text: edited as a template. */
+		templated?: boolean;
+		/** The person switched between a fixed value and a template. */
+		ontemplated?: (templated: boolean) => void;
 		fields?: readonly FieldDefinition[];
 		/** A template's: the names of the rule's steps before it that ask. */
 		steps?: readonly string[];
@@ -68,62 +76,106 @@
 		{invalid}
 		{fields}
 		{steps}
+		target={field}
 		bind:value={() => text, (next) => onchange(next)}
 	/>
-{:else if type === 'period' && isPeriod(value)}
-	<PeriodInput {id} {label} {invalid} {value} onchange={(next) => onchange(next)} {onunreadable} />
-{:else if type === 'boolean'}
-	<Select
-		{id}
-		aria-label={label}
-		aria-invalid={invalid || undefined}
-		value={value === false ? 'false' : 'true'}
-		options={[
-			{ value: 'true', label: m.value_yes() },
-			{ value: 'false', label: m.value_no() }
-		]}
-		onchange={(next) => onchange(next === 'true')}
-	/>
-{:else if type === 'amount'}
-	<div class="flex gap-2">
+{:else if template && field}
+	<div class="flex flex-col gap-2">
+		<Segmented
+			size="sm"
+			class="self-start"
+			label={m.rule_value_kind()}
+			value={templated ? 'template' : 'value'}
+			options={[
+				{ value: 'value', label: m.rule_value_fixed() },
+				{ value: 'template', label: m.rule_value_template(), hint: m.rule_value_template_hint() }
+			]}
+			onchange={(next) => ontemplated?.(next === 'template')}
+		/>
+		{#if templated}
+			<TemplateInput
+				id={id ?? uid}
+				{label}
+				{invalid}
+				{fields}
+				{steps}
+				target={field}
+				bind:value={() => text, (next) => onchange(next)}
+			/>
+		{:else}
+			{@render fixed()}
+		{/if}
+	</div>
+{:else}
+	{@render fixed()}
+{/if}
+
+{#snippet fixed()}
+	{#if type === 'period' && isPeriod(value)}
+		<PeriodInput
+			{id}
+			{label}
+			{invalid}
+			{value}
+			onchange={(next) => onchange(next)}
+			{onunreadable}
+		/>
+	{:else if type === 'boolean'}
+		<Select
+			{id}
+			aria-label={label}
+			aria-invalid={invalid || undefined}
+			value={value === false ? 'false' : 'true'}
+			options={[
+				{ value: 'true', label: m.value_yes() },
+				{ value: 'false', label: m.value_no() }
+			]}
+			onchange={(next) => onchange(next === 'true')}
+		/>
+	{:else if type === 'amount'}
+		<div class="flex gap-2">
+			<Input
+				{id}
+				aria-label={label}
+				aria-invalid={invalid || undefined}
+				inputmode="decimal"
+				value={money.amount}
+				oninput={(event) =>
+					onchange({ ...money, amount: event.currentTarget.value.replace(',', '.') })}
+				class="min-w-0 flex-1"
+			/>
+			<Input
+				aria-label={m.field_currency()}
+				maxlength={3}
+				value={money.currency}
+				oninput={(event) =>
+					onchange({ ...money, currency: event.currentTarget.value.toUpperCase() })}
+				class="w-20 uppercase"
+			/>
+		</div>
+	{:else if type === 'choice'}
+		<Select
+			{id}
+			aria-label={label}
+			aria-invalid={invalid || undefined}
+			value={text}
+			options={choices}
+			onchange={(next) => onchange(next)}
+		/>
+	{:else}
 		<Input
 			{id}
 			aria-label={label}
 			aria-invalid={invalid || undefined}
-			inputmode="decimal"
-			value={money.amount}
+			type={dateField ? 'date' : type === 'link' ? 'url' : 'text'}
+			inputmode={type === 'number' ? 'decimal' : undefined}
+			value={text}
 			oninput={(event) =>
-				onchange({ ...money, amount: event.currentTarget.value.replace(',', '.') })}
-			class="min-w-0 flex-1"
+				onchange(
+					type === 'number'
+						? event.currentTarget.value.replace(',', '.')
+						: event.currentTarget.value
+				)}
 		/>
-		<Input
-			aria-label={m.field_currency()}
-			maxlength={3}
-			value={money.currency}
-			oninput={(event) => onchange({ ...money, currency: event.currentTarget.value.toUpperCase() })}
-			class="w-20 uppercase"
-		/>
-	</div>
-{:else if type === 'choice'}
-	<Select
-		{id}
-		aria-label={label}
-		aria-invalid={invalid || undefined}
-		value={text}
-		options={choices}
-		onchange={(next) => onchange(next)}
-	/>
-{:else}
-	<Input
-		{id}
-		aria-label={label}
-		aria-invalid={invalid || undefined}
-		type={dateField ? 'date' : type === 'link' ? 'url' : 'text'}
-		inputmode={type === 'number' ? 'decimal' : undefined}
-		value={text}
-		oninput={(event) =>
-			onchange(
-				type === 'number' ? event.currentTarget.value.replace(',', '.') : event.currentTarget.value
-			)}
-	/>
-{/if}
+	{/if}
+{/snippet}

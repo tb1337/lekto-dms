@@ -64,13 +64,18 @@ beforeEach(() => {
 					values: null
 				});
 			}
+			if (body.field_id && body.template === 'zwölf') {
+				const unreadable = { rendered: 'zwölf', read: null, unreadable: true };
+				return json({ used: [], missing: null, error: null, values: null, ...unreadable });
+			}
 			const values = body.document_id
 				? { contact: 'Stadtwerke', 'field.la_brutto': '3.650,00 EUR' }
 				: null;
 			const rendered = body.document_id
 				? body.template.replace('{{ field.la_brutto }}', '3.650,00 EUR')
 				: null;
-			return json({ used: [], rendered, missing: null, error: null, values });
+			const read = body.field_id && rendered ? { amount: '3650.00', currency: 'EUR' } : null;
+			return json({ used: [], rendered, missing: null, error: null, values, read });
 		}
 		return json({}, 404);
 	});
@@ -230,5 +235,35 @@ describe('TemplateInput', () => {
 		await user.click(within(sheet).getByRole('button', { name: m.cancel() }));
 		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 		expect((screen.getByLabelText('Reason') as HTMLTextAreaElement).value).toBe('Check');
+	});
+});
+
+describe('a template that sets a field', () => {
+	const amount = field('f1', 'LA_Brutto', 'la_brutto', null) as unknown as FieldDefinition;
+
+	it('is red when text that uses no value cannot be read as the field', async () => {
+		// `props`: a mount option is called `target` too.
+		render(TemplateInput, { props: { id: 'v', label: 'Value', value: 'zwölf', target: amount } });
+		const message = m.template_unreadable({ type: m.field_def_type_amount() });
+		await waitFor(() => expect(screen.getByText(message)).toBeTruthy());
+		expect(previews.at(-1)).toMatchObject({ template: 'zwölf', field_id: 'f1' });
+	});
+
+	it('shows in the editor what the field gets from the reference document', async () => {
+		const user = userEvent.setup();
+		render(TemplateInput, {
+			props: {
+				id: 'v',
+				label: 'Value',
+				value: '{{ field.la_brutto }}',
+				target: amount,
+				fields: [amount]
+			}
+		});
+		await user.click(await screen.findByRole('button', { name: m.template_editor_open() }));
+		const sheet = await screen.findByRole('dialog');
+		const read = m.template_read({ type: m.field_def_type_amount() });
+		expect(await within(sheet).findByText(read, { exact: false })).toBeTruthy();
+		expect(previews.at(-1)).toMatchObject({ document_id: 'd1', field_id: 'f1' });
 	});
 });

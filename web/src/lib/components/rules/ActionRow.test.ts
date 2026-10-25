@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FieldDefinition, Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
@@ -99,5 +100,45 @@ describe('steps that ask and check', () => {
 		render(ActionRow, { action, lookup, targets, model, steps: ['flow'], onremove: vi.fn() });
 		expect(screen.getByLabelText(m.rule_step_path())).toBeTruthy();
 		expect(screen.getByText(m.rule_condition_step_hint())).toBeTruthy();
+	});
+});
+
+describe('setting a field that is not text', () => {
+	function setAmount(value: unknown) {
+		const action = newAction('set_field');
+		if (action.type === 'set_field') {
+			action.field_id = 'f1';
+			action.value = value as typeof action.value;
+		}
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () =>
+				Response.json({ used: [], rendered: null, missing: null, error: null, values: null })
+			)
+		);
+		render(ActionRow, { action, lookup, targets, onremove: vi.fn() });
+		return action;
+	}
+
+	it('switches between a fixed value and a template, carrying the value over', async () => {
+		const user = userEvent.setup();
+		const action = setAmount({ amount: '12.50', currency: 'EUR' });
+		const fixed = screen.getByRole('button', { name: m.rule_value_fixed() });
+		expect(fixed.getAttribute('aria-pressed')).toBe('true');
+		expect(screen.queryByRole('button', { name: m.template_editor_open() })).toBeNull();
+
+		await user.click(screen.getByRole('button', { name: m.rule_value_template() }));
+		// The page holds its model in state; here the action is plain: only the value changes.
+		expect(action).toMatchObject({ value: '12.50 EUR', templated: true });
+
+		await user.click(screen.getByRole('button', { name: m.rule_value_fixed() }));
+		expect(action).toMatchObject({ value: { amount: '12.50', currency: 'EUR' }, templated: false });
+	});
+
+	it('opens a value given as text as a template', () => {
+		setAmount('{{ steps.erp.total }} EUR');
+		const template = screen.getByRole('button', { name: m.rule_value_template() });
+		expect(template.getAttribute('aria-pressed')).toBe('true');
+		expect(screen.getByRole('button', { name: m.template_editor_open() })).toBeTruthy();
 	});
 });

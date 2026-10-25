@@ -14,7 +14,7 @@ import type {
 	Problem,
 	Trigger
 } from '#lib/rules/model.ts';
-import { isTagField } from '#lib/rules/model.ts';
+import { isTagField, isTemplated } from '#lib/rules/model.ts';
 import { session } from '#lib/session.svelte.ts';
 import { pathLabel } from '#lib/tags.ts';
 
@@ -183,8 +183,8 @@ function describeConditionValue(
 	return describeValue(value, null);
 }
 
-/** The template of an action (a title, a text field's value, a review's reason) and what
- * stands before it ("Set field: Note = "); null for an action without one. */
+/** The template of an action (a title, a field's value given as a template, a review's reason)
+ * and what stands before it ("Set field: Note = "); null for an action without one. */
 export function actionTemplate(
 	action: ActionNode | ApiAction,
 	lookup: Lookup | null
@@ -197,7 +197,8 @@ export function actionTemplate(
 			return { lead: `${label}: `, template: action.reason };
 		case 'set_field': {
 			const field = fieldOf(action.field_id, lookup);
-			if (field?.data_type !== 'text' || typeof action.value !== 'string') return null;
+			if (!field || typeof action.value !== 'string' || !isTemplated(field, action.value))
+				return null;
 			return { lead: `${label}: ${field.name} = `, template: action.value };
 		}
 	}

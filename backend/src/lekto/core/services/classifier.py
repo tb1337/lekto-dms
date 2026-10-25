@@ -194,6 +194,14 @@ class ClassifierService:
             )
         return ClassifierStatus(latest, confirmed, since, self.policy)
 
+    async def models(self, actor: UserId) -> list[ClassifierModel]:
+        """Every model trained, oldest first: what each learned and how well it did (the
+        history on the page "System"; only the latest ones keep their files). Every user sees
+        them."""
+        async with self._uow() as uow:
+            await load_actor(uow, actor)
+            return (await uow.classifier_models.list_all())[::-1]
+
     # --- training ---------------------------------------------------------------------------------
 
     async def train(self) -> ClassifierModel:

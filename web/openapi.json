@@ -10426,6 +10426,88 @@
         ]
       }
     },
+    "/api/v1/classifier/models": {
+      "get": {
+        "tags": [
+          "classifier"
+        ],
+        "summary": "Every model trained",
+        "description": "What each model learned and how well it did, oldest first (only the latest ones keep their files); every user sees them. 503 without a classifier.",
+        "operationId": "models_api_v1_classifier_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClassifierModelOut"
+                  },
+                  "type": "array",
+                  "title": "Response Models Api V1 Classifier Models Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "database: unreachable"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/classifier/train": {
       "post": {
         "tags": [
@@ -17283,6 +17365,258 @@
         ]
       }
     },
+    "/api/v1/automation": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "How the automation did",
+        "description": "The documents by the lane their first run stopped in, what became of them, the history by month, how long the first runs took and worked (per step too), and how people judged what the automation set, per field, at their first decision on it. For the documents of the channels given (by default `web` and `api`: migrated documents bring the metadata of the source system) and the period (30 days, the current month and the eleven before it, or all time); the whole system's numbers, naming no document. Counted again at most once a minute.",
+        "operationId": "automation_api_v1_automation_get",
+        "parameters": [
+          {
+            "name": "channel",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Channel"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeat for several.",
+              "title": "Channel"
+            },
+            "description": "Repeat for several."
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Period",
+              "default": "12m"
+            }
+          },
+          {
+            "name": "tz",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "The IANA time zone the months begin in.",
+              "examples": [
+                "Europe/Berlin"
+              ],
+              "default": "UTC",
+              "title": "Tz"
+            },
+            "description": "The IANA time zone the months begin in."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/automation/signals": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "How often each signal hit",
+        "description": "Per field and signal (language model, classifier, similar documents, facts in the text), how often the signal's best value was the one a person decided at their first decision on the field, and how often another. For the documents of the channels given (by default `web` and `api`: migrated documents bring the metadata of the source system) and the period (30 days, the current month and the eleven before it, or all time); the whole system's numbers, naming no document. Counted again at most once a minute.",
+        "operationId": "signals_api_v1_automation_signals_get",
+        "parameters": [
+          {
+            "name": "channel",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Channel"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeat for several.",
+              "title": "Channel"
+            },
+            "description": "Repeat for several."
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Period",
+              "default": "12m"
+            }
+          },
+          {
+            "name": "tz",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "The IANA time zone the months begin in.",
+              "examples": [
+                "Europe/Berlin"
+              ],
+              "default": "UTC",
+              "title": "Tz"
+            },
+            "description": "The IANA time zone the months begin in."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "tags": [
@@ -17938,6 +18272,103 @@
           "authorization_url"
         ],
         "title": "AuthorizationUrl"
+      },
+      "AutomationOut": {
+        "properties": {
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/Channel"
+            },
+            "type": "array",
+            "title": "Channels"
+          },
+          "period": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since",
+            "description": "From when the period counts; null: all time."
+          },
+          "lanes": {
+            "$ref": "#/components/schemas/LanesOut",
+            "description": "The documents by the lane their first run stopped in."
+          },
+          "flow": {
+            "items": {
+              "$ref": "#/components/schemas/FlowOut"
+            },
+            "type": "array",
+            "title": "Flow",
+            "description": "What became of them: their lane now."
+          },
+          "decided": {
+            "type": "integer",
+            "title": "Decided",
+            "description": "Of them, those a person decided a field of."
+          },
+          "untouched": {
+            "type": "integer",
+            "title": "Untouched",
+            "description": "Of them, the green ones nobody decided a field of: not contradicted, no hit."
+          },
+          "months": {
+            "items": {
+              "$ref": "#/components/schemas/MonthOut"
+            },
+            "type": "array",
+            "title": "Months",
+            "description": "By the month their first run stopped, oldest first: the last 12 months, for all time from the first month with documents (at most 60)."
+          },
+          "duration": {
+            "$ref": "#/components/schemas/TimesOut",
+            "description": "From the start of receiving to the first stop, with the waits for a worker."
+          },
+          "work": {
+            "$ref": "#/components/schemas/TimesOut",
+            "description": "The sum of the steps (side by side ones each counted)."
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/StepTimesOut"
+            },
+            "type": "array",
+            "title": "Steps",
+            "description": "Per node, in the order of the graph."
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldVerdictsOut"
+            },
+            "type": "array",
+            "title": "Fields",
+            "description": "The verdicts at the first decision of a person on each field, by when they were decided: the fields every document has first, then the custom ones by name."
+          }
+        },
+        "type": "object",
+        "required": [
+          "channels",
+          "period",
+          "since",
+          "lanes",
+          "flow",
+          "decided",
+          "untouched",
+          "months",
+          "duration",
+          "work",
+          "steps",
+          "fields"
+        ],
+        "title": "AutomationOut"
       },
       "BlockingSpaceOut": {
         "properties": {
@@ -21144,6 +21575,46 @@
         ],
         "title": "FieldType"
       },
+      "FieldVerdictsOut": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "description": "The field as checks name it: `contact`, `document_type`, `topic`, `document_date`, `space`, `tags`, or `field:<id>` for a custom field.",
+            "examples": [
+              "contact"
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "A custom field's name; null for the others."
+          },
+          "verdicts": {
+            "$ref": "#/components/schemas/VerdictsOut"
+          },
+          "early": {
+            "type": "integer",
+            "title": "Early",
+            "description": "Decided before the first run stopped: nothing to judge, counted apart."
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "name",
+          "verdicts",
+          "early"
+        ],
+        "title": "FieldVerdictsOut"
+      },
       "FileMetadataOut": {
         "properties": {
           "format": {
@@ -21251,6 +21722,35 @@
           "entries"
         ],
         "title": "FileMetadataOut"
+      },
+      "FlowOut": {
+        "properties": {
+          "first_lane": {
+            "$ref": "#/components/schemas/Lane"
+          },
+          "lane": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lane"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where they lie now; null: being processed again."
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "first_lane",
+          "lane",
+          "count"
+        ],
+        "title": "FlowOut"
       },
       "ForceReviewAction": {
         "properties": {
@@ -22405,6 +22905,32 @@
         ],
         "title": "LaneFilter",
         "description": "A lane, or `processing`: documents that have no lane yet."
+      },
+      "LanesOut": {
+        "properties": {
+          "green": {
+            "type": "integer",
+            "title": "Green",
+            "description": "Went through without a person."
+          },
+          "yellow": {
+            "type": "integer",
+            "title": "Yellow",
+            "description": "Stopped for a review."
+          },
+          "red": {
+            "type": "integer",
+            "title": "Red",
+            "description": "Failed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "green",
+          "yellow",
+          "red"
+        ],
+        "title": "LanesOut"
       },
       "Layout": {
         "type": "string",
@@ -23806,6 +24332,26 @@
         ],
         "title": "MonthCount"
       },
+      "MonthOut": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date",
+            "title": "Start",
+            "description": "The month's first day, in the time zone asked for."
+          },
+          "lanes": {
+            "$ref": "#/components/schemas/LanesOut",
+            "description": "The documents whose first run stopped that month."
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "lanes"
+        ],
+        "title": "MonthOut"
+      },
       "MoveRequest": {
         "properties": {
           "space_id": {
@@ -24272,6 +24818,16 @@
             "revoke_tokens": true
           }
         ]
+      },
+      "Period": {
+        "type": "string",
+        "enum": [
+          "30d",
+          "12m",
+          "all"
+        ],
+        "title": "Period",
+        "description": "The period the numbers cover, up to now: 30 days, the current month and the eleven\nbefore it, or all time."
       },
       "PeriodValue": {
         "properties": {
@@ -26575,6 +27131,87 @@
         ],
         "title": "Signal"
       },
+      "SignalHitsOut": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "description": "The field as checks name it: `contact`, `document_type`, `topic`, `document_date`, `space`, `tags`, or `field:<id>` for a custom field.",
+            "examples": [
+              "contact"
+            ]
+          },
+          "signal": {
+            "$ref": "#/components/schemas/Node"
+          },
+          "hits": {
+            "type": "integer",
+            "title": "Hits",
+            "description": "Its best value was the one the person decided."
+          },
+          "misses": {
+            "type": "integer",
+            "title": "Misses",
+            "description": "Its best value was another."
+          },
+          "decided": {
+            "type": "integer",
+            "title": "Decided",
+            "description": "Decisions on the field, whether the signal named one or not."
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "signal",
+          "hits",
+          "misses",
+          "decided"
+        ],
+        "title": "SignalHitsOut"
+      },
+      "SignalsOut": {
+        "properties": {
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/Channel"
+            },
+            "type": "array",
+            "title": "Channels"
+          },
+          "period": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "signals": {
+            "items": {
+              "$ref": "#/components/schemas/SignalHitsOut"
+            },
+            "type": "array",
+            "title": "Signals",
+            "description": "Per field and signal that named a value for it. The date has no candidates of the signals: the language model's are its verdicts (taken over or accepted a hit, corrected a miss)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "channels",
+          "period",
+          "since",
+          "signals"
+        ],
+        "title": "SignalsOut"
+      },
       "SkippedOut": {
         "properties": {
           "document_id": {
@@ -26910,6 +27547,49 @@
           "locations"
         ],
         "title": "SpanOut"
+      },
+      "StepTimesOut": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Documents measured."
+          },
+          "median_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Ms"
+          },
+          "p90_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P90 Ms",
+            "description": "90th percentile, by nearest rank."
+          },
+          "node": {
+            "$ref": "#/components/schemas/Node"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "median_ms",
+          "p90_ms",
+          "node"
+        ],
+        "title": "StepTimesOut"
       },
       "StoredFileOut": {
         "properties": {
@@ -27435,6 +28115,45 @@
         ],
         "title": "TemplatePreviewOut"
       },
+      "TimesOut": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Documents measured."
+          },
+          "median_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Ms"
+          },
+          "p90_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P90 Ms",
+            "description": "90th percentile, by nearest rank."
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "median_ms",
+          "p90_ms"
+        ],
+        "title": "TimesOut"
+      },
       "TokenCreate": {
         "properties": {
           "name": {
@@ -27902,6 +28621,38 @@
           "count"
         ],
         "title": "ValueCount"
+      },
+      "VerdictsOut": {
+        "properties": {
+          "taken": {
+            "type": "integer",
+            "title": "Taken",
+            "description": "The automation's value stood."
+          },
+          "accepted": {
+            "type": "integer",
+            "title": "Accepted",
+            "description": "The suggestion of an uncertain field was taken."
+          },
+          "corrected": {
+            "type": "integer",
+            "title": "Corrected",
+            "description": "The automation had a value or suggestion; another one won."
+          },
+          "added": {
+            "type": "integer",
+            "title": "Added",
+            "description": "The automation had none; the person gave one."
+          }
+        },
+        "type": "object",
+        "required": [
+          "taken",
+          "accepted",
+          "corrected",
+          "added"
+        ],
+        "title": "VerdictsOut"
       },
       "VisibilityOut": {
         "properties": {

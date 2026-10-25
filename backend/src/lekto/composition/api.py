@@ -84,6 +84,7 @@ def api_context(container: Container, settings: Settings, services: Services) ->
         webhook_delivery=services.webhook_delivery,
         lenses=services.lenses,
         jobs=services.jobs,
+        automation=services.automation,
         event_bus=container.event_bus,
         health_checks=health_checks(container),
         optional_checks=frozenset({"search"}),

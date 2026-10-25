@@ -14,6 +14,7 @@ from starlette.routing import BaseRoute
 from lekto import __version__
 from lekto.adapters.inbound.rest import (
     account,
+    automation,
     classifier,
     documents,
     health,
@@ -159,6 +160,7 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
         webhooks.router,
         lenses.router,
         jobs.router,
+        automation.router,
         health.router,
     ):
         app.include_router(router, prefix=PREFIX)

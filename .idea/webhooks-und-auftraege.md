@@ -375,7 +375,35 @@ gültig); Alembic-Revisionen dazu.
 
 ## Offen
 
-Nichts.
+Beim Bauen von M21 entschieden, zur Bestätigung durch Tobi:
+
+1. Ein Webhook dient als genau eine Art (`propose` oder `extract`); für beide Arten zwei
+   Webhooks, gern mit derselben URL.
+2. Die Frist eines Modellaufrufs steht am Webhook (`model_call.timeout_seconds`), Vorgabe
+   5 Minuten, 30 Sekunden bis 24 Stunden.
+3. „Je Art höchstens einer aktiv“ zählt die aktiven Webhooks aktiver Admins; ein zweiter: 409
+   (`model_call_taken`). Nur ein Admin gibt die Rolle, nur an den Webhook eines Admins;
+   entfernen darf sie jeder, der den Webhook verwaltet.
+4. Vertragsversionen `propose-ext-1` und `extract-ext-1`; `task.kind` heißt `external.propose`
+   und `external.extract`; das Token steht auch im Body (`task.token`), wie bei `thin` und
+   `full`. Der Body des Webhooks gilt für Modellaufrufe nicht (immer der Vertrag); Ereignisse
+   und Regeln am selben Webhook nutzen ihn weiter.
+5. Datei-Links: signiert über `SecretCipher` (AES-GCM mit `LEKTO_SECRET_KEY`, gebunden an
+   Auftrag, Dokument, Lauf, Datei und Ablauf); sie gelten bis zur Frist, auch nach der Antwort;
+   401 nach Ablauf oder mit falscher Signatur, 409 nach Neuverarbeitung oder Löschen. In
+   OpenAPI als Sicherheitsschema `fileSignature`.
+6. Die Kante `pages → signal_llm` gilt immer: „Neu verarbeiten ab `pages`“ fragt deshalb das
+   Modell (oder den Webhook) neu. Bestätigen nach einem OCR-Fehler rendert die Seiten weiter,
+   statt sie zu übernehmen.
+7. Kein zweiter Versuch: Eine Antwort, die nicht passt, ist sofort 422 und rot (das interne
+   Modell wird nach einer unpassenden Antwort einmal neu gefragt).
+8. Im Kontext stehen die Spaces anderer Nutzer mit dem Anzeigenamen als Label, wie im Prompt
+   heute; Felder mit `form` (wie der Wert geschrieben wird) und `type`.
+9. Protokoll: der Kontext ohne Auftrag und Links als „Nutzer“, die Antwort als „Antwort“, kein
+   Systemprompt (die UI blendet den Reiter aus); `model_version` ist `producer`, ohne ihn
+   `external`.
+10. Das Beispiel liegt unter `examples/model-calls/` (Skript, Compose-Erweiterung, README); ein
+    optionales `OLLAMA_API_KEY` erlaubt einen Proxy vor Ollama.
 
 ## Entscheidungen (Tobi, 25.10.2026)
 

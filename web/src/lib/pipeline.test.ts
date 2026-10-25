@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	descendants,
 	durationSeconds,
+	forgetPipeline,
 	hasText,
 	levels,
+	pipeline,
 	progress,
 	reprocessable,
 	type GraphNode,
@@ -144,5 +146,30 @@ describe('hasText', () => {
 
 	it('takes a later run for one with the text of a run before', () => {
 		expect(hasText({ ...processing('processing', { receive: 'ok' }), run: 2 })).toBe(true);
+	});
+});
+
+describe('the pipeline of the installation', () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		forgetPipeline();
+	});
+
+	it('is asked for once, and again only after a failure', async () => {
+		let fail = true;
+		const fetch = vi.fn(async () =>
+			fail
+				? new Response(null, { status: 503 })
+				: new Response(JSON.stringify({ nodes: GRAPH, vision: null }), {
+						headers: { 'content-type': 'application/json' }
+					})
+		);
+		vi.stubGlobal('fetch', fetch);
+		await expect(pipeline()).rejects.toBeTruthy();
+		fail = false;
+		const [first, second] = await Promise.all([pipeline(), pipeline()]);
+		expect(first).toBe(second);
+		expect((await pipeline()).nodes).toEqual(GRAPH);
+		expect(fetch).toHaveBeenCalledTimes(2);
 	});
 });

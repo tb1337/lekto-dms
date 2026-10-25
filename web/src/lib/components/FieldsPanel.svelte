@@ -3,8 +3,10 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import { BASE } from '#lib/base.ts';
 	import MasterRow from '#lib/components/MasterRow.svelte';
+	import PanelState from '#lib/components/PanelState.svelte';
 	import { describeError } from '#lib/errors.ts';
 	import { fieldTypeLabel } from '#lib/fields.ts';
+	import { latest } from '#lib/latest.ts';
 	import { fieldMatches } from '#lib/master-search.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import type { FieldDefinition, MasterData } from '#lib/masterdata.svelte.ts';
@@ -24,9 +26,11 @@
 		(fields ?? []).filter((field) => query.trim() === '' || fieldMatches(field, query))
 	);
 
+	const begin = latest();
 	async function load() {
+		const current = begin();
 		try {
-			[fields, types] = await Promise.all([
+			const found = await Promise.all([
 				unwrap(
 					api.GET('/api/v1/fields', {
 						params: { query: { document_counts: true, all_users: scope.query } }
@@ -34,9 +38,11 @@
 				),
 				unwrap(api.GET('/api/v1/document-types'))
 			]);
+			if (!current()) return;
+			[fields, types] = found;
 			problem = null;
 		} catch (failure) {
-			problem = describeError(failure);
+			if (current()) problem = describeError(failure);
 		}
 	}
 	// Again after a dialog saved (wherever it was opened), and with another scope.
@@ -66,15 +72,16 @@
 	}
 </script>
 
-{#if problem}
-	<p class="text-destructive" role="alert">{problem}</p>
-{:else if !fields}
-	<p class="text-muted-foreground">{m.loading()}</p>
-{:else if listed.length === 0}
-	<p class="rounded-2xl border border-dashed bg-card px-6 py-10 text-center text-muted-foreground">
-		{fields.length === 0 ? m.master_none() : m.assignment_none_found()}
-	</p>
-{:else}
+<PanelState
+	{problem}
+	loading={!fields}
+	empty={listed.length > 0
+		? null
+		: fields?.length === 0
+			? m.master_none()
+			: m.assignment_none_found()}
+	onretry={load}
+>
 	<ul class="divide-y overflow-hidden rounded-2xl border bg-card" aria-label={m.master_fields()}>
 		{#each listed as field (field.id)}
 			<MasterRow
@@ -109,4 +116,4 @@
 			</MasterRow>
 		{/each}
 	</ul>
-{/if}
+</PanelState>

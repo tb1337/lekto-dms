@@ -29,7 +29,6 @@
 	import Select from '#lib/components/Select.svelte';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
-	import { describeError } from '#lib/errors.ts';
 	import { fieldTypeLabel } from '#lib/fields.ts';
 	import { isFiltered } from '#lib/filters.ts';
 	import { filtersOf, type Grouping, type Lens } from '#lib/lenses.ts';
@@ -85,12 +84,9 @@
 	let layout = $state<'grid' | 'list'>('grid');
 	let cardIds = $state<string[]>([]);
 	let dragged = $state<number | null>(null);
-	let error = $state<string | null>(null);
-	let busy = $state(false);
 
 	$effect(() => {
 		if (!open) return;
-		error = null;
 		name = initial?.name ?? '';
 		const field = initial ? initial.sort_field_id : draft.sortField;
 		const chosen = initial ? initial.sort : draft.sort;
@@ -163,10 +159,7 @@
 		cardIds = next;
 	}
 
-	async function save(event: SubmitEvent) {
-		event.preventDefault();
-		busy = true;
-		error = null;
+	async function save() {
 		const [key, field] = sort.split(':');
 		const body = {
 			name: name.trim(),
@@ -177,24 +170,17 @@
 			card_field_ids: cardIds,
 			due_field_id: dueId || null
 		};
-		try {
-			const saved = initial
-				? await unwrap(
-						api.PATCH('/api/v1/lenses/{id}', { params: { path: { id: initial.id } }, body })
-					)
-				: await unwrap(
-						api.POST('/api/v1/lenses', {
-							body: { ...body, filter: draft.filter, query: draft.query }
-						})
-					);
-			toast.success(m.lens_saved({ name: saved.name }));
-			open = false;
-			onsaved(saved, initial === null);
-		} catch (failure) {
-			error = describeError(failure);
-		} finally {
-			busy = false;
-		}
+		const saved = initial
+			? await unwrap(
+					api.PATCH('/api/v1/lenses/{id}', { params: { path: { id: initial.id } }, body })
+				)
+			: await unwrap(
+					api.POST('/api/v1/lenses', {
+						body: { ...body, filter: draft.filter, query: draft.query }
+					})
+				);
+		toast.success(m.lens_saved({ name: saved.name }));
+		onsaved(saved, initial === null);
 	}
 
 	async function remove() {
@@ -211,10 +197,8 @@
 	title={initial ? m.lens_edit() : m.lens_create()}
 	shortTitle={m.lens_short()}
 	submitLabel={m.save()}
-	{busy}
 	disabled={name.trim() === ''}
-	{error}
-	onsubmit={save}
+	action={save}
 	ondelete={initial ? remove : undefined}
 	deleteTitle={m.lens_delete({ name: initial?.name ?? '' })}
 	deleteDescription={m.lens_delete_confirm()}

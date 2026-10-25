@@ -5,7 +5,7 @@
  */
 import type { components } from '#lib/api/schema.ts';
 import { describeValue } from '#lib/describe.ts';
-import { userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+import { holderOf, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 type OpenNode = components['schemas']['OpenNodeOut'];
@@ -33,7 +33,7 @@ export function knownSpace(target: string, lookup: Lookup | null): boolean {
 	if (!lookup) return false;
 	return (
 		lookup.spaces.some((space) => space.id === target) ||
-		lookup.users.some((user) => user.personal_space_id === target)
+		holderOf(lookup.users, target) !== undefined
 	);
 }
 
@@ -49,14 +49,14 @@ export function newReaders(target: string, current: string, lookup: Lookup | nul
 			.filter((member) => !already.has(member.user_id))
 			.map((member) => userLabel(member));
 	}
-	const holder = lookup.users.find((user) => user.personal_space_id === target);
+	const holder = holderOf(lookup.users, target);
 	return holder && !already.has(holder.id) ? [userLabel(holder)] : [];
 }
 
 /** The user `target` hands the document over to: whose personal space it is, if they are no
  * member of `current` (as far as the caller sees); null for any other space. */
 export function handedTo(target: string, current: string, lookup: Lookup | null): string | null {
-	const holder = lookup?.users.find((user) => user.personal_space_id === target);
+	const holder = lookup ? holderOf(lookup.users, target) : undefined;
 	if (!holder) return null;
 	const here = lookup?.spaces.find((space) => space.id === current);
 	if (here?.members.some((member) => member.user_id === holder.id)) return null;

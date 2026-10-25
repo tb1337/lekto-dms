@@ -18,7 +18,7 @@ export const TAG_KINDS: Record<TagKind, TagScope> = {
 };
 
 export function isTagKind(kind: string): kind is TagKind {
-	return kind in TAG_KINDS;
+	return Object.hasOwn(TAG_KINDS, kind);
 }
 
 /** The tag kind of `scope`. */

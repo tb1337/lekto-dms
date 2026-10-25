@@ -14,14 +14,17 @@
 <script lang="ts">
 	import Check from '@lucide/svelte/icons/check';
 	import LucideIcon from '#lib/components/LucideIcon.svelte';
-	import { chipStyle, isHex } from '#lib/colors.ts';
+	import { chipLook } from '#lib/components/TagChip.svelte';
+	import { chipStyle } from '#lib/colors.ts';
 	import { formatNumber } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { flipped } from '#lib/picking.ts';
 	import { cn } from '#lib/utils.ts';
 
-	// Values of the filters as the chips they are everywhere (as TagChip draws them): a tag round
-	// in its colour, a topic square, a group outlined in its colour; the count in the chip, a chosen one with a tick and a ring. The
-	// first `limit` show and the chosen ones; `more` (a label) shows the rest on a tap.
+	// Values of the filters as the chips they are everywhere (`chipLook`, as TagChip draws them): a
+	// tag round in its colour, a topic square, a group outlined in its colour, a plain value as an
+	// uncoloured group; the count in the chip, a chosen one with a tick and a ring. The first
+	// `limit` show and the chosen ones; `more` (a label) shows the rest on a tap.
 	let {
 		items,
 		selected,
@@ -47,7 +50,7 @@
 	);
 
 	function toggle(id: string) {
-		onchange(selected.includes(id) ? selected.filter((entry) => entry !== id) : [...selected, id]);
+		onchange(flipped(selected, id));
 	}
 </script>
 
@@ -55,7 +58,8 @@
 	<div class="flex flex-col items-start gap-2">
 		<div class="flex flex-wrap gap-1.5" role="group" aria-label={label}>
 			{#each shown as item (item.id)}
-				{@const style = look === 'plain' ? null : chipStyle(item.color)}
+				{@const color = look === 'plain' ? null : item.color}
+				{@const style = chipStyle(color)}
 				{@const active = selected.includes(item.id)}
 				<button
 					type="button"
@@ -63,27 +67,9 @@
 					title={item.title ?? item.label}
 					{style}
 					class={cn(
-						'inline-flex h-7 max-w-full min-w-0 items-center gap-1 px-2.5 text-xs transition-shadow',
-						look === 'topic' ? 'rounded-md border' : 'rounded-full',
-						style === null &&
-							(look === 'topic'
-								? 'border-primary/25 bg-primary/10'
-								: look === 'group' || look === 'plain'
-									? 'border bg-background'
-									: 'bg-secondary'),
-						style !== null &&
-							(look === 'group'
-								? 'border border-(--chip-fg)/45 bg-background text-(--chip-fg)'
-								: cn(
-										'bg-(--chip-bg) font-medium text-(--chip-fg)',
-										look === 'topic' && 'border-(--chip-fg)/25'
-									)),
-						isHex(item.color) && 'chip-own',
-						// An own colour may be close to the card: a faint ring keeps a tag's shape.
-						isHex(item.color) &&
-							look === 'tag' &&
-							!active &&
-							'ring-1 ring-(--chip-fg)/15 ring-inset',
+						// A chosen chip's own ring takes the place of the faint one.
+						chipLook(look === 'plain' ? 'group' : look, color, !active),
+						'h-7 px-2.5 text-xs transition-shadow',
 						active && 'ring-2 ring-primary ring-offset-2 ring-offset-card',
 						active &&
 							style === null &&

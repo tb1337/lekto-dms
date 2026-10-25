@@ -21,13 +21,16 @@ export function placeOf(rule: Placed): string {
 	return rule.scope === 'global' ? GLOBAL : (rule.space_id ?? '');
 }
 
+/** The name of a place: `global` for a global rule (the long wording of the choice unless a
+ * badge wants the short one), the space's name, "unknown" for a space the list lacks. */
 export function placeLabel(
 	place: string,
 	spaces: readonly Space[],
 	users: readonly User[],
-	me: string | undefined
+	me: string | undefined,
+	global: () => string = m.rule_scope_global
 ): string {
-	if (place === GLOBAL) return m.rule_scope_global();
+	if (place === GLOBAL) return global();
 	const space = spaces.find((entry) => entry.id === place);
 	return space ? spaceLabel(space, users, me) : m.rule_unknown();
 }

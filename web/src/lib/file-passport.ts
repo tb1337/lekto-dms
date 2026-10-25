@@ -6,6 +6,7 @@
  * Metadata is someone else's text: whatever cannot be read is left out.
  */
 import type { components } from '#lib/api/schema.ts';
+import { isIsoDay, isoDayLocal, localDay, pad2 } from '#lib/dates.ts';
 import { formatNumber } from '#lib/i18n.ts';
 
 type Files = components['schemas']['DocumentFilesOut'];
@@ -71,6 +72,8 @@ export function fileDate(text: string | null): Date | null {
 		const [, year, month, day, hour, minute, second] = exif;
 		return valid(new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}`));
 	}
+	// A day alone is a calendar day; a moment with a zone is read as the browser does.
+	if (isIsoDay(value)) return valid(localDay(value));
 	return /^\d{4}-\d{2}-\d{2}/.test(value) ? valid(new Date(value)) : null;
 }
 
@@ -207,8 +210,7 @@ export function gapOf(from: Date, to: Date): { value: number; unit: GapUnit } | 
 
 /** A moment as a `datetime-local` field holds it: to the minute, in local time. */
 export function localMinute(at: Date): string {
-	const pad = (value: number) => String(value).padStart(2, '0');
-	return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}`;
+	return `${isoDayLocal(at)}T${pad2(at.getHours())}:${pad2(at.getMinutes())}`;
 }
 
 const notBefore = (at: Date, floor: Date) => (at.getTime() < floor.getTime() ? floor : at);

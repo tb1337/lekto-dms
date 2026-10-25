@@ -7,12 +7,15 @@ import {
 	memberChips,
 	openFiling,
 	openSpaceCheck,
+	readersLaterText,
+	visibleText,
 	whereText
 } from '#lib/filing.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 type Check = components['schemas']['FieldCheckOut'];
+type Member = components['schemas']['SpaceOut']['members'][number];
 
 const TOBI = 'u-tobi';
 const ANNA = 'u-anna';
@@ -174,15 +177,40 @@ describe('filing', () => {
 	it('lists the members, the caller first, readers once the document is green', () => {
 		const home = lookup.spaces[1].members;
 		expect(memberChips(home, tobi, true)).toEqual([
-			m.filing_you_edit(),
-			m.filing_member_read({ name: 'Anna Leider' })
+			{ key: TOBI, text: m.filing_you_edit() },
+			{ key: ANNA, text: m.filing_member_read({ name: 'Anna Leider' }) }
 		]);
 		expect(memberChips(home, tobi, false)).toEqual([
-			m.filing_you_edit(),
-			m.filing_member_read_later({ name: 'Anna Leider' })
+			{ key: TOBI, text: m.filing_you_edit() },
+			{ key: ANNA, text: m.filing_member_read_later({ name: 'Anna Leider' }) }
 		]);
 		expect(whereText(MINE, lookup, tobi, true)).toBe(
 			m.filing_where({ space: m.space_personal(), visible: m.visible_to_you() })
 		);
+	});
+
+	it('keeps two members of one display name apart', () => {
+		const twins = [
+			{ user_id: TOBI, role: 'edit', username: 'tobi' },
+			{ user_id: 'u-anna-1', role: 'read', username: 'anna1', display_name: 'Anna' },
+			{ user_id: 'u-anna-2', role: 'read', username: 'anna2', display_name: 'Anna' }
+		] as unknown as Member[];
+		const chips = memberChips(twins, tobi, true);
+		expect(chips.map((chip) => chip.text)).toEqual([
+			m.filing_you_edit(),
+			m.filing_member_read({ name: 'Anna' }),
+			m.filing_member_read({ name: 'Anna' })
+		]);
+		expect(new Set(chips.map((chip) => chip.key)).size).toBe(3);
+	});
+
+	it('says who sees the document now and who once it is green', () => {
+		const home = lookup.spaces[1].members;
+		expect(visibleText(home, tobi, true)).toBe(m.visible_to({ names: 'Anna Leider' }));
+		expect(visibleText(home, tobi, false)).toBe(m.visible_to_you());
+		expect(readersLaterText(home, tobi, false)).toBe(
+			m.visible_to_readers_later({ names: 'Anna Leider' })
+		);
+		expect(readersLaterText(home, tobi, true)).toBeNull();
 	});
 });

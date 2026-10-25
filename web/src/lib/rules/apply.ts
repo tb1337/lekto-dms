@@ -5,7 +5,7 @@
  */
 import type { components } from '#lib/api/schema.ts';
 import { describeValue, fieldLabel } from '#lib/describe.ts';
-import { spaceLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+import { spaceNameFor, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { labelled, outputReasonText, reasonsText } from '#lib/reasons.ts';
 
@@ -75,16 +75,6 @@ export async function follow(
 
 export type Outcome = components['schemas']['ApplyOutcomeOut'];
 
-/** A space as the reader names it; one they cannot see stays unnamed. */
-function spaceName(id: string, lookup: Lookup | null, me: string | undefined): string {
-	const space = lookup?.spaces.find((entry) => entry.id === id);
-	if (space) return spaceLabel(space, lookup?.users ?? [], me);
-	// Another user's personal space the reader is no member of: named by its user.
-	const holder = lookup?.users.find((entry) => entry.personal_space_id === id);
-	if (holder) return holder.id === me ? m.space_personal() : holder.username;
-	return m.space_unseen();
-}
-
 /** The notes of a chain step that tell why it stopped or what did not act. */
 const CHAIN_NOTES = new Set(['refused', 'conflict']);
 
@@ -99,7 +89,7 @@ export function chainLines(
 	lookup: Lookup | null,
 	me: string | undefined
 ): string[] {
-	const name = (id: string) => spaceName(id, lookup, me);
+	const name = (id: string) => spaceNameFor(id, lookup, me);
 	const first = outcome.chain[0]?.space_id ?? outcome.space_id;
 	const lines = [m.rule_chain_into({ space: name(first), rule })];
 	const visited = [first];

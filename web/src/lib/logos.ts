@@ -1,21 +1,16 @@
-/** Logos of contacts: whether the server fetches them (asked once, from `GET /pipeline`), and
- * uploading, removing and fetching one. */
+/** Logos of contacts: whether the server fetches them (from `GET /pipeline`), and uploading,
+ * removing and fetching one. */
 import { api } from '#lib/api/client.ts';
 import { unwrap } from '#lib/api/call.ts';
 import type { Contact } from '#lib/masterdata.svelte.ts';
-
-let fetching: Promise<boolean> | null = null;
+import { pipeline } from '#lib/pipeline.ts';
 
 /** Whether Lekto fetches logos from websites (`LEKTO_LOGO_FETCH`); false if it cannot tell. */
 export function logoFetching(): Promise<boolean> {
-	fetching ??= unwrap(api.GET('/api/v1/pipeline')).then(
-		(pipeline) => pipeline.logo_fetch,
-		() => {
-			fetching = null;
-			return false;
-		}
+	return pipeline().then(
+		(found) => found.logo_fetch,
+		() => false
 	);
-	return fetching;
 }
 
 /** The contact's domains among its identifiers that count: where its website is. */

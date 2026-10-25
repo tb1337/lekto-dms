@@ -40,7 +40,7 @@ function isHidden(name: string): boolean {
  * names it, or, where it names none it knows, by the ending. */
 export function skipReason(name: string, type: string): SkipReason | null {
 	if (isHidden(name)) return 'hidden';
-	if (type in ACCEPTED) return null;
+	if (Object.hasOwn(ACCEPTED, type)) return null;
 	const ending = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : '';
 	const unnamed = type === '' || type === 'application/octet-stream';
 	return unnamed && Object.values(ACCEPTED).some((endings) => endings.includes(ending))

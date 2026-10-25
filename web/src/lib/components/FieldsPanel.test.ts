@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { phone } from '#lib/phone.svelte.ts';
+import { scope } from '#lib/scope.svelte.ts';
 import { session } from '#lib/session.svelte.ts';
 import WithDialogs from '#lib/testing/WithDialogs.svelte';
 import FieldsPanel from './FieldsPanel.svelte';
@@ -60,6 +61,7 @@ beforeEach(() => {
 afterEach(() => {
 	masterDataDialogs.close();
 	phone.override(null);
+	scope.set(false);
 	session.clear();
 	vi.unstubAllGlobals();
 	// A dialog makes the page unclickable until it has closed; the next test must not wait.
@@ -157,6 +159,37 @@ describe('FieldsPanel', () => {
 		expect(await patch?.json()).toMatchObject({
 			description: 'Rechnungsnummer, nicht die Kundennummer'
 		});
+	});
+
+	it('shows the answer of the newest load, not of the slowest', async () => {
+		const field = (name: string) => ({
+			id: name,
+			name,
+			key: name.toLowerCase(),
+			data_type: 'text',
+			document_type_ids: null,
+			choices: [],
+			required: false,
+			required_document_type_ids: [],
+			description: null,
+			created_at: '2026-10-13T12:00:00Z'
+		});
+		let slow!: (answer: Response) => void;
+		fetchMock.mockImplementation(async (request) => {
+			const url = new URL(request.url);
+			if (url.pathname !== '/api/v1/fields') return json([]);
+			// The own fields take their time; those of all users, asked for later, come first.
+			if (url.searchParams.has('all_users')) return json([field('Betrag')]);
+			return new Promise((resolve) => (slow = resolve));
+		});
+		render(FieldsPanel);
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+		scope.set(true);
+		expect(await screen.findByText('Betrag')).toBeTruthy();
+		slow(json([field('Rechnungsnummer')]));
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(screen.queryByText('Rechnungsnummer')).toBeNull();
+		expect(screen.getByText('Betrag')).toBeTruthy();
 	});
 
 	it('finds a field by its name, key or description', async () => {

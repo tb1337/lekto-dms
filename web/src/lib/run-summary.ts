@@ -6,7 +6,7 @@
 import type { components } from '#lib/api/schema.ts';
 import { describeValue, fieldLabel } from '#lib/describe.ts';
 import { choiceTitle, filingKind, type Viewer } from '#lib/filing.ts';
-import { userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+import { holderOf, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { NODE_LABELS } from '#lib/node-labels.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { labelled, reasonsText } from '#lib/reasons.ts';
@@ -165,7 +165,7 @@ function spaceWhy(
 	if (suggestion && lookup) {
 		const kind = filingKind(suggestion, space, lookup, viewer);
 		parts.push(m.run_why_space({ choice: choiceTitle(kind, suggestion, lookup, viewer) }));
-		const holder = lookup.users.find((user) => user.personal_space_id === suggestion);
+		const holder = holderOf(lookup.users, suggestion);
 		const sure = list(object(verdict?.output).persons)
 			.map(object)
 			.some((found) => found.user_id === holder?.id && found.strength === 'hard');

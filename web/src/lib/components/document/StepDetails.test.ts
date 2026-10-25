@@ -135,6 +135,22 @@ describe('StepDetails', () => {
 		);
 	});
 
+	it('asks for the text once, not again for every change of the processing view', async () => {
+		const props = { entry: entry('parse', 2, { pages: 2, characters: 18 }), lookup, context };
+		const { rerender } = render(StepDetails, { props });
+		expect(await screen.findByText(m.details_characters())).toBeTruthy();
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		// The view builds its context anew on every change; the same document asks for nothing.
+		await rerender({ ...props, context: { ...context, poor: [1] } });
+		await rerender({ ...props, entry: entry('parse', 2, { pages: 2, characters: 18 }) });
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		// Another document: its text.
+		await rerender({ ...props, context: { ...context, documentId: 'doc-2' } });
+		await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+		expect(new URL(fetchMock.mock.calls[1][0].url).pathname).toBe('/api/v1/documents/doc-2/text');
+	});
+
 	it("draws the classifier's classes against its threshold", () => {
 		const { container } = render(StepDetails, {
 			props: {

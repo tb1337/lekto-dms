@@ -3,11 +3,9 @@
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
-	import { Button } from '#lib/components/ui/button/index.ts';
-	import * as Dialog from '#lib/components/ui/dialog/index.ts';
+	import FormDialog from '#lib/components/FormDialog.svelte';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
-	import { describeError } from '#lib/errors.ts';
 	import { DOCUMENT_EVENT_TYPES, type DocumentEventType } from '#lib/events.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
@@ -32,8 +30,6 @@
 	let all = $state(true);
 	let types = $state<string[]>([]);
 	let active = $state(true);
-	let error = $state<string | null>(null);
-	let busy = $state(false);
 
 	const labels: Record<DocumentEventType, () => string> = {
 		'document.received': m.event_received,
@@ -48,7 +44,6 @@
 
 	$effect(() => {
 		if (!open) return;
-		error = null;
 		name = webhook?.name ?? '';
 		url = webhook?.url ?? '';
 		all = webhook ? webhook.event_types.includes('*') : true;
@@ -56,89 +51,63 @@
 		active = webhook?.active ?? true;
 	});
 
-	async function submit(event: SubmitEvent) {
-		event.preventDefault();
-		if (busy) return;
-		busy = true;
-		error = null;
+	async function save() {
 		const event_types = all ? ['*'] : types;
-		try {
-			if (webhook) {
-				await unwrap(
-					api.PATCH('/api/v1/webhooks/{id}', {
-						params: { path: { id: webhook.id } },
-						body: { name: name.trim(), url: url.trim(), event_types, active }
-					})
-				);
-				toast.success(m.webhook_saved());
-				onsaved();
-			} else {
-				const created = await unwrap(
-					api.POST('/api/v1/webhooks', {
-						body: { name: name.trim(), url: url.trim(), event_types, active }
-					})
-				);
-				onsaved();
-				oncreated(created);
-			}
-			open = false;
-		} catch (failure) {
-			error = describeError(failure);
-		} finally {
-			busy = false;
+		if (webhook) {
+			await unwrap(
+				api.PATCH('/api/v1/webhooks/{id}', {
+					params: { path: { id: webhook.id } },
+					body: { name: name.trim(), url: url.trim(), event_types, active }
+				})
+			);
+			toast.success(m.webhook_saved());
+			onsaved();
+		} else {
+			const created = await unwrap(
+				api.POST('/api/v1/webhooks', {
+					body: { name: name.trim(), url: url.trim(), event_types, active }
+				})
+			);
+			onsaved();
+			oncreated(created);
 		}
 	}
 </script>
 
-<Dialog.Root bind:open>
-	<Dialog.Content class="max-w-lg">
-		<form class="flex flex-col gap-4" onsubmit={submit} novalidate>
-			<Dialog.Header>
-				<Dialog.Title>{webhook ? m.webhook_edit() : m.webhook_new()}</Dialog.Title>
-			</Dialog.Header>
-			<Field.Field>
-				<Field.Label for="wh-name">{m.field_name()}</Field.Label>
-				<Input id="wh-name" bind:value={name} maxlength={100} required />
-			</Field.Field>
-			<Field.Field>
-				<Field.Label for="wh-url">{m.webhook_url()}</Field.Label>
-				<Input id="wh-url" type="url" bind:value={url} maxlength={2000} required />
-				<Field.Description>{m.webhook_url_hint()}</Field.Description>
-			</Field.Field>
-			<fieldset class="flex flex-col gap-2">
-				<legend class="mb-1 text-sm font-medium">{m.webhook_events()}</legend>
-				<label class="flex items-center gap-2 text-sm">
-					<input type="checkbox" bind:checked={all} class="size-4 accent-primary" />
-					{m.webhook_events_all()}
+<FormDialog
+	bind:open
+	title={webhook ? m.webhook_edit() : m.webhook_new()}
+	submitLabel={webhook ? m.save() : m.create()}
+	disabled={name.trim() === '' || url.trim() === '' || (!all && types.length === 0)}
+	class="max-w-lg"
+	action={save}
+>
+	<Field.Field>
+		<Field.Label for="wh-name">{m.field_name()}</Field.Label>
+		<Input id="wh-name" bind:value={name} maxlength={100} required />
+	</Field.Field>
+	<Field.Field>
+		<Field.Label for="wh-url">{m.webhook_url()}</Field.Label>
+		<Input id="wh-url" type="url" bind:value={url} maxlength={2000} required />
+		<Field.Description>{m.webhook_url_hint()}</Field.Description>
+	</Field.Field>
+	<fieldset class="flex flex-col gap-2">
+		<legend class="mb-1 text-sm font-medium">{m.webhook_events()}</legend>
+		<label class="flex items-center gap-2 text-sm">
+			<input type="checkbox" bind:checked={all} class="size-4 accent-primary" />
+			{m.webhook_events_all()}
+		</label>
+		{#if !all}
+			{#each DOCUMENT_EVENT_TYPES as type (type)}
+				<label class="flex items-center gap-2 pl-6 text-sm">
+					<input type="checkbox" value={type} bind:group={types} class="size-4 accent-primary" />
+					{labels[type]()}
 				</label>
-				{#if !all}
-					{#each DOCUMENT_EVENT_TYPES as type (type)}
-						<label class="flex items-center gap-2 pl-6 text-sm">
-							<input
-								type="checkbox"
-								value={type}
-								bind:group={types}
-								class="size-4 accent-primary"
-							/>
-							{labels[type]()}
-						</label>
-					{/each}
-				{/if}
-			</fieldset>
-			<label class="flex items-center gap-2 text-sm">
-				<input type="checkbox" bind:checked={active} class="size-4 accent-primary" />
-				{m.webhook_active()}
-			</label>
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-			<Dialog.Footer>
-				<Button type="button" variant="ghost" onclick={() => (open = false)}>{m.cancel()}</Button>
-				<Button
-					type="submit"
-					disabled={busy || name.trim() === '' || url.trim() === '' || (!all && types.length === 0)}
-				>
-					{webhook ? m.save() : m.create()}
-				</Button>
-			</Dialog.Footer>
-		</form>
-	</Dialog.Content>
-</Dialog.Root>
+			{/each}
+		{/if}
+	</fieldset>
+	<label class="flex items-center gap-2 text-sm">
+		<input type="checkbox" bind:checked={active} class="size-4 accent-primary" />
+		{m.webhook_active()}
+	</label>
+</FormDialog>

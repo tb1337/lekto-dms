@@ -12,7 +12,6 @@
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { Textarea } from '#lib/components/ui/textarea/index.ts';
-	import { describeError } from '#lib/errors.ts';
 	import { FIELD_TYPES, fieldTypeLabel } from '#lib/fields.ts';
 	import type { FieldDefinition, MasterData } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -47,8 +46,6 @@
 	let description = $state('');
 	// Set by hand only: the language model is never asked for it (issue #52).
 	let manual = $state(false);
-	let error = $state<string | null>(null);
-	let busy = $state(false);
 	// The types it applies to stand in a tab of their own (Tobi, 20.10.2026).
 	let tab = $state('general');
 	const tabs = $derived([
@@ -63,7 +60,6 @@
 	$effect(() => {
 		if (!open) return;
 		tab = 'general';
-		error = null;
 		name = initial?.name ?? '';
 		dataType = initial?.data_type ?? 'text';
 		global = initial ? initial.document_type_ids === null : true;
@@ -77,11 +73,7 @@
 
 	const isChoice = $derived((initial?.data_type ?? dataType) === 'choice');
 
-	async function save(event: SubmitEvent) {
-		event.preventDefault();
-		if (busy) return;
-		busy = true;
-		error = null;
+	async function save() {
 		const list = choices
 			.split('\n')
 			.map((line) => line.trim())
@@ -92,44 +84,37 @@
 			required: global && required,
 			required_document_type_ids: global ? [] : requiredTypes.filter((id) => scope.includes(id))
 		};
-		try {
-			if (initial === null) {
-				await unwrap(
-					api.POST('/api/v1/fields', {
-						body: {
-							name: name.trim(),
-							data_type: dataType,
-							description: description.trim() || null,
-							assignment,
-							document_type_ids,
-							...requirement,
-							...(dataType === 'choice' ? { choices: list } : {})
-						}
-					})
-				);
-			} else {
-				await unwrap(
-					api.PATCH('/api/v1/fields/{id}', {
-						params: { path: { id: initial.id } },
-						body: {
-							name: name.trim(),
-							description: description.trim() || null,
-							assignment,
-							document_type_ids,
-							...requirement,
-							...(initial.data_type === 'choice' ? { choices: list } : {})
-						}
-					})
-				);
-			}
-			toast.success(m.master_saved());
-			open = false;
-			onsaved();
-		} catch (failure) {
-			error = describeError(failure);
-		} finally {
-			busy = false;
+		if (initial === null) {
+			await unwrap(
+				api.POST('/api/v1/fields', {
+					body: {
+						name: name.trim(),
+						data_type: dataType,
+						description: description.trim() || null,
+						assignment,
+						document_type_ids,
+						...requirement,
+						...(dataType === 'choice' ? { choices: list } : {})
+					}
+				})
+			);
+		} else {
+			await unwrap(
+				api.PATCH('/api/v1/fields/{id}', {
+					params: { path: { id: initial.id } },
+					body: {
+						name: name.trim(),
+						description: description.trim() || null,
+						assignment,
+						document_type_ids,
+						...requirement,
+						...(initial.data_type === 'choice' ? { choices: list } : {})
+					}
+				})
+			);
 		}
+		toast.success(m.master_saved());
+		onsaved();
 	}
 
 	async function remove() {
@@ -146,10 +131,8 @@
 	title={initial === null ? m.master_add_field() : m.field_def_edit()}
 	shortTitle={initial === null ? m.master_add_field() : m.master_field()}
 	submitLabel={m.save()}
-	{busy}
 	disabled={name.trim() === ''}
-	{error}
-	onsubmit={save}
+	action={save}
 	ondelete={initial ? remove : undefined}
 	deleteTitle={m.master_delete({ name: initial?.name ?? '' })}
 	deleteDescription={m.master_delete_confirm()}

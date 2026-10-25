@@ -39,6 +39,42 @@ export const TEMPLATE_NAME_LABELS: Record<TemplateName, () => string> = {
 	pages: m.template_value_pages
 };
 
+/** Who a template is for: a rule or title pattern, or a webhook's body (JSON, more values). */
+export type TemplatePurpose = 'rule' | 'webhook';
+
+/** What a webhook's template sees besides a rule's values, as the server names them. */
+export const WEBHOOK_TEMPLATE_NAMES = [
+	'event.type',
+	'event.id',
+	'event.occurred_at',
+	'document_id',
+	'lane',
+	'link'
+] as const;
+export type WebhookTemplateName = (typeof WEBHOOK_TEMPLATE_NAMES)[number];
+
+export const WEBHOOK_TEMPLATE_NAME_LABELS: Record<WebhookTemplateName, () => string> = {
+	'event.type': m.template_value_event_type,
+	'event.id': m.template_value_event_id,
+	'event.occurred_at': m.template_value_event_occurred_at,
+	document_id: m.template_value_document_id,
+	lane: m.template_value_lane,
+	link: m.template_value_link
+};
+
+/** The values a template of `purpose` sees, with their names, for completion and lists. */
+export function templateNames(purpose: TemplatePurpose): { name: string; label: string }[] {
+	const names = TEMPLATE_NAMES.map((name) => ({ name, label: TEMPLATE_NAME_LABELS[name]() }));
+	if (purpose === 'rule') return names;
+	return [
+		...names,
+		...WEBHOOK_TEMPLATE_NAMES.map((name) => ({
+			name,
+			label: WEBHOOK_TEMPLATE_NAME_LABELS[name]()
+		}))
+	];
+}
+
 /** The lists among the values: a template joins them (`{{ tags | join: ', ' }}`). */
 export const LIST_NAMES: ReadonlySet<string> = new Set([
 	'tags',

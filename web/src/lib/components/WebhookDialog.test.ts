@@ -27,6 +27,8 @@ const stored: Webhook = {
 	active: true,
 	signed: true,
 	headers: ['Authorization'],
+	body: 'thin',
+	body_template: null,
 	disabled_reason: null,
 	failed_streak: 0,
 	previous_secret_valid_until: null,
@@ -83,6 +85,8 @@ describe('WebhookDialog', () => {
 					event_types: ['*'],
 					active: true,
 					signed: false,
+					body: 'thin',
+					body_template: null,
 					headers: [{ name: 'Authorization', value: 'Bearer t0ken' }]
 				}
 			}
@@ -116,5 +120,14 @@ describe('WebhookDialog', () => {
 			{ name: 'Authorization' },
 			{ name: 'X-Tenant', value: 'home' }
 		]);
+	});
+
+	it('sends a template body', async () => {
+		render(WebhookDialog, { open: true, webhook: stored, onsaved: () => {}, oncreated: () => {} });
+		await screen.findByLabelText(m.webhook_header_value());
+		await userEvent.click(screen.getByRole('button', { name: m.webhook_body_template() }));
+		expect(screen.getByText(m.webhook_body_template_hint())).toBeTruthy();
+		const save = screen.getByRole('button', { name: m.save() });
+		expect((save as HTMLButtonElement).disabled).toBe(true);
 	});
 });

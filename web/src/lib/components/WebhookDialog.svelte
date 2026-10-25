@@ -6,6 +6,8 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import FormDialog from '#lib/components/FormDialog.svelte';
+	import Segmented from '#lib/components/Segmented.svelte';
+	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
@@ -14,6 +16,7 @@
 
 	type Webhook = components['schemas']['WebhookOut'];
 	type Created = components['schemas']['WebhookCreated'];
+	type Body = components['schemas']['BodyFormat'];
 	// A header of the webhook's own. `kept`: it is stored already, its value hidden; left empty,
 	// the value stays as it is.
 	type Header = { name: string; value: string; kept: boolean };
@@ -39,6 +42,15 @@
 	let active = $state(true);
 	let signed = $state(true);
 	let headers = $state<Header[]>([]);
+	let body = $state<Body>('thin');
+	let template = $state('');
+
+	const bodies = $derived([
+		{ value: 'thin', label: m.webhook_body_thin(), hint: m.webhook_body_thin_hint() },
+		{ value: 'full', label: m.webhook_body_full(), hint: m.webhook_body_full_hint() },
+		{ value: 'template', label: m.webhook_body_template(), hint: m.webhook_body_template_hint() }
+	]);
+	const bodyHint = $derived(bodies.find((option) => option.value === body)?.hint ?? '');
 
 	const labels: Record<DocumentEventType, () => string> = {
 		'document.received': m.event_received,
@@ -60,6 +72,8 @@
 		active = webhook?.active ?? true;
 		signed = webhook?.signed ?? true;
 		headers = (webhook?.headers ?? []).map((header) => ({ name: header, value: '', kept: true }));
+		body = webhook?.body ?? 'thin';
+		template = webhook?.body_template ?? '';
 	});
 
 	// A new header needs a value; a kept one may stay empty (unchanged).
@@ -83,6 +97,7 @@
 
 	async function save() {
 		const event_types = all ? ['*'] : types;
+		const content = { body, body_template: body === 'template' ? template : null };
 		if (webhook) {
 			await unwrap(
 				api.PATCH('/api/v1/webhooks/{id}', {
@@ -92,6 +107,7 @@
 						url: url.trim(),
 						event_types,
 						active,
+						...content,
 						...(headersChanged ? { headers: headerBody() } : {})
 					}
 				})
@@ -111,6 +127,7 @@
 						event_types,
 						active,
 						signed,
+						...content,
 						headers: headers.map((header) => ({ name: header.name.trim(), value: header.value }))
 					}
 				})
@@ -128,7 +145,8 @@
 	disabled={name.trim() === '' ||
 		url.trim() === '' ||
 		(!all && types.length === 0) ||
-		!headersComplete}
+		!headersComplete ||
+		(body === 'template' && template.trim() === '')}
 	class="max-w-lg"
 	action={save}
 >
@@ -156,6 +174,24 @@
 			{/each}
 		{/if}
 	</fieldset>
+	<div class="flex flex-col gap-2">
+		<span id="wh-body" class="text-sm font-medium">{m.webhook_body()}</span>
+		<Segmented
+			bind:value={() => body, (next) => (body = next as Body)}
+			options={bodies}
+			labelledby="wh-body"
+		/>
+		<p class="text-sm text-muted-foreground">{bodyHint}</p>
+		{#if body === 'template'}
+			<TemplateInput
+				id="wh-template"
+				bind:value={template}
+				label={m.webhook_body_template()}
+				purpose="webhook"
+				maxlength={10000}
+			/>
+		{/if}
+	</div>
 	<fieldset class="flex flex-col gap-2">
 		<legend class="mb-1 text-sm font-medium">{m.webhook_headers()}</legend>
 		{#each headers as header, index (index)}

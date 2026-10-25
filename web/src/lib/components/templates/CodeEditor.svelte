@@ -3,7 +3,7 @@
 	import TemplateText from '#lib/components/templates/TemplateText.svelte';
 	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 	import type { EditorHandle } from '#lib/templates/codemirror.ts';
-	import { TEMPLATE_NAMES, TEMPLATE_NAME_LABELS } from '#lib/templates/values.ts';
+	import { templateNames, type TemplatePurpose } from '#lib/templates/values.ts';
 	import { cn } from '#lib/utils.ts';
 
 	// The editor of a template, loaded on first use; until then the text shows coloured. `handle`
@@ -19,6 +19,7 @@
 		large = false,
 		autofocus = false,
 		maxlength = 500,
+		purpose = 'rule',
 		class: className = ''
 	}: {
 		id: string;
@@ -32,6 +33,8 @@
 		large?: boolean;
 		autofocus?: boolean;
 		maxlength?: number;
+		/** A webhook's body sees more values (`templateNames`). */
+		purpose?: TemplatePurpose;
 		class?: string;
 	} = $props();
 
@@ -49,7 +52,7 @@
 				value: untrack(() => value),
 				onchange: (next) => (value = next),
 				completions: () => ({
-					names: TEMPLATE_NAMES.map((name) => ({ name, label: TEMPLATE_NAME_LABELS[name]() })),
+					names: templateNames(purpose),
 					fields: fields.map((field) => ({ key: field.key, name: field.name }))
 				}),
 				id,

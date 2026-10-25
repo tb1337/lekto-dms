@@ -89,7 +89,11 @@ describe('TemplateInput', () => {
 		await waitFor(() => expect(screen.getByText('unknown value field.netto')).toBeTruthy());
 		expect(screen.getByLabelText('Title').getAttribute('aria-invalid')).toBe('true');
 		// Checked without a document: a rule's template may use every field.
-		expect(previews.at(-1)).toEqual({ template: '{{ field.netto }}', document_type_id: null });
+		expect(previews.at(-1)).toEqual({
+			template: '{{ field.netto }}',
+			document_type_id: null,
+			purpose: 'rule'
+		});
 	});
 
 	it('keeps the verdict on the newest template when an older answer arrives late', async () => {
@@ -173,7 +177,8 @@ describe('TemplateInput', () => {
 			expect(previews.at(-1)).toEqual({
 				template: 'Lohn {{ field.la_brutto | upcase }}',
 				document_id: 'd1',
-				document_type_id: PAYSLIP
+				document_type_id: PAYSLIP,
+				purpose: 'rule'
 			})
 		);
 

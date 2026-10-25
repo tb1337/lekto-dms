@@ -15,7 +15,14 @@
 	import type { EditorHandle } from '#lib/templates/codemirror.ts';
 	import { TEMPLATES_GUIDE } from '#lib/templates/guide.ts';
 	import { FILTERS, FILTER_CHIPS, insertFilter, insertValue } from '#lib/templates/liquid.ts';
-	import { LIST_NAMES, TEMPLATE_NAMES, TEMPLATE_NAME_LABELS } from '#lib/templates/values.ts';
+	import {
+		LIST_NAMES,
+		TEMPLATE_NAMES,
+		TEMPLATE_NAME_LABELS,
+		WEBHOOK_TEMPLATE_NAMES,
+		WEBHOOK_TEMPLATE_NAME_LABELS,
+		type TemplatePurpose
+	} from '#lib/templates/values.ts';
 
 	type Preview = components['schemas']['TemplatePreviewOut'];
 
@@ -30,6 +37,7 @@
 		documentType = undefined,
 		fields,
 		maxlength = 500,
+		purpose = 'rule',
 		onapply
 	}: {
 		open?: boolean;
@@ -38,6 +46,8 @@
 		documentType?: string | null;
 		fields: readonly FieldDefinition[];
 		maxlength?: number;
+		/** A webhook's body: more values, rendered as it is (JSON). */
+		purpose?: TemplatePurpose;
 		onapply: (value: string) => void;
 	} = $props();
 
@@ -63,7 +73,7 @@
 		const timer = setTimeout(() => {
 			void unwrap(
 				api.POST('/api/v1/templates/preview', {
-					body: { template, document_id: document, document_type_id: kind }
+					body: { template, document_id: document, document_type_id: kind, purpose }
 				})
 			).then(
 				(found) => {
@@ -112,6 +122,7 @@
 					label={m.template_editor()}
 					{fields}
 					{maxlength}
+					{purpose}
 					invalid={Boolean(preview?.error)}
 					large
 					autofocus
@@ -151,6 +162,12 @@
 					{#each TEMPLATE_NAMES as name (name)}
 						{@render row(name, TEMPLATE_NAME_LABELS[name]())}
 					{/each}
+					{#if purpose === 'webhook'}
+						{#each WEBHOOK_TEMPLATE_NAMES as name (name)}
+							<!-- The event is only known when it happens: no value to show. -->
+							{@render row(name, WEBHOOK_TEMPLATE_NAME_LABELS[name](), name.startsWith('event.'))}
+						{/each}
+					{/if}
 				</ul>
 			</section>
 			{#if fields.length > 0}
@@ -165,7 +182,7 @@
 			{/if}
 		</div>
 		<Sheet.Footer class="gap-3 border-t">
-			<p class="min-h-5 text-sm break-words" aria-live="polite">
+			<div class="min-h-5 text-sm break-words" aria-live="polite">
 				{#if preview?.error}
 					<span class="text-destructive">{preview.error}</span>
 				{:else if !reference}
@@ -177,9 +194,14 @@
 				{:else if preview?.rendered !== undefined && preview?.rendered !== null}
 					<span class="text-muted-foreground">{m.template_preview({ title: reference.title })}</span
 					>
-					<span class="font-medium">{preview.rendered}</span>
+					{#if purpose === 'webhook'}
+						<pre
+							class="mt-1 max-h-48 overflow-auto rounded-lg border bg-secondary p-2 font-mono text-xs whitespace-pre-wrap">{preview.rendered}</pre>
+					{:else}
+						<span class="font-medium">{preview.rendered}</span>
+					{/if}
 				{/if}
-			</p>
+			</div>
 			<div class="flex justify-end gap-2">
 				<Button variant="outline" onclick={() => (open = false)}>{m.cancel()}</Button>
 				<Button onclick={apply}>{m.template_editor_apply()}</Button>
@@ -188,8 +210,8 @@
 	</Sheet.Content>
 </Sheet.Root>
 
-{#snippet row(path: string, name: string)}
-	{@const shown = preview?.values ? (preview.values[path] ?? null) : undefined}
+{#snippet row(path: string, name: string, unknown = false)}
+	{@const shown = preview?.values && !unknown ? (preview.values[path] ?? null) : undefined}
 	<li>
 		<button
 			type="button"

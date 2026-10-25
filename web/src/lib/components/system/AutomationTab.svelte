@@ -12,9 +12,11 @@
 	import * as Chart from '#lib/components/ui/chart/index.ts';
 	import { formatDuration } from '#lib/duration.ts';
 	import { describeError } from '#lib/errors.ts';
-	import { formatDate, formatNumber } from '#lib/i18n.ts';
+	import { formatNumber } from '#lib/i18n.ts';
+	import { latest } from '#lib/latest.ts';
 	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { monthLabel } from '#lib/system.ts';
 	import { cn } from '#lib/utils.ts';
 
 	// The tab "Automation" of the page "System" (Tobi, 24.10.2026): how the documents went
@@ -85,15 +87,21 @@
 	let openCustom = $state(true);
 	let allCustom = $state(false);
 
+	// Switching the channels or the period again before the answer came: the newest wins.
+	const begin = latest();
 	async function load() {
+		const current = begin();
 		try {
-			report = await unwrap(
+			const found = await unwrap(
 				api.GET('/api/v1/automation', {
 					params: { query: { channel: [...channels], period, tz: zone } }
 				})
 			);
+			if (!current()) return;
+			report = found;
 			problem = null;
 		} catch (failure) {
+			if (!current()) return;
 			problem = describeError(failure);
 		}
 	}
@@ -167,12 +175,19 @@
 		return m.automation_flow_failed({ count: n });
 	}
 
-	const months = $derived(
-		(report?.months ?? []).map((month) => ({
-			month: formatDate(`${month.start}T12:00:00`, { month: 'short' }),
+	// The months by their first day (unique: a month name alone names two in twenty months),
+	// labelled with the year once the history spans more than one.
+	const months = $derived.by(() => {
+		const found = report?.months ?? [];
+		const years = new Set(found.map((month) => month.start.slice(0, 4)));
+		return found.map((month) => ({
+			start: month.start,
+			label: monthLabel(month.start, years.size > 1),
 			...month.lanes
-		}))
-	);
+		}));
+	});
+	const monthLabels = $derived(new Map(months.map((month) => [month.start, month.label])));
+	const labelOf = (start: string) => monthLabels.get(start) ?? start;
 	const shares = $derived(
 		(report?.months ?? [])
 			.map((month) => month.lanes)
@@ -437,7 +452,7 @@
 				<Chart.Container config={chartConfig} class="aspect-auto h-[200px] w-full">
 					<BarChart
 						data={months}
-						x="month"
+						x="start"
 						axis
 						grid={{ y: true, x: false }}
 						rule={false}
@@ -449,9 +464,10 @@
 						}))}
 						props={{
 							bars: { stroke: 'none' },
+							xAxis: { format: labelOf },
 							yAxis: { ticks: 4, format: formatNumber },
 							// Its sum is labelled in English only.
-							tooltip: { hideTotal: true }
+							tooltip: { hideTotal: true, header: { format: labelOf } }
 						}}
 					/>
 				</Chart.Container>

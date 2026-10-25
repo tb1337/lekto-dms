@@ -5,11 +5,13 @@ from typing import Any
 
 import pytest
 
+from lekto.core.domain.classification import field_key
 from lekto.core.domain.documents import UNSET, Document, DocumentChanges
 from lekto.core.domain.errors import ValidationError
-from lekto.core.domain.fields import FieldDefinition, FieldType, Money
+from lekto.core.domain.fields import FieldDefinition, FieldType, Money, Url, Writing
 from lekto.core.domain.ids import ContactId, FieldId, RuleId, SpaceId, TagId, new_id
 from lekto.core.domain.json_value import JsonValue
+from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Outcome
 from lekto.core.domain.reasons import Reason, ReasonCode, because, written
 from lekto.core.domain.rule_conditions import Facts, matches
@@ -41,14 +43,17 @@ from lekto.core.domain.rules import (
     SetTitle,
     SetTopic,
 )
+from lekto.core.domain.templates import json_value
 from tests.builders import NOW
 from tests.unit.domain.rules_support import (
     ACME,
     ALWAYS,
     AMOUNT,
     BETA,
+    COUNT,
     DEFAULT,
     DEFINITIONS,
+    DUE,
     EXISTING,
     FROM_ACME,
     INTERVAL,
@@ -60,6 +65,7 @@ from tests.unit.domain.rules_support import (
     OWNER,
     PAID,
     PAID_FLAG,
+    PORTAL,
     READ_ONLY,
     SHARED,
     SPACES,
@@ -686,6 +692,138 @@ def test_a_text_field_from_a_template() -> None:
     )
 
     assert result.changes.fields == {number.id: "ACME GMBH-Rechnung 2026"}
+
+
+def test_every_field_type_from_a_template() -> None:
+    """What a template renders is read as the field's type has it: the forms templates write
+    themselves first (`1.234` is a number with three decimals, `2026-Q3` a quarter), else as a
+    person writes it."""
+    document = doc(
+        fields={COUNT.id: Decimal("1.234"), SPAN.id: Period.quarter(2026, 3)},
+        document_date=date(2026, 9, 30),
+    )
+    result = run(
+        [
+            rule(
+                SetField(AMOUNT.id, "{{ field.number }} USD"),
+                SetField(DUE.id, "{{ document_date | date: '%d.%m.%Y' }}"),
+                SetField(INTERVAL.id, "{% if field.period %}monthly{% endif %}"),
+                SetField(COUNT.id, "{{ field.number | times: 2 }}"),
+                SetField(PAID_FLAG.id, "{% if field.number > 1 %}ja{% else %}nein{% endif %}"),
+                SetField(PORTAL.id, "https://portal.example/{{ filename | url_encode }}"),
+                SetField(SPAN.id, "{{ field.period }}"),
+            )
+        ],
+        situation(document, definitions=DEFINITIONS),
+    )
+
+    assert result.changes.fields == {
+        AMOUNT.id: Money(Decimal("1.234"), "USD"),
+        DUE.id: date(2026, 9, 30),
+        INTERVAL.id: "monthly",
+        COUNT.id: Decimal("2.468"),
+        PAID_FLAG.id: True,
+        PORTAL.id: Url("https://portal.example/Rechnung+2026"),
+    }
+    assert notes(result) == []  # the period stays as it is
+
+
+def test_a_template_reads_as_a_person_writes() -> None:
+    """German amounts as the template locale writes them; an ambiguous number as its language
+    means it; an amount without a currency in the default currency."""
+    document = doc(fields={AMOUNT.id: Money(Decimal("3650.00"), "EUR")})
+    actions = (
+        SetField(COUNT.id, "1.234,5 Stück"),
+        SetField(AMOUNT.id, "{{ field.amount }}"),
+        SetField(DUE.id, "15. März 2026"),
+        SetField(SPAN.id, "KW 38/2026"),
+    )
+    result = run([rule(*actions)], situation(document, definitions=DEFINITIONS))
+    assert result.changes.fields == {
+        COUNT.id: Decimal("1234.5"),
+        DUE.id: date(2026, 3, 15),
+        SPAN.id: Period.week(2026, 38),
+    }  # the amount writes itself as `3.650,00 EUR`: no change
+
+    english = situation(doc(), definitions=DEFINITIONS, writing=Writing("en", "GBP"))
+    read = run([rule(SetField(COUNT.id, "1,234"), SetField(AMOUNT.id, "12.50"))], english)
+    assert read.changes.fields == {
+        COUNT.id: Decimal(1234),
+        AMOUNT.id: Money(Decimal("12.50"), "GBP"),
+    }
+
+
+def test_a_template_that_cannot_be_read_sets_nothing() -> None:
+    """Noted, without a check: the document does not wait for it, as with a missing value."""
+    result = run(
+        [
+            rule(
+                SetField(COUNT.id, "{{ 'n/a' }}"),
+                SetField(INTERVAL.id, "{{ 'quarterly' }}"),
+                SetField(SPAN.id, "{{ 'September' }}"),  # no year: a rule does not guess one
+                SetField(DUE.id, "{{ 'later' }}"),
+            )
+        ],
+        situation(doc(), definitions=DEFINITIONS),
+    )
+
+    assert result.changes.fields == {}
+    assert result.checks == []
+    reasons = [note.reason for report in result.reports for note in report.notes]
+    assert [(note.field, note.kind) for report in result.reports for note in report.notes] == [
+        (field_key(item.id), NoteKind.SKIPPED) for item in (COUNT, INTERVAL, SPAN, DUE)
+    ]
+    assert reasons[0] == because(ReasonCode.TEMPLATE_UNREADABLE, value="n/a", type="number")
+    assert texts(reasons) == [
+        "'n/a' cannot be read as a number",
+        "'quarterly' cannot be read as one of the choices",
+        "'September' cannot be read as a period",
+        "'later' cannot be read as a date",
+    ]
+
+
+def test_a_field_from_what_a_step_brought() -> None:
+    """An amount from the answer of a step that asked: a JSON number is a decimal number."""
+    asks = rule(SetField(AMOUNT.id, "{{ steps.erp.total }} {{ steps.erp.currency }}"))
+    result = run(
+        [asks],
+        situation(
+            doc(),
+            definitions=DEFINITIONS,
+            steps={asks.id: {"erp": json_value({"total": 84.2, "currency": "EUR"})}},
+        ),
+    )
+
+    assert result.changes.fields == {AMOUNT.id: Money(Decimal("84.2"), "EUR")}
+
+
+def test_fixed_values_stay_as_they_were() -> None:
+    """Rules saved before every type took a template: an amount, a period and yes or no as JSON,
+    the other types as text in their JSON form, which writes itself."""
+    result = run(
+        [
+            rule(
+                SetField(AMOUNT.id, {"amount": "12.50", "currency": "EUR"}),
+                SetField(DUE.id, "2026-03-31"),
+                SetField(INTERVAL.id, "yearly"),
+                SetField(COUNT.id, "1.234"),
+                SetField(PAID_FLAG.id, False),
+                SetField(PORTAL.id, "https://portal.example/a"),
+                SetField(SPAN.id, {"start": "2026-09-01", "end": "2026-09-30"}),
+            )
+        ],
+        situation(doc(), definitions=DEFINITIONS),
+    )
+
+    assert result.changes.fields == {
+        AMOUNT.id: Money(Decimal("12.50"), "EUR"),
+        DUE.id: date(2026, 3, 31),
+        INTERVAL.id: "yearly",
+        COUNT.id: Decimal("1.234"),
+        PAID_FLAG.id: False,
+        PORTAL.id: Url("https://portal.example/a"),
+        SPAN.id: Period.month(2026, 9),
+    }
 
 
 def test_a_review_holds_where_its_reason_cannot_be_rendered() -> None:

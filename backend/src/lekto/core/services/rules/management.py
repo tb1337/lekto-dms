@@ -13,7 +13,7 @@ Who may do what:
   admins). The new version names the space, so the history shows the move.
 """
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 
 from lekto.core.domain.errors import (
@@ -24,11 +24,12 @@ from lekto.core.domain.errors import (
     SpaceWriteDeniedError,
     ValidationError,
 )
-from lekto.core.domain.fields import FieldDefinition, FieldType
+from lekto.core.domain.fields import FieldValue, read_written
 from lekto.core.domain.ids import (
     DocumentId,
     DocumentTypeId,
     EventId,
+    FieldId,
     RuleId,
     SpaceId,
     UserId,
@@ -83,13 +84,17 @@ class TemplatePreview:
     (whitespace collapsed, as in a title; a webhook's body as it is), or the missing value or
     the error that stops it.
     `values`: what the document has, each value as a template writes it (by its path, such as
-    `field.la_brutto`); None without a document."""
+    `field.la_brutto`); None without a document.
+    `read`: for a field's template, the value the rendered text gives the field; `unreadable` if
+    it gives none (the action would set nothing)."""
 
     used: tuple[str, ...] = ()
     rendered: str | None = None
     missing: str | None = None
     error: str | None = None
     values: Mapping[str, str] | None = None
+    read: FieldValue | None = None
+    unreadable: bool = False
 
 
 class RuleService:
@@ -199,10 +204,14 @@ class RuleService:
         document: DocumentId | None = None,
         document_type: DocumentTypeId | None = None,
         webhook: bool = False,
+        field: FieldId | None = None,
     ) -> TemplatePreview:
         """`template` checked (syntax, values; the fields of `document_type`, or of the
         document's type, else all) and rendered with a document the caller may read, as it
         is, with the document's values whatever the template. Nothing is stored.
+
+        `field`: the template sets this field (a rule's action): what it renders is read as the
+        field's type has it (`read`, `unreadable`), with a document or, using no value, without.
 
         `webhook`: the template of a webhook's body (`webhooks.BodyFormat.TEMPLATE`): it sees
         `event` (here a `webhook.test`), `document_id`, `lane` and `link` too, is rendered as
@@ -218,6 +227,7 @@ class RuleService:
                 await uow.document_types.get(kind)
             fields = await uow.fields.list_all()
             applying = [item for item in fields if kind is None or item.applies_to(kind)]
+            target = None if field is None or webhook else await uow.fields.get(field)
             if found is None:
                 values = None
             elif webhook:
@@ -236,8 +246,9 @@ class RuleService:
         unknown = unknown_values(used, {item.key for item in applying}, names)
         if unknown:
             return TemplatePreview(used=paths, error=f"unknown value {unknown[0]}", values=written)
-        if values is None:
+        if values is None and (target is None or used):
             return TemplatePreview(used=paths)
+        values = values or {}
         if webhook:
             values |= event_values(EventId(new_id()), TEST_EVENT, self._clock.now())
         try:
@@ -249,7 +260,21 @@ class RuleService:
             return TemplatePreview(used=paths, missing=missing.path, values=written)
         except (ValidationError, ValueError) as invalid:
             return TemplatePreview(used=paths, error=str(invalid), values=written)
-        return TemplatePreview(used=paths, rendered=rendered, values=written)
+        if target is None or not rendered:
+            return TemplatePreview(used=paths, rendered=rendered, values=written)
+        read = read_written(
+            target,
+            text,
+            self._templates.writing,
+            received=None if found is None else found.created_at.date(),
+        )
+        return TemplatePreview(
+            used=paths,
+            rendered=rendered,
+            values=written,
+            read=read,
+            unreadable=read is None,
+        )
 
     def _written(self, values: Mapping[str, TemplateValue]) -> dict[str, str]:
         """Each of a document's values as a template writes it."""
@@ -388,11 +413,11 @@ def check_patterns(patterns: PatternMatcher, definition: RuleDefinition) -> None
 async def check_templates(
     uow: UnitOfWork, templates: TemplateRenderer, definition: RuleDefinition
 ) -> None:
-    """The templates of the actions (title, text field, review reason) are valid and use
-    values a template has (ValidationError naming the action)."""
+    """The templates of the actions (title, field, review reason) are valid and use values a
+    template has (ValidationError naming the action)."""
     fields = await uow.fields.list_all()
     keys = {field.key for field in fields}
-    for index, template in action_templates(definition, fields):
+    for index, template in action_templates(definition):
         try:
             used = templates.check(template)
         except ValidationError as error:
@@ -411,40 +436,28 @@ async def check_templates(
             )
 
 
-def action_templates(
-    definition: RuleDefinition, fields: Iterable[FieldDefinition]
-) -> list[tuple[int, str]]:
-    """The templates among the actions, with their place: a title, the value of a text field,
-    a review's reason."""
-    texts = {field.id for field in fields if field.data_type is FieldType.TEXT}
+def action_templates(definition: RuleDefinition) -> list[tuple[int, str]]:
+    """The templates among the actions, with their place: a title, a field's value given as
+    text, a review's reason."""
     found: list[tuple[int, str]] = []
     for index, action in enumerate(definition.actions):
         match action:
             case SetTitle(template=template) | ForceReview(reason=template):
                 found.append((index, template))
-            case SetField(field_id=field, value=str() as value) if field in texts:
+            case SetField(value=str() as value):
                 found.append((index, value))
     return found
 
 
-def uses_field(
-    templates: TemplateRenderer,
-    definition: RuleDefinition,
-    fields: Iterable[FieldDefinition],
-    key: str,
-) -> bool:
+def uses_field(templates: TemplateRenderer, definition: RuleDefinition, key: str) -> bool:
     """Whether a template of the definition uses the field with `key`."""
     return any(
-        field_used(templates.check(template), key)
-        for _, template in action_templates(definition, fields)
+        field_used(templates.check(template), key) for _, template in action_templates(definition)
     )
 
 
-def renamed_field(
-    definition: RuleDefinition, fields: Iterable[FieldDefinition], old: str, new: str
-) -> RuleDefinition:
+def renamed_field(definition: RuleDefinition, old: str, new: str) -> RuleDefinition:
     """The definition with `field.<old>` written `field.<new>` in its templates."""
-    texts = {field.id for field in fields if field.data_type is FieldType.TEXT}
     actions = []
     for action in definition.actions:
         match action:
@@ -452,7 +465,7 @@ def renamed_field(
                 action = replace(action, template=rename_field_key(template, old, new))
             case ForceReview(reason=reason):
                 action = replace(action, reason=rename_field_key(reason, old, new))
-            case SetField(field_id=field, value=str() as value) if field in texts:
+            case SetField(value=str() as value):
                 action = replace(action, value=rename_field_key(value, old, new))
         actions.append(action)
     return replace(definition, actions=tuple(actions))

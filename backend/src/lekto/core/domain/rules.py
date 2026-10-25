@@ -40,7 +40,14 @@ from uuid import UUID
 from lekto.core.domain.classification import field_key
 from lekto.core.domain.documents import Channel
 from lekto.core.domain.errors import ValidationError
-from lekto.core.domain.fields import FieldDefinition, FieldType, FieldValue, field_from_json
+from lekto.core.domain.fields import (
+    FieldDefinition,
+    FieldType,
+    FieldValue,
+    Writing,
+    field_from_json,
+    read_written,
+)
 from lekto.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -394,8 +401,12 @@ class RemoveTags:
 
 @dataclass(frozen=True)
 class SetField:
-    """`value` in the JSON form of the field's type (`field_to_json`); for a text field a
-    template, as the title's."""
+    """`value`: text is a template for any type, as the title's; what it renders is read as the
+    field's type has it (`fields.read_written`), and what cannot be read sets nothing. Other
+    values are fixed, in the JSON form of the field's type (`field_to_json`): an amount or a
+    period as an object, yes or no as a boolean, a number as a JSON number. A fixed value that is
+    text in its JSON form (`"12.50"`, `"2026-03-12"`, a choice, a link) is a template that writes
+    itself and reads as it is: rules saved before templates for every type stay as they were."""
 
     field_id: FieldId
     value: JsonValue
@@ -731,7 +742,20 @@ def check_fields(
     for index, action in enumerate(definition.actions):
         if isinstance(action, SetField):
             with _at(f"actions[{index}]"):
-                field_from_json(_field(definitions, action.field_id), action.value)
+                field = _field(definitions, action.field_id)
+                if not isinstance(action.value, str):
+                    field_from_json(field, action.value)
+                elif (
+                    # Text without markup writes itself: it must be readable now. A template's
+                    # syntax and values are checked where the rule is saved (a port renders it).
+                    not _TEMPLATE_MARKUP.search(action.value)
+                    and read_written(field, action.value, Writing()) is None
+                ):
+                    raise field.refusal(action.value)
+
+
+_TEMPLATE_MARKUP = re.compile(r"\{[{%#]")
+"""Where Liquid begins an output, a tag or a comment."""
 
 
 def condition_value(field: FieldDefinition, op: Operator, value: JsonValue) -> FieldValue:

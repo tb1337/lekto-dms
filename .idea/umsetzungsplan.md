@@ -1720,6 +1720,14 @@ Mock: https://claude.ai/artifact/CZha1VoRbf2KxJQCAZx5ma (vier Reiter hell und du
 
   Über 300 ms liegen die Zeiten bei großen Zeiträumen (vor allem `run_times`: 100.000 Zeilen mit JSON nach Python). C2 cacht die Statistik kurz (wie geplant); die Zähler auf Postgres brauchen das nicht.
 
+**C2 gebaut (25.10.2026, `feature/system-automation`):**
+
+- Endpunkte `GET /automation` (Lanes, Fluss, Verlauf je Monat, Zeiten, Urteile je Feld) und `GET /automation/signals` (Treffer je Signal und Feld), beide mit `channel` (wiederholbar, voreingestellt web und api), `period` (`30d`, `12m`, `all`) und `tz` (IANA, für die Monate); `GET /classifier/models` (alle Modelle, ältestes zuerst). `AutomationService` behält jeden Bericht eine Minute.
+- Abweichung: `classifier_models` hob nicht jedes Modell auf (Befund in Entscheidung 8), sondern löschte alles außer den letzten drei. Jetzt verliert ein älteres Modell nur seine Datei, die Zeile bleibt; der Verlauf beginnt mit den drei Modellen, die es beim Update gibt.
+- Das Datum hat keine Kandidaten der Signale: Im Reiter Klassifikator ist die Spalte Datum die Trefferquote des Sprachmodells aus den Urteilen (übernommen und angenommen Treffer, korrigiert daneben). Zusätzlich zum Mock die Spalte Space.
+- LayerChart 2.6.1 (nicht 2.7.0: zwei Wochen alt ist am 25.10. erst 2.6.1), `runed` über einen Override auf 0.37.1 gehalten (LayerChart nähme 0.38.0 vom 23.10.); alle 51 neuen Pakete älter als zwei Wochen. Von shadcn-svelte nur der Container: Sein `ChartStyle` fügt ein `<style>`-Element ein (die CSP verbietet es), die Farben stehen im Style-Attribut; sein Tooltip passt nicht zur API von 2.6.1, die Diagramme zeigen den eigenen von LayerChart (Hintergrund aus `--popover`, ohne die englische Summe). Neue Tokens `--chart-1` bis `--chart-5` (Lanes kräftig, zweite Linie, blasses P90). LayerChart lädt nur die Seite „System“ (ihr Chunk 253 kB, 71 kB gzip).
+- Im Browser geprüft auf dem Build gegen eine Wegwerf-Instanz (SQLite, 420 synthetische Dokumente, fünf Modelle): beide Reiter hell, dunkel und in Handybreite, Tooltip; keine Konsolenfehler, keine CSP-Verstöße.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

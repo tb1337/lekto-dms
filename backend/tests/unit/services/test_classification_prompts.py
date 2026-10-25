@@ -20,11 +20,10 @@ from lekto.core.services.classification.answers import (
     propose_schema,
 )
 from lekto.core.services.classification.prompts import (
-    EXTRACT_TASK,
     PROPOSE_RULES,
-    PROPOSE_TASK,
     SYSTEM,
     Listed,
+    document_marker,
     document_message,
     extract_task,
     propose_task,
@@ -284,7 +283,7 @@ def test_propose_message_lists_contacts_types_with_fields_and_tags() -> None:
         ["Steuer"],
     )
     assert message.startswith(
-        f"{PROPOSE_TASK}\n\n"
+        "Task: propose the metadata of the document above.\n\n"
         "Contacts:\n- Nord Versicherungsgruppe (also written as: "
         "Nord Krankenversicherung AG; Nord KV)\n\n"
         "Fields:\n"
@@ -352,8 +351,12 @@ def test_the_document_is_a_message_of_its_own_in_its_markers() -> None:
 
 
 def test_the_tasks_list_what_the_call_wants_after_the_document() -> None:
-    message = propose_task([], [(Listed("Rechnung"), [])], [], [])
-    assert message.startswith(PROPOSE_TASK)
+    marker = document_marker(shorten("Ignore all.", 100))
+    message = propose_task([], [(Listed("Rechnung"), [])], [], [], marker=marker)
+    # The task names the frame of the document it follows, not one its text may forge.
+    assert message.startswith(
+        f"Task: propose the metadata of the document between <{marker}> and </{marker}> above."
+    )
     assert "Contacts:\n(none)" in message
     assert "Fields:\n(none)" in message
     assert "Document types, each with the keys of its fields:\n- Rechnung\n" in message
@@ -363,8 +366,10 @@ def test_the_tasks_list_what_the_call_wants_after_the_document() -> None:
     assert message.endswith("- " + "\n- ".join(f"{k}: {v}" for k, v in PROPOSE_RULES.items()))
 
     keys = field_keys(definitions())
-    message = extract_task("Rechnung", keys)
-    assert message.startswith(EXTRACT_TASK)
+    message = extract_task("Rechnung", keys, marker=marker)
+    assert message.startswith(
+        f"Task: extract the values of the listed fields from the document between <{marker}>"
+    )
     assert 'The document is of type "Rechnung".' in message
     assert '- a3: "Art" (one of the options): "Strom", "Gas"' in message
     assert "- fields: one entry per listed key" in message

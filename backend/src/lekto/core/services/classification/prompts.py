@@ -155,8 +155,18 @@ SPACES_HEADING = "Spaces (where the document is filed; who may see it follows fr
 """Opens the list of spaces (since `propose-5`), each `- <key>: <label>`."""
 
 
-PROPOSE_TASK = "Task: propose the metadata of the document above."
-EXTRACT_TASK = "Task: extract the values of the listed fields from the document above."
+PROPOSE_TASK = "Task: propose the metadata of the document {where} above."
+EXTRACT_TASK = "Task: extract the values of the listed fields from the document {where} above."
+"""The first line of a task; `{where}` names the document's markers (`document_marker`), so the
+task holds to the real frame, not to one the document's text may forge."""
+
+
+def _where(marker: str | None) -> str:
+    return "" if marker is None else f"between <{marker}> and </{marker}>"
+
+
+def _task_line(line: str, marker: str | None) -> str:
+    return " ".join(line.format(where=_where(marker)).split())
 
 
 def propose_task(
@@ -165,8 +175,11 @@ def propose_task(
     general: Sequence[tuple[str, FieldDefinition]],
     tags: Sequence[str],
     spaces: Sequence[tuple[str, str]] = (),
+    *,
+    marker: str | None = None,
 ) -> str:
-    """The task of `signal_llm`: the lists, then what each part of the answer is. Each field
+    """The task of `signal_llm`: the lists, then what each part of the answer is (`marker`: of
+    the document message it follows, `document_marker`). Each field
     once, with its form and description (a field may belong to several types); each document
     type with the keys of its fields; the keys of the fields for every document; the spaces by
     key with their labels, if any (a shared space with its description)."""
@@ -181,7 +194,7 @@ def propose_task(
         described.setdefault(key, definition)
     return "\n\n".join(
         [
-            PROPOSE_TASK,
+            _task_line(PROPOSE_TASK, marker),
             "Contacts:\n" + _listed(contacts),
             "Fields:\n"
             + ("\n".join(_field_line(key, item) for key, item in described.items()) or "(none)"),
@@ -229,15 +242,22 @@ def _choices_and_description(definition: FieldDefinition) -> str:
     return text
 
 
-def extract_task(document_type: str | None, keys: dict[str, FieldDefinition]) -> str:
+def extract_task(
+    document_type: str | None, keys: dict[str, FieldDefinition], *, marker: str | None = None
+) -> str:
     """The task of the fields node: the type, the fields with the form of their values, then
-    what the answer's fields are."""
+    what the answer's fields are (`marker`: of the document message it follows)."""
     lines = []
     for key, definition in keys.items():
         line = f'- {key}: "{one_line(definition.name)}" ({VALUE_FORMS[definition.data_type]})'
         lines.append(line + _choices_and_description(definition))
     kind = f'The document is of type "{document_type}".' if document_type else ""
-    parts = (EXTRACT_TASK, kind, "Fields:\n" + "\n".join(lines), _parts({"fields": EXTRACT_RULE}))
+    parts = (
+        _task_line(EXTRACT_TASK, marker),
+        kind,
+        "Fields:\n" + "\n".join(lines),
+        _parts({"fields": EXTRACT_RULE}),
+    )
     return "\n\n".join(part for part in parts if part)
 
 
@@ -272,9 +292,15 @@ def _items(names: Sequence[str]) -> str:
     return "\n".join(f"- {name}" for name in names) if names else "(none)"
 
 
+def document_marker(text: Shortened) -> str:
+    """The name of the markers around the document: from a hash of its text, so the text cannot
+    hold its own closing marker."""
+    return "document-" + hashlib.sha256(text.text.encode("utf-8")).hexdigest()[:16]
+
+
 def document_message(text: Shortened) -> str:
     """The document in its markers, a message of its own: the same for every call about it."""
-    marker = "document-" + hashlib.sha256(text.text.encode("utf-8")).hexdigest()[:16]
+    marker = document_marker(text)
     note = "The document was shortened; a part in the middle is left out.\n" if text.omitted else ""
     return (
         f"The document follows between <{marker}> and </{marker}>.\n{note}"

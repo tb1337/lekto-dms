@@ -52,6 +52,7 @@ from lekto.adapters.outbound.memory.identity import (
 from lekto.adapters.outbound.memory.inbox import MemoryInboxRepository, SeenKey
 from lekto.adapters.outbound.memory.lenses import MemoryLensRepository
 from lekto.adapters.outbound.memory.ordering import Rank, rank
+from lekto.adapters.outbound.memory.processing_facts import MemoryProcessingFacts, VerdictKey
 from lekto.adapters.outbound.memory.rows import _REMOVED, MemoryRepository, _copy
 from lekto.adapters.outbound.memory.rules import (
     MemoryRuleApplicationRepository,
@@ -63,6 +64,7 @@ from lekto.core.domain.entity import Entity
 from lekto.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
 from lekto.core.domain.events import DomainEvent
 from lekto.core.domain.fields import FieldDefinition
+from lekto.core.domain.first_runs import FieldVerdict, FirstRun
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import (
     ContactId,
@@ -114,6 +116,9 @@ class MemoryUnitOfWork:
         # The inbox's marks this unit wrote; None removes one.
         self._seen: dict[SeenKey, SeenMark | None] = {}
         self._confirmations: dict[DocumentId, Confirmation | None] = {}
+        # The processing facts this unit wrote.
+        self._first_runs: dict[DocumentId, FirstRun] = {}
+        self._verdicts: dict[VerdictKey, FieldVerdict] = {}
 
         self.users = MemoryUserRepository(self, USERS)
         self.profiles = MemoryRepository[UserId, Profile](self, PROFILES)
@@ -126,6 +131,7 @@ class MemoryUnitOfWork:
         self.fields = MemoryNamedRepository[FieldId, FieldDefinition](self, FIELDS)
         self.documents = MemoryDocumentRepository(self, DOCUMENTS)
         self.processing_log = MemoryProcessingLog(self)
+        self.processing_facts = MemoryProcessingFacts(self)
         self.document_identifiers = MemoryDocumentIdentifierRepository(self)
         self.inbox = MemoryInboxRepository(self)
         self.rules = MemoryRuleRepository(self, RULES)
@@ -195,6 +201,7 @@ class MemoryUnitOfWork:
             entry for entry in self._db.processing_log if entry.document_id not in removed
         ]
         self._commit_inbox(removed)
+        self._commit_facts(removed)
         self._db.outbox.extend(self._events)
         recorded_at = datetime.now(UTC)
         self._db.recorded_at.update((event.id, recorded_at) for event in self._events)
@@ -219,6 +226,18 @@ class MemoryUnitOfWork:
             del self._db.seen[key]
         for id in removed:
             self._db.confirmations.pop(DocumentId(id), None)
+
+    def _commit_facts(self, removed: set[UUID]) -> None:
+        """Add the processing facts, first write winning; those of removed documents go with
+        them."""
+        for document, run in self._first_runs.items():
+            self._db.first_runs.setdefault(document, run)
+        for key, verdict in self._verdicts.items():
+            self._db.verdicts.setdefault(key, verdict)
+        for id in removed:
+            self._db.first_runs.pop(DocumentId(id), None)
+        for key in [key for key in self._db.verdicts if key[0] in removed]:
+            del self._db.verdicts[key]
 
     async def rollback(self) -> None:
         self._check_open()

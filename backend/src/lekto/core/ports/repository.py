@@ -17,18 +17,19 @@ Common rules for every adapter:
 - `get` raises NotFoundError, `find` returns None.
 """
 
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
 from lekto.core.domain.classifier import ClassifierModel
-from lekto.core.domain.documents import Document, Sha256
+from lekto.core.domain.documents import Channel, Document, Sha256
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.fields import FieldDefinition, sort_value
+from lekto.core.domain.first_runs import FieldVerdict, FirstRun, Verdict
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import (
     ClassifierModelId,
@@ -49,7 +50,7 @@ from lekto.core.domain.inbox import Confirmation, InboxTab
 from lekto.core.domain.lenses import Lens
 from lekto.core.domain.master_data import Contact, DocumentType, Tag, TagScope
 from lekto.core.domain.periods import Period
-from lekto.core.domain.pipeline import Lane, NodeRun
+from lekto.core.domain.pipeline import Lane, Node, NodeRun
 from lekto.core.domain.profiles import Profile
 from lekto.core.domain.rules import Rule, RuleApplication, RuleVersion
 from lekto.core.domain.sorting import sort_key
@@ -571,6 +572,96 @@ class ProcessingLog(Protocol):
 
     async def list_for(self, document: DocumentId) -> list[NodeRun]:
         """All entries of the document in the order they were appended."""
+        ...
+
+
+@dataclass(frozen=True)
+class FactsScope:
+    """The documents statistics count: those that came in through `channels` (None: through
+    any), and since `since` (None: ever): whose first run stopped then or later, or, for the
+    verdicts, whose field a person decided then or later."""
+
+    channels: frozenset[Channel] | None = None
+    since: datetime | None = None
+
+
+@dataclass(frozen=True)
+class LaneCount:
+    """How many documents whose first run stopped in `first_lane` lie in `lane` now (None:
+    being processed), and whether a person decided a field of them (`decided`, any verdict)."""
+
+    first_lane: Lane
+    lane: Lane | None
+    decided: bool
+    count: int
+
+
+@dataclass(frozen=True)
+class RunTimes:
+    """The times of the first runs, one value per document, in no particular order: how long
+    each took (`durations`) and worked (`work`); per node, how long it worked in each first run
+    it ran in (`steps`)."""
+
+    durations: list[timedelta]
+    work: list[timedelta]
+    steps: dict[Node, list[timedelta]]
+
+
+@dataclass(frozen=True)
+class SignalCount:
+    """How often a signal named the value a person decided for a field (`hits`), and how often
+    another (`misses`)."""
+
+    hits: int
+    misses: int
+
+
+class ProcessingFacts(Protocol):
+    """What Lekto keeps of each document's processing for the page "System"
+    (`domain.first_runs`): its first run and the verdicts per field, written once, as they
+    happen; and the statistics over them, counted live. Rows go with their document. The lanes
+    are the documents' (`Document.first_lane`, `Document.lane`); a document whose first lane is
+    unknown is not counted."""
+
+    async def add_first_run(self, run: FirstRun) -> None:
+        """Keep the document's first run; one kept already stays."""
+        ...
+
+    async def add_verdicts(self, verdicts: Collection[FieldVerdict]) -> None:
+        """Keep the verdicts; a field of a document that has a verdict keeps it."""
+        ...
+
+    async def first_run(self, document: DocumentId) -> FirstRun | None: ...
+
+    async def verdicts(self, document: DocumentId) -> list[FieldVerdict]:
+        """The verdicts on the document's fields, by field."""
+        ...
+
+    async def lane_counts(self, scope: FactsScope) -> list[LaneCount]:
+        """The documents of `scope` by first lane, lane now and whether decided; combinations
+        without documents are left out."""
+        ...
+
+    async def lanes_by_period(
+        self, scope: FactsScope, starts: Sequence[datetime]
+    ) -> list[dict[Lane, int]]:
+        """The documents of `scope` by first lane, per period: from each of `starts` (ascending)
+        to the next, the last one open. Documents whose first run stopped before the first are
+        left out."""
+        ...
+
+    async def run_times(self, scope: FactsScope) -> RunTimes:
+        """The times of the first runs of `scope`."""
+        ...
+
+    async def verdict_counts(self, scope: FactsScope) -> dict[tuple[str, Verdict], int]:
+        """How many verdicts of each kind each field got in `scope`, by when they were decided;
+        combinations without any are left out."""
+        ...
+
+    async def signal_counts(self, scope: FactsScope) -> dict[tuple[str, Node], SignalCount]:
+        """Per field and signal, how often the signal named the person's value or another, in
+        the verdicts of `scope`; combinations in which the signal named nothing are left out."""
         ...
 
 

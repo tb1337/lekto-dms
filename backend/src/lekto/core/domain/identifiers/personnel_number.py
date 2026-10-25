@@ -9,6 +9,7 @@ from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.identifiers.base import (
     SEPARATORS,
     VALUE,
+    WRITTEN_SEPARATORS,
     Candidate,
     IdentifierKind,
     IdentifierType,
@@ -42,5 +43,5 @@ class PersonnelNumber(IdentifierType):
 
     def written(self, value: str) -> str:
         """Also with leading zeros."""
-        pattern = r"[\s./-]?".join(re.escape(char) for char in value)
-        return rf"(?<![A-Za-z0-9])(?:0[\s./-]?)*{pattern}(?![A-Za-z0-9])"
+        pattern = WRITTEN_SEPARATORS.join(re.escape(char) for char in value)
+        return rf"(?<![A-Za-z0-9])(?:0{WRITTEN_SEPARATORS})*{pattern}(?![A-Za-z0-9])"

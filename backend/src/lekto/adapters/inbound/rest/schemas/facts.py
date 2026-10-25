@@ -281,10 +281,13 @@ def _role(report: DocumentFacts, item: FoundIdentifier) -> FactRole:
 
 
 def _origins(report: DocumentFacts, item: FoundIdentifier) -> list[FactOrigin]:
+    """The text's patterns and a code as the facts are found now (a row taken over by revision
+    0047 does not know whether a code held it), other sources as kept."""
     kept = report.stored.get(item.key)
-    if kept is not None:
-        return sorted(kept.origins)
-    return [
+    found = {
         *([FactOrigin.PATTERN] if item.in_text else []),
         *([FactOrigin.CODE] if item.in_code else []),
-    ]
+    }
+    if kept is not None:
+        found |= kept.origins - {FactOrigin.PATTERN, FactOrigin.CODE}
+    return sorted(found)

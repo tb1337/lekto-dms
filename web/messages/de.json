@@ -1680,7 +1680,7 @@
 	"facts_pending": "Fakten und Codes erscheinen, sobald der Text gelesen ist.",
 	"facts_name": "Name",
 	"fact_role_contact": "zeigt auf den Kontakt",
-	"fact_role_target": "zeigt auf einen Vertrag",
+	"fact_role_target": "zeigt auf Vertrag, Police oder Zähler",
 	"fact_role_own": "Nummer des Dokuments",
 	"fact_role_thread": "verbindet einen Strang",
 	"fact_role_refers": "verweist auf ein Dokument",

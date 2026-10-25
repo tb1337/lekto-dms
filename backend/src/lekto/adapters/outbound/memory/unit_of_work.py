@@ -61,7 +61,14 @@ from lekto.adapters.outbound.memory.rules import (
 )
 from lekto.adapters.outbound.memory.tasks import MemoryTaskRepository
 from lekto.adapters.outbound.memory.webhooks import MemoryWebhookRepository
-from lekto.core.domain.document_facts import DocumentFact, FactState, merged
+from lekto.core.domain.document_facts import (
+    DocumentFact,
+    FactState,
+    check_decided,
+    check_found,
+    merged,
+    reading_order,
+)
 from lekto.core.domain.documents import Document, Sha256
 from lekto.core.domain.entity import Entity
 from lekto.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
@@ -622,10 +629,28 @@ class MemoryDocumentFactRepository:
 
     async def replace_found(self, document: DocumentId, found: Collection[DocumentFact]) -> None:
         self._uow._check_open()
+        check_found(found)
+        self._keep(document, lambda kept: merged(kept, found))
+
+    async def decide(self, document: DocumentId, fact: DocumentFact) -> None:
+        self._uow._check_open()
+        check_decided(fact)
+        self._keep(
+            document,
+            lambda kept: sorted(
+                [item for item in kept if item.key != fact.key] + [fact], key=reading_order
+            ),
+        )
+
+    def _keep(
+        self,
+        document: DocumentId,
+        change: Callable[[tuple[DocumentFact, ...]], Iterable[DocumentFact]],
+    ) -> None:
         current = self._uow._row(DOCUMENT_FACTS, document)
         kept = () if current is _REMOVED else current.facts
         version = 1 if current is _REMOVED else current.version + 1
-        facts = tuple(merged(kept, found))
+        facts = tuple(change(kept))
         self._uow._write(
             DOCUMENT_FACTS, document, FactsRow(id=document, facts=facts, version=version)
         )

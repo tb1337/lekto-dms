@@ -460,9 +460,16 @@ class DocumentFactRepository(Protocol):
         ...
 
     async def replace_found(self, document: DocumentId, found: Collection[DocumentFact]) -> None:
-        """Make `found` the facts the sources found for `document`: those found before go, what
-        a person decided stays and is not replaced by a fact found of its kind and value
-        (`document_facts.merged`)."""
+        """Make `found` (each `FactState.FOUND`, a kind and value once) the facts the sources
+        found for `document`: those found before go, what a person decided stays and is not
+        replaced by a fact found of its kind and value (`document_facts.merged`).
+        ValidationError for a fact of another state or a key twice."""
+        ...
+
+    async def decide(self, document: DocumentId, fact: DocumentFact) -> None:
+        """Keep a person's decision about a fact of `document` (a state by a person: added,
+        corrected, rejected): it takes the place of the fact of its kind and value.
+        ValidationError for a fact as found."""
         ...
 
     async def contacts_of(

@@ -39,7 +39,7 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.facts import NAME, Strength, facts_in
-from lekto.core.domain.identifiers import IdentifierKind, identifiers_in
+from lekto.core.domain.identifiers import IdentifierKind, identifiers_in, places_in
 from lekto.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId, UserId
 from lekto.core.domain.json_value import (
     JsonObject,
@@ -149,7 +149,8 @@ class FactsSignal:
         in_codes: set[tuple[IdentifierKind, str]] = set()
         for code in codes or ():
             in_codes |= code_identifiers(code)
-        found = await asyncio.to_thread(found_facts, text, in_text, in_codes)
+        places = await asyncio.to_thread(places_in, text)
+        found = await asyncio.to_thread(found_facts, text, in_text, in_codes, places)
         result = NodeResult(outcome=Outcome.OK, model_version=FACTS, output=output)
         return FactsResult(result, found)
 
@@ -196,11 +197,6 @@ class FactsResult:
     @property
     def output(self) -> JsonObject:
         return self.result.output
-
-    @property
-    def identifiers(self) -> frozenset[tuple[IdentifierKind, str]]:
-        """The kind and value of each fact."""
-        return frozenset(fact.key for fact in self.facts)
 
     async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
         await uow.document_facts.replace_found(document.id, self.facts)

@@ -1680,7 +1680,7 @@
 	"facts_pending": "Facts and codes appear once the text is read.",
 	"facts_name": "Name",
 	"fact_role_contact": "points to the contact",
-	"fact_role_target": "points to a contract",
+	"fact_role_target": "points to a contract, policy or meter",
 	"fact_role_own": "the document’s own number",
 	"fact_role_thread": "joins a strand",
 	"fact_role_refers": "refers to a document",

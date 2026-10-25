@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.evidence import normalise
+from lekto.core.domain.facts import identifier_spans
 from lekto.core.domain.identifiers import IdentifierKind, Key, type_of
 
 
@@ -108,18 +110,24 @@ class DocumentFact:
 
 
 def found_facts(
-    text: str, in_text: Iterable[Key], in_codes: Iterable[Key] = ()
+    text: str,
+    in_text: Iterable[Key],
+    in_codes: Iterable[Key] = (),
+    places: Mapping[Key, int] | None = None,
 ) -> tuple[DocumentFact, ...]:
     """The facts a document shows: the identifiers in its text (`identifiers_in`) and in the
     codes on its pages (`code_identifiers`), each once, as the text reads (those only in a code
-    last), with the role of its kind."""
+    last), with the role of its kind. Where one stands first is where its reader took it
+    (`places`: in the normalised text, `places_in`), else where its value stands first."""
     texts, codes = set(in_text), set(in_codes)
+    normalised = normalise(text) if places else ""
     facts = []
     for kind, value in texts | codes:
         origins = {FactOrigin.PATTERN} if (kind, value) in texts else set()
         if (kind, value) in codes:
             origins.add(FactOrigin.CODE)
-        where = _first(text, kind, value) if (kind, value) in texts else None
+        at = None if places is None else places.get((kind, value))
+        where = _first(text, normalised, kind, value, at) if (kind, value) in texts else None
         facts.append(
             DocumentFact(
                 kind=kind,
@@ -143,10 +151,23 @@ def reading_order(fact: DocumentFact) -> tuple[int, int, str, str]:
     )
 
 
-def _first(text: str, kind: IdentifierKind, value: str) -> tuple[int, int] | None:
-    """Where `value` stands in `text` first, as its kind may write it."""
-    found = re.search(type_of(kind).written(value), text, re.IGNORECASE)
-    return None if found is None else found.span()
+def _first(
+    text: str, normalised: str, kind: IdentifierKind, value: str, at: int | None
+) -> tuple[int, int] | None:
+    """Where `value` stands in `text` as its kind may write it: the occurrence its reader took
+    (the one at `at` in the `normalised` text: as many come before it there as here), else
+    the first."""
+    spans = identifier_spans(text, kind, value)
+    if not spans:
+        return None
+    if at is None:
+        return spans[0].start, spans[0].end
+    pattern = type_of(kind).written(value)
+    before = sum(
+        1 for found in re.finditer(pattern, normalised, re.IGNORECASE) if found.start() < at
+    )
+    span = spans[min(before, len(spans) - 1)]
+    return span.start, span.end
 
 
 def merged(kept: Iterable[DocumentFact], found: Iterable[DocumentFact]) -> list[DocumentFact]:
@@ -156,3 +177,16 @@ def merged(kept: Iterable[DocumentFact], found: Iterable[DocumentFact]) -> list[
     decided = {fact.key: fact for fact in kept if fact.state.by_person}
     new = [fact for fact in found if fact.key not in decided]
     return sorted([*decided.values(), *new], key=reading_order)
+
+
+def check_found(facts: Iterable[DocumentFact]) -> None:
+    """Facts as sources found them, each kind and value once; ValidationError otherwise."""
+    keys = [fact.key for fact in facts if fact.state is FactState.FOUND]
+    if len(keys) != len(list(facts)) or len(set(keys)) != len(keys):
+        raise ValidationError("found facts are found, each kind and value once")
+
+
+def check_decided(fact: DocumentFact) -> None:
+    """A fact a person decided; ValidationError for one as found."""
+    if not fact.state.by_person:
+        raise ValidationError("a decision is a person's: added, corrected or rejected")

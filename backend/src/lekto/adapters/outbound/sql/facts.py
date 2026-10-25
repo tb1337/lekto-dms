@@ -14,6 +14,8 @@ from lekto.core.domain.document_facts import (
     FactOrigin,
     FactRole,
     FactState,
+    check_decided,
+    check_found,
     merged,
     reading_order,
 )
@@ -33,11 +35,31 @@ class SqlDocumentFactRepository:
         return sorted((_fact(row) for row in rows), key=reading_order)
 
     async def replace_found(self, document: DocumentId, found: Collection[DocumentFact]) -> None:
+        check_found(found)
         table = t.document_facts
-        facts = merged(await self.of_document(document), found)
-        await self._tx.write(delete(table).where(table.c.document_id == document))
-        if facts:
-            await self._tx.write(insert(table), [_row(document, fact) for fact in facts])
+        # Only the rows found go: a person's decision written meanwhile is never deleted (a
+        # found fact of its key then fails on the primary key instead).
+        await self._tx.write(
+            delete(table).where(
+                table.c.document_id == document, table.c.state == FactState.FOUND.value
+            )
+        )
+        decided = await self.of_document(document)
+        new = [fact for fact in merged(decided, found) if not fact.state.by_person]
+        if new:
+            await self._tx.write(insert(table), [_row(document, fact) for fact in new])
+
+    async def decide(self, document: DocumentId, fact: DocumentFact) -> None:
+        check_decided(fact)
+        table = t.document_facts
+        await self._tx.write(
+            delete(table).where(
+                table.c.document_id == document,
+                table.c.kind == fact.kind.value,
+                table.c.value == fact.value,
+            )
+        )
+        await self._tx.write(insert(table), [_row(document, fact)])
 
     async def contacts_of(self, identifiers: Collection[Key]) -> dict[Key, frozenset[ContactId]]:
         table, documents = t.document_facts, t.documents

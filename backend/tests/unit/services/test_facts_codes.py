@@ -52,7 +52,7 @@ async def test_the_identifiers_and_the_payee_of_a_code_count(world: World) -> No
         {"contact_id": str(payee.id), "kind": "iban", "value": GIRO_IBAN, "in_code": True}
     ]
     assert result.output["codes"] == 1
-    assert result.identifiers == {(IdentifierKind.IBAN, GIRO_IBAN)}
+    assert {fact.key for fact in result.facts} == {(IdentifierKind.IBAN, GIRO_IBAN)}
 
 
 async def test_the_codes_are_read_once_and_again_with_a_new_archive(world: World) -> None:
@@ -81,7 +81,7 @@ async def test_codes_that_cannot_be_read_leave_the_facts_of_the_text(world: Worl
     document = await with_archive(world, await stored(world, await world.user(), TEXT))
     result = await facts(world, document, Broken())
     assert "codes" not in result.output
-    assert result.identifiers == {(IdentifierKind.IBAN, OWN_IBAN)}
+    assert {fact.key for fact in result.facts} == {(IdentifierKind.IBAN, OWN_IBAN)}
     assert not await world.object_store.exists(codes_key(document.id))
     # Without an archive (or a reader) there are no codes either.
     other = await stored(world, await world.user(), TEXT)

@@ -14,7 +14,7 @@ from lekto.core.domain.document_facts import (
     merged,
 )
 from lekto.core.domain.errors import ValidationError
-from lekto.core.domain.identifiers import IdentifierKind, identifiers_in
+from lekto.core.domain.identifiers import IdentifierKind, identifiers_in, places_in
 
 IBAN = (IdentifierKind.IBAN, "DE02120300000000202051")
 VAT = (IdentifierKind.VAT_ID, "DE312456789")
@@ -48,6 +48,29 @@ def test_facts_are_found_as_the_text_reads_with_where_they_come_from() -> None:
         None,
     )
     assert all(fact.state is FactState.FOUND for fact in (vat, iban, code))
+
+
+@pytest.mark.parametrize(
+    ("text", "written"),
+    [
+        ("IBAN DE02 1203  0000 0000 2020 51", "DE02 1203  0000 0000 2020 51"),
+        ("IBAN DE02 1203 0000\n    0000 2020 51", "DE02 1203 0000\n    0000 2020 51"),
+        ("IBAN DE02 1203 0000 0000 20\u00ad20 51", "DE02 1203 0000 0000 20\u00ad20 51"),
+    ],
+)
+def test_a_fact_stands_where_the_text_writes_it_with_its_separators(
+    text: str, written: str
+) -> None:
+    """Two spaces, a line break with its indent, a soft hyphen: as an OCR text writes it."""
+    (fact,) = found_facts(text, identifiers_in(text), (), places_in(text))
+    assert (fact.position, fact.written) == (text.index("DE02"), written)
+
+
+def test_a_fact_stands_where_its_reader_took_it() -> None:
+    """After its label, not at a postcode of the same digits before it."""
+    text = "12345 Berlin\nPersonalnummer: 00012345"
+    (fact,) = found_facts(text, identifiers_in(text), (), places_in(text))
+    assert (fact.position, fact.written) == (text.index("00012345"), "00012345")
 
 
 def test_a_person_s_decision_outlasts_what_is_found_again() -> None:

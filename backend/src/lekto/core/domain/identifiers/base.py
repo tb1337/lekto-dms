@@ -40,6 +40,9 @@ class Candidate:
 
 SEPARATORS = re.compile(r"[\s./-]+")
 """What may stand between the characters of a number as written."""
+WRITTEN_SEPARATORS = r"[\s./\u00ad-]*"
+"""Between the characters of a number as a text writes it: separators, also several (two
+spaces, a line break and its indent of an OCR text) and soft hyphens, or none."""
 
 # A label, then the value: its first word, and further words that hold a digit (`DE 123 456
 # 789`, `123 456`), not the words after it (`DE123456789 Steuernummer`).
@@ -70,8 +73,9 @@ class IdentifierType:
 
     def written(self, value: str) -> str:
         """A pattern of how `value` may stand in a text, regardless of case: its characters with
-        a separator between them or none, not within a longer word or number."""
-        pattern = r"[\s./-]?".join(re.escape(char) for char in value)
+        separators between them or none (`WRITTEN_SEPARATORS`), not within a longer word or
+        number."""
+        pattern = WRITTEN_SEPARATORS.join(re.escape(char) for char in value)
         return rf"(?<![A-Za-z0-9]){pattern}(?![A-Za-z0-9])"
 
     def matches(self, value: str, found: str) -> bool:

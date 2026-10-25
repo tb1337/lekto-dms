@@ -17,7 +17,12 @@ from lekto.core.domain.document_facts import (
     role_of,
 )
 from lekto.core.domain.documents import Document, DocumentChanges
-from lekto.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
+from lekto.core.domain.errors import (
+    ConcurrencyError,
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from lekto.core.domain.fields import FieldDefinition, FieldType, Money, Url
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from lekto.core.domain.ids import (
@@ -1042,7 +1047,13 @@ class UnitOfWorkContract:
             assert await uow.document_facts.of_document(document.id) == [vat, iban, coded]
         rejected = replace(vat, state=FactState.REJECTED)
         async with uow_factory() as uow:
-            await uow.document_facts.replace_found(document.id, [rejected])
+            await uow.document_facts.decide(document.id, rejected)
+            with pytest.raises(ValidationError):
+                await uow.document_facts.decide(document.id, vat)  # a decision is a person's
+            with pytest.raises(ValidationError):
+                await uow.document_facts.replace_found(document.id, [rejected])
+            with pytest.raises(ValidationError):
+                await uow.document_facts.replace_found(document.id, [vat, vat])
             await uow.commit()
         again = replace(vat, written="DE 312 456 789")
         async with uow_factory() as uow:

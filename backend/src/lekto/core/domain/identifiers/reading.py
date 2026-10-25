@@ -37,6 +37,19 @@ def identifiers_in(text: str) -> set[Key]:
     return identifiers_from(candidates_in(text))
 
 
+def places_in(text: str) -> dict[Key, int]:
+    """Where each value its reader took for an identifier stands first in the normalised `text`
+    (after its label, not a number of the same digits before it)."""
+    places: dict[Key, int] = {}
+    for candidate in candidates_in(text):
+        if candidate.span is None:
+            continue
+        with suppress(ValidationError):
+            key = (candidate.kind, TYPES[candidate.kind].normalise(candidate.raw))
+            places[key] = min(places.get(key, candidate.span[0]), candidate.span[0])
+    return places
+
+
 def identifiers_from(candidates: Iterable[Candidate]) -> set[Key]:
     """The identifiers among `candidates`, normalised: those of their kind (the others are left
     out); a customer or personnel number only if it is none of the person's numbers found, does

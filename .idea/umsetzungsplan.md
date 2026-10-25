@@ -1724,6 +1724,15 @@ Mock: https://claude.ai/artifact/CZha1VoRbf2KxJQCAZx5ma (vier Reiter hell und du
 
   Über 300 ms liegen die Zeiten bei großen Zeiträumen (vor allem `run_times`: 100.000 Zeilen mit JSON nach Python). C2 cacht die Statistik kurz (wie geplant); die Zähler auf Postgres brauchen das nicht.
 
+**Review C1 (25.10.2026, behoben vor dem Merge):**
+
+- Der Nachtrag beurteilte die Signale des Space gegen `None`, wo der Judge den Space ohne eigenen Wert liegen ließ (Check OK, `value` leer): jeder nennende Kandidat ein Fehltreffer. Jetzt gegen den Space, den das Dokument hält (wie live).
+- Vorschläge neben OK-Checks (Tags und Thema, die die Signale nannten, aber nicht setzten; ein Space, in dem es liegen könnte) zählen: nimmt die Person sie, ist das „Vorschlag angenommen“ (Tags: zu den gesetzten hinzugefügt, keiner entfernt), nicht „ergänzt“ oder „korrigiert“. Live und Nachtrag.
+- Ein Space, den die Automatik weder wählte noch vorschlug (uneinige Signale), bekommt kein Urteil: Ein Dokument liegt immer irgendwo, „ergänzt“ täuschte.
+- `FirstRun.of` wirft nicht mehr, wenn der Stopp vor dem Beginn liegt (Annahme im API-Prozess, Stopp im Worker, Uhren verschieden): Der Lauf beginnt dann am Stopp, mit Warnung; der Knoten scheiterte sonst bei jedem Versuch.
+- Ein beim Upload gewählter Space entscheidet nichts, außer der Judge hat seitdem nach dem Space gefragt (offener Check): Die Antwort darauf ist das erste Urteil.
+- Nachtrag: `early` nur bei bekanntem Stopp oder solange das Dokument in Lauf 1 steht (ohne Receive-Eintrag wurde sonst jede Änderung in Lauf 1 `early`); Regeln, die nach dem Entscheid ein Feld setzten (`rules`, `rules:apply`, `rules:change`, die `applied`-Effekte), machen den heutigen Wert unbekannt; beim gelben Stopp zählt ein Seiten-Catch-up nicht, der eine Stunde oder mehr nach dem Ende aller anderen Knoten begann; die Abfrage liest nur noch Judge, Felder, Regeln und Entscheide (die OCR-Einträge halten die Wörter jeder Seite). Der Migrationstest deckt jetzt auch `kept`, `accepted`, den liegen gelassenen Space mit Signalen, Thema- und Tag-Vorschläge, ein eigenes Feld, eine Regel nach dem Entscheid, einen Upload-Space mit offenem Check, fehlenden Receive-Eintrag, Catch-up und ein laufendes Dokument ab.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

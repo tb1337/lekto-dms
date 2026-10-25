@@ -15,28 +15,34 @@ The backfill reads both from the log, as far as it tells (Tobi, 25.10.2026: "oka
 First runs, for the documents whose first lane is known: the entries of run 1 the nodes wrote
 (not those of people or changes, not a text read again), the first of each node. The run began
 when its receiving began and stopped where filing ended (green), where the first node failed
-(red), or where the last node of the run ended (yellow). Entries written after the stop (a page
-catch-up, facts read again) are no part of it.
+(red), or where the last node of the run ended (yellow; a page catch-up that began an hour or
+more after every other node of the run had ended is no part of it). Entries written after the
+stop (a page catch-up, facts read again) are no part of it.
 
 Verdicts, for the documents uploaded through the web or the API (a migrated document's changes
 are mostly the migration's own alignment, which judges nothing, and the statistics leave them
 out), walking the log in order with the field checks as the latest judge and fields node had
-them:
+them (`domain.first_runs` tells how a verdict is judged):
 
 - A confirmation in the inbox decides every field: accepted is `accepted`; kept is `taken`; an
   entered value or one changed with it is judged against the automation's value and
   suggestion, with the value the document holds now if nothing touched the field since (no
-  later decision on it, no later judge or fields node); otherwise `corrected` tells whether it
-  differs from before. An entered value where there was a suggestion stays unjudged then (the
-  web sends an accepted suggestion as an entered value). An untouched field is `taken`.
+  later decision on it, no rule that set it, no later judge or fields node); otherwise
+  `corrected` tells whether it differs from before. An entered value where there was a
+  suggestion stays unjudged then (the web sends an accepted suggestion as an entered value). An
+  untouched field is `taken`. The space is `taken` where it lay, judged with the signals
+  against that space; one the automation neither chose nor suggested gets no verdict.
 - A change in the document view that confirms (`rules:change` of a person) decides the fields
   it set, judged the same way, and those the automation had set (`taken`); not the space.
 - A move decides the space: `accepted` if it went to the suggested space, else `corrected`. A
-  space chosen on upload is decided before and gets no verdict.
-- A change or a move in run 1 before its stop is `early`.
+  space chosen on upload is decided before and gets no verdict, unless the automation asked
+  about the space since (an open check at the confirmation).
+- A change or a move in run 1 before its stop is `early`; where the stop is not known, only
+  while the document is still in its first run.
 
 The signals are judged where the person's value is known. Documents are read and written in
-chunks, so a large log needs no more memory than one chunk's entries.
+chunks, and only the entries the verdicts need (the model nodes, the rules, the decisions), so
+a large log needs no more memory than one chunk's entries.
 
 The downgrade drops both tables.
 """
@@ -205,7 +211,8 @@ def _entries(
     connection: sa.Connection, documents: Collection[object], *, first_run: bool
 ) -> dict[object, list[_Entry]]:
     """The log entries of `documents` in the order they were written; of run 1 only with
-    `first_run`, without their output then."""
+    `first_run`, without their output then; otherwise only those the verdicts read: the model
+    nodes, the rules and the decisions (an OCR entry holds the words of every page)."""
     output = sa.null() if first_run else _LOG.c.output
     query = sa.select(
         _LOG.c.seq,
@@ -221,6 +228,13 @@ def _entries(
     ).where(_LOG.c.document_id.in_(list(documents)))
     if first_run:
         query = query.where(_LOG.c.run == 1)
+    else:
+        query = query.where(
+            sa.or_(
+                _LOG.c.node.in_([*_MODEL_NODES, "apply_rules"]),
+                _LOG.c.model_version.in_(_NOT_THE_RUN),
+            )
+        )
     found: dict[object, list[_Entry]] = {}
     for row in connection.execute(query.order_by(_LOG.c.seq)):
         found.setdefault(row.document_id, []).append(
@@ -307,7 +321,7 @@ def _first_run(entries: Sequence[_Entry], first_lane: str) -> _Run | None:
     elif first_lane == "red":
         stop = next((e for e in own if e.outcome == "failed"), None)
     else:
-        stop = max(firsts.values(), key=lambda entry: entry.seq)
+        stop = max(_without_catch_ups(firsts), key=lambda entry: entry.seq)
     if stop is None or stop.ended_at < receive.started_at:
         return None
     return _Run(
@@ -316,6 +330,23 @@ def _first_run(entries: Sequence[_Entry], first_lane: str) -> _Run | None:
         steps={node: e.duration_us for node, e in firsts.items() if e.seq <= stop.seq},
         stop=stop.seq,
     )
+
+
+_CATCH_UP_GAP = timedelta(hours=1)
+"""A page catch-up (`render-pages`, logged in the document's current run) is told from the run's
+own pages node by this gap: pages are rendered beside the OCR, never this long after every other
+node of the run ended."""
+
+
+def _without_catch_ups(firsts: Mapping[str, _Entry]) -> list[_Entry]:
+    """The first entries without a page catch-up that came after the run."""
+    entries = list(firsts.values())
+    pages = firsts.get("pages")
+    if pages is not None and len(entries) > 1:
+        others = max(entry.ended_at for entry in entries if entry is not pages)
+        if pages.started_at >= others + _CATCH_UP_GAP:
+            entries.remove(pages)
+    return entries
 
 
 # --- verdicts -----------------------------------------------------------------------------------
@@ -344,11 +375,23 @@ def _backfill_verdicts(connection: sa.Connection, stops: Mapping[object, int]) -
         .scalars()
         .all()
     )
+    running = set(
+        connection.execute(
+            sa.select(_DOCUMENTS.c.id).where(_DOCUMENTS.c.first_lane.is_(None))
+        ).scalars()
+    )  # still in their first run: a decision in it comes before the stop
     for chunk in batched(decided, _CHUNK, strict=False):
         current = _current_values(connection, chunk, manual)
         rows = []
         for document, entries in _entries(connection, chunk, first_run=False).items():
-            walk = _Walk(document, entries, current.get(document, {}), manual, stops.get(document))
+            walk = _Walk(
+                document,
+                entries,
+                current.get(document, {}),
+                manual,
+                stop=stops.get(document),
+                running=document in running,
+            )
             rows.extend(walk.verdicts())
         if rows:
             connection.execute(sa.insert(_VERDICTS), rows)
@@ -426,13 +469,16 @@ class _Walk:
         entries: Sequence[_Entry],
         current: Mapping[str, Any],
         manual: Collection[str],
+        *,
         stop: int | None,
+        running: bool,
     ) -> None:
         self.document = document
         self.entries = entries
         self.current = current
         self.manual = manual
         self.stop = stop
+        self.running = running  # still in its first run (no first lane yet)
         self.latest: dict[str, list[dict[str, Any]]] = {}  # field checks by model node
         self.judged: dict[str, dict[str, Any]] = {}  # rows by field
         self.space_decided = False
@@ -487,14 +533,17 @@ class _Walk:
             check = checks.get(name)
             automatic, suggestion = _automatic(check)
             if name == _SPACE:
-                if self.space_decided:
-                    continue
+                open = check is not None and check.get("outcome") != "ok"
+                if self.space_decided and not open:
+                    continue  # chosen on upload, and the automation did not ask since
                 if name in accepted:
                     self._keep(last, "inbox", name, "accepted", suggestion, check)
                 elif chosen is not None:
                     self._keep(last, "inbox", name, _moved(suggestion, chosen), chosen, check)
-                elif check is None or check.get("outcome") == "ok":
-                    value = automatic if check is not None else self._now(name, last)
+                elif not open:
+                    # Where it lay: the check's value where the automation chose it, else the
+                    # space the document holds now (the signals are judged against that).
+                    value = automatic if not _empty(automatic) else self._now(name, last)
                     self._keep(last, "inbox", name, "taken", value, check)
                 elif not _empty(suggestion):
                     self._keep(last, "inbox", name, "corrected", _UNKNOWN, check)
@@ -613,19 +662,24 @@ class _Walk:
         """The field's value now, if nothing touched it after `entry`: no later decision on it,
         no later judge (its own fields) or fields node (custom fields)."""
         model = "fields" if name.startswith(_CUSTOM) else "judge"
+        if name in _rule_effects(entry):  # the rules the decision set off set it themselves
+            return _UNKNOWN
         for later in self.entries:
             if later.seq <= entry.seq:
                 continue
             if later.node == model and later.version not in (*_NOT_THE_RUN, "rules"):
                 return _UNKNOWN
-            if later.version in _NOT_THE_RUN and name in _named_in(later):
+            if later.version in (*_NOT_THE_RUN, "rules") and name in _named_in(later):
                 return _UNKNOWN
         value = self.current.get(name)
         return value
 
     def _early(self, entry: _Entry) -> bool:
-        """Whether `entry` came in run 1 before it stopped (or where its stop is not known)."""
-        return entry.run == 1 and (self.stop is None or entry.seq < self.stop)
+        """Whether `entry` came in run 1 before it stopped: before the stop where it is known,
+        else only while the document is still in its first run."""
+        if entry.run != 1:
+            return False
+        return self.running if self.stop is None else entry.seq < self.stop
 
     def _only_manual(self, entry: _Entry) -> bool:
         changed = {
@@ -644,7 +698,8 @@ class _Walk:
 
 
 def _named_in(entry: _Entry) -> set[str]:
-    """The fields a decision or change entry names."""
+    """The fields a decision or change entry names, and those the rules of a rules entry set
+    (`RulePlan.to_json`: the effects applied per rule)."""
     record = {**entry.input, **entry.output}
     names = {
         name
@@ -655,6 +710,19 @@ def _named_in(entry: _Entry) -> set[str]:
         names.add(_TAGS_FIELD)
     if entry.version == _PERSON_SPACE or isinstance(record.get("space_id"), str):
         names.add(_SPACE)
+    return names | _rule_effects(entry)
+
+
+def _rule_effects(entry: _Entry) -> set[str]:
+    """The fields the rules of a rules entry set (`RulePlan.to_json`: the effects applied per
+    rule); none in other entries."""
+    names = set()
+    rules = entry.output.get("rules")
+    for report in rules if isinstance(rules, list) else []:
+        applied = report.get("applied") if isinstance(report, dict) else None
+        for effect in applied if isinstance(applied, list) else []:
+            if isinstance(effect, dict) and isinstance(effect.get("field"), str):
+                names.add(effect["field"])
     return names
 
 
@@ -666,21 +734,39 @@ def _checks(output: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 
 def _automatic(check: Mapping[str, Any] | None) -> tuple[Any, Any]:
-    """The automation's value of a field by its check, and its suggestion."""
+    """The automation's value of a field by its check, and its suggestion (an OK check's
+    beside its value: tags or a topic proposed but not set)."""
     if check is None:
         return None, None
     if check.get("outcome") == "ok":
-        return check.get("value"), None
+        return check.get("value"), check.get("suggestion")
     return None, check.get("suggestion")
 
 
 def _verdict(automatic: Any, suggestion: Any, value: Any) -> str | None:
     """As `first_runs._verdict`."""
     if not _empty(automatic):
-        return "taken" if _same(value, automatic) else "corrected"
+        if _same(value, automatic):
+            return "taken"
+        if not _empty(suggestion) and _took(value, automatic, suggestion):
+            return "accepted"
+        return "corrected"
     if not _empty(suggestion):
         return "accepted" if _same(value, suggestion) else "corrected"
     return None if _empty(value) else "added"
+
+
+def _took(value: Any, automatic: Any, suggestion: Any) -> bool:
+    """As `first_runs._took`: the suggestion taken, or suggested tags added to the
+    automation's, dropping none."""
+    if isinstance(value, list) and isinstance(automatic, list) and isinstance(suggestion, list):
+        kept, had, offered = (
+            set(map(str, value)),
+            set(map(str, automatic)),
+            set(map(str, suggestion)),
+        )
+        return had < kept <= had | offered
+    return _same(value, suggestion)
 
 
 def _moved(suggestion: Any, chosen: Any) -> str:

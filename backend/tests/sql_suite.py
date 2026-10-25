@@ -2457,7 +2457,9 @@ class MigrationSuite:
             schema = await connection.run_sync(_schema)
         names: tuple[str, ...] = ("green", "yellow", "red", "unknown", "unreceived")
         names += ("confirmed", "reprocessed", "moved", "uploaded", "early", "migrated", "tagged")
+        names += ("kept", "stays", "topical", "ruled", "asked", "stale", "catching", "running")
         ids = {name: new_id() for name in (*names, "user", "home", "other", "c1", "c2", "tag")}
+        ids |= {name: new_id() for name in ("auto", "topic", "field")}
         c1, c2 = str(ids["c1"]), str(ids["c2"])
         second = timedelta(seconds=1)
 
@@ -2482,6 +2484,33 @@ class MigrationSuite:
         unsure_date = {"field": "document_date", "outcome": "uncertain", "suggestion": None}
         sure_date = {"field": "document_date", "outcome": "ok", "value": "2026-09-01"}
         tags = {"field": "tags", "outcome": "ok", "value": []}
+        home, other = str(ids["home"]), str(ids["other"])
+        stays = {  # the judge was sure it lies right: no value, but the classifier named it
+            "field": "space",
+            "outcome": "ok",
+            "value": None,
+            "candidates": [
+                {
+                    "value": home,
+                    "label": "Home",
+                    "sources": [{"signal": "signal_classifier", "names": True}],
+                }
+            ],
+        }
+        asked = {"field": "space", "outcome": "uncertain", "suggestion": other}
+        topical = {
+            "field": "topic",
+            "outcome": "ok",
+            "value": None,
+            "suggestion": str(ids["topic"]),
+        }
+        tagged_auto = {
+            "field": "tags",
+            "outcome": "ok",
+            "value": [],
+            "suggestion": [str(ids["auto"])],
+        }
+        amount = {"field": f"field:{ids['field']}", "outcome": "ok", "value": "12.50"}
         change = {"trigger": "change", "actor": str(ids["user"])}
         # (document, run, node, outcome, version, input, output, started after NOW, duration)
         entries: list[tuple[str, int, str, str, str | None, dict[str, Any], dict[str, Any]]] = []
@@ -2614,11 +2643,161 @@ class MigrationSuite:
             at=timedelta(hours=1),
         )
 
-        lanes = {"green": "green", "yellow": "yellow", "red": "red", "unreceived": "green"}
+        # Kept in the inbox: the contact the automation set stays, judged against its signals.
+        log("kept", 1, "receive")
+        log("kept", 1, "judge", "uncertain", "llm", output=checks(sure_contact, unsure_date))
+        log("kept", 1, "apply_rules", at=2 * second)
+        log(
+            "kept",
+            2,
+            "judge",
+            version="person",
+            output={"accepted": [], "entered": ["document_date"], "kept": ["contact"]},
+            at=timedelta(hours=1),
+        )
+        log(
+            "kept",
+            2,
+            "apply_rules",
+            version="person",
+            output={"accepted": [], "entered": [], "kept": [], "changed": ["document_date"]},
+            at=timedelta(hours=1),
+        )
+        # The space the judge left where it lay, confirmed: taken, the classifier's hit counted.
+        log("stays", 1, "receive")
+        log("stays", 1, "judge", "uncertain", "llm", output=checks(unsure_date, stays))
+        log("stays", 1, "apply_rules", at=2 * second)
+        log(
+            "stays",
+            2,
+            "apply_rules",
+            version="person",
+            output={"accepted": [], "entered": ["document_date"], "kept": []},
+            at=timedelta(hours=1),
+        )
+        # A topic and a tag the judge suggested beside its OK checks, taken at the confirmation.
+        log("topical", 1, "receive")
+        log(
+            "topical",
+            1,
+            "judge",
+            "uncertain",
+            "llm",
+            output=checks(unsure_date, topical, tagged_auto, amount),
+        )
+        log("topical", 1, "apply_rules", at=2 * second)
+        log(
+            "topical",
+            2,
+            "apply_rules",
+            version="person",
+            output={
+                "accepted": [],
+                "entered": ["document_date", "topic", "tags"],
+                "kept": [],
+                "changed": ["document_date", "topic", "tags"],
+                "corrected": ["topic", "tags"],
+            },
+            at=timedelta(hours=1),
+        )
+        # A tag a person added in the document view, then one a rule applied: the value now is
+        # not the person's any more; `corrected` tells.
+        log("ruled", 1, "receive")
+        log("ruled", 1, "judge", version="llm", output=checks(sure_contact, tags))
+        log("ruled", 1, "file", at=second)
+        log(
+            "ruled",
+            1,
+            "apply_rules",
+            version="rules:change",
+            input={
+                **change,
+                "changed": ["tags"],
+                "corrected": ["tags"],
+                "tags_added": [str(ids["auto"])],
+                "tags_removed": [],
+            },
+            at=timedelta(hours=1),
+        )
+        log(
+            "ruled",
+            1,
+            "apply_rules",
+            version="rules:apply",
+            input={"trigger": "apply", "actor": str(ids["user"])},
+            output={
+                "rules": [
+                    {
+                        "rule_id": str(new_id()),
+                        "applied": [{"field": "tags", "old": None, "new": str(ids["tag"])}],
+                        "notes": [],
+                    }
+                ]
+            },
+            at=timedelta(hours=2),
+        )
+        # Chosen on upload, but the judge asked about the space: the answer is a verdict.
+        log("asked", 1, "apply_rules", version="person:space", input=upload)
+        log("asked", 1, "receive")
+        log("asked", 1, "judge", "uncertain", "llm", output=checks(asked))
+        log("asked", 1, "apply_rules", at=2 * second)
+        log(
+            "asked",
+            2,
+            "judge",
+            version="person",
+            output={"accepted": ["space"], "entered": [], "kept": []},
+            at=timedelta(hours=1),
+        )
+        log(
+            "asked",
+            2,
+            "apply_rules",
+            version="person",
+            output={"accepted": [], "entered": [], "kept": [], "space_id": other},
+            at=timedelta(hours=1),
+        )
+        # No receiving in the log (from before the graph): the stop is not known, the run is
+        # over (its first lane is), so a change in run 1 is judged, not early.
+        log("stale", 1, "judge", version="llm", output=checks(sure_contact, sure_date))
+        log("stale", 1, "file", at=second)
+        log(
+            "stale",
+            1,
+            "apply_rules",
+            version="rules:change",
+            input={**change, "changed": ["document_date"], "corrected": ["document_date"]},
+            at=timedelta(hours=1),
+        )
+        # Yellow, with pages rendered two days later (`render-pages`, in run 1): not the stop.
+        log("catching", 1, "receive")
+        log("catching", 1, "judge", "uncertain", at=5 * second)
+        log("catching", 1, "pages", at=timedelta(days=2))
+        # Still in its first run: a change now comes before the stop.
+        log("running", 1, "receive")
+        log(
+            "running",
+            1,
+            "apply_rules",
+            version="rules:change",
+            input={**change, "changed": ["document_date"]},
+            at=second,
+        )
+
+        lanes: dict[str, str | None] = {"green": "green", "yellow": "yellow", "red": "red"}
+        lanes["unreceived"] = "green"
+        lanes |= dict.fromkeys(("kept", "stays", "topical", "ruled", "asked", "stale"), "green")
+        lanes |= {"catching": "yellow", "running": None}
         lanes |= dict.fromkeys(("confirmed", "reprocessed", "moved", "uploaded"), "green")
         lanes |= dict.fromkeys(("early", "migrated", "tagged"), "green")
         holds: dict[str, dict[str, Any]] = {
             "confirmed": {"contact_id": ids["c1"], "document_date": date(2026, 10, 1)},
+            "kept": {"contact_id": ids["c1"], "document_date": date(2026, 10, 1)},
+            "stays": {"document_date": date(2026, 10, 1)},
+            "topical": {"document_date": date(2026, 10, 1), "topic_id": ids["topic"]},
+            "ruled": {"contact_id": ids["c1"]},
+            "asked": {"space_id": ids["other"]},
+            "stale": {"contact_id": ids["c1"], "document_date": date(2026, 9, 2)},
             "reprocessed": {"contact_id": ids["c1"], "document_date": date(2026, 9, 1)},
             "moved": {"space_id": ids["other"]},
             "uploaded": {"space_id": ids["other"]},
@@ -2651,6 +2830,11 @@ class MigrationSuite:
                         "assignment": "manual",
                     },
                 ),
+                (t.tags, {"id": ids["auto"], "name": "invoice", "name_key": "invoice"}),
+                (
+                    t.tags,
+                    {"id": ids["topic"], "name": "work", "name_key": "work", "scope": "topic"},
+                ),
                 *(
                     (
                         t.documents,
@@ -2660,7 +2844,12 @@ class MigrationSuite:
                             "sha256": format(number, "064x"),
                             "processing_status": "completed",
                             "lane": lanes.get(name),
-                            "first_lane": "yellow" if name == "confirmed" else lanes.get(name),
+                            "first_lane": "yellow"
+                            if name in ("confirmed", "kept", "stays", "topical", "asked")
+                            else lanes.get(name),
+                            "processing_run": 2
+                            if name in ("confirmed", "kept", "stays", "topical", "asked", "yellow")
+                            else 1,
                             "channel": "migration" if name == "migrated" else "web",
                             **holds.get(name, {}),
                         },
@@ -2686,6 +2875,9 @@ class MigrationSuite:
                         entries, times, strict=True
                     )
                 ),
+                (t.document_tags, {"document_id": ids["topical"], "tag_id": ids["auto"]}),
+                (t.document_tags, {"document_id": ids["ruled"], "tag_id": ids["auto"]}),
+                (t.document_tags, {"document_id": ids["ruled"], "tag_id": ids["tag"]}),
             ],
         )
 
@@ -2732,6 +2924,32 @@ class MigrationSuite:
             ids["early"]: (NOW, NOW + 3 * second, {"receive": micros, "file": micros}),
             ids["migrated"]: (NOW, NOW + 2 * second, {"receive": micros, "file": micros}),
             ids["tagged"]: (NOW, NOW + 2 * second, {"receive": micros, "file": micros}),
+            ids["kept"]: (
+                NOW,
+                NOW + 3 * second,
+                {"receive": micros, "judge": micros, "apply_rules": micros},
+            ),
+            ids["stays"]: (
+                NOW,
+                NOW + 3 * second,
+                {"receive": micros, "judge": micros, "apply_rules": micros},
+            ),
+            ids["topical"]: (
+                NOW,
+                NOW + 3 * second,
+                {"receive": micros, "judge": micros, "apply_rules": micros},
+            ),
+            ids["ruled"]: (
+                NOW,
+                NOW + 2 * second,
+                {"receive": micros, "judge": micros, "file": micros},
+            ),
+            ids["asked"]: (
+                NOW,
+                NOW + 3 * second,
+                {"receive": micros, "judge": micros, "apply_rules": micros},
+            ),
+            ids["catching"]: (NOW, NOW + 6 * second, {"receive": micros, "judge": micros}),
         }
         assert verdicts == {
             (ids["yellow"], "space"): ("taken", "inbox", None, None),
@@ -2742,6 +2960,22 @@ class MigrationSuite:
             (ids["reprocessed"], "document_date"): ("taken", "change", None, None),
             (ids["moved"], "space"): ("corrected", "move", None, None),
             (ids["early"], "document_date"): ("early", "change", None, None),
+            (ids["kept"], "contact"): ("taken", "inbox", True, False),
+            (ids["kept"], "document_date"): ("added", "inbox", None, None),
+            (ids["kept"], "space"): ("taken", "inbox", None, None),
+            (ids["stays"], "document_date"): ("added", "inbox", None, None),
+            (ids["stays"], "space"): ("taken", "inbox", None, True),
+            (ids["topical"], "document_date"): ("added", "inbox", None, None),
+            (ids["topical"], "topic"): ("accepted", "inbox", None, None),
+            (ids["topical"], "tags"): ("accepted", "inbox", None, None),
+            (ids["topical"], "space"): ("taken", "inbox", None, None),
+            (ids["topical"], f"field:{ids['field']}"): ("taken", "inbox", None, None),
+            (ids["ruled"], "contact"): ("taken", "change", True, False),
+            (ids["ruled"], "tags"): ("added", "change", None, None),
+            (ids["asked"], "space"): ("accepted", "inbox", None, None),
+            (ids["stale"], "contact"): ("taken", "change", True, False),
+            (ids["stale"], "document_date"): ("corrected", "change", None, None),
+            (ids["running"], "document_date"): ("early", "change", None, None),
         }
 
         await downgrade(empty_database, "0041")

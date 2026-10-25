@@ -51,4 +51,15 @@ describe('search note', () => {
 		note.waiting(false);
 		expect(note.slow).toBe(false);
 	});
+
+	it('changes nothing once disposed', () => {
+		const note = new SearchNote();
+		note.answered('Weihnachten', { mode: 'words', reason: timeout, meaning_pending: true });
+		note.waiting(true);
+		note.dispose();
+		expect(vi.getTimerCount()).toBe(0);
+		vi.advanceTimersByTime(PENDING_FOR);
+		expect(note.slow).toBe(false);
+		expect(note.about('Weihnachten')?.pending).toBe(true);
+	});
 });

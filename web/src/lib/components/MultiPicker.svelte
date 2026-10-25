@@ -2,6 +2,7 @@
 	import X from '@lucide/svelte/icons/x';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { matchesWords, searchWords, toggled } from '#lib/picking.ts';
 	import { cn } from '#lib/utils.ts';
 
 	export interface PickerOption {
@@ -32,12 +33,11 @@
 		options.find((option) => option.value === value)?.label ?? m.rule_unknown();
 	// The API keeps repeated values of a list; they show as one chip and go together.
 	const chips = $derived([...new Set(selected)]);
-	const shown = $derived(
-		options.filter((option) => option.label.toLowerCase().includes(query.trim().toLowerCase()))
-	);
+	const words = $derived(searchWords(query));
+	const shown = $derived(options.filter((option) => matchesWords(option.label, words)));
 
 	function toggle(value: string, on: boolean) {
-		onchange(on ? [...selected, value] : selected.filter((entry) => entry !== value));
+		onchange(toggled(selected, value, on));
 	}
 </script>
 

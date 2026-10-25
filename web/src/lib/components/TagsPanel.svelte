@@ -26,9 +26,11 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import { BASE } from '#lib/base.ts';
 	import MasterRow, { type Usage } from '#lib/components/MasterRow.svelte';
+	import PanelState from '#lib/components/PanelState.svelte';
 	import TagChip from '#lib/components/TagChip.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
+	import { latest } from '#lib/latest.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { KINDS, TAG_KINDS } from '#lib/masterdata-api.ts';
 	import type { DocumentType, Tag } from '#lib/masterdata.svelte.ts';
@@ -80,9 +82,11 @@
 		searching ? sections.filter((section) => section.rows.length > 0) : sections
 	);
 
+	const begin = latest();
 	async function load() {
+		const current = begin();
 		try {
-			[tags, types] = await Promise.all([
+			const found = await Promise.all([
 				unwrap(
 					api.GET('/api/v1/tags', {
 						params: { query: { document_counts: true, all_users: scope.query } }
@@ -90,9 +94,11 @@
 				),
 				unwrap(api.GET('/api/v1/document-types'))
 			]);
+			if (!current()) return;
+			[tags, types] = found;
 			problem = null;
 		} catch (error) {
-			problem = describeError(error);
+			if (current()) problem = describeError(error);
 		}
 	}
 
@@ -209,17 +215,12 @@
 		{/each}
 	</div>
 
-	{#if problem}
-		<p class="text-destructive" role="alert">{problem}</p>
-	{:else if !tags}
-		<p class="text-muted-foreground">{m.loading()}</p>
-	{:else if shown.length === 0}
-		<p
-			class="rounded-2xl border border-dashed bg-card px-6 py-10 text-center text-muted-foreground"
-		>
-			{m.assignment_none_found()}
-		</p>
-	{:else}
+	<PanelState
+		{problem}
+		loading={!tags}
+		empty={shown.length === 0 ? m.assignment_none_found() : null}
+		onretry={load}
+	>
 		{#each shown as { kind, rows, open } (kind)}
 			{@const Icon = SECTIONS[kind].icon}
 			{@const title = KINDS[kind].title()}
@@ -325,10 +326,13 @@
 												{m.tag_below({ count: childCount.get(tag.id) ?? 0 })}
 											</span>
 										{/if}
-										{#if !phone.current && kind === 'type-groups' && members(tag)}
-											<span class="min-w-0 truncate text-sm text-muted-foreground"
-												>{members(tag)}</span
-											>
+										{#if !phone.current && kind === 'type-groups'}
+											{@const typeNames = members(tag)}
+											{#if typeNames}
+												<span class="min-w-0 truncate text-sm text-muted-foreground"
+													>{typeNames}</span
+												>
+											{/if}
 										{/if}
 									</span>
 								</MasterRow>
@@ -338,5 +342,5 @@
 				{/if}
 			</section>
 		{/each}
-	{/if}
+	</PanelState>
 </div>

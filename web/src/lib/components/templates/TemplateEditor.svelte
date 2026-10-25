@@ -9,6 +9,7 @@
 	} from '#lib/components/templates/ReferencePicker.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Sheet from '#lib/components/ui/sheet/index.ts';
+	import { latest } from '#lib/latest.ts';
 	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import type { EditorHandle } from '#lib/templates/codemirror.ts';
@@ -50,20 +51,27 @@
 		if (open) draft = untrack(() => value);
 	});
 
-	// The template with the reference document, a moment after typing stops.
+	// The template with the reference document, a moment after typing stops; the answer to an
+	// older draft is dropped once a newer one is asked about.
+	const previewed = latest();
 	$effect(() => {
 		if (!open) return;
 		const template = draft;
 		const document = reference?.id ?? null;
 		const kind = documentType ?? null;
+		const current = previewed();
 		const timer = setTimeout(() => {
 			void unwrap(
 				api.POST('/api/v1/templates/preview', {
 					body: { template, document_id: document, document_type_id: kind }
 				})
 			).then(
-				(found) => (preview = found),
-				() => (preview = null)
+				(found) => {
+					if (current()) preview = found;
+				},
+				() => {
+					if (current()) preview = null;
+				}
 			);
 		}, 300);
 		return () => clearTimeout(timer);

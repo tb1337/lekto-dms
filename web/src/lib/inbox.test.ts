@@ -81,6 +81,14 @@ describe('inbox summary', () => {
 		expect(inbox.summary?.worst_lane).toBe('yellow');
 	});
 
+	it('keeps the last summary while the server cannot be reached', async () => {
+		await inbox.refresh();
+		expect(inbox.open).toBe(1);
+		fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+		await expect(inbox.refresh()).resolves.toBeUndefined();
+		expect(inbox.open).toBe(1);
+	});
+
 	it('is fetched again when the window comes back into view', async () => {
 		vi.useFakeTimers();
 		try {

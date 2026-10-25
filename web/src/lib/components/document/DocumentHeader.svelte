@@ -18,6 +18,7 @@
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import { moveTargets, retryProcessing } from '#lib/components/document/actions.ts';
 	import LaneBadge from '#lib/components/LaneBadge.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import ProcessingProgress from '#lib/components/ProcessingProgress.svelte';
@@ -27,16 +28,11 @@
 	import { Checkbox } from '#lib/components/ui/checkbox/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Label } from '#lib/components/ui/label/index.ts';
-	import { inboxDocument, tabHref, type Neighbours } from '#lib/document-view.ts';
+	import { documentApi, inboxDocument, tabHref, type Neighbours } from '#lib/document-view.ts';
 	import { reportError } from '#lib/errors.ts';
+	import { readersLaterText, visibleText, type Viewer } from '#lib/filing.ts';
 	import { formatDate } from '#lib/i18n.ts';
-	import {
-		spaceLabel,
-		spaceOptions,
-		userLabel,
-		userName,
-		type Lookup
-	} from '#lib/masterdata.svelte.ts';
+	import { spaceLabel, userLabel, userName, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import { canEdit } from '#lib/permissions.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -87,39 +83,22 @@
 	let fromNode = $state<ReprocessNode>('ocr');
 	let busy = $state(false);
 
-	const base = $derived(`/api/v1/documents/${document.id}`);
+	const base = $derived(documentApi(document.id));
 	const user = $derived(session.user);
 	// Editors of the document's space (and admins) change, move and delete it.
 	const manageable = $derived(canEdit(document, user));
 	const status = $derived(document.processing.status);
 	const users = $derived(lookup?.users ?? []);
-	// Into a space the caller edits, or handed over into another user's personal space.
-	const targets = $derived(
-		spaceOptions(lookup?.spaces ?? [], users, user).filter(
-			(option) => option.value !== document.space_id
-		)
-	);
+	// Into a space the caller edits, or handed over into another user's personal space (the
+	// filing box of the form offers the same move).
+	const targets = $derived(moveTargets(lookup, user, document.space_id));
 	const space = $derived(lookup?.spaces.find((space) => space.id === document.space_id) ?? null);
 	// Who sees the document besides the caller: the editors of its space, its readers once it
-	// is green.
-	const others = $derived(space?.members.filter((member) => member.user_id !== user?.id) ?? []);
+	// is green (as the filing box says it).
+	const viewer: Viewer = $derived({ id: user?.id, admin: session.isAdmin });
 	const green = $derived(document.lane === 'green');
-	const visibleTo = $derived(
-		space === null
-			? null
-			: others
-					.filter((member) => member.role === 'edit' || green)
-					.map((member) => userLabel(member))
-					.join(', ')
-	);
-	const readersLater = $derived(
-		green
-			? ''
-			: others
-					.filter((member) => member.role === 'read')
-					.map((member) => userLabel(member))
-					.join(', ')
-	);
+	const visibleTo = $derived(space ? visibleText(space.members, viewer, green) : null);
+	const readersLater = $derived(space ? readersLaterText(space.members, viewer, green) : null);
 	const uploader = $derived(
 		document.uploaded_by && document.uploaded_by !== user?.id
 			? userName(users, document.uploaded_by)
@@ -185,11 +164,7 @@
 	}
 
 	async function retry() {
-		await act(
-			() =>
-				unwrap(api.POST('/api/v1/documents/{id}/retry', { params: { path: { id: document.id } } })),
-			m.retry_started()
-		);
+		await act(() => retryProcessing(document.id), m.retry_started());
 	}
 
 	async function reprocess() {
@@ -313,8 +288,8 @@
 				{document.original_filename} · {m.doc_received({ date: formatDate(document.created_at) })}
 				{#if space}
 					· {spaceLabel(space, users, user?.id)} ·
-					{visibleTo ? m.visible_to({ names: visibleTo }) : m.visible_to_you()}
-					{#if readersLater}· {m.visible_to_readers_later({ names: readersLater })}{/if}
+					{visibleTo}
+					{#if readersLater}· {readersLater}{/if}
 				{/if}
 				{#if uploader}· {m.uploaded_by({ name: uploader })}{/if}
 				{#if document.page_count}· {m.doc_pages({ count: document.page_count })}{/if}

@@ -11,8 +11,9 @@
 	// One value of a field in its JSON form: text, number and date as text, yes/no as a
 	// boolean, an amount with its currency, a choice from the field's list. `textual` asks for
 	// plain text whatever the type (`contains`, `matches`); `template`: a text field's value is a
-	// template (an action's, not a condition's). `onunreadable` says while a period's text
-	// cannot be read (the value then is not what the field shows; see `PeriodInput`).
+	// template (an action's, not a condition's), `fields` the definitions a template may name.
+	// `onunreadable` says while a period's text cannot be read (the value then is not what the
+	// field shows; see `PeriodInput`).
 	let {
 		field,
 		value,
@@ -22,6 +23,7 @@
 		invalid = false,
 		textual = false,
 		template = false,
+		fields = undefined,
 		onunreadable
 	}: {
 		field: FieldDefinition | null;
@@ -32,6 +34,7 @@
 		invalid?: boolean;
 		textual?: boolean;
 		template?: boolean;
+		fields?: readonly FieldDefinition[];
 		onunreadable?: (unreadable: boolean) => void;
 	} = $props();
 
@@ -60,6 +63,7 @@
 		id={id ?? uid}
 		{label}
 		{invalid}
+		{fields}
 		bind:value={() => text, (next) => onchange(next)}
 	/>
 {:else if type === 'period' && isPeriod(value)}

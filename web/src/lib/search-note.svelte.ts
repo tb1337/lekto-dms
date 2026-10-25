@@ -89,4 +89,10 @@ export class SearchNote {
 		}
 		this.#slowTimer = setTimeout(() => (this.slow = true), SLOW_AFTER);
 	}
+
+	/** The page is left: no timer changes the hint afterwards. */
+	dispose(): void {
+		clearTimeout(this.#slowTimer);
+		clearTimeout(this.#pendingTimer);
+	}
 }

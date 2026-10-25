@@ -1,5 +1,6 @@
 <script lang="ts">
 	import FileText from '@lucide/svelte/icons/file-text';
+	import { previewHref } from '#lib/document-view.ts';
 
 	// The preview of the first page. A document without page images (still being processed, or
 	// failed before they were rendered) has none: the placeholder stands in, and nothing is
@@ -18,7 +19,7 @@
 	</div>
 {:else}
 	<img
-		src="/api/v1/documents/{id}/preview"
+		src={previewHref(id)}
 		alt=""
 		loading="lazy"
 		onerror={() => (missing = true)}

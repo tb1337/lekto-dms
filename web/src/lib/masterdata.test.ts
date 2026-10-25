@@ -3,7 +3,9 @@ import { m } from '#lib/paraglide/messages.js';
 import {
 	byId,
 	foreignSpace,
+	holderOf,
 	spaceLabel,
+	spaceNameFor,
 	spaceOptions,
 	userChoice,
 	userLabel,
@@ -46,6 +48,18 @@ describe('spaces by name', () => {
 		expect(spaceLabel(house, users, 'u1')).toBe('Haushalt');
 	});
 
+	it('names a space the caller sees, another user by that user, the rest as unseen', () => {
+		const lookup = { spaces: [mine, house], users };
+		expect(spaceNameFor('house', lookup, 'u1')).toBe('Haushalt');
+		expect(spaceNameFor('mine', lookup, 'u1')).toBe(m.space_personal());
+		// bob's personal space is no space of tobi's, yet named by its user.
+		expect(spaceNameFor('bobs', lookup, 'u1')).toBe('bob');
+		expect(spaceNameFor('gone', lookup, 'u1')).toBe(m.space_unseen());
+		expect(spaceNameFor('gone', lookup, 'u1', '')).toBe('');
+		expect(spaceNameFor('house', null, 'u1')).toBe(m.space_unseen());
+		expect(holderOf(users, 'anna')?.username).toBe('anna');
+	});
+
 	it('names a space only where the caller is no member (an admin looking at others)', () => {
 		const lookup = { spaces: [mine, house, anna], users };
 		expect(foreignSpace('house', lookup, 'u1')).toBeNull();
@@ -71,7 +85,8 @@ describe('the names of users', () => {
 		expect(userLabel(named)).toBe('Carla Example');
 		expect(userLabel({ username: 'carla', display_name: null })).toBe('carla');
 		expect(userName([...users, named], 'u4')).toBe('Carla Example');
-		expect(userName(users, 'nobody')).toBe('nobody');
+		expect(userName(users, 'nobody')).toBe(m.user_unknown());
+		expect(userName(users, null)).toBe(m.user_unknown());
 		expect(spaceLabel({ name: 'Personal', personal_of: 'u4' }, [named], 'u1')).toBe(
 			'Carla Example'
 		);

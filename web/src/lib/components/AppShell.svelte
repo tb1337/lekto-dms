@@ -30,6 +30,7 @@
 	import { href, isCurrent, SETTINGS, visibleSections, type Section } from '#lib/sections.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import { onChange } from '#lib/watch.svelte.ts';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -56,13 +57,10 @@
 	const tone = $derived(badgeTone(inbox.summary));
 
 	// The inbox counter covers what the scope setting covers.
-	let allBefore = scope.allUsers;
-	$effect(() => {
-		const all = scope.allUsers;
-		if (all === allBefore) return;
-		allBefore = all;
-		void inbox.refresh();
-	});
+	onChange(
+		() => scope.allUsers,
+		() => void inbox.refresh()
+	);
 </script>
 
 {#snippet pill(section: Section, vertical: boolean)}

@@ -140,7 +140,7 @@
 				{TRIGGER_LABELS[trigger]()}
 			</label>
 		{/each}
-		{#if errors.triggers}<p class="text-sm text-destructive" role="alert">{errors.triggers}</p>{/if}
+		{#if errors.triggers}<Field.Error>{errors.triggers}</Field.Error>{/if}
 	</fieldset>
 
 	<section class="flex flex-col gap-3" aria-labelledby="rule-conditions">
@@ -170,11 +170,11 @@
 			onchange={add}
 			class="h-10 w-full sm:w-72"
 		/>
-		{#if errors.actions}<p class="text-sm text-destructive" role="alert">{errors.actions}</p>{/if}
+		{#if errors.actions}<Field.Error>{errors.actions}</Field.Error>{/if}
 	</section>
 
 	<div class="flex flex-col gap-3 border-t pt-4">
-		{#if general}<p class="text-sm text-destructive" role="alert">{general}</p>{/if}
+		{#if general}<Field.Error>{general}</Field.Error>{/if}
 		<p class="text-sm text-muted-foreground">{m.rule_save_hint()}</p>
 		<div class="flex flex-wrap gap-2">
 			<Button type="submit" disabled={busy || blocked}>{m.rule_save()}</Button>

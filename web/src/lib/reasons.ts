@@ -6,10 +6,11 @@
  */
 import type { components } from '#lib/api/schema.ts';
 import { fieldLabel } from '#lib/describe.ts';
-import { formatDate, formatNumber, getLocale, regionalLocale } from '#lib/i18n.ts';
+import { formatDate, formatNumber, formatPercent, getLocale, regionalLocale } from '#lib/i18n.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { NODE_LABELS } from '#lib/node-labels.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { own } from '#lib/utils.ts';
 
 export type Reason = components['schemas']['ReasonOut'];
 export type ReasonCode = components['schemas']['ReasonCode'];
@@ -502,7 +503,7 @@ function write(value: unknown, kind: ReasonKind | undefined, options: ReasonOpti
 		case 'number':
 			return formatNumber(Number(value));
 		case 'percent':
-			return formatNumber(Number(value), { style: 'percent', maximumFractionDigits: 0 });
+			return formatPercent(Number(value));
 		case 'date':
 			return formatDate(String(value));
 		case 'value':
@@ -529,9 +530,9 @@ function write(value: unknown, kind: ReasonKind | undefined, options: ReasonOpti
 				items(value).map((name) => quoted(String(name)))
 			);
 		case 'thing':
-			return THINGS[String(value)]?.() ?? String(value);
+			return own(THINGS, String(value))?.() ?? String(value);
 		case 'action':
-			return ACTIONS[String(value)]?.() ?? String(value);
+			return own(ACTIONS, String(value))?.() ?? String(value);
 		case 'nodes':
 			return new Intl.ListFormat(listLocale(), { type: 'conjunction' }).format(
 				items(value).map((node) => {
@@ -555,7 +556,7 @@ function nested(value: unknown, options: ReasonOptions): string {
 }
 
 function known(code: string): code is ReasonCode {
-	return code === 'text' || code === 'error' || code in REASONS;
+	return code === 'text' || code === 'error' || Object.hasOwn(REASONS, code);
 }
 
 /** One reason in the user's language. */

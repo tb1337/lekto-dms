@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import PageViewer from '#lib/components/PageViewer.svelte';
+	import { pageImageHref } from '#lib/document-view.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
 	// The page images (WebP from the original), shown until the archive PDF exists: they come
@@ -36,7 +37,7 @@
 <PageViewer {sizes} {label} note={m.pages_preview()} {end} {onpage}>
 	{#snippet page(number: number)}
 		<img
-			src="/api/v1/documents/{documentId}/pages/{number}"
+			src={pageImageHref(documentId, number)}
 			alt={m.page_image({ number })}
 			loading="lazy"
 			decoding="async"

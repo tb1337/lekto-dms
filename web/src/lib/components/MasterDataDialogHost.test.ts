@@ -237,6 +237,24 @@ describe('tabs', () => {
 		expect(screen.queryByDisplayValue('Nord Versicherungsgruppe')).toBeNull();
 	});
 
+	it('fetches the users a number may belong to once, not on every switch to the tab', async () => {
+		const user = userEvent.setup();
+		render(WithDialogs);
+		masterDataDialogs.open('contacts', CONTACT as unknown as Item);
+		expect(await screen.findByDisplayValue('Nord Versicherungsgruppe')).toBeTruthy();
+		const identifiers = screen.getByRole('button', {
+			name: new RegExp(`^${m.master_identifiers()}`)
+		});
+		await user.click(identifiers);
+		await user.click(screen.getByRole('button', { name: m.master_tab_general() }));
+		await user.click(identifiers);
+		const users = () =>
+			fetchMock.mock.calls.filter((call) => new URL(call[0].url).pathname === '/api/v1/users');
+		await waitFor(() => expect(users()).toHaveLength(1));
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(users()).toHaveLength(1);
+	});
+
 	it('opens the tab and the line of an identifier the API refuses', async () => {
 		const user = userEvent.setup();
 		const before = fetchMock.getMockImplementation()!;

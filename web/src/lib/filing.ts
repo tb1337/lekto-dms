@@ -5,8 +5,8 @@
  * the start; a disagreement chooses nothing, the person decides.
  */
 import type { components } from '#lib/api/schema.ts';
-import { formatNumber } from '#lib/i18n.ts';
-import { spaceLabel, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+import { formatPercent } from '#lib/i18n.ts';
+import { holderOf, spaceNameFor, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { knownSpace, newReaders } from '#lib/space-suggestion.ts';
 
@@ -53,9 +53,6 @@ export interface Filing {
 	options: FilingOption[];
 }
 
-const percent = (value: number) =>
-	formatNumber(value, { style: 'percent', maximumFractionDigits: 0 });
-
 /** The open `space` check among the open nodes; null without one. */
 export function openSpaceCheck(open: readonly OpenNode[]): Check | null {
 	for (const node of open) {
@@ -68,7 +65,7 @@ export function openSpaceCheck(open: readonly OpenNode[]): Check | null {
 /** The user whose personal space `target` is, unless the caller is a member of it (then it is
  * one of their spaces); null for any other space. */
 function receiverOf(target: string, lookup: Lookup, viewer: Viewer) {
-	const holder = lookup.users.find((user) => user.personal_space_id === target);
+	const holder = holderOf(lookup.users, target);
 	if (!holder || holder.id === viewer.id) return null;
 	const space = lookup.spaces.find((entry) => entry.id === target);
 	if (space?.members.some((member) => member.user_id === viewer.id)) return null;
@@ -88,17 +85,13 @@ export function filingKind(
 
 /** The space's name for the caller; a space they cannot tell stays unnamed. */
 export function spaceName(target: string, lookup: Lookup, viewer: Viewer): string {
-	const space = lookup.spaces.find((entry) => entry.id === target);
-	if (space) return spaceLabel(space, lookup.users, viewer.id);
-	const holder = lookup.users.find((user) => user.personal_space_id === target);
-	if (holder) return holder.id === viewer.id ? m.space_personal() : userLabel(holder);
-	return m.space_unseen();
+	return spaceNameFor(target, lookup, viewer.id);
 }
 
 /** Whose personal space `target` is, by name, unless it is the caller's own; null for a shared
  * space. The space of another person reads as theirs: "Bei Anna Leider lassen", "Zu Anna Leider". */
 function personOf(target: string, lookup: Lookup, viewer: Viewer): string | null {
-	const holder = lookup.users.find((user) => user.personal_space_id === target);
+	const holder = holderOf(lookup.users, target);
 	return holder && holder.id !== viewer.id ? userLabel(holder) : null;
 }
 
@@ -171,7 +164,7 @@ export function filingChips(
 	for (const source of sources) {
 		if (source.signal === 'signal_llm') {
 			if (source.recipient) {
-				const holder = lookup.users.find((user) => user.personal_space_id === target);
+				const holder = holderOf(lookup.users, target);
 				if (holder)
 					chips.push({ text: m.filing_chip_recipient({ name: userLabel(holder) }), strong: true });
 			}
@@ -183,7 +176,7 @@ export function filingChips(
 			});
 		} else if (source.signal === 'signal_classifier') {
 			chips.push({
-				text: m.filing_chip_classifier({ score: percent(source.score ?? 0) }),
+				text: m.filing_chip_classifier({ score: formatPercent(source.score ?? 0) }),
 				strong: source.names
 			});
 		}
@@ -276,31 +269,66 @@ export function visibleNames(
 	};
 }
 
+/** "visible to Anna, Ben", or "visible to you only". */
+export function visibleText(members: readonly Member[], viewer: Viewer, green: boolean): string {
+	const { now } = visibleNames(members, viewer, green);
+	return now.length > 0 ? m.visible_to({ names: now.join(', ') }) : m.visible_to_you();
+}
+
+/** "Anna reads it once it is green"; null when nobody waits for that. */
+export function readersLaterText(
+	members: readonly Member[],
+	viewer: Viewer,
+	green: boolean
+): string | null {
+	const { later } = visibleNames(members, viewer, green);
+	return later.length > 0 ? m.visible_to_readers_later({ names: later.join(', ') }) : null;
+}
+
 /** "Liegt in Persönlich · nur für dich sichtbar". */
 export function whereText(current: string, lookup: Lookup, viewer: Viewer, green: boolean): string {
 	const space = lookup.spaces.find((entry) => entry.id === current);
-	const { now } = visibleNames(space?.members ?? [], viewer, green);
-	const visible = now.length > 0 ? m.visible_to({ names: now.join(', ') }) : m.visible_to_you();
+	const visible = visibleText(space?.members ?? [], viewer, green);
 	const person = personOf(current, lookup, viewer);
 	return person
 		? m.filing_where_person({ name: person, visible })
 		: m.filing_where({ space: spaceName(current, lookup, viewer), visible });
 }
 
+/** A member of the space as a chip; `key` is the member's user id (two members may share a
+ * display name). */
+export interface MemberChip {
+	key: string;
+	text: string;
+}
+
 /** The members of the space as chips: the caller first ("Du · bearbeitest"), then the others
  * with their role; readers of a document that is not green yet see it once it is. */
-export function memberChips(members: readonly Member[], viewer: Viewer, green: boolean): string[] {
+export function memberChips(
+	members: readonly Member[],
+	viewer: Viewer,
+	green: boolean
+): MemberChip[] {
 	const own = members.find((member) => member.user_id === viewer.id);
 	const others = members.filter((member) => member.user_id !== viewer.id);
 	return [
-		...(own ? [own.role === 'edit' ? m.filing_you_edit() : m.filing_you_read()] : []),
-		...others.map((member) =>
-			member.role === 'edit'
-				? m.filing_member_edit({ name: userLabel(member) })
-				: green
-					? m.filing_member_read({ name: userLabel(member) })
-					: m.filing_member_read_later({ name: userLabel(member) })
-		)
+		...(own
+			? [
+					{
+						key: own.user_id,
+						text: own.role === 'edit' ? m.filing_you_edit() : m.filing_you_read()
+					}
+				]
+			: []),
+		...others.map((member) => ({
+			key: member.user_id,
+			text:
+				member.role === 'edit'
+					? m.filing_member_edit({ name: userLabel(member) })
+					: green
+						? m.filing_member_read({ name: userLabel(member) })
+						: m.filing_member_read_later({ name: userLabel(member) })
+		}))
 	];
 }
 

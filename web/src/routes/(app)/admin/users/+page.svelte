@@ -5,6 +5,7 @@
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import EditButton from '#lib/components/EditButton.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import UserManage from '#lib/components/UserManage.svelte';
@@ -98,10 +99,7 @@
 	{#if !session.isAdmin}
 		<p class="text-muted-foreground">{m.admin_only()}</p>
 	{:else if problem}
-		<div class="flex flex-col items-start gap-3" role="alert">
-			<p class="text-destructive">{problem}</p>
-			<Button variant="outline" onclick={load}>{m.retry()}</Button>
-		</div>
+		<LoadProblem {problem} onretry={load} />
 	{:else if !users}
 		<p class="text-muted-foreground">{m.loading()}</p>
 	{:else}

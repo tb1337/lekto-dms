@@ -9,15 +9,24 @@ import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { labelled, outputReasonText, reasonsText } from '#lib/reasons.ts';
 import type { Node, NodeState } from '#lib/pipeline.ts';
-import { kind, list, named, object, percent, person, SIGNAL_NODES, text } from '#lib/signals.ts';
+import {
+	count,
+	kind,
+	list,
+	named,
+	namedContacts,
+	object,
+	percent,
+	person,
+	SIGNAL_NODES,
+	text
+} from '#lib/signals.ts';
 
 type LogEntry = components['schemas']['LogEntry'];
 type ProcessingStatus = components['schemas']['ProcessingStatus'];
 type Json = Record<string, unknown>;
 
 const SEPARATOR = ' · ';
-
-const count = (value: unknown) => (typeof value === 'number' ? value : 0);
 
 /** Whether a person wrote the entry (`person`, `person:<id>`) or it came with the source
  * system's metadata (`imported`), not the step itself. */
@@ -172,9 +181,7 @@ function alike(output: Json, lookup: Lookup | null): string {
  * identifier, else the contacts named, and the persons. */
 function found(output: Json, lookup: Lookup | null): string {
 	const identifier = list(output.identifiers).map(object)[0];
-	const names = list(output.named)
-		.map((item) => text(object(item).name))
-		.filter((name): name is string => name !== null);
+	const names = namedContacts(output);
 	const persons = list(output.persons).map((item) => person(object(item).user_id, lookup));
 	const parts = [
 		identifier

@@ -154,6 +154,19 @@
 	--color-chart-5: var(--chart-5);
 }
 
+/* LayerChart's tooltip (charts on the page "System"): its own background mixes colors with
+   `light-dark()`, which comes out transparent here; it takes the popover's (the doubled class
+   outweighs the component's scoped rule). */
+.lc-tooltip-root {
+	--color-surface-content: var(--popover-foreground);
+}
+.lc-tooltip-root .lc-tooltip-container.lc-tooltip-container[data-variant='default'] {
+	background-color: var(--popover);
+	color: var(--popover-foreground);
+	border: 1px solid var(--border);
+	border-radius: 0.5rem;
+}
+
 @layer base {
 	* {
 		@apply border-border outline-ring/50;

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
-	import { LineChart } from 'layerchart';
+	import { LineChart, Spline } from 'layerchart';
 	import { onMount, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
@@ -97,6 +97,33 @@
 			}))
 	);
 	const latestMeasured = $derived(measured.at(-1));
+	// The axis from a tenth below the weakest measurement; at most eight models named on it.
+	const floor = $derived(
+		Math.max(
+			0,
+			Math.floor(
+				Math.min(
+					1,
+					...measured.flatMap((model) => [model.contact ?? 1, model.document_type ?? 1])
+				) * 10
+			) /
+				10 -
+				0.1
+		)
+	);
+	const ticks = $derived(
+		measured
+			.filter(
+				(_, index) => index % Math.ceil(measured.length / 8) === 0 || index === measured.length - 1
+			)
+			.map((model) => model.number)
+	);
+	const tickLabel = (number: number) => {
+		const model = measured.find((item) => item.number === number);
+		return model
+			? `${m.classifier_history_model({ number })}\n${m.classifier_history_examples({ count: formatNumber(model.examples) })}`
+			: m.classifier_history_model({ number });
+	};
 	// Towards the next training, or the first model.
 	const done = $derived(status ? (status.model ? status.since : status.confirmed) : 0);
 	const needed = $derived(status ? (status.model ? status.retrain_after : status.min_examples) : 1);
@@ -302,7 +329,8 @@
 							data={measured}
 							x="number"
 							axis
-							yDomain={[0, 1]}
+							yDomain={[floor, 1]}
+							padding={{ top: 8, left: 48, right: 56, bottom: 40 }}
 							points={{ r: 4 }}
 							series={[
 								{
@@ -313,28 +341,30 @@
 								{
 									key: 'document_type',
 									label: chartConfig.document_type.label,
-									color: chartConfig.document_type.color,
-									props: { strokeDasharray: '6 4' }
+									color: chartConfig.document_type.color
 								}
 							]}
 							props={{
-								spline: { strokeWidth: 2.5 },
 								xAxis: {
-									ticks: measured.map((model) => model.number),
-									format: (value: number) => m.classifier_history_model({ number: value })
+									ticks: ticks,
+									format: (value: number) => tickLabel(value),
+									tickMultiline: true,
+									tickOcclusion: { priority: 'start-end', padding: 8 }
 								},
-								yAxis: { format: (value: number) => percent(value) }
+								yAxis: { ticks: 4, format: (value: number) => percent(value) }
 							}}
-						/>
+						>
+							{#snippet marks({ context })}
+								{#each context.series.visibleSeries as line (line.key)}
+									<Spline
+										seriesKey={line.key}
+										strokeWidth={2.5}
+										stroke-dasharray={line.key === 'document_type' ? '6 4' : undefined}
+									/>
+								{/each}
+							{/snippet}
+						</LineChart>
 					</Chart.Container>
-				</div>
-				<div class="mt-1 flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
-					{#each measured as model (model.number)}
-						<span class="tabular-nums">
-							{m.classifier_history_model({ number: model.number })} ·
-							{m.classifier_history_examples({ count: formatNumber(model.examples) })}
-						</span>
-					{/each}
 				</div>
 			{/if}
 		</section>

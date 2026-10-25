@@ -441,7 +441,7 @@
 					<BarChart
 						data={months}
 						x="month"
-						axis="x"
+						axis
 						grid={{ y: true, x: false }}
 						rule={false}
 						seriesLayout="stack"
@@ -450,7 +450,12 @@
 							label: chartConfig[lane].label,
 							color: chartConfig[lane].color
 						}))}
-						props={{ bars: { stroke: 'none' } }}
+						props={{
+							bars: { stroke: 'none' },
+							yAxis: { ticks: 4, format: formatNumber },
+							// Its sum is labelled in English only.
+							tooltip: { hideTotal: true }
+						}}
 					/>
 				</Chart.Container>
 			</div>

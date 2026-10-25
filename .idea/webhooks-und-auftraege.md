@@ -375,40 +375,26 @@ gültig); Alembic-Revisionen dazu.
 
 ## Offen
 
-Beim Bauen von M21 entschieden, zur Bestätigung durch Tobi:
+Beim Bauen von M21 entschieden, noch nicht ausdrücklich bestätigt:
 
-1. Ein Webhook dient als genau eine Art (`propose` oder `extract`); für beide Arten zwei
-   Webhooks, gern mit derselben URL.
-2. Die Frist eines Modellaufrufs steht am Webhook (`model_call.timeout_seconds`), Vorgabe
-   5 Minuten, 30 Sekunden bis 24 Stunden.
-3. „Je Art höchstens einer aktiv“ zählt die aktiven Webhooks aktiver Admins; ein zweiter: 409
-   (`model_call_taken`). Nur ein Admin gibt die Rolle, nur an den Webhook eines Admins;
-   entfernen darf sie jeder, der den Webhook verwaltet.
-4. Vertragsversionen `propose-ext-1` und `extract-ext-1`; `task.kind` heißt `external.propose`
-   und `external.extract`; das Token steht auch im Body (`task.token`), wie bei `thin` und
-   `full`. Der Body des Webhooks gilt für Modellaufrufe nicht (immer der Vertrag); Ereignisse
-   und Regeln am selben Webhook nutzen ihn weiter.
-5. Datei-Links: signiert über `SecretCipher` (AES-GCM mit `LEKTO_SECRET_KEY`, gebunden an
-   Auftrag, Dokument, Lauf, Datei und Ablauf); sie gelten bis zur Frist, auch nach der Antwort;
-   401 nach Ablauf oder mit falscher Signatur, 409 nach Neuverarbeitung oder Löschen. In
-   OpenAPI als Sicherheitsschema `fileSignature`.
-6. Die Kante `pages → signal_llm` gilt immer: „Neu verarbeiten ab `pages`“ fragt deshalb das
+1. Die Kante `pages → signal_llm` gilt immer: „Neu verarbeiten ab `pages`“ fragt deshalb das
    Modell (oder den Webhook) neu. Bestätigen nach einem OCR-Fehler rendert die Seiten weiter,
    statt sie zu übernehmen.
-7. Kein zweiter Versuch: Eine Antwort, die nicht passt, ist sofort 422 und rot (das interne
-   Modell wird nach einer unpassenden Antwort einmal neu gefragt).
-8. Im Kontext stehen die Spaces anderer Nutzer mit dem Anzeigenamen als Label, wie im Prompt
+2. Vertragsversionen `propose-ext-1` und `extract-ext-1`; `task.kind` heißt `external.propose`
+   und `external.extract`; das Token steht auch im Body (`task.token`), wie bei `thin` und
+   `full`.
+3. Datei-Links: signiert über `SecretCipher` (AES-GCM mit `LEKTO_SECRET_KEY`, gebunden an
+   Auftrag, Dokument, Lauf, Datei und Ablauf); 401 nach Ablauf oder mit falscher Signatur, 409
+   nach Neuverarbeitung oder Löschen. In OpenAPI als Sicherheitsschema `fileSignature`.
+4. Im Kontext stehen die Spaces anderer Nutzer mit dem Anzeigenamen als Label, wie im Prompt
    heute; Felder mit `form` (wie der Wert geschrieben wird) und `type`.
-9. Protokoll: der Kontext ohne Auftrag und Links als „Nutzer“, die Antwort als „Antwort“, kein
+5. Protokoll: der Kontext ohne Auftrag und Links als „Nutzer“, die Antwort als „Antwort“, kein
    Systemprompt (die UI blendet den Reiter aus); `model_version` ist `producer`, ohne ihn
    `external`.
-10. Das Beispiel liegt unter `examples/model-calls/` (Skript, Compose-Erweiterung, README); ein
-    optionales `OLLAMA_API_KEY` erlaubt einen Proxy vor Ollama.
-11. Ein Modellaufruf, der noch auf Platz wartet, wird abgebrochen, wenn sein Webhook geht oder
-    nicht mehr dient; der Knoten fragt dann neu (einen anderen Webhook oder das Modell), statt
-    rot zu werden. Ein schon gesendeter läuft bis zur Frist (Entscheidung 29).
-12. Ist der Lauf inzwischen gescheitert (ein anderes Signal rot), geht nichts mehr hinaus; ein
-    wartender Auftrag gibt seinen Platz frei.
+6. Das Beispiel liegt unter `examples/model-calls/` (Skript, Compose-Erweiterung, README); ein
+   optionales `OLLAMA_API_KEY` erlaubt einen Proxy vor Ollama.
+7. Ist der Lauf inzwischen gescheitert (ein anderes Signal rot), geht nichts mehr hinaus; ein
+   wartender Auftrag gibt seinen Platz frei.
 
 ## Entscheidungen (Tobi, 25.10.2026)
 
@@ -477,6 +463,21 @@ Beim Bauen von M21 entschieden, zur Bestätigung durch Tobi:
 40. Der Template-Editor schlägt in Regeln `steps.<name>` der Frageschritte davor vor.
 41. Beispiel-Konsument: ein Python-Skript nur mit der Standardbibliothek in `examples/`, dazu ein
     Compose-Beispiel neben `docker/` mit Ollama.
+42. Ein Webhook dient als genau eine Art (`propose` oder `extract`); für beide Arten zwei
+    Webhooks, gern mit derselben URL.
+43. Die Frist eines Modellaufrufs steht am Webhook, Vorgabe 5 Minuten, 30 Sekunden bis
+    24 Stunden.
+44. „Je Art höchstens einer aktiv“ zählt die aktiven Webhooks aktiver Admins; ein zweiter: 409.
+    Nur ein Admin gibt die Rolle, nur an den Webhook eines Admins; entfernen darf sie jeder, der
+    den Webhook verwaltet.
+45. Für Modellaufrufe gilt immer der feste Vertrag, nicht der Body des Webhooks; Ereignisse und
+    Regeln am selben Webhook nutzen ihn weiter.
+46. Die Datei-Links gelten bis zur Frist, auch nach der Antwort.
+47. Kein zweiter Versuch: Eine Antwort, die nicht passt, ist sofort 422 und rot.
+48. Ein Modellaufruf, der noch auf Platz wartet, wird abgebrochen, wenn sein Webhook geht oder
+    nicht mehr dient; der Knoten fragt dann neu: einen anderen Webhook, sonst das interne
+    Modell, sonst enthält sich `signal_llm`. Ein schon gesendeter läuft bis zur Frist
+    (Entscheidung 29).
 
 ## Quellen
 

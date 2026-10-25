@@ -7,10 +7,13 @@ from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.fields import (
     FieldDefinition,
     FieldType,
+    FieldValue,
     Money,
     Url,
+    Writing,
     field_from_json,
     field_to_json,
+    read_written,
 )
 from lekto.core.domain.ids import DocumentTypeId, new_id
 from lekto.core.domain.periods import Period, PeriodKind
@@ -138,6 +141,14 @@ def test_what_a_period_is_follows_from_its_ends(period: Period, kind: PeriodKind
 )
 def test_a_period_is_written_in_iso_8601(period: Period, notation: str) -> None:
     assert period.notation == notation
+    assert Period.from_notation(notation) == period
+
+
+@pytest.mark.parametrize(
+    "text", ["", "September 2026", "2026-13", "2026-Q5", "2026-W54", "2026-09-30/2026-09-01", "26"]
+)
+def test_only_the_iso_notation_is_read_back(text: str) -> None:
+    assert Period.from_notation(text) is None
 
 
 def test_a_period_knows_its_quarter_and_iso_week() -> None:
@@ -242,3 +253,67 @@ def test_choices_and_scope_change() -> None:
     assert text.change_scope(None) is False  # global again
     with pytest.raises(ValidationError):
         text.change_scope([])
+
+
+# --- values as a template writes them --------------------------------------------------------
+
+RECEIVED = date(2026, 10, 1)
+
+
+@pytest.mark.parametrize(
+    ("data_type", "text", "expected"),
+    [
+        # The forms templates write themselves come first.
+        (FieldType.NUMBER, "1.234", Decimal("1.234")),
+        (FieldType.NUMBER, "-12", Decimal(-12)),
+        (FieldType.AMOUNT, "1.234", Money(Decimal("1.234"), "EUR")),
+        (FieldType.AMOUNT, "84.20 USD", Money(Decimal("84.20"), "USD")),
+        (FieldType.AMOUNT, "CHF 5", Money(Decimal(5), "CHF")),
+        (FieldType.DATE, "2026-03-12", date(2026, 3, 12)),
+        (FieldType.PERIOD, "2026-Q3", Period.quarter(2026, 3)),
+        (FieldType.PERIOD, "2026-09-01/2026-09-14", Period(date(2026, 9, 1), date(2026, 9, 14))),
+        (FieldType.BOOLEAN, "false", False),
+        # Then as a person writes it.
+        (FieldType.NUMBER, "1.234,5", Decimal("1234.5")),
+        (FieldType.NUMBER, "  7 Stück ", Decimal(7)),
+        (FieldType.AMOUNT, "3.650,00 EUR", Money(Decimal("3650.00"), "EUR")),
+        (FieldType.AMOUNT, "€ 84,20", Money(Decimal("84.20"), "EUR")),
+        (FieldType.DATE, "12. März 2026", date(2026, 3, 12)),
+        (FieldType.DATE, "12.03.26", date(2026, 3, 12)),
+        (FieldType.PERIOD, "KW 38/2026", Period.week(2026, 38)),
+        (FieldType.PERIOD, "September 2026", Period.month(2026, 9)),
+        (FieldType.BOOLEAN, "Ja", True),
+        (FieldType.TEXT, "  A  text\n", "A  text"),
+        (FieldType.CHOICE, " yearly ", "yearly"),
+        (FieldType.LINK, " https://example.org/a ", Url("https://example.org/a")),
+        # What cannot be read.
+        (FieldType.NUMBER, "seven", None),
+        (FieldType.NUMBER, "1 and 2", None),
+        (FieldType.AMOUNT, "12 EUR USD", None),
+        (FieldType.DATE, "31.02.2026", None),
+        (FieldType.PERIOD, "September", None),
+        (FieldType.BOOLEAN, "maybe", None),
+        (FieldType.CHOICE, "Yearly", None),
+        (FieldType.LINK, "example.org", None),
+        (FieldType.TEXT, " \n ", None),
+    ],
+)
+def test_a_template_value_is_read_as_its_field_has_it(
+    data_type: FieldType, text: str, expected: FieldValue | None
+) -> None:
+    choices = ("monthly", "yearly") if data_type is FieldType.CHOICE else ()
+    definition = FieldDefinition.create(name="F", data_type=data_type, now=NOW, choices=choices)
+
+    assert read_written(definition, text, Writing(), received=RECEIVED) == expected
+
+
+def test_the_writing_settles_ambiguous_numbers_and_missing_currencies() -> None:
+    number = FieldDefinition.create(name="N", data_type=FieldType.NUMBER, now=NOW)
+    amount = FieldDefinition.create(name="A", data_type=FieldType.AMOUNT, now=NOW)
+    english = Writing("en", "GBP")
+
+    assert read_written(number, "1,234", Writing()) == Decimal("1.234")
+    assert read_written(number, "1,234", english) == Decimal(1234)
+    assert read_written(amount, "1,250", english) == Money(Decimal(1250), "GBP")
+    assert read_written(amount, "12,50", english) == Money(Decimal("12.50"), "GBP")
+    assert read_written(amount, "12.50", english) == Money(Decimal("12.50"), "GBP")

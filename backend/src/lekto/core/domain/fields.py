@@ -11,7 +11,14 @@ from typing import Self
 from urllib.parse import urlsplit
 
 from lekto.core.domain.errors import ValidationError
-from lekto.core.domain.evidence import fold_umlauts
+from lekto.core.domain.evidence import (
+    fold_umlauts,
+    read_amount,
+    read_date,
+    read_number,
+    read_period,
+    truth_value,
+)
 from lekto.core.domain.ids import DocumentTypeId, FieldId, new_id
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.master_data import Assignment, MasterData, checked_description
@@ -321,6 +328,83 @@ _PERIOD_KEYS = {"start", "end"}
 
 def _numeric(value: object) -> bool:
     return isinstance(value, int | float | str) and not isinstance(value, bool)
+
+
+# --- values as a template writes them --------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Writing:
+    """How templates write values (`TemplateRenderer.writing`): `language` (ISO 639-1, of
+    `LEKTO_TEMPLATE_LOCALE`) the way an ambiguous number is meant, `currency` the one an amount
+    without its own has (`LEKTO_DEFAULT_CURRENCY`)."""
+
+    language: str = "de"
+    currency: str = "EUR"
+
+
+_DECIMAL = r"-?\d+(?:\.\d+)?"
+_PLAIN_NUMBER = re.compile(_DECIMAL)
+_PLAIN_AMOUNT = re.compile(
+    rf"(?P<before>[A-Z]{{3}})?\s*(?P<amount>{_DECIMAL})\s*(?P<after>[A-Z]{{3}})?"
+)
+_ISO_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def read_written(
+    definition: FieldDefinition,
+    text: str,
+    writing: Writing,
+    *,
+    received: date | None = None,
+) -> FieldValue | None:
+    """The value of `definition` that `text` writes (what a rule's template rendered); None if it
+    cannot be read. First the forms in which templates write values themselves: a number as its
+    decimal text (`1234.5`, `1.234` is one point two three four), a day in ISO 8601, a period as
+    `Period.notation` (`2026-Q3`), an amount as a number with a currency code or without one.
+    Otherwise as a person writes it, as Lekto reads a model's value (`2.111,68 €`, `12. März
+    2026`, `KW 38/2026`, `ja`): an ambiguous number the way `writing.language` means it, an
+    amount without a currency in `writing.currency`, a two-digit year the reading nearest to
+    `received` (the day the document came in). A period without a year (`September`) is not
+    read: a rule does not guess it. A choice must be one of the options; text is the text
+    without the spaces around it, never empty."""
+    raw = " ".join(text.split())
+    if not raw:
+        return None
+    value: object = None
+    try:
+        match definition.data_type:
+            case FieldType.TEXT:
+                value = text.strip()
+            case FieldType.NUMBER if _PLAIN_NUMBER.fullmatch(raw):
+                value = Decimal(raw)
+            case FieldType.NUMBER:
+                value = read_number(raw, language=writing.language)
+            case FieldType.AMOUNT:
+                plain = _PLAIN_AMOUNT.fullmatch(raw)
+                if plain and not (plain["before"] and plain["after"]):
+                    code = plain["before"] or plain["after"] or writing.currency
+                    value = Money(Decimal(plain["amount"]), code)
+                elif found := read_amount(raw, language=writing.language, default=writing.currency):
+                    value = Money(*found)
+            case FieldType.DATE if _ISO_DAY.fullmatch(raw):
+                value = date.fromisoformat(raw)
+            case FieldType.DATE:
+                value = read_date(raw, received=received)
+            case FieldType.PERIOD:
+                value = Period.from_notation(raw)
+                if value is None:
+                    read = read_period(raw, received=received)
+                    value = None if read is None or read[1] else read[0]
+            case FieldType.BOOLEAN:
+                value = truth_value(raw)
+            case FieldType.CHOICE:
+                value = raw
+            case FieldType.LINK:
+                value = Url(raw)
+        return None if value is None else definition.validate(value)
+    except (InvalidOperation, ValueError, ValidationError):
+        return None
 
 
 _NOT_KEY = re.compile(r"[^a-z0-9]+")

@@ -1,6 +1,7 @@
 """Periods: spans of days, both ends included, such as the month a time sheet is about."""
 
 import calendar
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from enum import StrEnum
@@ -39,6 +40,13 @@ MONTH_NAMES: dict[str, tuple[str, ...]] = {
     ),
 }
 """The names of the months, by language, January first."""
+
+_DAY = r"\d{4}-\d{2}-\d{2}"
+_NOTATION = re.compile(
+    rf"(?P<day>{_DAY})|(?P<start>{_DAY})/(?P<end>{_DAY})"
+    r"|(?P<year>\d{4})(?:-Q(?P<quarter>\d)|-W(?P<week>\d{2})|-(?P<month>\d{2}))?"
+)
+"""The forms of `Period.notation`."""
 
 
 class PeriodKind(StrEnum):
@@ -143,6 +151,29 @@ class Period:
             case PeriodKind.YEAR:
                 return str(start.year)
         return str(self)
+
+    @classmethod
+    def from_notation(cls, text: str) -> Self | None:
+        """The period `notation` writes (`2026`, `2026-Q3`, `2026-09`, `2026-W38`, `2026-09-15`,
+        `2026-09-01/2026-09-14`); None for any other text."""
+        found = _NOTATION.fullmatch(text.strip())
+        if found is None:
+            return None
+        year = int(found["year"]) if found["year"] else 0
+        try:
+            if found["quarter"]:
+                return cls.quarter(year, int(found["quarter"]))
+            if found["week"]:
+                return cls.week(year, int(found["week"]))
+            if found["month"]:
+                return cls.month(year, int(found["month"]))
+            if found["day"]:
+                return cls.day(date.fromisoformat(found["day"]))
+            if found["start"]:
+                return cls(date.fromisoformat(found["start"]), date.fromisoformat(found["end"]))
+            return cls.year(year)
+        except (ValueError, ValidationError):
+            return None
 
     def overlaps(self, other: "Period") -> bool:
         return self.start <= other.end and other.start <= self.end

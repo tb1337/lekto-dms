@@ -43,6 +43,9 @@ def test_the_parameters_must_fit_the_template() -> None:
 
 
 def test_the_english_text_writes_each_kind() -> None:
+    assert because(ReasonCode.TEMPLATE_UNREADABLE, value="n/a", type="amount").text == (
+        "'n/a' cannot be read as an amount"
+    )
     assert because(ReasonCode.SIGNALS_DISAGREE, names=["A", "B"]).text == (
         "the signals disagree: 'A' or 'B'"
     )

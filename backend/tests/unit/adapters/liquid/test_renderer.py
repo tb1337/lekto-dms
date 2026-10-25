@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 
 from lekto.adapters.outbound.liquid import LiquidTemplateRenderer, parse_locale
-from lekto.core.domain.fields import Money
+from lekto.core.domain.fields import Money, Writing
 from lekto.core.domain.periods import Period
 from lekto.core.domain.templates import TemplateValue
 from tests.contracts.templates import TemplateRendererContract
@@ -36,6 +36,8 @@ def test_the_settings_shape_dates_and_amounts() -> None:
     assert austrian.render("{{ amount }}", values) == "3.650,00 USD"
     assert english.render("{{ amount.amount | currency }}", values) == "$3,650.00"
     assert austrian.render("{{ amount.amount | currency }}", values) == "€\xa03.650,00"
+    # How it writes, to read back what a template rendered for a field.
+    assert (english.writing, austrian.writing) == (Writing("en", "USD"), Writing("de", "EUR"))
 
 
 @pytest.mark.parametrize(

@@ -41,6 +41,7 @@
 	const rows = $derived(
 		[
 			[m.tokens_input(), count(usage.input)],
+			usage.cached === null ? null : [m.tokens_cached(), count(usage.cached)],
 			[m.tokens_output(), count(usage.output)],
 			[m.tokens_total(), count(usage.total)],
 			usage.load === null ? null : [m.tokens_load(), seconds(usage.load)],

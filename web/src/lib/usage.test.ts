@@ -52,11 +52,23 @@ describe('usageOf', () => {
 	});
 });
 
+describe('tokens from a cache', () => {
+	it('sums what the endpoints took from their cache, where they said', () => {
+		const tokens = [
+			{ prompt: 2400, completion: 10, cached: 2048, usage: {} },
+			{ prompt: 2450, completion: 12, cached: 2400, usage: {} }
+		];
+		expect(usageOf({ tokens })?.cached).toBe(4448);
+		expect(usageOf({ tokens: [{ prompt: 5, completion: 1, usage: {} }] })?.cached).toBeNull();
+	});
+});
+
 describe('speed and splitInput', () => {
 	it('estimate', () => {
 		expect(speed(184, 3.03)).toBeCloseTo(60.73, 1);
 		expect(speed(184, 0)).toBeNull();
-		expect(splitInput(100, 'a'.repeat(30), 'b'.repeat(70))).toEqual([30, 70]);
-		expect(splitInput(100, '', '')).toEqual([0, 100]);
+		expect(splitInput(100, ['a'.repeat(30), 'b'.repeat(70)])).toEqual([30, 70]);
+		expect(splitInput(100, ['', ''])).toEqual([0, 100]);
+		expect(splitInput(10, ['a', 'b', 'c'])).toEqual([3, 3, 4]);
 	});
 });

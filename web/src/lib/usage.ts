@@ -22,6 +22,8 @@ export interface Usage {
 
 const KNOWN = new Set([
 	'prompt_tokens',
+	// Shown as `cached` (the log reads them from either report).
+	'cache_read_input_tokens',
 	'completion_tokens',
 	'total_tokens',
 	'prompt_eval_count',

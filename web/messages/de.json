@@ -1342,7 +1342,7 @@
 	"prompt_input": "{characters} Zeichen · ≈ {tokens} Eingabe-Tokens",
 	"prompt_output": "{characters} Zeichen · {tokens} Ausgabe-Tokens",
 	"prompt_document_note": "Der Dokumenttext ist Teil der Nachricht.",
-	"prompt_parts_note": "In dieser Reihenfolge gesendet: Systemprompt (bei jedem Aufruf gleich), Dokument, Aufgabe. Aufrufe zu einem Dokument beginnen gleich, ein Endpunkt kann den Anfang cachen.",
+	"prompt_parts_note": "In dieser Reihenfolge gesendet: Systemprompt (bei jedem Aufruf gleich), Dokument, Aufgabe; mit der Einstellung json_object danach das Schema der Antwort. Aufrufe zu einem Dokument beginnen gleich, ein Endpunkt kann den Anfang cachen.",
 	"log_editors_only": "Was der Schritt getan hat, sehen die Bearbeiter des Space und Admins.",
 	"log_status": "Stand",
 	"log_started": "Gestartet",

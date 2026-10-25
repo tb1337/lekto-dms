@@ -60,6 +60,11 @@ describe('tokens from a cache', () => {
 		];
 		expect(usageOf({ tokens })?.cached).toBe(4448);
 		expect(usageOf({ tokens: [{ prompt: 5, completion: 1, usage: {} }] })?.cached).toBeNull();
+		// LiteLLM's own figure for Anthropic is that same number: not a second row.
+		const anthropic = [
+			{ prompt: 9, completion: 1, cached: 7, usage: { cache_read_input_tokens: 7 } }
+		];
+		expect(usageOf({ tokens: anthropic })?.extra).toEqual([]);
 	});
 });
 

@@ -207,7 +207,13 @@ signals that ask no model, so new aliases, identifiers or a new model count); bo
 jobs of the old run are recognised as stale. A document keeps the lane its first run ended in
 (`first_lane`: green went through without a review, yellow needed one, red failed); neither
 a confirmation nor a later run changes it, so reports can tell how many documents went straight
-through.
+through. For the page "System", Lekto keeps more as it happens (`core/domain/first_runs.py`,
+port `ProcessingFacts`): the first run (when receiving began, when the run first stopped, how
+long each node worked; `first_runs`), and per field the verdict at a person's first decision on
+it (`field_verdicts`: `taken`, `accepted`, `corrected`, `added`, or `early` before the first run
+stopped), with whether each signal named the person's value. Confirming in the inbox decides
+every field, a confirming change the fields it sets and those the automation had set, a move the
+space; a field keeps its first verdict. The statistics over both are counted live.
 
 | Node | Input | Derivatives (object store) | Outcome |
 | --- | --- | --- | --- |
@@ -835,6 +841,14 @@ Revision 0040 (issue #82) adds the spaces a learned identifier was learned in
 (`contact_identifiers.user_id` is `ON DELETE CASCADE`: a deleted user's number would otherwise
 be everyone's to see). Identifiers learned before have no spaces: until the next training
 (`lekto train`, `POST /classifier/train`) only admins see them.
+
+Revision 0042 adds the first runs (`first_runs`) and the verdicts per field (`field_verdicts`)
+and reads them back from the log as far as it tells: the first run of each document whose first
+lane is known (the first entry of each node in run 1 up to the stop: filing for green, the
+failed node for red, the last node for yellow); the verdicts of people on documents of the web
+and the API (confirmations, changes, moves; an entered value is judged by the value the document
+holds now if nothing touched the field since, else by whether it differs from before, where that
+tells). Migrated documents get no verdicts: their changes are mostly the migration's alignment.
 
 **Evaluation.** `lekto evaluate [--fake]` runs the synthetic documents in
 `evaluation/` cold and trained and writes a report; see [evaluation/README.md](evaluation/README.md).

@@ -11,7 +11,7 @@ from pathlib import Path
 from uuid import UUID
 
 from lekto.core.domain import media_types
-from lekto.core.domain.classification import CONFIRMING
+from lekto.core.domain.classification import CONFIRMING, SPACE
 from lekto.core.domain.codes import Code, GiroCode, code_identifiers, codes_from_json, giro_code
 from lekto.core.domain.documents import Channel, Document, DocumentChanges, confirms
 from lekto.core.domain.errors import (
@@ -24,6 +24,7 @@ from lekto.core.domain.errors import (
 from lekto.core.domain.exchanges import RunExchange, exchanges_from_json
 from lekto.core.domain.facts import Facts, facts_in, on_pages
 from lekto.core.domain.fields import SORTABLE_TYPES, FieldType, FieldValue
+from lekto.core.domain.first_runs import Decision
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import (
     ContactId,
@@ -46,6 +47,7 @@ from lekto.core.domain.permissions import (
 )
 from lekto.core.domain.pipeline import Node, NodeRun
 from lekto.core.domain.reasons import Action, ReasonCode, because
+from lekto.core.domain.rule_planner import changed_fields
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.text_places import TextPlaces
 from lekto.core.domain.users import User
@@ -77,6 +79,7 @@ from lekto.core.services._access import (
     readable_log,
     writable_document,
 )
+from lekto.core.services._first_runs import keep_verdicts
 from lekto.core.services._moves import move_by_person
 from lekto.core.services._tags import expand, expanded, tag_counts, tag_tree
 from lekto.core.services.inbox import Review, in_inbox, node_reviews, open_nodes
@@ -732,6 +735,16 @@ class DocumentService:
                 changed, before.tag_ids, document.tag_ids, await _manual(uow, before, document)
             ):
                 document.mark_confirmed(now)
+                if not dry_run:  # before the rules: the verdicts are on the person's change
+                    await keep_verdicts(
+                        uow,
+                        Decision.CHANGE,
+                        before=before,
+                        after=document,
+                        given=changed_fields(given),
+                        definitions=definitions,
+                        now=now,
+                    )
             elif confirm and CONFIRMING & set(changed):
                 document.record_decision()  # tags set by hand: no confirmation, but a decision
             run = None
@@ -788,15 +801,26 @@ class DocumentService:
                 receiver = await uow.users.find(target.personal_of)
                 if receiver is None or not receiver.active:
                     raise NotFoundError("space", space)
+            now = self._clock.now()
+            before = copy.deepcopy(document)
             await move_by_person(
                 uow,
                 document,
                 source,
                 target,
                 by=user,
-                now=self._clock.now(),
+                now=now,
                 rules=self._rules,
                 prepared=prepared,
+            )
+            await keep_verdicts(
+                uow,
+                Decision.MOVE,
+                before=before,
+                after=document,
+                given={SPACE},
+                definitions=await field_definitions(uow),
+                now=now,
             )
             await uow.commit()
 

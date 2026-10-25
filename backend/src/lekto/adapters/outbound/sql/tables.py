@@ -425,6 +425,35 @@ processing_log = Table(
     Column("duration_us", BigInteger, nullable=False),
 )
 
+# --- what processing facts keep (`domain.first_runs`): rows go with their document --------------
+
+# A document's first run: when its receiving began, when the run first stopped, and how long each
+# node worked in it (JSON: node to microseconds).
+first_runs = Table(
+    "first_runs",
+    metadata,
+    Column("document_id", Uuid, ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
+    Column("started_at", UtcDateTime, nullable=False),
+    Column("stopped_at", UtcDateTime, nullable=False, index=True),
+    Column("steps", json_type(), nullable=False),
+)
+
+# A person's verdict on a field of a document, at their first decision on it; per signal (a
+# column named as its node) whether it named the person's value, another (false) or none (null).
+field_verdicts = Table(
+    "field_verdicts",
+    metadata,
+    Column("document_id", Uuid, ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
+    Column("field", Text, primary_key=True),
+    Column("verdict", Text, nullable=False),
+    Column("decided_at", UtcDateTime, nullable=False, index=True),
+    Column("decision", Text, nullable=False),
+    Column("signal_llm", Boolean, nullable=True),
+    Column("signal_classifier", Boolean, nullable=True),
+    Column("signal_neighbours", Boolean, nullable=True),
+    Column("signal_facts", Boolean, nullable=True),
+)
+
 # --- the inbox (`domain.inbox`): rows go with their document ------------------------------------
 
 # When a user saw a document last; it is new for them again once it became new after

@@ -20,6 +20,7 @@ from lekto.core.ports.repository import (
     FieldDefinitionRepository,
     InboxRepository,
     LensRepository,
+    ProcessingFacts,
     ProcessingLog,
     ProfileRepository,
     RuleApplicationRepository,
@@ -67,6 +68,8 @@ class UnitOfWork(Protocol):
     def documents(self) -> DocumentRepository: ...
     @property
     def processing_log(self) -> ProcessingLog: ...
+    @property
+    def processing_facts(self) -> ProcessingFacts: ...
     @property
     def document_identifiers(self) -> DocumentIdentifierRepository: ...
     @property

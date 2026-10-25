@@ -764,20 +764,23 @@ function checkFieldValue(field: FieldInfo, value: Value): Problem | null {
 
 // --- a field's value as a template ---------------------------------------------------------
 
-/** Where Liquid begins an output, a tag or a comment. */
-const MARKUP = /\{[{%#]/;
+/** Where Liquid begins an output or a tag. */
+const MARKUP = /\{[{%]/;
 
 /**
- * Whether an action's value for `field` is a template: always for a text field; for the other
- * types, text that is not a fixed value in the field's JSON form (an amount, a period and yes
- * or no are fixed as JSON, a number and a date as their text, a choice and a link as text
- * without markup). The API takes text as a template for every type and reads what it writes.
+ * Whether an action's value for `field` is shown as a template: always for a text field; for
+ * the other types, text that is not a fixed value in the field's JSON form (an amount, a
+ * period and yes or no are fixed as JSON, a number and a date as their text, a choice as one of
+ * its options or text without markup, a link as text without markup). An empty value is a
+ * fixed one not given yet. The API takes text as a template for every type (a choice's option
+ * as it is) and reads what it writes; the builder decides once, when it shows the action
+ * (`SetFieldNode.templated`).
  */
 export function isTemplated(field: FieldInfo | null, value: Value): boolean {
 	if (typeof value !== 'string') return false;
+	if (field?.data_type === 'text') return true;
+	if (value === '') return false;
 	switch (field?.data_type) {
-		case 'text':
-			return true;
 		case 'boolean':
 		case 'amount':
 		case 'period':
@@ -786,6 +789,8 @@ export function isTemplated(field: FieldInfo | null, value: Value): boolean {
 			return !isNumber(value);
 		case 'date':
 			return !isDate(value);
+		case 'choice':
+			return !field.choices.includes(value) && MARKUP.test(value);
 		default:
 			return MARKUP.test(value);
 	}

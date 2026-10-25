@@ -84,7 +84,13 @@
 			: null
 	);
 
-	// A field's value as a template or a fixed value: as the person switched, else by the value.
+	// A field's value as a template or a fixed value: decided once by the value when the action
+	// is shown or gets another field, then as the person switches (not anew with every key).
+	$effect(() => {
+		if (action.type === 'set_field' && action.templated === undefined && field) {
+			action.templated = isTemplated(field, action.value);
+		}
+	});
 	const templated = $derived(
 		action.type === 'set_field' && (action.templated ?? isTemplated(field, action.value))
 	);

@@ -88,7 +88,7 @@
 			value={templated ? 'template' : 'value'}
 			options={[
 				{ value: 'value', label: m.rule_value_fixed() },
-				{ value: 'template', label: m.rule_value_template(), hint: m.rule_value_template_hint() }
+				{ value: 'template', label: m.rule_value_template() }
 			]}
 			onchange={(next) => ontemplated?.(next === 'template')}
 		/>
@@ -102,6 +102,7 @@
 				target={field}
 				bind:value={() => text, (next) => onchange(next)}
 			/>
+			<p class="text-sm text-muted-foreground">{m.rule_value_template_hint()}</p>
 		{:else}
 			{@render fixed()}
 		{/if}

@@ -1072,7 +1072,7 @@
 	"rule_action_type": "Aktion",
 	"template_missing": "Mit „{title}“ fehlt {value}: es würde nichts gesetzt.",
 	"template_read": "Gelesen als {type}:",
-	"template_unreadable": "Lässt sich nicht als {type} lesen: die Aktion setzt nichts.",
+	"template_unreadable": "Für den Typ {type} nicht lesbar: die Aktion setzt nichts.",
 	"template_preview": "Mit „{title}“:",
 	"template_editor": "Template-Editor",
 	"template_editor_open": "Im Template-Editor bearbeiten",

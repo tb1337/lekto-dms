@@ -84,6 +84,9 @@ Rechnung, und eine zweite Mahnung ebenso auf die Rechnung, nicht auf die erste M
     `defusedxml`.
 11. Die Prompts werden für Prompt-Caching umgebaut („wenn wir damit Prompt-Caching kriegen,
     gern“), gemessen mit dem Bewertungssatz (siehe unten).
+12. Lekto bleibt neutral gegenüber dem Anbieter und setzt keine Cache-Marken. Für Anthropic setzt
+    sie der LiteLLM-Proxy (Konfiguration außerhalb von Lekto, Tobi); Groq und Ollama cachen von
+    selbst.
 
 ## Sprachmodell: mehrere Aufrufe, ein Dokument
 
@@ -109,9 +112,11 @@ Heute teilen zwei Aufrufe nur den Systemprompt: Das Dokument steht am Ende, hint
 
 Vorschlag (Creamy):
 
-1. Reihenfolge: Systemprompt (gleich für alle Aufrufe), dann das Dokument als eigene Nachricht,
-   dann die Aufgabe. Das Dokument bleibt eine Nachricht des Nutzers in seinem Marker, nie im
-   Systemprompt: Es ist fremder Inhalt.
+1. Reihenfolge: Systemprompt (gleich für alle Aufrufe; was je Aufgabe anders ist, steht in der
+   Aufgabe), dann das Dokument als eigene Nachricht, dann die Aufgabe. Das Dokument bleibt eine
+   Nachricht des Nutzers in seinem Marker, nie im Systemprompt: Es ist fremder Inhalt. Die
+   Anfrage hat damit eine feste Form, auf die sich der Proxy verlassen kann: `messages[0]`
+   System, `messages[1]` Dokument, ab `messages[2]` Aufgabe und eine etwaige Wiederholung.
 2. Port: `StructuredRequest` trennt Dokument und Aufgabe. Der OpenAI-kompatible Adapter schickt
    drei Nachrichten; Lekto bleibt neutral gegenüber dem Anbieter.
 3. Getrennte Aufrufe mit gleichem Anfang statt Chatverlauf: Jede Antwort wird für sich geprüft,
@@ -133,8 +138,6 @@ Vorschlag (Creamy):
 
 ## Offene Punkte
 
-- LiteLLM: Marken für Anthropic im Proxy konfigurieren (nach Index auf die Nachricht mit dem
-  Dokument) oder von Lekto mitschicken; Vorschlag Creamy: im Proxy, Lekto bleibt neutral.
 - Sichtbarkeit: Eine Nummer, die eine Person nennt, bleibt privat (`architektur.md`,
   Berechtigungen; Issue #82). Den Wert sehen die Leser des Dokuments im Text, nicht, wem er
   gehört; gilt so auch für Suche und Filter.

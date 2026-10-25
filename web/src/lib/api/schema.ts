@@ -4246,6 +4246,12 @@ export interface components {
 			 * @description The nodes whose results this node needs.
 			 */
 			requires: components['schemas']['Node'][];
+			/**
+			 * Waits For
+			 * @description Nodes this node also waits for without needing their results; processing again from one of them leaves this node alone.
+			 * @default []
+			 */
+			waits_for: components['schemas']['Node'][];
 		};
 		/**
 		 * Grouping

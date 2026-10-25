@@ -13,14 +13,14 @@ import {
 } from './pipeline.ts';
 
 const GRAPH: GraphNode[] = [
-	{ node: 'receive', requires: [] },
-	{ node: 'ocr', requires: ['receive'] },
-	{ node: 'pages', requires: ['receive'] },
-	{ node: 'parse', requires: ['ocr'] },
-	{ node: 'judge', requires: ['parse'] },
-	{ node: 'fields', requires: ['judge'] },
-	{ node: 'apply_rules', requires: ['fields'] },
-	{ node: 'file', requires: ['apply_rules', 'pages'] }
+	{ node: 'receive', requires: [], waits_for: [] },
+	{ node: 'ocr', requires: ['receive'], waits_for: [] },
+	{ node: 'pages', requires: ['receive'], waits_for: [] },
+	{ node: 'parse', requires: ['ocr'], waits_for: [] },
+	{ node: 'judge', requires: ['parse'], waits_for: [] },
+	{ node: 'fields', requires: ['judge'], waits_for: [] },
+	{ node: 'apply_rules', requires: ['fields'], waits_for: [] },
+	{ node: 'file', requires: ['apply_rules', 'pages'], waits_for: [] }
 ];
 
 function processing(
@@ -106,6 +106,16 @@ describe('levels', () => {
 			['apply_rules'],
 			['file']
 		]);
+	});
+
+	it('puts a node after one it only waits for, which still does not count as needed', () => {
+		const waiting: GraphNode[] = [
+			{ node: 'receive', requires: [], waits_for: [] },
+			{ node: 'pages', requires: ['receive'], waits_for: [] },
+			{ node: 'parse', requires: ['receive'], waits_for: ['pages'] }
+		];
+		expect(levels(waiting)).toEqual([['receive'], ['pages'], ['parse']]);
+		expect(descendants(waiting, 'pages')).toEqual(new Set());
 	});
 });
 

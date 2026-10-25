@@ -20,11 +20,11 @@ const VISION = { model: 'claude-sonnet', endpoint: 'chat.example' };
 const fetchMock = vi.fn<(request: Request) => Promise<Response>>();
 
 const graph: GraphNode[] = [
-	{ node: 'receive', requires: [] },
-	{ node: 'ocr', requires: ['receive'] },
-	{ node: 'pages', requires: ['receive'] },
-	{ node: 'parse', requires: ['ocr'] },
-	{ node: 'file', requires: ['parse', 'pages'] }
+	{ node: 'receive', requires: [], waits_for: [] },
+	{ node: 'ocr', requires: ['receive'], waits_for: [] },
+	{ node: 'pages', requires: ['receive'], waits_for: [] },
+	{ node: 'parse', requires: ['ocr'], waits_for: [] },
+	{ node: 'file', requires: ['parse', 'pages'], waits_for: [] }
 ];
 
 function document(outcome: 'ok' | 'failed' = 'ok'): Document {

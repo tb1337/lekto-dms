@@ -1433,7 +1433,8 @@ an answer that does not fit and none by the deadline make the document red; ther
 attempt. The context (without the task and its links) and the answer lie beside the document as
 the model's exchanges do; the log names the contract and `producer`. Documents taken over from
 Paperless-ngx send no task. `signal_llm` waits for the page images (`pages`), so the links
-work when the task goes; processing again from `pages` asks again.
+work when the task goes; it does not need them, so processing again from `pages` leaves it
+alone (`GET /pipeline`: `waits_for`).
 
 `GET /api/v1/external/tasks/{id}/files/{name}?expires=…&signature=…` gives a model call's files
 (`content.json`, `pages/<n>.webp`): each link is signed with `LEKTO_SECRET_KEY`, bound to the

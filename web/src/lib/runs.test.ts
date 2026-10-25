@@ -16,13 +16,13 @@ import {
 type LogEntry = components['schemas']['LogEntry'];
 
 const GRAPH: GraphNode[] = [
-	{ node: 'receive', requires: [] },
-	{ node: 'ocr', requires: ['receive'] },
-	{ node: 'parse', requires: ['ocr'] },
-	{ node: 'judge', requires: ['parse'] },
-	{ node: 'fields', requires: ['judge'] },
-	{ node: 'apply_rules', requires: ['fields'] },
-	{ node: 'file', requires: ['apply_rules'] }
+	{ node: 'receive', requires: [], waits_for: [] },
+	{ node: 'ocr', requires: ['receive'], waits_for: [] },
+	{ node: 'parse', requires: ['ocr'], waits_for: [] },
+	{ node: 'judge', requires: ['parse'], waits_for: [] },
+	{ node: 'fields', requires: ['judge'], waits_for: [] },
+	{ node: 'apply_rules', requires: ['fields'], waits_for: [] },
+	{ node: 'file', requires: ['apply_rules'], waits_for: [] }
 ];
 
 function entry(

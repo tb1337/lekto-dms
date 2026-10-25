@@ -30,13 +30,13 @@ function json(body: unknown): Response {
 }
 
 const graph: GraphNode[] = [
-	{ node: 'receive', requires: [] },
-	{ node: 'ocr', requires: ['receive'] },
-	{ node: 'pages', requires: ['receive'] },
-	{ node: 'signal_llm', requires: ['ocr'] },
-	{ node: 'signal_neighbours', requires: ['ocr'] },
-	{ node: 'judge', requires: ['signal_llm', 'signal_neighbours'] },
-	{ node: 'file', requires: ['judge'] }
+	{ node: 'receive', requires: [], waits_for: [] },
+	{ node: 'ocr', requires: ['receive'], waits_for: [] },
+	{ node: 'pages', requires: ['receive'], waits_for: [] },
+	{ node: 'signal_llm', requires: ['ocr'], waits_for: [] },
+	{ node: 'signal_neighbours', requires: ['ocr'], waits_for: [] },
+	{ node: 'judge', requires: ['signal_llm', 'signal_neighbours'], waits_for: [] },
+	{ node: 'file', requires: ['judge'], waits_for: [] }
 ];
 
 function state(node: string, outcome: string | null, status = 'done') {

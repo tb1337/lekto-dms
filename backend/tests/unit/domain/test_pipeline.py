@@ -50,19 +50,21 @@ def test_the_graph_is_in_topological_order_with_one_source_and_one_sink() -> Non
     assert tuple(Node) == NODES
     assert set(GRAPH) == set(NODES)
     for position, node in enumerate(NODES):
-        assert all(NODES.index(needed) < position for needed in node.requires)
+        assert all(NODES.index(needed) < position for needed in node.waits_for)
     assert Node.RECEIVE.requires == frozenset()
     assert Node.FILE.successors == frozenset()
     assert Node.FILE.ancestors == frozenset(NODES) - {Node.FILE}
     assert Node.RECEIVE.descendants == frozenset(NODES) - {Node.RECEIVE}
 
 
-def test_ocr_and_pages_run_side_by_side_and_the_model_and_filing_wait_for_both() -> None:
+def test_ocr_and_pages_run_side_by_side_and_filing_waits_for_both() -> None:
     assert Node.RECEIVE.successors == {Node.OCR, Node.PAGES}
     assert Node.PAGES.requires == {Node.RECEIVE}
-    assert Node.PAGES.successors == {Node.SIGNAL_LLM, Node.FILE}
-    assert Node.SIGNAL_LLM.requires == {Node.PARSE, Node.PAGES}
+    assert Node.PAGES.descendants == {Node.FILE}
     assert Node.FILE.requires == {Node.APPLY_RULES, Node.PAGES}
+    # The model waits for the page images without needing them.
+    assert Node.SIGNAL_LLM.requires == {Node.PARSE}
+    assert Node.SIGNAL_LLM.waits_for == {Node.PARSE, Node.PAGES}
     assert Node.OCR.descendants == {
         Node.PARSE,
         *SIGNALS,
@@ -74,7 +76,6 @@ def test_ocr_and_pages_run_side_by_side_and_the_model_and_filing_wait_for_both()
     assert Node.APPLY_RULES.ancestors == {
         Node.RECEIVE,
         Node.OCR,
-        Node.PAGES,
         Node.PARSE,
         *SIGNALS,
         Node.JUDGE,
@@ -510,11 +511,22 @@ def test_reprocessing_from_the_judge_runs_the_signals_a_document_skipped() -> No
     assert document.reprocess_from(Node.JUDGE, NOW) == CURRENT_NODES
 
 
-def test_reprocessing_the_pages_asks_the_language_model_again() -> None:
+def test_reprocessing_the_pages_leaves_the_text_branch_alone() -> None:
+    """The model waits for the pages, but does not read them: it is not asked again."""
     document = builders.run_pipeline(builders.received())
     assert document.reprocess_from(Node.PAGES, NOW) == (Node.PAGES,)
-    again = {Node.PAGES, Node.SIGNAL_LLM, Node.JUDGE, Node.FIELDS, Node.APPLY_RULES, Node.FILE}
-    assert set(document.processing.outcomes) == set(NODES) - again
+    assert set(document.processing.outcomes) == set(NODES) - {Node.PAGES, Node.FILE}
+    assert document.record_result(Node.PAGES, 2, OK, NOW) == (Node.FILE,)
+
+
+def test_failed_pages_retried_let_the_model_run_after_them() -> None:
+    document = builders.received()
+    for node in (Node.OCR, Node.PARSE, *CURRENT_NODES):
+        document.record_result(node, 1, OK, NOW)
+    document.record_result(Node.PAGES, 1, FAILED, NOW)
+    assert document.processing.nodes[Node.SIGNAL_LLM] == NodeState()  # never ran
+    document.retry(NOW)
+    assert document.processing.due() == (Node.PAGES,)
     assert document.record_result(Node.PAGES, 2, OK, NOW) == (Node.SIGNAL_LLM,)
 
 

@@ -21982,6 +21982,15 @@
             "type": "array",
             "title": "Requires",
             "description": "The nodes whose results this node needs."
+          },
+          "waits_for": {
+            "items": {
+              "$ref": "#/components/schemas/Node"
+            },
+            "type": "array",
+            "title": "Waits For",
+            "description": "Nodes this node also waits for without needing their results; processing again from one of them leaves this node alone.",
+            "default": []
           }
         },
         "type": "object",

@@ -40,6 +40,12 @@ class Node(StrEnum):
         return GRAPH[self]
 
     @property
+    def waits_for(self) -> frozenset["Node"]:
+        """The nodes that must be done before this node runs: those it needs, and those it
+        only waits for (`WAITS`)."""
+        return GRAPH[self] | WAITS.get(self, frozenset())
+
+    @property
     def successors(self) -> frozenset["Node"]:
         """The nodes that need this node's result."""
         return frozenset(node for node, needed in GRAPH.items() if self in needed)
@@ -73,8 +79,6 @@ GRAPH: Mapping[Node, frozenset[Node]] = {
     Node.PAGES: frozenset({Node.RECEIVE}),
     Node.PARSE: frozenset({Node.OCR}),
     **dict.fromkeys(SIGNALS, frozenset({Node.PARSE})),
-    # The page images are there when a model call goes to a webhook (`webhooks-und-auftraege.md`).
-    Node.SIGNAL_LLM: frozenset({Node.PARSE, Node.PAGES}),
     Node.JUDGE: SIGNALS,
     Node.FIELDS: frozenset({Node.JUDGE}),
     Node.APPLY_RULES: frozenset({Node.FIELDS}),
@@ -82,6 +86,11 @@ GRAPH: Mapping[Node, frozenset[Node]] = {
 }
 """What each node needs. `receive` is the source, `file` the only sink: every other node is
 one of its ancestors, so filing is the last thing that happens to a document."""
+
+WAITS: Mapping[Node, frozenset[Node]] = {Node.SIGNAL_LLM: frozenset({Node.PAGES})}
+"""Nodes a node waits for without needing their results: the page images are there when a model
+call goes to a webhook with links to them (`webhooks-und-auftraege.md`). Processing again from
+one of them leaves the node alone (the text, not the images, is what the model reads)."""
 
 NODES: tuple[Node, ...] = tuple(Node)
 """All nodes in topological order (the order of the enum)."""
@@ -395,7 +404,7 @@ class Processing:
             node
             for node, state in self.nodes.items()
             if state.status is NodeStatus.WAITING
-            and all(self.nodes[needed].satisfied for needed in node.requires)
+            and all(self.nodes[needed].satisfied for needed in node.waits_for)
         )
 
     def running(self) -> tuple[Node, ...]:

@@ -6,7 +6,7 @@ from lekto.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from lekto.adapters.inbound.rest.context import Classifier
 from lekto.adapters.inbound.rest.params import ADMINS_ONLY
 from lekto.adapters.inbound.rest.problems import problem_responses
-from lekto.adapters.inbound.rest.schemas.classifier import ClassifierStatusOut
+from lekto.adapters.inbound.rest.schemas.classifier import ClassifierModelOut, ClassifierStatusOut
 
 router = APIRouter(prefix="/classifier", tags=["classifier"], dependencies=PROTECTED)
 
@@ -24,6 +24,20 @@ router = APIRouter(prefix="/classifier", tags=["classifier"], dependencies=PROTE
 )
 async def status(user: CurrentUser, classifier: Classifier) -> ClassifierStatusOut:
     return ClassifierStatusOut.of(await classifier.status(user))
+
+
+@router.get(
+    "/models",
+    summary="Every model trained",
+    description=(
+        "What each model learned and how well it did, oldest first (only the latest ones keep "
+        "their files); every user sees them. 503 without a classifier."
+    ),
+    response_model=list[ClassifierModelOut],
+    responses=problem_responses(401, 503),
+)
+async def models(user: CurrentUser, classifier: Classifier) -> list[ClassifierModelOut]:
+    return [ClassifierModelOut.of(model) for model in await classifier.models(user)]
 
 
 @router.post(

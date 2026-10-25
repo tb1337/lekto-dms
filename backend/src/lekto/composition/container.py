@@ -84,6 +84,7 @@ from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from lekto.core.ports.webhook_sender import WebhookSender
 from lekto.core.services.auth import AuthService, SessionPolicy
+from lekto.core.services.automation import AutomationService
 from lekto.core.services.classification.nodes import (
     ClassificationPolicy,
     FieldsNode,
@@ -492,6 +493,7 @@ class Services:
     pipeline: PipelineService
     maintenance: MaintenanceService
     jobs: JobsService
+    automation: AutomationService
     indexing: IndexingService | None  # with a search index
     search: SearchService | None  # with a search index
     classifier: ClassifierService | None  # with a classifier
@@ -737,6 +739,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         webhooks=WebhookService(uow, clock, container.cipher, webhook_policy_of(settings)),
         lenses=LensService(uow, clock),
         jobs=JobsService(uow, clock, retention=settings.retention),
+        automation=AutomationService(uow, clock),
         webhook_delivery=WebhookDeliveryService(
             uow, clock, container.cipher, container.webhook_sender, webhook_policy_of(settings)
         ),

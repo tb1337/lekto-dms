@@ -54,6 +54,13 @@
 	/* Notes and tips (alerts `note` and `tip`): blue, as GitHub and Docusaurus draw notes. */
 	--note: #e7f0fb;
 	--note-foreground: #1d4f91;
+	/* Charts (the page "System"): the lanes as solid marks, a second line, the pale band of a
+	   90th percentile. */
+	--chart-1: #4a9f66;
+	--chart-2: #e0b02e;
+	--chart-3: #b83a32;
+	--chart-4: #b4560a;
+	--chart-5: #cfe4e1;
 }
 
 .dark {
@@ -92,6 +99,11 @@
 	--lane-running-foreground: #a2a8a5;
 	--note: #14223a;
 	--note-foreground: #8db8f0;
+	--chart-1: #5cc486;
+	--chart-2: #e3bb4d;
+	--chart-3: #d4554c;
+	--chart-4: #f2a65a;
+	--chart-5: #21403c;
 }
 
 @theme inline {
@@ -135,6 +147,24 @@
 	--color-lane-red-foreground: var(--lane-red-foreground);
 	--color-lane-running: var(--lane-running);
 	--color-lane-running-foreground: var(--lane-running-foreground);
+	--color-chart-1: var(--chart-1);
+	--color-chart-2: var(--chart-2);
+	--color-chart-3: var(--chart-3);
+	--color-chart-4: var(--chart-4);
+	--color-chart-5: var(--chart-5);
+}
+
+/* LayerChart's tooltip (charts on the page "System"): its own background mixes colors with
+   `light-dark()`, which comes out transparent here; it takes the popover's (the doubled class
+   outweighs the component's scoped rule). */
+.lc-tooltip-root {
+	--color-surface-content: var(--popover-foreground);
+}
+.lc-tooltip-root .lc-tooltip-container.lc-tooltip-container[data-variant='default'] {
+	background-color: var(--popover);
+	color: var(--popover-foreground);
+	border: 1px solid var(--border);
+	border-radius: 0.5rem;
 }
 
 @layer base {

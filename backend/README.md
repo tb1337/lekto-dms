@@ -213,7 +213,14 @@ long each node worked; `first_runs`), and per field the verdict at a person's fi
 it (`field_verdicts`: `taken`, `accepted`, `corrected`, `added`, or `early` before the first run
 stopped), with whether each signal named the person's value. Confirming in the inbox decides
 every field, a confirming change the fields it sets and those the automation had set, a move the
-space; a field keeps its first verdict. The statistics over both are counted live.
+space; a field keeps its first verdict. The statistics over both are counted live. `GET /automation`
+shows them on the page "System" to every user (`AutomationService`): the documents by the lane of
+their first run, what became of them, the history by month, the times (median and 90th
+percentile, per step too) and the verdicts per field; `GET /automation/signals` the hits of each
+signal per field. Both take the channels (`channel`, by default `web` and `api`), the period
+(`period`: `30d`, `12m`, `all`; the history by month of all time reaches back five years at
+most) and the time zone the months begin in (`tz`); a report is kept for a minute per API
+process (`services/_kept.py`).
 
 | Node | Input | Derivatives (object store) | Outcome |
 | --- | --- | --- | --- |
@@ -723,11 +730,11 @@ members see it (the pay slips in a personal space teach the employer a number it
 sees). A learned customer or personnel number belongs to a user when every one of its documents
 is surely theirs alone: in their personal space, or naming them by more than their name (one of
 their numbers, a number entered by hand that names them, their birth date). The model is stored as `npz`
-without pickle (`classifier/model-<n>.npz`, the latest three are kept) and predicted with numpy
+without pickle (`classifier/model-<n>.npz`, the files of the latest three are kept; every model's row stays, for the history of its accuracy) and predicted with numpy
 alone, so a new scikit-learn version cannot break it. It sees about the first 8,000 and the last
 4,000 characters of a longer text, a run of spaces counted once (12,000 in all, `TEXT_LIMIT`).
-`GET /classifier` tells its state to every user (the page "System"); training on request is for
-admins.
+`GET /classifier` tells its state to every user (the page "System"), `GET /classifier/models`
+what every model learned and how well, oldest first; training on request is for admins.
 
 **After the update to 0.2.** Three things, in this order:
 

@@ -40,6 +40,7 @@ async def test_without_a_classifier_the_endpoints_answer_503(api: Api) -> None:
     for response in (
         await api.client.get(f"{PREFIX}/classifier", headers=auth(admin)),
         await api.client.post(f"{PREFIX}/classifier/train", headers=auth(admin)),
+        await api.client.get(f"{PREFIX}/classifier/models", headers=auth(admin)),
     ):
         assert response.status_code == 503
         assert response.json()["detail"] == "no classifier is configured"
@@ -76,3 +77,7 @@ async def test_the_status_of_a_trained_model(api: Api) -> None:
     }
     assert (model["learned_identifiers"], model["accuracy"]) == (0, None)
     assert model["method"] == "fake classifier"
+    await api.services.classifier.train()
+    history = await api.client.get(f"{PREFIX}/classifier/models", headers=auth(owner))
+    assert history.status_code == 200
+    assert [item["number"] for item in history.json()] == [1, 2]  # oldest first

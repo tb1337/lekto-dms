@@ -248,17 +248,19 @@ async def test_a_contact_changed_meanwhile_stores_the_model_again(
     assert [item.source for item in contact.identifiers] == [IdentifierSource.LEARNED]
 
 
-async def test_old_models_go(world: World) -> None:
+async def test_old_models_lose_their_files_and_keep_their_rows(world: World) -> None:
     await corpus(world)
     classifier = service(world)
-    for _ in range(KEPT_MODELS + 1):
+    for _ in range(KEPT_MODELS + 2):
         latest = await classifier.train()
-    assert latest.number == KEPT_MODELS + 1
+    assert latest.number == KEPT_MODELS + 2
     async with world.uow() as uow:
         numbers = [model.number for model in await uow.classifier_models.list_all()]
-    assert numbers == list(range(KEPT_MODELS + 1, 1, -1))
-    with pytest.raises(NotFoundError):
-        await world.object_store.get(classifier_key(1))
+    assert numbers == list(range(KEPT_MODELS + 2, 0, -1))
+    for number in (1, 2):
+        with pytest.raises(NotFoundError):
+            await world.object_store.get(classifier_key(number))
+    assert await world.object_store.get(classifier_key(3))
 
 
 async def test_the_check_queues_a_training_when_enough_was_confirmed(world: World) -> None:

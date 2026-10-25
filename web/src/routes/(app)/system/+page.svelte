@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import AutomationTab from '#lib/components/system/AutomationTab.svelte';
 	import ClassifierTab from '#lib/components/system/ClassifierTab.svelte';
 	import JobsTab from '#lib/components/system/JobsTab.svelte';
 	import SearchTab from '#lib/components/system/SearchTab.svelte';
@@ -11,6 +12,7 @@
 	// on it (training, trying jobs again) is for admins. The tab stands in the URL.
 	const tab = $derived(systemTab(page.url.searchParams));
 	const LABELS: Record<SystemTab, () => string> = {
+		automation: m.system_tab_automation,
 		classifier: m.system_tab_classifier,
 		search: m.system_tab_search,
 		jobs: m.system_tab_jobs
@@ -35,8 +37,10 @@
 			<JobsTab />
 		{:else if tab === 'search'}
 			<SearchTab />
-		{:else}
+		{:else if tab === 'classifier'}
 			<ClassifierTab />
+		{:else}
+			<AutomationTab />
 		{/if}
 	{/key}
 </div>

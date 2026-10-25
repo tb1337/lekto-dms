@@ -85,6 +85,7 @@ from lekto.core.domain.reading import (
 )
 from lekto.core.domain.reasons import Reason, ReasonCode, because
 from lekto.core.domain.sorting import sort_key
+from lekto.core.domain.tasks import TaskKind, TaskStatus
 from lekto.core.domain.text import Shortened, shorten
 from lekto.core.domain.validation import name_key
 from lekto.core.domain.verdict import (
@@ -109,9 +110,20 @@ from lekto.core.services.classification.answers import (
     StoredProposal,
     extract_schema,
     field_keys,
+    key_ids,
     parse_extract,
     parse_propose,
     propose_schema,
+)
+from lekto.core.services.classification.external import (
+    ExternalCall,
+    ListedSpace,
+    ModelCallState,
+    extract_context,
+    model_call_state,
+    proposal_of,
+    propose_context,
+    values_of,
 )
 from lekto.core.services.classification.prompts import (
     EXTRACT_PROMPT,
@@ -133,7 +145,7 @@ from lekto.core.services.classification.signals import (
     model_proposal,
     signals_of,
 )
-from lekto.core.services.exchanges import keep_calls
+from lekto.core.services.exchanges import keep_answer, keep_calls, keep_request
 from lekto.core.services.nodes import ARCHIVE_FILE, work_directory
 from lekto.core.services.objects import (
     archive_key,
@@ -144,6 +156,7 @@ from lekto.core.services.objects import (
 )
 from lekto.core.services.pipeline import MetadataResult
 from lekto.core.services.profiles import matching_persons
+from lekto.core.services.tasks.desk import TaskDesk
 from lekto.core.services.titles import has_machine_title
 
 log = logging.getLogger(__name__)
@@ -316,12 +329,36 @@ class LlmSignal(_ModelStep):
     and the language, the values of the fields of the type it chooses and of the global ones,
     and, with two spaces or more to choose from (`SpaceCandidates`), the space. Without a model
     it abstains; two unfit answers fail it. It checks nothing: the judge and the fields node
-    do."""
+    do.
 
-    async def run(self, document: Document) -> NodeResult:
-        if self._model is None:
+    A webhook that serves as the model call `propose` (`external`) answers instead of the
+    model: the node sends it the context and waits for its answer, which counts as the
+    model's; without one it fails."""
+
+    def __init__(
+        self,
+        uow: UnitOfWorkFactory,
+        store: ObjectStore,
+        model: LanguageModel | None,
+        clock: Clock,
+        policy: ClassificationPolicy,
+        *,
+        desk: TaskDesk | None = None,
+    ) -> None:
+        """`desk`: places the tasks of a model call a webhook takes over; without it, none
+        does (the evaluation)."""
+        super().__init__(uow, store, model, clock, policy)
+        self._desk = desk
+
+    async def run(self, document: Document) -> NodeResult | ExternalCall:
+        outside = await model_call_state(self._uow, self._desk, document, TaskKind.PROPOSE)
+        if outside is None and self._model is None:
             return abstained(because(ReasonCode.NO_LANGUAGE_MODEL))
         text = await _document_text(self._store, document.id)
+        if outside is not None and outside.settled is not None:
+            return await self._answered(document, text, outside)
+        if outside is not None and outside.sent:
+            return ExternalCall(outside, None)
         async with self._uow() as uow:
             contacts = await uow.contacts.list_all()
             types = sorted(
@@ -366,6 +403,31 @@ class LlmSignal(_ModelStep):
             for kind in types
         ]
         general = [(key_of[item.id], item) for item in definitions if item.is_global]
+        tag_names = [item.name for item in listed]
+        listed_contacts = [
+            Listed(item.name, aliases=tuple(item.aliases), topics=enabled[item.id])
+            for item in candidates
+        ]
+        schema = propose_schema(
+            [item.name for item in types],
+            tag_names,
+            list(keys),
+            topic_names,
+            list(spaces),
+        )
+        if outside is not None:
+            context = propose_context(
+                document,
+                text,
+                contacts=listed_contacts,
+                document_types=typed,
+                general=general,
+                tags=tag_names,
+                spaces=spaces,
+                schema=schema,
+            )
+            await keep_request(self._store, document, Node.SIGNAL_LLM, context.logged())
+            return ExternalCall(outside, context)
         sent = shorten(text, self._policy.input_budget)
         input = self._input(document, text, sent, PROPOSE_PROMPT) | {
             "contacts": len(contacts),
@@ -375,48 +437,68 @@ class LlmSignal(_ModelStep):
             "tags_listed": len(listed),
             "topics_listed": len(topic_names),
             "fields": {key: str(definition.id) for key, definition in keys.items()},
-            "spaces": {key: str(id) for key, (id, _) in spaces.items()},
+            "spaces": {key: str(space.id) for key, space in spaces.items()},
         }
-        tag_names = [item.name for item in listed]
         try:
             answer, answers = await self._ask(
                 document,
                 Node.SIGNAL_LLM,
                 PROPOSE_SYSTEM,
                 propose_message(
-                    [
-                        Listed(item.name, aliases=tuple(item.aliases), topics=enabled[item.id])
-                        for item in candidates
-                    ],
+                    listed_contacts,
                     typed,
                     general,
                     tag_names,
                     sent,
-                    [(key, label) for key, (_, label) in spaces.items()],
+                    [(key, space.prompt_label) for key, space in spaces.items()],
                 ),
-                propose_schema(
-                    [item.name for item in types],
-                    tag_names,
-                    list(keys),
-                    topic_names,
-                    list(spaces),
-                ),
+                schema,
                 PROPOSE_SCHEMA,
                 lambda content: parse_propose(content, list(keys), list(spaces)),
             )
         except _UnfitAnswerError as error:
             return self._unfit(error, input)
-        chosen = {key: id for key, (id, _) in spaces.items()}
+        chosen = {key: space.id for key, space in spaces.items()}
         return NodeResult(
             outcome=Outcome.OK,
             model_version=_model_version(answers[-1]),
             input=input,
             output=_answered(answers, answer.raw)
-            | {PROPOSAL: StoredProposal.of(answer, keys, chosen).to_json()},
+            | {PROPOSAL: StoredProposal.of(answer, key_ids(keys), chosen).to_json()},
+        )
+
+    async def _answered(self, document: Document, text: str, outside: ModelCallState) -> NodeResult:
+        """What the webhook's task brought: its proposal, as the model's, or why none."""
+        task = outside.settled
+        assert task is not None
+        input = outside.input(document, text)
+        if task.status is not TaskStatus.ANSWERED:
+            return outside.failed(input)
+        try:
+            answer, fields, spaces = proposal_of(task)
+        except AnswerError as error:  # checked when it came: the contract changed since
+            return outside.unfit(input, str(error))
+        await keep_answer(
+            self._store, document, Node.SIGNAL_LLM, _answer_text(task.answer), outside.model_version
+        )
+        return NodeResult(
+            outcome=Outcome.OK,
+            model_version=outside.model_version,
+            input=input,
+            output={
+                "attempts": 1,
+                "answer": answer.raw,
+                PROPOSAL: StoredProposal.of(answer, fields, spaces).to_json(),
+            },
         )
 
 
-def _listed_spaces(candidates: SpaceCandidates | None) -> dict[str, tuple[SpaceId, str]]:
+def _answer_text(answer: JsonValue) -> str:
+    """A webhook's answer as the document keeps it beside what was sent."""
+    return json.dumps(answer, ensure_ascii=False, indent=2)
+
+
+def _listed_spaces(candidates: SpaceCandidates | None) -> dict[str, ListedSpace]:
     """The spaces for the prompt by key (`s1`, ...), with their labels: the uploader's own
     personal space first (with what the uploader wrote about it), then the shared ones with
     their descriptions, then the personal spaces of the other users by their user only (what
@@ -437,12 +519,9 @@ def _listed_spaces(candidates: SpaceCandidates | None) -> dict[str, tuple[SpaceI
         key=lambda space: sort_key(candidates.label(space.id)),
     )
     described = candidates.spaces[own].description if own in candidates.spaces else None
-    labels = [(own, "own personal space of the uploader" + (f": {described}" if described else ""))]
-    labels += [
-        (space.id, space.name + (f": {space.description}" if space.description else ""))
-        for space in shared
-    ]
-    labels += [(space.id, candidates.label(space.id)) for space in others]
+    labels = [ListedSpace(own, "own personal space of the uploader", described or None)]
+    labels += [ListedSpace(space.id, space.name, space.description or None) for space in shared]
+    labels += [ListedSpace(space.id, candidates.label(space.id)) for space in others]
     return {f"s{number}": item for number, item in enumerate(labels, start=1)}
 
 
@@ -643,7 +722,11 @@ class FieldsNode(_ModelStep):
     value (the rules node checks that a required one has one).
 
     The title comes from the type's title pattern, or from the model's proposal, as long as
-    the document's title is still the file name or the one set here before."""
+    the document's title is still the file name or the one set here before.
+
+    A webhook that serves as the model call `extract` (`external`) reads the missing fields
+    instead of the model: the node sends it the context and waits for its answer, which
+    counts as the model's; without one it fails."""
 
     def __init__(
         self,
@@ -654,12 +737,15 @@ class FieldsNode(_ModelStep):
         policy: ClassificationPolicy,
         *,
         locator: TextLocator | None = None,
+        desk: TaskDesk | None = None,
     ) -> None:
-        """`locator`: find each quote on the pages of the archive PDF (`FieldCheck.locations`)."""
+        """`locator`: find each quote on the pages of the archive PDF (`FieldCheck.locations`);
+        `desk`: places the tasks of a model call a webhook takes over (none without it)."""
         super().__init__(uow, store, model, clock, policy)
         self._locator = locator
+        self._desk = desk
 
-    async def run(self, document: Document) -> NodeResult | MetadataResult:
+    async def run(self, document: Document) -> NodeResult | MetadataResult | ExternalCall:
         async with self._uow() as uow:
             log = await uow.processing_log.list_for(document.id)
             definitions = sorted(
@@ -697,7 +783,41 @@ class FieldsNode(_ModelStep):
         taken_over = len(given)
         input: JsonObject = {"taken_over": taken_over}
         unread: set[FieldId] = set()
-        if missing and self._model is None:
+        outside = (
+            await model_call_state(self._uow, self._desk, document, TaskKind.EXTRACT)
+            if missing
+            else None
+        )
+        external: str | None = None  # what answered, if a webhook did
+        if outside is not None:
+            task = outside.settled
+            if task is None and outside.sent:
+                return ExternalCall(outside, None)
+            if task is None:
+                context = extract_context(
+                    document,
+                    text,
+                    None if document_type is None else document_type.name,
+                    field_keys(missing),
+                )
+                await keep_request(self._store, document, Node.FIELDS, context.logged())
+                return ExternalCall(outside, context)
+            input |= outside.input(document, text)
+            if task.status is not TaskStatus.ANSWERED:
+                return outside.failed(input)
+            try:
+                read = values_of(task)
+            except AnswerError as error:  # checked when it came: the contract changed since
+                return outside.unfit(input, str(error))
+            await keep_answer(
+                self._store, document, Node.FIELDS, _answer_text(task.answer), outside.model_version
+            )
+            external = outside.model_version
+            # A field defined after the request went was not asked for: nothing read it.
+            given |= {
+                item.id: read.get(item.id, Proposal(value=None, evidence=None)) for item in missing
+            }
+        elif missing and self._model is None:
             # Nothing read them: an optional field stays empty, a required one is open.
             unread = {item.id for item in missing}
             given |= {item.id: Proposal(value=None, evidence=None) for item in missing}
@@ -775,9 +895,9 @@ class FieldsNode(_ModelStep):
         raw: JsonObject = {str(id): value.to_json() for id, value in given.items()}
         all_checks = [*checks, *([title] if title is not None else [])]
         model_version = (
-            _model_version(answers[-1])
-            if answers
-            else (entries[Node.SIGNAL_LLM].result.model_version if taken_over else None)
+            external
+            or (_model_version(answers[-1]) if answers else None)
+            or (entries[Node.SIGNAL_LLM].result.model_version if taken_over else None)
         )
         uncertain = [check for check in checks if not check.ok]
         result = NodeResult(
@@ -786,7 +906,9 @@ class FieldsNode(_ModelStep):
             confidence=min((check.confidence for check in checks), default=1.0),
             model_version=model_version,
             input=input,
-            output=_answered(answers, {"fields": raw}) | {CHECKS: checks_to_json(all_checks)},
+            output=_answered(answers, {"fields": raw})
+            | ({"attempts": 1} if external else {})
+            | {CHECKS: checks_to_json(all_checks)},
         )
         return MetadataResult(result, changes)
 

@@ -215,8 +215,18 @@ def thresholds_for(policy: ClassificationPolicy) -> Thresholds:
     return replace(builders.THRESHOLDS, accept=policy.accept, suggest=policy.suggest_contact)
 
 
-def signal_step(world: World, fake: FakeLanguageModel | None, **policy: Any) -> LlmSignal:
-    return LlmSignal(world.uow, world.object_store, fake, world.clock, policy_with(**policy))
+class ModelSignal(LlmSignal):
+    """The language model's signal without a webhook to hand its request to: a result at
+    once."""
+
+    async def run(self, document: Document) -> NodeResult:
+        result = await super().run(document)
+        assert isinstance(result, NodeResult)
+        return result
+
+
+def signal_step(world: World, fake: FakeLanguageModel | None, **policy: Any) -> ModelSignal:
+    return ModelSignal(world.uow, world.object_store, fake, world.clock, policy_with(**policy))
 
 
 def fields_step(world: World, fake: FakeLanguageModel | None) -> FieldsNode:
@@ -249,7 +259,7 @@ async def judge(
 ) -> NodeResult | MetadataResult:
     """The model's signal and the facts as the pipeline logs them, then the judge; the
     signal's result if it fails."""
-    signals: list[tuple[Node, LlmSignal | FactsSignal]] = [
+    signals: list[tuple[Node, ModelSignal | FactsSignal]] = [
         (Node.SIGNAL_LLM, signal_step(world, fake, **policy)),
         (Node.SIGNAL_FACTS, FactsSignal(world.uow, world.object_store)),
     ]

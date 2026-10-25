@@ -114,6 +114,7 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
         (f"{PREFIX}/pipeline", "get"),
         (f"{PREFIX}/pipeline/reparse", "post"),
         (f"{PREFIX}/external/tasks/{{id}}/result", "post"),
+        (f"{PREFIX}/external/tasks/{{id}}/files/{{name}}", "get"),
         (f"{PREFIX}/contacts/{{id}}/identifiers", "post"),
         (f"{PREFIX}/contacts/{{id}}/logo", "put"),
         (f"{PREFIX}/contacts/{{id}}/logo", "delete"),
@@ -291,6 +292,7 @@ async def test_every_operation_declares_its_security(api: Api) -> None:
         [{"session": []}],
         [{"session": []}, {"token": []}],
         [{"taskToken": []}],  # answering a task
+        [{"fileSignature": []}],  # a file of a model call's document
     ]
     for path, item in schema["paths"].items():
         for method, operation in item.items():

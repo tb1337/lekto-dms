@@ -623,14 +623,15 @@ def classification_nodes(
     embeddings: Embeddings | None,
     facts: FactsSignal,
     locator: TextLocator | None,
+    desk: TaskDesk | None = None,
 ) -> dict[Node, NodeExecutor]:
     """The signals, the judge and the fields node, each taking over the metadata a document
     came in with (`ImportedSignal`, ...): for the container and, with a model per case, for
-    the evaluation."""
+    the evaluation. `desk`: a webhook may take over the model calls (not in the evaluation)."""
     uow, clock, store = container.unit_of_work, container.clock, container.object_store
     policy = policy_of(settings)
     signals: dict[Node, NodeExecutor] = {
-        Node.SIGNAL_LLM: LlmSignal(uow, store, model, clock, policy),
+        Node.SIGNAL_LLM: LlmSignal(uow, store, model, clock, policy, desk=desk),
         Node.SIGNAL_FACTS: facts,
         Node.SIGNAL_CLASSIFIER: ClassifierSignal(store, classifier, uow),
         Node.SIGNAL_NEIGHBOURS: NeighboursSignal(
@@ -645,7 +646,7 @@ def classification_nodes(
             ),
         ),
         Node.FIELDS: ImportedFieldsNode(
-            uow, FieldsNode(uow, store, model, clock, policy, locator=locator)
+            uow, FieldsNode(uow, store, model, clock, policy, locator=locator, desk=desk)
         ),
     }
 
@@ -673,6 +674,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
     index, embeddings = container.search_index, container.embeddings
     facts = FactsSignal(uow, store, container.codes)
     public_url = None if settings.public_url is None else str(settings.public_url)
+    desk = TaskDesk(container.cipher, container.templates, link_base=public_url)
     executors: dict[Node, NodeExecutor] = {
         Node.OCR: OcrNode(store, container.ocr),
         Node.PAGES: PagesNode(store, container.pages),
@@ -686,6 +688,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             embeddings=embeddings,
             facts=facts,
             locator=container.locator,
+            desk=desk,
         ),
         Node.APPLY_RULES: ApplyRulesNode(
             uow,
@@ -693,7 +696,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             container.patterns,
             container.templates,
             max_text=settings.rules_max_text,
-            desk=TaskDesk(container.cipher, container.templates, link_base=public_url),
+            desk=desk,
             link_base=public_url,
         ),
         Node.FILE: FileNode(),
@@ -751,7 +754,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             uow, clock, container.cipher, webhook_policy_of(settings), container.templates
         ),
         lenses=LensService(uow, clock),
-        tasks=TaskService(uow, clock),
+        tasks=TaskService(uow, clock, container.cipher, store),
         webhook_delivery=WebhookDeliveryService(
             uow,
             clock,

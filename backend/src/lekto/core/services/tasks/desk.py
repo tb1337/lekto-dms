@@ -6,15 +6,18 @@ when it runs anew because room was freed (`settling.wake_queue`). Sending it mea
 token (only its hash is kept), the deadline, the request made now (thin, full or the webhook's
 template, with the task's `id`, `callback`, `token` and `deadline`), kept encrypted with the
 token until it is delivered, a delivery job (`webhooks.deliver`) and a job that ends the task
-at its deadline.
+at its deadline. A model call's request has a fixed body (`Contract`), whatever the webhook's,
+with links to the document's files (`tasks.files`).
 
 A request that cannot be made (the template does not make JSON, `LEKTO_PUBLIC_URL` is not set)
 fails the task at once, as an answer that does not come.
 """
 
-from collections.abc import Mapping, Sequence
+import json
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import Protocol
 
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import MissingValueError, ValidationError
@@ -30,6 +33,7 @@ from lekto.core.ports.identity import SecretCipher
 from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services._templates import event_values
+from lekto.core.services.tasks.files import file_link
 from lekto.core.services.tasks.settling import end_task, wake_queue
 from lekto.core.services.webhooks.delivery import TaskRequestText, queue_task_delivery
 
@@ -46,16 +50,34 @@ def callback_url(link_base: str, task: Task) -> str:
     return link_base.rstrip("/") + CALLBACK_PATH.format(id=task.id)
 
 
+class Contract(Protocol):
+    """A request with a fixed body, whatever the webhook's (a model call's context,
+    `classification.external`)."""
+
+    @property
+    def keys(self) -> JsonObject:
+        """What the node needs to read the answer (`Task.context`)."""
+        ...
+
+    def body(self, task: JsonObject, link: Callable[[str], str]) -> JsonObject:
+        """The body with `task` (`id`, `kind`, `document_id`, `run`, `callback`, `token`,
+        `deadline`); `link` makes the signed link to a file of the document
+        (`tasks.files`)."""
+        ...
+
+
 @dataclass(frozen=True)
 class TaskRequest:
     """What a task's request is made of, as the node that asks sees it: the document as a
     `full` body shows it (`document`) and the values a body template sees (`values`), the rule
-    that asks (`id`, `name`) and what the rule's steps before brought (`steps`)."""
+    that asks (`id`, `name`) and what the rule's steps before brought (`steps`); or a body of
+    its own (`contract`)."""
 
-    document: JsonObject
-    values: Mapping[str, TemplateValue]
+    document: JsonObject = field(default_factory=dict)
+    values: Mapping[str, TemplateValue] = field(default_factory=dict)
     rule: JsonObject | None = None
     steps: JsonObject = field(default_factory=dict)
+    contract: Contract | None = None
 
 
 @dataclass(frozen=True)
@@ -130,12 +152,13 @@ class TaskDesk:
         self, uow: UnitOfWork, task: Task, ask: Ask, document: Document, now: datetime
     ) -> None:
         token = new_token(TOKEN_PREFIX)
-        deadline = (now + task.timeout).strftime("%Y-%m-%dT%H:%M:%SZ")
+        ends = now + task.timeout
+        deadline = ends.strftime("%Y-%m-%dT%H:%M:%SZ")
         callback = None if self._link_base is None else callback_url(self._link_base, task)
         body = (
             "LEKTO_PUBLIC_URL is not set: the consumer would not know where to answer"
             if callback is None
-            else self._body(task, ask, document, token, callback, deadline, now)
+            else self._body(task, ask, document, token, callback, ends, now)
         )
         if isinstance(body, str) or callback is None:
             undelivered = because(ReasonCode.TASK_UNDELIVERED, webhook=ask.webhook.name, error=body)
@@ -143,7 +166,13 @@ class TaskDesk:
             await end_task(uow, task, now, storing=document.id)
             return
         request = TaskRequestText(body=body, token=token, callback=callback, deadline=deadline)
-        task.open(hash_token(token), request.encrypt(self._cipher, task), now)
+        contract = ask.request.contract
+        task.open(
+            hash_token(token),
+            request.encrypt(self._cipher, task),
+            now,
+            context=None if contract is None else contract.keys,
+        )
         await uow.tasks.update(task)
         await queue_task_delivery(uow, task, now)
         assert task.deadline is not None
@@ -161,7 +190,7 @@ class TaskDesk:
         document: Document,
         token: str,
         callback: str,
-        deadline: str,
+        ends: datetime,
         now: datetime,
     ) -> bytes | str:
         """The request's body; why not, if it cannot be made."""
@@ -169,10 +198,26 @@ class TaskDesk:
             "id": str(task.id),
             "callback": callback,
             "token": token,
-            "deadline": deadline,
+            "deadline": ends.strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
         request = ask.request
         webhook = ask.webhook
+        if request.contract is not None:
+            assert self._link_base is not None  # there is a callback
+            link_base = self._link_base
+            named: JsonObject = {
+                "id": about["id"],
+                "kind": task.kind.value,
+                "document_id": str(task.document_id),
+                "run": task.run,
+                "deadline": about["deadline"],
+                "callback": callback,
+                "token": token,
+            }
+            made = request.contract.body(
+                named, lambda name: file_link(link_base, self._cipher, task, name, ends)
+            )
+            return json.dumps(made, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
         if webhook.body is not BodyFormat.TEMPLATE:
             return event_body(
                 event_id=task.id,

@@ -1044,8 +1044,11 @@ class PipelineService:
                 if isinstance(applied, Delegation):
                     assert not catching_up, "a catch-up delegates nothing"
                     document.delegate_node(node, run, applied.deadline, now)
+                    again = applied.again and document.resume_node(node, run, now)
                     await uow.documents.update(document)
                     await uow.jobs.complete(job)
+                    if again:  # after this job: a running one would hold the new one back
+                        await enqueue_nodes(uow, document, [node], now)
                     await uow.outbox.add(document.pull_events())
                     await uow.commit()
                     return

@@ -30,6 +30,7 @@ from lekto.adapters.inbound.rest import (
     webhooks,
 )
 from lekto.adapters.inbound.rest.auth import (
+    FILE_SIGNATURE,
     SECURITY,
     SECURITY_SCHEMES,
     SESSION_ONLY,
@@ -233,6 +234,8 @@ def security_of(route: APIRoute) -> list[dict[str, list[str]]]:
     calls = set(_calls(route.dependant))
     if external.task_token in calls:
         return TASK_TOKEN
+    if external.file_link in calls:
+        return FILE_SIGNATURE
     if session_principal in calls:
         return SESSION_ONLY
     if authenticate in calls:

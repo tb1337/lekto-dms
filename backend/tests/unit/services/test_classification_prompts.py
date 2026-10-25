@@ -94,7 +94,7 @@ def test_parse_propose() -> None:
 def test_the_proposal_is_kept_with_its_fields_by_id() -> None:
     amount = FieldDefinition.create(name="Betrag", data_type=FieldType.AMOUNT, now=NOW)
     answer = parse_propose(json.dumps(ANSWER), ["a1"])
-    stored = StoredProposal.of(answer, {"a1": amount})
+    stored = StoredProposal.of(answer, {"a1": amount.id})
     assert stored.fields == {amount.id: Proposal(value="84,20 €", evidence="Betrag 84,20 €")}
     assert StoredProposal.from_json(json.loads(json.dumps(stored.to_json()))) == stored
 

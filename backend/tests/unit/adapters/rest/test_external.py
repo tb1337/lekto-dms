@@ -1,4 +1,5 @@
-"""`/external/tasks/{id}/result`: the consumer of a task answers it with the task's token."""
+"""`/external/tasks/{id}/result`: the consumer of a task answers it with the task's token;
+`/external/tasks/{id}/files/{name}`: a file of its document by a signed link."""
 
 from datetime import timedelta
 from uuid import UUID
@@ -8,6 +9,8 @@ from lekto.core.domain.identity import hash_token
 from lekto.core.domain.ids import DocumentId, RuleId, TaskId, WebhookId, new_id
 from lekto.core.domain.pipeline import Node
 from lekto.core.domain.tasks import MAX_ANSWER_BYTES, Task, TaskKind, TaskStatus, TaskStep
+from lekto.core.services.objects import structure_key
+from lekto.core.services.tasks.files import file_link
 from tests.api import auth, bearer
 from tests.unit.adapters.rest.support import Api, upload
 
@@ -94,3 +97,23 @@ async def test_a_too_large_answer_is_not_read(api: Api) -> None:
     )
     assert response.status_code == 413, response.text
     assert (await stored(api, task)).status is TaskStatus.FAILED
+
+
+async def test_a_file_of_the_document_by_its_signed_link(api: Api) -> None:
+    task = await a_task(api)
+    assert task.deadline is not None
+    await api.container.object_store.put(
+        structure_key(task.document_id), b'{"pages": []}', content_type="application/json"
+    )
+    link = file_link(
+        "https://lekto.example.org", api.container.cipher, task, "content.json", task.deadline
+    )
+    path = link.removeprefix("https://lekto.example.org")
+    response = await api.client.get(path)
+    assert (response.status_code, response.content) == (200, b'{"pages": []}')
+    assert response.headers["content-type"] == "application/json"
+    assert response.headers["cache-control"] == "no-store"
+    altered = await api.client.get(path.replace("content.json", "pages/1.webp"))
+    assert altered.status_code == 401
+    unsigned = await api.client.get(path.split("?")[0])
+    assert unsigned.status_code == 401

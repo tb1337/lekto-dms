@@ -164,7 +164,7 @@ class World:
 
     @property
     def tasks(self) -> TaskService:
-        return TaskService(self.uow, self.clock)
+        return TaskService(self.uow, self.clock, self.cipher, self.object_store)
 
     def desk(self, link_base: str | None = None) -> TaskDesk:
         """Places tasks; without `link_base` at `LINK_BASE`."""

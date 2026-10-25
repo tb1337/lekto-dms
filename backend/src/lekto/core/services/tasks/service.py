@@ -4,12 +4,16 @@
 | --------------------------------------------------- | ------------------ | ------- |
 | valid (`status` `ok` or `error`)                    | answered or failed | 204     |
 | not JSON, or an envelope that is not valid          | failed             | 422     |
+| a model call's answer that does not fit the context | failed             | 422     |
 | larger than `MAX_ANSWER_BYTES`                      | failed             | 413     |
 | answered before, or its run is over                 | unchanged          | 409     |
 | unknown task or token, or the deadline has passed   | unchanged          | 401     |
 
 `status: error` and an answer that is not taken count as none: the node goes on as the step
 says for a missing answer. The token is used up with the first answer that is read.
+
+The consumer of a model call fetches the document's files by the signed links of the request
+(`tasks.files`).
 """
 
 import hmac
@@ -19,22 +23,32 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from lekto.core.domain.errors import AuthenticationError, ConflictError, ValidationError
+from lekto.core.domain.errors import (
+    AuthenticationError,
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from lekto.core.domain.identity import hash_token
 from lekto.core.domain.ids import TaskId
 from lekto.core.domain.jobs import Job
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.tasks import MAX_ANSWER_BYTES, Task, TaskStatus, parse_answer
 from lekto.core.ports.clock import Clock
+from lekto.core.ports.identity import SecretCipher
+from lekto.core.ports.object_store import ObjectStore
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._jobs import LEASE, STORE_ATTEMPTS, JobRunner, retrying
+from lekto.core.services.classification.external import check_answer
 from lekto.core.services.tasks.desk import EXPIRE_JOB
+from lekto.core.services.tasks.files import signed, task_file
 from lekto.core.services.tasks.settling import end_task
 
 log = logging.getLogger(__name__)
 
 UNKNOWN_TOKEN = "unknown task or token, or its time is up"
 STALE = "the task was answered already, or its document was processed again or deleted"
+UNKNOWN_LINK = "unknown or altered link, or its time is up"
 
 
 @dataclass(frozen=True)
@@ -46,10 +60,20 @@ class AnswerReceipt:
     too_large: bool = False
 
 
+@dataclass(frozen=True)
+class FileContent:
+    data: bytes
+    media_type: str
+
+
 class TaskService:
-    def __init__(self, uow: UnitOfWorkFactory, clock: Clock) -> None:
+    def __init__(
+        self, uow: UnitOfWorkFactory, clock: Clock, cipher: SecretCipher, store: ObjectStore
+    ) -> None:
         self._uow = uow
         self._clock = clock
+        self._cipher = cipher
+        self._store = store
         self._jobs = JobRunner(uow, clock)
 
     async def answer(self, id: TaskId, token: str, body: bytes | None) -> AnswerReceipt:
@@ -87,6 +111,27 @@ class TaskService:
             extra={"task_id": str(id), "taken": receipt.problem is None},
         )
         return receipt
+
+    async def file(self, id: TaskId, name: str, expires: int, signature: str) -> FileContent:
+        """The file `name` of the document of task `id`, by the signed link of its request.
+        AuthenticationError for an unknown task, a signature that is not Lekto's or a link
+        whose time is up; ConflictError once the document was processed again or deleted;
+        NotFoundError for a file the document does not have."""
+        async with self._uow() as uow:
+            task = await uow.tasks.find(id)
+            if (
+                task is None
+                or not signed(self._cipher, task, name, expires, signature)
+                or self._clock.now().timestamp() >= expires
+            ):
+                raise AuthenticationError(UNKNOWN_LINK)
+            document = await uow.documents.find(task.document_id)
+        if document is None or document.processing.run != task.run:
+            raise ConflictError(STALE)
+        found = task_file(document.id, name, document.page_count)
+        if found is None:
+            raise NotFoundError("file", name)
+        return FileContent(await self._store.get(found.key), found.media_type)
 
     # --- deadlines ------------------------------------------------------------------------------
 
@@ -139,6 +184,12 @@ async def _take(uow: UnitOfWork, task: Task, body: bytes | None, now: datetime) 
         task.fail(because(ReasonCode.TASK_INVALID, webhook=name, detail=detail), now)
         return AnswerReceipt(detail)
     if envelope.ok:
+        try:
+            check_answer(task, envelope.answer)
+        except ValidationError as error:
+            unfit = because(ReasonCode.TASK_INVALID, webhook=name, detail=str(error))
+            task.fail(unfit, now, producer=envelope.producer)
+            return AnswerReceipt(str(error))
         task.answered(envelope.answer, envelope.producer, now)
     else:
         failed = because(ReasonCode.TASK_ERROR, webhook=name, reason=envelope.reason)

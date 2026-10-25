@@ -24,9 +24,12 @@ from lekto.core.services._jobs import enqueue_nodes
 class Delegation:
     """What a node's run gives instead of a result when it waits for answers to its tasks
     ("running externally"); it runs anew when one of them ends. `deadline`: when the last of
-    its open tasks ends at the latest (None while they wait to be sent)."""
+    its open tasks ends at the latest (None while they wait to be sent). `again`: a task ended
+    after the node's work read it (outside the transaction that stores this): the node runs
+    anew at once and reads what it brought."""
 
     deadline: datetime | None
+    again: bool = False
 
 
 async def end_task(

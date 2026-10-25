@@ -97,10 +97,11 @@ class JobQueue(Protocol):
         ...
 
     async def finished(
-        self, *, since: datetime, kinds: Collection[str] | None = None
+        self, *, since: datetime, kinds: Collection[str] | None = None, limit: int | None = None
     ) -> list[FinishedJob]:
-        """The done jobs (of `kinds`) that finished at `since` or later, with their times; jobs
-        from before revision 0041 have none and are left out."""
+        """The done jobs (of `kinds`) that finished at `since` or later, with their times, the
+        earliest finished first; with `limit`, only the latest that many of them. Jobs from
+        before revision 0041 have none and are left out."""
         ...
 
     async def purge(self, *, before: datetime) -> int:

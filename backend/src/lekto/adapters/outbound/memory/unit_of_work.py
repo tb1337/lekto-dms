@@ -811,7 +811,7 @@ class MemoryJobQueue:
         return copy.deepcopy(found[offset : offset + limit])
 
     async def finished(
-        self, *, since: datetime, kinds: Collection[str] | None = None
+        self, *, since: datetime, kinds: Collection[str] | None = None, limit: int | None = None
     ) -> list[FinishedJob]:
         done = [
             job
@@ -823,6 +823,8 @@ class MemoryJobQueue:
             and (kinds is None or job.kind in kinds)
         ]
         done.sort(key=lambda job: (job.finished_at, job.id))
+        if limit is not None:
+            done = done[max(0, len(done) - limit) :]
         return [
             FinishedJob(
                 kind=job.kind,

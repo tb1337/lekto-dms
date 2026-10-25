@@ -225,7 +225,7 @@ class SqlJobQueue:
         return [_job(row) for row in rows]
 
     async def finished(
-        self, *, since: datetime, kinds: Collection[str] | None = None
+        self, *, since: datetime, kinds: Collection[str] | None = None, limit: int | None = None
     ) -> list[FinishedJob]:
         query = select(
             _jobs.c.kind, _jobs.c.run_at, _jobs.c.started_at, _jobs.c.finished_at, _jobs.c.result
@@ -236,7 +236,13 @@ class SqlJobQueue:
         )
         if kinds is not None:
             query = query.where(_jobs.c.kind.in_(list(kinds)))
-        rows = await self._tx.read(query.order_by(_jobs.c.finished_at, _jobs.c.id))
+        if limit is None:
+            query = query.order_by(_jobs.c.finished_at, _jobs.c.id)
+        else:  # the latest ones, read backwards and turned around
+            query = query.order_by(_jobs.c.finished_at.desc(), _jobs.c.id.desc()).limit(limit)
+        rows = list(await self._tx.read(query))
+        if limit is not None:
+            rows.reverse()
         return [
             FinishedJob(
                 kind=row.kind,

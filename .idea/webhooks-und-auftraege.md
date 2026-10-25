@@ -120,10 +120,14 @@ Bedingungsschritte); andere Regeln sieht sie nicht. Am Ende werden die Aktionen 
 zusammengeführt wie heute (`rule_planner`): Konflikte machen gelb. Templates von Aktionen sehen
 das Dokument weiter so, wie die Regeln es hinterlassen, dazu `steps`.
 
-**Webhook senden:** beim Eingang und bei Änderungen. Die Nachricht geht über die Outbox in
-derselben Transaktion wie das Ergebnis der Regeln hinaus, also erst, wenn es gespeichert ist:
-Home Assistant bekommt nie einen Stand, der danach durch einen Konflikt gelb wird. Der Body
-folgt der Variante des Webhooks, sein Typ ist `rule.send`.
+**Webhook senden:** beim Eingang und bei Änderungen (Body nach der Variante des Webhooks, Typ
+`rule.send`, dazu `rule` mit ID und Namen). Beim Eingang geht die Nachricht erst hinaus, wenn das
+Dokument abgelegt wird (Knoten `file`): Ein grünes sofort, ein gelbes erst nach dem Bestätigen,
+ein rotes nie, und nichts doppelt, obwohl die Regeln nach dem Bestätigen noch einmal laufen
+(Tobi, 25.10.2026). Bei Änderungen und beim rückwirkenden Anwenden geht sie hinaus, sobald das
+Ergebnis gespeichert ist; rückwirkend je ausgewähltem Dokument, die Vorschau zeigt „sendet an …“
+(Tobi, 25.10.2026). Die Zustellung wird in derselben Transaktion wie das Ergebnis eingereiht:
+Home Assistant bekommt nie einen Stand, der danach nicht gilt.
 
 **Webhook fragen:**
 
@@ -146,7 +150,10 @@ folgt der Variante des Webhooks, sein Typ ist `rule.send`.
 Speichernden), eine globale nur Webhooks eines Admins. Vor jedem Senden und Fragen prüft Lekto,
 ob der Besitzer des Webhooks das Dokument lesen darf; wenn nicht, greift der Schritt nicht, und
 das Dokument wird gelb (beim Eingang) bzw. es wird gemeldet (bei Änderungen), wie heute bei
-einer Regel, deren Autor ein Recht verloren hat.
+einer Regel, deren Autor ein Recht verloren hat. Hat eine Person im Lauf schon bestätigt, wird
+ein solcher Schritt nur noch gemeldet (eine Person kann das Recht nicht herbeibestätigen; das
+Dokument hinge sonst im Posteingang fest). Wird ein Webhook gelöscht, werden die Regeln, die ihn
+verwenden, abgeschaltet, mit Grund, wie bei gelöschten Stammdaten.
 
 **Probelauf:** zeigt „sendet an …“ und „fragt …“; die Antwort kennt Lekto vorher nicht.
 
@@ -356,8 +363,6 @@ gültig); Alembic-Revisionen dazu.
 - Bestätigen im Posteingang lässt die Regeln in einem neuen Lauf erneut laufen
   (`Document.confirm` zählt `run` hoch): fragt ein Schritt dann erneut, oder gilt die Antwort des
   vorigen Laufs? Vor M20 zu klären.
-- Regel mit „Webhook senden“ auf bestehende Dokumente anwenden: sendet sie dann je Dokument
-  (die Vorschau zeigt es), oder bleibt das Senden dort aus? Vor M19 zu klären.
 - Größe einer Antwort: Vorschlag höchstens 1 MB, sonst 413 und wie ohne Antwort.
 - Webhook geändert oder gelöscht, während Aufträge offen sind: Vorschlag, sie laufen bis zur
   Frist, eine Antwort mit gültigem Token wird angenommen.
@@ -408,6 +413,8 @@ gültig); Alembic-Revisionen dazu.
     `/files/{name}`.
 24. Kante `pages → signal_llm`.
 25. Zeitgesteuerte Auslöser und die Bewertung gegen externe Endpunkte: nicht jetzt.
+26. „Webhook senden“ beim Eingang geht erst beim Ablegen hinaus; rückwirkend angewendet sendet
+    eine Regel je Dokument, mit Hinweis in der Vorschau.
 
 ## Quellen
 

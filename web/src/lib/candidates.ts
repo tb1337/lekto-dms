@@ -4,8 +4,8 @@
  */
 import type { components } from '#lib/api/schema.ts';
 import { BASE } from '#lib/base.ts';
-import { formatNumber } from '#lib/i18n.ts';
-import { IDENTIFIER_KINDS, kindLabel, type IdentifierKind } from '#lib/identifiers.ts';
+import { formatNumber, formatPercent } from '#lib/i18n.ts';
+import { labelOfKind } from '#lib/identifiers.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 export type Candidate = components['schemas']['CandidateOut'];
@@ -24,18 +24,11 @@ export interface SourceChip {
 	documents: string[];
 }
 
-const percent = (value: number) =>
-	formatNumber(value, { style: 'percent', maximumFractionDigits: 0 });
+const percent = formatPercent;
 const similarity = (value: number) =>
 	formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const given = (value: number | null | undefined): value is number =>
 	value !== null && value !== undefined;
-
-function identifierLabel(kind: string): string {
-	return (IDENTIFIER_KINDS as readonly string[]).includes(kind)
-		? kindLabel(kind as IdentifierKind)
-		: kind;
-}
 
 /**
  * The chips of one signal's say: one, or for the facts one per identifier and the name. Each
@@ -85,7 +78,7 @@ export function sourceChips(source: CandidateSource): SourceChip[] {
 		case 'signal_facts':
 			return [
 				...(source.identifiers ?? []).map((kind) =>
-					chip(m.candidate_identifier({ kind: identifierLabel(kind) }), true)
+					chip(m.candidate_identifier({ kind: labelOfKind(kind) }), true)
 				),
 				...(source.named_in_text ? [chip(m.candidate_named(), true)] : [])
 			];
@@ -115,5 +108,5 @@ export function disputed(candidate: Candidate): boolean {
 }
 
 export function documentHref(id: string): string {
-	return `${BASE}/documents/${id}`;
+	return `${BASE}/documents/${encodeURIComponent(id)}`;
 }

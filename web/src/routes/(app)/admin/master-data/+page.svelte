@@ -11,20 +11,14 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
+	import { MASTER_TABS as TABS, masterTabOf, type MasterTab as Tab } from '#lib/master-tabs.ts';
 	import { kindFilter } from '#lib/tag-kinds.ts';
-
-	const TABS = ['contacts', 'document-types', 'tags', 'fields'] as const;
-	type Tab = (typeof TABS)[number];
 
 	// Four tabs: contacts, document types, every kind of tag, fields. The tab stands in the URL
 	// (an unknown one is the first); the API refuses everyone but admins. Each tab has its own
 	// search (in this browser) and adds with the button beside it, on a phone with the round one
 	// beside the title.
-	const tab = $derived<Tab>(
-		(TABS as readonly string[]).includes(page.url.searchParams.get('tab') ?? '')
-			? (page.url.searchParams.get('tab') as Tab)
-			: 'contacts'
-	);
+	const tab = $derived(masterTabOf(page.url.searchParams));
 	const queries = $state<Record<Tab, string>>({
 		contacts: '',
 		'document-types': '',

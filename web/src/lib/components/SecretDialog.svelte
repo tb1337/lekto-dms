@@ -4,7 +4,9 @@
 	import type { Snippet } from 'svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
+	import { writeClipboard } from '#lib/clipboard.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { onChange } from '#lib/watch.svelte.ts';
 
 	// Shows a secret exactly once (API token, webhook secret, recovery codes). The secret lives
 	// only in the page's memory: closing the dialog drops it, nothing is stored.
@@ -23,16 +25,16 @@
 	} = $props();
 
 	let copied = $state(false);
+	// Another secret (or none, the dialog closed) has not been copied yet.
+	onChange(
+		() => secret,
+		() => (copied = false)
+	);
 
 	async function copy() {
 		if (!secret) return;
-		try {
-			await navigator.clipboard.writeText(secret);
-			copied = true;
-		} catch {
-			// No clipboard in an insecure page: the text stays selectable.
-			copied = false;
-		}
+		// Without a clipboard (an insecure page) the text stays selectable.
+		copied = await writeClipboard(secret);
 	}
 </script>
 

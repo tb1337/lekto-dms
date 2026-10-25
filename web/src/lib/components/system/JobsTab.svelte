@@ -7,6 +7,7 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { documentHref } from '#lib/candidates.ts';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import Segmented from '#lib/components/Segmented.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -235,10 +236,7 @@
 
 <div class="flex flex-col gap-6">
 	{#if problem && !summary}
-		<div class="flex flex-col items-start gap-3" role="alert">
-			<p class="text-destructive">{problem}</p>
-			<Button variant="outline" onclick={loadSummary}>{m.retry()}</Button>
-		</div>
+		<LoadProblem {problem} onretry={loadSummary} />
 	{:else if !summary || !all}
 		<p class="text-muted-foreground">{m.loading()}</p>
 	{:else}

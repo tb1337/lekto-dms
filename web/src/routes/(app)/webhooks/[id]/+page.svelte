@@ -1,10 +1,12 @@
 <script lang="ts">
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { page } from '$app/state';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
+	import BackLink from '#lib/components/BackLink.svelte';
+	import EmptyNote from '#lib/components/EmptyNote.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Table from '#lib/components/ui/table/index.ts';
@@ -55,26 +57,13 @@
 <svelte:head><title>{m.webhook_log_title()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-6">
-	<a
-		href="{BASE}/webhooks"
-		class="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-	>
-		<ArrowLeft class="size-4" aria-hidden="true" />
-		{m.nav_webhooks()}
-	</a>
+	<BackLink href="{BASE}/webhooks" label={m.nav_webhooks()} />
 	<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.webhook_log_title()} {name}</h1>
 
 	{#if list.error}
-		<div class="flex flex-col items-start gap-3" role="alert">
-			<p class="text-destructive">{describeError(list.error)}</p>
-			<Button variant="outline" onclick={() => list.reload()}>{m.retry()}</Button>
-		</div>
+		<LoadProblem problem={describeError(list.error)} onretry={() => list.reload()} />
 	{:else if list.empty}
-		<p
-			class="rounded-2xl border border-dashed bg-card px-6 py-16 text-center text-muted-foreground"
-		>
-			{m.delivery_none()}
-		</p>
+		<EmptyNote>{m.delivery_none()}</EmptyNote>
 	{:else}
 		<Table.Root>
 			<Table.Header>

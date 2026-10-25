@@ -7,7 +7,7 @@
 	import TokenInfo from '#lib/components/document/TokenInfo.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { formatDuration } from '#lib/duration.ts';
-	import { formatDate } from '#lib/i18n.ts';
+	import { formatTime } from '#lib/i18n.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { labelled, reasonsText } from '#lib/reasons.ts';
@@ -58,7 +58,7 @@
 		failed: m.outcome_failed
 	};
 
-	const time = (value: string) => formatDate(value, { timeStyle: 'medium' });
+	const time = formatTime;
 
 	function overruled(entry: LogEntry, last: boolean): string | null {
 		const confirmed = confirmationOf(entry);

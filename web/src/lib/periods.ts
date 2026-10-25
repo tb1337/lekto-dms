@@ -5,6 +5,7 @@
  * `2026-03-01/2026-03-14`. Read are these forms and the German ones (`KW 17/2026`, `Q2 2026`,
  * `03/2026`, `März 2026`, `31.03.2026`), and a span of any two (`01.03.2026–14.03.2026`).
  */
+import { isIsoDay, isoDayUtc, pad2, utcDay } from '#lib/dates.ts';
 import type { Period } from '#lib/fields.ts';
 
 /** What a period is, by its ends (as the API's `PeriodKind`). */
@@ -12,18 +13,8 @@ export type PeriodKind = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'span';
 
 const DAY = 86_400_000;
 
-/** A `YYYY-MM-DD` day at midnight UTC, so no time zone moves it. */
-function utcDay(day: string): Date {
-	const [year, month, date] = day.split('-').map(Number);
-	return new Date(Date.UTC(year, month - 1, date));
-}
-
 function lastOfMonth(year: number, month: number): number {
 	return Date.UTC(year, month + 1, 0);
-}
-
-function isoDay(time: number): string {
-	return new Date(time).toISOString().slice(0, 10);
 }
 
 export function periodKind(start: string, end: string): PeriodKind {
@@ -47,18 +38,16 @@ function isoWeek(day: Date): [number, number] {
 	return [Math.floor((thursday.getTime() - Date.UTC(year, 0, 1)) / DAY / 7) + 1, year];
 }
 
-const two = (value: number) => String(value).padStart(2, '0');
-
 /** A period in ISO 8601 (`2026-W17`, `2026-Q2`, …); empty while an end is missing. */
 export function writePeriod(start: string, end: string): string {
-	if (!isDay(start) || !isDay(end) || end < start) return '';
+	if (!isIsoDay(start) || !isIsoDay(end) || end < start) return '';
 	const first = utcDay(start);
 	switch (periodKind(start, end)) {
 		case 'day':
 			return start;
 		case 'week': {
 			const [week, year] = isoWeek(first);
-			return `${year}-W${two(week)}`;
+			return `${year}-W${pad2(week)}`;
 		}
 		case 'month':
 			return start.slice(0, 7);
@@ -71,15 +60,11 @@ export function writePeriod(start: string, end: string): string {
 	}
 }
 
-function isDay(text: string): boolean {
-	return /^\d{4}-\d{2}-\d{2}$/.test(text);
-}
-
 function day(year: number, month: number, date: number): Period | null {
 	const time = Date.UTC(year, month - 1, date);
 	const found = new Date(time);
 	if (found.getUTCMonth() !== month - 1 || found.getUTCDate() !== date) return null;
-	return { start: isoDay(time), end: isoDay(time) };
+	return { start: isoDayUtc(time), end: isoDayUtc(time) };
 }
 
 function week(year: number, number: number): Period | null {
@@ -87,20 +72,23 @@ function week(year: number, number: number): Period | null {
 	const monday = fourth - ((new Date(fourth).getUTCDay() + 6) % 7) * DAY + (number - 1) * 7 * DAY;
 	const [found] = isoWeek(new Date(monday));
 	if (number < 1 || found !== number) return null; // week 53 of a year with 52
-	return { start: isoDay(monday), end: isoDay(monday + 6 * DAY) };
+	return { start: isoDayUtc(monday), end: isoDayUtc(monday + 6 * DAY) };
 }
 
 function month(year: number, number: number): Period | null {
 	if (number < 1 || number > 12) return null;
 	return {
-		start: isoDay(Date.UTC(year, number - 1, 1)),
-		end: isoDay(lastOfMonth(year, number - 1))
+		start: isoDayUtc(Date.UTC(year, number - 1, 1)),
+		end: isoDayUtc(lastOfMonth(year, number - 1))
 	};
 }
 
 function quarter(year: number, number: number): Period {
 	const first = (number - 1) * 3;
-	return { start: isoDay(Date.UTC(year, first, 1)), end: isoDay(lastOfMonth(year, first + 2)) };
+	return {
+		start: isoDayUtc(Date.UTC(year, first, 1)),
+		end: isoDayUtc(lastOfMonth(year, first + 2))
+	};
 }
 
 /** Month names to read: German and English, without umlauts (`Maerz`), any three or more

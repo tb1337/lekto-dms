@@ -3,6 +3,7 @@
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
+	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import * as Popover from '#lib/components/ui/popover/index.ts';
 	import { describeError } from '#lib/errors.ts';
@@ -74,7 +75,7 @@
 				<Input type="datetime-local" bind:value={draft} max={latest} required />
 			</label>
 			{#if problem}
-				<p class="text-sm text-destructive" role="alert">{problem}</p>
+				<Field.Error>{problem}</Field.Error>
 			{/if}
 			<div class="flex justify-end gap-2">
 				<Button type="button" variant="ghost" size="sm" onclick={() => (open = false)}>

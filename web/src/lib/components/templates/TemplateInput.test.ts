@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { TEMPLATES_GUIDE } from '#lib/templates/guide.ts';
 import TemplateInput from './TemplateInput.svelte';
@@ -89,6 +90,56 @@ describe('TemplateInput', () => {
 		expect(screen.getByLabelText('Title').getAttribute('aria-invalid')).toBe('true');
 		// Checked without a document: a rule's template may use every field.
 		expect(previews.at(-1)).toEqual({ template: '{{ field.netto }}', document_type_id: null });
+	});
+
+	it('keeps the verdict on the newest template when an older answer arrives late', async () => {
+		let answerSlow!: () => void;
+		const slow = new Promise<void>((resolve) => (answerSlow = resolve));
+		const base = fetchMock.getMockImplementation()!;
+		fetchMock.mockImplementation(async (request) => {
+			if (new URL(request.url).pathname === '/api/v1/templates/preview') {
+				const body = await request.clone().json();
+				if (body.template === 'slow') {
+					previews.push(body);
+					await slow;
+					return json({
+						used: [],
+						rendered: null,
+						missing: null,
+						error: 'late error',
+						values: null
+					});
+				}
+			}
+			return base(request);
+		});
+		const props = { id: 'title', label: 'Title' };
+		const { rerender } = render(TemplateInput, { ...props, value: 'slow' });
+		await waitFor(() => expect(previews.at(-1)?.template).toBe('slow'));
+		await rerender({ ...props, value: 'fast' });
+		await waitFor(() => expect(previews.at(-1)?.template).toBe('fast'));
+		// The newest template is fine; the verdict on the one before must not overwrite that.
+		answerSlow();
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(screen.queryByText('late error')).toBeNull();
+		expect(screen.getByLabelText('Title').getAttribute('aria-invalid')).not.toBe('true');
+	});
+
+	it('asks for no fields when the page gives them', async () => {
+		const user = userEvent.setup();
+		render(TemplateInput, {
+			id: 'title',
+			label: 'Title',
+			value: '',
+			fields: [field('f3', 'Netto', 'netto', null)] as unknown as FieldDefinition[]
+		});
+		await user.click(await screen.findByRole('button', { name: m.template_editor_open() }));
+		const sheet = await screen.findByRole('dialog');
+		expect(
+			await within(sheet).findByRole('button', { name: m.template_insert({ name: 'Netto' }) })
+		).toBeTruthy();
+		const asked = fetchMock.mock.calls.map(([request]) => new URL(request.url).pathname);
+		expect(asked).not.toContain('/api/v1/fields');
 	});
 
 	it('opens the editor with a document of the type, its values, and applies the draft', async () => {

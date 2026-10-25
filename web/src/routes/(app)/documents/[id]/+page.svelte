@@ -12,6 +12,7 @@
 	import { ApiError } from '#lib/api/problem.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import DocumentFacts from '#lib/components/document/DocumentFacts.svelte';
 	import DocumentFiles from '#lib/components/document/DocumentFiles.svelte';
 	import DocumentForm from '#lib/components/document/DocumentForm.svelte';
@@ -51,12 +52,12 @@
 	import { coalesced } from '#lib/coalesce.ts';
 	import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
 	import { inbox as inboxSummary } from '#lib/inbox.svelte.ts';
-	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { PageLookup } from '#lib/lookup.svelte.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { canEdit } from '#lib/permissions.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
-	import { hasText, type GraphNode } from '#lib/pipeline.ts';
+	import { hasText, pipeline, type GraphNode } from '#lib/pipeline.ts';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import {
@@ -68,6 +69,7 @@
 		type Span
 	} from '#lib/facts.ts';
 	import { adviceText, visionAvailable, type Reading, type Vision } from '#lib/vision.ts';
+	import { onChange } from '#lib/watch.svelte.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
 
@@ -81,7 +83,9 @@
 	const fromInbox = $derived(page.url.searchParams.get('from') === 'inbox');
 	let document = $state<Document | null>(null);
 	let review = $state<Review | null>(null);
-	let lookup = $state<Lookup | null>(null);
+	// The names the view shows; a load that fails says so in a toast.
+	const pageLookup = new PageLookup(reportError);
+	const lookup = $derived(pageLookup.value);
 	let graph = $state<GraphNode[]>([]);
 	let vision = $state<Vision | null>(null);
 	let reading = $state<Reading | null>(null);
@@ -270,29 +274,23 @@
 
 	// Again after a master data dialog saved here (a contact opened from its facts): names,
 	// aliases and identifiers decide what the facts show.
-	let savedBefore = masterDataDialogs.changed;
-	$effect(() => {
-		const saved = masterDataDialogs.changed;
-		if (saved === savedBefore) return;
-		savedBefore = saved;
-		untrack(() => {
-			loadLookup().then((value) => (lookup = value), reportError);
+	onChange(
+		() => masterDataDialogs.changed,
+		() => {
+			void pageLookup.load();
 			void reloadFacts();
-		});
-	});
+		}
+	);
 
 	// Again when an admin switches the reach: the spaces offered follow it.
-	let reachBefore = scope.allUsers;
-	$effect(() => {
-		const reach = scope.allUsers;
-		if (reach === reachBefore) return;
-		reachBefore = reach;
-		untrack(() => loadLookup().then((value) => (lookup = value), reportError));
-	});
+	onChange(
+		() => scope.allUsers,
+		() => void pageLookup.load()
+	);
 
 	onMount(() => {
-		loadLookup().then((value) => (lookup = value), reportError);
-		unwrap(api.GET('/api/v1/pipeline')).then((value) => {
+		void pageLookup.load();
+		pipeline().then((value) => {
 			graph = value.nodes;
 			vision = value.vision;
 		}, reportError);
@@ -420,10 +418,10 @@
 <!-- From the desktop width on the view fills the window; only its cards scroll. -->
 <div class="flex flex-col gap-4 lg:h-full lg:min-h-0" data-wide>
 	{#if problem}
-		<div class="flex flex-col items-start gap-3" role="alert">
-			<p class="text-destructive">{notFound ? m.document_not_found() : describeError(problem)}</p>
-			{#if !notFound}<Button variant="outline" onclick={load}>{m.retry()}</Button>{/if}
-		</div>
+		<LoadProblem
+			problem={notFound ? m.document_not_found() : describeError(problem)}
+			onretry={notFound ? undefined : load}
+		/>
 	{:else if !document}
 		<p class="text-muted-foreground">{m.loading()}</p>
 	{:else}
@@ -597,7 +595,7 @@
 										{editable}
 										next={nextUp}
 										onsaved={(updated) => (document = updated)}
-										onenabled={() => loadLookup().then((value) => (lookup = value), reportError)}
+										onenabled={() => void pageLookup.load()}
 										onconfirmed={confirmed}
 										onmarks={(next) => (marks = next)}
 										onquotes={(next) => (fieldQuotes = next)}

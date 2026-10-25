@@ -1,10 +1,10 @@
 <script lang="ts">
-	import X from '@lucide/svelte/icons/x';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
+	import ChipInput from '#lib/components/ChipInput.svelte';
 	import IdentifiersEditor from '#lib/components/IdentifiersEditor.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
@@ -34,7 +34,6 @@
 	let profile = $state<Profile | null>(null);
 	let displayName = $state('');
 	let aliases = $state<string[]>([]);
-	let alias = $state('');
 	let birthDate = $state('');
 	let email = $state('');
 	let identifiers = $state<IdentifierRow[]>([]);
@@ -80,14 +79,6 @@
 	}
 
 	onMount(load);
-
-	function addAlias() {
-		const name = alias.trim();
-		if (name !== '' && !aliases.some((item) => item.toLowerCase() === name.toLowerCase())) {
-			aliases = [...aliases, name];
-		}
-		alias = '';
-	}
 
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
@@ -139,44 +130,15 @@
 			<Field.Description>{m.profile_display_name_hint()}</Field.Description>
 		</Field.Field>
 		<Field.Field>
-			<Field.Label for="{uid}-alias">{m.profile_aliases()}</Field.Label>
-			{#if aliases.length > 0}
-				<ul class="flex flex-wrap gap-1.5">
-					{#each aliases as item (item)}
-						<li
-							class="inline-flex items-center gap-1 rounded-full bg-secondary py-0.5 pr-1 pl-3 text-sm"
-						>
-							{item}
-							<Button
-								type="button"
-								variant="ghost"
-								size="icon"
-								class="size-6"
-								aria-label={m.profile_alias_remove({ name: item })}
-								onclick={() => (aliases = aliases.filter((other) => other !== item))}
-							>
-								<X class="size-3.5" aria-hidden="true" />
-							</Button>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-			<div class="flex gap-2">
-				<Input
-					id="{uid}-alias"
-					bind:value={alias}
-					maxlength={150}
-					onkeydown={(event) => {
-						if (event.key !== 'Enter') return;
-						event.preventDefault();
-						addAlias();
-					}}
-				/>
-				<Button type="button" variant="outline" onclick={addAlias} disabled={alias.trim() === ''}>
-					{m.profile_alias_add()}
-				</Button>
-			</div>
-			<Field.Description>{m.profile_aliases_hint()}</Field.Description>
+			<Field.Label id="{uid}-aliases-label">{m.profile_aliases()}</Field.Label>
+			<ChipInput
+				bind:values={aliases}
+				labelledby="{uid}-aliases-label"
+				describedby="{uid}-aliases-hint"
+				addLabel={m.profile_alias_chip()}
+				inputLabel={m.profile_alias_input()}
+			/>
+			<Field.Description id="{uid}-aliases-hint">{m.profile_aliases_hint()}</Field.Description>
 		</Field.Field>
 		<div class="grid gap-4 sm:grid-cols-2">
 			<Field.Field>

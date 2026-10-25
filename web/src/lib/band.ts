@@ -10,7 +10,7 @@
  * a few pixels. When the run itself took next to no time (it only filed after a confirmation),
  * or its times are not known, the band tells how the steps stand: every step alike.
  */
-import { durationSeconds, type GraphNode, type Node } from '#lib/pipeline.ts';
+import { durationSeconds, levels, type GraphNode, type Node } from '#lib/pipeline.ts';
 import { PHASES, phaseOf, type Overrule, type Phase, type Step } from '#lib/steps.ts';
 
 /** How a step looks in the band: how it ended, or `carried` for one an earlier run did. */
@@ -88,10 +88,7 @@ function toneOf(step: Step): BandTone | null {
 /** The level of each node: one more than the highest level of the nodes it needs. */
 function levelsOf(graph: readonly GraphNode[]): Map<Node, number> {
 	const level = new Map<Node, number>();
-	for (const entry of graph) {
-		const needed = entry.requires.map((node) => level.get(node) ?? 0);
-		level.set(entry.node, needed.length === 0 ? 0 : Math.max(...needed) + 1);
-	}
+	levels(graph).forEach((row, index) => row.forEach((node) => level.set(node, index)));
 	return level;
 }
 

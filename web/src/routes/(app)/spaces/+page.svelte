@@ -9,6 +9,7 @@
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import EditButton from '#lib/components/EditButton.svelte';
 	import SpaceMembers from '#lib/components/SpaceMembers.svelte';
@@ -16,6 +17,7 @@
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
+	import { latest } from '#lib/latest.ts';
 	import { spaceLabel, userLabel, type Space, type UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import {
@@ -58,15 +60,19 @@
 			)
 			.join(', ');
 
+	// An answer overtaken by a later load (the reach switched twice) is dropped.
+	const begin = latest();
 	async function load() {
+		const current = begin();
 		try {
-			[spaces, users] = await Promise.all([
+			const [found, known] = await Promise.all([
 				unwrap(api.GET('/api/v1/spaces', { params: { query: { all_users: scope.query } } })),
 				unwrap(api.GET('/api/v1/users'))
 			]);
-			problem = null;
+			if (!current()) return;
+			[spaces, users, problem] = [found, known, null];
 		} catch (error) {
-			problem = describeError(error);
+			if (current()) problem = describeError(error);
 		}
 	}
 
@@ -125,10 +131,7 @@
 	</div>
 
 	{#if problem}
-		<div class="flex flex-col items-start gap-3" role="alert">
-			<p class="text-destructive">{problem}</p>
-			<Button variant="outline" onclick={load}>{m.retry()}</Button>
-		</div>
+		<LoadProblem {problem} onretry={load} />
 	{:else if !spaces}
 		<p class="text-muted-foreground">{m.loading()}</p>
 	{:else}

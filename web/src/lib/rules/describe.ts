@@ -1,6 +1,6 @@
 /** Texts of the rule builder: fields, operators, actions, problems; a rule as sentences. */
 import { describeValue } from '#lib/describe.ts';
-import { spaceLabel, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+import { byId, holderOf, spaceLabel, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import type {
 	ActionNode,
@@ -194,9 +194,9 @@ export function actionTemplate(
 /** Where a rule files: a space the caller knows by its label; another user's personal space,
  * which the caller need not be a member of, as a hand-over ("Hand over to Anna"). */
 function targetName(id: string, lookup: Lookup | null): string {
-	const space = lookup?.spaces.find((entry) => entry.id === id);
+	const space = lookup ? byId(lookup.spaces).get(id) : undefined;
 	if (space) return spaceLabel(space, lookup?.users ?? [], session.user?.id);
-	const user = lookup?.users.find((entry) => entry.personal_space_id === id);
+	const user = lookup ? holderOf(lookup.users, id) : undefined;
 	return user ? m.move_hand_over({ name: userLabel(user) }) : m.rule_unknown();
 }
 

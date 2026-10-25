@@ -10,10 +10,10 @@
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import { untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
+	import { copyText } from '#lib/clipboard.ts';
 	import Segmented from '#lib/components/Segmented.svelte';
 	import ReceiptEdit from '#lib/components/document/ReceiptEdit.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -198,14 +198,7 @@
 			: m.files_size_less({ percent: formatNumber(-percent) });
 	}
 
-	async function copy(text: string) {
-		try {
-			await navigator.clipboard.writeText(text);
-			toast.success(m.content_copied());
-		} catch (error) {
-			toast.error(describeError(error));
-		}
-	}
+	const copy = (text: string) => copyText(text);
 </script>
 
 {#snippet passport(title: string, file: Stored, original: Stored, largest: number)}

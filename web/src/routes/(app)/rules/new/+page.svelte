@@ -1,16 +1,14 @@
 <script lang="ts">
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { onMount } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { BASE } from '#lib/base.ts';
+	import BackLink from '#lib/components/BackLink.svelte';
 	import RuleBuilder from '#lib/components/rules/RuleBuilder.svelte';
 	import { describeError } from '#lib/errors.ts';
 	import { loadLookup, spaceOptions, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { problemText } from '#lib/rules/describe.ts';
-	import { saveErrors } from '#lib/rules/errors.ts';
-	import { newModel, toApi, validate } from '#lib/rules/model.ts';
+	import { RuleForm } from '#lib/rules/form.svelte.ts';
+	import { newModel, toApi } from '#lib/rules/model.ts';
 	import { rulePlaces } from '#lib/rules/places.ts';
 	import { createSwitchedOff } from '#lib/rules/save.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -20,9 +18,7 @@
 	let chosen = $state('');
 	let lookup = $state<Lookup | null>(null);
 	let problem = $state<string | null>(null);
-	let errors = $state<Record<string, string>>({});
-	let general = $state<string | null>(null);
-	let busy = $state(false);
+	const form = new RuleForm();
 
 	// A rule belongs to a space the caller edits; admins also make global ones.
 	const places = $derived(
@@ -42,37 +38,16 @@
 	});
 
 	async function save() {
-		if (!lookup) return;
-		const problems = validate(model, lookup.fields);
-		errors = Object.fromEntries(
-			Object.entries(problems).map(([key, entry]) => [key, problemText(entry)])
-		);
-		general = Object.keys(errors).length > 0 ? m.rule_form_invalid() : null;
-		if (general) return;
-		busy = true;
-		try {
-			const rule = await createSwitchedOff(place, toApi(model));
-			toast.success(m.rule_saved());
-			await goto(`${BASE}/rules/${rule.id}/apply?saved=1`);
-		} catch (error) {
-			({ byKey: errors, general } = saveErrors(error, model));
-			if (!general && Object.keys(errors).length > 0) general = m.rule_form_invalid();
-		} finally {
-			busy = false;
-		}
+		if (!lookup || !form.check(model, lookup.fields)) return;
+		const rule = await form.save(model, () => createSwitchedOff(place, toApi(model)));
+		if (rule) await goto(`${BASE}/rules/${rule.id}/apply?saved=1`);
 	}
 </script>
 
 <svelte:head><title>{m.rule_new_title()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-6">
-	<a
-		href="{BASE}/rules"
-		class="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-	>
-		<ArrowLeft class="size-4" aria-hidden="true" />
-		{m.nav_rules()}
-	</a>
+	<BackLink href="{BASE}/rules" label={m.nav_rules()} />
 	<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.rule_new_title()}</h1>
 
 	{#if problem}
@@ -87,9 +62,9 @@
 			onplace={(next) => (chosen = next)}
 			{lookup}
 			{targets}
-			{errors}
-			{general}
-			{busy}
+			errors={form.errors}
+			general={form.general}
+			busy={form.busy}
 			cancelHref="{BASE}/rules"
 			onsubmit={save}
 		/>

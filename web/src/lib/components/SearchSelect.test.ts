@@ -41,6 +41,13 @@ describe('SearchSelect', () => {
 		expect(trigger.textContent).toContain('none yet');
 	});
 
+	it('says a value is set that the options do not hold, rather than none', () => {
+		const { trigger } = field({ value: 'c9' });
+		expect(trigger.textContent).toContain(m.rule_unknown());
+		expect(trigger.textContent).not.toContain('none yet');
+		expect(selectedValue(trigger)).toBe('c9');
+	});
+
 	it('opens without scrolling the page to the list before it is placed', async () => {
 		const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
 		const { trigger } = field();

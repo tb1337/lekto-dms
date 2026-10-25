@@ -375,9 +375,7 @@ gültig); Alembic-Revisionen dazu.
 
 ## Offen
 
-- Die Kante `pages → signal_llm` gilt immer: „Neu verarbeiten ab `pages`“ fragt deshalb das
-  Modell (oder den Webhook) neu. Bestätigen nach einem OCR-Fehler rendert die Seiten weiter,
-  statt sie zu übernehmen.
+Nichts.
 
 ## Entscheidungen (Tobi, 25.10.2026)
 
@@ -475,6 +473,10 @@ gültig); Alembic-Revisionen dazu.
     optionales `OLLAMA_API_KEY` erlaubt einen Proxy vor Ollama.
 54. Ist der Lauf inzwischen gescheitert, geht nichts mehr hinaus; ein wartender Auftrag gibt
     seinen Platz frei.
+55. Die Kante `pages → signal_llm` regelt nur die Reihenfolge (`signal_llm` wartet auf die
+    Seitenbilder, braucht sie aber nicht): „Neu verarbeiten ab `pages`“ rendert nur die Bilder
+    neu und legt wieder ab, ohne neuen Modellaufruf. Bestätigen nach einem OCR-Fehler rendert
+    die Seiten wie bisher.
 
 ## Quellen
 

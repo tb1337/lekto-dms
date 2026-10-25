@@ -1,6 +1,7 @@
 """Contracts of the language model and the embeddings."""
 
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -16,7 +17,11 @@ SCHEMA: JsonObject = {
     "additionalProperties": False,
 }
 REQUEST = StructuredRequest(
-    system="Answer in JSON.", user="Say ok.", schema=SCHEMA, schema_name="contract"
+    system="Answer in JSON.",
+    document="<doc>Hello</doc>",
+    task="Say ok.",
+    schema=SCHEMA,
+    schema_name="contract",
 )
 
 
@@ -28,6 +33,11 @@ class LanguageModelContract:
         answer = await language_model.complete(REQUEST)
         assert json.loads(answer.content) == {"answer": "ok"}
         assert answer.model
+
+    async def test_answers_once_more_after_a_note(self, language_model: LanguageModel) -> None:
+        again = replace(REQUEST, retry="Your previous answer was not valid. Answer again.")
+        answer = await language_model.complete(again)
+        assert json.loads(answer.content) == {"answer": "ok"}
 
     async def test_usage_is_a_json_object(self, language_model: LanguageModel) -> None:
         answer = await language_model.complete(REQUEST)

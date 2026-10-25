@@ -93,13 +93,13 @@ async def test_the_model_chooses_among_the_spaces_the_uploader_may_file_into(wor
     result = await signal_step(world, fake).run(document)
 
     (request,) = fake.requests
-    listed = request.user.split(SPACES_HEADING, 1)[1].split("The document follows", 1)[0]
+    listed = request.task.split(SPACES_HEADING, 1)[1].split("\n\n", 1)[0]
     assert listed.strip().splitlines() == [
         "- s1: own personal space of the uploader",
         "- s2: Haushalt: Wohnung, Nebenkosten, Versorger",
         "- s3: personal space of anna",
     ]
-    assert "Annas Arbeit" not in request.user
+    assert "Annas Arbeit" not in request.task
     schema: Any = request.schema
     assert schema["properties"]["space"]["anyOf"][0]["enum"] == ["s1", "s2", "s3"]
     out: Any = result.output
@@ -125,7 +125,7 @@ async def test_the_uploader_s_own_description_of_their_personal_space_is_listed(
     await signal_step(world, fake).run(document)
 
     (request,) = fake.requests
-    listed = request.user.split(SPACES_HEADING, 1)[1].split("The document follows", 1)[0]
+    listed = request.task.split(SPACES_HEADING, 1)[1].split("\n\n", 1)[0]
     assert listed.strip().splitlines()[0] == (
         "- s1: own personal space of the uploader: Arbeit, Gesundheit"
     )
@@ -138,7 +138,7 @@ async def test_a_user_with_nowhere_else_to_file_is_not_asked(world: World) -> No
     fake = model(proposal())
     result = await signal_step(world, fake).run(document)
     (request,) = fake.requests
-    assert SPACES_HEADING not in request.user
+    assert SPACES_HEADING not in request.task
     schema: Any = request.schema
     assert "space" not in schema["properties"]
     out: Any = result.output
@@ -444,4 +444,4 @@ async def test_others_personal_spaces_are_listed_by_display_name(world: World) -
     fake = model(proposal())
     await signal_step(world, fake).run(document)
     (request,) = fake.requests
-    assert "- s3: personal space of Anna Busch" in request.user
+    assert "- s3: personal space of Anna Busch" in request.task

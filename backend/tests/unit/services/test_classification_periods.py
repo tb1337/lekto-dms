@@ -12,11 +12,10 @@ from lekto.core.domain.json_value import JsonObject
 from lekto.core.domain.master_data import DocumentType
 from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Outcome
-from lekto.core.domain.text import shorten
 from lekto.core.services.classification.answers import extract_schema, field_keys
 from lekto.core.services.classification.prompts import (
-    extract_message,
-    propose_message,
+    extract_task,
+    propose_task,
 )
 from lekto.core.services.pipeline import MetadataResult
 from tests.builders import NOW
@@ -144,7 +143,7 @@ def test_the_prompts_ask_for_a_period_in_its_form() -> None:
     value = schema["properties"]["fields"]["properties"]["a1"]["properties"]["value"]
     assert value["anyOf"][0]["required"] == ["start", "end"]
     assert value["anyOf"][1] == {"type": "null"}
-    asked = extract_message("Zeitnachweis", keys, shorten("text", 10_000))
+    asked = extract_task("Zeitnachweis", keys)
     assert "start and end (YYYY-MM-DD, both days included)" in asked
-    proposed = propose_message([], [], [("a1", period)], [], shorten("text", 10_000))
+    proposed = propose_task([], [], [("a1", period)], [])
     assert "period: a day, week, month, quarter, year or span" in proposed

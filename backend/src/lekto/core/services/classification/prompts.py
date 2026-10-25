@@ -1,9 +1,15 @@
 """Prompts for classification and field extraction.
 
+Every call has the same form (`StructuredRequest`): the system prompt, the same for all calls;
+the document in its own message; then the task, with the lists, the fields and what each part
+of the answer is. Calls about one document so begin alike, and an endpoint that caches a shared
+beginning computes the document once (prompt caching).
+
 The document text is untrusted: it is framed by markers that contain a hash of the text (it
-cannot contain its own closing marker), and the instructions say it is data. Long texts are
-shortened to a budget: the beginning and the end are kept, where letterhead, date, subject and
-totals usually stand.
+cannot contain its own closing marker), it is the person's message, never the system prompt,
+and the instructions say it is data. Long texts are shortened to a budget: the beginning and
+the end are kept, where letterhead, date, subject and totals usually stand; every call shortens
+alike.
 """
 
 import hashlib
@@ -14,8 +20,8 @@ from lekto.core.domain.fields import FieldDefinition, FieldType
 from lekto.core.domain.master_data import one_line
 from lekto.core.domain.text import Shortened
 
-EXTRACT_PROMPT = "extract-5"
-PROPOSE_PROMPT = "propose-5"
+EXTRACT_PROMPT = "extract-6"
+PROPOSE_PROMPT = "propose-6"
 PROPOSE_SCHEMA = "proposal"
 EXTRACT_SCHEMA = "fields"
 """Names of the JSON schemas of the two requests (`StructuredRequest.schema_name`)."""
@@ -86,14 +92,19 @@ field's name says what belongs in it (the name is often an internal one no docum
 take the value it asks for. Leave out fields the document does not show and the fields of \
 other types.""",
 }
-"""What each property of the proposal is, as the system prompt says it."""
+"""What each property of the proposal is, as the task says it."""
 
-PROPOSE_SYSTEM = f"""\
-You read one document for a document management system and propose its metadata.
+SYSTEM = f"""\
+You read documents for a document management system. Each request brings one document, then \
+a task that says what to give about it.
 
 Rules:
-{_COMMON_RULES}
-""" + "\n".join(f"- {name}: {rule}" for name, rule in PROPOSE_RULES.items())
+{_COMMON_RULES}"""
+"""The system prompt of every call: the same for all, so that they share their beginning; what a
+call wants stands in its task, after the document."""
+
+PARTS_HEADING = "What each part of the answer is:"
+"""Opens the rules of the answer's parts at the end of a task."""
 
 EXTRACT_RULE = """\
 one entry per listed key, with the value in the listed form, or null if the \
@@ -102,13 +113,6 @@ name is often an internal one no document shows). If the document shows several 
 (for example net and gross amounts), take the one the description, or without one the name, \
 asks for."""
 
-EXTRACT_SYSTEM = f"""\
-You read one document for a document management system and extract the values of the \
-listed fields.
-
-Rules:
-{_COMMON_RULES}
-- fields: {EXTRACT_RULE}"""
 
 VALUE_FORMS = {
     FieldType.TEXT: "text as written in the document",
@@ -140,29 +144,45 @@ class Listed:
 
 
 # The fixed answers of the evaluation (`adapters/inbound/evaluation/cases.py`, `_proposal_keys`
-# and `_KEY_LINE`) read the field keys from the wording of the two messages: the line that opens
-# the document, the field lines `- a1: "Name"`, the headings "Fields", "Document types" and
-# "Fields for every document", and a type's keys after ` — fields: `; the heading "Spaces" with
-# its lines `- s1: ...`. A test renders the messages to hold the two together.
+# and `_KEY_LINE`) read the field keys from the wording of the two tasks: the field lines
+# `- a1: "Name"`, the headings "Fields", "Document types" and "Fields for every document", and a
+# type's keys after ` — fields: `; the heading "Spaces" with its lines `- s1: ...`. A test
+# renders the tasks to hold the two together.
 
 FIELDS_OF_TYPE = " — fields: "
 """Between a document type (with its description) and the keys of its fields."""
 SPACES_HEADING = "Spaces (where the document is filed; who may see it follows from that):"
-"""Opens the list of spaces (`propose-5`), each `- <key>: <label>`."""
+"""Opens the list of spaces (since `propose-5`), each `- <key>: <label>`."""
 
 
-def propose_message(
+PROPOSE_TASK = "Task: propose the metadata of the document {where} above."
+EXTRACT_TASK = "Task: extract the values of the listed fields from the document {where} above."
+"""The first line of a task; `{where}` names the document's markers (`document_marker`), so the
+task holds to the real frame, not to one the document's text may forge."""
+
+
+def _where(marker: str | None) -> str:
+    return "" if marker is None else f"between <{marker}> and </{marker}>"
+
+
+def _task_line(line: str, marker: str | None) -> str:
+    return " ".join(line.format(where=_where(marker)).split())
+
+
+def propose_task(
     contacts: Sequence[Listed],
     document_types: Sequence[tuple[Listed, Sequence[tuple[str, FieldDefinition]]]],
     general: Sequence[tuple[str, FieldDefinition]],
     tags: Sequence[str],
-    text: Shortened,
     spaces: Sequence[tuple[str, str]] = (),
+    *,
+    marker: str | None = None,
 ) -> str:
-    """The lists come before the document: each field once, with its form and description (a
-    field may belong to several types); each document type with the keys of its fields; the
-    keys of the fields for every document; the spaces by key with their labels, if any (a
-    shared space with its description)."""
+    """The task of `signal_llm`: the lists, then what each part of the answer is (`marker`: of
+    the document message it follows, `document_marker`). Each field
+    once, with its form and description (a field may belong to several types); each document
+    type with the keys of its fields; the keys of the fields for every document; the spaces by
+    key with their labels, if any (a shared space with its description)."""
     described: dict[str, FieldDefinition] = {}
     types = []
     for listed, fields in document_types:
@@ -174,6 +194,7 @@ def propose_message(
         described.setdefault(key, definition)
     return "\n\n".join(
         [
+            _task_line(PROPOSE_TASK, marker),
             "Contacts:\n" + _listed(contacts),
             "Fields:\n"
             + ("\n".join(_field_line(key, item) for key, item in described.items()) or "(none)"),
@@ -189,7 +210,7 @@ def propose_message(
                 if spaces
                 else []
             ),
-            _document(text),
+            _parts(PROPOSE_RULES),
         ]
     )
 
@@ -221,25 +242,36 @@ def _choices_and_description(definition: FieldDefinition) -> str:
     return text
 
 
-def extract_message(
-    document_type: str | None, keys: dict[str, FieldDefinition], text: Shortened
+def extract_task(
+    document_type: str | None, keys: dict[str, FieldDefinition], *, marker: str | None = None
 ) -> str:
+    """The task of the fields node: the type, the fields with the form of their values, then
+    what the answer's fields are (`marker`: of the document message it follows)."""
     lines = []
     for key, definition in keys.items():
         line = f'- {key}: "{one_line(definition.name)}" ({VALUE_FORMS[definition.data_type]})'
         lines.append(line + _choices_and_description(definition))
     kind = f'The document is of type "{document_type}".' if document_type else ""
-    return "\n\n".join(
-        part for part in (kind, "Fields:\n" + "\n".join(lines), _document(text)) if part
+    parts = (
+        _task_line(EXTRACT_TASK, marker),
+        kind,
+        "Fields:\n" + "\n".join(lines),
+        _parts({"fields": EXTRACT_RULE}),
     )
+    return "\n\n".join(part for part in parts if part)
 
 
-def retry_message(message: str, error: str) -> str:
-    """The user message once more, after an answer that did not fit the schema."""
+def retry_note(error: str) -> str:
+    """After an answer that did not fit the schema: what was wrong, and to answer again. It
+    follows the task, so the call shares the beginning of the one before."""
     return (
-        f"{message}\n\nYour previous answer was not valid: {error}. Answer again with one "
-        "JSON object that follows the schema."
+        f"Your previous answer was not valid: {error}. Answer the task again with one JSON "
+        "object that follows the schema."
     )
+
+
+def _parts(rules: dict[str, str]) -> str:
+    return PARTS_HEADING + "\n" + "\n".join(f"- {name}: {rule}" for name, rule in rules.items())
 
 
 def _listed(items: Sequence[Listed]) -> str:
@@ -260,8 +292,15 @@ def _items(names: Sequence[str]) -> str:
     return "\n".join(f"- {name}" for name in names) if names else "(none)"
 
 
-def _document(text: Shortened) -> str:
-    marker = "document-" + hashlib.sha256(text.text.encode("utf-8")).hexdigest()[:16]
+def document_marker(text: Shortened) -> str:
+    """The name of the markers around the document: from a hash of its text, so the text cannot
+    hold its own closing marker."""
+    return "document-" + hashlib.sha256(text.text.encode("utf-8")).hexdigest()[:16]
+
+
+def document_message(text: Shortened) -> str:
+    """The document in its markers, a message of its own: the same for every call about it."""
+    marker = document_marker(text)
     note = "The document was shortened; a part in the middle is left out.\n" if text.omitted else ""
     return (
         f"The document follows between <{marker}> and </{marker}>.\n{note}"

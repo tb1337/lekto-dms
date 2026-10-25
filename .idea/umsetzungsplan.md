@@ -1758,7 +1758,7 @@ Stand: Vorschlag Creamy, 25.10.2026, zur Freigabe durch Tobi. Release offen.
 
 *Fakten*
 
-3. **Fakten als Werte am Dokument** (`feature/document-facts`, `new-feature`): Domäne `Fact` (Art, normalisierter Wert, Fundstellen, Herkunft, Rolle, Stand); Tabelle `document_facts` mit Revision; Repository, In-Memory-Adapter, Vertragstest auf SQLite und Postgres. `signal_facts` schreibt Fakten mit Herkunft Muster oder Code, die Rolle vorerst nach Art (Vorschlag). `GET /documents/{id}/facts` mit Rolle und Herkunft.
+3. **Fakten als Werte am Dokument** (`feature/document-facts`, `new-feature`): Domäne `Fact` (Art, normalisierter Wert, Fundstellen, Herkunft, Rolle, Stand); Tabelle `document_facts`, die `document_identifiers` ersetzt (Tobi, 25.10.2026), mit Revision, die deren Zeilen übernimmt; Repository, In-Memory-Adapter, Vertragstest auf SQLite und Postgres. `signal_facts` schreibt Fakten mit Herkunft Muster oder Code, die Rolle vorerst nach Art (Vorschlag). `GET /documents/{id}/facts` mit Rolle und Herkunft.
 4. **Arten trennen und ergänzen** (`feature/fact-kinds`, `new-feature`): `customer_number` getrennt in Kunden-, Vertrags- und Policennummer (Vorschlag: der Bestand bleibt Kundennummer, Admins ändern die Art am Kontakt); die Arten des Katalogs ([fakten.md](fakten.md), Rollen) mit Beschriftungen und Prüfungen; Gründe mit Codes und Übersetzungen; Kontaktdialog.
 5. **Fakten vom Sprachmodell** (`feature/llm-facts`, `new-feature`; nach 2 und 4): ein Aufruf „Fakten mit Rolle“ auf demselben Anfang wie die übrigen. Schema mit Art, Wert, Rolle, Zitat, Beschriftung; Prüfung wie bei Feldern. Gleiche Art und gleicher Wert aus Muster und Modell sind ein Fakt mit beiden Herkünften; die Rolle bestimmt das Modell. Bewertungssatz um Rechnung, Mahnung, Gutschrift, Korrektur mit Bezugszeitraum und ASN-Etikett erweitert.
 6. **Fakten korrigieren** (`feature/correct-facts`, `new-feature`; nach 3): Ergänzen, Korrigieren und Verwerfen über die API (Bearbeiter des Space, Admins); Herkunft Person, übersteht eine neue Verarbeitung; Eintrag in `field_verdicts`; für Admins „auch beim Kontakt korrigieren“. Web: Fakten im Reiter „Dokument“ bearbeitbar.
@@ -1769,7 +1769,7 @@ Stand: Vorschlag Creamy, 25.10.2026, zur Freigabe durch Tobi. Release offen.
 
 9. **Bezüge speichern und zeigen** (`feature/document-relations`, `new-feature`): Tabelle `document_relations` (vom neueren zum älteren Dokument, Herkunft Person oder Lekto, Beleg, Stand gesetzt, Vorschlag oder verworfen) mit Revision; Repository, In-Memory-Adapter, Vertragstest. API: lesen (nur Bezüge, deren beide Enden der Nutzer lesen darf), setzen (das neuere bearbeiten, das ältere lesen dürfen), entfernen, Vorschlag annehmen oder verwerfen; Eintrag in `field_verdicts`. Web: Bezüge am Dokument in drei Gruppen mit Beleg, wie im Mock.
 10. **Bezugsziel am Dokumenttyp** (`feature/relation-target`, `new-feature`): Schalter für Admins mit Revision; Stammdaten-Dialog.
-11. **Bezüge erkennen** (`feature/relate`, `new-feature`; nach 5, 9 und 10): neuer Knoten `relate` nach `fields`. Quellen: gleicher Kontakt, Typ und Bezugszeitraum bei anderem Dokumentdatum; Verweise gegen die eigenen Nummern anderer Dokumente; Vertrags- oder Policennummer gegen Dokumente eines Typs mit Bezugsziel (passt sie auf zwei, nur ein Vorschlag); Verweise des Sprachmodells mit Datum gegen Dokumente desselben Kontakts. In beide Richtungen: Kommt das ältere Dokument später, bekommen die neueren ihren Bezug. Nie gelb. Bestand: Befehl `relate` (ein Job je Dokument, VS-Code-Task) wie `read-codes`. Bewertung erweitert.
+11. **Bezüge erkennen** (`feature/relate`, `new-feature`; nach 5, 9 und 10): neuer Knoten `relate` nach `fields` und vor den Regeln, sodass Regeln die Bezüge sehen (Tobi, 25.10.2026; die Form der Bedingung „Bezug“ ist beim PR zu klären). Quellen: gleicher Kontakt, Typ und Bezugszeitraum bei anderem Dokumentdatum; Verweise gegen die eigenen Nummern anderer Dokumente; Vertrags- oder Policennummer gegen Dokumente eines Typs mit Bezugsziel (passt sie auf zwei, nur ein Vorschlag); Verweise des Sprachmodells mit Datum gegen Dokumente desselben Kontakts. In beide Richtungen: Kommt das ältere Dokument später, bekommen die neueren ihren Bezug. Nie gelb. Bestand: Befehl `relate` (ein Job je Dokument, VS-Code-Task) wie `read-codes`. Bewertung erweitert.
 
 *Serien, Erwartet, Stream*
 
@@ -1781,9 +1781,7 @@ Stand: Vorschlag Creamy, 25.10.2026, zur Freigabe durch Tobi. Release offen.
 **Prüfung (je PR):** Unit-, Vertrags- und Integrationstests; Revisionen hin und zurück auf SQLite und Postgres; Bewertung mit festen Antworten bei jeder Änderung an Prompts, Signalen, Urteil oder Graph (keine falschen Grünen); Oberflächen im Browser hell, dunkel und in Handybreite, ohne Konsolenfehler; zum Schluss ein Review durch einen separaten Agenten.
 
 **Offen (vor dem jeweiligen PR zu klären):**
-- PR 3: `document_facts` ersetzt `document_identifiers` oder steht daneben (Vorschlag: ersetzt, die Revision übernimmt die Zeilen).
 - PR 8: die Form der Fakten in Templates, etwa `facts.invoice_number` für die eigene Nummer und Verweise getrennt.
-- PR 11: Läuft `relate` vor den Regeln, sodass Regeln Bezüge sehen?
 - Bezüge in Webhooks und MCP.
 - Aus dem Mock ([bezuege.md](bezuege.md), Offene Punkte): Menüpunkt „Erwartet“, Zeitachse waagerecht oder senkrecht, der Name „Spuren“, der Name eines Abzweigs, die Grenze bei weiten Filtern.
 - Ob die Aufrufe des Sprachmodells weiter in kleine Themen geteilt werden: nach den Messungen zu PR 2 und 5, eine eigene Entscheidung.

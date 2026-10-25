@@ -60,6 +60,7 @@ migration from Paperless: [.devcontainer/README.md](.devcontainer/README.md).
 | --- | --- |
 | [backend/README.md](backend/README.md) | Architecture of the backend, every `LEKTO_` variable with default, role and meaning, the REST API, processing, classification, rules, search, webhooks, MCP, tests |
 | [docker/](docker/) | Compose examples with the published images: SQLite, Postgres, more workers, S3 (Garage), Ollama, Caddy, Traefik, nginx, the migration from Paperless-ngx; settings in `.env` |
+| [examples/model-calls/](examples/model-calls/) | An example consumer of model calls (Python, standard library, Ollama), with a Compose extension to try it |
 | [deploy/README.md](deploy/README.md) | The image: roles, user and volumes, health and logs, stopping, reverse proxy, backup and restore, updating |
 | [.devcontainer/README.md](.devcontainer/README.md) | Development and the development instance in the devcontainer: tasks, data separation, Ollama, memory, migration, backup |
 | [web/README.md](web/README.md) | The web UI: stack, commands, API client, CSP |

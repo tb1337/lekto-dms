@@ -1409,6 +1409,37 @@ unknown task or token, or the deadline has passed. Without `LEKTO_PUBLIC_URL` no
 sent (the consumer would not know where to answer). Deleting a webhook fails the tasks that
 wait for it; those it sent run to their deadline, and an answer is still taken.
 
+**Model calls** (Tobi, 25.10.2026, `.idea/webhooks-und-auftraege.md`). An admin may make one of
+their webhooks serve as a model call (`model_call`: `kind` `propose` or `extract`,
+`timeout_seconds`, default 300, 30 to 86,400): it then answers that request instead of the
+language model of `LEKTO_LLM_*`, for every document (an exception to "webhooks see what their
+owner may read"). Of the active webhooks of active admins at most one serves each kind (`409`
+`model_call_taken`); a webhook switched off, deleted, or whose owner is no admin any more serves
+no more, and the language model answers again (without one `signal_llm` abstains).
+`propose` takes over `signal_llm` (prompt `propose-5`), `extract` the request of `fields` when
+the judge decided another type than the proposal (prompt `extract-5`). The node sends a task
+whose body is always the context, whatever the webhook's `body`: `contract` (`propose-ext-1`,
+`extract-ext-1`), `task` (`id`, `kind`, `document_id`, `run`, `deadline`, `callback`, `token`),
+`document` (`filename`, `media_type`, `pages`, `received`, the text in full, and signed links to
+`content.json` and the page images), the master data the prompt lists (contacts, the 20 the text
+names most, document types, fields by key, tags, spaces by key) and `answer_schema`, the answer's
+JSON Schema with the rules of the system prompt as descriptions. The contract is in the OpenAPI
+document under `webhooks` (`external.propose`, `external.extract`; also the events, `rule.send`
+and `rule.ask`). The answer's structure is checked when it comes (`422` and the document is red
+if it does not fit); its values are checked as the model's (quotes literally in the text, the
+reading confidence, a contact green only with a second signal or hard evidence). An `error`,
+an answer that does not fit and none by the deadline make the document red; there is no second
+attempt. The context (without the task and its links) and the answer lie beside the document as
+the model's exchanges do; the log names the contract and `producer`. Documents taken over from
+Paperless-ngx send no task. `signal_llm` waits for the page images (`pages`), so the links
+work when the task goes; processing again from `pages` asks again.
+
+`GET /api/v1/external/tasks/{id}/files/{name}?expires=…&signature=…` gives a model call's files
+(`content.json`, `pages/<n>.webp`): each link is signed with `LEKTO_SECRET_KEY`, bound to the
+task, its document, its run and the file, and holds until the task's deadline (`401` otherwise)
+while the run is the document's current one (`409` once it was processed again or deleted). An
+example consumer (Python, standard library, Ollama) is in `examples/model-calls/`.
+
 **The request.** `POST <url>`, `Content-Type: application/json`, `User-Agent: Lekto/<version>`,
 the webhook's own headers, and a body as the webhook chooses (`body`):
 

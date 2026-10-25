@@ -1,0 +1,30 @@
+# Extension of docker/compose.yml (or compose.postgres.yml) and docker/compose.ollama.yml: the
+# example consumer of model calls (consumer.py) answers `propose` and `extract` with the local
+# Ollama. To try model calls, not for production. In docker/:
+#
+#   .env: AGENT_TOKEN=<a long random value>, and LEKTO_PUBLIC_URL if not http://localhost:8000
+#   docker compose -f compose.yml -f compose.ollama.yml -f ../examples/model-calls/compose.yml up -d
+#
+# Then as admin, under Webhooks: a new webhook with the URL http://agent:8080/, the header
+# `Authorization` = `Bearer <AGENT_TOKEN>`, without signing and events, model call "proposal";
+# a second one with model call "fields". Paths here are relative to docker/, the first file.
+services:
+  lekto:
+    environment:
+      # Tasks need it: their callback and the links to the files are made from it.
+      LEKTO_PUBLIC_URL: ${LEKTO_PUBLIC_URL:-http://localhost:8000}
+
+  agent:
+    image: python:3.13-alpine
+    restart: unless-stopped
+    command: ["python", "-u", "/app/consumer.py"]
+    volumes:
+      - ../examples/model-calls/consumer.py:/app/consumer.py:ro
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      AGENT_MODEL: ${LEKTO_LLM_MODEL:-qwen3:8b}
+      AGENT_TOKEN: ${AGENT_TOKEN:?set AGENT_TOKEN in .env}
+      # The answers go to Lekto within this network, not to LEKTO_PUBLIC_URL.
+      LEKTO_URL: http://lekto:8000
+    depends_on:
+      - ollama

@@ -31,6 +31,7 @@ from lekto.core.domain.errors import (
     UnsupportedMediaTypeError,
     ValidationError,
 )
+from lekto.core.domain.first_runs import Decision
 from lekto.core.domain.ids import DocumentId, JobId, SpaceId, TagId, UserId
 from lekto.core.domain.imports import IMPORTED, ImportedMetadata
 from lekto.core.domain.inbox import Confirmation
@@ -80,6 +81,7 @@ from lekto.core.services._access import (
     require_admin,
     visible_space,
 )
+from lekto.core.services._first_runs import keep_first_run, keep_verdicts
 from lekto.core.services._jobs import (
     STORE_ATTEMPTS,
     JobRunner,
@@ -613,6 +615,7 @@ class PipelineService:
             target = None if space is None else await self._move_target(uow, user, source, space)
             now = self._clock.now()
             tags_before = frozenset(document.tag_ids)
+            space_decided = document.space_confirmed_at is not None
             overruled = document.confirm(resume_at, now)
             await uow.inbox.record_confirmation(id, Confirmation(user.id, now))
             definitions = await field_definitions(uow)
@@ -648,6 +651,17 @@ class PipelineService:
             if target is not None:
                 document.move_to(target.id, now, by_person=True)
                 await confirmed_into(uow, document, source, target, now, user.id)
+            await keep_verdicts(
+                uow,
+                Decision.INBOX,
+                before=before,
+                after=document,
+                given=decided | ({SPACE} if target else set()),
+                definitions=definitions,
+                now=now,
+                log=log,
+                space_decided=space_decided,
+            )
             run = document.processing.run
             for node in overruled:
                 result = confirmation(node, outcomes.get(node), decision, user.id)
@@ -1047,6 +1061,7 @@ class PipelineService:
                 result = outcome
             else:
                 result = await outcome.apply(uow, document, now)
+            first_lane = document.first_lane
             if catching_up:
                 document.catch_up(node, run, result, started, now)
                 due: tuple[Node, ...] = ()
@@ -1054,6 +1069,7 @@ class PipelineService:
                 due = document.record_result(node, run, result, now)
             await uow.documents.update(document)
             await self._log(uow, document.id, node, run, result, started, now)
+            await keep_first_run(uow, document, first_lane, now)
             await _enqueue(uow, document, due, now)
             if result.outcome is Outcome.FAILED:
                 await uow.jobs.fail(job, now=now, error=result.reason or "failed")

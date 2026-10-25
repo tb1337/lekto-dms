@@ -1949,7 +1949,114 @@ export interface paths {
 		trace?: never;
 	};
 }
-export type webhooks = Record<string, never>;
+export interface webhooks {
+	events: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * An event about a document
+		 * @description To the webhooks that subscribed to its type (`event_types`), for the documents their owner may read; `webhook.test` on request.
+		 *
+		 *     The body as the webhook's `body` says: `thin`, `full`, or what its own template makes (then any JSON).
+		 */
+		post: operations['webhook_events'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'rule.send': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * A rule sends
+		 * @description A rule's step `send_webhook`, through its author's webhook.
+		 *
+		 *     The body as the webhook's `body` says: `thin`, `full`, or what its own template makes (then any JSON).
+		 */
+		post: operations['webhook_rule_send'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'rule.ask': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * A rule asks
+		 * @description A rule's step `ask_webhook`: a task, answered at its callback. Template bodies see `task` too.
+		 *
+		 *     The body as the webhook's `body` says: `thin`, `full`, or what its own template makes (then any JSON).
+		 */
+		post: operations['webhook_rule_ask'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'external.propose': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * The model call `propose`
+		 * @description To the admin's webhook that serves as `propose`, for every document: the context of `signal_llm`, always as this JSON, whatever the webhook's `body`. Answer with `status: ok` and `answer` after `answer_schema`; an error, an answer that does not fit (422) or none by the deadline make the document red.
+		 */
+		post: operations['webhook_external_propose'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'external.extract': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * The model call `extract`
+		 * @description To the admin's webhook that serves as `extract`, when the judge decided another type than the proposal: the fields of that type to read, always as this JSON. Answered as `external.propose`.
+		 */
+		post: operations['webhook_external_extract'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+}
 export interface components {
 	schemas: {
 		/** AccountOut */
@@ -3582,10 +3689,84 @@ export interface components {
 			icon?: string | null;
 		};
 		/**
+		 * EventBody
+		 * @description An event (body `thin`), with the document for body `full`.
+		 */
+		EventBody: {
+			/**
+			 * Id
+			 * Format: uuid
+			 * @description The event's id, also in `webhook-id`: a repeated request has it too.
+			 */
+			id: string;
+			/**
+			 * Type
+			 * @enum {string}
+			 */
+			type:
+				| 'document.confirmed'
+				| 'document.deleted'
+				| 'document.filed'
+				| 'document.lane_changed'
+				| 'document.moved'
+				| 'document.node_completed'
+				| 'document.node_deferred'
+				| 'document.node_delegated'
+				| 'document.node_started'
+				| 'document.received'
+				| 'document.review_required'
+				| 'document.updated'
+				| 'webhook.test';
+			/**
+			 * Occurred At
+			 * Format: date-time
+			 */
+			occurred_at: string;
+			/**
+			 * Document Id
+			 * @description null for `webhook.test`.
+			 */
+			document_id: string | null;
+			/** @description Body `full` only; null when the document is gone (`document.deleted`). */
+			document?: components['schemas']['SentDocument'] | null;
+		};
+		/**
 		 * ExchangeNode
 		 * @enum {string}
 		 */
 		ExchangeNode: 'ocr' | 'signal_llm' | 'fields';
+		/**
+		 * ExtractContext
+		 * @description `fields`' request (`external.extract`), when the judge decided another type than the
+		 *     proposal: the fields of that type to read. Lekto checks the answer as a language
+		 *     model's.
+		 */
+		ExtractContext: {
+			/**
+			 * Contract
+			 * @default extract-ext-1
+			 * @constant
+			 */
+			contract: 'extract-ext-1';
+			task: components['schemas']['ModelCallTask'];
+			document: components['schemas']['ModelCallDocument'];
+			/** Document Type */
+			document_type: string | null;
+			/**
+			 * Fields
+			 * @description The fields to read, by key.
+			 */
+			fields: {
+				[key: string]: components['schemas']['ListedField'];
+			};
+			/**
+			 * Answer Schema
+			 * @description The JSON Schema of `answer` (strict: every property required, nothing else allowed, null for what the document does not show), built from the master data of the moment; the rules for each value are its `description`. Usable as structured output.
+			 */
+			answer_schema: {
+				[key: string]: unknown;
+			};
+		};
 		/**
 		 * FactsOut
 		 * @example {
@@ -4510,6 +4691,21 @@ export interface components {
 			 */
 			created_at: string;
 		};
+		/** ListedContact */
+		ListedContact: {
+			/** Name */
+			name: string;
+			/**
+			 * Aliases
+			 * @description Other names it is written as.
+			 */
+			aliases: string[];
+			/**
+			 * Topics
+			 * @description The topics the contact enables (for `topic`).
+			 */
+			topics: string[];
+		};
 		/**
 		 * ListedDocument
 		 * @description A document of a list or a search, with whether it stands in the caller's inbox.
@@ -4657,6 +4853,51 @@ export interface components {
 			 * @description It stands open in the caller's inbox (`GET /inbox`; with `all_users`, in every user's): in processing, yellow, red, or new and not seen by the caller.
 			 */
 			in_inbox: boolean;
+		};
+		/** ListedDocumentType */
+		ListedDocumentType: {
+			/** Name */
+			name: string;
+			/** Description */
+			description: string | null;
+			/**
+			 * Fields
+			 * @description The keys of its fields (`fields`).
+			 */
+			fields: string[];
+		};
+		/** ListedField */
+		ListedField: {
+			/** Name */
+			name: string;
+			type: components['schemas']['FieldType'];
+			/**
+			 * Form
+			 * @description How the answer writes the value.
+			 */
+			form: string;
+			/**
+			 * Choices
+			 * @description For `choice` only.
+			 */
+			choices?: string[] | null;
+			/**
+			 * Description
+			 * @description What belongs in the field.
+			 */
+			description?: string | null;
+		};
+		/** ListedSpace */
+		ListedSpace: {
+			/**
+			 * Key
+			 * @description What `space` of the answer names (`s1`, …).
+			 */
+			key: string;
+			/** Label */
+			label: string;
+			/** Description */
+			description: string | null;
 		};
 		/**
 		 * LocationOut
@@ -4908,6 +5149,35 @@ export interface components {
 		 * @enum {string}
 		 */
 		Missing: 'red' | 'yellow' | 'continue';
+		/** ModelCallDocument */
+		ModelCallDocument: {
+			/** Filename */
+			filename: string;
+			/** Media Type */
+			media_type: string;
+			/** Pages */
+			pages: number | null;
+			/**
+			 * Received
+			 * Format: date
+			 */
+			received: string;
+			/**
+			 * Text
+			 * @description The text read from the document, in full; pages apart by form feeds.
+			 */
+			text: string;
+			/**
+			 * Structure
+			 * @description Signed link to `content.json`: the pages, lines and words of the text with their boxes. Valid until the deadline.
+			 */
+			structure: string;
+			/**
+			 * Page Images
+			 * @description Signed links to the page images (WebP), page 1 first. Valid until the deadline.
+			 */
+			page_images: string[];
+		};
 		/**
 		 * ModelCallKind
 		 * @description A request to the language model a webhook may take over.
@@ -4947,6 +5217,41 @@ export interface components {
 				[key: string]: unknown;
 			};
 		};
+		/** ModelCallTask */
+		ModelCallTask: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Callback */
+			callback: string;
+			/**
+			 * Token
+			 * @description One-time token (`lkt_…`).
+			 */
+			token: string;
+			/**
+			 * Deadline
+			 * Format: date-time
+			 */
+			deadline: string;
+			/**
+			 * Kind
+			 * @enum {string}
+			 */
+			kind: 'external.propose' | 'external.extract';
+			/**
+			 * Document Id
+			 * Format: uuid
+			 */
+			document_id: string;
+			/**
+			 * Run
+			 * @description The document's processing run; a later run refuses the answer.
+			 */
+			run: number;
+		};
 		/** MoneyValue */
 		MoneyValue: {
 			/**
@@ -4985,6 +5290,16 @@ export interface components {
 			 * Format: uuid
 			 */
 			space_id: string;
+		};
+		/** Named */
+		Named: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Name */
+			name: string;
 		};
 		/** NamedContactOut */
 		NamedContactOut: {
@@ -5413,6 +5728,56 @@ export interface components {
 			 * @description Learned numbers that are not the user's: they are rejected at their contact, and training does not learn them again. Others are left as they are.
 			 */
 			declined_numbers?: components['schemas']['ContactNumberIn'][];
+		};
+		/**
+		 * ProposeContext
+		 * @description `signal_llm`'s request (`external.propose`): the context to propose the document's
+		 *     metadata from. No prompt: the consumer makes its own. Lekto checks the answer as a
+		 *     language model's: its structure at once (422), its values against the text and the other
+		 *     signals; a contact turns green only with a second signal or hard evidence.
+		 */
+		ProposeContext: {
+			/**
+			 * Contract
+			 * @default propose-ext-1
+			 * @constant
+			 */
+			contract: 'propose-ext-1';
+			task: components['schemas']['ModelCallTask'];
+			document: components['schemas']['ModelCallDocument'];
+			/**
+			 * Contacts
+			 * @description The 20 contacts the text names most.
+			 */
+			contacts: components['schemas']['ListedContact'][];
+			/** Document Types */
+			document_types: components['schemas']['ListedDocumentType'][];
+			/**
+			 * Fields
+			 * @description The fields that may be read, by key.
+			 */
+			fields: {
+				[key: string]: components['schemas']['ListedField'];
+			};
+			/**
+			 * General Fields
+			 * @description The keys of the fields of every document.
+			 */
+			general_fields: string[];
+			/** Tags */
+			tags: string[];
+			/**
+			 * Spaces
+			 * @description Empty with fewer than two spaces to choose.
+			 */
+			spaces: components['schemas']['ListedSpace'][];
+			/**
+			 * Answer Schema
+			 * @description The JSON Schema of `answer` (strict: every property required, nothing else allowed, null for what the document does not show), built from the master data of the moment; the rules for each value are its `description`. Usable as structured output.
+			 */
+			answer_schema: {
+				[key: string]: unknown;
+			};
 		};
 		/**
 		 * ReadingOut
@@ -5964,6 +6329,46 @@ export interface components {
 			finished_at: string | null;
 		};
 		/**
+		 * RuleAskBody
+		 * @description A rule step that asks (`rule.ask`): a task. Its answer (`answer` of the envelope, any
+		 *     JSON) is `steps.<name>` for the steps after it.
+		 */
+		RuleAskBody: {
+			/**
+			 * Id
+			 * Format: uuid
+			 * @description The task's id.
+			 */
+			id: string;
+			/**
+			 * Type
+			 * @default rule.ask
+			 * @constant
+			 */
+			type: 'rule.ask';
+			/**
+			 * Occurred At
+			 * Format: date-time
+			 */
+			occurred_at: string;
+			/**
+			 * Document Id
+			 * Format: uuid
+			 */
+			document_id: string;
+			rule: components['schemas']['SentRule'];
+			task: components['schemas']['SentTask'];
+			/** @description Body `full` only. */
+			document?: components['schemas']['SentDocument'] | null;
+			/**
+			 * Steps
+			 * @description Body `full` only: what the rule's steps before brought.
+			 */
+			steps?: {
+				[key: string]: unknown;
+			} | null;
+		};
+		/**
 		 * RuleChange
 		 * @description The new content of a rule, and, with `scope`, where it moves.
 		 * @example {
@@ -6285,6 +6690,37 @@ export interface components {
 		 * @enum {string}
 		 */
 		RuleScope: 'global' | 'space';
+		/**
+		 * RuleSendBody
+		 * @description A rule's request (`rule.send`), when the document is filed (on arrival) or when the
+		 *     rule is applied to existing documents.
+		 */
+		RuleSendBody: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/**
+			 * Type
+			 * @default rule.send
+			 * @constant
+			 */
+			type: 'rule.send';
+			/**
+			 * Occurred At
+			 * Format: date-time
+			 */
+			occurred_at: string;
+			/**
+			 * Document Id
+			 * Format: uuid
+			 */
+			document_id: string;
+			rule: components['schemas']['SentRule'];
+			/** @description Body `full` only. */
+			document?: components['schemas']['SentDocument'] | null;
+		};
 		/** RuleVersionOut */
 		RuleVersionOut: {
 			/** Name */
@@ -6413,6 +6849,87 @@ export interface components {
 			 * @description A webhook of whoever saves the rule (someone else's is not found). It gets a request of type `rule.send` with the rule's `id` and `name`, in the webhook's body format: on arrival once the document is filed (a yellow one after it was confirmed, a red one never), after a change once it is stored. Its owner must be able to read the document: on arrival the document turns yellow otherwise (unless a person decided already), else it is only reported.
 			 */
 			webhook_id: string;
+		};
+		/**
+		 * SentDocument
+		 * @description The document as it is when the request goes (body `full`).
+		 */
+		SentDocument: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Title */
+			title: string;
+			/** Original Filename */
+			original_filename: string;
+			contact: components['schemas']['Named'] | null;
+			document_type: components['schemas']['Named'] | null;
+			topic: components['schemas']['Named'] | null;
+			/** Tags */
+			tags: components['schemas']['Named'][];
+			/** Document Date */
+			document_date: string | null;
+			/**
+			 * Added
+			 * Format: date
+			 * @description When it came in.
+			 */
+			added: string;
+			space: components['schemas']['Named'] | null;
+			/** Lane */
+			lane: ('green' | 'yellow' | 'red') | null;
+			/** Channel */
+			channel: string;
+			/** Pages */
+			pages: number | null;
+			/**
+			 * Fields
+			 * @description The fields with a value, by key, each in its JSON form.
+			 */
+			fields: {
+				[key: string]: unknown;
+			};
+			/**
+			 * Link
+			 * @description Into the web UI (`LEKTO_PUBLIC_URL`); null without a public URL.
+			 */
+			link: string | null;
+		};
+		/** SentRule */
+		SentRule: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Name */
+			name: string;
+		};
+		/**
+		 * SentTask
+		 * @description A task: answer it at `callback` with `token` as `Authorization: Bearer` by `deadline`
+		 *     (`POST /api/v1/external/tasks/{id}/result`).
+		 */
+		SentTask: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Callback */
+			callback: string;
+			/**
+			 * Token
+			 * @description One-time token (`lkt_…`).
+			 */
+			token: string;
+			/**
+			 * Deadline
+			 * Format: date-time
+			 */
+			deadline: string;
 		};
 		/**
 		 * SessionOut
@@ -21998,6 +22515,175 @@ export interface operations {
 				content: {
 					'application/json': components['schemas']['Health'];
 				};
+			};
+		};
+	};
+	webhook_events: {
+		parameters: {
+			query?: never;
+			header: {
+				/** @description The event's (or task's) id; the same in a repeated request. */
+				'webhook-id': string;
+				/** @description Unix seconds of the attempt. */
+				'webhook-timestamp': string;
+				/** @description With a secret only: `v1,<base64 HMAC-SHA256>` of `<id>.<timestamp>.<body>` (Standard Webhooks), several apart by spaces while a renewed secret signs too. */
+				'webhook-signature'?: string;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['EventBody'];
+			};
+		};
+		responses: {
+			/** @description Taken. Other answers, or none, count as failed: an event is repeated with growing pauses, a task's request until its deadline. A task is answered at its callback, not here. */
+			'2XX': {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+		};
+	};
+	webhook_rule_send: {
+		parameters: {
+			query?: never;
+			header: {
+				/** @description The event's (or task's) id; the same in a repeated request. */
+				'webhook-id': string;
+				/** @description Unix seconds of the attempt. */
+				'webhook-timestamp': string;
+				/** @description With a secret only: `v1,<base64 HMAC-SHA256>` of `<id>.<timestamp>.<body>` (Standard Webhooks), several apart by spaces while a renewed secret signs too. */
+				'webhook-signature'?: string;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['RuleSendBody'];
+			};
+		};
+		responses: {
+			/** @description Taken. Other answers, or none, count as failed: an event is repeated with growing pauses, a task's request until its deadline. A task is answered at its callback, not here. */
+			'2XX': {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+		};
+	};
+	webhook_rule_ask: {
+		parameters: {
+			query?: never;
+			header: {
+				/** @description The event's (or task's) id; the same in a repeated request. */
+				'webhook-id': string;
+				/** @description Unix seconds of the attempt. */
+				'webhook-timestamp': string;
+				/** @description With a secret only: `v1,<base64 HMAC-SHA256>` of `<id>.<timestamp>.<body>` (Standard Webhooks), several apart by spaces while a renewed secret signs too. */
+				'webhook-signature'?: string;
+				/** @description The task's id. */
+				'lekto-task-id': string;
+				/** @description Where to answer (`POST`). */
+				'lekto-callback': string;
+				/** @description The one-time token, as `Authorization: Bearer` of the answer. */
+				'lekto-task-token': string;
+				/** @description Until when the answer is taken (UTC). */
+				'lekto-deadline': string;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['RuleAskBody'];
+			};
+		};
+		responses: {
+			/** @description Taken. Other answers, or none, count as failed: an event is repeated with growing pauses, a task's request until its deadline. A task is answered at its callback, not here. */
+			'2XX': {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+		};
+	};
+	webhook_external_propose: {
+		parameters: {
+			query?: never;
+			header: {
+				/** @description The event's (or task's) id; the same in a repeated request. */
+				'webhook-id': string;
+				/** @description Unix seconds of the attempt. */
+				'webhook-timestamp': string;
+				/** @description With a secret only: `v1,<base64 HMAC-SHA256>` of `<id>.<timestamp>.<body>` (Standard Webhooks), several apart by spaces while a renewed secret signs too. */
+				'webhook-signature'?: string;
+				/** @description The task's id. */
+				'lekto-task-id': string;
+				/** @description Where to answer (`POST`). */
+				'lekto-callback': string;
+				/** @description The one-time token, as `Authorization: Bearer` of the answer. */
+				'lekto-task-token': string;
+				/** @description Until when the answer is taken (UTC). */
+				'lekto-deadline': string;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['ProposeContext'];
+			};
+		};
+		responses: {
+			/** @description Taken. Other answers, or none, count as failed: an event is repeated with growing pauses, a task's request until its deadline. A task is answered at its callback, not here. */
+			'2XX': {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+		};
+	};
+	webhook_external_extract: {
+		parameters: {
+			query?: never;
+			header: {
+				/** @description The event's (or task's) id; the same in a repeated request. */
+				'webhook-id': string;
+				/** @description Unix seconds of the attempt. */
+				'webhook-timestamp': string;
+				/** @description With a secret only: `v1,<base64 HMAC-SHA256>` of `<id>.<timestamp>.<body>` (Standard Webhooks), several apart by spaces while a renewed secret signs too. */
+				'webhook-signature'?: string;
+				/** @description The task's id. */
+				'lekto-task-id': string;
+				/** @description Where to answer (`POST`). */
+				'lekto-callback': string;
+				/** @description The one-time token, as `Authorization: Bearer` of the answer. */
+				'lekto-task-token': string;
+				/** @description Until when the answer is taken (UTC). */
+				'lekto-deadline': string;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['ExtractContext'];
+			};
+		};
+		responses: {
+			/** @description Taken. Other answers, or none, count as failed: an event is repeated with growing pauses, a task's request until its deadline. A task is answered at its callback, not here. */
+			'2XX': {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
 			};
 		};
 	};

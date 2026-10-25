@@ -12,6 +12,7 @@ from uuid import UUID
 
 import pytest
 
+from lekto.adapters.inbound.rest.schemas.outgoing import ExtractContext, ProposeContext
 from lekto.core.domain import media_types
 from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.errors import AuthenticationError, ConflictError, NotFoundError
@@ -192,6 +193,7 @@ async def test_a_webhook_proposes_and_extracts_and_the_lanes_come_as_with_the_mo
     assert document.processing.nodes[Node.SIGNAL_LLM].status is NodeStatus.DELEGATED
     (request,) = f.sent()
     context = body(request)
+    ProposeContext.model_validate(context)  # as the contract describes it
     assert context["contract"] == "propose-ext-1"
     task = context["task"]
     assert (task["kind"], task["document_id"], task["run"]) == (
@@ -231,6 +233,7 @@ async def test_a_webhook_proposes_and_extracts_and_the_lanes_come_as_with_the_mo
     assert document.processing.nodes[Node.FIELDS].status is NodeStatus.DELEGATED
     asked = f.sent()[1]
     extract = body(asked)
+    ExtractContext.model_validate(extract)
     assert (extract["contract"], extract["task"]["kind"]) == ("extract-ext-1", "external.extract")
     assert extract["document_type"] == "Rechnung"
     assert sorted(field["name"] for field in extract["fields"].values()) == [

@@ -8,6 +8,7 @@ from uuid import UUID
 
 import pytest
 
+from lekto.adapters.inbound.rest.schemas.outgoing import RuleAskBody
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import AuthenticationError, ConflictError
 from lekto.core.domain.ids import RuleId, TaskId, WebhookId, new_id
@@ -170,6 +171,7 @@ async def test_the_node_waits_running_externally_until_the_answer_comes(world: W
     assert state.deadline == builders.NOW + 5 * MINUTE
     assert "document.node_delegated" in world.event_types()
     (request,) = f.asked()
+    RuleAskBody.model_validate(body_of(request))  # as the contract describes it
     task = body_of(request)["task"]
     assert isinstance(task, dict)
     assert request.headers["lekto-task-id"] == task["id"]

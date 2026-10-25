@@ -10,6 +10,7 @@ from decimal import Decimal
 
 import pytest
 
+from lekto.adapters.inbound.rest.schemas.outgoing import EventBody
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import NotFoundError, TooManyAttemptsError
 from lekto.core.domain.events import (
@@ -460,6 +461,7 @@ async def test_a_full_body_carries_the_document_as_it_is(world: World) -> None:
     assert shown["fields"] == {"betrag": {"amount": "120.50", "currency": "EUR"}}
     assert shown["lane"] == "green"
     assert shown["link"] == f"https://lekto.example.org/ui/documents/{document.id}"
+    EventBody.model_validate(body)  # as the contract describes it
 
 
 async def test_a_template_body_is_what_the_template_makes(world: World) -> None:

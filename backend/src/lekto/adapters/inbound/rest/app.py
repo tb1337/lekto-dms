@@ -20,6 +20,7 @@ from lekto.adapters.inbound.rest import (
     health,
     lenses,
     master_data,
+    outgoing,
     pipeline,
     problems,
     rules,
@@ -171,6 +172,7 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
         health.router,
     ):
         app.include_router(router, prefix=PREFIX)
+    outgoing.describe(app)
     for mount in mounts:
         app.router.routes.extend(mount.routes)
     # After the API: its paths never reach the UI.
@@ -181,6 +183,7 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
 
     def openapi() -> dict[str, object]:
         schema = original_openapi()
+        outgoing.delivered(schema)
         components = schema.setdefault("components", {}).setdefault("schemas", {})
         components.setdefault("EventMessage", EventMessage.model_json_schema())
         # Read by the route itself (an invalid answer uses the token up); described here.

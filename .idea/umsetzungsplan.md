@@ -1727,7 +1727,7 @@ Zielbild und Entscheidungen in `webhooks-und-auftraege.md` (Tobi, 25.10.2026), P
 Phase 2 aus `webhooks-und-auftraege.md`.
 
 - Auftrag mit einmaligem Token (Hash), Frist, Zustand; Wächter-Job; Knotenzustand `delegated` („Läuft extern“ mit Restfrist).
-- `POST /api/v1/external/tasks/{id}/result` (Bearer), Antworthülle `status`/`producer`/`answer`/`reason`; signierte Links `GET /api/v1/external/tasks/{id}/files/{name}`.
+- `POST /api/v1/external/tasks/{id}/result` (Bearer), Antworthülle `status`/`producer`/`answer`/`reason`. Die signierten Links `GET /api/v1/external/tasks/{id}/files/{name}` kommen mit M21 (Tobi, 25.10.2026).
 - Regeln als lineare Schritte: „Webhook fragen“ (nur beim Eingang, Frist, ohne Antwort rot/gelb/weiter), „Bedingung“ auf `steps`; jede Regel sieht ihre eigenen Schritte; Reihenfolge im Baukasten; Protokoll je Schritt.
 
 **Fertig, wenn:** Eine Regel fragt einen Node-RED-Flow, setzt aus der Antwort einen Tag und ein Feld, und eine ausbleibende Antwort wirkt wie in der Regel gewählt.
@@ -1740,7 +1740,9 @@ Phase 3 aus `webhooks-und-auftraege.md`.
 
 - Ein Admin bestimmt je Art (`propose`, `extract`) einen Webhook; er ersetzt den internen Aufruf. Kontext-JSON mit Antwortschema und Vertragsversion, Text ungekürzt, `content.json` und Seitenbilder als signierte Links; Kante `pages → signal_llm`.
 - Prüfung der Antwort wie bei einer Modellantwort; Fehler: rot. Kontext und Antwort beim Dokument, `producer` im Protokoll.
+- Signierte Links `GET /api/v1/external/tasks/{id}/files/{name}` (aus M20 verschoben).
 - OpenAPI 3.1 `webhooks` mit allen Bodies, die Lekto sendet.
+- Beispiel-Konsument in `examples/` (Python, nur Standardbibliothek) und ein Compose-Beispiel mit Ollama.
 
 **Fertig, wenn:** Ein externer Konsument übernimmt `propose` und `extract` für den Bewertungssatz, und die Lanes entstehen nach denselben Regeln wie mit dem internen Modell.
 

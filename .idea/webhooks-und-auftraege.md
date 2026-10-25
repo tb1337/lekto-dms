@@ -375,7 +375,7 @@ gültig); Alembic-Revisionen dazu.
 
 ## Offen
 
-- Beispiel-Konsument (M21): Ort und Form im Repository.
+Nichts.
 
 ## Entscheidungen (Tobi, 25.10.2026)
 
@@ -433,6 +433,17 @@ gültig); Alembic-Revisionen dazu.
 32. Ereignis `document.node_delegated`, abonnierbar.
 33. Bedingungsschritte prüfen Werte aus `steps` wie Bedingungen (Pfad, Operator, Wert).
 34. Ohne Antwort „gelb“: Die Schritte vor dem Frageschritt gelten; „rot“: keine Regel wirkt.
+35. Die signierten Datei-Links (`/external/tasks/{id}/files/{name}`) kommen mit M21; erst die
+    Modellaufrufe brauchen sie.
+36. Die Frist eines Frageschritts liegt zwischen 30 Sekunden und 24 Stunden.
+37. Verschiebt eine Person ein Dokument in einen Space, dessen Regeln fragen, wird nicht gefragt:
+    Die Regel endet am Frageschritt, ihre Schritte davor gelten.
+38. Das Token eines Auftrags liegt bis zur Zustellung verschlüsselt beim Auftrag, danach nur sein
+    Hash.
+39. Eine Antwort ist höchstens 1.000.000 Bytes groß.
+40. Der Template-Editor schlägt in Regeln `steps.<name>` der Frageschritte davor vor.
+41. Beispiel-Konsument: ein Python-Skript nur mit der Standardbibliothek in `examples/`, dazu ein
+    Compose-Beispiel neben `docker/` mit Ollama.
 
 ## Quellen
 

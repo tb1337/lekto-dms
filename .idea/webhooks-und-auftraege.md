@@ -375,26 +375,9 @@ gültig); Alembic-Revisionen dazu.
 
 ## Offen
 
-Beim Bauen von M21 entschieden, noch nicht ausdrücklich bestätigt:
-
-1. Die Kante `pages → signal_llm` gilt immer: „Neu verarbeiten ab `pages`“ fragt deshalb das
-   Modell (oder den Webhook) neu. Bestätigen nach einem OCR-Fehler rendert die Seiten weiter,
-   statt sie zu übernehmen.
-2. Vertragsversionen `propose-ext-1` und `extract-ext-1`; `task.kind` heißt `external.propose`
-   und `external.extract`; das Token steht auch im Body (`task.token`), wie bei `thin` und
-   `full`.
-3. Datei-Links: signiert über `SecretCipher` (AES-GCM mit `LEKTO_SECRET_KEY`, gebunden an
-   Auftrag, Dokument, Lauf, Datei und Ablauf); 401 nach Ablauf oder mit falscher Signatur, 409
-   nach Neuverarbeitung oder Löschen. In OpenAPI als Sicherheitsschema `fileSignature`.
-4. Im Kontext stehen die Spaces anderer Nutzer mit dem Anzeigenamen als Label, wie im Prompt
-   heute; Felder mit `form` (wie der Wert geschrieben wird) und `type`.
-5. Protokoll: der Kontext ohne Auftrag und Links als „Nutzer“, die Antwort als „Antwort“, kein
-   Systemprompt (die UI blendet den Reiter aus); `model_version` ist `producer`, ohne ihn
-   `external`.
-6. Das Beispiel liegt unter `examples/model-calls/` (Skript, Compose-Erweiterung, README); ein
-   optionales `OLLAMA_API_KEY` erlaubt einen Proxy vor Ollama.
-7. Ist der Lauf inzwischen gescheitert (ein anderes Signal rot), geht nichts mehr hinaus; ein
-   wartender Auftrag gibt seinen Platz frei.
+- Die Kante `pages → signal_llm` gilt immer: „Neu verarbeiten ab `pages`“ fragt deshalb das
+  Modell (oder den Webhook) neu. Bestätigen nach einem OCR-Fehler rendert die Seiten weiter,
+  statt sie zu übernehmen.
 
 ## Entscheidungen (Tobi, 25.10.2026)
 
@@ -478,6 +461,20 @@ Beim Bauen von M21 entschieden, noch nicht ausdrücklich bestätigt:
     nicht mehr dient; der Knoten fragt dann neu: einen anderen Webhook, sonst das interne
     Modell, sonst enthält sich `signal_llm`. Ein schon gesendeter läuft bis zur Frist
     (Entscheidung 29).
+49. Vertragsversionen `propose-ext-1` und `extract-ext-1`; `task.kind` heißt `external.propose`
+    und `external.extract`; das Token steht auch im Body (`task.token`), wie bei `thin` und
+    `full`.
+50. Datei-Links: signiert mit `LEKTO_SECRET_KEY` (gebunden an Auftrag, Dokument, Lauf, Datei und
+    Ablauf); 401 nach Ablauf oder mit falscher Signatur, 409 nach Neuverarbeitung oder Löschen;
+    in OpenAPI als Sicherheitsschema `fileSignature`.
+51. Im Kontext stehen die Spaces anderer Nutzer mit dem Anzeigenamen als Label, wie im Prompt;
+    Felder mit `form` (wie der Wert geschrieben wird) und `type`.
+52. Protokoll: der Kontext ohne Auftrag und Links, die Antwort, kein Systemprompt;
+    `model_version` ist `producer`, ohne ihn `external`.
+53. Das Beispiel liegt unter `examples/model-calls/` (Skript, Compose-Erweiterung, README); ein
+    optionales `OLLAMA_API_KEY` erlaubt einen Proxy vor Ollama.
+54. Ist der Lauf inzwischen gescheitert, geht nichts mehr hinaus; ein wartender Auftrag gibt
+    seinen Platz frei.
 
 ## Quellen
 

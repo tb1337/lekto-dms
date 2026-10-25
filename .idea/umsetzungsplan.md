@@ -1746,6 +1746,49 @@ Mock: https://claude.ai/artifact/CZha1VoRbf2KxJQCAZx5ma (vier Reiter hell und du
 
 **Review C2 (25.10.2026, behoben vor dem Merge):** Der Verlauf je Monat nahm den kurzen Monatsnamen als x-Wert; LayerCharts Band-Skala kennt jeden Wert einmal, sodass bei „Alles“ über mehr als zwölf Monate der Oktober 2025 und der Oktober 2026 in einen Balken fielen (reproduziert mit 21 Monaten: zwölf Balken „Feb … Jan“). Jetzt ist der Monatsanfang der x-Wert, Achse und Tooltip zeigen den Namen, mit Jahr, sobald der Verlauf mehr als ein Jahr umfasst (`monthLabel` in `lib/system.ts`). Der Verlauf von „Alles“ reicht höchstens fünf Jahre zurück (`ALL_MONTHS`, in API-Beschreibung und README genannt; die Zähler sind unbegrenzt). Schnelles Umschalten von Kanal oder Zeitraum zeigt nicht mehr die ältere Antwort zur neueren Wahl (`latest()`). Im Verlauf der Genauigkeit berührte die unterste Prozentmarke die Beschriftung von Modell 1; sie entfällt. Der Minuten-Cache ist jetzt `services/_kept.py`, geteilt mit Jobs und Suchindex. Im Browser erneut geprüft (SQLite, 387 synthetische Dokumente über 21 Monate): hell, dunkel, Handybreite, keine CSP-Verstöße.
 
+### Fakten, Bezüge, Serien und Stream ([fakten.md](fakten.md), [bezuege.md](bezuege.md))
+
+Stand: Vorschlag Creamy, 25.10.2026, zur Freigabe durch Tobi. Release offen. Sammel-Issue: [#145](https://github.com/tb1337/lekto-dms/issues/145).
+
+**Anlass (Tobi, 25.10.2026):** Dokumente beziehen sich auf andere (die Korrektur zur Lohnabrechnung), kommen regelmäßig (die Rechnung von Vodafone), und für einen Kontakt soll eine Abfolge mit Abzweigen sichtbar sein. Dafür braucht Lekto Fakten: Nummern und Verweise mit Rolle, auch vom Sprachmodell, korrigierbar, durchsuchbar, in Regeln und Templates. Die Entscheidungen stehen in [fakten.md](fakten.md) und [bezuege.md](bezuege.md); der Mock ist der Canvas „Lekto Stream“. Hier nur der Weg dorthin.
+
+**Umsetzung in PRs** (je ein Kategorie-Label; jeder PR mit den fünf Prüfungen, bei Änderungen der Web-UI auch deren Prüfungen, `web/openapi.json` neu erzeugt, Texte in `web/messages/{en,de}.json`):
+
+*Grundlagen, unabhängig voneinander*
+
+1. **Regeln setzen jedes Feld** (`enhancement/set-any-field`, `enhancement`): `SetField` nimmt für jeden Datentyp ein Template. Das Ergebnis wird gelesen, wie Lekto Werte liest (Zahl, Betrag mit Währung, Datum, Zeitraum, Ja/Nein, Auswahl, Link); lässt es sich nicht lesen, setzt die Aktion nichts (vermerkt, ohne Gelb, wie bei einem fehlenden Wert). Template-Editor und Vorschau je Typ. Regeln mit festen Werten bleiben gültig.
+2. **Prompts für Prompt-Caching** (`performance/prompt-prefix`, `performance`): `StructuredRequest` mit `system`, `document` und `task`; der OpenAI-kompatible Adapter schickt drei Nachrichten, eine Wiederholung hängt sich hinten an. Der Systemprompt ist für alle Aufrufe gleich; was je Aufgabe anders ist (Listen, Felder, Anweisungen), steht in der Aufgabe nach dem Dokument. Neue Prompt-Versionen (`propose-6`, `extract-6`). Bewertung mit festen Antworten und ein Lauf mit echtem Modell: keine falschen Grünen, Ergebnisse mindestens wie vorher; im Protokoll die gecachten Tokens, wo der Endpunkt sie meldet. Die Marken für Anthropic setzt der LiteLLM-Proxy, außerhalb von Lekto.
+
+*Fakten*
+
+3. **Fakten als Werte am Dokument** (`feature/document-facts`, `new-feature`): Domäne `Fact` (Art, normalisierter Wert, Fundstellen, Herkunft, Rolle, Stand); Tabelle `document_facts`, die `document_identifiers` ersetzt (Tobi, 25.10.2026), mit Revision, die deren Zeilen übernimmt; Repository, In-Memory-Adapter, Vertragstest auf SQLite und Postgres. `signal_facts` schreibt Fakten mit Herkunft Muster oder Code, die Rolle vorerst nach Art (Vorschlag). `GET /documents/{id}/facts` mit Rolle und Herkunft.
+4. **Arten trennen und ergänzen** (`feature/fact-kinds`, `new-feature`): `customer_number` getrennt in Kunden-, Vertrags- und Policennummer (Vorschlag: der Bestand bleibt Kundennummer, Admins ändern die Art am Kontakt); die Arten des Katalogs ([fakten.md](fakten.md), Rollen) mit Beschriftungen und Prüfungen; Gründe mit Codes und Übersetzungen; Kontaktdialog.
+5. **Fakten vom Sprachmodell** (`feature/llm-facts`, `new-feature`; nach 2 und 4): ein Aufruf „Fakten mit Rolle“ auf demselben Anfang wie die übrigen. Schema mit Art, Wert, Rolle, Zitat, Beschriftung; Prüfung wie bei Feldern. Gleiche Art und gleicher Wert aus Muster und Modell sind ein Fakt mit beiden Herkünften; die Rolle bestimmt das Modell. Bewertungssatz um Rechnung, Mahnung, Gutschrift und Korrektur mit Bezugszeitraum erweitert.
+6. **Fakten korrigieren** (`feature/correct-facts`, `new-feature`; nach 3): Ergänzen, Korrigieren und Verwerfen über die API (Bearbeiter des Space, Admins); Herkunft Person, übersteht eine neue Verarbeitung; Eintrag in `field_verdicts`; für Admins „auch beim Kontakt korrigieren“. Web: Fakten im Reiter „Dokument“ bearbeitbar.
+7. **Fakten suchen und filtern** (`feature/search-facts`, `new-feature`; nach 3): Fakten im Suchindex (Art und normalisierter Wert), Filter in Liste, Suche und Lens; Sichtbarkeit wie bei den Kennungen (Issue #82).
+8. **Fakten in Regeln und Templates** (`feature/rule-facts`, `new-feature`; nach 1 und 3): Bedingung „Fakt“ (Art, Rolle; ist, Muster, vorhanden, fehlt); Templates sehen `facts.<art>`, `facts.refers.<art>`, `facts.girocode.*` und `fact_list` (Tobi, 25.10.2026; [fakten.md](fakten.md), Entscheidung 13).
+
+*Bezüge*
+
+9. **Bezüge speichern und zeigen** (`feature/document-relations`, `new-feature`): Tabelle `document_relations` (vom neueren zum älteren Dokument, Herkunft Person oder Lekto, Beleg, Stand gesetzt, Vorschlag oder verworfen) mit Revision; Repository, In-Memory-Adapter, Vertragstest. API: lesen (nur Bezüge, deren beide Enden der Nutzer lesen darf), setzen (das neuere bearbeiten, das ältere lesen dürfen), entfernen, Vorschlag annehmen oder verwerfen; Eintrag in `field_verdicts`. Web: Bezüge am Dokument in drei Gruppen mit Beleg, wie im Mock. MCP: `get_document` liefert die sichtbaren Bezüge mit, nur lesend.
+10. **Bezugsziel am Dokumenttyp** (`feature/relation-target`, `new-feature`): Schalter für Admins mit Revision; Stammdaten-Dialog.
+11. **Bezüge erkennen** (`feature/relate`, `new-feature`; nach 5, 9 und 10): neuer Knoten `relate` nach `fields` und vor den Regeln, sodass Regeln die Bezüge sehen (Tobi, 25.10.2026; die Form der Bedingung „Bezug“ ist beim PR zu klären). Quellen: gleicher Kontakt, Typ und Bezugszeitraum bei anderem Dokumentdatum; Verweise gegen die eigenen Nummern anderer Dokumente; Vertrags- oder Policennummer gegen Dokumente eines Typs mit Bezugsziel (passt sie auf zwei, nur ein Vorschlag); Verweise des Sprachmodells mit Datum gegen Dokumente desselben Kontakts. In beide Richtungen: Kommt das ältere Dokument später, bekommen die neueren ihren Bezug. Nie gelb. Bestand: Befehl `relate` (ein Job je Dokument, VS-Code-Task) wie `read-codes`. Bewertung erweitert.
+
+*Serien, Erwartet, Stream*
+
+12. **Serien und Erwartet** (`feature/expected`, `new-feature`; nach 3 und 4): Serien aus Kontakt, Typ und Vertrags- oder Kundennummer, mindestens drei Dokumente, Abstand und Streuung aus den Dokumentdaten, nächster Termin, überfällig jenseits der Streuung, beendet nach zwei verpassten Terminen; nichts gespeichert. API `GET /expected` in der Reichweite des Nutzers (`all_users` für Admins), keine Ereignisse. Web: Ansicht „Erwartet“, wie im Mock. MCP: Werkzeug `list_expected`.
+13. **Stream** (`feature/stream`, `new-feature`; nach 9 und 12): Die API liefert für die gefilterten Dokumente Spuren (Serien mit ihrem Bezugsziel am Anfang, Abzweige, „Einzeln“) mit Bezügen und erwarteten Dokumenten; eine Grenze für zu viele Spuren. Darstellung „Stream“ in Dokumentliste und Lens; Einstieg per Klick auf den Kontakt, „Im Stream zeigen“ in der Dokumentansicht.
+
+14. **Bezüge in Webhooks** (`feature/relation-events`, `new-feature`; nach 11 und erst nach dem laufenden Umbau der Webhooks in einer anderen Session): `document.updated` mit `fields: ["relations"]` an beiden Dokumenten eines Bezugs, nur wenn der Empfänger beide Enden lesen darf, nicht beim Lauf `relate` über den Bestand.
+
+*Später:* E-Rechnung als Quelle von Fakten ([Issue #144](https://github.com/tb1337/lekto-dms/issues/144), Priorität niedrig), nach 3 und 4.
+
+**Prüfung (je PR):** Unit-, Vertrags- und Integrationstests; Revisionen hin und zurück auf SQLite und Postgres; Bewertung mit festen Antworten bei jeder Änderung an Prompts, Signalen, Urteil oder Graph (keine falschen Grünen); Oberflächen im Browser hell, dunkel und in Handybreite, ohne Konsolenfehler; zum Schluss ein Review durch einen separaten Agenten.
+
+**Offen (vor dem jeweiligen PR zu klären):**
+- Aus dem Mock ([bezuege.md](bezuege.md), Offene Punkte): Menüpunkt „Erwartet“, Zeitachse waagerecht oder senkrecht, der Name „Spuren“, der Name eines Abzweigs, die Grenze bei weiten Filtern.
+- Ob die Aufrufe des Sprachmodells weiter in kleine Themen geteilt werden: nach den Messungen zu PR 2 und 5, eine eigene Entscheidung.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

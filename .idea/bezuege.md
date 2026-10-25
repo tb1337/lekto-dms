@@ -7,6 +7,9 @@ haben. Umgesetzt ist davon noch nichts; `architektur.md` bleibt verbindlich und 
 Umsetzung ergänzt. Mock: Canvas „Lekto Stream“ (Desktop und Handy, hell und dunkel),
 <https://claude.ai/artifact/Q6SnMvjuLZEGBV5YuVQfGR>.
 
+Gehört zu [Fakten](fakten.md): Die Nummern und Verweise, aus denen Lekto Bezüge und Serien
+erkennt, sind Fakten am Dokument; dort stehen ihre Arten, Rollen und Quellen.
+
 ## Anlass
 
 - Dokumente gehören zusammen, ohne einander zu ersetzen: Im Juni kommt eine Korrektur zur
@@ -110,9 +113,8 @@ und von Bezügen zwischen Dokumenten (Tobi).
 ## Was fehlt
 
 - Bezüge zwischen Dokumenten: weder Tabelle noch Begriff im Kern.
-- Nummern, die ein Dokument kennzeichnen (Rechnungs-, Gutschrift-, Vorgangsnummer). Die heutigen
-  Kennungen erkennen nur Kontakte und Personen (`core/domain/identifiers/base.py`); die Art
-  `customer_number` deckt Kunden-, Vertrags- und Policennummern zugleich ab.
+- Nummern, die ein Dokument kennzeichnen (Rechnungs-, Gutschrift-, Vorgangsnummer), und ihre
+  Rolle (eigene Nummer oder Verweis): siehe [Fakten](fakten.md).
 - Schalter „Bezugsziel“ am Dokumenttyp.
 - Serien und erwartete Dokumente als Begriff im Kern, mit API.
 - Filter nach Bezugszeitraum („kommen später“, `architektur.md`).

@@ -10182,7 +10182,7 @@
           "classifier"
         ],
         "summary": "The classifier's status",
-        "description": "Admins only. The latest model (trained from the documents a person confirmed or that were taken over with metadata) and the confirmations since. 503 without a classifier.",
+        "description": "The latest model (trained from the documents a person confirmed or that were taken over with metadata) and the confirmations since; every user sees it. 503 without a classifier.",
         "operationId": "status_api_v1_classifier_get",
         "responses": {
           "200": {
@@ -10207,22 +10207,6 @@
                   "title": "Unauthorized",
                   "status": 401,
                   "detail": "authentication is required"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                },
-                "example": {
-                  "type": "about:blank",
-                  "title": "Forbidden",
-                  "status": 403,
-                  "detail": "only editors and admins control the processing of this document"
                 }
               }
             }
@@ -14848,7 +14832,7 @@
           "events"
         ],
         "summary": "Progress of documents (server-sent events)",
-        "description": "A stream of document events (`document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Active admins also get `classifier.trained` (a new model, with its `number` and `examples`), unless the stream follows one document. A searcher gets `search.meaning_ready` (with the `query`) when the meaning of a query that had to go by words alone is ready (`meaning_pending` of the search), unless the stream follows one document. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream starts with the comment `: ready` once it is registered: every event after that reaches it. It checks regularly that its session or token is still valid and ends otherwise.",
+        "description": "A stream of document events (`document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Every user also gets `classifier.trained` (a new model, with its `number` and `examples`), unless the stream follows one document. A searcher gets `search.meaning_ready` (with the `query`) when the meaning of a query that had to go by words alone is ready (`meaning_pending` of the search), unless the stream follows one document. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream starts with the comment `: ready` once it is registered: every event after that reaches it. It checks regularly that its session or token is still valid and ends otherwise.",
         "operationId": "events_api_v1_events_get",
         "parameters": [
           {
@@ -16709,6 +16693,409 @@
                   "title": "Forbidden",
                   "status": 403,
                   "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/jobs/summary": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Jobs by kind and state",
+        "description": "How many jobs of each kind are running, due, planned, failed and done (failed and done ones within the retention period, `LEKTO_RETENTION`), and when a worker last claimed one. Cheap enough to ask every few seconds.",
+        "operationId": "summary_api_v1_jobs_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobsSummaryOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/jobs": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "List jobs",
+        "description": "The jobs in the given states (without `state`: the open ones, running, due and planned), of one kind if given: running ones first, longest running first; then due and planned ones by when they are due; then failed and done ones, latest first. Every user sees the jobs; a job names a document only to those who may read it, and its error only to admins.",
+        "operationId": "list_jobs_api_v1_jobs_get",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JobState"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeat for several.",
+              "title": "State"
+            },
+            "description": "Repeat for several."
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobPageOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/jobs/durations": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "How long jobs wait and run",
+        "description": "For each kind, how long its jobs done within the retention period waited (from due to started) and ran (from started to done): median and 90th percentile. Jobs from before the jobs kept their times are left out.",
+        "operationId": "durations_api_v1_jobs_durations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDurationsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/jobs/{id}/retry": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Try a failed job again",
+        "description": "Admins only. Queues the failed job again, due now, without its attempts; its last error stays until it runs. 409 if it did not fail, if the same work is queued or running already, or for a failed processing step: that one is repeated at its document (`POST /documents/{id}/retry`).",
+        "operationId": "retry_api_v1_jobs__id__retry_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
                 }
               }
             }
@@ -21311,6 +21698,371 @@
         ],
         "title": "InboxTab"
       },
+      "JobDocumentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "JobDocumentOut"
+      },
+      "JobDurationsOut": {
+        "properties": {
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/KindDurationsOut"
+            },
+            "type": "array",
+            "title": "Kinds",
+            "description": "By kind; kinds without done jobs left out."
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Since",
+            "description": "The jobs done from then on count."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kinds",
+          "since"
+        ],
+        "title": "JobDurationsOut"
+      },
+      "JobOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "What the job does, as Lekto names it internally (`pipeline.node`, `search.index`, `webhooks.deliver`, ...); new kinds may come.",
+            "examples": [
+              "pipeline.node"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/JobState"
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts",
+            "description": "Attempts that counted, the current one included; claims given back because a worker stopped are left out."
+          },
+          "run_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Run At",
+            "description": "When it is or was due."
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At",
+            "description": "When its latest attempt began; null before the first."
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At",
+            "description": "When it was done or given up."
+          },
+          "document": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobDocumentOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The document it works on, if the caller may read it."
+          },
+          "document_hidden": {
+            "type": "boolean",
+            "title": "Document Hidden",
+            "description": "It works on a document the caller may not read (or one deleted since)."
+          },
+          "node": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Node"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The processing step it runs, for `pipeline.node`."
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact",
+            "description": "The name of the contact it works on."
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Why its last attempt failed, as the worker wrote it (English, for admins; null for other users)."
+          },
+          "retry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RetryWay"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For an admin and a failed job: `job` to queue it again (`POST /jobs/{id}/retry`), `document` to repeat the failed step at its document (`POST /documents/{id}/retry`); null otherwise."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "state",
+          "attempts",
+          "run_at",
+          "started_at",
+          "finished_at",
+          "document",
+          "document_hidden",
+          "node",
+          "contact",
+          "error",
+          "retry"
+        ],
+        "title": "JobOut"
+      },
+      "JobPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JobOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "How many jobs match in all."
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset",
+            "description": "Pass as `offset` for the next page; null on the last page."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "next_offset"
+        ],
+        "title": "JobPageOut"
+      },
+      "JobState": {
+        "type": "string",
+        "enum": [
+          "running",
+          "due",
+          "planned",
+          "done",
+          "failed"
+        ],
+        "title": "JobState",
+        "description": "Where a job stands for the people looking at it: a queued job is due once its time has\ncome, planned before (a repetition, a recurring job)."
+      },
+      "JobsSummaryOut": {
+        "properties": {
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/KindSummaryOut"
+            },
+            "type": "array",
+            "title": "Kinds",
+            "description": "By kind; kinds without jobs left out."
+          },
+          "last_started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Started At",
+            "description": "When a worker last claimed a job; null if none did since the jobs keep their times. Long ago while jobs are due: no worker runs."
+          },
+          "now": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Now",
+            "description": "The server's time the counts are of."
+          },
+          "kept_since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Kept Since",
+            "description": "Done and failed jobs are kept from then on (the retention period); older ones are removed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kinds",
+          "last_started_at",
+          "now",
+          "kept_since"
+        ],
+        "title": "JobsSummaryOut"
+      },
+      "KindDurationsOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "What the job does, as Lekto names it internally (`pipeline.node`, `search.index`, `webhooks.deliver`, ...); new kinds may come.",
+            "examples": [
+              "pipeline.node"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Jobs done within the retention period."
+          },
+          "wait_median_ms": {
+            "type": "number",
+            "title": "Wait Median Ms",
+            "description": "From due to started, median."
+          },
+          "wait_p90_ms": {
+            "type": "number",
+            "title": "Wait P90 Ms",
+            "description": "From due to started, 90th percentile."
+          },
+          "run_median_ms": {
+            "type": "number",
+            "title": "Run Median Ms",
+            "description": "From started to done, median."
+          },
+          "run_p90_ms": {
+            "type": "number",
+            "title": "Run P90 Ms",
+            "description": "From started to done, 90th percentile."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "count",
+          "wait_median_ms",
+          "wait_p90_ms",
+          "run_median_ms",
+          "run_p90_ms"
+        ],
+        "title": "KindDurationsOut"
+      },
+      "KindSummaryOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "What the job does, as Lekto names it internally (`pipeline.node`, `search.index`, `webhooks.deliver`, ...); new kinds may come.",
+            "examples": [
+              "pipeline.node"
+            ]
+          },
+          "running": {
+            "type": "integer",
+            "title": "Running",
+            "description": "Claimed by a worker now."
+          },
+          "due": {
+            "type": "integer",
+            "title": "Due",
+            "description": "Queued, their time has come: waiting for a worker."
+          },
+          "planned": {
+            "type": "integer",
+            "title": "Planned",
+            "description": "Queued for later: a repetition or a recurring job."
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed",
+            "description": "Given up, within the retention period."
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done",
+            "description": "Done, within the retention period."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "running",
+          "due",
+          "planned",
+          "failed",
+          "done"
+        ],
+        "title": "KindSummaryOut"
+      },
       "LabelCheckOut": {
         "properties": {
           "text": {
@@ -23848,6 +24600,9 @@
           "logo_type",
           "logo_upload_type",
           "training_needs_examples",
+          "job_not_failed",
+          "job_already_queued",
+          "job_retry_in_document",
           "rule_follows_type",
           "personal_space_undeletable",
           "space_not_empty",
@@ -24182,6 +24937,15 @@
           "apply_rules"
         ],
         "title": "ResumeNode"
+      },
+      "RetryWay": {
+        "type": "string",
+        "enum": [
+          "job",
+          "document"
+        ],
+        "title": "RetryWay",
+        "description": "How an admin tries a failed job again: the job itself, or (a processing step) its\ndocument."
       },
       "ReviewOut": {
         "properties": {
@@ -27785,6 +28549,9 @@
       "confirmed": "number",
       "needed": "number"
     },
+    "job_not_failed": {},
+    "job_already_queued": {},
+    "job_retry_in_document": {},
     "rule_follows_type": {
       "type": "text"
     },

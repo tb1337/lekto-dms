@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { events } from '#lib/events.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
-import Page from './+page.svelte';
+import Page from './ClassifierTab.svelte';
 
 const fetchMock = vi.fn<(request: Request) => Promise<Response>>();
 
@@ -46,7 +46,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-describe('classifier page', () => {
+describe('the classifier tab', () => {
 	it('shows what the model learned and trains on request', async () => {
 		fetchMock.mockImplementation(async (request) =>
 			request.method === 'POST' ? new Response(null, { status: 202 }) : json(200, trained)
@@ -57,6 +57,19 @@ describe('classifier page', () => {
 		await userEvent.click(screen.getByRole('button', { name: m.classifier_train() }));
 		const post = fetchMock.mock.calls.map((call) => call[0]).find((call) => call.method === 'POST');
 		expect(new URL(post!.url).pathname).toBe('/api/v1/classifier/train');
+	});
+
+	it('shows a user the model without the training', async () => {
+		session.start({
+			user: { id: 'user', username: 'anna', role: 'user' },
+			method: 'password',
+			expires_at: '2026-10-14T12:00:00Z',
+			csrf_token: 'token'
+		});
+		fetchMock.mockImplementation(async () => json(200, trained));
+		render(Page);
+		expect(await screen.findByText(m.classifier_identifiers({ count: '42' }))).toBeTruthy();
+		expect(screen.queryByRole('button', { name: m.classifier_train() })).toBeNull();
 	});
 
 	it('shows the new model once a training ended', async () => {

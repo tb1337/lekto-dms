@@ -223,6 +223,9 @@ class ReasonCode(StrEnum):
     LOGO_TYPE = "logo_type"
     LOGO_UPLOAD_TYPE = "logo_upload_type"
     TRAINING_NEEDS_EXAMPLES = "training_needs_examples"
+    JOB_NOT_FAILED = "job_not_failed"
+    JOB_ALREADY_QUEUED = "job_already_queued"
+    JOB_RETRY_IN_DOCUMENT = "job_retry_in_document"
     RULE_FOLLOWS_TYPE = "rule_follows_type"
     PERSONAL_SPACE_UNDELETABLE = "personal_space_undeletable"
     SPACE_NOT_EMPTY = "space_not_empty"
@@ -621,6 +624,11 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.TRAINING_NEEDS_EXAMPLES: (
         "{confirmed:number} confirmed documents or decided spaces; training needs {needed:number}"
     ),
+    ReasonCode.JOB_NOT_FAILED: "only a failed job can be tried again",
+    ReasonCode.JOB_ALREADY_QUEUED: "the same work is queued or running already",
+    ReasonCode.JOB_RETRY_IN_DOCUMENT: (
+        "a failed processing step is tried again at its document, which then goes on"
+    ),
     ReasonCode.RULE_FOLLOWS_TYPE: (
         "the rule of the title pattern of '{type}' follows the document type: change the pattern "
         "there"
@@ -829,8 +837,8 @@ class Action(StrEnum):
     LIST_ALL_RULES = "list_all_rules"
     LIST_ALL_SPACES = "list_all_spaces"
     TRAIN_CLASSIFIER = "train_classifier"
-    SEE_CLASSIFIER = "see_classifier"
     REBUILD_INDEX = "rebuild_index"
+    RETRY_JOBS = "retry_jobs"
     REPARSE_ALL = "reparse_all"
     MAKE_GLOBAL_RULES = "make_global_rules"
     CHANGE_GLOBAL_RULES = "change_global_rules"
@@ -858,8 +866,8 @@ ACTIONS: Mapping[Action, str] = {
     Action.LIST_ALL_RULES: "list the rules of all users",
     Action.LIST_ALL_SPACES: "list every user's spaces",
     Action.TRAIN_CLASSIFIER: "train the classifier",
-    Action.SEE_CLASSIFIER: "see the classifier",
     Action.REBUILD_INDEX: "rebuild the search index",
+    Action.RETRY_JOBS: "try failed jobs again",
     Action.REPARSE_ALL: "read the text of all documents again",
     Action.MAKE_GLOBAL_RULES: "make global rules",
     Action.CHANGE_GLOBAL_RULES: "change global rules",

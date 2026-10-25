@@ -1,12 +1,13 @@
-"""Server-sent events: progress of the documents a user may see, for admins the end of a
-training of the classifier, and for a searcher that the meaning of their query is ready
+"""Server-sent events: progress of the documents a user may see, the end of a training of the
+classifier, and for a searcher that the meaning of their query is ready
 (`search.meaning_ready`, from the search of this process, not the event bus: `deliver`).
 
 `EventHub` subscribes to the event bus (subscriber `api.sse`, dispatched by the API process)
 and hands each document event to the open streams of the users who may read the document at
-that moment, and `classifier.trained` to the streams of the active admins that do not follow
-one document. Events are pushed only to connected clients; there is no replay, so a client that
-reconnects fetches the current state. One API instance is assumed: several instances would
+that moment, and `classifier.trained` to every stream that does not follow one document
+(every user sees the classifier on the page "System", Tobi 24.10.2026). Events are pushed only
+to connected clients; there is no replay, so a client that reconnects fetches the current
+state. One API instance is assumed: several instances would
 share the subscription and each would see only part of the events (a broker is the way out).
 
 Admins may read every document, so they get the events of every document (Tobi, 08.10.2026).
@@ -109,7 +110,7 @@ class EventHub:
 
     async def handle(self, event: DomainEvent) -> None:
         if isinstance(event, ClassifierTrained):
-            await self._to_admins(event)
+            self._to_all(event)
             return
         if not isinstance(event, DocumentEvent):
             return
@@ -137,13 +138,9 @@ class EventHub:
             if listener.user == event.user_id and listener.document is None:
                 listener.offer(event)
 
-    async def _to_admins(self, event: DomainEvent) -> None:
-        listeners = [listener for listener in self._listeners if listener.document is None]
-        if not listeners:
-            return
-        admins = await self._documents.active_admins({listener.user for listener in listeners})
-        for listener in listeners:
-            if listener.user in admins:
+    def _to_all(self, event: DomainEvent) -> None:
+        for listener in list(self._listeners):
+            if listener.document is None:
                 listener.offer(event)
 
     @asynccontextmanager

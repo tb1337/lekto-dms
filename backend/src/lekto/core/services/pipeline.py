@@ -956,9 +956,9 @@ class PipelineService:
                     await self._log(uow, document.id, Node.PARSE, run, result, started, now)
                     await uow.outbox.add(document.pull_events())
                 if result.outcome is Outcome.FAILED:
-                    await uow.jobs.fail(job, error=result.reason or "failed")
+                    await uow.jobs.fail(job, now=now, error=result.reason or "failed")
                 else:
-                    await uow.jobs.complete(job)
+                    await uow.jobs.complete(job, now=now)
                 await uow.commit()
 
         await self._jobs.storing(job, record)
@@ -1040,7 +1040,7 @@ class PipelineService:
             if document is None or not (
                 document.is_skipped(node, run) if catching_up else document.is_awaiting(node, run)
             ):
-                await uow.jobs.complete(job)
+                await uow.jobs.complete(job, now=now)
                 await uow.commit()
                 return
             if isinstance(outcome, NodeResult):
@@ -1056,9 +1056,9 @@ class PipelineService:
             await self._log(uow, document.id, node, run, result, started, now)
             await _enqueue(uow, document, due, now)
             if result.outcome is Outcome.FAILED:
-                await uow.jobs.fail(job, error=result.reason or "failed")
+                await uow.jobs.fail(job, now=now, error=result.reason or "failed")
             else:
-                await uow.jobs.complete(job)
+                await uow.jobs.complete(job, now=now)
             await uow.outbox.add(document.pull_events())
             await uow.commit()
 

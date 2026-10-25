@@ -13,8 +13,9 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 
-	// The classifier: what the latest model learned, how far the next training is, and a
-	// training on request (it also trains on its own after enough confirmations).
+	// The tab "Classifier" of the page "System": what the latest model learned, how far the next
+	// training is, and (admins) a training on request; it also trains on its own after enough
+	// confirmations. Every user sees it.
 	type Status = components['schemas']['ClassifierStatusOut'];
 
 	let status = $state<Status | null>(null);
@@ -34,7 +35,7 @@
 	// Again after a break of the stream: the end of a training may have been missed.
 	$effect(() => {
 		void events.generation;
-		if (session.isAdmin) untrack(() => void load());
+		untrack(() => void load());
 	});
 
 	// A training runs in the background: its model shows once it is stored.
@@ -62,19 +63,14 @@
 		value === null ? '–' : formatNumber(value, { style: 'percent', maximumFractionDigits: 0 });
 </script>
 
-<svelte:head><title>{m.nav_classifier()} · {m.app_name()}</title></svelte:head>
-
 <div class="flex max-w-3xl flex-col gap-6">
-	<div class="flex flex-wrap items-center justify-between gap-3">
-		<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_classifier()}</h1>
-		{#if session.isAdmin && status}
+	{#if session.isAdmin && status}
+		<div class="flex justify-end">
 			<Button onclick={train} disabled={busy}>{m.classifier_train()}</Button>
-		{/if}
-	</div>
+		</div>
+	{/if}
 
-	{#if !session.isAdmin}
-		<p class="text-muted-foreground">{m.admin_only()}</p>
-	{:else if unavailable}
+	{#if unavailable}
 		<p class="text-muted-foreground">{m.classifier_not_configured()}</p>
 	{:else if problem}
 		<LoadProblem {problem} onretry={load} />

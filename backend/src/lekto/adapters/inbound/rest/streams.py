@@ -47,7 +47,7 @@ async def _visible_document(
         "`document.filed`, `document.updated`, `document.deleted`), "
         "only for documents the caller may read at that moment (`document.deleted`: could "
         "read when it was deleted); other users' documents are visible once green. "
-        "Active admins also get `classifier.trained` (a new model, with its `number` and "
+        "Every user also gets `classifier.trained` (a new model, with its `number` and "
         "`examples`), unless the stream follows one document. A searcher gets "
         "`search.meaning_ready` (with the `query`) when the meaning of a query that had to go "
         "by words alone is ready (`meaning_pending` of the search), unless the stream follows "

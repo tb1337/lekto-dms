@@ -554,7 +554,14 @@ jobs = Table(
     Column("last_error", Text, nullable=True),
     # Set only while the job is queued: claiming clears it (`Job.coalesce_key`).
     Column("coalesce_key", Text, nullable=True),
+    # When the latest claim took it, when it was done or given up, and what a done job reports
+    # (`Job.result`); none in jobs from before revision 0041.
+    Column("started_at", UtcDateTime, nullable=True),
+    Column("finished_at", UtcDateTime, nullable=True),
+    Column("result", json_type(), nullable=True),
     Index(None, "status", "run_at"),
+    # The durations of the jobs done lately (`JobQueue.finished`).
+    Index(None, "finished_at"),
     # Claims of running jobs whose lease ran out.
     Index(None, "status", "locked_until"),
 )

@@ -1,4 +1,4 @@
-"""The classifier: its status and training on request. Admins only."""
+"""The classifier: its status (every user) and training on request (admins)."""
 
 from fastapi import APIRouter, Response
 
@@ -15,11 +15,12 @@ router = APIRouter(prefix="/classifier", tags=["classifier"], dependencies=PROTE
     "",
     summary="The classifier's status",
     description=(
-        ADMINS_ONLY + " The latest model (trained from the documents a person confirmed or that "
-        "were taken over with metadata) and the confirmations since. 503 without a classifier."
+        "The latest model (trained from the documents a person confirmed or that "
+        "were taken over with metadata) and the confirmations since; every user sees it. 503 "
+        "without a classifier."
     ),
     response_model=ClassifierStatusOut,
-    responses=problem_responses(401, 403, 503),
+    responses=problem_responses(401, 503),
 )
 async def status(user: CurrentUser, classifier: Classifier) -> ClassifierStatusOut:
     return ClassifierStatusOut.of(await classifier.status(user))

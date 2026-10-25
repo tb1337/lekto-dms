@@ -74,9 +74,9 @@ class JobRunner:
         try:
             async with self._uow() as uow:
                 if error is None:
-                    await uow.jobs.complete(job)
+                    await uow.jobs.complete(job, now=self._clock.now())
                 else:
-                    await uow.jobs.fail(job, error=error)
+                    await uow.jobs.fail(job, now=self._clock.now(), error=error)
                 if also is not None:
                     await also(uow)
                 await uow.commit()
@@ -102,7 +102,7 @@ class JobRunner:
         try:
             async with self._uow() as uow:
                 if run_at is None:
-                    await uow.jobs.fail(job, error=error)
+                    await uow.jobs.fail(job, now=self._clock.now(), error=error)
                 else:
                     await uow.jobs.reschedule(job, run_at=run_at, error=error)
                 if also is not None:

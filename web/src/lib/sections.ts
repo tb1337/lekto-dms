@@ -1,6 +1,6 @@
 import type { Component } from 'svelte';
+import Activity from '@lucide/svelte/icons/activity';
 import Archive from '@lucide/svelte/icons/archive';
-import BrainCircuit from '@lucide/svelte/icons/brain-circuit';
 import FileText from '@lucide/svelte/icons/file-text';
 import Inbox from '@lucide/svelte/icons/inbox';
 import Settings from '@lucide/svelte/icons/settings';
@@ -27,9 +27,11 @@ export const SECTIONS: readonly Section[] = [
 	{ path: '/spaces', label: m.nav_spaces, icon: Archive, admin: false },
 	{ path: '/rules', label: m.nav_rules, icon: Workflow, admin: false },
 	{ path: '/webhooks', label: m.nav_webhooks, icon: Webhook, admin: false },
+	// Classifier, search index and jobs for everyone; acting on them is for admins (Tobi,
+	// 24.10.2026).
+	{ path: '/system', label: m.nav_system, icon: Activity, admin: false },
 	{ path: '/admin/master-data', label: m.nav_master_data, icon: Tags, admin: true },
-	{ path: '/admin/users', label: m.nav_users, icon: Users, admin: true },
-	{ path: '/admin/classifier', label: m.nav_classifier, icon: BrainCircuit, admin: true }
+	{ path: '/admin/users', label: m.nav_users, icon: Users, admin: true }
 ];
 
 export const SETTINGS: Section = {

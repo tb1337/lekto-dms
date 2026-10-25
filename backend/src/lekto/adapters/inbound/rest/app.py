@@ -17,6 +17,7 @@ from lekto.adapters.inbound.rest import (
     classifier,
     documents,
     health,
+    jobs,
     lenses,
     master_data,
     pipeline,
@@ -157,6 +158,7 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
         streams.router,
         webhooks.router,
         lenses.router,
+        jobs.router,
         health.router,
     ):
         app.include_router(router, prefix=PREFIX)

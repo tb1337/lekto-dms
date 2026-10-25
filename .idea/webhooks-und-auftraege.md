@@ -232,8 +232,8 @@ dieser Art (`LEKTO_LLM_*` bleibt für die andere Art und für alles Übrige).
 
 | Art | Knoten | ersetzt | Antwort |
 | --- | --- | --- | --- |
-| `propose` | `signal_llm` | Prompt `propose-5` | wie die Antwort des Modells: Absender, Empfänger, Typ, Thema, Tags, Datum, Titel, Sprache, Space, Felder des gewählten Typs |
-| `extract` | `fields` | Prompt `extract-5`, nur wenn das Urteil einen anderen Typ entschied | Felder des entschiedenen Typs |
+| `propose` | `signal_llm` | Prompt `propose-6` (bis #145 `propose-5`) | wie die Antwort des Modells: Absender, Empfänger, Typ, Thema, Tags, Datum, Titel, Sprache, Space, Felder des gewählten Typs |
+| `extract` | `fields` | Prompt `extract-6` (bis #145 `extract-5`), nur wenn das Urteil einen anderen Typ entschied | Felder des entschiedenen Typs |
 
 **Kein Prompt, sondern Kontext.** Der Konsument baut seinen Prompt selbst:
 

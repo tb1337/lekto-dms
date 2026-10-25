@@ -502,14 +502,23 @@ and the space, the fields node reads the fields of the decided type and the titl
   does not fit, the note what was wrong, last. Calls about one document so begin alike (both
   shorten the text to `LEKTO_LLM_INPUT_BUDGET` the same way), and an endpoint that caches a
   shared beginning computes system prompt and document once. Lekto sets no cache marks: Ollama
-  (while the model stays loaded) and Groq cache by themselves; for Anthropic a LiteLLM proxy sets
-  them (`cache_control_injection_points` by role or index, or `enable_anthropic_prompt_caching`).
+  (while the model stays loaded) and Groq (for now its GPT-OSS models) cache by themselves; for
+  Anthropic a LiteLLM proxy sets them (`cache_control_injection_points` with `index: 1`, the
+  document, which also covers the system prompt before it; by `role: user` every user message
+  would get a mark, the task and a retry too, and each call would write the cache anew).
   Some providers put a `response_format` schema before the system prompt (OpenAI; Claude behaves
   alike), and Lekto's schema differs per document and call: there `LEKTO_LLM_RESPONSE_FORMAT=json_object`
   sends the schema as a message after the task instead, and the beginning is shared. The log
   names, per call, the prompt tokens the endpoint took from its cache where it reports them
   (`output.tokens[].cached`: `prompt_tokens_details.cached_tokens`, or
   `cache_read_input_tokens` through LiteLLM); the web UI shows them in the token details.
+  Two limits of the form (review of #149, open with Tobi): system prompt, document and task must
+  fit the model's context together (`LEKTO_LLM_INPUT_BUDGET` is the document's share, the task
+  with its lists comes on top) – Ollama drops older messages whole when a prompt is too long and
+  keeps the last, so the model would get the task without the document, where before the runner
+  cut the one message; and an endpoint whose chat template requires the roles to alternate (some
+  Gemma and Mistral templates under vLLM or llama.cpp with `--jinja`) refuses two user messages
+  in a row.
 - **`signal_classifier`**: TF-IDF of words and word pairs and a logistic regression per target
   (contact, topic, type, each automatic document tag, the space), trained on the confirmed
   documents (`LEKTO_CLASSIFIER`, see Classifier). The space is learned from the documents whose

@@ -1695,6 +1695,8 @@ Mock: https://claude.ai/artifact/CZha1VoRbf2KxJQCAZx5ma (vier Reiter hell und du
 
 **B gebaut (24.10.2026):** Die Routen stehen neben `POST /search/reindex`: `GET /search/status` und `POST /search/check` (nicht unter `/documents/search`, das ist die Suche selbst). Das letzte Ergebnis von „Genau prüfen“ hält die Seite nur, solange sie offen ist („Gerade geprüft · dauerte 3,4s“); wer wann zuletzt prüfte, merkt sich Lekto nicht. Die Dokumente der Datenbank zählt `DocumentRepository.count_all`. Der Reiter fragt alle zehn Sekunden.
 
+**Review B (25.10.2026, behoben vor dem Merge):** `GET /search/status` las wie die Dauern der Jobs alle erledigten Index-Jobs der Aufbewahrung; jetzt die jüngsten 2000 (`limit`), eine Minute gehalten; die Rate der offenen Jobs kommt weiter jedes Mal aus den letzten zehn Minuten. Ein Index-Job, der nach gescheitertem Embedding ohne Vektoren schrieb, meldet `embedding_failed` und zählt weder zu „mit“ noch zu „ohne Embedding“ (er hat die Embedding-Zeit verbraucht, ohne einzubetten).
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

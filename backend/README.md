@@ -1049,8 +1049,11 @@ and why by words alone where the meaning was to take part (`reason` with a code:
   database and of the index, those with vectors and the vectors (`SearchIndex.stats`, from
   Meilisearch's index stats), the index jobs running and waiting with an estimate of when they
   are through (from the index jobs done in the last ten minutes), and how long index jobs ran
-  with and without embedding within `LEKTO_RETENTION`: an index job reports the sections it
-  embedded (`{"sections": n}` in its result). `POST /search/check` (admins) compares like the
+  with and without embedding (from the latest 2000 done within `LEKTO_RETENTION`, counted at
+  most once a minute per API process): an index job reports the sections it embedded
+  (`{"sections": n}` in its result) and whether it wrote without vectors because the embedding
+  failed (`"embedding_failed": true`; such a job measures neither kind). `POST /search/check`
+  (admins) compares like the
   reconciliation (`IndexingService.compare`) but only counts: current, missing, outdated,
   vectors of another model, left over.
 - **Rights.** The index query contains the rights (every document of the spaces the caller

@@ -76,6 +76,7 @@ from lekto.core.ports.search_index import IndexStats, SearchIndex
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import load_actor, require_admin
 from lekto.core.services._jobs import JobRunner, document_payload, lost, payload_document
+from lekto.core.services._kept import Kept
 from lekto.core.services._pages import document_pages
 from lekto.core.services._tags import tag_tree
 from lekto.core.services.objects import load_text
@@ -213,8 +214,37 @@ class IndexStatus:
     since: datetime
 
 
+@dataclass(frozen=True)
+class Indexed:
+    """What an index job did: the sections it embedded (0 if the vectors it had stay), and
+    whether it wrote without vectors because the embedding failed (its time is no measure of
+    either kind of job)."""
+
+    sections: int
+    embedding_failed: bool = False
+
+    def to_json(self) -> JsonObject:
+        data: JsonObject = {"sections": self.sections}
+        if self.embedding_failed:
+            data["embedding_failed"] = True
+        return data
+
+
+@dataclass(frozen=True)
+class _Durations:
+    """How long the latest done index jobs ran (`IndexingService._durations`)."""
+
+    embedded: JobTimes | None
+    plain: JobTimes | None
+    per_section: timedelta | None
+    since: datetime
+
+
 _RATE_WINDOW = timedelta(minutes=10)
 """The done index jobs of this time say how fast the queued ones go."""
+_SAMPLE = 2000
+"""The latest done index jobs the durations are read from (a migration leaves far more within
+the retention), counted at most once a minute."""
 
 
 type _Named = tuple[tuple[TagId, str], ...]
@@ -268,6 +298,7 @@ class IndexingService:
         self._embeddings = embeddings
         self._policy = policy
         self._jobs = JobRunner(uow, clock)
+        self._kept = Kept(clock)
 
     # --- events and jobs ------------------------------------------------------------------------
 
@@ -327,9 +358,7 @@ class IndexingService:
             await self._failed(job, error)
             return
         recurring = job.kind == RECONCILE_JOB and job.payload.get("once") is not True
-        result: JsonObject | None = None
-        if job.kind == INDEX_JOB and isinstance(outcome, int):
-            result = {"sections": outcome}
+        result = outcome.to_json() if isinstance(outcome, Indexed) else None
         await self._jobs.end(job, also=self._next_reconcile if recurring else None, result=result)
 
     def _work(self, job: Job) -> Callable[[], Awaitable[object]]:
@@ -364,16 +393,17 @@ class IndexingService:
 
     async def index_document(
         self, id: DocumentId, *, tolerate_embedding_failure: bool = False
-    ) -> int:
+    ) -> Indexed:
         """Bring the index entry of a document to its current state; remove it if the document
         is gone. `tolerate_embedding_failure`: if the embedding fails, write without vectors.
-        Returns how many sections it embedded (0 if the vectors it had stay)."""
-        embedded = 0
+        Returns how many sections it embedded (0 if the vectors it had stay) and whether the
+        embedding failed."""
+        embedded, failed = 0, False
         for _ in range(_ROUNDS):
             snapshot = await self._snapshot(id)
             if snapshot is None:
                 await self._index.remove(id)
-                return embedded
+                return Indexed(embedded, failed)
             text = await self._read_text(id)
             state = await self._index.state(id)
             try:
@@ -391,14 +421,15 @@ class IndexingService:
                     extra={"document_id": str(id), "error": str(error)},
                 )
                 entry = await self._compose(snapshot, text, state, embed=False)
+                failed = True
             await self._index.upsert([entry])
             embedded += len(entry.vectors or ())
             after = await self._snapshot(id)
             if after is not None and after.key == snapshot.key:
-                return embedded
+                return Indexed(embedded, failed)
             if after is None:
                 await self._index.remove(id)
-                return embedded
+                return Indexed(embedded, failed)
         raise SearchIndexError(f"document {id} kept changing while it was indexed")
 
     async def _snapshot(self, id: DocumentId) -> _Snapshot | None:
@@ -601,48 +632,57 @@ class IndexingService:
         return IndexCheck(comparison, self._clock.now() - started)
 
     async def status(self, actor: UserId) -> IndexStatus:
-        """The state of the index for every user (`IndexStatus`)."""
+        """The state of the index for every user (`IndexStatus`). The durations come from the
+        latest done index jobs (`_SAMPLE`), counted at most once a minute; the rate from the
+        jobs done in the last ten minutes, every time."""
         now = self._clock.now()
-        since = now - self._policy.durations_window
         async with self._uow() as uow:
             await load_actor(uow, actor)
             documents = await uow.documents.count_all()
             overview = await uow.jobs.overview(now=now)
-            finished = await uow.jobs.finished(
-                since=min(since, now - _RATE_WINDOW), kinds=[INDEX_JOB]
+            recent = await uow.jobs.finished(
+                since=now - _RATE_WINDOW, kinds=[INDEX_JOB], limit=_SAMPLE
             )
         stats = await self._index.stats()
         counts = {item.state: item.count for item in overview.counts if item.kind == INDEX_JOB}
         running = counts.get(JobState.RUNNING, 0)
         queued = sum(counts.get(state, 0) for state in OPEN_STATES) - running
-        recent = [job for job in finished if job.finished_at >= now - _RATE_WINDOW]
         remaining: timedelta | None = None
         if queued == 0:
             remaining = timedelta(0)
         elif recent:
             remaining = _RATE_WINDOW * queued / len(recent)
-        window = [job for job in finished if job.finished_at >= since]
-        embedded = [job for job in window if _sections(job) > 0]
-        plain = [job for job in window if _sections(job) == 0 and job.result is not None]
-        sections = sum(_sections(job) for job in embedded)
-        per_section = (
-            sum((job.finished_at - job.started_at for job in embedded), timedelta(0)) / sections
-            if sections
-            else None
-        )
+        durations = await self._kept.get("durations", self._durations)
         return IndexStatus(
             documents=documents,
             stats=stats,
             running=running,
             queued=queued,
             remaining=remaining,
-            embedded=_times(embedded),
-            plain=_times(plain),
-            per_section=per_section,
+            embedded=durations.embedded,
+            plain=durations.plain,
+            per_section=durations.per_section,
             model=None if self._embeddings is None else self._embeddings.model,
             dimensions=None if self._embeddings is None else self._policy.dimensions,
-            since=since,
+            since=durations.since,
         )
+
+    async def _durations(self) -> "_Durations":
+        """How long the latest done index jobs ran, those that embedded and those that only
+        wrote the words; a job whose embedding failed counts as neither."""
+        since = self._clock.now() - self._policy.durations_window
+        async with self._uow() as uow:
+            finished = await uow.jobs.finished(since=since, kinds=[INDEX_JOB], limit=_SAMPLE)
+        measured = [job for job in finished if job.result is not None and not _failed(job)]
+        embedded = [job for job in measured if _sections(job) > 0]
+        plain = [job for job in measured if _sections(job) == 0]
+        sections = sum(_sections(job) for job in embedded)
+        per_section = (
+            sum((job.finished_at - job.started_at for job in embedded), timedelta(0)) / sections
+            if sections
+            else None
+        )
+        return _Durations(_times(embedded), _times(plain), per_section, since)
 
     async def rebuild(self, progress: Callable[[int, int], None] | None = None) -> Rebuilt:
         """Build a new index from the database and the object store while the active one keeps
@@ -685,6 +725,11 @@ def _sections(job: FinishedJob) -> int:
     """The sections a done index job embedded; 0 for one that reported none."""
     value = (job.result or {}).get("sections")
     return value if isinstance(value, int) else 0
+
+
+def _failed(job: FinishedJob) -> bool:
+    """Whether a done index job wrote without vectors because the embedding failed."""
+    return (job.result or {}).get("embedding_failed") is True
 
 
 def _times(jobs: Collection[FinishedJob]) -> JobTimes | None:

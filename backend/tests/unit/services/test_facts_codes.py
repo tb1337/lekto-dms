@@ -171,3 +171,25 @@ async def test_read_codes_reads_the_facts_of_documents_from_before(world: World)
     async with world.uow() as uow:
         log = await uow.processing_log.list_for(document.id)
     assert all(entry.node is not Node.SIGNAL_FACTS for entry in log)
+
+
+async def test_the_report_lists_the_document_s_numbers(world: World) -> None:
+    """Its own invoice number and the one of the invoice a reminder refers to, as the text
+    reads, with where they stand; a customer number stays among the identifiers."""
+    owner = await world.user()
+    text = (
+        "Mahnung\nRechnungsnummer: M-77\nIhre Rechnung Nr. 4711 ist offen.\nKundennummer 20047718\n"
+    )
+    document = await stored(world, owner, text)
+    result = await facts(world, document, FakeCodeReader([]))
+    async with world.uow() as uow:
+        await result.apply(uow, await uow.documents.get(document.id), builders.NOW)
+        await uow.commit()
+    report = await world.documents.facts(owner.id, document.id)
+    numbers = [(item.fact.kind, item.fact.value, item.fact.role) for item in report.numbers]
+    assert numbers == [
+        (IdentifierKind.INVOICE_NUMBER, "M77", FactRole.OWN),
+        (IdentifierKind.INVOICE_NUMBER, "4711", FactRole.REFERS),
+    ]
+    assert text[report.numbers[1].spans[0].start : report.numbers[1].spans[0].end] == "4711"
+    assert [item.kind for item in report.facts.identifiers] == [IdentifierKind.CUSTOMER_NUMBER]

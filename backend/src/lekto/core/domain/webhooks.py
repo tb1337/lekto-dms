@@ -166,10 +166,9 @@ def headers_from_bytes(data: bytes) -> dict[str, str]:
 
 
 def validate_event_types(types: Collection[str]) -> frozenset[str]:
-    """The known event types, or `*` (then only that). ValidationError for none or unknown."""
+    """The known event types, or `*` (then only that); none for a webhook only rules use
+    (Tobi, 25.10.2026). ValidationError for an unknown one."""
     chosen = frozenset(types)
-    if not chosen:
-        raise ValidationError(because(ReasonCode.NO_EVENT_TYPES))
     unknown = sorted(chosen - DOCUMENT_EVENT_TYPES.keys() - {ALL_EVENTS})
     if unknown:
         raise ValidationError(

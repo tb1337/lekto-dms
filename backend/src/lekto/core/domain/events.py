@@ -79,6 +79,33 @@ class DocumentFiled(DocumentEvent):
 
 
 @dataclass(frozen=True, kw_only=True)
+class ReviewRequired(DocumentEvent):
+    """The document waits in the inbox for its editors: uncertain (yellow) or failed (red)."""
+
+    type: ClassVar[str] = "document.review_required"
+    lane: Lane
+
+
+@dataclass(frozen=True, kw_only=True)
+class DocumentConfirmed(DocumentEvent):
+    """A person confirmed the document in the inbox; processing goes on from there."""
+
+    type: ClassVar[str] = "document.confirmed"
+
+
+@dataclass(frozen=True, kw_only=True)
+class DocumentMoved(DocumentEvent):
+    """The document lies in another space (`space_id`): a person moved or handed it over
+    (`by_person`), or processing or a rule did. `handed_over`: into the personal space of
+    another user than the one who moved it (or, moved by processing or a rule, uploaded it)."""
+
+    type: ClassVar[str] = "document.moved"
+    space_id: SpaceId
+    by_person: bool
+    handed_over: bool
+
+
+@dataclass(frozen=True, kw_only=True)
 class DocumentUpdated(DocumentEvent):
     type: ClassVar[str] = "document.updated"
     fields: tuple[str, ...]
@@ -123,7 +150,10 @@ DOCUMENT_EVENT_TYPES: dict[str, type[DocumentEvent]] = {
         NodeDeferred,
         NodeCompleted,
         LaneChanged,
+        ReviewRequired,
+        DocumentConfirmed,
         DocumentFiled,
+        DocumentMoved,
         DocumentUpdated,
         DocumentDeleted,
     )

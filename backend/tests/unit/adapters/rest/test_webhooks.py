@@ -149,7 +149,6 @@ async def test_invalid_input_is_a_422(api: Api) -> None:
     for body in (
         {**BODY, "url": "ftp://x"},
         {**BODY, "url": "https://user:pw@example.org"},
-        {**BODY, "event_types": []},
         {**BODY, "event_types": ["document.nonsense"]},
         {**BODY, "name": ""},
         {**BODY, "extra": 1},

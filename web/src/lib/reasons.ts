@@ -374,7 +374,6 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	url_no_host: entry(m.reason_url_no_host),
 	url_credentials: entry(m.reason_url_credentials),
 	url_fragment: entry(m.reason_url_fragment),
-	no_event_types: entry(m.reason_no_event_types),
 	header_name_invalid: entry(m.reason_header_name_invalid),
 	header_reserved: entry(m.reason_header_reserved),
 	header_value_invalid: entry(m.reason_header_value_invalid, { max: 'number' }),

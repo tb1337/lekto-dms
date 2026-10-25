@@ -646,7 +646,12 @@ class PipelineService:
             document.apply_changes(decision.changes, definitions, now)
             corrected = corrected_fields(before, document, decided=decided)
             if target is not None:
-                document.move_to(target.id, now, by_person=True)
+                document.move_to(
+                    target.id,
+                    now,
+                    by_person=True,
+                    handed_over=target.personal_of not in (None, user.id),
+                )
                 await confirmed_into(uow, document, source, target, now, user.id)
             run = document.processing.run
             for node in overruled:

@@ -5,11 +5,13 @@ import pytest
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import InvalidTransitionError, ValidationError
 from lekto.core.domain.events import (
+    DocumentConfirmed,
     DocumentFiled,
     LaneChanged,
     NodeCompleted,
     NodeDeferred,
     NodeStarted,
+    ReviewRequired,
 )
 from lekto.core.domain.ids import new_id
 from lekto.core.domain.pipeline import (
@@ -324,9 +326,9 @@ def test_confirming_a_yellow_document_resumes_and_files_it_green(resume_at: Node
     assert set(document.processing.outcomes) == set(NODES) - again
     assert set(document.processing.outcomes.values()) == {Outcome.OK}
     assert document.lane is None
-    (event,) = document.pull_events()
-    assert isinstance(event, LaneChanged)
-    assert (event.old, event.new) == (Lane.YELLOW, None)
+    lane, confirmed = document.pull_events()
+    assert isinstance(lane, LaneChanged) and isinstance(confirmed, DocumentConfirmed)
+    assert (lane.old, lane.new) == (Lane.YELLOW, None)
 
     builders.run_pipeline(document)
     finished = document.processing
@@ -631,10 +633,11 @@ def test_events_follow_the_state_changes() -> None:
     assert [event.node for event in completed] == list(NODES[1:-1])
     assert completed[NODES.index(Node.JUDGE) - 1].outcome is Outcome.UNCERTAIN
     assert not any(isinstance(event, DocumentFiled) for event in events)
-    assert [type(event) for event in events[-2:]] == [NodeCompleted, LaneChanged]
-    lane_changed = events[-1]
-    assert isinstance(lane_changed, LaneChanged)
+    assert [type(event) for event in events[-3:]] == [NodeCompleted, LaneChanged, ReviewRequired]
+    lane_changed, review = events[-2:]
+    assert isinstance(lane_changed, LaneChanged) and isinstance(review, ReviewRequired)
     assert (lane_changed.old, lane_changed.new) == (None, Lane.YELLOW)
+    assert review.lane is Lane.YELLOW
     assert all(event.document_id == document.id for event in events)
     assert document.pull_events() == []
 
@@ -704,7 +707,7 @@ def test_failure_records_lane_red_without_filing() -> None:
     document = builders.received()
     builders.run_pipeline(document, {Node.OCR: FAILED})
     events = document.pull_events()
-    assert [type(event) for event in events] == [NodeCompleted, LaneChanged]
+    assert [type(event) for event in events] == [NodeCompleted, LaneChanged, ReviewRequired]
     assert not any(isinstance(event, DocumentFiled) for event in events)
 
 

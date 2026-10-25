@@ -95,7 +95,9 @@ class WebhookCreate(BaseModel):
             "network are fine. Redirects are not followed."
         ),
     )
-    event_types: list[str] = Field(min_length=1, description=EVENT_TYPES_HELP)
+    event_types: list[str] = Field(
+        default=[], description=EVENT_TYPES_HELP + " None: the webhook serves rules only."
+    )
     active: bool = True
     signed: bool = Field(
         default=True,
@@ -119,7 +121,9 @@ class WebhookPatch(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=MAX_NAME_LENGTH)
     url: str | None = Field(default=None, max_length=MAX_URL_LENGTH)
-    event_types: list[str] | None = Field(default=None, min_length=1, description=EVENT_TYPES_HELP)
+    event_types: list[str] | None = Field(
+        default=None, description=EVENT_TYPES_HELP + " Empty: the webhook serves rules only."
+    )
     active: bool | None = Field(
         default=None, description="Switching on clears the failure count and the reason."
     )

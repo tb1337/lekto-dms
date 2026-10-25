@@ -10,6 +10,7 @@ from lekto.core.domain.errors import (
     PermissionDeniedError,
     ValidationError,
 )
+from lekto.core.domain.events import DocumentMoved
 from lekto.core.domain.fields import FieldType
 from lekto.core.domain.ids import ContactId, SpaceId, new_id
 from lekto.core.domain.pipeline import Lane
@@ -289,6 +290,10 @@ async def test_rules_hand_documents_over_into_another_users_personal_space(
     assert rule.definition.references().spaces == {theirs.id}
     document = await r.arrive(owner)
     assert document.space_id == theirs.id  # the channel is no guess: nothing to confirm
+    moved = [event for event in world.events() if isinstance(event, DocumentMoved)]
+    assert [(event.space_id, event.by_person, event.handed_over) for event in moved] == [
+        (theirs.id, False, True)
+    ]
 
 
 async def test_rules_hand_nothing_over_to_a_deactivated_user(world: World) -> None:

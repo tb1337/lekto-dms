@@ -8,8 +8,10 @@ from lekto.adapters.outbound.memory import ManualClock
 from lekto.core.domain.events import (
     EVENT_TYPES,
     ClassifierTrained,
+    DocumentConfirmed,
     DocumentDeleted,
     DocumentFiled,
+    DocumentMoved,
     DocumentReceived,
     DocumentUpdated,
     DomainEvent,
@@ -17,6 +19,7 @@ from lekto.core.domain.events import (
     NodeCompleted,
     NodeDeferred,
     NodeStarted,
+    ReviewRequired,
 )
 from lekto.core.domain.ids import DocumentId, SpaceId, UserId, new_id
 from lekto.core.domain.jobs import RetryPolicy
@@ -105,7 +108,16 @@ class EventBusContract:
             ),
             LaneChanged(document_id=document, occurred_at=NOW, old=None, new=Lane.YELLOW),
             LaneChanged(document_id=document, occurred_at=NOW, old=Lane.RED, new=None),
+            ReviewRequired(document_id=document, occurred_at=NOW, lane=Lane.RED),
+            DocumentConfirmed(document_id=document, occurred_at=NOW),
             DocumentFiled(document_id=document, occurred_at=NOW, space_id=SpaceId(new_id())),
+            DocumentMoved(
+                document_id=document,
+                occurred_at=NOW,
+                space_id=SpaceId(new_id()),
+                by_person=True,
+                handed_over=False,
+            ),
             DocumentUpdated(document_id=document, occurred_at=NOW, fields=("title", "fields")),
             DocumentDeleted(document_id=document, occurred_at=NOW),
             DocumentDeleted(

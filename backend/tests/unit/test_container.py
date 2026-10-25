@@ -37,7 +37,7 @@ from lekto.composition.container import (
 from lekto.composition.errors import AdapterNotAvailableError
 from lekto.composition.settings import Settings
 from lekto.core.domain import media_types
-from lekto.core.domain.events import DocumentReceived, DomainEvent, LaneChanged
+from lekto.core.domain.events import DocumentReceived, DomainEvent, LaneChanged, ReviewRequired
 from lekto.core.domain.ids import DocumentId, new_id
 from lekto.core.domain.jobs import WORK_LEASE_MARGIN, RetryPolicy
 from lekto.core.domain.pipeline import Lane, Node
@@ -500,7 +500,7 @@ async def test_memory_container_runs_the_core() -> None:
     assert "no language model" in (classify.result.reason or "")
     await built.event_bus.dispatch()
     assert received[0].type == DocumentReceived.type
-    assert received[-1].type == LaneChanged.type
+    assert [event.type for event in received[-2:]] == [LaneChanged.type, ReviewRequired.type]
 
 
 def test_memory_containers_are_independent() -> None:

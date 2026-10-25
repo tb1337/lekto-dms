@@ -11,7 +11,12 @@ from lekto.core.domain.errors import (
     PermissionDeniedError,
     ValidationError,
 )
-from lekto.core.domain.events import DocumentDeleted, DocumentFiled, DocumentUpdated
+from lekto.core.domain.events import (
+    DocumentDeleted,
+    DocumentFiled,
+    DocumentMoved,
+    DocumentUpdated,
+)
 from lekto.core.domain.exchanges import ModelCall, RunExchange, exchanges_to_json
 from lekto.core.domain.fields import FieldType
 from lekto.core.domain.ids import ContactId, DocumentId, SpaceId, TagId, UserId, new_id
@@ -155,8 +160,9 @@ async def test_editors_move_into_spaces_they_edit(world: World, scene: Scene) ->
     await world.documents.move(scene.owner.id, scene.document.id, owner_personal.id)
     moved = await world.documents.get(scene.owner.id, scene.document.id)
     assert moved.space_id == owner_personal.id
-    (event,) = world.events()
-    assert isinstance(event, DocumentFiled) and event.space_id == owner_personal.id
+    filed, into = world.events()
+    assert isinstance(filed, DocumentFiled) and filed.space_id == owner_personal.id
+    assert isinstance(into, DocumentMoved) and into.by_person and not into.handed_over
     for user in (scene.reader, scene.writer):
         with pytest.raises(NotFoundError):
             await world.documents.get(user.id, scene.document.id)
@@ -166,9 +172,12 @@ async def test_an_editor_hands_a_document_over(world: World, scene: Scene) -> No
     """Into another user's personal space, without being a member: it is new for them there,
     and gone for those who saw it in its space."""
     theirs = await world.personal_space(scene.stranger)
+    world.database.outbox.clear()
     await world.documents.move(scene.writer.id, scene.document.id, theirs.id)
     handed = await world.documents.get(scene.stranger.id, scene.document.id)
     assert handed.space_id == theirs.id
+    moved = [event for event in world.events() if isinstance(event, DocumentMoved)]
+    assert [(event.space_id, event.handed_over) for event in moved] == [(theirs.id, True)]
     inbox = await world.inbox.items(scene.stranger.id)
     assert [(item.document.id, item.state.tab) for item in inbox] == [
         (scene.document.id, InboxTab.NEW)

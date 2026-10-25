@@ -16,7 +16,7 @@ from lekto.core.domain.errors import (
     PermissionDeniedError,
     ValidationError,
 )
-from lekto.core.domain.events import DocumentFiled
+from lekto.core.domain.events import DocumentConfirmed, DocumentFiled, DocumentMoved
 from lekto.core.domain.fields import FieldDefinition, FieldType, Money
 from lekto.core.domain.ids import ContactId, SpaceId, UserId
 from lekto.core.domain.inbox import Confirmation
@@ -124,6 +124,12 @@ async def test_confirming_into_another_users_personal_space_hands_it_over(
         space=home.id,
     )
     assert view is None
+    confirmed = [event for event in world.events() if isinstance(event, DocumentConfirmed)]
+    moved = [event for event in world.events() if isinstance(event, DocumentMoved)]
+    assert [event.document_id for event in confirmed] == [s.document.id]
+    assert [(event.space_id, event.by_person, event.handed_over) for event in moved] == [
+        (home.id, True, True)
+    ]
     await world.drain(s.pipeline)
     document = await world.documents.get(receiver.id, s.document.id)
     assert (document.space_id, document.lane) == (home.id, Lane.GREEN)

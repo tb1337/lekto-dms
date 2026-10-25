@@ -85,14 +85,14 @@ def test_other_urls_are_refused(url: str) -> None:
         validate_url(url)
 
 
-def test_event_types_must_be_known_and_not_empty() -> None:
+def test_event_types_must_be_known_and_may_be_none() -> None:
     assert validate_event_types(["document.filed", "document.deleted"]) == {
         "document.filed",
         "document.deleted",
     }
     assert validate_event_types(DOCUMENT_EVENT_TYPES) == frozenset(DOCUMENT_EVENT_TYPES)
-    with pytest.raises(ValidationError):
-        validate_event_types([])
+    # None: a webhook only rules use.
+    assert validate_event_types([]) == frozenset()
     with pytest.raises(ValidationError, match=r"classifier\.trained"):
         validate_event_types(["classifier.trained"])
     with pytest.raises(ValidationError, match=r"document\.fild"):
@@ -163,8 +163,7 @@ def test_a_webhook_validates_its_fields() -> None:
         hook(name="x" * 101)
     with pytest.raises(ValidationError):
         hook(url="ftp://x")
-    with pytest.raises(ValidationError):
-        hook(event_types=[])
+    assert not hook(event_types=[]).wants("document.filed")
 
 
 def test_change_updates_what_is_given_and_switching_on_clears_the_failures() -> None:

@@ -23,15 +23,18 @@ from lekto.core.domain.classification import (
 )
 from lekto.core.domain.errors import InvalidTransitionError, NotFoundError, ValidationError
 from lekto.core.domain.events import (
+    DocumentConfirmed,
     DocumentDeleted,
     DocumentEvent,
     DocumentFiled,
+    DocumentMoved,
     DocumentReceived,
     DocumentUpdated,
     LaneChanged,
     NodeCompleted,
     NodeDeferred,
     NodeStarted,
+    ReviewRequired,
 )
 from lekto.core.domain.fields import FieldDefinition, FieldValue, field_to_json
 from lekto.core.domain.ids import (
@@ -492,6 +495,7 @@ class Document:
         self.space_confirmed_at = self.confirmed_at
         processing.decided = True
         self.new_at = None
+        self._record(DocumentConfirmed(document_id=self.id, occurred_at=now))
         return tuple(overruled)
 
     def settle(self, node: Node, now: datetime) -> None:
@@ -700,10 +704,18 @@ class Document:
         self.space_confirmed_at = require_utc(now, "space_confirmed_at")
         self._touch(now)
 
-    def move_to(self, space_id: SpaceId, now: datetime, *, by_person: bool = False) -> None:
+    def move_to(
+        self,
+        space_id: SpaceId,
+        now: datetime,
+        *,
+        by_person: bool = False,
+        handed_over: bool = False,
+    ) -> None:
         """File the document into another space. Permissions are checked by the caller.
         `by_person`: a person moved or handed it over, which decides its space; a move of the
-        pipeline (the judge, a rule) leaves the space undecided."""
+        pipeline (the judge, a rule) leaves the space undecided. `handed_over`: the space is
+        another user's personal one (`events.DocumentMoved`)."""
         if space_id == self.space_id:
             if by_person:
                 self.confirm_space(now)
@@ -711,6 +723,15 @@ class Document:
         self.space_id = space_id
         self.space_confirmed_at = require_utc(now, "space_confirmed_at") if by_person else None
         self._record(DocumentFiled(document_id=self.id, occurred_at=now, space_id=space_id))
+        self._record(
+            DocumentMoved(
+                document_id=self.id,
+                occurred_at=now,
+                space_id=space_id,
+                by_person=by_person,
+                handed_over=handed_over,
+            )
+        )
         self._touch(now)
 
     def delete(self, now: datetime, readers: Iterable[UserId] = ()) -> None:
@@ -743,6 +764,8 @@ class Document:
             return
         old, self.lane = self.lane, lane
         self._record(LaneChanged(document_id=self.id, occurred_at=now, old=old, new=lane))
+        if lane in (Lane.YELLOW, Lane.RED):
+            self._record(ReviewRequired(document_id=self.id, occurred_at=now, lane=lane))
 
     def _touch(self, now: datetime) -> None:
         self.updated_at = require_utc(now, "updated_at")

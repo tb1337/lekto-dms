@@ -355,7 +355,6 @@ class ReasonCode(StrEnum):
     URL_NO_HOST = "url_no_host"
     URL_CREDENTIALS = "url_credentials"
     URL_FRAGMENT = "url_fragment"
-    NO_EVENT_TYPES = "no_event_types"
     HEADER_NAME_INVALID = "header_name_invalid"
     HEADER_RESERVED = "header_reserved"
     HEADER_VALUE_INVALID = "header_value_invalid"
@@ -791,7 +790,6 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.URL_NO_HOST: "the URL needs a host",
     ReasonCode.URL_CREDENTIALS: "the URL must not contain a user name or password",
     ReasonCode.URL_FRAGMENT: "the URL must not have a fragment",
-    ReasonCode.NO_EVENT_TYPES: "choose at least one event type",
     ReasonCode.HEADER_NAME_INVALID: "'{name}' is no valid header name",
     ReasonCode.HEADER_RESERVED: "Lekto sets the header '{name}' itself",
     ReasonCode.HEADER_VALUE_INVALID: (

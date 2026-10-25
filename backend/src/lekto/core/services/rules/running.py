@@ -694,6 +694,11 @@ async def apply_plan(
         return because(ReasonCode.RULES_CHANGE_UNFIT, detail=str(error))
     if rule_plan.space is not None and rule_plan.space != document.space_id:
         source = await uow.spaces.get(document.space_id)
-        document.move_to(rule_plan.space, now)
+        target = await uow.spaces.get(rule_plan.space)
+        document.move_to(
+            rule_plan.space,
+            now,
+            handed_over=target.personal_of not in (None, document.uploaded_by),
+        )
         await arrived(uow, document, source, now)
     return None

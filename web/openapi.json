@@ -24170,7 +24170,6 @@
           "url_no_host",
           "url_credentials",
           "url_fragment",
-          "no_event_types",
           "header_name_invalid",
           "header_reserved",
           "header_value_invalid",
@@ -27022,9 +27021,9 @@
               "type": "string"
             },
             "type": "array",
-            "minItems": 1,
             "title": "Event Types",
-            "description": "Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.node_deferred`, `document.node_started`, `document.received`, `document.updated`, or `*` for all, also future ones."
+            "description": "Event types: `document.confirmed`, `document.deleted`, `document.filed`, `document.lane_changed`, `document.moved`, `document.node_completed`, `document.node_deferred`, `document.node_started`, `document.received`, `document.review_required`, `document.updated`, or `*` for all, also future ones. None: the webhook serves rules only.",
+            "default": []
           },
           "active": {
             "type": "boolean",
@@ -27070,8 +27069,7 @@
         "type": "object",
         "required": [
           "name",
-          "url",
-          "event_types"
+          "url"
         ],
         "title": "WebhookCreate",
         "examples": [
@@ -27376,15 +27374,14 @@
                 "items": {
                   "type": "string"
                 },
-                "type": "array",
-                "minItems": 1
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
             "title": "Event Types",
-            "description": "Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.node_deferred`, `document.node_started`, `document.received`, `document.updated`, or `*` for all, also future ones."
+            "description": "Event types: `document.confirmed`, `document.deleted`, `document.filed`, `document.lane_changed`, `document.moved`, `document.node_completed`, `document.node_deferred`, `document.node_started`, `document.received`, `document.review_required`, `document.updated`, or `*` for all, also future ones. Empty: the webhook serves rules only."
           },
           "active": {
             "anyOf": [
@@ -28429,7 +28426,6 @@
     "url_no_host": {},
     "url_credentials": {},
     "url_fragment": {},
-    "no_event_types": {},
     "header_name_invalid": {
       "name": "text"
     },

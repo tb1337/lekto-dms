@@ -5627,7 +5627,6 @@ export interface components {
 			| 'url_no_host'
 			| 'url_credentials'
 			| 'url_fragment'
-			| 'no_event_types'
 			| 'header_name_invalid'
 			| 'header_reserved'
 			| 'header_value_invalid'
@@ -7017,7 +7016,8 @@ export interface components {
 			url: string;
 			/**
 			 * Event Types
-			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.node_deferred`, `document.node_started`, `document.received`, `document.updated`, or `*` for all, also future ones.
+			 * @description Event types: `document.confirmed`, `document.deleted`, `document.filed`, `document.lane_changed`, `document.moved`, `document.node_completed`, `document.node_deferred`, `document.node_started`, `document.received`, `document.review_required`, `document.updated`, or `*` for all, also future ones. None: the webhook serves rules only.
+			 * @default []
 			 */
 			event_types: string[];
 			/**
@@ -7194,7 +7194,7 @@ export interface components {
 			url?: string | null;
 			/**
 			 * Event Types
-			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.node_deferred`, `document.node_started`, `document.received`, `document.updated`, or `*` for all, also future ones.
+			 * @description Event types: `document.confirmed`, `document.deleted`, `document.filed`, `document.lane_changed`, `document.moved`, `document.node_completed`, `document.node_deferred`, `document.node_started`, `document.received`, `document.review_required`, `document.updated`, or `*` for all, also future ones. Empty: the webhook serves rules only.
 			 */
 			event_types?: string[] | null;
 			/**

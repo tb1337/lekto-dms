@@ -30,7 +30,9 @@ async def move_by_person(
     rules leave it there, and a completed document runs the rules of `target` as change rules
     (`ChangeRules.after_arrival`, with the patterns `prepared` outside the transaction from
     `ChangeRules.arrival_rules`). Saves the document and its events."""
-    document.move_to(target.id, now, by_person=True)
+    document.move_to(
+        target.id, now, by_person=True, handed_over=target.personal_of not in (None, by.id)
+    )
     await arrived(uow, document, source, now, by.id)
     if rules is not None:
         await uow.processing_log.append(rules.space_chosen(document, actor=by, now=now))

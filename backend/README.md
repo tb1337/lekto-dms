@@ -1332,8 +1332,14 @@ and, in the log, the document IDs and event types of that user's deliveries.
 At most `LEKTO_WEBHOOKS_PER_USER` (20) per user.
 
 **Events.** `document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`,
-`document.filed`, `document.updated`, `document.deleted`, or `*` for all, also future ones. A
-webhook only hears of documents its owner may read, as with the event stream: the right is
+`document.filed`, `document.updated`, `document.deleted`, or `*` for all, also future ones;
+none for a webhook that only rules use. Three more say in a receiver's words what the others
+tell: `document.review_required` (it waits in the inbox, yellow or red; `lane`),
+`document.confirmed` (a person confirmed it in the inbox) and `document.moved` (it lies in
+another space, `space_id`; `by_person`, and `handed_over` when that is the personal space of
+another user than the one who moved it, or, moved by processing or a rule, uploaded it); the
+web UI does not listen to them. A webhook only hears of documents its owner may read, as with
+the event stream: the right is
 checked when the event is queued and again before every attempt, and a user who lost access in
 between gets nothing (the log shows `dropped`). The body carries no lane, so a receiver
 that wants the state of the document fetches it; `document.filed` is not sent while the document

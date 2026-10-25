@@ -29,6 +29,7 @@ const stored: Webhook = {
 	headers: ['Authorization'],
 	body: 'thin',
 	body_template: null,
+	max_open_tasks: 4,
 	disabled_reason: null,
 	failed_streak: 0,
 	previous_secret_valid_until: null,
@@ -87,6 +88,7 @@ describe('WebhookDialog', () => {
 					signed: false,
 					body: 'thin',
 					body_template: null,
+					max_open_tasks: 4,
 					headers: [{ name: 'Authorization', value: 'Bearer t0ken' }]
 				}
 			}
@@ -129,5 +131,18 @@ describe('WebhookDialog', () => {
 		expect(screen.getByText(m.webhook_body_template_hint())).toBeTruthy();
 		const save = screen.getByRole('button', { name: m.save() });
 		expect((save as HTMLButtonElement).disabled).toBe(true);
+	});
+
+	it('changes how many tasks the webhook takes at a time', async () => {
+		render(WebhookDialog, { open: true, webhook: stored, onsaved: () => {}, oncreated: () => {} });
+		const field = await screen.findByLabelText(m.webhook_open_tasks());
+		await userEvent.clear(field);
+		await userEvent.type(field, '65');
+		const save = screen.getByRole('button', { name: m.save() });
+		expect((save as HTMLButtonElement).disabled).toBe(true);
+		await userEvent.clear(field);
+		await userEvent.type(field, '8');
+		await userEvent.click(save);
+		expect((sent[0].body as { max_open_tasks: number }).max_open_tasks).toBe(8);
 	});
 });

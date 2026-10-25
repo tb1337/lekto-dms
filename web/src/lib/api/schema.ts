@@ -1817,6 +1817,28 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/external/tasks/{id}/result': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Answer a task
+		 * @description The consumer of a task (a request with the headers `lekto-task-id`, `lekto-callback`, `lekto-task-token`, `lekto-deadline`) answers it here, with the task's token as `Authorization: Bearer`. The token holds for one answer, until the deadline.
+		 *
+		 *     The body is an envelope: `status` `ok` with `answer` (any JSON; a rule step's answer is `steps.<name>` for the steps after it), or `status` `error` with `reason` (a text, shown cut to 300 characters); `producer` (optional) names what answered. `error`, an envelope that is not valid (422) and an answer larger than 1 MB (413) count as no answer: the step goes on as it says for a missing answer, and the token is used up. 409: the task was answered before, or its document was processed again or deleted. 401: unknown task or token, or the deadline has passed.
+		 */
+		post: operations['answer_task_api_v1_external_tasks__id__result_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/lenses': {
 		parameters: {
 			query?: never;
@@ -4943,7 +4965,7 @@ export interface components {
 		/** NodeStateOut */
 		NodeStateOut: {
 			node: components['schemas']['Node'];
-			/** @description `waiting`: not run yet (it runs once the nodes it needs are done); `running`: a worker is at it; `done`: has an outcome; `skipped`: left out in this run. */
+			/** @description `waiting`: not run yet (it runs once the nodes it needs are done); `running`: a worker is at it; `delegated`: waits for answers to its tasks (running externally); `done`: has an outcome; `skipped`: left out in this run. */
 			status: components['schemas']['NodeStatus'];
 			/** @description Set once the node is done. */
 			outcome: components['schemas']['Outcome'] | null;
@@ -4951,12 +4973,17 @@ export interface components {
 			started_at: string | null;
 			/** Finished At */
 			finished_at: string | null;
+			/**
+			 * Deadline
+			 * @description A delegated node: when the last of its open tasks ends at the latest; none while they wait to be sent.
+			 */
+			deadline?: string | null;
 		};
 		/**
 		 * NodeStatus
 		 * @enum {string}
 		 */
-		NodeStatus: 'waiting' | 'running' | 'done' | 'skipped';
+		NodeStatus: 'waiting' | 'running' | 'done' | 'skipped' | 'delegated';
 		/**
 		 * NoteKind
 		 * @description Why a rule's action was not applied, or a review the rule forces.
@@ -5577,6 +5604,12 @@ export interface components {
 			| 'rule_disabled_choice'
 			| 'rule_webhook_gone'
 			| 'rule_webhook_unreadable'
+			| 'task_no_answer'
+			| 'task_error'
+			| 'task_invalid'
+			| 'task_too_large'
+			| 'task_undelivered'
+			| 'task_run_over'
 			| 'skip_changed_meanwhile'
 			| 'skip_not_available'
 			| 'not_iban'
@@ -7051,7 +7084,7 @@ export interface components {
 			url: string;
 			/**
 			 * Event Types
-			 * @description Event types: `document.confirmed`, `document.deleted`, `document.filed`, `document.lane_changed`, `document.moved`, `document.node_completed`, `document.node_deferred`, `document.node_started`, `document.received`, `document.review_required`, `document.updated`, or `*` for all, also future ones. None: the webhook serves rules only.
+			 * @description Event types: `document.confirmed`, `document.deleted`, `document.filed`, `document.lane_changed`, `document.moved`, `document.node_completed`, `document.node_deferred`, `document.node_delegated`, `document.node_started`, `document.received`, `document.review_required`, `document.updated`, or `*` for all, also future ones. None: the webhook serves rules only.
 			 * @default []
 			 */
 			event_types: string[];
@@ -7079,9 +7112,15 @@ export interface components {
 			body: components['schemas']['BodyFormat'];
 			/**
 			 * Body Template
-			 * @description For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; the filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`.
+			 * @description For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; in a rule's request `rule` (`id`, `name`), in a task's also `task` (`id`, `callback`, `token`, `deadline`) and `steps.<name>`. The filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`.
 			 */
 			body_template?: string | null;
+			/**
+			 * Max Open Tasks
+			 * @description How many tasks (requests that expect an answer, e.g. a rule step that asks) the webhook takes at the same time, 1 to 64; more wait in Lekto, and their time to answer starts when they are sent.
+			 * @default 4
+			 */
+			max_open_tasks: number;
 		};
 		/** WebhookCreated */
 		WebhookCreated: {
@@ -7117,9 +7156,14 @@ export interface components {
 			body: components['schemas']['BodyFormat'];
 			/**
 			 * Body Template
-			 * @description For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; the filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`.
+			 * @description For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; in a rule's request `rule` (`id`, `name`), in a task's also `task` (`id`, `callback`, `token`, `deadline`) and `steps.<name>`. The filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`.
 			 */
 			body_template: string | null;
+			/**
+			 * Max Open Tasks
+			 * @description How many tasks (requests that expect an answer, e.g. a rule step that asks) the webhook takes at the same time, 1 to 64; more wait in Lekto, and their time to answer starts when they are sent.
+			 */
+			max_open_tasks: number;
 			/**
 			 * Disabled Reason
 			 * @description `failing`: Lekto switched the webhook off after repeated failed deliveries.
@@ -7186,9 +7230,14 @@ export interface components {
 			body: components['schemas']['BodyFormat'];
 			/**
 			 * Body Template
-			 * @description For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; the filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`.
+			 * @description For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; in a rule's request `rule` (`id`, `name`), in a task's also `task` (`id`, `callback`, `token`, `deadline`) and `steps.<name>`. The filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`.
 			 */
 			body_template: string | null;
+			/**
+			 * Max Open Tasks
+			 * @description How many tasks (requests that expect an answer, e.g. a rule step that asks) the webhook takes at the same time, 1 to 64; more wait in Lekto, and their time to answer starts when they are sent.
+			 */
+			max_open_tasks: number;
 			/**
 			 * Disabled Reason
 			 * @description `failing`: Lekto switched the webhook off after repeated failed deliveries.
@@ -7229,7 +7278,7 @@ export interface components {
 			url?: string | null;
 			/**
 			 * Event Types
-			 * @description Event types: `document.confirmed`, `document.deleted`, `document.filed`, `document.lane_changed`, `document.moved`, `document.node_completed`, `document.node_deferred`, `document.node_started`, `document.received`, `document.review_required`, `document.updated`, or `*` for all, also future ones. Empty: the webhook serves rules only.
+			 * @description Event types: `document.confirmed`, `document.deleted`, `document.filed`, `document.lane_changed`, `document.moved`, `document.node_completed`, `document.node_deferred`, `document.node_delegated`, `document.node_started`, `document.received`, `document.review_required`, `document.updated`, or `*` for all, also future ones. Empty: the webhook serves rules only.
 			 */
 			event_types?: string[] | null;
 			/**
@@ -7246,9 +7295,14 @@ export interface components {
 			body?: components['schemas']['BodyFormat'] | null;
 			/**
 			 * Body Template
-			 * @description For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; the filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`. Only together with `body`.
+			 * @description For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; in a rule's request `rule` (`id`, `name`), in a task's also `task` (`id`, `callback`, `token`, `deadline`) and `steps.<name>`. The filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`. Only together with `body`.
 			 */
 			body_template?: string | null;
+			/**
+			 * Max Open Tasks
+			 * @description How many tasks (requests that expect an answer, e.g. a rule step that asks) the webhook takes at the same time, 1 to 64; more wait in Lekto, and their time to answer starts when they are sent.
+			 */
+			max_open_tasks?: number | null;
 		};
 		/** YearCount */
 		YearCount: {
@@ -7292,6 +7346,47 @@ export interface components {
 			document_id: string | null;
 		} & {
 			[key: string]: unknown;
+		};
+		/**
+		 * TaskAnswer
+		 * @description The envelope of an answer to a task. Lekto reads it itself (an envelope that is not
+		 *     valid uses the token up); this model describes it.
+		 * @example {
+		 *       "answer": {
+		 *         "paid": true
+		 *       },
+		 *       "producer": "my-flow 1.2",
+		 *       "status": "ok"
+		 *     }
+		 * @example {
+		 *       "reason": "the accounting system is down",
+		 *       "status": "error"
+		 *     }
+		 */
+		TaskAnswer: {
+			/**
+			 * Status
+			 * @enum {string}
+			 */
+			status: 'ok' | 'error';
+			/**
+			 * Producer
+			 * @description What answered, for the log.
+			 * @default null
+			 */
+			producer: string | null;
+			/**
+			 * Answer
+			 * @description With `status: ok`: any JSON. A rule step's answer is `steps.<name>` for the steps after it.
+			 * @default null
+			 */
+			answer: unknown;
+			/**
+			 * Reason
+			 * @description With `status: error`: why; shown as plain text, cut to 300 characters.
+			 * @default null
+			 */
+			reason: string | null;
 		};
 		/**
 		 * InputErrorOut
@@ -20840,6 +20935,115 @@ export interface operations {
 					 *       "title": "Too Many Requests",
 					 *       "status": 429,
 					 *       "detail": "too many failed attempts; try again later"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	answer_task_api_v1_external_tasks__id__result_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['TaskAnswer'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

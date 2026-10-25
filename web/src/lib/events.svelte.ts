@@ -10,6 +10,7 @@ export const DOCUMENT_EVENT_TYPES = [
 	'document.received',
 	'document.node_started',
 	'document.node_deferred',
+	'document.node_delegated',
 	'document.node_completed',
 	'document.lane_changed',
 	'document.filed',
@@ -42,6 +43,7 @@ export type SearchEventType = (typeof SEARCH_EVENT_TYPES)[number];
 export const NODE_EVENTS: ReadonlySet<DocumentEventType> = new Set<DocumentEventType>([
 	'document.node_started',
 	'document.node_deferred',
+	'document.node_delegated',
 	'document.node_completed'
 ]);
 

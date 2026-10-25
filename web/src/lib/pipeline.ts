@@ -24,6 +24,12 @@ export function pipeline(): Promise<Pipeline> {
 	return asked;
 }
 
+/** Whether a node is at work: a worker runs it, or it waits for the answers to its tasks
+ * (`delegated`, running externally). */
+export function isAtWork(state: NodeState): boolean {
+	return state.status === 'running' || state.status === 'delegated';
+}
+
 /** For tests: ask again. */
 export function forgetPipeline(): void {
 	asked = null;
@@ -95,7 +101,7 @@ export function progress(processing: Processing): Progress {
 	return {
 		done: nodes.filter((state) => state.status === 'done' || state.status === 'skipped').length,
 		total: nodes.length,
-		running: nodes.filter((state) => state.status === 'running').map((state) => state.node)
+		running: nodes.filter(isAtWork).map((state) => state.node)
 	};
 }
 

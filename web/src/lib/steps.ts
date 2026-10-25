@@ -170,7 +170,7 @@ export function countsOf(steps: readonly Step[]): Counts {
 		if (step.done.from !== null) {
 			counts.carried += 1;
 			from.add(step.done.from);
-		} else if (state.status === 'running') counts.running += 1;
+		} else if (state.status === 'running' || state.status === 'delegated') counts.running += 1;
 		else if (state.status === 'waiting') counts.waiting += 1;
 		else if (state.status === 'skipped') counts.skipped += 1;
 		else if (state.outcome === 'failed') counts.failed += 1;

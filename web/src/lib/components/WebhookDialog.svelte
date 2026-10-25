@@ -44,6 +44,7 @@
 	let headers = $state<Header[]>([]);
 	let body = $state<Body>('thin');
 	let template = $state('');
+	let openTasks = $state(4);
 
 	const bodies = $derived([
 		{ value: 'thin', label: m.webhook_body_thin(), hint: m.webhook_body_thin_hint() },
@@ -56,6 +57,7 @@
 		'document.received': m.event_received,
 		'document.node_started': m.event_node_started,
 		'document.node_deferred': m.event_node_deferred,
+		'document.node_delegated': m.event_node_delegated,
 		'document.node_completed': m.event_node_completed,
 		'document.lane_changed': m.event_lane_changed,
 		'document.filed': m.event_filed,
@@ -77,6 +79,7 @@
 		headers = (webhook?.headers ?? []).map((header) => ({ name: header, value: '', kept: true }));
 		body = webhook?.body ?? 'thin';
 		template = webhook?.body_template ?? '';
+		openTasks = webhook?.max_open_tasks ?? 4;
 	});
 
 	// A new header needs a value; a kept one may stay empty (unchanged).
@@ -100,7 +103,11 @@
 
 	async function save() {
 		const event_types = all ? ['*'] : types;
-		const content = { body, body_template: body === 'template' ? template : null };
+		const content = {
+			body,
+			body_template: body === 'template' ? template : null,
+			max_open_tasks: openTasks
+		};
 		if (webhook) {
 			await unwrap(
 				api.PATCH('/api/v1/webhooks/{id}', {
@@ -148,7 +155,8 @@
 	disabled={name.trim() === '' ||
 		url.trim() === '' ||
 		!headersComplete ||
-		(body === 'template' && template.trim() === '')}
+		(body === 'template' && template.trim() === '') ||
+		!(Number.isInteger(openTasks) && openTasks >= 1 && openTasks <= 64)}
 	class="max-w-lg"
 	action={save}
 >
@@ -239,6 +247,20 @@
 		</div>
 		<p class="text-sm text-muted-foreground">{m.webhook_headers_hint()}</p>
 	</fieldset>
+	<Field.Field>
+		<Field.Label for="wh-open-tasks">{m.webhook_open_tasks()}</Field.Label>
+		<Input
+			id="wh-open-tasks"
+			type="number"
+			min={1}
+			max={64}
+			step={1}
+			class="w-24"
+			bind:value={openTasks}
+			required
+		/>
+		<Field.Description>{m.webhook_open_tasks_hint()}</Field.Description>
+	</Field.Field>
 	<Field.Field>
 		<label class="flex items-center gap-2 text-sm">
 			<input type="checkbox" bind:checked={signed} class="size-4 accent-primary" />

@@ -2,7 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import StepCard from '#lib/components/document/StepCard.svelte';
 	import { m } from '#lib/paraglide/messages.js';
-	import type { Node } from '#lib/pipeline.ts';
+	import { isAtWork, type Node } from '#lib/pipeline.ts';
 	import { DOT, stepLook, type Tone } from '#lib/step-look.ts';
 	import { PHASE_LABELS, type Phase, type Step } from '#lib/steps.ts';
 	import { cn } from '#lib/utils.ts';
@@ -42,7 +42,7 @@
 		const own = steps.filter((step) => step.state !== null && step.state.status !== 'skipped');
 		if (own.some((step) => step.state?.outcome === 'failed')) return 'red';
 		if (own.some((step) => step.state?.outcome === 'uncertain')) return 'yellow';
-		if (own.some((step) => step.state?.status === 'running')) return 'running';
+		if (own.some((step) => step.state !== null && isAtWork(step.state))) return 'running';
 		if (own.length === 0 || own.every((step) => step.state?.status === 'waiting')) return 'waiting';
 		return 'green';
 	}

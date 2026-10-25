@@ -20,6 +20,7 @@
 		autofocus = false,
 		maxlength = 500,
 		purpose = 'rule',
+		steps = [],
 		class: className = ''
 	}: {
 		id: string;
@@ -35,6 +36,8 @@
 		maxlength?: number;
 		/** A webhook's body sees more values (`templateNames`). */
 		purpose?: TemplatePurpose;
+		/** A rule's step: the names of the steps before it that ask (`steps.<name>`). */
+		steps?: readonly string[];
 		class?: string;
 	} = $props();
 
@@ -52,7 +55,7 @@
 				value: untrack(() => value),
 				onchange: (next) => (value = next),
 				completions: () => ({
-					names: templateNames(purpose),
+					names: templateNames(purpose, steps),
 					fields: fields.map((field) => ({ key: field.key, name: field.name }))
 				}),
 				id,

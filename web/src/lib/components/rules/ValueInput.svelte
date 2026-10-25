@@ -24,6 +24,7 @@
 		textual = false,
 		template = false,
 		fields = undefined,
+		steps = [],
 		onunreadable
 	}: {
 		field: FieldDefinition | null;
@@ -35,6 +36,8 @@
 		textual?: boolean;
 		template?: boolean;
 		fields?: readonly FieldDefinition[];
+		/** A template's: the names of the rule's steps before it that ask. */
+		steps?: readonly string[];
 		onunreadable?: (unreadable: boolean) => void;
 	} = $props();
 
@@ -64,6 +67,7 @@
 		{label}
 		{invalid}
 		{fields}
+		{steps}
 		bind:value={() => text, (next) => onchange(next)}
 	/>
 {:else if type === 'period' && isPeriod(value)}

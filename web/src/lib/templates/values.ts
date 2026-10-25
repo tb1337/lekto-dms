@@ -74,9 +74,24 @@ export const WEBHOOK_TEMPLATE_NAME_LABELS: Record<WebhookTemplateName, () => str
 	'task.deadline': m.template_value_task_deadline
 };
 
-/** The values a template of `purpose` sees, with their names, for completion and lists. */
-export function templateNames(purpose: TemplatePurpose): { name: string; label: string }[] {
-	const names = TEMPLATE_NAMES.map((name) => ({ name, label: TEMPLATE_NAME_LABELS[name]() }));
+/** What a rule's template sees of the steps before it that ask: `steps.<name>`, the answer. */
+export function stepNames(steps: readonly string[]): { name: string; label: string }[] {
+	return steps.map((step) => ({
+		name: `steps.${step}`,
+		label: m.template_value_step({ name: step })
+	}));
+}
+
+/** The values a template of `purpose` sees, with their names, for completion and lists; in a
+ * rule's step also what the steps before it that ask brought (`steps`). */
+export function templateNames(
+	purpose: TemplatePurpose,
+	steps: readonly string[] = []
+): { name: string; label: string }[] {
+	const names = [
+		...TEMPLATE_NAMES.map((name) => ({ name, label: TEMPLATE_NAME_LABELS[name]() })),
+		...stepNames(steps)
+	];
 	if (purpose === 'rule') return names;
 	return [
 		...names,

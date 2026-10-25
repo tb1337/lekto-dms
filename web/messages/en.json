@@ -905,6 +905,7 @@
 	"template_value_task_callback": "Task: where to answer",
 	"template_value_task_token": "Task: one-time token",
 	"template_value_task_deadline": "Task: answer by",
+	"template_value_step": "Answer of “{name}”",
 	"template_value_uploaded_by": "Uploaded by",
 	"template_value_filename": "File name",
 	"template_value_original_filename": "Original file name",

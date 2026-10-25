@@ -25,7 +25,8 @@
 		fields: given = undefined,
 		invalid = false,
 		maxlength = 500,
-		purpose = 'rule'
+		purpose = 'rule',
+		steps = []
 	}: {
 		id: string;
 		value?: string;
@@ -39,6 +40,8 @@
 		maxlength?: number;
 		/** A webhook's body: more values, rendered as it is, and it has to make JSON. */
 		purpose?: TemplatePurpose;
+		/** A rule's step: the names of the steps before it that ask (`steps.<name>`). */
+		steps?: readonly string[];
 	} = $props();
 
 	let loaded = $state<FieldDefinition[]>([]);
@@ -109,6 +112,7 @@
 			invalid={invalid || error !== null}
 			{maxlength}
 			{purpose}
+			{steps}
 			class="min-w-0 flex-1"
 		/>
 		<Button
@@ -135,5 +139,6 @@
 	fields={usable}
 	{maxlength}
 	{purpose}
+	{steps}
 	onapply={(next) => (value = next)}
 />

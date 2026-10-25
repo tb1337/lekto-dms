@@ -134,6 +134,7 @@
 					{label}
 					{invalid}
 					fields={lookup.fields}
+					{steps}
 					bind:value={action.template}
 				/>
 			{:else if action.type === 'add_tags' || action.type === 'remove_tags'}
@@ -166,6 +167,7 @@
 						{invalid}
 						template
 						fields={lookup.fields}
+						{steps}
 						id="value-{action.key}"
 						label={m.rule_condition_value()}
 						value={action.value}
@@ -181,6 +183,7 @@
 					label={m.rule_review_reason()}
 					{invalid}
 					fields={lookup.fields}
+					{steps}
 					bind:value={action.reason}
 				/>
 			{:else if action.type === 'ask_webhook'}

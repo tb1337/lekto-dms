@@ -21,6 +21,7 @@
 		TEMPLATE_NAME_LABELS,
 		WEBHOOK_TEMPLATE_NAMES,
 		WEBHOOK_TEMPLATE_NAME_LABELS,
+		stepNames,
 		type TemplatePurpose
 	} from '#lib/templates/values.ts';
 
@@ -38,6 +39,7 @@
 		fields,
 		maxlength = 500,
 		purpose = 'rule',
+		steps = [],
 		onapply
 	}: {
 		open?: boolean;
@@ -48,6 +50,8 @@
 		maxlength?: number;
 		/** A webhook's body: more values, rendered as it is (JSON). */
 		purpose?: TemplatePurpose;
+		/** A rule's step: the names of the steps before it that ask (`steps.<name>`). */
+		steps?: readonly string[];
 		onapply: (value: string) => void;
 	} = $props();
 
@@ -123,6 +127,7 @@
 					{fields}
 					{maxlength}
 					{purpose}
+					{steps}
 					invalid={Boolean(preview?.error)}
 					large
 					autofocus
@@ -161,6 +166,10 @@
 				<ul class="divide-y rounded-lg border">
 					{#each TEMPLATE_NAMES as name (name)}
 						{@render row(name, TEMPLATE_NAME_LABELS[name]())}
+					{/each}
+					{#each stepNames(steps) as step (step.name)}
+						<!-- An answer is only known when the step asks: no value to show. -->
+						{@render row(step.name, step.label, true)}
 					{/each}
 					{#if purpose === 'webhook'}
 						{#each WEBHOOK_TEMPLATE_NAMES as name (name)}

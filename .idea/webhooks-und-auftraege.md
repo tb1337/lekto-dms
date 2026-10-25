@@ -89,6 +89,7 @@ Zu den acht von heute kommen:
 | `document.review_required` | das Dokument wartet im Posteingang (gelb oder rot) |
 | `document.confirmed` | eine Person hat es im Posteingang bestätigt |
 | `document.moved` | es liegt in einem anderen Space (verschoben, übergeben, durch eine Regel); `handed_over` sagt, ob es übergeben wurde |
+| `document.node_delegated` | ein Knoten wartet auf Aufträge („Läuft extern“), mit Knoten, Lauf und Frist; abonnierbar wie `node_started` und `node_deferred` (Tobi, 25.10.2026) |
 
 ### Regeln: Schritte statt Aktionen
 
@@ -135,7 +136,16 @@ Home Assistant bekommt nie einen Stand, der danach nicht gilt.
   Auslöser und lässt sich nicht auf bestehende Dokumente anwenden.
 - Je Schritt: Name (Schlüssel, eindeutig in der Regel), Webhook, Frist (Vorgabe 5 Minuten),
   ohne Antwort: rot, gelb oder weiter (Vorgabe rot). „Weiter“ heißt: `steps.<name>` fehlt, die
-  Regel läuft weiter.
+  Regel läuft weiter. „Gelb“: Die Regel endet am Frageschritt, ihre Schritte davor gelten, das
+  Dokument wartet im Posteingang. „Rot“: Der Knoten scheitert, keine Regel wirkt, wie bei jedem
+  roten Knoten (Tobi, 25.10.2026).
+- Bestätigen im Posteingang lässt die Regeln in einem neuen Lauf erneut laufen. Hat das
+  Bestätigen nichts am Dokument geändert, fragt kein Schritt neu: Es gilt das Ergebnis des
+  vorigen Laufs (die Antwort, oder dass keine kam). Hat es etwas geändert (Metadaten, Felder,
+  übernommene Vorschläge, Space, korrigierter Typ), fragen die Schritte neu. Fehlt eine Antwort
+  nach dem Bestätigen, wird das nur gemeldet, und die Regel läuft weiter wie bei „weiter“: Das
+  Dokument hinge sonst im Posteingang fest. „Neu verarbeiten“ fragt immer neu (Tobi,
+  25.10.2026).
 - Der Knoten `apply_rules` steht dann auf „Läuft extern“. Fragen mehrere Regeln, gehen die
   Aufträge parallel hinaus; zusammengeführt wird, wenn alle Regeln fertig sind. Kommt das
   Dokument in einen anderen Space, laufen danach dessen Regeln (wie heute), die wieder fragen
@@ -154,6 +164,10 @@ einer Regel, deren Autor ein Recht verloren hat. Hat eine Person im Lauf schon b
 ein solcher Schritt nur noch gemeldet (eine Person kann das Recht nicht herbeibestätigen; das
 Dokument hinge sonst im Posteingang fest). Wird ein Webhook gelöscht, werden die Regeln, die ihn
 verwenden, abgeschaltet, mit Grund, wie bei gelöschten Stammdaten.
+
+**Bedingung:** Bedingungen wie im Kopf der Regel (mit Und/Oder-Gruppen), dazu Bedingungen auf
+Werte aus `steps`: Pfad (`buchhaltung.bezahlt`), Operator (ist, enthält, größer, kleiner,
+vorhanden, fehlt) und Wert (Tobi, 25.10.2026).
 
 **Probelauf:** zeigt „sendet an …“ und „fragt …“; die Antwort kennt Lekto vorher nicht.
 
@@ -190,6 +204,7 @@ einmalig und an Dokument, Knoten, Lauf und Auftrag gebunden; gespeichert wird nu
 | --- | --- | --- |
 | 204 | angenommen und gültig | der Knoten läuft weiter |
 | 422 | angenommen, aber ungültig (Hülle oder Inhalt); der Body nennt den Fehler | wie ohne Antwort, Token verbraucht |
+| 413 | größer als 1 MB | wie ohne Antwort, Token verbraucht |
 | 409 | Lauf veraltet (neu verarbeitet) oder schon beantwortet | keine Wirkung |
 | 401 | Token unbekannt oder abgelaufen | keine Wirkung |
 
@@ -360,16 +375,7 @@ gültig); Alembic-Revisionen dazu.
 
 ## Offen
 
-- Bestätigen im Posteingang lässt die Regeln in einem neuen Lauf erneut laufen
-  (`Document.confirm` zählt `run` hoch): fragt ein Schritt dann erneut, oder gilt die Antwort des
-  vorigen Laufs? Vor M20 zu klären.
-- Größe einer Antwort: Vorschlag höchstens 1 MB, sonst 413 und wie ohne Antwort.
-- Webhook geändert oder gelöscht, während Aufträge offen sind: Vorschlag, sie laufen bis zur
-  Frist, eine Antwort mit gültigem Token wird angenommen.
-- Der Admin des Modellaufruf-Webhooks wird gelöscht (seine Webhooks gehen mit): Vorschlag, dann
-  gilt wieder der interne Modellaufruf, sonst enthält sich `signal_llm`.
-- Ein minimaler Beispiel-Konsument (Auftrag annehmen, an ein OpenAI-kompatibles Modell geben,
-  antworten), oder genügt der Vertrag in OpenAPI?
+- Beispiel-Konsument (M21): Ort und Form im Repository.
 
 ## Entscheidungen (Tobi, 25.10.2026)
 
@@ -415,6 +421,18 @@ gültig); Alembic-Revisionen dazu.
 25. Zeitgesteuerte Auslöser und die Bewertung gegen externe Endpunkte: nicht jetzt.
 26. „Webhook senden“ beim Eingang geht erst beim Ablegen hinaus; rückwirkend angewendet sendet
     eine Regel je Dokument, mit Hinweis in der Vorschau.
+27. Bestätigen ohne Änderung fragt nicht neu, mit Änderung schon; eine fehlende Antwort nach dem
+    Bestätigen wird nur gemeldet; „Neu verarbeiten“ fragt immer neu.
+28. Eine Antwort ist höchstens 1 MB groß; größer: 413, wirkt wie keine Antwort.
+29. Wird ein Webhook geändert oder gelöscht, während Aufträge offen sind, laufen sie bis zur
+    Frist; eine Antwort mit gültigem Token wird angenommen.
+30. Wird der Admin des Modellaufruf-Webhooks gelöscht, gilt wieder der interne Modellaufruf;
+    ohne ihn enthält sich `signal_llm`.
+31. Ein minimaler Beispiel-Konsument kommt: als Vorlage für Admins und zum Ausprobieren in der
+    Devinstanz (M21), nicht für den Betrieb.
+32. Ereignis `document.node_delegated`, abonnierbar.
+33. Bedingungsschritte prüfen Werte aus `steps` wie Bedingungen (Pfad, Operator, Wert).
+34. Ohne Antwort „gelb“: Die Schritte vor dem Frageschritt gelten; „rot“: keine Regel wirkt.
 
 ## Quellen
 

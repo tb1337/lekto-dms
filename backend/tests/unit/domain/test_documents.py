@@ -15,6 +15,7 @@ from lekto.core.domain.errors import NotFoundError, ValidationError
 from lekto.core.domain.events import (
     DocumentDeleted,
     DocumentFiled,
+    DocumentMoved,
     DocumentReceived,
     DocumentUpdated,
     NodeCompleted,
@@ -228,15 +229,16 @@ def test_failed_validation_changes_nothing() -> None:
     assert document.pull_events() == []
 
 
-def test_move_records_filed() -> None:
+def test_move_records_filed_and_moved() -> None:
     owner = builders.user()
     document = builders.document(owner, builders.space(owner))
     target = builders.space(owner)
+    document.move_to(target.id, LATER, by_person=True, handed_over=True)
     document.move_to(target.id, LATER)
-    document.move_to(target.id, LATER)
-    (event,) = document.pull_events()
-    assert isinstance(event, DocumentFiled)
-    assert event.space_id == target.id
+    filed, moved = document.pull_events()
+    assert isinstance(filed, DocumentFiled) and isinstance(moved, DocumentMoved)
+    assert filed.space_id == moved.space_id == target.id
+    assert moved.by_person and moved.handed_over
     assert document.space_id == target.id
 
 

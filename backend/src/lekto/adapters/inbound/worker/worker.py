@@ -1,8 +1,8 @@
 """The worker service: runs background jobs, delivers events and keeps the cleanup scheduled.
 
-- `concurrency` job loops claim and run due jobs (the cleanup when due, then search indexing,
-  else pipeline nodes, rule applications, normalising tags after a move, logos of contacts, and
-  last the classifier's check and training);
+- `concurrency` job loops claim and run due jobs (the cleanup when due, tasks whose deadline
+  passed, then search indexing, else pipeline nodes, rule applications, normalising tags after
+  a move, logos of contacts, and last the classifier's check and training);
   a loop that finds nothing waits `poll_interval`.
 - `webhook_concurrency` further loops deliver webhooks, apart from the job loops: a receiver that
   does not answer holds up deliveries, never the pipeline.
@@ -31,6 +31,7 @@ from lekto.core.services.maintenance import MaintenanceService
 from lekto.core.services.master_data import MasterDataService
 from lekto.core.services.pipeline import PipelineService
 from lekto.core.services.rules.retroactive import RuleApplicationService
+from lekto.core.services.tasks.service import TaskService
 from lekto.core.services.webhooks import WebhookDeliveryService
 
 log = logging.getLogger(__name__)
@@ -50,6 +51,7 @@ class Worker:
         indexing: IndexingService | None = None,
         rules: RuleApplicationService | None = None,
         webhooks: WebhookDeliveryService | None = None,
+        tasks: TaskService | None = None,
         webhook_concurrency: int,
         classifier: ClassifierService | None = None,
         logos: LogoService | None = None,
@@ -63,6 +65,7 @@ class Worker:
         self._maintenance = maintenance
         self._indexing = indexing
         self._webhooks = webhooks
+        self._tasks = tasks
         self._webhook_concurrency = webhook_concurrency
         self._bus = event_bus
         self._concurrency = concurrency
@@ -135,6 +138,7 @@ class Worker:
         # its jobs coalesce per document while they wait.
         return (
             await self._maintenance.run_next_job()
+            or (self._tasks is not None and await self._tasks.run_next_job())
             or await self._pipeline.run_next_job()
             or (self._indexing is not None and await self._indexing.run_next_job())
             or (self._rules is not None and await self._rules.run_next_job())

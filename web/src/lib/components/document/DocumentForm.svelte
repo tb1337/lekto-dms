@@ -59,6 +59,7 @@
 		userLabel
 	} from '#lib/masterdata.svelte.ts';
 	import { NODE_LABELS } from '#lib/node-labels.ts';
+	import { isAtWork } from '#lib/pipeline.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { labelled, reasonsText } from '#lib/reasons.ts';
@@ -152,11 +153,11 @@
 	const openChecks = $derived(review ? review.open.flatMap((node) => node.fields) : []);
 	const failedNode = $derived(review?.open.find((node) => node.outcome === 'failed') ?? null);
 	// Waiting in the inbox as the API sees it: yellow or red, not being processed, no node
-	// still running after a failure.
+	// still at work after a failure.
 	const confirmable = $derived(
 		(document.lane === 'yellow' || document.lane === 'red') &&
 			['review', 'failed', 'completed'].includes(document.processing.status) &&
-			!document.processing.nodes.some((state) => state.status === 'running')
+			!document.processing.nodes.some(isAtWork)
 	);
 	const reviewing = $derived(review !== null && review.open.length > 0 && confirmable);
 	// The fields still to decide, counted in the head.
@@ -1036,7 +1037,12 @@
 								<li class="rounded-xl border p-3">
 									<span class="font-medium">{rule.name}</span>
 									<div class="mt-1">
-										<RuleEffects effects={rule.applied} notes={rule.notes} {lookup} />
+										<RuleEffects
+											effects={rule.applied}
+											notes={rule.notes}
+											sends={rule.sends}
+											{lookup}
+										/>
 									</div>
 								</li>
 							{/each}

@@ -33,10 +33,15 @@ from lekto.core.services.master_data import NORMALISE_BATCH, MasterDataService
 from lekto.core.services.oidc import OidcService
 from lekto.core.services.pipeline import NodeExecutor, PipelineService
 from lekto.core.services.spaces import SpaceService
+from lekto.core.services.tasks.desk import TaskDesk
+from lekto.core.services.tasks.service import TaskService
 from lekto.core.services.users import UserService
 from lekto.core.services.webhooks import WebhookDeliveryService, WebhookPolicy, WebhookService
 from tests import builders
 from tests.builders import PlaceholderNode
+
+LINK_BASE = "https://lekto.example.org"
+"""`LEKTO_PUBLIC_URL` of the services that need it."""
 
 
 class Raises:
@@ -138,7 +143,9 @@ class World:
 
     @property
     def webhooks(self) -> WebhookService:
-        return WebhookService(self.uow, self.clock, self.cipher, builders.WEBHOOKS)
+        return WebhookService(
+            self.uow, self.clock, self.cipher, builders.WEBHOOKS, builders.TEMPLATES
+        )
 
     @property
     def lenses(self) -> LensService:
@@ -146,8 +153,22 @@ class World:
 
     def webhook_delivery(self, policy: WebhookPolicy | None = None) -> WebhookDeliveryService:
         return WebhookDeliveryService(
-            self.uow, self.clock, self.cipher, self.sender, policy or builders.WEBHOOKS
+            self.uow,
+            self.clock,
+            self.cipher,
+            self.sender,
+            policy or builders.WEBHOOKS,
+            builders.TEMPLATES,
+            link_base=LINK_BASE,
         )
+
+    @property
+    def tasks(self) -> TaskService:
+        return TaskService(self.uow, self.clock, self.cipher, self.object_store)
+
+    def desk(self, link_base: str | None = None) -> TaskDesk:
+        """Places tasks; without `link_base` at `LINK_BASE`."""
+        return TaskDesk(self.cipher, builders.TEMPLATES, link_base=link_base or LINK_BASE)
 
     def pipeline(
         self,

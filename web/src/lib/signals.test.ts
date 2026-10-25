@@ -291,4 +291,35 @@ describe('the space in the signals and the rules', () => {
 		// Without a space check the judge's entry has nothing of its own to show.
 		expect(signalSummary(entry('judge', { fields: [{ field: 'contact' }] }), spaces)).toEqual([]);
 	});
+
+	it('tells what each step of a rule did', () => {
+		const output = {
+			rules: [{ rule_id: 'r1', name: 'Invoices' }],
+			steps: [
+				{
+					rule_id: 'r1',
+					steps: [
+						{
+							step: 0,
+							type: 'ask_webhook',
+							name: 'flow',
+							status: 'answered',
+							producer: 'node-red',
+							answer: { paid: true }
+						},
+						{ step: 1, type: 'condition', holds: false }
+					]
+				}
+			]
+		};
+		expect(texts(signalSummary(entry('apply_rules', output), lookup))).toEqual([
+			[
+				m.log_rules_steps({ rule: 'Invoices' }),
+				[
+					m.log_step_answered_by({ name: 'flow', producer: 'node-red', answer: '{"paid":true}' }),
+					m.log_step_fails()
+				]
+			]
+		]);
+	});
 });

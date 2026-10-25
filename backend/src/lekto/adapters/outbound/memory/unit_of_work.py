@@ -35,6 +35,7 @@ from lekto.adapters.outbound.memory.database import (
     SESSIONS,
     SPACES,
     TAGS,
+    TASKS,
     USERS,
     WEBHOOKS,
     IdentifiersRow,
@@ -58,6 +59,7 @@ from lekto.adapters.outbound.memory.rules import (
     MemoryRuleApplicationRepository,
     MemoryRuleRepository,
 )
+from lekto.adapters.outbound.memory.tasks import MemoryTaskRepository
 from lekto.adapters.outbound.memory.webhooks import MemoryWebhookRepository
 from lekto.core.domain.documents import Document, Sha256
 from lekto.core.domain.entity import Entity
@@ -138,6 +140,7 @@ class MemoryUnitOfWork:
         self.rule_applications = MemoryRuleApplicationRepository(self, RULE_APPLICATIONS)
         self.classifier_models = MemoryClassifierModelRepository(self, CLASSIFIER_MODELS)
         self.webhooks = MemoryWebhookRepository(self, WEBHOOKS)
+        self.tasks = MemoryTaskRepository(self, TASKS)
         self.lenses = MemoryLensRepository(self, LENSES)
         self.outbox = MemoryOutbox(self)
         self.jobs = MemoryJobQueue(self)

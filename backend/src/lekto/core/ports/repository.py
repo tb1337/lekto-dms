@@ -43,6 +43,7 @@ from lekto.core.domain.ids import (
     RuleId,
     SpaceId,
     TagId,
+    TaskId,
     UserId,
     WebhookId,
 )
@@ -55,6 +56,7 @@ from lekto.core.domain.profiles import Profile
 from lekto.core.domain.rules import Rule, RuleApplication, RuleVersion
 from lekto.core.domain.sorting import sort_key
 from lekto.core.domain.spaces import Space
+from lekto.core.domain.tasks import Task
 from lekto.core.domain.users import User
 from lekto.core.domain.verdict import KnownLabels
 from lekto.core.domain.webhooks import Webhook, WebhookDelivery
@@ -797,6 +799,11 @@ class WebhookRepository(Protocol):
         """The active webhooks that want the event type (it is listed, or they want all)."""
         ...
 
+    async def list_model_calls(self) -> list[Webhook]:
+        """The webhooks that serve as a model call (`Webhook.model_call`), active or not, oldest
+        first."""
+        ...
+
     async def add_delivery(self, delivery: WebhookDelivery) -> None:
         """Log an attempt. The webhook must exist (NotFoundError otherwise): one that was
         deleted meanwhile has nothing to log for."""
@@ -810,4 +817,40 @@ class WebhookRepository(Protocol):
 
     async def purge_deliveries(self, *, before: datetime) -> int:
         """Remove deliveries that started before `before`; returns how many."""
+        ...
+
+
+class TaskRepository(Protocol):
+    """Tasks (`domain.tasks`). They outlive their webhook (an open one runs to its deadline)
+    and their document (a late answer is refused as stale)."""
+
+    async def get(self, id: TaskId) -> Task:
+        """NotFoundError if it does not exist."""
+        ...
+
+    async def find(self, id: TaskId) -> Task | None: ...
+
+    async def add(self, task: Task) -> None: ...
+
+    async def update(self, task: Task) -> None: ...
+
+    async def list_for_run(self, document: DocumentId, node: Node, run: int) -> list[Task]:
+        """The tasks of `node` of the document in processing run `run`, oldest first."""
+        ...
+
+    async def list_unsettled_for(self, document: DocumentId) -> list[Task]:
+        """The document's queued and open tasks, of any run, oldest first."""
+        ...
+
+    async def count_open(self, webhook: WebhookId) -> int:
+        """How many tasks through the webhook are open (sent, not ended)."""
+        ...
+
+    async def queued(self, webhook: WebhookId, *, limit: int) -> list[Task]:
+        """The tasks through the webhook that wait to be sent, oldest first, at most
+        `limit`."""
+        ...
+
+    async def purge(self, *, before: datetime) -> int:
+        """Remove the tasks that ended before `before`; returns how many."""
         ...

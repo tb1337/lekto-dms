@@ -64,10 +64,11 @@ from lekto.core.services.rules.running import (
     problem_output,
     provenance,
     reachable_rules,
-    run_rules,
+    send_now,
     space_choice,
     space_rules,
 )
+from lekto.core.services.rules.steps import run_rules
 
 
 @dataclass(frozen=True)
@@ -185,6 +186,7 @@ class ChangeRules:
             looping = target is not None and target != here and target in visited
             plan = replace(run.plan, space=None) if looping else run.plan
             problem = await apply_plan(uow, document, plan, definitions, now)
+            output |= await send_now(uow, run.sends, document, now)
             chain.record(plan, document)
             if looping:
                 assert target is not None
@@ -308,6 +310,8 @@ class ChangeRules:
             unfit = await apply_plan(uow, document, run.plan, definitions, now)
             if unfit is not None:
                 output |= problem_output(unfit)
+            else:
+                output |= await send_now(uow, run.sends, document, now)
         if log:
             await uow.processing_log.append(
                 entry_beside(

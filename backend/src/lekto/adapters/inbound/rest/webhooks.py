@@ -10,12 +10,15 @@ from lekto.adapters.inbound.rest.context import Context
 from lekto.adapters.inbound.rest.problems import problem_responses
 from lekto.adapters.inbound.rest.schemas.webhooks import (
     DeliveryOut,
+    HeaderIn,
     WebhookCreate,
     WebhookCreated,
     WebhookOut,
     WebhookPatch,
 )
+from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.ids import DeliveryId, UserId, WebhookId
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
 from lekto.core.services.webhooks.policy import TEST_REQUESTS, TEST_WINDOW
 
@@ -53,11 +56,11 @@ async def list_webhooks(
     status_code=201,
     summary="Create a webhook",
     description=(
-        "Lekto sends a signed request to the URL for each event of the chosen types on "
-        "documents within the reach of the webhook's owner: every document in the spaces they "
-        "edit, the green ones in the spaces they read (an admin's webhooks too; the rights of "
-        "an admin do not widen them). The answer holds the secret, shown only once. A user has "
-        "at most as many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409)."
+        "Lekto sends a request to the URL for each event of the chosen types on documents "
+        "within the reach of the webhook's owner: every document in the spaces they edit, the "
+        "green ones in the spaces they read (an admin's webhooks too; the rights of an admin do "
+        "not widen them). A signed webhook's answer holds the secret, shown only once. A user "
+        "has at most as many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409)."
     ),
     response_model=WebhookCreated,
     responses=problem_responses(401, 403, 409, 422),
@@ -66,7 +69,17 @@ async def create_webhook(
     body: WebhookCreate, user: CurrentUser, context: Context
 ) -> WebhookCreated:
     created = await context.webhooks.create(
-        user, name=body.name, url=body.url, event_types=body.event_types, active=body.active
+        user,
+        name=body.name,
+        url=body.url,
+        event_types=body.event_types,
+        active=body.active,
+        signed=body.signed,
+        headers=_headers(body.headers),
+        body=body.body,
+        body_template=body.body_template,
+        max_open_tasks=body.max_open_tasks,
+        model_call=None if body.model_call is None else body.model_call.role(),
     )
     return WebhookCreated.created(created)
 
@@ -99,6 +112,13 @@ async def update_webhook(
         url=body.url,
         event_types=body.event_types,
         active=body.active,
+        headers=None
+        if body.headers is None
+        else [(header.name, header.value) for header in body.headers],
+        body=body.body,
+        body_template=body.body_template,
+        max_open_tasks=body.max_open_tasks,
+        model_call=body.model_call_change(),
     )
     return WebhookOut.of(webhook)
 
@@ -120,13 +140,27 @@ async def delete_webhook(id: UUID, user: CurrentUser, context: Context) -> None:
     description=(
         "A new secret, shown only now. The old one keeps signing next to it for a while "
         "(`previous_secret_valid_until`), so the receiver can switch without a gap; renewing "
-        "again ends that at once. " + WHO
+        "again ends that at once. A webhook without a secret signs from now on. " + WHO
     ),
     response_model=WebhookCreated,
     responses=problem_responses(401, 403, 404, 422),
 )
 async def renew_secret(id: UUID, user: CurrentUser, context: Context) -> WebhookCreated:
     return WebhookCreated.created(await context.webhooks.renew_secret(user, WebhookId(id)))
+
+
+@router.delete(
+    "/{id}/secret",
+    summary="Stop signing",
+    description=(
+        "The secret goes (an old one still in its grace period too): requests carry no "
+        "`webhook-signature` any more. " + WHO
+    ),
+    response_model=WebhookOut,
+    responses=problem_responses(401, 403, 404, 422),
+)
+async def remove_secret(id: UUID, user: CurrentUser, context: Context) -> WebhookOut:
+    return WebhookOut.of(await context.webhooks.remove_secret(user, WebhookId(id)))
 
 
 @router.get(
@@ -172,3 +206,13 @@ async def list_deliveries(
 )
 async def test_webhook(id: UUID, user: CurrentUser, context: Context) -> DeliveryOut:
     return DeliveryOut.of(await context.webhook_delivery.send_test(user, WebhookId(id)))
+
+
+def _headers(headers: list[HeaderIn]) -> dict[str, str]:
+    """The headers as the service takes them; a name given twice is refused there."""
+    found: dict[str, str] = {}
+    for header in headers:
+        if header.name in found:
+            raise ValidationError(because(ReasonCode.HEADER_TWICE, name=header.name))
+        found[header.name] = header.value
+    return found

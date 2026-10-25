@@ -215,6 +215,8 @@ Native Logins sind der Standard; ein externer Identity Provider ist optional.
 
 Stand 0.2 (M14 Graph, M15 Verstehen; Zielbild und Entscheidungen in `ingest-v2.md`). Seitenbilder liest ein VLM nur auf Wunsch einer Person (Issue #53); die Eskalation (M18) fehlt noch.
 
+Zielbild (Tobi, 25.10.2026, `webhooks-und-auftraege.md`, M20/M21, noch nicht umgesetzt): `signal_llm` und `fields` lassen sich an einen Webhook eines Admins auslagern (Kontext statt Prompt, Antwort per Rückruf), ein Knoten, der auf eine Antwort wartet, steht auf „Läuft extern“ (`delegated`), und `signal_llm` bekommt die Kante `pages → signal_llm`.
+
 Die Verarbeitung ist ein Graph aus Knoten; jeder Knoten ist ein Job mit Wiederholung, Knoten ohne gegenseitige Abhängigkeit laufen parallel, und das Ergebnis landet in einer von drei Lanes.
 
 ```
@@ -371,6 +373,8 @@ Hybride Suche in Meilisearch: Wörter und Bedeutung (Vektoren) in einer Anfrage,
 
 Regeln sind Daten in der Datenbank, keine Code-Änderung; sie werden in der Web-UI gepflegt.
 
+Zielbild (Tobi, 25.10.2026, `webhooks-und-auftraege.md`, M19/M20, noch nicht umgesetzt): Die Aktionen einer Regel werden eine lineare Folge von Schritten: Aktion, „Webhook senden“, „Webhook fragen“ (nur beim Eingang; die Antwort steht späteren Schritten als `steps.<name>` zur Verfügung) und Bedingung. Jede Regel sieht, was ihre eigenen Schritte gesetzt haben; zusammengeführt wird wie unten beschrieben.
+
 **Zugehörigkeit und Wirkungsbereich** (Tobi, 21.10.2026: Nutzer ← Space → Regeln)
 
 | Art | Angelegt von | Wirkt auf | Erlaubte Aktionen |
@@ -443,6 +447,8 @@ Kein API-Aufruf wartet auf OCR, Parsing oder LLM: Die API nimmt an, quittiert so
 Ohne Dokument: `classifier.trained` (neues Modell: Nummer, Zahl der Beispiele), geschrieben in derselben Unit of Work wie das Modell. Es geht an jeden Ereignisstrom, der nicht einem Dokument folgt (bis 24.10.2026 nur an aktive Admins; seitdem sehen alle den Klassifikator auf der Seite „System“), damit der Reiter das Ende eines Trainings ohne Neuladen zeigt; für Webhooks ist es nicht wählbar, die abonnieren nur Dokumentereignisse (Tobi, 15.10.2026).
 
 **Webhooks (Egress)**
+
+Zielbild (Tobi, 25.10.2026, `webhooks-und-auftraege.md`, M19–M21, noch nicht umgesetzt): Ein Webhook ist ein Endpunkt mit eigenen Headern, optionaler Signatur und einem Body `thin` (wie unten), `full` oder `template` (Liquid); Ereignistypen sind optional, dazu kommen `document.review_required`, `document.confirmed` und `document.moved`. Regeln senden über ihn und fragen ihn (Auftrag mit Rückruf). Damit gilt „schlanke Ereignisse“ nur noch für `thin`, und der Webhook eines Modellaufrufs sieht als Ausnahme jedes Dokument.
 
 - Webhooks melden Ereignisse an externe Systeme. Eingehende Daten (Ingress) laufen über die normale REST-API mit API-Token, z. B. `POST /documents`.
 - Jeder Nutzer legt eigene Webhooks an; sie melden nur Ereignisse zu Dokumenten in der Reichweite dieses Nutzers (auch bei Admins: ihre Rechte erweitern Webhooks nicht).

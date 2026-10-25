@@ -8,6 +8,13 @@ from lekto.core.domain.pipeline import Node
 class GraphNodeOut(BaseModel):
     node: Node
     requires: list[Node] = Field(description="The nodes whose results this node needs.")
+    waits_for: list[Node] = Field(
+        default=[],
+        description=(
+            "Nodes this node also waits for without needing their results; processing again "
+            "from one of them leaves this node alone."
+        ),
+    )
 
 
 class VisionOut(BaseModel):

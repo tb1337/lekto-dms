@@ -2,6 +2,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import { progress, type NodeState, type Processing } from '#lib/pipeline.ts';
+	import { delegatedLabel } from '#lib/step-look.ts';
 	import { cn } from '#lib/utils.ts';
 
 	// How far the processing of a document is: a segment per node of the graph, in its order,
@@ -35,6 +36,7 @@
 	function tone(state: NodeState): string {
 		switch (state.status) {
 			case 'running':
+			case 'delegated':
 				return 'animate-pulse bg-primary/50';
 			case 'skipped':
 				return 'bg-muted-foreground/25';
@@ -55,6 +57,8 @@
 				return m.node_status_waiting();
 			case 'running':
 				return m.node_status_running();
+			case 'delegated':
+				return delegatedLabel(state);
 			case 'skipped':
 				return m.node_status_skipped();
 			case 'done':

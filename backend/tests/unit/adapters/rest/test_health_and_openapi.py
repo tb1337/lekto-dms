@@ -113,6 +113,8 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
     assert {(path, method) for path, item in paths.items() for method in item} == {
         (f"{PREFIX}/pipeline", "get"),
         (f"{PREFIX}/pipeline/reparse", "post"),
+        (f"{PREFIX}/external/tasks/{{id}}/result", "post"),
+        (f"{PREFIX}/external/tasks/{{id}}/files/{{name}}", "get"),
         (f"{PREFIX}/contacts/{{id}}/identifiers", "post"),
         (f"{PREFIX}/contacts/{{id}}/logo", "put"),
         (f"{PREFIX}/contacts/{{id}}/logo", "delete"),
@@ -179,6 +181,7 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
         (f"{PREFIX}/webhooks/{{id}}", "patch"),
         (f"{PREFIX}/webhooks/{{id}}", "delete"),
         (f"{PREFIX}/webhooks/{{id}}/secret", "post"),
+        (f"{PREFIX}/webhooks/{{id}}/secret", "delete"),
         (f"{PREFIX}/webhooks/{{id}}/deliveries", "get"),
         (f"{PREFIX}/webhooks/{{id}}/test", "post"),
         (f"{PREFIX}/lenses", "get"),
@@ -297,6 +300,8 @@ async def test_every_operation_declares_its_security(api: Api) -> None:
         [],
         [{"session": []}],
         [{"session": []}, {"token": []}],
+        [{"taskToken": []}],  # answering a task
+        [{"fileSignature": []}],  # a file of a model call's document
     ]
     for path, item in schema["paths"].items():
         for method, operation in item.items():
@@ -330,11 +335,12 @@ async def test_bodies_and_answers_are_described(api: Api) -> None:
 
 
 async def test_refusals_are_described(api: Api) -> None:
-    """Every protected change may be refused (a `read` token, no CSRF header): 403."""
+    """Every protected change may be refused (a `read` token, no CSRF header): 403. A task's
+    token answers its task only."""
     schema = await openapi(api)
     for path, item in schema["paths"].items():
         for method, operation in item.items():
-            if operation["security"] and method != "get":
+            if operation["security"] not in ([], [{"taskToken": []}]) and method != "get":
                 assert "403" in operation["responses"], (path, method)
     me = schema["paths"][f"{PREFIX}/auth/tokens"]["get"]
     assert "403" in me["responses"]  # session only

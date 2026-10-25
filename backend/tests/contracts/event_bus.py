@@ -8,15 +8,19 @@ from lekto.adapters.outbound.memory import ManualClock
 from lekto.core.domain.events import (
     EVENT_TYPES,
     ClassifierTrained,
+    DocumentConfirmed,
     DocumentDeleted,
     DocumentFiled,
+    DocumentMoved,
     DocumentReceived,
     DocumentUpdated,
     DomainEvent,
     LaneChanged,
     NodeCompleted,
     NodeDeferred,
+    NodeDelegated,
     NodeStarted,
+    ReviewRequired,
 )
 from lekto.core.domain.ids import DocumentId, SpaceId, UserId, new_id
 from lekto.core.domain.jobs import RetryPolicy
@@ -100,12 +104,31 @@ class EventBusContract:
                 run=2,
                 retry_at=NOW + timedelta(seconds=30),
             ),
+            NodeDelegated(
+                document_id=document,
+                occurred_at=NOW,
+                node=Node.APPLY_RULES,
+                run=2,
+                deadline=NOW + timedelta(minutes=5),
+            ),
+            NodeDelegated(
+                document_id=document, occurred_at=NOW, node=Node.APPLY_RULES, run=2, deadline=None
+            ),
             NodeCompleted(
                 document_id=document, occurred_at=NOW, node=Node.OCR, run=2, outcome=Outcome.OK
             ),
             LaneChanged(document_id=document, occurred_at=NOW, old=None, new=Lane.YELLOW),
             LaneChanged(document_id=document, occurred_at=NOW, old=Lane.RED, new=None),
+            ReviewRequired(document_id=document, occurred_at=NOW, lane=Lane.RED),
+            DocumentConfirmed(document_id=document, occurred_at=NOW),
             DocumentFiled(document_id=document, occurred_at=NOW, space_id=SpaceId(new_id())),
+            DocumentMoved(
+                document_id=document,
+                occurred_at=NOW,
+                space_id=SpaceId(new_id()),
+                by_person=True,
+                handed_over=False,
+            ),
             DocumentUpdated(document_id=document, occurred_at=NOW, fields=("title", "fields")),
             DocumentDeleted(document_id=document, occurred_at=NOW),
             DocumentDeleted(

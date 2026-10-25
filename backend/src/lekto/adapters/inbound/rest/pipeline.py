@@ -35,7 +35,14 @@ router = APIRouter(tags=["pipeline"], dependencies=PROTECTED)
 async def pipeline(user: CurrentUser, context: Context) -> PipelineOut:
     vision = context.pipeline.vision
     return PipelineOut(
-        nodes=[GraphNodeOut(node=node, requires=sorted(node.requires)) for node in NODES],
+        nodes=[
+            GraphNodeOut(
+                node=node,
+                requires=sorted(node.requires),
+                waits_for=sorted(node.waits_for - node.requires),
+            )
+            for node in NODES
+        ],
         vision=None if vision is None else VisionOut(model=vision.model, endpoint=vision.endpoint),
         logo_fetch=context.logos.fetching,
         meaning_search=context.search is not None and context.search.meaning,

@@ -53,6 +53,9 @@ flowchart LR
 | M17 | Grounding in der Prüfansicht (vorgezogen mit der neuen Dokumentansicht) | Sonnet 5.5 | medium |
 | M18 | Eskalation und Kalibrierung | Opus 5.5 | high |
 | 0.3.0 | Tags mit Arten, Gruppen, Themen, Spaces, Icons und Logos (fünf Pakete, siehe dort) | je Paket | high |
+| M19 | Webhooks ausbauen: Header, optionale Signatur, Body-Varianten, neue Ereignisse, Regelschritt „Webhook senden“ (`webhooks-und-auftraege.md`) | Opus 5.5 | high |
+| M20 | Aufträge: Rückruf, Token, Frist, „Läuft extern“; Regelschritte „Webhook fragen“ und „Bedingung“ | Opus 5.5 | high |
+| M21 | Modellaufrufe über Aufträge; Vertrag in OpenAPI | Opus 5.5 | high |
 
 **Faustregel für die Modellwahl**
 
@@ -1791,6 +1794,45 @@ Aus dem M15-Echtlauf (`reviews/M15-lanes.md`): wie stark ähnliche Dokumente wid
 - Schwellen des Klassifikators und des Namensabgleichs am Rückkopplungsmaß kalibriert; Bericht über mehrere Läufe.
 
 **Fertig, wenn:** Das Rückkopplungsmaß je Feld liegt im Echtlauf unter der festgelegten Grenze, und der Anteil Gelb sinkt gegenüber M15 messbar.
+
+**Modell:** Opus 5.5 · high.
+
+### M19 – Webhooks ausbauen
+
+Zielbild und Entscheidungen in `webhooks-und-auftraege.md` (Tobi, 25.10.2026), Phase 1.
+
+- `Webhook`: Header (verschlüsselt, Werte nur schreibbar), Geheimnis optional (signiert wird nur mit Geheimnis), Body `thin`, `full` oder `template` (Liquid, ergibt JSON, Filter `json`), Ereignistypen optional.
+- Ereignisse `document.review_required`, `document.confirmed`, `document.moved`.
+- Regelschritt „Webhook senden“ (beim Eingang und bei Änderungen), über die Outbox nach dem Speichern; nur Webhooks des Autors, der Besitzer muss das Dokument lesen dürfen.
+- Web-UI: Webhook-Dialog mit Headern, Geheimnis, Body-Variante und Template-Editor; Regel-Baukasten mit dem neuen Schritt.
+
+**Fertig, wenn:** Eine Automation in Home Assistant und ein Flow in Node-RED lesen Titel und Felder eines neuen Dokuments aus dem Body, ohne Signatur und ohne API-Aufruf; eine Regel meldet nur Rechnungen eines Kontakts.
+
+**Modell:** Opus 5.5 · high.
+
+### M20 – Aufträge und Regelschritte
+
+Phase 2 aus `webhooks-und-auftraege.md`.
+
+- Auftrag mit einmaligem Token (Hash), Frist, Zustand; Wächter-Job; Knotenzustand `delegated` („Läuft extern“ mit Restfrist).
+- `POST /api/v1/external/tasks/{id}/result` (Bearer), Antworthülle `status`/`producer`/`answer`/`reason`. Die signierten Links `GET /api/v1/external/tasks/{id}/files/{name}` kommen mit M21 (Tobi, 25.10.2026).
+- Regeln als lineare Schritte: „Webhook fragen“ (nur beim Eingang, Frist, ohne Antwort rot/gelb/weiter), „Bedingung“ auf `steps`; jede Regel sieht ihre eigenen Schritte; Reihenfolge im Baukasten; Protokoll je Schritt.
+
+**Fertig, wenn:** Eine Regel fragt einen Node-RED-Flow, setzt aus der Antwort einen Tag und ein Feld, und eine ausbleibende Antwort wirkt wie in der Regel gewählt.
+
+**Modell:** Opus 5.5 · high.
+
+### M21 – Modellaufrufe über Aufträge
+
+Phase 3 aus `webhooks-und-auftraege.md`.
+
+- Ein Admin bestimmt je Art (`propose`, `extract`) einen Webhook; er ersetzt den internen Aufruf. Kontext-JSON mit Antwortschema und Vertragsversion, Text ungekürzt, `content.json` und Seitenbilder als signierte Links; Kante `pages → signal_llm`.
+- Prüfung der Antwort wie bei einer Modellantwort; Fehler: rot. Kontext und Antwort beim Dokument, `producer` im Protokoll.
+- Signierte Links `GET /api/v1/external/tasks/{id}/files/{name}` (aus M20 verschoben).
+- OpenAPI 3.1 `webhooks` mit allen Bodies, die Lekto sendet.
+- Beispiel-Konsument in `examples/` (Python, nur Standardbibliothek) und ein Compose-Beispiel mit Ollama.
+
+**Fertig, wenn:** Ein externer Konsument übernimmt `propose` und `extract` für den Bewertungssatz, und die Lanes entstehen nach denselben Regeln wie mit dem internen Modell.
 
 **Modell:** Opus 5.5 · high.
 

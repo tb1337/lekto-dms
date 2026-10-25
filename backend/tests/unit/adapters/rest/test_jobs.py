@@ -5,7 +5,7 @@ from datetime import timedelta
 
 from lekto.adapters.inbound.rest import PREFIX
 from lekto.core.domain.pipeline import Node
-from lekto.core.services.pipeline import NODE_JOB, NodeJob
+from lekto.core.services._jobs import NODE_JOB, NodeJob
 from tests import builders
 from tests.api import auth
 from tests.unit.adapters.rest.support import Api

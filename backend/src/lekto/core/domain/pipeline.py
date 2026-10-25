@@ -40,6 +40,12 @@ class Node(StrEnum):
         return GRAPH[self]
 
     @property
+    def waits_for(self) -> frozenset["Node"]:
+        """The nodes that must be done before this node runs: those it needs, and those it
+        only waits for (`WAITS`)."""
+        return GRAPH[self] | WAITS.get(self, frozenset())
+
+    @property
     def successors(self) -> frozenset["Node"]:
         """The nodes that need this node's result."""
         return frozenset(node for node, needed in GRAPH.items() if self in needed)
@@ -80,6 +86,11 @@ GRAPH: Mapping[Node, frozenset[Node]] = {
 }
 """What each node needs. `receive` is the source, `file` the only sink: every other node is
 one of its ancestors, so filing is the last thing that happens to a document."""
+
+WAITS: Mapping[Node, frozenset[Node]] = {Node.SIGNAL_LLM: frozenset({Node.PAGES})}
+"""Nodes a node waits for without needing their results: the page images are there when a model
+call goes to a webhook with links to them (`webhooks-und-auftraege.md`). Processing again from
+one of them leaves the node alone (the text, not the images, is what the model reads)."""
 
 NODES: tuple[Node, ...] = tuple(Node)
 """All nodes in topological order (the order of the enum)."""
@@ -269,26 +280,33 @@ class NodeStatus(StrEnum):
     RUNNING = "running"  # a worker is at it
     DONE = "done"  # has an outcome
     SKIPPED = "skipped"  # left out in this processing run; counts as done for the nodes after it
+    DELEGATED = "delegated"  # waits for answers to its tasks ("running externally"); no worker
 
 
 @dataclass(kw_only=True)
 class NodeState:
-    """The state of one node in the current processing run."""
+    """The state of one node in the current processing run. `deadline`: of a delegated node,
+    when the last of its open tasks ends at the latest (None while they wait to be sent)."""
 
     status: NodeStatus = NodeStatus.WAITING
     outcome: Outcome | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    deadline: datetime | None = None
 
     def __post_init__(self) -> None:
         if self.started_at is not None:
             self.started_at = require_utc(self.started_at, "started_at")
         if self.finished_at is not None:
             self.finished_at = require_utc(self.finished_at, "finished_at")
+        if self.deadline is not None:
+            self.deadline = require_utc(self.deadline, "deadline")
+            if self.status is not NodeStatus.DELEGATED:
+                raise ValidationError("only a delegated node has a deadline")
         if (self.status is NodeStatus.DONE) != (self.outcome is not None):
             raise ValidationError("exactly the done nodes have an outcome")
-        if self.status is NodeStatus.RUNNING and self.started_at is None:
-            raise ValidationError("a running node has a start")
+        if self.status in (NodeStatus.RUNNING, NodeStatus.DELEGATED) and self.started_at is None:
+            raise ValidationError(f"a {self.status} node has a start")
         if self.status is NodeStatus.DONE and self.finished_at is None:
             raise ValidationError("a done node has an end")
 
@@ -301,8 +319,8 @@ class NodeState:
 
     @property
     def open(self) -> bool:
-        """True while the node is still to run or running."""
-        return self.status in (NodeStatus.WAITING, NodeStatus.RUNNING)
+        """True while the node is still to run, running or delegated."""
+        return self.status in (NodeStatus.WAITING, NodeStatus.RUNNING, NodeStatus.DELEGATED)
 
 
 NOT_GREEN = "not green"
@@ -386,11 +404,15 @@ class Processing:
             node
             for node, state in self.nodes.items()
             if state.status is NodeStatus.WAITING
-            and all(self.nodes[needed].satisfied for needed in node.requires)
+            and all(self.nodes[needed].satisfied for needed in node.waits_for)
         )
 
     def running(self) -> tuple[Node, ...]:
         return self._with(lambda state: state.status is NodeStatus.RUNNING)
+
+    def delegated(self) -> tuple[Node, ...]:
+        """The nodes waiting for answers to their tasks."""
+        return self._with(lambda state: state.status is NodeStatus.DELEGATED)
 
     def failed(self) -> tuple[Node, ...]:
         return self._with(lambda state: state.outcome is Outcome.FAILED)

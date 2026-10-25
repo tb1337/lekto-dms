@@ -24,11 +24,15 @@
 
 	// A group of conditions: and/or, turned around or not, with conditions and subgroups.
 	// `onunreadable` says, by the condition's key, while a value's text cannot be read.
+	// `steps`: in a condition step, the names of the steps before that ask (its conditions may
+	// look at their answers); `top`: the group is a step's own, not a subgroup.
 	let {
 		group,
 		model,
 		lookup,
 		errors,
+		steps = null,
+		top = false,
 		onremove,
 		onup,
 		ondown,
@@ -38,13 +42,15 @@
 		model: RuleModel;
 		lookup: Lookup;
 		errors: Record<string, string>;
+		steps?: readonly string[] | null;
+		top?: boolean;
 		onunreadable?: (key: string, unreadable: boolean) => void;
 		onremove?: () => void;
 		onup?: () => void;
 		ondown?: () => void;
 	} = $props();
 
-	const root = $derived(group.key === model.conditions.key);
+	const root = $derived(top || group.key === model.conditions.key);
 	const modes = [
 		{ value: 'all', label: m.rule_mode_all() },
 		{ value: 'any', label: m.rule_mode_any() }
@@ -61,6 +67,7 @@
 	class={cn(
 		'flex flex-col gap-3 rounded-2xl border p-3',
 		root ? 'bg-card' : 'border-dashed bg-secondary/40',
+		top && 'border-0 p-0',
 		error && 'border-destructive'
 	)}
 	data-key={group.key}
@@ -113,6 +120,7 @@
 				{model}
 				{lookup}
 				{errors}
+				{steps}
 				onremove={() => remove(index)}
 				onup={up(index)}
 				ondown={down(index)}
@@ -122,6 +130,7 @@
 			<ConditionRow
 				condition={item}
 				{lookup}
+				{steps}
 				error={errors[item.key]}
 				onremove={() => remove(index)}
 				onup={up(index)}
@@ -138,7 +147,7 @@
 			variant="outline"
 			size="sm"
 			disabled={!canAddCondition(model)}
-			onclick={() => group.items.push(newCondition())}
+			onclick={() => group.items.push(newCondition(steps === null ? 'contact' : 'step'))}
 		>
 			<Plus aria-hidden="true" />
 			{m.rule_add_condition()}
@@ -148,7 +157,11 @@
 			size="sm"
 			disabled={!canAddGroup(model, group)}
 			onclick={() =>
-				group.items.push(newGroup(group.mode === 'all' ? 'any' : 'all', [newCondition()]))}
+				group.items.push(
+					newGroup(group.mode === 'all' ? 'any' : 'all', [
+						newCondition(steps === null ? 'contact' : 'step')
+					])
+				)}
 		>
 			<ListPlus aria-hidden="true" />
 			{m.rule_add_group()}

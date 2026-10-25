@@ -76,7 +76,9 @@ def test_exceptions_are_rendered(capsys: pytest.CaptureFixture[str]) -> None:
     assert "RuntimeError: boom" in record["exception"]
 
 
-def test_the_access_log_hides_the_oidc_callback_query(capsys: pytest.CaptureFixture[str]) -> None:
+def test_the_access_log_hides_the_queries_that_hold_a_secret(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     configure_logging(settings(log_format="json"))
     access = logging.getLogger("uvicorn.access")
     access.info(
@@ -87,12 +89,21 @@ def test_the_access_log_hides_the_oidc_callback_query(capsys: pytest.CaptureFixt
         "1.1",
         303,
     )
+    file = "/api/v1/external/tasks/0190/files/pages/1.webp"
+    access.info(
+        '%s - "%s %s HTTP/%s" %d',
+        "192.0.2.1:5000",
+        "GET",
+        file + "?expires=1&signature=secret-signature",
+        "1.1",
+        200,
+    )
     access.info(
         '%s - "%s %s HTTP/%s" %d', "192.0.2.1:5000", "GET", "/api/v1/documents?x=1", "1.1", 200
     )
     output = capsys.readouterr().err
     assert "secret" not in output
-    assert "/api/v1/auth/oidc/callback" in output
+    assert "/api/v1/auth/oidc/callback" in output and file in output
     assert "/api/v1/documents?x=1" in output
 
 

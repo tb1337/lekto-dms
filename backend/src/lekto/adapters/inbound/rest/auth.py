@@ -48,8 +48,27 @@ SECURITY_SCHEMES = {
         "scheme": "bearer",
         "description": "Personal API token (`lekto_…`); scope `read` allows reading only.",
     },
+    "taskToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": (
+            "The one-time token of a task (`lkt_…`), from its request (`lekto-task-token`); "
+            "only for answering that task."
+        ),
+    },
+    "fileSignature": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "signature",
+        "description": (
+            "Lekto's signature in a link to a file of a model call's document, with `expires`; "
+            "from the request of the model call."
+        ),
+    },
 }
 SECURITY: list[dict[str, list[str]]] = [{"session": []}, {"token": []}]
+TASK_TOKEN: list[dict[str, list[str]]] = [{"taskToken": []}]
+FILE_SIGNATURE: list[dict[str, list[str]]] = [{"fileSignature": []}]
 SESSION_ONLY: list[dict[str, list[str]]] = [{"session": []}]
 
 

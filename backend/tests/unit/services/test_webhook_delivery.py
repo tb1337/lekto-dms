@@ -6,9 +6,11 @@ import hmac
 import json
 from dataclasses import replace
 from datetime import timedelta
+from decimal import Decimal
 
 import pytest
 
+from lekto.adapters.inbound.rest.schemas.outgoing import EventBody
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import NotFoundError, TooManyAttemptsError
 from lekto.core.domain.events import (
@@ -17,20 +19,26 @@ from lekto.core.domain.events import (
     DocumentReceived,
     LaneChanged,
 )
+from lekto.core.domain.fields import FieldDefinition, FieldType, Money
 from lekto.core.domain.ids import DocumentId, WebhookId, new_id
 from lekto.core.domain.jobs import Job, JobStatus
+from lekto.core.domain.json_value import JsonObject
+from lekto.core.domain.master_data import Contact, DocumentType
 from lekto.core.domain.pipeline import Lane
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.domain.webhooks import (
     DISABLED_FAILING,
+    RULE_SEND,
     TEST_EVENT,
+    BodyFormat,
     DeliveryOutcome,
     Webhook,
     WebhookDelivery,
 )
 from lekto.core.ports.webhook_sender import WebhookRequest
 from lekto.core.services.webhooks import DELIVER_JOB, WebhookDeliveryService
+from lekto.core.services.webhooks.delivery import queue_rule_send
 from tests import builders
 from tests.builders import NOW
 from tests.unit.services.support import World
@@ -40,6 +48,7 @@ URL = "http://n8n.lan:5678/webhook/lekto"
 
 async def hook(world: World, owner: User, *types: str, url: str = URL) -> tuple[Webhook, str]:
     created = await world.webhooks.create(owner.id, name="n8n", url=url, event_types=types or ["*"])
+    assert created.secret is not None
     return created.webhook, created.secret
 
 
@@ -255,6 +264,7 @@ async def test_a_renewed_secret_signs_next_to_the_new_one_during_the_grace_perio
     document = await seed(world, user)
     webhook, old = await hook(world, user)
     new = (await world.webhooks.renew_secret(user.id, webhook.id)).secret
+    assert new is not None
     service = world.webhook_delivery()
     await queue(world, document, service)
     await service.run_next_job()
@@ -365,6 +375,183 @@ async def test_a_webhook_is_switched_off_after_repeated_failures_and_success_res
     before = len(deliveries(world))
     await service.on_event(lane_changed(document))
     assert len(deliveries(world)) == before
+
+
+async def test_own_headers_go_with_the_request_and_an_unsigned_one_has_no_signature(
+    world: World,
+) -> None:
+    user = await world.user()
+    document = await seed(world, user)
+    created = await world.webhooks.create(
+        user.id,
+        name="HA",
+        url=URL,
+        event_types=["*"],
+        signed=False,
+        headers={"Authorization": "Bearer t0ken", "User-Agent": "Mine"},
+    )
+    service = world.webhook_delivery()
+    await queue(world, document, service)
+    await service.run_next_job()
+    request = world.sender.requests[0]
+    assert request.headers["Authorization"] == "Bearer t0ken"
+    assert request.headers["User-Agent"] == "Mine"
+    assert request.headers["Content-Type"] == "application/json"
+    assert {"webhook-id", "webhook-timestamp"} <= set(request.headers)
+    assert "webhook-signature" not in request.headers
+    assert [row.outcome for row in await log(world, created.webhook)] == [DeliveryOutcome.DELIVERED]
+
+
+async def test_header_values_that_cannot_be_decrypted_give_up_without_sending(
+    world: World,
+) -> None:
+    user = await world.user()
+    document = await seed(world, user)
+    created = await world.webhooks.create(
+        user.id, name="HA", url=URL, event_types=["*"], headers={"X-Token": "a"}
+    )
+    async with world.uow() as uow:
+        webhook = await uow.webhooks.get(created.webhook.id)
+        webhook.encrypted_headers = b"garbage"
+        await uow.webhooks.update(webhook)
+        await uow.commit()
+    service = world.webhook_delivery()
+    await queue(world, document, service)
+    await service.run_next_job()
+    assert world.sender.requests == []
+    (row,) = await log(world, created.webhook)
+    assert row.outcome is DeliveryOutcome.GAVE_UP and "header values" in (row.error or "")
+
+
+async def described(world: World, owner: User) -> Document:
+    """A green document of the owner with a contact, a type and an amount."""
+    contact = Contact.create(name="Stadtwerke", now=NOW)
+    kind = DocumentType.create(name="Rechnung", now=NOW)
+    amount = FieldDefinition.create(
+        name="Betrag", data_type=FieldType.AMOUNT, document_type_ids=[kind.id], now=NOW
+    )
+    document = builders.processed(owner, await world.personal_space(owner))
+    document.title = "Strom März"
+    document.contact_id, document.document_type_id = contact.id, kind.id
+    document.fields = {amount.id: Money(Decimal("120.50"), "EUR")}
+    async with world.uow() as uow:
+        await uow.contacts.add(contact)
+        await uow.document_types.add(kind)
+        await uow.fields.add(amount)
+        await uow.documents.add(document)
+        await uow.commit()
+    return document
+
+
+async def test_a_full_body_carries_the_document_as_it_is(world: World) -> None:
+    user = await world.user()
+    document = await described(world, user)
+    await world.webhooks.create(
+        user.id, name="HA", url=URL, event_types=["*"], signed=False, body=BodyFormat.FULL
+    )
+    service = world.webhook_delivery()
+    event = await queue(world, document, service)
+    await service.run_next_job()
+    body = json.loads(world.sender.requests[0].body)
+    assert body["id"] == str(event.id) and body["document_id"] == str(document.id)
+    shown = body["document"]
+    assert shown["title"] == "Strom März"
+    assert shown["contact"]["name"] == "Stadtwerke"
+    assert shown["document_type"]["name"] == "Rechnung"
+    assert shown["fields"] == {"betrag": {"amount": "120.50", "currency": "EUR"}}
+    assert shown["lane"] == "green"
+    assert shown["link"] == f"https://lekto.example.org/ui/documents/{document.id}"
+    EventBody.model_validate(body)  # as the contract describes it
+
+
+async def test_a_template_body_is_what_the_template_makes(world: World) -> None:
+    user = await world.user()
+    document = await described(world, user)
+    template = (
+        '{"message": {{ title | json }}, "amount": {{ field.betrag.amount | json }}, '
+        '"from": {{ contact | json }}, "event": {{ event.type | json }}, '
+        '"topic": {{ topic | default: nil | json }}, "open": {{ link | json }}}'
+    )
+    await world.webhooks.create(
+        user.id,
+        name="HA",
+        url=URL,
+        event_types=["*"],
+        signed=False,
+        body=BodyFormat.TEMPLATE,
+        body_template=template,
+    )
+    service = world.webhook_delivery()
+    await queue(world, document, service)
+    await service.run_next_job()
+    assert json.loads(world.sender.requests[0].body) == {
+        "message": "Strom März",
+        "amount": "120.50",
+        "from": "Stadtwerke",
+        "event": "document.lane_changed",
+        "topic": None,
+        "open": f"https://lekto.example.org/ui/documents/{document.id}",
+    }
+
+
+@pytest.mark.parametrize(
+    ("template", "error"),
+    [
+        ('{"t": {{ topic | json }}}', "the template writes a missing value: topic"),
+        ('{"t": {{ title }}}', "the template does not make JSON"),
+    ],
+)
+async def test_a_template_that_makes_no_json_gives_up_without_sending(
+    world: World, template: str, error: str
+) -> None:
+    user = await world.user()
+    document = await described(world, user)
+    created = await world.webhooks.create(
+        user.id,
+        name="HA",
+        url=URL,
+        event_types=["*"],
+        body=BodyFormat.TEMPLATE,
+        body_template=template,
+    )
+    service = world.webhook_delivery()
+    await queue(world, document, service)
+    await service.run_next_job()
+    assert world.sender.requests == []
+    (row,) = await log(world, created.webhook)
+    assert row.outcome is DeliveryOutcome.GAVE_UP
+    assert (row.error or "").startswith(error)
+
+
+async def test_a_rule_s_request_names_the_rule(world: World) -> None:
+    user = await world.user()
+    document = await seed(world, user)
+    thin = (await world.webhooks.create(user.id, name="thin", url=URL, event_types=[])).webhook
+    templated = (
+        await world.webhooks.create(
+            user.id,
+            name="template",
+            url=URL,
+            event_types=[],
+            body=BodyFormat.TEMPLATE,
+            body_template='{"by": {{ rule.name | json }}, "type": {{ event.type | json }}}',
+        )
+    ).webhook
+    rule: JsonObject = {"id": "r1", "name": "Notify"}
+    async with world.uow() as uow:
+        for webhook in (thin, templated):
+            await queue_rule_send(
+                uow, webhook_id=webhook.id, document_id=document.id, rule=rule, now=NOW
+            )
+        await uow.commit()
+    service = world.webhook_delivery()
+    await run_all(service)
+    bodies = sorted(
+        (json.loads(request.body) for request in world.sender.requests), key=lambda body: len(body)
+    )
+    assert bodies[0] == {"by": "Notify", "type": RULE_SEND}
+    assert bodies[1]["rule"] == rule and bodies[1]["type"] == RULE_SEND
+    assert bodies[1]["document_id"] == str(document.id)
 
 
 # --- rights at the time of the attempt ----------------------------------------------------------

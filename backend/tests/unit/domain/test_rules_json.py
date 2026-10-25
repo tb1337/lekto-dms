@@ -6,7 +6,15 @@ import json
 import pytest
 
 from lekto.core.domain.errors import ValidationError
-from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId, new_id
+from lekto.core.domain.ids import (
+    ContactId,
+    DocumentTypeId,
+    FieldId,
+    SpaceId,
+    TagId,
+    WebhookId,
+    new_id,
+)
 from lekto.core.domain.json_value import JsonObject
 from lekto.core.domain.rules import (
     AddTags,
@@ -17,6 +25,7 @@ from lekto.core.domain.rules import (
     Operator,
     RemoveTags,
     RuleDefinition,
+    SendWebhook,
     SetContact,
     SetDocumentType,
     SetField,
@@ -31,6 +40,7 @@ TYPE = DocumentTypeId(new_id())
 TAG = TagId(new_id())
 OTHER_TAG = TagId(new_id())
 SPACE = SpaceId(new_id())
+WEBHOOK = WebhookId(new_id())
 FIELD = FieldId(new_id())
 
 
@@ -88,6 +98,7 @@ def full_definition() -> RuleDefinition:
             RemoveTags(frozenset({OTHER_TAG})),
             SetField(FIELD, {"amount": "12.50", "currency": "EUR"}),
             ForceReview("check the amount"),
+            SendWebhook(WEBHOOK),
         ),
     )
 
@@ -139,6 +150,7 @@ def test_definition_json_shape() -> None:
         "remove_tags",
         "set_field",
         "force_review",
+        "send_webhook",
     ]
     assert actions[4] == {"type": "add_tags", "tag_ids": sorted([str(TAG), str(OTHER_TAG)])}
 

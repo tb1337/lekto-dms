@@ -18,9 +18,9 @@ from lekto.core.domain.events import DocumentReceived, DomainEvent, LaneChanged
 from lekto.core.domain.jobs import Job
 from lekto.core.domain.pipeline import Lane, Node, NodeResult
 from lekto.core.domain.users import Role, User
+from lekto.core.services._jobs import NODE_JOB
 from lekto.core.services.indexing import SUBSCRIBER
 from lekto.core.services.maintenance import CLEANUP_JOB
-from lekto.core.services.pipeline import NODE_JOB
 from tests import builders
 from tests.api import until
 from tests.builders import DEFAULT_SETTINGS, SAMPLES, incoming

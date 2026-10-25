@@ -10,7 +10,10 @@ from lekto.core.domain.ids import DocumentId, EventId, new_id
 from lekto.core.domain.users import User
 from lekto.core.domain.webhooks import (
     ALL_EVENTS,
+    BodyFormat,
     DeliveryOutcome,
+    ModelCallKind,
+    ModelCallRole,
     Webhook,
     WebhookDelivery,
 )
@@ -65,12 +68,29 @@ class WebhookRepositoryContract:
         webhook = a_webhook(owner, types=("document.filed", "document.deleted"))
         webhook.renew_secret(b"\x01second", now=NOW + HOUR, grace=timedelta(hours=24))
         webhook.failed_streak = 4
+        webhook.change(now=NOW + HOUR, max_open_tasks=7)
+        webhook.serve(ModelCallRole(ModelCallKind.EXTRACT, timedelta(minutes=20)), now=NOW + HOUR)
         async with uow_factory() as uow:
             await uow.webhooks.add(webhook)
             await uow.commit()
         async with uow_factory() as uow:
             assert await uow.webhooks.get(webhook.id) == webhook
             assert await uow.webhooks.find(webhook.id) == webhook
+
+    async def test_a_webhook_round_trips_with_headers_and_without_a_secret(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner = await a_user(uow_factory)
+        webhook = a_webhook(owner, encrypted_secret=None)
+        webhook.set_headers(["Authorization", "X-Tenant"], b"\x02values", now=NOW)
+        webhook.set_body(BodyFormat.TEMPLATE, '{"t": {{ title | json }}}', now=NOW)
+        async with uow_factory() as uow:
+            await uow.webhooks.add(webhook)
+            await uow.commit()
+        async with uow_factory() as uow:
+            stored = await uow.webhooks.get(webhook.id)
+        assert stored == webhook
+        assert stored.header_names == ("Authorization", "X-Tenant") and not stored.signed
 
     async def test_a_missing_webhook_is_not_found(self, uow_factory: UnitOfWorkFactory) -> None:
         async with uow_factory() as uow:
@@ -144,6 +164,24 @@ class WebhookRepositoryContract:
             names = [w.name for w in await uow.webhooks.list_active_for("document.filed")]
             assert names == ["all", "filed"]
             assert [w.name for w in await uow.webhooks.list_active_for("webhook.other")] == ["all"]
+
+    async def test_model_calls_are_listed_active_or_not(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner = await a_user(uow_factory)
+        extract = a_webhook(owner, name="extract", at=HOUR, active=False)
+        extract.serve(ModelCallRole(ModelCallKind.EXTRACT), now=NOW)
+        propose = a_webhook(owner, name="propose")
+        propose.serve(ModelCallRole(ModelCallKind.PROPOSE), now=NOW)
+        plain = a_webhook(owner, name="plain", at=2 * HOUR)
+        async with uow_factory() as uow:
+            for webhook in (extract, propose, plain):
+                await uow.webhooks.add(webhook)
+            await uow.commit()
+        async with uow_factory() as uow:
+            listed = await uow.webhooks.list_model_calls()
+        assert [webhook.name for webhook in listed] == ["propose", "extract"]
+        assert listed[1].model_call == ModelCallRole(ModelCallKind.EXTRACT)
 
     async def test_remove_takes_the_deliveries_along_and_missing_is_a_no_op(
         self, uow_factory: UnitOfWorkFactory

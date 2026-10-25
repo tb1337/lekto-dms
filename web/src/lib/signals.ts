@@ -257,7 +257,49 @@ function rules(entry: LogEntry, lookup: Lookup | null): SummaryRow[] {
 	}
 	const problem = outputReasonText(output.problem_reason, output.problem, labelled(lookup));
 	if (problem) rows.push({ label: m.log_rules_problem(), items: [{ text: problem }] });
+	rows.push(...ruleSteps(output, lookup));
 	return rows;
+}
+
+/** The steps of the rules that ask or check between their actions: a row per rule, an item
+ * per step. */
+function ruleSteps(output: Json, lookup: Lookup | null): SummaryRow[] {
+	const names = new Map(
+		list(output.rules)
+			.map(object)
+			.map((report) => [text(report.rule_id), text(report.name)] as const)
+	);
+	return list(output.steps)
+		.map(object)
+		.map((logged) => ({
+			label: m.log_rules_steps({ rule: names.get(text(logged.rule_id)) ?? m.rule_unknown() }),
+			items: list(logged.steps)
+				.map(object)
+				.map((step) => ({ text: stepText(step, lookup) }))
+		}));
+}
+
+const MAX_ANSWER_SHOWN = 200;
+
+function stepText(step: Json, lookup: Lookup | null): string {
+	if (step.type === 'condition') return step.holds ? m.log_step_holds() : m.log_step_fails();
+	const name = text(step.name) ?? '';
+	const reason = outputReasonText(step.reason, null, labelled(lookup)) ?? '';
+	if (step.status === 'answered') {
+		const shown = step.answer_too_long
+			? m.log_step_answer_long()
+			: JSON.stringify(step.answer ?? null).slice(0, MAX_ANSWER_SHOWN);
+		const producer = text(step.producer);
+		return producer
+			? m.log_step_answered_by({ name, producer, answer: shown })
+			: m.log_step_answered({ name, answer: shown });
+	}
+	if (step.status === 'open' || step.status === 'queued') return m.log_step_waiting({ name });
+	if (step.status === 'asking') return m.log_step_asking({ name });
+	if (step.status === 'not_asked') return m.log_step_not_asked({ name });
+	return step.reported
+		? m.log_step_reported({ name, reason })
+		: m.log_step_no_answer({ name, reason });
 }
 
 /** The rows of a signal's entry, of the OCR's, or the labels of the fields node's; none for

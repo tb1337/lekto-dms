@@ -11,7 +11,12 @@ A rule has a scope, triggers, a tree of conditions and actions:
 - Conditions: groups of `all` (and) or `any` (or), each may be negated; a condition is field,
   operator and value.
 - Actions: set space, contact, type, topic, title or a field, add or remove tags, force a
-  review.
+  review, send a webhook (a notification through a webhook of whoever saved the rule).
+- Steps (Tobi, 25.10.2026, `webhooks-und-auftraege.md`): the actions are an ordered, linear
+  sequence that may hold two more kinds: asking a webhook (`AskWebhook`, a task whose answer
+  the steps after it see as `steps.<name>`) and a condition (`StepCondition`: if it does not
+  hold, the rule ends there; the steps before it count). Each rule works on its own copy of the
+  document and sees what its own steps before set; the rules are combined at the end.
 
 The definition (name, priority, triggers, conditions, actions) is versioned: every change makes
 a new version; old versions stay readable so the processing log can refer to them. Enabling and
@@ -22,10 +27,12 @@ JSON form (field values as `field_to_json` writes them) and are read with the fi
 definitions where needed (`check_fields`).
 """
 
+import math
+import re
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Literal, Self
 from uuid import UUID
@@ -44,11 +51,13 @@ from lekto.core.domain.ids import (
     SpaceId,
     TagId,
     UserId,
+    WebhookId,
     new_id,
 )
 from lekto.core.domain.json_value import JsonValue, require_date, require_uuid
 from lekto.core.domain.master_data import DocumentType, TagScope
 from lekto.core.domain.reasons import Reason
+from lekto.core.domain.tasks import DEFAULT_TIMEOUT, validate_timeout
 from lekto.core.domain.validation import require_name, require_utc
 
 DEFAULT_PRIORITY = 100
@@ -73,6 +82,7 @@ class Trigger(StrEnum):
 
 
 class ConditionField(StrEnum):
+    STEP = "step"  # what an earlier step brought (`steps.<path>`), in a condition step only
     CONTACT = "contact"
     CONTACT_GROUP = "contact_group"  # the groups of the document's contact
     DOCUMENT_TYPE = "document_type"
@@ -102,6 +112,17 @@ type GroupMode = Literal["all", "any"]
 _REFERENCE_OPERATORS = frozenset({Operator.IS, Operator.IN, Operator.PRESENT, Operator.MISSING})
 _TAG_OPERATORS = frozenset({Operator.CONTAINS, Operator.IN, Operator.PRESENT, Operator.MISSING})
 _FIELD_OPERATORS: dict[ConditionField, frozenset[Operator]] = {
+    ConditionField.STEP: frozenset(
+        {
+            Operator.IS,
+            Operator.IN,
+            Operator.CONTAINS,
+            Operator.GT,
+            Operator.LT,
+            Operator.PRESENT,
+            Operator.MISSING,
+        }
+    ),
     ConditionField.CONTACT: _REFERENCE_OPERATORS,
     ConditionField.CONTACT_GROUP: _TAG_OPERATORS,
     ConditionField.DOCUMENT_TYPE: _REFERENCE_OPERATORS,
@@ -168,18 +189,24 @@ FIELD_TYPE_OPERATORS: dict[FieldType, frozenset[Operator]] = {
 @dataclass(frozen=True, kw_only=True)
 class Condition:
     """Field, operator and value. `value` is None for `present` and `missing`, a list for
-    `in`, otherwise one value. `field_id` names the field of a `field` condition;
-    `case_sensitive` applies to `matches` only."""
+    `in`, otherwise one value. `field_id` names the field of a `field` condition, `path` what
+    a `step` condition looks at (`accounting.paid`: the answer of the step `accounting`, its
+    key `paid`); `case_sensitive` applies to `matches` only."""
 
     field: ConditionField
     op: Operator
     value: JsonValue = None
     field_id: FieldId | None = None
     case_sensitive: bool = False
+    path: str | None = None
 
     def __post_init__(self) -> None:
         if (self.field is ConditionField.FIELD) != (self.field_id is not None):
             raise ValidationError("field_id is given exactly for field conditions")
+        if (self.field is ConditionField.STEP) != (self.path is not None):
+            raise ValidationError("path is given exactly for step conditions")
+        if self.path is not None:
+            object.__setattr__(self, "path", validate_step_path(self.path))
         if self.field is not ConditionField.FIELD and self.op not in _FIELD_OPERATORS[self.field]:
             raise ValidationError(f"operator '{self.op}' does not apply to {self.field}")
         if self.case_sensitive and self.op is not Operator.MATCHES:
@@ -225,6 +252,8 @@ class Condition:
                     _text(value, MAX_PATTERN)
                 elif self.op is Operator.CONTAINS:
                     _text(value, MAX_TEXT)
+            case ConditionField.STEP:
+                _step_value(self.op, value)
 
     @property
     def values(self) -> list[JsonValue]:
@@ -261,6 +290,46 @@ class Group:
     @property
     def depth(self) -> int:
         return 1 + max((item.depth for item in self.items if isinstance(item, Group)), default=0)
+
+
+STEP_NAME = re.compile(r"[a-z][a-z0-9_]{0,49}")
+"""A step's name: what the steps after it write as `steps.<name>`."""
+_STEP_KEY = re.compile(r"[A-Za-z0-9_-]{1,100}")
+MAX_STEP_PATH = 200
+
+
+def validate_step_path(path: str) -> str:
+    """`<step>.<key>.<key>…`: a step's name, then keys of its answer (a number for an item of
+    a list). ValidationError otherwise."""
+    name, *keys = path.split(".")
+    if (
+        len(path) > MAX_STEP_PATH
+        or not STEP_NAME.fullmatch(name)
+        or not all(_STEP_KEY.fullmatch(key) for key in keys)
+    ):
+        raise ValidationError(
+            f"path {path!r}: a step's name (small letters, digits, _), then keys, "
+            f"separated by dots, at most {MAX_STEP_PATH} characters"
+        )
+    return path
+
+
+def _step_value(op: Operator, value: JsonValue) -> None:
+    """What a step condition compares with: a text, a number or true/false; `gt` and `lt` a
+    number or a date (`YYYY-MM-DD`)."""
+    if isinstance(value, bool):
+        if op in (Operator.GT, Operator.LT, Operator.CONTAINS):
+            raise ValidationError(f"'{op}' does not compare with true or false")
+        return
+    if isinstance(value, int | float):
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValidationError("a number is finite")
+        return
+    if not isinstance(value, str):
+        raise ValidationError("a step condition compares with a text, a number or true/false")
+    _text(value, MAX_TEXT)
+    if op in (Operator.GT, Operator.LT):
+        require_date(value, "value")
 
 
 # --- actions ----------------------------------------------------------------------------------
@@ -349,6 +418,64 @@ class ForceReview:
         _text(self.reason, MAX_TEXT)
 
 
+class Missing(StrEnum):
+    """What a step that asks does without an answer (none in time, an error, an invalid
+    one)."""
+
+    RED = "red"  # the node fails: no rule acts
+    YELLOW = "yellow"  # the rule ends here, its steps before count; the document waits
+    CONTINUE = "continue"  # `steps.<name>` is missing, the rule goes on
+
+
+@dataclass(frozen=True)
+class AskWebhook:
+    """Ask through the webhook (of whoever saved the rule) and wait for the answer: a task
+    (`domain.tasks`). The steps after it see the answer as `steps.<name>`. `timeout_seconds`:
+    the time to answer from sending; `missing`: what the rule does without an answer. Only on
+    arrival (Tobi, 25.10.2026)."""
+
+    name: str
+    webhook_id: WebhookId
+    timeout_seconds: int = int(DEFAULT_TIMEOUT.total_seconds())
+    missing: Missing = Missing.RED
+    type: Literal["ask_webhook"] = "ask_webhook"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not STEP_NAME.fullmatch(self.name):
+            raise ValidationError(
+                f"name {self.name!r}: small letters, digits and _, beginning with a letter, "
+                "at most 50"
+            )
+        if isinstance(self.timeout_seconds, bool) or not isinstance(self.timeout_seconds, int):
+            raise ValidationError("timeout_seconds: a whole number")
+        validate_timeout(timedelta(seconds=self.timeout_seconds))
+        object.__setattr__(self, "missing", Missing(self.missing))
+
+    @property
+    def timeout(self) -> timedelta:
+        return timedelta(seconds=self.timeout_seconds)
+
+
+@dataclass(frozen=True)
+class StepCondition:
+    """The rule goes on only if the conditions hold, on the document as the rule's steps before
+    left it and on `steps` (`ConditionField.STEP`); otherwise it ends here, and its steps
+    before count."""
+
+    conditions: Group
+    type: Literal["condition"] = "condition"
+
+
+@dataclass(frozen=True)
+class SendWebhook:
+    """A notification through the webhook (`webhooks.Webhook`, of whoever saved the rule) about
+    the document as the rules leave it: on arrival when the document is filed, on a change once
+    it is stored (Tobi, 25.10.2026). Its owner must be able to read the document."""
+
+    webhook_id: WebhookId
+    type: Literal["send_webhook"] = "send_webhook"
+
+
 type Action = (
     SetSpace
     | SetContact
@@ -359,7 +486,11 @@ type Action = (
     | RemoveTags
     | SetField
     | ForceReview
+    | SendWebhook
+    | AskWebhook
+    | StepCondition
 )
+"""A rule's step: an action, asking a webhook or a condition."""
 
 # --- definition -------------------------------------------------------------------------------
 
@@ -375,6 +506,7 @@ class References:
     fields: frozenset[FieldId] = frozenset()
     spaces: frozenset[SpaceId] = frozenset()
     tag_scopes: tuple[tuple[TagId, TagScope], ...] = ()
+    webhooks: frozenset[WebhookId] = frozenset()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -401,15 +533,25 @@ class RuleDefinition:
             )
         if not self.triggers:
             raise ValidationError("a rule needs at least one trigger")
-        if self.conditions.depth > MAX_DEPTH:
+        groups = [self.conditions, *(step.conditions for step in self.step_conditions)]
+        if any(group.depth > MAX_DEPTH for group in groups):
             raise ValidationError(f"conditions may be nested at most {MAX_DEPTH} deep")
-        if len(self.conditions.conditions()) > MAX_CONDITIONS:
+        if len(self.all_conditions()) > MAX_CONDITIONS:
             raise ValidationError(f"a rule has at most {MAX_CONDITIONS} conditions")
-        if not self.actions:
+        if any(
+            condition.field is ConditionField.STEP for condition in self.conditions.conditions()
+        ):
+            raise ValidationError(
+                "conditions: a condition on what a step brought belongs in a condition step"
+            )
+        if not any(not isinstance(action, StepCondition) for action in self.actions):
             raise ValidationError("a rule needs at least one action")
         if len(self.actions) > MAX_ACTIONS:
             raise ValidationError(f"a rule has at most {MAX_ACTIONS} actions")
+        if self.asks and self.triggers != {Trigger.INGEST}:
+            raise ValidationError("a rule that asks a webhook runs on arrival only (ingest)")
         seen: set[str] = set()
+        asked: set[str] = set()
         for index, action in enumerate(self.actions):
             key = _single_key(action)
             if key in seen:
@@ -418,6 +560,15 @@ class RuleDefinition:
                 )
             if key is not None:
                 seen.add(key)
+            if isinstance(action, AskWebhook):
+                asked.add(action.name)
+            elif isinstance(action, StepCondition):
+                for condition in action.conditions.conditions():
+                    if condition.path is not None and condition.path.split(".")[0] not in asked:
+                        raise ValidationError(
+                            f"actions[{index}]: no step before it is named "
+                            f"'{condition.path.split('.')[0]}'"
+                        )
 
     def references(self) -> References:
         contacts: set[ContactId] = set()
@@ -425,8 +576,9 @@ class RuleDefinition:
         tags: set[TagId] = set()
         fields: set[FieldId] = set()
         spaces: set[SpaceId] = set()
+        webhooks: set[WebhookId] = set()
         scopes: dict[tuple[TagId, TagScope], None] = {}
-        for condition in self.conditions.conditions():
+        for condition in self.all_conditions():
             match condition.field:
                 case ConditionField.CONTACT:
                     contacts.update(ContactId(id) for id in _ids(condition))
@@ -455,6 +607,8 @@ class RuleDefinition:
                     scopes.update(((id, TagScope.DOCUMENT), None) for id in sorted(ids))
                 case SetField(field_id=field):
                     fields.add(field)
+                case SendWebhook(webhook_id=webhook) | AskWebhook(webhook_id=webhook):
+                    webhooks.add(webhook)
         return References(
             frozenset(contacts),
             frozenset(types),
@@ -462,13 +616,38 @@ class RuleDefinition:
             frozenset(fields),
             frozenset(spaces),
             tuple(scopes),
+            frozenset(webhooks),
         )
 
     @property
+    def sends(self) -> tuple[SendWebhook, ...]:
+        """The webhooks the rule sends through, in order."""
+        return tuple(action for action in self.actions if isinstance(action, SendWebhook))
+
+    @property
+    def asks(self) -> tuple[AskWebhook, ...]:
+        """The steps that ask a webhook, in order."""
+        return tuple(action for action in self.actions if isinstance(action, AskWebhook))
+
+    @property
+    def step_conditions(self) -> tuple[StepCondition, ...]:
+        return tuple(action for action in self.actions if isinstance(action, StepCondition))
+
+    @property
+    def has_steps(self) -> bool:
+        """Whether the rule asks or checks between its actions (not only actions)."""
+        return any(isinstance(action, AskWebhook | StepCondition) for action in self.actions)
+
+    def all_conditions(self) -> list[Condition]:
+        """The conditions of the rule's head and of its condition steps."""
+        return [
+            *self.conditions.conditions(),
+            *(item for step in self.step_conditions for item in step.conditions.conditions()),
+        ]
+
+    @property
     def uses_text(self) -> bool:
-        return any(
-            condition.field is ConditionField.TEXT for condition in self.conditions.conditions()
-        )
+        return any(condition.field is ConditionField.TEXT for condition in self.all_conditions())
 
     def patterns(self) -> set[tuple[str, str, bool]]:
         """The regular expressions of the conditions: target (`text` or a field id),
@@ -479,7 +658,7 @@ class RuleDefinition:
                 str(condition.value),
                 condition.case_sensitive,
             )
-            for condition in self.conditions.conditions()
+            for condition in self.all_conditions()
             if condition.op is Operator.MATCHES
         }
 
@@ -489,11 +668,16 @@ def _ids(condition: Condition) -> list[UUID]:
 
 
 def _single_key(action: Action) -> str | None:
-    """The field an action sets alone; two such actions in one rule contradict each other."""
+    """The field an action sets alone; two such actions in one rule contradict each other (a
+    webhook twice would send twice)."""
     match action:
         case SetField(field_id=field):
             return field_key(field)
-        case AddTags() | RemoveTags() | ForceReview():
+        case SendWebhook(webhook_id=webhook):
+            return f"{action.type}:{webhook}"
+        case AskWebhook(name=name):
+            return f"step {name}"
+        case AddTags() | RemoveTags() | ForceReview() | StepCondition():
             return None
     return action.type
 
@@ -520,7 +704,16 @@ def check_fields(
 ) -> None:
     """Conditions and actions on fields fit the field's data type. ValidationError
     otherwise, naming the place; a missing field is a ValidationError too."""
-    for place, condition in condition_places(definition.conditions):
+    places = [
+        *condition_places(definition.conditions),
+        *(
+            item
+            for index, step in enumerate(definition.actions)
+            if isinstance(step, StepCondition)
+            for item in condition_places(step.conditions, f"actions[{index}].conditions")
+        ),
+    ]
+    for place, condition in places:
         if condition.field is not ConditionField.FIELD:
             continue
         assert condition.field_id is not None

@@ -1,6 +1,6 @@
 """Webhook repository on SQL tables. Deliveries go with their webhook (ON DELETE CASCADE)."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import Row, delete, func, insert, select
@@ -9,7 +9,14 @@ from lekto.adapters.outbound.sql import tables as t
 from lekto.adapters.outbound.sql.repositories import SqlRepository, Values
 from lekto.core.domain.errors import NotFoundError
 from lekto.core.domain.ids import DeliveryId, DocumentId, EventId, UserId, WebhookId
-from lekto.core.domain.webhooks import DeliveryOutcome, Webhook, WebhookDelivery
+from lekto.core.domain.webhooks import (
+    BodyFormat,
+    DeliveryOutcome,
+    ModelCallKind,
+    ModelCallRole,
+    Webhook,
+    WebhookDelivery,
+)
 from lekto.core.ports.repository import PAGE_SIZE
 
 
@@ -52,6 +59,15 @@ class SqlWebhookRepository(SqlRepository[WebhookId, Webhook]):
             select(table).where(table.c.active).order_by(table.c.created_at, table.c.id)
         )
         return [webhook for webhook in map(self._entity, rows) if webhook.wants(event_type)]
+
+    async def list_model_calls(self) -> list[Webhook]:
+        table = self.table
+        rows = await self._tx.read(
+            select(table)
+            .where(table.c.model_call.is_not(None))
+            .order_by(table.c.created_at, table.c.id)
+        )
+        return [self._entity(row) for row in rows]
 
     async def add_delivery(self, delivery: WebhookDelivery) -> None:
         exists = await self._tx.read(
@@ -98,12 +114,18 @@ class SqlWebhookRepository(SqlRepository[WebhookId, Webhook]):
             name=row.name,
             url=row.url,
             event_types=frozenset(row.event_types),
-            encrypted_secret=bytes(row.secret),
+            encrypted_secret=None if row.secret is None else bytes(row.secret),
+            header_names=tuple(row.header_names),
+            encrypted_headers=None if row.headers is None else bytes(row.headers),
+            body=BodyFormat(row.body),
+            body_template=row.body_template,
             active=row.active,
             disabled_reason=row.disabled_reason,
             failed_streak=row.failed_streak,
             previous_secret=None if row.previous_secret is None else bytes(row.previous_secret),
             previous_valid_until=row.previous_valid_until,
+            max_open_tasks=row.max_open_tasks,
+            model_call=_model_call(row),
             created_at=row.created_at,
             updated_at=row.updated_at,
             version=row.version,
@@ -117,8 +139,19 @@ class SqlWebhookRepository(SqlRepository[WebhookId, Webhook]):
             "url": entity.url,
             "event_types": sorted(entity.event_types),
             "secret": entity.encrypted_secret,
+            "header_names": list(entity.header_names),
+            "headers": entity.encrypted_headers,
+            "body": entity.body.value,
+            "body_template": entity.body_template,
             "previous_secret": entity.previous_secret,
             "previous_valid_until": entity.previous_valid_until,
+            "max_open_tasks": entity.max_open_tasks,
+            "model_call": None if entity.model_call is None else entity.model_call.kind.value,
+            "model_call_timeout_seconds": (
+                None
+                if entity.model_call is None
+                else int(entity.model_call.timeout.total_seconds())
+            ),
             "active": entity.active,
             "disabled_reason": entity.disabled_reason,
             "failed_streak": entity.failed_streak,
@@ -126,6 +159,14 @@ class SqlWebhookRepository(SqlRepository[WebhookId, Webhook]):
             "updated_at": entity.updated_at,
             "version": entity.version,
         }
+
+
+def _model_call(row: Row[Any]) -> ModelCallRole | None:
+    if row.model_call is None:
+        return None
+    return ModelCallRole(
+        ModelCallKind(row.model_call), timedelta(seconds=row.model_call_timeout_seconds)
+    )
 
 
 def _delivery(row: Row[Any]) -> WebhookDelivery:

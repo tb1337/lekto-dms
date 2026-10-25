@@ -115,7 +115,7 @@ class StoredProposal:
     def of(
         cls,
         answer: ProposeAnswer,
-        keys: Mapping[str, FieldDefinition],
+        keys: Mapping[str, FieldId],
         spaces: Mapping[str, UUID] | None = None,
     ) -> Self:
         """The answer, its fields (by the keys sent) by id, its space (by the keys of the
@@ -131,7 +131,7 @@ class StoredProposal:
             document_date=answer.document_date,
             title=answer.title,
             language=answer.language,
-            fields={keys[key].id: value for key, value in answer.fields.items()},
+            fields={keys[key]: value for key, value in answer.fields.items()},
             space=None if answer.space is None else (spaces or {}).get(answer.space),
         )
 
@@ -304,6 +304,11 @@ def field_keys(definitions: Sequence[FieldDefinition]) -> dict[str, FieldDefinit
     return {f"a{index}": definition for index, definition in enumerate(definitions, start=1)}
 
 
+def key_ids(keys: Mapping[str, FieldDefinition]) -> dict[str, FieldId]:
+    """The fields' ids by their keys."""
+    return {key: definition.id for key, definition in keys.items()}
+
+
 def extract_schema(keys: dict[str, FieldDefinition]) -> JsonObject:
     return _object(
         {
@@ -351,6 +356,23 @@ def _value_schema(definition: FieldDefinition) -> JsonObject:
             return _one_of_or_null(definition.choices)
         case _:
             return dict(_TEXT_OR_NULL)
+
+
+def described(schema: JsonObject, descriptions: Mapping[str, str]) -> JsonObject:
+    """`schema` with a `description` at each path of `descriptions`: property names apart by
+    dots, through the items of a list (`fields.key`); the empty path is the schema itself. A
+    path the schema does not have is left out."""
+    copied: JsonObject = json.loads(json.dumps(schema))
+    for path, text in descriptions.items():
+        node: JsonValue = copied
+        for name in path.split(".") if path else ():
+            item = as_object(node) or {}
+            if "items" in item:
+                item = as_object(item["items"]) or {}
+            node = (as_object(item.get("properties")) or {}).get(name)
+        if isinstance(node, dict):
+            node["description"] = text
+    return copied
 
 
 # --- helpers ----------------------------------------------------------------------------------

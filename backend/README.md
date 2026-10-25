@@ -944,11 +944,35 @@ where it is and edits where it goes (global: admins); every version names its sp
   document get two seconds together, a preview page twenty; the patterns left do not match. The text is the parsed text without
   markup, at most `LEKTO_RULES_MAX_TEXT` characters; it is loaded only if a rule looks at it.
 - **Actions.** `set_space`, `set_contact`, `set_topic`, `set_document_type`, `set_title`,
-  `add_tags`, `remove_tags`, `set_field`, `force_review` (with a reason). `set_topic` is for
+  `add_tags`, `remove_tags`, `set_field`, `force_review` (with a reason), `send_webhook` (see
+  below). `set_topic` is for
   every rule; it is skipped (and noted) if the contact the document ends up with does not
   enable the topic. `add_tags` and `remove_tags` take document tags (also those set by hand);
   a tag above one the document keeps or gets is not added, a parent gives way to a child
   added. Saving a rule checks the scope of every tag it names (`422`).
+- **Steps** (Tobi, 25.10.2026, `.idea/webhooks-und-auftraege.md`). The actions are an ordered,
+  linear sequence of at most 20 steps, which may also ask a webhook and check:
+  - `ask_webhook` (`name`, `webhook_id`, `timeout_seconds`, default 300, 30 to 86,400;
+    `missing`, default `red`): a task through a webhook of whoever saves the rule (see
+    *Tasks* under Webhooks); the node waits for the answer ("running externally"), and the
+    steps after it see it as `steps.<name>`. Without an answer (none in time, an error, an
+    invalid one) `red` fails the node (no rule acts), `yellow` ends the rule there (its steps
+    before count) and holds the document for a person, `continue` goes on without
+    `steps.<name>`. After a person decided in the run it is only reported (`steps_reported`).
+    A rule with such a step runs on arrival only (`triggers: ["ingest"]`), is not applied to
+    existing documents (`409`, `rule_asks_on_arrival`) and needs `LEKTO_PUBLIC_URL`. A
+    confirmation in the inbox that changes nothing keeps the answers of the run before; one
+    that changes something, and processing again, ask anew. Outside processing (the rules a
+    space runs when a person moves a document into it) the step is not asked: the rule ends
+    there.
+  - `condition` (`conditions`, a group as in the head): on the document as the rule's own
+    steps before left it, and on what a step brought (`{"field": "step", "path":
+    "accounting.paid", "op": "is", "value": true}`; `is`, `in`, `contains`, `gt`, `lt`,
+    `present`, `missing`). If it does not hold, the rule ends there; its steps before count.
+  Each rule works on its own copy of the document; the actions of all rules are combined at
+  the end, as before. Templates see `steps.<name>` of the steps before them that ask
+  (`{{ steps.accounting.beleg }}`). The log shows each step (`steps`: a condition's `holds`,
+  a question's task, status and answer).
 - **Templates** (in full, with examples: [docs/templates.md](../docs/templates.md)). A title,
   the value of a text field and a review's reason are Liquid templates (`python-liquid`,
   `adapters/outbound/liquid`): `{{ contact }}`, `{% if field.la_brutto %}`,
@@ -1241,7 +1265,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /rules/{id}/apply/preview`, `POST /rules/{id}/apply`, `GET /rule-applications/{id}` | Apply a rule to existing documents: preview, start (`202`), progress |
 | `GET /events` | Server-sent events of the documents the caller may read, for admins also `classifier.trained`; `?document_id=` |
 | `GET/POST /webhooks`, `GET/PATCH/DELETE /webhooks/{id}` | Webhooks: the caller's own (admins read everybody's, `?owner=`); create (the answer shows the secret once), change, switch on or off, delete; see Webhooks |
-| `POST /webhooks/{id}/secret`, `POST /webhooks/{id}/test`, `GET /webhooks/{id}/deliveries` | Renew the secret (the old one signs 24 hours longer), send a test request, the delivery log (`before`, `limit`) |
+| `POST/DELETE /webhooks/{id}/secret`, `POST /webhooks/{id}/test`, `GET /webhooks/{id}/deliveries` | Renew the secret (the old one signs 24 hours longer; an unsigned webhook signs from then on) or stop signing, send a test request, the delivery log (`before`, `limit`) |
 | `GET/POST /lenses`, `GET/PATCH/DELETE /lenses/{id}`, `PUT /lenses/order` | Lenses, the caller's saved looks at the documents (only theirs; others' are `404`, also for admins): `filter` (the filters of `GET /documents` as lists, `document_period` `this_year`, `last_12_months` or `last_year` moves with the day), `query`, `sort` (`relevance` only with `query`, `field` only without), `sort_field_id`, `grouping` (`none`, `month`, `due`, `document_type`, `contact`), `layout` (`grid`, `list`), `card_field_ids` (at most three), `due_field_id` (a date field); names unique per user, at most 100; deleted master data and fields are left out when a lens is read; `order` takes each lens once |
 | `GET /health` | Database, bucket or storage directory and, if configured, the search index reachable; `200` (`ok`, or `degraded` if only the search is down) or `503`, no authentication; not written to the access log |
 
@@ -1363,32 +1387,136 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 
 ## Webhooks
 
-A user subscribes to document events and Lekto sends a signed `POST` to a URL (n8n, Home
-Assistant, any service). Webhooks belong to the user who created them; the API is under
-`/webhooks` (create, list, change, switch off, delete, renew the secret, test, delivery log).
-Admins may do everything with every webhook: read it and its log, change, delete, test, renew the
-secret (which then shows to them, once). Nobody sees a secret again after it was shown. What an
-admin reads includes the target URL (which may be a capability URL) and, in the log, the document
-IDs and event types of that user's deliveries.
+A user subscribes to document events and Lekto sends a `POST` to a URL (n8n, Home Assistant,
+Node-RED, any service), signed unless the webhook goes without a secret. Webhooks belong to the
+user who created them; the API is under `/webhooks` (create, list, change, switch off, delete,
+renew or remove the secret, test, delivery log). Admins may do everything with every webhook:
+read it and its log, change, delete, test, renew the secret (which then shows to them, once).
+Nobody sees a secret again after it was shown, nor the value of a header the webhook sets. What
+an admin reads includes the target URL (which may be a capability URL), the names of its headers
+and, in the log, the document IDs and event types of that user's deliveries.
 At most `LEKTO_WEBHOOKS_PER_USER` (20) per user.
 
-**Events.** `document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`,
-`document.filed`, `document.updated`, `document.deleted`, or `*` for all, also future ones. A
-webhook only hears of documents its owner may read, as with the event stream: the right is
+**Events.** `document.received`, `document.node_started`, `document.node_deferred`,
+`document.node_delegated` (a node waits for the answers to its tasks, `deadline`),
+`document.node_completed`, `document.lane_changed`,
+`document.filed`, `document.updated`, `document.deleted`, or `*` for all, also future ones;
+none for a webhook that only rules use. Three more say in a receiver's words what the others
+tell: `document.review_required` (it waits in the inbox, yellow or red; `lane`),
+`document.confirmed` (a person confirmed it in the inbox) and `document.moved` (it lies in
+another space, `space_id`; `by_person`, and `handed_over` when that is the personal space of
+another user than the one who moved it, or, moved by processing or a rule, uploaded it); the
+web UI does not listen to them. A webhook only hears of documents its owner may read, as with
+the event stream: the right is
 checked when the event is queued and again before every attempt, and a user who lost access in
 between gets nothing (the log shows `dropped`). The body carries no lane, so a receiver
 that wants the state of the document fetches it; `document.filed` is not sent while the document
 is still being processed. `document.deleted` goes to those who could read the document
 when it was deleted.
 
-**The request.** `POST <url>`, `Content-Type: application/json`, `User-Agent: Lekto/<version>`,
-and a body that names the event only; the receiver fetches details through the API with a token
-of its own:
+**Rules that send** (`send_webhook`, Tobi, 25.10.2026). A rule sends a request through a webhook
+of whoever saves it (someone else's is not found, `404`); the type is `rule.send`, the body
+names the rule (`rule`: `id`, `name`) and follows the webhook's body format. On arrival the
+request goes once the document is filed: a green one at once, a yellow one after a person
+confirmed it, a red one never, and none twice although the rules run again after the
+confirmation. After a change, a move or applying a rule to existing documents (one request per
+document; the preview lists them) it goes once that is stored. It is queued in the transaction
+that stores what the rules did. The webhook's owner must be able to read the document where it
+ends up: on arrival the document turns yellow otherwise (`rule_webhook_unreadable`), unless a
+person decided in this run already (then, and outside processing, it is only reported in the
+log, `sends_refused`). Deleting a webhook disables the rules that send through it, with the
+reason; so does deleting its owner.
 
-```json
-{"id": "01999d5e-...", "type": "document.filed", "occurred_at": "2026-10-08T12:00:00Z",
- "document_id": "01999d5e-..."}
-```
+**Tasks** (requests that expect an answer, Tobi, 25.10.2026, `.idea/webhooks-und-auftraege.md`).
+A node that needs an answer from outside hands the request to a task and waits for it without
+a worker: its state is `delegated` (the web UI says "running externally", with the minutes
+left), and `deadline` says when the last of its tasks ends at the latest. Whenever one of its
+tasks ends, the node runs anew and reads what its tasks brought. A webhook takes at most
+`max_open_tasks` tasks at the same time (4; 1 to 64); more wait in Lekto, and their time to
+answer starts when they are sent. A task's request goes like any other (body format, headers,
+signature) and carries four headers more: `lekto-task-id`, `lekto-callback` (where to answer),
+`lekto-task-token` (a one-time token; Lekto keeps only its hash once the request was delivered)
+and `lekto-deadline`; `thin` and `full` bodies hold them as `task` (`id`, `callback`, `token`,
+`deadline`), a template sees `task.*`. The request is repeated until the deadline while the
+receiver is unreachable; one that is refused, or a template that does not make JSON, ends the
+task at once. A webhook that takes tasks is never switched off.
+
+The consumer answers with `POST /api/v1/external/tasks/{id}/result`, the token as
+`Authorization: Bearer` (never in the URL), and an envelope: `{"status": "ok", "answer": ...,
+"producer": "..."}` (any JSON; `producer` is optional and goes into the log) or `{"status":
+"error", "reason": "..."}`. `204`: taken. An `error`, an envelope that is not valid (`422`, the
+answer says why) and one larger than 1 MB (`413`) count as no answer, and use the token up.
+`409`: the task was answered before, or its document was processed again or deleted. `401`:
+unknown task or token, or the deadline has passed. Without `LEKTO_PUBLIC_URL` no task can be
+sent (the consumer would not know where to answer). Deleting a webhook fails the tasks that
+wait for it; those it sent run to their deadline, and an answer is still taken.
+
+**Model calls** (Tobi, 25.10.2026, `.idea/webhooks-und-auftraege.md`). An admin may make one of
+their webhooks serve as a model call (`model_call`: `kind` `propose` or `extract`,
+`timeout_seconds`, default 300, 30 to 86,400): it then answers that request instead of the
+language model of `LEKTO_LLM_*`, for every document (an exception to "webhooks see what their
+owner may read"). Of the active webhooks of active admins at most one serves each kind (`409`
+`model_call_taken`); a webhook switched off, deleted, or whose owner is no admin any more serves
+no more, and the language model answers again (without one `signal_llm` abstains).
+`propose` takes over `signal_llm` (prompt `propose-5`), `extract` the request of `fields` for
+the fields the proposal did not give (another type decided, or no proposal; prompt
+`extract-5`). The node sends a task
+whose body is always the context, whatever the webhook's `body`: `contract` (`propose-ext-1`,
+`extract-ext-1`), `task` (`id`, `kind`, `document_id`, `run`, `deadline`, `callback`, `token`),
+`document` (`filename`, `media_type`, `pages`, `received`, the text in full, and signed links to
+`content.json` and the page images), the master data the prompt lists (contacts, the 20 the text
+names most, document types, fields by key, tags, spaces by key) and `answer_schema`, the answer's
+JSON Schema with the rules of the system prompt as descriptions. The contract is in the OpenAPI
+document under `webhooks` (`external.propose`, `external.extract`; also the events, `rule.send`
+and `rule.ask`). The answer's structure is checked when it comes (`422` and the document is red
+if it does not fit); its values are checked as the model's (quotes literally in the text, the
+reading confidence, a contact green only with a second signal or hard evidence). An `error`,
+an answer that does not fit and none by the deadline make the document red; there is no second
+attempt. The context (without the task and its links) and the answer lie beside the document as
+the model's exchanges do; the log names the contract and `producer`. Documents taken over from
+Paperless-ngx send no task. `signal_llm` waits for the page images (`pages`), so the links
+work when the task goes; it does not need them, so processing again from `pages` leaves it
+alone (`GET /pipeline`: `waits_for`).
+
+`GET /api/v1/external/tasks/{id}/files/{name}?expires=…&signature=…` gives a model call's files
+(`content.json`, `pages/<n>.webp`): each link is signed with `LEKTO_SECRET_KEY`, bound to the
+task, its document, its run and the file, and holds until the task's deadline (`401` otherwise)
+while the run is the document's current one (`409` once it was processed again or deleted). An
+example consumer (Python, standard library, Ollama) is in `examples/model-calls/`.
+
+**The request.** `POST <url>`, `Content-Type: application/json`, `User-Agent: Lekto/<version>`,
+the webhook's own headers, and a body as the webhook chooses (`body`):
+
+- `thin` (the default) names the event only; the receiver fetches details through the API with
+  a token of its own:
+
+  ```json
+  {"id": "01999d5e-...", "type": "document.filed", "occurred_at": "2026-10-08T12:00:00Z",
+   "document_id": "01999d5e-..."}
+  ```
+
+- `full` adds `document`, as it is when the request goes (`null` once it is deleted): `id`,
+  `title`, `original_filename`, `contact`, `document_type`, `topic` and `space` (each `{id,
+  name}` or `null`), `tags` (`[{id, name}]`), `document_date`, `added`, `lane`, `channel`,
+  `pages`, `fields` (the fields with a value, by key, in the API's form: an amount as `{amount,
+  currency}`) and `link` (`LEKTO_PUBLIC_URL/ui/documents/<id>`; `null` without
+  `LEKTO_PUBLIC_URL`).
+- `template` sends what `body_template` makes: Liquid that has to give JSON (up to 10,000
+  characters). It sees what a rule's template sees (`title`, `contact`, `document_date`,
+  `field.<key>`, ...), and `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and
+  `link`. The filter `json` writes a value as JSON in the API's form, `| default: nil` a missing
+  one as `null`; writing a missing value without it fails. A Home Assistant notification:
+
+  ```liquid
+  {"title": {{ document_type | default: "Dokument" | json }},
+   "message": {{ title | json }}, "amount": {{ field.betrag.amount | default: nil | json }},
+   "url": {{ link | json }}}
+  ```
+
+  The template is checked when saved (syntax, known values) and is previewed with a document
+  like a rule's (`POST /templates/preview` with `purpose: webhook`). A request whose template
+  does not give JSON, or writes a missing value, is not sent: the log shows `gave_up` with the
+  reason, without repetition.
 
 `id` is the event id: it is the same in every repeated attempt, so a receiver can recognise
 events it has handled. Delivery is at least once and not in order; sort by `occurred_at`. The
@@ -1396,9 +1524,22 @@ test request (`POST /webhooks/{id}/test`) has `type: "webhook.test"` and `docume
 it goes out at once, to whatever address the webhook names, so a user may send at most ten per
 minute (`429` with `Retry-After` beyond that; counted per API process).
 
+**Headers of its own.** A webhook may set up to 20 headers that go with every request, e.g.
+`Authorization: Bearer <token>` for a receiver that checks a token instead of a signature (Home
+Assistant and Node-RED do not verify signatures by themselves). Names are HTTP tokens; Lekto sets
+`content-type`, `content-length`, `host`, `connection`, `transfer-encoding` and every header
+beginning with `webhook-` or `lekto-` itself, so those are refused. Values are printable ASCII
+(up to 4096 characters, spaces only inside), stored encrypted with `LEKTO_SECRET_KEY` and never
+shown again; the API shows the names. Changing the headers (`PATCH`, `headers`) gives all of
+them in order; a header given without a value keeps the one it has. A `User-Agent` of its own
+replaces Lekto's.
+
 **Signature** ([Standard Webhooks](https://www.standardwebhooks.com), so ready-made verification
-libraries work). Three headers: `webhook-id` (the event id), `webhook-timestamp` (Unix seconds
-of this attempt) and `webhook-signature`, `v1,<base64>` of the HMAC-SHA256 over
+libraries work). A webhook created with `"signed": false`, or whose secret was removed (`DELETE
+/webhooks/{id}/secret`), sends `webhook-id` and `webhook-timestamp` but no signature; renewing
+the secret makes it sign again. A signed request has three headers: `webhook-id` (the event id),
+`webhook-timestamp` (Unix seconds of this attempt) and `webhook-signature`, `v1,<base64>` of the
+HMAC-SHA256 over
 `<webhook-id>.<webhook-timestamp>.<raw body>` with the secret (`whsec_` and 32 bytes in Base64;
 the key is the Base64-decoded part after the prefix). Right after the secret was renewed the
 header holds two signatures separated by a space, one per secret; accept the request if one
@@ -1452,7 +1593,9 @@ removed after `LEKTO_RETENTION`.
 or renewing its secret. It is stored encrypted with `LEKTO_SECRET_KEY` (the worker needs the key
 too, to sign). Renewing keeps the old secret signing next to the new one for
 `LEKTO_WEBHOOK_SECRET_GRACE` (24 hours), so the receiver can switch without a gap; renewing again
-ends that at once.
+ends that at once. Removing the secret ends signing at once, the old one included. If the key
+changes, secrets and header values cannot be read any more: deliveries give up (`gave_up`, "the
+secret or the header values cannot be used"); renew the secret and give the header values anew.
 
 **Targets.** `http` and `https` to any host and port, including the own network. `https`
 certificates are verified; there is no switch against that (use `http` or a valid certificate).
@@ -1546,7 +1689,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `LEKTO_REQUEST_MAX_SIZE` | API | `1MiB` | Largest body of every other request (JSON); larger ones get `413` |
 | `LEKTO_UI_DIR` | API | unset; image: `/opt/lekto/ui` | The built web UI (`web/build`), served below `/ui`; `/` leads there. Must contain `index.html`; unset serves the API only |
 | `LEKTO_FORWARDED_ALLOW_IPS` | API | unset; required with `LEKTO_COOKIE_SECURE=true` | Reverse proxies whose `X-Forwarded-For` is trusted (comma-separated). Secure cookies mean a TLS-terminating proxy in front of Lekto: name its address, or the per-source throttle sees only the proxy. `*` only if the proxy sets the header itself, replacing what clients send |
-| `LEKTO_SECRET_KEY` | both | required | *secret*; 32 bytes base64 (`openssl rand -base64 32`); encrypts TOTP and webhook secrets, the worker decrypts the latter to sign. Keep it: without it they cannot be read. The development key is refused with secure cookies |
+| `LEKTO_SECRET_KEY` | both | required | *secret*; 32 bytes base64 (`openssl rand -base64 32`); encrypts TOTP and webhook secrets and header values, the worker decrypts the latter to send. Keep it: without it they cannot be read. The development key is refused with secure cookies |
 | `LEKTO_ADMIN_USERNAME` | API | unset | The first admin, created at API start while there is no active admin; set together with the password |
 | `LEKTO_ADMIN_PASSWORD` | API | unset | *secret*; see above |
 | `LEKTO_SESSION_IDLE_TIMEOUT` | API | `P1D` | A session ends when unused this long |

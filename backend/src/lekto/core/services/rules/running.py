@@ -36,8 +36,10 @@ from lekto.core.domain.ids import (
     SpaceId,
     TagId,
     UserId,
+    WebhookId,
 )
-from lekto.core.domain.json_value import JsonObject, JsonValue, as_list
+from lekto.core.domain.json_value import JsonObject, JsonValue, as_list, as_object, as_uuid
+from lekto.core.domain.permissions import in_reach
 from lekto.core.domain.pipeline import (
     ACCEPTED,
     ACTOR,
@@ -58,12 +60,11 @@ from lekto.core.domain.pipeline import (
     NodeRun,
     Outcome,
 )
-from lekto.core.domain.reasons import Reason, ReasonCode, because
+from lekto.core.domain.reasons import Reason, ReasonCode, because, reasons_to_json
 from lekto.core.domain.rule_conditions import (
     TEXT_TARGET,
     Facts,
     Taxonomy,
-    matches,
     pattern_subjects,
     pattern_text,
 )
@@ -72,7 +73,6 @@ from lekto.core.domain.rule_planner import (
     RulePlan,
     Situation,
     SpaceTarget,
-    plan,
     reviewing_rules,
 )
 from lekto.core.domain.rules import Rule, SetSpace, Trigger
@@ -84,7 +84,9 @@ from lekto.core.services._access import space_label
 from lekto.core.services._tags import tag_tree
 from lekto.core.services.inbox import MODEL_NODES, arrived, field_checks, latest_entries
 from lekto.core.services.objects import load_text
+from lekto.core.services.tasks.desk import Ask
 from lekto.core.services.titles import machine_title
+from lekto.core.services.webhooks.delivery import queue_rule_send
 
 log = logging.getLogger(__name__)
 
@@ -622,61 +624,140 @@ class Chain:
 
 
 @dataclass(frozen=True)
+class Send:
+    """A request a matching rule sends through a webhook (`rules.SendWebhook`): queued when the
+    document is filed (on arrival) or once the run is stored (a change, a move, applying a rule
+    to existing documents). `author`: who saved the rule's version, whose webhook it must be."""
+
+    rule_id: RuleId
+    version: int
+    name: str
+    author: UserId | None
+    webhook_id: WebhookId
+
+    def to_json(self) -> JsonObject:
+        return {
+            "rule_id": str(self.rule_id),
+            "version": self.version,
+            "name": self.name,
+            "webhook_id": str(self.webhook_id),
+            **({} if self.author is None else {"author": str(self.author)}),
+        }
+
+    @classmethod
+    def from_json(cls, data: JsonValue) -> "Send | None":
+        """The send of a log entry's output; None if it is not one."""
+        item = as_object(data) or {}
+        rule, webhook = as_uuid(item.get("rule_id")), as_uuid(item.get("webhook_id"))
+        version, name, author = item.get("version"), item.get("name"), as_uuid(item.get("author"))
+        if rule is None or webhook is None or not isinstance(version, int):
+            return None
+        return cls(
+            rule_id=RuleId(rule),
+            version=version,
+            name=name if isinstance(name, str) else "",
+            author=None if author is None else UserId(author),
+            webhook_id=WebhookId(webhook),
+        )
+
+    @property
+    def rule(self) -> JsonObject:
+        """The rule as the request names it."""
+        return {"id": str(self.rule_id), "name": self.name}
+
+
+SENDS = "sends"
+"""Key of the requests a rule run sends, in its log entry's output."""
+STEPS_LOG = "steps"
+"""Key of the steps of the rules that ask or check between their actions, in a log entry's
+output: per rule (`rule_id`, `steps`), each step (`step`, its index; `type`; a condition's
+`holds`; a question's `name`, `task_id`, `status`, `answer` or `reason`)."""
+STEPS_REPORTED = "steps_reported"
+"""Key of the answers that did not come after a person decided, only reported."""
+SENDS_REFUSED = "sends_refused"
+"""Key of the requests it could not send, with why, in its log entry's output."""
+
+
+async def deliverable(
+    uow: UnitOfWork, sends: Iterable[Send], document: Document
+) -> tuple[list[Send], list[Reason]]:
+    """Of `sends`, those whose webhook is there, still its rule author's, and whose owner may
+    read `document` where it lies now; and why the others are not."""
+    space = await uow.spaces.find(document.space_id)
+    ok: list[Send] = []
+    refused: list[Reason] = []
+    for send in sends:
+        webhook = await uow.webhooks.find(send.webhook_id)
+        owner = None if webhook is None else await uow.users.find(webhook.owner_id)
+        if owner is None or not owner.active or owner.id != send.author:
+            refused.append(because(ReasonCode.RULE_WEBHOOK_GONE, rule=send.name))
+        elif space is None or not in_reach(owner, document, space):
+            refused.append(because(ReasonCode.RULE_WEBHOOK_UNREADABLE, rule=send.name))
+        else:
+            ok.append(send)
+    return ok, refused
+
+
+async def queue_sends(
+    uow: UnitOfWork, sends: Iterable[Send], document: Document, now: datetime
+) -> None:
+    """Queue the requests in the unit of work that stores the document: they go only if it is
+    committed."""
+    for send in sends:
+        await queue_rule_send(
+            uow, webhook_id=send.webhook_id, document_id=document.id, rule=send.rule, now=now
+        )
+
+
+async def send_now(
+    uow: UnitOfWork, sends: Iterable[Send], document: Document, now: datetime
+) -> JsonObject:
+    """Outside processing (a change, a move, applying a rule to existing documents): queue the
+    requests that may go, and report those that may not (nothing turns yellow there). The part
+    of the log entry's output that says so."""
+    ok, refused = await deliverable(uow, sends, document)
+    await queue_sends(uow, ok, document, now)
+    output: JsonObject = {}
+    if ok:
+        output[SENDS] = [send.to_json() for send in ok]
+    if refused:
+        output[SENDS_REFUSED] = reasons_to_json(refused)
+    return output
+
+
+@dataclass(frozen=True)
 class RuleRun:
-    """The plan of one rule run, with the patterns that could not run."""
+    """The plan of one rule run (`steps.run_rules`), with the patterns that could not run and
+    the requests the matching rules send (`sends`). Of rules with steps (`steps.Walk`): the
+    requests to send for steps that ask (`asks`) and whether one waits for a task that was
+    sent (`waiting`), why the document waits for a person (`reviews`) or the node fails
+    (`failures`) without an answer, what is only reported (`notes`), and each rule's steps
+    for the log (`steps`)."""
 
     plan: RulePlan
     problems: tuple[str, ...]
+    sends: tuple[Send, ...] = ()
+    asks: tuple[Ask, ...] = ()
+    waiting: bool = False
+    reviews: tuple[Reason, ...] = ()
+    failures: tuple[Reason, ...] = ()
+    notes: tuple[Reason, ...] = ()
+    steps: tuple[JsonObject, ...] = ()
+
+    @property
+    def pending(self) -> bool:
+        """A rule waits for an answer: the run's plan is not final."""
+        return bool(self.asks) or self.waiting
 
     def output(self) -> JsonObject:
         data = self.plan.to_json()
         if self.problems:
             data["problems"] = list[JsonValue](self.problems)
+        if self.steps:
+            data[STEPS_LOG] = list[JsonValue](self.steps)
+        if self.notes:
+            data[STEPS_REPORTED] = reasons_to_json(self.notes)
         return data
-
-
-async def run_rules(
-    uow: UnitOfWork,
-    matcher: PatternMatcher,
-    templates: TemplateRenderer,
-    *,
-    mode: Mode,
-    document: Document,
-    rules: Sequence[Rule],
-    prepared: Prepared,
-    origin: Provenance,
-    definitions: Mapping[FieldId, FieldDefinition],
-    before: tuple[Document, Mapping[PatternKey, bool]] | None = None,
-    locked: Collection[str] = (),
-    accept_conflicts: bool = False,
-    applier: UserId | None = None,
-) -> RuleRun:
-    """Evaluate `rules` on the document and plan their change (nothing is applied). `before`:
-    for a change, the state before it and its field pattern results; only rules that become
-    true with the change act. `applier`: who applies the rules to existing documents."""
-    patterns, problems = await field_patterns(matcher, rules, document)
-    loaded = await taxonomy(uow, [document, *([] if before is None else [before[0]])], rules)
-    now_facts = facts(document, prepared, patterns, origin, loaded.taxonomy)
-    before_facts = None
-    if before is not None:
-        before_facts = facts(before[0], prepared, before[1], origin, loaded.taxonomy)
-    matched = matches(rules, now_facts, definitions, before=before_facts)
-    context = await situation(
-        uow,
-        mode=mode,
-        document=document,
-        rules=[match.rule for match in matched],
-        definitions=definitions,
-        origin=origin,
-        templates=templates,
-        locked=locked,
-        person_added_tags=origin.tags_added,
-        person_removed_tags=origin.tags_removed,
-        accept_conflicts=accept_conflicts,
-        loaded=loaded,
-        applier=applier,
-    )
-    return RuleRun(plan(matched, context), prepared.problems + problems)
 
 
 async def apply_plan(
@@ -685,15 +766,24 @@ async def apply_plan(
     rule_plan: RulePlan,
     definitions: Mapping[FieldId, FieldDefinition],
     now: datetime,
+    *,
+    arrive: bool = True,
 ) -> Reason | None:
     """Apply the planned change and space; the reason if the change no longer fits (nothing
-    is applied then)."""
+    is applied then). `arrive` false: on a copy that is not stored (the inbox learns
+    nothing of a move)."""
     try:
         document.apply_changes(rule_plan.changes, definitions, now)
     except ValidationError as error:
         return because(ReasonCode.RULES_CHANGE_UNFIT, detail=str(error))
     if rule_plan.space is not None and rule_plan.space != document.space_id:
         source = await uow.spaces.get(document.space_id)
-        document.move_to(rule_plan.space, now)
-        await arrived(uow, document, source, now)
+        target = await uow.spaces.get(rule_plan.space)
+        document.move_to(
+            rule_plan.space,
+            now,
+            handed_over=target.personal_of not in (None, document.uploaded_by),
+        )
+        if arrive:
+            await arrived(uow, document, source, now)
     return None

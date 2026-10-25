@@ -11,6 +11,7 @@ import structlog
 
 from lekto.adapters.inbound.rest import HEALTH_PATH, OIDC_CALLBACK_PATH
 from lekto.composition.settings import Settings
+from lekto.core.services.tasks.files import EXTERNAL_TASKS_PATH
 
 HTTP_CLIENT_LOGGERS = ("httpx", "httpx2", "httpcore")
 
@@ -58,7 +59,7 @@ def configure_logging(settings: Settings) -> None:
     for name in HTTP_CLIENT_LOGGERS:
         logging.getLogger(name).setLevel(max(logging.WARNING, root.level))
     access = logging.getLogger("uvicorn.access")
-    for access_filter in (HideCallbackQuery, DropHealthChecks):
+    for access_filter in (HideSecretQueries, DropHealthChecks):
         if not any(isinstance(f, access_filter) for f in access.filters):
             access.addFilter(access_filter())
 
@@ -71,13 +72,17 @@ class DropHealthChecks(logging.Filter):
         return _request_path(record) != HEALTH_PATH
 
 
-class HideCallbackQuery(logging.Filter):
-    """The OIDC callback's query holds the authorization code and state; the access log shows
-    its path only."""
+SECRET_QUERIES = (OIDC_CALLBACK_PATH, EXTERNAL_TASKS_PATH)
+"""Paths whose query holds a secret: the OIDC callback's the authorization code and state, the
+link to a file of a model call its signature."""
+
+
+class HideSecretQueries(logging.Filter):
+    """The access log shows the paths of `SECRET_QUERIES` without their query."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         target = _request_target(record)
-        if target is not None and target.startswith(OIDC_CALLBACK_PATH) and "?" in target:
+        if target is not None and target.startswith(SECRET_QUERIES) and "?" in target:
             args = record.args
             assert isinstance(args, tuple)
             record.args = (*args[:2], target.split("?", 1)[0], *args[3:])

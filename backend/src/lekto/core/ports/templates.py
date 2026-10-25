@@ -1,5 +1,6 @@
-"""Templates of rules and title patterns: Liquid (`{{ contact }}`, `{% if field.x %}`, filters
-with `|`).
+"""Templates of rules, title patterns and webhook bodies: Liquid (`{{ contact }}`,
+`{% if field.x %}`, filters with `|`; `json` writes a value as JSON in the API's form, for the
+bodies of webhooks).
 
 Templates come from users, rules from any user: a renderer gives a template nothing but the
 values passed (no attributes of objects, no other templates, no files) and limits its loops and

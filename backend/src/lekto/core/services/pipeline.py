@@ -4,11 +4,11 @@ import asyncio
 import copy
 import hashlib
 import logging
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Protocol, Self
+from typing import Protocol
 
 from lekto.core.domain import media_types
 from lekto.core.domain.classification import CLASSIFIER_LABELS, SPACE
@@ -32,7 +32,7 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.first_runs import Decision
-from lekto.core.domain.ids import DocumentId, JobId, SpaceId, TagId, UserId
+from lekto.core.domain.ids import DocumentId, SpaceId, TagId, UserId
 from lekto.core.domain.imports import IMPORTED, ImportedMetadata
 from lekto.core.domain.inbox import Confirmation
 from lekto.core.domain.jobs import Job, RetryPolicy
@@ -83,9 +83,12 @@ from lekto.core.services._access import (
 )
 from lekto.core.services._first_runs import keep_first_run, keep_verdicts
 from lekto.core.services._jobs import (
+    NODE_JOB,
     STORE_ATTEMPTS,
     JobRunner,
+    NodeJob,
     document_payload,
+    enqueue_nodes,
     payload_document,
     retrying,
 )
@@ -103,11 +106,10 @@ from lekto.core.services.inbox import (
 from lekto.core.services.master_data import learn_alias
 from lekto.core.services.objects import original_key
 from lekto.core.services.rules.running import corrected_fields, person_record, space_choice
+from lekto.core.services.tasks.settling import Delegation, cancel_tasks
 
 log = logging.getLogger(__name__)
 
-NODE_JOB = "pipeline.node"
-"""Job kind of a pipeline node; payload: `NodeJob`."""
 CATCH_UP_JOB = "pipeline.catch_up"
 """Job kind of a node skipped in the document's current run that is run afterwards, outside
 processing (`PipelineService.catch_up`); payload: `NodeJob`."""
@@ -119,31 +121,15 @@ FACTS_JOB = "pipeline.facts"
 pages and the identifiers it shows; payload: document id. Processing and log stay as they are."""
 
 
-@dataclass(frozen=True)
-class NodeJob:
-    """The payload of a job that runs a node of a document in a processing run."""
-
-    document_id: DocumentId
-    node: Node
-    run: int
-
-    def to_json(self) -> JsonObject:
-        return document_payload(self.document_id) | {"node": self.node.value, "run": self.run}
-
-    @classmethod
-    def from_json(cls, payload: JsonObject) -> Self:
-        """KeyError, TypeError or ValueError for a payload that is none."""
-        run = payload["run"]
-        if not isinstance(run, int):
-            raise ValueError(f"invalid node job payload {payload!r}")
-        return cls(payload_document(payload), Node(str(payload["node"])), run)
-
-
 class DeferredResult(Protocol):
     """A node result that is completed in the transaction that stores it, on the state that is
-    stored (applying metadata, running rules)."""
+    stored (applying metadata, running rules). A `Delegation` instead of a result: the node
+    handed work to tasks and waits for their answers ("running externally"); it runs anew
+    when one of them ends (`services.tasks`)."""
 
-    async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult: ...
+    async def apply(
+        self, uow: UnitOfWork, document: Document, now: datetime
+    ) -> NodeResult | Delegation: ...
 
 
 @dataclass(frozen=True)
@@ -439,7 +425,7 @@ class PipelineService:
                         now=now,
                     )
                 )
-            await _enqueue(uow, document, document.processing.due(), now)
+            await enqueue_nodes(uow, document, document.processing.due(), now)
             await uow.outbox.add(document.pull_events())
             await uow.commit()
         return document
@@ -649,7 +635,12 @@ class PipelineService:
             document.apply_changes(decision.changes, definitions, now)
             corrected = corrected_fields(before, document, decided=decided)
             if target is not None:
-                document.move_to(target.id, now, by_person=True)
+                document.move_to(
+                    target.id,
+                    now,
+                    by_person=True,
+                    handed_over=target.personal_of not in (None, user.id),
+                )
                 await confirmed_into(uow, document, source, target, now, user.id)
             await keep_verdicts(
                 uow,
@@ -712,8 +703,11 @@ class PipelineService:
         return target
 
     async def _restart(self, uow: UnitOfWork, document: Document) -> None:
+        """Store the document's new run: the tasks of the runs before end (a late answer is
+        refused)."""
+        await cancel_tasks(uow, document.id, self._clock.now())
         await uow.documents.update(document)
-        await _enqueue(uow, document, document.processing.due(), self._clock.now())
+        await enqueue_nodes(uow, document, document.processing.due(), self._clock.now())
         await uow.outbox.add(document.pull_events())
         await uow.commit()
 
@@ -1060,7 +1054,19 @@ class PipelineService:
             if isinstance(outcome, NodeResult):
                 result = outcome
             else:
-                result = await outcome.apply(uow, document, now)
+                applied = await outcome.apply(uow, document, now)
+                if isinstance(applied, Delegation):
+                    assert not catching_up, "a catch-up delegates nothing"
+                    document.delegate_node(node, run, applied.deadline, now)
+                    again = applied.again and document.resume_node(node, run, now)
+                    await uow.documents.update(document)
+                    await uow.jobs.complete(job, now=now)
+                    if again:  # after this job: a running one would hold the new one back
+                        await enqueue_nodes(uow, document, [node], now)
+                    await uow.outbox.add(document.pull_events())
+                    await uow.commit()
+                    return
+                result = applied
             first_lane = document.first_lane
             if catching_up:
                 document.catch_up(node, run, result, started, now)
@@ -1070,7 +1076,7 @@ class PipelineService:
             await uow.documents.update(document)
             await self._log(uow, document.id, node, run, result, started, now)
             await keep_first_run(uow, document, first_lane, now)
-            await _enqueue(uow, document, due, now)
+            await enqueue_nodes(uow, document, due, now)
             if result.outcome is Outcome.FAILED:
                 await uow.jobs.fail(job, now=now, error=result.reason or "failed")
             else:
@@ -1099,24 +1105,6 @@ class PipelineService:
                 duration=now - started,
             )
         )
-
-
-async def _enqueue(
-    uow: UnitOfWork, document: Document, nodes: Iterable[Node], now: datetime
-) -> list[JobId]:
-    """One job per node, due now, in the document's current run."""
-    run = document.processing.run
-    jobs = []
-    for node in nodes:
-        job = await uow.jobs.enqueue(
-            NODE_JOB,
-            NodeJob(document.id, node, run).to_json(),
-            run_at=now,
-            dedup_key=f"{document.id}:{run}:{node.value}",
-        )
-        if job is not None:
-            jobs.append(job)
-    return jobs
 
 
 async def _check_imported(uow: UnitOfWork, imported: ImportedMetadata) -> None:

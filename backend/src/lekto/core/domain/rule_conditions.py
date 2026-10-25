@@ -69,7 +69,8 @@ class Facts:
     `topic` if they hold a value the model set and no person confirmed; `unverified_tags`
     likewise.
     `taxonomy`: the tag trees; `contact_groups` and `document_type_groups` the groups of the
-    contact and the type."""
+    contact and the type. `steps`: what a rule's steps brought so far, by step name (for its
+    condition steps)."""
 
     contact_id: ContactId | None
     document_type_id: DocumentTypeId | None
@@ -85,6 +86,7 @@ class Facts:
     taxonomy: Taxonomy = field(default_factory=Taxonomy)
     contact_groups: frozenset[TagId] = frozenset()
     document_type_groups: frozenset[TagId] = frozenset()
+    steps: Mapping[str, JsonValue] = field(default_factory=dict)
 
     @classmethod
     def of(
@@ -96,6 +98,7 @@ class Facts:
         unverified: frozenset[str] = frozenset(),
         unverified_tags: frozenset[TagId] = frozenset(),
         taxonomy: Taxonomy | None = None,
+        steps: Mapping[str, JsonValue] | None = None,
     ) -> "Facts":
         taxonomy = taxonomy or Taxonomy()
         return cls(
@@ -113,6 +116,7 @@ class Facts:
             taxonomy=taxonomy,
             contact_groups=taxonomy.groups_of(document.contact_id),
             document_type_groups=taxonomy.groups_of(document.document_type_id),
+            steps=steps or {},
         )
 
 
@@ -208,6 +212,83 @@ def _condition(
             if definition is None:
                 return False
             return _field(condition, definition, facts)
+        case ConditionField.STEP:
+            assert condition.path is not None
+            return _step(op, step_value(facts.steps, condition.path), values)
+
+
+_MISSING = object()
+
+
+def step_value(steps: Mapping[str, JsonValue], path: str) -> JsonValue | object:
+    """The value at `path` (`<step>.<key>…`, a number for an item of a list) in what the steps
+    brought; `_MISSING` where there is none (null counts as none)."""
+    name, *keys = path.split(".")
+    if name not in steps:
+        return _MISSING
+    value: JsonValue = steps[name]
+    for key in keys:
+        if isinstance(value, dict) and key in value:
+            value = value[key]
+        elif isinstance(value, list) and key.isdigit() and int(key) < len(value):
+            value = value[int(key)]
+        else:
+            return _MISSING
+    return _MISSING if value is None else value
+
+
+def _step(op: Operator, value: JsonValue | object, wanted: list[JsonValue]) -> bool:
+    """A condition on what a step brought: texts compare without case, numbers as numbers
+    (`1` is `1.0`, `"2"` is not), `gt` and `lt` numbers or dates; `contains` a text in a
+    text, or an item of a list."""
+    match op:
+        case Operator.PRESENT:
+            return value is not _MISSING
+        case Operator.MISSING:
+            return value is _MISSING
+    if value is _MISSING:
+        return False
+    match op:
+        case Operator.IS | Operator.IN:
+            return any(_same(value, item) for item in wanted)
+        case Operator.CONTAINS:
+            target = wanted[0]
+            if isinstance(value, str):
+                return isinstance(target, str) and target.casefold() in value.casefold()
+            return isinstance(value, list) and any(_same(item, target) for item in value)
+        case Operator.GT | Operator.LT:
+            order = _order(value, wanted[0])
+            if order is None:
+                return False
+            return order > 0 if op is Operator.GT else order < 0
+    return False
+
+
+def _same(value: object, wanted: JsonValue) -> bool:
+    if isinstance(value, bool) or isinstance(wanted, bool):
+        return value is wanted
+    if isinstance(value, int | float) and isinstance(wanted, int | float):
+        return Decimal(str(value)) == Decimal(str(wanted))
+    if isinstance(value, str) and isinstance(wanted, str):
+        return value.casefold() == wanted.casefold()
+    return False
+
+
+def _order(value: object, wanted: JsonValue) -> int | None:
+    """-1, 0 or 1 as `value` comes before, with or after `wanted`, both numbers or both dates;
+    None if they do not compare."""
+    if isinstance(wanted, int | float) and not isinstance(wanted, bool):
+        if isinstance(value, int | float) and not isinstance(value, bool):
+            current, given = Decimal(str(value)), Decimal(str(wanted))
+            return (current > given) - (current < given)
+        return None
+    if isinstance(wanted, str) and isinstance(value, str):
+        try:
+            day, other = date.fromisoformat(value[:10]), date.fromisoformat(wanted)
+        except ValueError:
+            return None
+        return (day > other) - (day < other)
+    return None
 
 
 def _reference(op: Operator, current: str | None, values: list[JsonValue]) -> bool:

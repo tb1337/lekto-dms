@@ -563,12 +563,15 @@ def _node_run(row: Row[Any]) -> NodeRun:
 
 
 def _node_json(state: NodeState) -> dict[str, Any]:
-    return {
+    data = {
         "status": state.status.value,
         "outcome": None if state.outcome is None else state.outcome.value,
         "started_at": _iso(state.started_at),
         "finished_at": _iso(state.finished_at),
     }
+    if state.deadline is not None:
+        data["deadline"] = _iso(state.deadline)
+    return data
 
 
 def _node_state(data: dict[str, Any]) -> NodeState:
@@ -578,6 +581,7 @@ def _node_state(data: dict[str, Any]) -> NodeState:
         outcome=None if outcome is None else Outcome(outcome),
         started_at=_from_iso(data.get("started_at")),
         finished_at=_from_iso(data.get("finished_at")),
+        deadline=_from_iso(data.get("deadline")),
     )
 
 

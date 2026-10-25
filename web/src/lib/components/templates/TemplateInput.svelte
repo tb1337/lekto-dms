@@ -8,7 +8,7 @@
 	import { latest } from '#lib/latest.ts';
 	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { usableFields } from '#lib/templates/values.ts';
+	import { usableFields, type TemplatePurpose } from '#lib/templates/values.ts';
 
 	// A template (Liquid) of a rule or a title pattern in a small field: coloured, with completion
 	// after `{{`, `{%` and `|`, red with the reason when the server finds it invalid, and a button
@@ -24,7 +24,9 @@
 		extraFields = [],
 		fields: given = undefined,
 		invalid = false,
-		maxlength = 500
+		maxlength = 500,
+		purpose = 'rule',
+		steps = []
 	}: {
 		id: string;
 		value?: string;
@@ -36,6 +38,10 @@
 		fields?: readonly FieldDefinition[];
 		invalid?: boolean;
 		maxlength?: number;
+		/** A webhook's body: more values, rendered as it is, and it has to make JSON. */
+		purpose?: TemplatePurpose;
+		/** A rule's step: the names of the steps before it that ask (`steps.<name>`). */
+		steps?: readonly string[];
 	} = $props();
 
 	let loaded = $state<FieldDefinition[]>([]);
@@ -79,7 +85,9 @@
 		}
 		const timer = setTimeout(() => {
 			void unwrap(
-				api.POST('/api/v1/templates/preview', { body: { template, document_type_id: kind } })
+				api.POST('/api/v1/templates/preview', {
+					body: { template, document_type_id: kind, purpose }
+				})
 			).then(
 				(found) => {
 					if (current()) error = found.error ?? null;
@@ -103,6 +111,8 @@
 			fields={usable}
 			invalid={invalid || error !== null}
 			{maxlength}
+			{purpose}
+			{steps}
 			class="min-w-0 flex-1"
 		/>
 		<Button
@@ -128,5 +138,7 @@
 	{documentType}
 	fields={usable}
 	{maxlength}
+	{purpose}
+	{steps}
 	onapply={(next) => (value = next)}
 />

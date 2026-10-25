@@ -17,10 +17,12 @@ from lekto.adapters.inbound.rest import (
     automation,
     classifier,
     documents,
+    external,
     health,
     jobs,
     lenses,
     master_data,
+    outgoing,
     pipeline,
     problems,
     rules,
@@ -31,9 +33,11 @@ from lekto.adapters.inbound.rest import (
     webhooks,
 )
 from lekto.adapters.inbound.rest.auth import (
+    FILE_SIGNATURE,
     SECURITY,
     SECURITY_SCHEMES,
     SESSION_ONLY,
+    TASK_TOKEN,
     authenticate,
     session_principal,
 )
@@ -42,9 +46,11 @@ from lekto.adapters.inbound.rest.events import EventHub, dispatch_forever
 from lekto.adapters.inbound.rest.middleware import LimitRequestBody, NoStore
 from lekto.adapters.inbound.rest.paths import HEALTH_PATH, MCP_PATH, PREFIX
 from lekto.adapters.inbound.rest.schemas.events import EventMessage
+from lekto.adapters.inbound.rest.schemas.external import TaskAnswer
 from lekto.adapters.inbound.rest.ui import ui_routes
 from lekto.core.domain.identifiers import catalog as identifier_kinds
 from lekto.core.domain.reasons import catalog as reasons_catalog
+from lekto.core.services.tasks.desk import CALLBACK_PATH
 
 __all__ = ["PREFIX", "create_app"]
 
@@ -55,8 +61,9 @@ Errors are problem details (RFC 9457, `application/problem+json`).
 
 Authentication: a session cookie from `POST /auth/login` (web UI; changing requests also send
 the header `X-CSRF-Token`) or a personal API token as `Authorization: Bearer lekto_…`. Every
-endpoint needs one of them (401 without), except health and the sign-in endpoints: `POST
-/auth/login` and, below `/auth/oidc`, information, start and callback. A `read` token may only
+endpoint needs one of them (401 without), except health, the sign-in endpoints (`POST
+/auth/login` and, below `/auth/oidc`, information, start and callback) and the answer to a task
+(`/external/tasks/{{id}}/result`, with the task's own token). A `read` token may only
 read (403). The own sign-in (password, sessions, TOTP, API tokens, provider links) and
 creating users or resetting their sign-in need a session; a token gets 403 there. Documents
 and spaces the caller may not see are "not found" (404), the same as ones that do not exist.
@@ -132,8 +139,12 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
     app.add_middleware(
         LimitRequestBody,
         limit=context.max_request_size,
-        # The uploads have their own limits.
-        exempt={("POST", f"{PREFIX}/documents"), ("PUT", master_data.LOGO_PATH)},
+        # The uploads and the answers to tasks have their own limits.
+        exempt={
+            ("POST", f"{PREFIX}/documents"),
+            ("PUT", master_data.LOGO_PATH),
+            ("POST", CALLBACK_PATH),
+        },
     )
     app.add_middleware(
         NoStore,
@@ -158,12 +169,14 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
         pipeline.router,
         streams.router,
         webhooks.router,
+        external.router,
         lenses.router,
         jobs.router,
         automation.router,
         health.router,
     ):
         app.include_router(router, prefix=PREFIX)
+    outgoing.describe(app)
     for mount in mounts:
         app.router.routes.extend(mount.routes)
     # After the API: its paths never reach the UI.
@@ -174,8 +187,11 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
 
     def openapi() -> dict[str, object]:
         schema = original_openapi()
+        outgoing.delivered(schema)
         components = schema.setdefault("components", {}).setdefault("schemas", {})
         components.setdefault("EventMessage", EventMessage.model_json_schema())
+        # Read by the route itself (an invalid answer uses the token up); described here.
+        components.setdefault("TaskAnswer", TaskAnswer.model_json_schema())
         problem = problems.Problem.model_json_schema(ref_template="#/components/schemas/{model}")
         for name, definition in problem.pop("$defs", {}).items():  # the spaces deleting a user
             components.setdefault(name, definition)
@@ -208,7 +224,9 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
                         responses["413"] = problems.problem_responses(413)[413]
                     # A `read` token or a missing CSRF header is refused on every change; a
                     # token wherever a session is needed.
-                    refusable = security == SESSION_ONLY or (security and method != "GET")
+                    refusable = security == SESSION_ONLY or (
+                        security == SECURITY and method != "GET"
+                    )
                     if refusable and "403" not in responses:
                         responses["403"] = problems.problem_responses(403)[403]
         return schema
@@ -218,8 +236,13 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
 
 
 def security_of(route: APIRoute) -> list[dict[str, list[str]]]:
-    """From the route's dependencies: public (none), session only, or session or token."""
+    """From the route's dependencies: public (none), session only, session or token, or a
+    task's token."""
     calls = set(_calls(route.dependant))
+    if external.task_token in calls:
+        return TASK_TOKEN
+    if external.file_link in calls:
+        return FILE_SIGNATURE
     if session_principal in calls:
         return SESSION_ONLY
     if authenticate in calls:

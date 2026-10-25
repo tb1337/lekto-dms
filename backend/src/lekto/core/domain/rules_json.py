@@ -8,26 +8,30 @@ from collections.abc import Mapping
 from enum import StrEnum
 
 from lekto.core.domain.errors import ValidationError
-from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId
+from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId, WebhookId
 from lekto.core.domain.json_value import JsonObject, JsonValue, require_object, require_uuid
 from lekto.core.domain.rules import (
     DEFAULT_PRIORITY,
     Action,
     AddTags,
+    AskWebhook,
     Condition,
     ConditionField,
     ForceReview,
     Group,
     GroupMode,
+    Missing,
     Operator,
     RemoveTags,
     RuleDefinition,
+    SendWebhook,
     SetContact,
     SetDocumentType,
     SetField,
     SetSpace,
     SetTitle,
     SetTopic,
+    StepCondition,
     Trigger,
 )
 
@@ -58,6 +62,8 @@ def condition_to_json(condition: Condition) -> JsonObject:
     data: JsonObject = {"field": condition.field.value, "op": condition.op.value}
     if condition.field_id is not None:
         data["field_id"] = str(condition.field_id)
+    if condition.path is not None:
+        data["path"] = condition.path
     if condition.value is not None:
         data["value"] = condition.value
     if condition.case_sensitive:
@@ -83,6 +89,18 @@ def action_to_json(action: Action) -> JsonObject:
             return {"type": action.type, "field_id": str(field), "value": value}
         case ForceReview(reason=reason):
             return {"type": action.type, "reason": reason}
+        case SendWebhook(webhook_id=webhook):
+            return {"type": action.type, "webhook_id": str(webhook)}
+        case AskWebhook():
+            return {
+                "type": action.type,
+                "name": action.name,
+                "webhook_id": str(action.webhook_id),
+                "timeout_seconds": action.timeout_seconds,
+                "missing": action.missing.value,
+            }
+        case StepCondition(conditions=group):
+            return {"type": action.type, "conditions": group_to_json(group)}
 
 
 def definition_from_json(data: JsonValue) -> RuleDefinition:
@@ -140,8 +158,11 @@ def group_from_json(data: JsonValue, where: str = "conditions") -> Group:
 
 def condition_from_json(data: JsonValue, where: str = "condition") -> Condition:
     object_ = require_object(data, where)
-    _only(object_, {"field", "op", "value", "field_id", "case_sensitive"}, where)
+    _only(object_, {"field", "op", "value", "field_id", "case_sensitive", "path"}, where)
     field_id = object_.get("field_id")
+    path = object_.get("path")
+    if path is not None and not isinstance(path, str):
+        raise ValidationError(f"{where}.path: expected text")
     case_sensitive = object_.get("case_sensitive", False)
     if not isinstance(case_sensitive, bool):
         raise ValidationError(f"{where}.case_sensitive: expected true or false")
@@ -152,6 +173,7 @@ def condition_from_json(data: JsonValue, where: str = "condition") -> Condition:
             value=object_.get("value"),
             field_id=None if field_id is None else FieldId(require_uuid(field_id, "field_id")),
             case_sensitive=case_sensitive,
+            path=path,
         )
     except ValidationError as error:
         raise ValidationError(f"{where}: {error}") from None
@@ -200,6 +222,26 @@ def action_from_json(data: JsonValue, where: str = "action") -> Action:
                 if not isinstance(reason, str):
                     raise ValidationError("reason: expected text")
                 return ForceReview(reason)
+            case "send_webhook":
+                _only(object_, {"type", "webhook_id"}, where)
+                return SendWebhook(WebhookId(require_uuid(object_.get("webhook_id"), "webhook_id")))
+            case "ask_webhook":
+                _only(object_, {"type", "name", "webhook_id", "timeout_seconds", "missing"}, where)
+                name = object_.get("name")
+                if not isinstance(name, str):
+                    raise ValidationError("name: expected text")
+                timeout = object_.get("timeout_seconds", AskWebhook.timeout_seconds)
+                if isinstance(timeout, bool) or not isinstance(timeout, int):
+                    raise ValidationError("timeout_seconds: expected a whole number")
+                return AskWebhook(
+                    name=name,
+                    webhook_id=WebhookId(require_uuid(object_.get("webhook_id"), "webhook_id")),
+                    timeout_seconds=timeout,
+                    missing=_enum(Missing, object_.get("missing", Missing.RED.value), "missing"),
+                )
+            case "condition":
+                _only(object_, {"type", "conditions"}, where)
+                return StepCondition(group_from_json(object_.get("conditions"), "conditions"))
     except ValidationError as error:
         raise ValidationError(f"{where}: {error}") from None
     raise ValidationError(f"{where}.type: unknown action {kind!r}")

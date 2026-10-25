@@ -26,6 +26,7 @@ from uuid import UUID
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import (
     ConcurrencyError,
+    InvalidTransitionError,
     NotFoundError,
     PermissionDeniedError,
     ValidationError,
@@ -42,9 +43,16 @@ from lekto.core.domain.pipeline import (
     Lane,
     Node,
 )
-from lekto.core.domain.reasons import Reason, ReasonCode, because
+from lekto.core.domain.reasons import Reason, ReasonCode, because, reasons_to_json
 from lekto.core.domain.rule_planner import Effect, Mode, Note, NoteKind
-from lekto.core.domain.rules import Rule, RuleApplication, RuleScope, SetSpace, Trigger
+from lekto.core.domain.rules import (
+    Rule,
+    RuleApplication,
+    RuleDefinition,
+    RuleScope,
+    SetSpace,
+    Trigger,
+)
 from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.object_store import ObjectStore
@@ -57,17 +65,22 @@ from lekto.core.services._jobs import LEASE, JobRunner, lost
 from lekto.core.services.rules.changes import ArrivalStep, ChangeRules
 from lekto.core.services.rules.management import visible_rule
 from lekto.core.services.rules.running import (
+    SENDS,
+    SENDS_REFUSED,
     PatternBudget,
     Prepared,
     RuleRun,
+    Send,
     apply_plan,
     checked_rules,
+    deliverable,
     entry_beside,
     prepare,
     provenance,
+    queue_sends,
     reachable_rules,
-    run_rules,
 )
+from lekto.core.services.rules.steps import run_rules
 
 log = logging.getLogger(__name__)
 
@@ -93,9 +106,10 @@ class Outcome:
 
 @dataclass(frozen=True)
 class PreviewItem:
-    """A document the rule would change: the changes, and conflicts (not applied unless
-    accepted) and other actions that would not act; the outcome of applying it, and with
-    conflicts the outcome when they are accepted."""
+    """A document the rule would change or send about: the changes, and conflicts (not applied
+    unless accepted) and other actions that would not act; the outcome of applying it, and with
+    conflicts the outcome when they are accepted. `sends`: the requests it would send through
+    webhooks, `refused` why others would not go."""
 
     document: Document
     effects: tuple[Effect, ...]
@@ -103,6 +117,8 @@ class PreviewItem:
     notes: tuple[Note, ...]
     outcome: Outcome
     accepted: Outcome | None = None
+    sends: tuple[Send, ...] = ()
+    refused: tuple[Reason, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -113,6 +129,8 @@ class _Played:
     run: RuleRun
     problem: Reason | None
     chain: tuple[ArrivalStep, ...]
+    sends: tuple[Send, ...] = ()
+    refused: tuple[Reason, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -219,7 +237,7 @@ class RuleApplicationService:
         report = played.run.plan.reports[0]
         conflicts = tuple(note for note in report.notes if note.kind is NoteKind.CONFLICT)
         others = tuple(note for note in report.notes if note.kind is not NoteKind.CONFLICT)
-        if not (report.applied or conflicts):
+        if not (report.applied or conflicts or played.sends or played.refused):
             return None
         accepted: Outcome | None = None
         if conflicts:
@@ -228,7 +246,16 @@ class RuleApplicationService:
                 if current is not None:
                     other = await self._play(uow, user, rule, current, prepared, accept=True)
                     accepted = Outcome(current.space_id, () if other is None else other.chain)
-        return PreviewItem(shown, tuple(report.applied), conflicts, others, outcome, accepted)
+        return PreviewItem(
+            shown,
+            tuple(report.applied),
+            conflicts,
+            others,
+            outcome,
+            accepted,
+            played.sends,
+            played.refused,
+        )
 
     # --- applying --------------------------------------------------------------------------------
 
@@ -247,7 +274,7 @@ class RuleApplicationService:
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             rule = await _applicable_rule(uow, user, id)
-            await uow.rules.get_version(rule.id, version)
+            _not_asking((await uow.rules.get_version(rule.id, version)).definition)
             application = RuleApplication.create(
                 rule_id=rule.id,
                 rule_version=version,
@@ -389,7 +416,7 @@ class RuleApplicationService:
             accept=id in application.accept_conflicts,
             application=application.id,
         )
-        if played is None or not played.run.plan.effects:
+        if played is None or not (played.run.plan.effects or played.sends):
             application.record_unchanged()
             return
         if played.problem is not None:
@@ -416,7 +443,7 @@ class RuleApplicationService:
         run = await self._evaluate(uow, user, rule, document, prepared, accept=accept)
         if run is None:
             return None
-        if not run.plan.effects:
+        if not run.plan.effects and not run.sends:
             return _Played(run, None, ())
         now = self._clock.now()
         definitions = await field_definitions(uow)
@@ -424,6 +451,13 @@ class RuleApplicationService:
         problem = await apply_plan(uow, document, run.plan, definitions, now)
         if problem is not None:
             return _Played(run, problem, ())
+        sends, refused = await deliverable(uow, run.sends, document)
+        await queue_sends(uow, sends, document, now)
+        output = run.output()
+        if sends:
+            output[SENDS] = [send.to_json() for send in sends]
+        if refused:
+            output[SENDS_REFUSED] = reasons_to_json(refused)
         input: dict[str, JsonValue] = {
             TRIGGER: TRIGGER_APPLY,
             ACTOR: str(user.id),
@@ -437,7 +471,7 @@ class RuleApplicationService:
                 node=Node.APPLY_RULES,
                 model_version=RULES_APPLY,
                 input=input,
-                output=run.output(),
+                output=output,
                 version=self._version,
                 now=now,
             )
@@ -454,7 +488,7 @@ class RuleApplicationService:
                 by_person=False,
                 applier=user,
             )
-        return _Played(run, None, tuple(chain))
+        return _Played(run, None, tuple(chain), tuple(sends), tuple(refused))
 
     async def _evaluate(
         self,
@@ -490,12 +524,20 @@ async def _applicable_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
     rule = await visible_rule(uow, user, id)
     if rule.deleted_at is not None:
         raise NotFoundError("rule", id)
+    _not_asking(rule.definition)
     if rule.space_id is not None:
         space = await uow.spaces.find(rule.space_id)
         role = None if space is None else space_role(user, space)
         if role is None or not role.can_edit:
             raise PermissionDeniedError(because(ReasonCode.SPACE_RULE_APPLY))
     return rule
+
+
+def _not_asking(definition: RuleDefinition) -> None:
+    """A rule whose steps ask a webhook runs on arrival only (Tobi, 25.10.2026):
+    InvalidTransitionError."""
+    if definition.asks:
+        raise InvalidTransitionError(because(ReasonCode.RULE_ASKS_ON_ARRIVAL, rule=definition.name))
 
 
 async def _following(uow: UnitOfWork, rule: Rule) -> list[Rule]:

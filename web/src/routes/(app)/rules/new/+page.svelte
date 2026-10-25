@@ -5,7 +5,7 @@
 	import BackLink from '#lib/components/BackLink.svelte';
 	import RuleBuilder from '#lib/components/rules/RuleBuilder.svelte';
 	import { describeError } from '#lib/errors.ts';
-	import { loadLookup, spaceOptions, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { loadRuleLookup, spaceOptions, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { RuleForm } from '#lib/rules/form.svelte.ts';
 	import { newModel, toApi } from '#lib/rules/model.ts';
@@ -31,7 +31,7 @@
 	const targets = $derived(spaceOptions(lookup?.spaces ?? [], lookup?.users ?? [], session.user));
 
 	onMount(() => {
-		loadLookup().then(
+		loadRuleLookup().then(
 			(value) => (lookup = value),
 			(error) => (problem = describeError(error))
 		);

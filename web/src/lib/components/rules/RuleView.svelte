@@ -54,6 +54,9 @@
 							text={template.template}
 							class="rounded bg-muted px-1 py-0.5 text-[0.8125rem]"
 						/>
+					{:else if action.type === 'condition'}
+						{describeAction(action, lookup)}
+						{@render tree(action.conditions)}
 					{:else}
 						{describeAction(action, lookup)}
 					{/if}

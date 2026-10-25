@@ -23,15 +23,19 @@ from lekto.core.domain.classification import (
 )
 from lekto.core.domain.errors import InvalidTransitionError, NotFoundError, ValidationError
 from lekto.core.domain.events import (
+    DocumentConfirmed,
     DocumentDeleted,
     DocumentEvent,
     DocumentFiled,
+    DocumentMoved,
     DocumentReceived,
     DocumentUpdated,
     LaneChanged,
     NodeCompleted,
     NodeDeferred,
+    NodeDelegated,
     NodeStarted,
+    ReviewRequired,
 )
 from lekto.core.domain.fields import FieldDefinition, FieldValue, field_to_json
 from lekto.core.domain.ids import (
@@ -350,6 +354,37 @@ class Document:
         )
         self._touch(now)
 
+    def delegate_node(self, node: Node, run: int, deadline: datetime | None, now: datetime) -> None:
+        """The running node handed work to tasks: it waits for their answers without a worker
+        ("running externally") until `resume_node`. `deadline`: when the last of its open
+        tasks ends at the latest (None while they wait to be sent)."""
+        self._require_awaiting(node, run)
+        state = self.processing.nodes[node]
+        if state.status is not NodeStatus.RUNNING:
+            raise InvalidTransitionError(f"document {self.id}: node {node} is not running")
+        self.processing.nodes[node] = NodeState(
+            status=NodeStatus.DELEGATED, started_at=state.started_at, deadline=deadline
+        )
+        self._record(
+            NodeDelegated(
+                document_id=self.id, occurred_at=now, node=node, run=run, deadline=deadline
+            )
+        )
+        self._touch(now)
+
+    def resume_node(self, node: Node, run: int, now: datetime) -> bool:
+        """A task of `node` in `run` was answered, ended or may be sent now: a delegated node
+        is due again and runs anew with what its tasks brought. Returns whether it is due (a
+        job is to run it). In any other state the document is only touched, so a run of the
+        node that read its tasks before this change stores nothing (its version is stale) and
+        reads them again."""
+        self._touch(now)
+        processing = self.processing
+        if run != processing.run or processing.nodes[node].status is not NodeStatus.DELEGATED:
+            return False
+        processing.nodes[node] = NodeState()
+        return processing.status is ProcessingStatus.PROCESSING and node in processing.due()
+
     def record_result(
         self, node: Node, run: int, result: NodeResult, now: datetime
     ) -> tuple[Node, ...]:
@@ -395,7 +430,7 @@ class Document:
             processing.status = ProcessingStatus.REVIEW
             self._stopped(Lane.YELLOW, now)
             return ()
-        return tuple(following for following in due if node in following.requires)
+        return tuple(following for following in due if node in following.waits_for)
 
     def retry(self, now: datetime) -> tuple[Node, ...]:
         """Repeat the failed nodes; processing then continues with the nodes after them.
@@ -459,7 +494,7 @@ class Document:
             raise InvalidTransitionError(
                 because(ReasonCode.NOT_WAITING_FOR_CONFIRMATION, id=str(self.id))
             )
-        if running := processing.running():
+        if running := processing.running() + processing.delegated():
             # Its result would overwrite what the person decided; it ends soon.
             raise InvalidTransitionError(
                 because(ReasonCode.STILL_RUNNING, id=str(self.id), nodes=list(running))
@@ -492,6 +527,7 @@ class Document:
         self.space_confirmed_at = self.confirmed_at
         processing.decided = True
         self.new_at = None
+        self._record(DocumentConfirmed(document_id=self.id, occurred_at=now))
         return tuple(overruled)
 
     def settle(self, node: Node, now: datetime) -> None:
@@ -570,12 +606,14 @@ class Document:
             )
 
     def _reset_set(self, nodes: Iterable[Node]) -> frozenset[Node]:
-        """`nodes`, the nodes after them, and the nodes still running: what a new run repeats."""
+        """`nodes`, the nodes after them, and the nodes still running or delegated: what a new
+        run repeats."""
         chosen = set(nodes)
         return frozenset(
             chosen
             | {later for node in chosen for later in node.descendants}
             | set(self.processing.running())
+            | set(self.processing.delegated())
         )
 
     def _reset(self, nodes: Iterable[Node], now: datetime) -> tuple[Node, ...]:
@@ -700,10 +738,18 @@ class Document:
         self.space_confirmed_at = require_utc(now, "space_confirmed_at")
         self._touch(now)
 
-    def move_to(self, space_id: SpaceId, now: datetime, *, by_person: bool = False) -> None:
+    def move_to(
+        self,
+        space_id: SpaceId,
+        now: datetime,
+        *,
+        by_person: bool = False,
+        handed_over: bool = False,
+    ) -> None:
         """File the document into another space. Permissions are checked by the caller.
         `by_person`: a person moved or handed it over, which decides its space; a move of the
-        pipeline (the judge, a rule) leaves the space undecided."""
+        pipeline (the judge, a rule) leaves the space undecided. `handed_over`: the space is
+        another user's personal one (`events.DocumentMoved`)."""
         if space_id == self.space_id:
             if by_person:
                 self.confirm_space(now)
@@ -711,6 +757,15 @@ class Document:
         self.space_id = space_id
         self.space_confirmed_at = require_utc(now, "space_confirmed_at") if by_person else None
         self._record(DocumentFiled(document_id=self.id, occurred_at=now, space_id=space_id))
+        self._record(
+            DocumentMoved(
+                document_id=self.id,
+                occurred_at=now,
+                space_id=space_id,
+                by_person=by_person,
+                handed_over=handed_over,
+            )
+        )
         self._touch(now)
 
     def delete(self, now: datetime, readers: Iterable[UserId] = ()) -> None:
@@ -743,6 +798,8 @@ class Document:
             return
         old, self.lane = self.lane, lane
         self._record(LaneChanged(document_id=self.id, occurred_at=now, old=old, new=lane))
+        if lane in (Lane.YELLOW, Lane.RED):
+            self._record(ReviewRequired(document_id=self.id, occurred_at=now, lane=lane))
 
     def _touch(self, now: datetime) -> None:
         self.updated_at = require_utc(now, "updated_at")

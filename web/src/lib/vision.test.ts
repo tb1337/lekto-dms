@@ -4,11 +4,11 @@ import type { GraphNode, Processing } from '#lib/pipeline.ts';
 import { adviceText, visionAvailable, type Reading } from './vision.ts';
 
 const GRAPH: GraphNode[] = [
-	{ node: 'receive', requires: [] },
-	{ node: 'ocr', requires: ['receive'] },
-	{ node: 'pages', requires: ['receive'] },
-	{ node: 'parse', requires: ['ocr'] },
-	{ node: 'file', requires: ['parse', 'pages'] }
+	{ node: 'receive', requires: [], waits_for: [] },
+	{ node: 'ocr', requires: ['receive'], waits_for: [] },
+	{ node: 'pages', requires: ['receive'], waits_for: [] },
+	{ node: 'parse', requires: ['ocr'], waits_for: [] },
+	{ node: 'file', requires: ['parse', 'pages'], waits_for: [] }
 ];
 const VISION = { model: 'claude-sonnet', endpoint: 'chat.example' };
 

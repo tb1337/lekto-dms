@@ -20,16 +20,16 @@ import { stepsOf } from './steps.ts';
 type LogEntry = components['schemas']['LogEntry'];
 
 const graph: GraphNode[] = [
-	{ node: 'receive', requires: [] },
-	{ node: 'ocr', requires: ['receive'] },
-	{ node: 'pages', requires: ['receive'] },
-	{ node: 'parse', requires: ['ocr'] },
-	{ node: 'signal_llm', requires: ['parse'] },
-	{ node: 'signal_classifier', requires: ['parse'] },
-	{ node: 'judge', requires: ['signal_llm', 'signal_classifier'] },
-	{ node: 'fields', requires: ['judge'] },
-	{ node: 'apply_rules', requires: ['fields'] },
-	{ node: 'file', requires: ['apply_rules'] }
+	{ node: 'receive', requires: [], waits_for: [] },
+	{ node: 'ocr', requires: ['receive'], waits_for: [] },
+	{ node: 'pages', requires: ['receive'], waits_for: [] },
+	{ node: 'parse', requires: ['ocr'], waits_for: [] },
+	{ node: 'signal_llm', requires: ['parse'], waits_for: [] },
+	{ node: 'signal_classifier', requires: ['parse'], waits_for: [] },
+	{ node: 'judge', requires: ['signal_llm', 'signal_classifier'], waits_for: [] },
+	{ node: 'fields', requires: ['judge'], waits_for: [] },
+	{ node: 'apply_rules', requires: ['fields'], waits_for: [] },
+	{ node: 'file', requires: ['apply_rules'], waits_for: [] }
 ];
 
 const base = Date.UTC(2026, 9, 23, 9, 0, 0);

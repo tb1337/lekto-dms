@@ -18,11 +18,13 @@ export type Scope = Schemas['RuleScope'];
 export type FieldType = Schemas['FieldType'];
 export type Money = Schemas['MoneyValue'];
 export type Period = Schemas['PeriodValue'];
-export type Value = string | boolean | Money | Period | string[] | null;
+export type Value =
+	string | boolean | number | Money | Period | string[] | (string | number | boolean)[] | null;
 export type ApiCondition = Schemas['ConditionSchema'];
 export type ApiGroup = Schemas['AllGroup-Output'] | Schemas['AnyGroup-Output'];
 export type ApiAction = Schemas['RuleOut']['actions'][number];
 export type ActionType = ApiAction['type'];
+export type Missing = Schemas['Missing'];
 export type ApiDefinition = Pick<
 	Schemas['RuleOut'],
 	'name' | 'priority' | 'triggers' | 'conditions' | 'actions'
@@ -36,6 +38,8 @@ export interface ConditionNode {
 	value: Value;
 	fieldId: string | null;
 	caseSensitive: boolean;
+	/** A condition on what a step brought: `<step>.<key>…`; null for other fields. */
+	path: string | null;
 }
 
 export interface GroupNode {
@@ -47,7 +51,14 @@ export interface GroupNode {
 }
 
 export type RuleNode = ConditionNode | GroupNode;
-export type ActionNode = ApiAction & { key: string };
+/** A step that checks: its conditions as the builder edits them. */
+export interface ConditionStepNode {
+	key: string;
+	type: 'condition';
+	conditions: GroupNode;
+}
+export type ActionNode =
+	(Exclude<ApiAction, { type: 'condition' }> & { key: string }) | ConditionStepNode;
 
 export interface RuleModel {
 	name: string;
@@ -79,6 +90,7 @@ export const LIMITS = {
 export const DEFAULT_PRIORITY = 100;
 export const TRIGGERS: readonly Trigger[] = ['ingest', 'change'];
 export const CHANNELS: readonly Channel[] = ['web', 'api', 'migration'];
+/** The fields of a rule's head; a condition step has `step` too. */
 export const CONDITION_FIELDS: readonly ConditionField[] = [
 	'contact',
 	'contact_group',
@@ -91,6 +103,7 @@ export const CONDITION_FIELDS: readonly ConditionField[] = [
 	'document_date',
 	'field'
 ];
+export const STEP_CONDITION_FIELDS: readonly ConditionField[] = ['step', ...CONDITION_FIELDS];
 
 const ALL_OPERATORS: readonly Operator[] = [
 	'is',
@@ -130,7 +143,8 @@ export const CONDITION_FIELD_OPERATORS: Record<
 	tags: TAGS,
 	channel: ['is', 'in'],
 	text: ['contains', 'matches'],
-	document_date: ORDERED
+	document_date: ORDERED,
+	step: ['is', 'in', 'contains', 'gt', 'lt', 'present', 'missing']
 };
 
 export const FIELD_TYPE_OPERATORS: Record<FieldType, readonly Operator[]> = {
@@ -153,8 +167,18 @@ export const ACTION_TYPES: readonly ActionType[] = [
 	'add_tags',
 	'remove_tags',
 	'set_field',
-	'force_review'
+	'force_review',
+	'send_webhook',
+	'ask_webhook',
+	'condition'
 ];
+
+/** A step's name, as the API takes it (`STEP_NAME`). */
+export const STEP_NAME = /^[a-z][a-z0-9_]{0,49}$/;
+/** What a step condition looks at: a step's name, then keys of its answer. */
+export const STEP_PATH = /^[a-z][a-z0-9_]{0,49}(\.[A-Za-z0-9_-]{1,100})*$/;
+export const MISSING: readonly Missing[] = ['red', 'yellow', 'continue'];
+export const TIMEOUT = { min: 30, max: 86_400, default: 300 } as const;
 
 let counter = 0;
 const nextKey = (): string => `n${++counter}`;
@@ -167,8 +191,15 @@ export function fromApi(definition: ApiDefinition): RuleModel {
 		priority: definition.priority,
 		triggers: [...definition.triggers],
 		conditions: groupFromApi(definition.conditions),
-		actions: definition.actions.map((action) => ({ ...clone(action), key: nextKey() }))
+		actions: definition.actions.map(actionFromApi)
 	};
+}
+
+function actionFromApi(action: ApiAction): ActionNode {
+	if (action.type === 'condition') {
+		return { key: nextKey(), type: 'condition', conditions: groupFromApi(action.conditions) };
+	}
+	return { ...clone(action), key: nextKey() };
 }
 
 function groupFromApi(group: ApiGroup): GroupNode {
@@ -191,7 +222,8 @@ function conditionFromApi(condition: ApiCondition): ConditionNode {
 		op: condition.op,
 		value: clone(condition.value ?? null),
 		fieldId: condition.field_id ?? null,
-		caseSensitive: condition.case_sensitive ?? false
+		caseSensitive: condition.case_sensitive ?? false,
+		path: condition.path ?? null
 	};
 }
 
@@ -221,11 +253,14 @@ function conditionToApi(condition: ConditionNode): ApiCondition {
 		op: condition.op,
 		value: clone(condition.value),
 		field_id: condition.fieldId,
-		case_sensitive: condition.caseSensitive
+		case_sensitive: condition.caseSensitive,
+		...(condition.path === null ? {} : { path: condition.path })
 	};
 }
 
 function actionToApi(node: ActionNode): ApiAction {
+	if (node.type === 'condition')
+		return { type: 'condition', conditions: groupToApi(node.conditions) };
 	const action = clone(node) as Partial<ActionNode>;
 	delete action.key;
 	const plain = action as ApiAction;
@@ -266,7 +301,8 @@ export function newCondition(field: ConditionField = 'contact'): ConditionNode {
 		op,
 		value: defaultValue(field, op, null),
 		fieldId: null,
-		caseSensitive: false
+		caseSensitive: false,
+		path: field === 'step' ? '' : null
 	};
 }
 
@@ -290,6 +326,19 @@ export function newAction(type: ActionType): ActionNode {
 			return { key, type, field_id: '', value: '' };
 		case 'force_review':
 			return { key, type, reason: '' };
+		case 'send_webhook':
+			return { key, type, webhook_id: '' };
+		case 'ask_webhook':
+			return {
+				key,
+				type,
+				name: '',
+				webhook_id: '',
+				timeout_seconds: TIMEOUT.default,
+				missing: 'red'
+			};
+		case 'condition':
+			return { key, type, conditions: newGroup('all', [newCondition('step')]) };
 	}
 }
 
@@ -336,6 +385,7 @@ export function changeConditionField(
 	condition.field = field;
 	condition.fieldId = null;
 	condition.caseSensitive = false;
+	condition.path = field === 'step' ? '' : null;
 	condition.op = operatorsFor(condition, fields)[0];
 	condition.value = defaultValue(field, condition.op, null);
 }
@@ -392,6 +442,24 @@ export function conditionsOf(group: GroupNode): ConditionNode[] {
 	return group.items.flatMap((item) => (item.kind === 'group' ? conditionsOf(item) : [item]));
 }
 
+/** The conditions of the rule's head and of its condition steps. */
+export function allConditions(model: RuleModel): ConditionNode[] {
+	return [
+		...conditionsOf(model.conditions),
+		...model.actions.flatMap((action) =>
+			action.type === 'condition' ? conditionsOf(action.conditions) : []
+		)
+	];
+}
+
+/** The names of the steps that ask before the step at `index`: what its conditions and
+ * templates may look at (`steps.<name>`). */
+export function asksBefore(model: RuleModel, index: number): string[] {
+	return model.actions
+		.slice(0, index)
+		.flatMap((action) => (action.type === 'ask_webhook' && action.name ? [action.name] : []));
+}
+
 /** 1 for a group without subgroups. */
 export function depthOf(group: GroupNode): number {
 	return 1 + Math.max(0, ...group.items.map((item) => (item.kind === 'group' ? depthOf(item) : 0)));
@@ -409,12 +477,17 @@ export function levelOf(root: GroupNode, key: string, level = 1): number {
 }
 
 export function canAddCondition(model: RuleModel): boolean {
-	return conditionsOf(model.conditions).length < LIMITS.conditions;
+	return allConditions(model).length < LIMITS.conditions;
 }
 
 /** A subgroup in `group` stays within the depth limit and brings a condition with it. */
 export function canAddGroup(model: RuleModel, group: GroupNode): boolean {
-	return canAddCondition(model) && levelOf(model.conditions, group.key) < LIMITS.depth;
+	const roots = [
+		model.conditions,
+		...model.actions.flatMap((action) => (action.type === 'condition' ? [action.conditions] : []))
+	];
+	const level = Math.max(...roots.map((root) => levelOf(root, group.key)));
+	return canAddCondition(model) && level < LIMITS.depth;
 }
 
 /** Move the item at `index` one place up (-1) or down (+1). */
@@ -424,11 +497,14 @@ export function move<T>(items: T[], index: number, by: -1 | 1): void {
 	[items[index], items[target]] = [items[target], items[index]];
 }
 
-/** The field an action sets alone; two such actions contradict each other. */
-export function singleKey(action: ApiAction): string | null {
+/** The field an action sets alone; two such actions contradict each other (a webhook twice
+ * would send twice). */
+export function singleKey(action: ApiAction | ActionNode): string | null {
 	if (action.type === 'set_field') return `field:${action.field_id}`;
+	if (action.type === 'send_webhook') return `send_webhook:${action.webhook_id}`;
+	if (action.type === 'ask_webhook') return `step:${action.name}`;
 	if (action.type === 'add_tags' || action.type === 'remove_tags') return null;
-	if (action.type === 'force_review') return null;
+	if (action.type === 'force_review' || action.type === 'condition') return null;
 	return action.type;
 }
 
@@ -462,6 +538,11 @@ export function referencedIds(node: ConditionNode | ActionNode): string[] {
 			return [...action.tag_ids];
 		case 'set_field':
 			return [action.field_id];
+		case 'send_webhook':
+		case 'ask_webhook':
+			return [action.webhook_id];
+		case 'condition':
+			return conditionsOf(action.conditions).flatMap(referencedIds);
 		default:
 			return [];
 	}
@@ -490,7 +571,12 @@ export type ProblemCode =
 	| 'depth'
 	| 'actions_none'
 	| 'actions_many'
-	| 'twice';
+	| 'twice'
+	| 'triggers_ask'
+	| 'step_name'
+	| 'timeout'
+	| 'path'
+	| 'step_unknown';
 
 export interface Problem {
 	code: ProblemCode;
@@ -513,48 +599,71 @@ export function validate(model: RuleModel, fields: readonly FieldInfo[]): Record
 		problems.priority = { code: 'priority' };
 	}
 	if (model.triggers.length === 0) problems.triggers = { code: 'triggers' };
-	checkGroup(model.conditions, problems, fields);
+	const asks = model.actions.some((action) => action.type === 'ask_webhook');
+	if (asks && (model.triggers.length !== 1 || model.triggers[0] !== 'ingest')) {
+		problems.triggers = { code: 'triggers_ask' };
+	}
+	checkGroup(model.conditions, problems, fields, []);
 	if (depthOf(model.conditions) > LIMITS.depth) {
 		problems[model.conditions.key] = { code: 'depth', params: { max: LIMITS.depth } };
 	}
-	if (conditionsOf(model.conditions).length > LIMITS.conditions) {
+	if (allConditions(model).length > LIMITS.conditions) {
 		problems[model.conditions.key] = {
 			code: 'conditions_many',
 			params: { max: LIMITS.conditions }
 		};
 	}
-	if (model.actions.length === 0) problems.actions = { code: 'actions_none' };
+	if (model.actions.every((action) => action.type === 'condition')) {
+		problems.actions = { code: 'actions_none' };
+	}
 	if (model.actions.length > LIMITS.actions) {
 		problems.actions = { code: 'actions_many', params: { max: LIMITS.actions } };
 	}
 	const seen = new Set<string>();
-	for (const action of model.actions) {
+	model.actions.forEach((action, index) => {
+		if (action.type === 'condition') {
+			checkGroup(action.conditions, problems, fields, asksBefore(model, index));
+			if (depthOf(action.conditions) > LIMITS.depth) {
+				problems[action.key] = { code: 'depth', params: { max: LIMITS.depth } };
+			}
+		}
 		const problem = checkAction(action, fields);
 		if (problem) problems[action.key] = problem;
 		const single = singleKey(action);
 		if (single !== null && seen.has(single)) problems[action.key] ??= { code: 'twice' };
 		if (single !== null) seen.add(single);
-	}
+	});
 	return problems;
 }
 
+/** `steps`: the steps that ask before (a condition step's); the head has none. */
 function checkGroup(
 	group: GroupNode,
 	problems: Record<string, Problem>,
-	fields: readonly FieldInfo[]
+	fields: readonly FieldInfo[],
+	steps: readonly string[]
 ): void {
 	if (group.items.length === 0) problems[group.key] = { code: 'group_empty' };
 	for (const item of group.items) {
 		if (item.kind === 'group') {
-			checkGroup(item, problems, fields);
+			checkGroup(item, problems, fields, steps);
 		} else {
-			const problem = checkCondition(item, fields);
+			const problem = checkCondition(item, fields, steps);
 			if (problem) problems[item.key] = problem;
 		}
 	}
 }
 
-function checkCondition(condition: ConditionNode, fields: readonly FieldInfo[]): Problem | null {
+function checkCondition(
+	condition: ConditionNode,
+	fields: readonly FieldInfo[],
+	steps: readonly string[] = []
+): Problem | null {
+	if (condition.field === 'step') {
+		const path = condition.path ?? '';
+		if (!STEP_PATH.test(path)) return { code: 'path' };
+		if (!steps.includes(path.split('.')[0])) return { code: 'step_unknown' };
+	}
 	if (condition.field === 'field' && !condition.fieldId) return { code: 'field' };
 	const field = fields.find((entry) => entry.id === condition.fieldId) ?? null;
 	if (field && !FIELD_TYPE_OPERATORS[field.data_type].includes(condition.op)) {
@@ -578,6 +687,7 @@ function checkValue(
 	value: Value
 ): Problem | null {
 	const textual = condition.op === 'contains' || condition.op === 'matches';
+	if (condition.field === 'step') return checkStepValue(condition.op, value);
 	if (condition.field === 'text' || (condition.field === 'field' && textual)) {
 		return checkText(value, condition.op === 'matches' ? LIMITS.pattern : LIMITS.text);
 	}
@@ -600,6 +710,17 @@ function checkValue(
 		default:
 			return null;
 	}
+}
+
+/** What a step condition compares with: a text, a number or true/false; `gt` and `lt` a
+ * number or a date; `contains` a text. */
+function checkStepValue(op: Operator, value: Value): Problem | null {
+	if (op === 'gt' || op === 'lt') {
+		return typeof value === 'number' || isDate(value) ? null : { code: 'number' };
+	}
+	if (op === 'contains') return checkText(value, LIMITS.text);
+	if (typeof value === 'boolean' || typeof value === 'number') return null;
+	return checkText(value, LIMITS.text);
 }
 
 function checkText(value: Value, max: number): Problem | null {
@@ -670,5 +791,17 @@ function checkAction(action: ActionNode, fields: readonly FieldInfo[]): Problem 
 		}
 		case 'force_review':
 			return checkText(action.reason, LIMITS.text);
+		case 'send_webhook':
+			return action.webhook_id ? null : { code: 'choose' };
+		case 'ask_webhook':
+			if (!STEP_NAME.test(action.name)) return { code: 'step_name' };
+			if (!action.webhook_id) return { code: 'choose' };
+			return Number.isInteger(action.timeout_seconds) &&
+				action.timeout_seconds >= TIMEOUT.min &&
+				action.timeout_seconds <= TIMEOUT.max
+				? null
+				: { code: 'timeout', params: { min: TIMEOUT.min / 60, max: TIMEOUT.max / 3600 } };
+		case 'condition':
+			return null;
 	}
 }

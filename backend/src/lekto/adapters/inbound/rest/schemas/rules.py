@@ -27,10 +27,12 @@ from lekto.core.domain.rules import (
     MAX_DEPTH,
     MAX_LIST,
     MAX_PRIORITY,
+    MAX_STEP_PATH,
     MAX_TEXT,
     MIN_PRIORITY,
     ApplicationStatus,
     ConditionField,
+    Missing,
     Operator,
     Rule,
     RuleApplication,
@@ -39,7 +41,9 @@ from lekto.core.domain.rules import (
     Trigger,
 )
 from lekto.core.domain.rules_json import definition_to_json
+from lekto.core.domain.tasks import DEFAULT_TIMEOUT, MAX_TIMEOUT, MIN_TIMEOUT
 from lekto.core.domain.validation import MAX_NAME
+from lekto.core.domain.webhooks import MAX_BODY_TEMPLATE
 from lekto.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
 from lekto.core.services.rules.changes import ArrivalStep
 from lekto.core.services.rules.retroactive import Outcome
@@ -57,7 +61,10 @@ class ConditionSchema(BaseModel):
     fields: `is`, `in`, `contains`, `matches`, `present`, `missing`; choice: `is`, `in`,
     `present`, `missing`; boolean: `is`, `present`, `missing`; period fields: `is`,
     `overlaps` (shares a day with the given period), `gt` (starts after the date), `lt` (ends
-    before the date), `present`, `missing`."""
+    before the date), `present`, `missing`; step (in a condition step only: what a step that
+    asks brought, at `path`): `is`, `in` (texts without case, numbers as numbers, true or
+    false), `contains` (a text in a text, an item of a list), `gt`, `lt` (a number or a date),
+    `present`, `missing`."""
 
     model_config = ConfigDict(
         extra="forbid",
@@ -76,15 +83,35 @@ class ConditionSchema(BaseModel):
 
     field: ConditionField
     op: Operator
-    value: str | bool | MoneyValue | PeriodValue | list[str] | None = Field(
+    value: (
+        str
+        | bool
+        | int
+        | float
+        | MoneyValue
+        | PeriodValue
+        | list[str]
+        | list[str | bool | int | float]
+        | None
+    ) = Field(
         default=None,
         description=(
             "None for `present` and `missing`, a list for `in`, otherwise one value: an id, a "
             "channel, a text or pattern, a date `YYYY-MM-DD` (also for `gt` and `lt` of a "
-            "period field), or a field value as in `fields` of a document."
+            "period field), a field value as in `fields` of a document, or (for `step`) a "
+            "text, a number or true/false."
         ),
     )
     field_id: UUID | None = Field(default=None, description="Only when `field` is `field`.")
+    path: str | None = Field(
+        default=None,
+        max_length=MAX_STEP_PATH,
+        examples=["accounting.paid"],
+        description=(
+            "Only when `field` is `step`: the name of a step before that asks, then keys of "
+            "its answer (a number for an item of a list), separated by dots."
+        ),
+    )
     case_sensitive: bool = Field(
         default=False, description="For `matches` only; other comparisons ignore case."
     )
@@ -207,6 +234,71 @@ class ForceReviewAction(BaseModel):
     )
 
 
+class SendWebhookAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["send_webhook"]
+    webhook_id: UUID = Field(
+        description=(
+            "A webhook of whoever saves the rule (someone else's is not found). It gets a "
+            "request of type `rule.send` with the rule's `id` and `name`, in the webhook's body "
+            "format: on arrival once the document is filed (a yellow one after it was "
+            "confirmed, a red one never), after a change once it is stored. Its owner must be "
+            "able to read the document: on arrival the document turns yellow otherwise (unless "
+            "a person decided already), else it is only reported."
+        )
+    )
+
+
+class AskWebhookAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["ask_webhook"]
+    name: str = Field(
+        min_length=1,
+        max_length=50,
+        examples=["accounting"],
+        description=(
+            "Small letters, digits and `_`, unique in the rule: the steps after it see the "
+            "answer as `steps.<name>`."
+        ),
+    )
+    webhook_id: UUID = Field(
+        description=(
+            "A webhook of whoever saves the rule (someone else's is not found). It gets a task "
+            "(`rule.ask`, with `task` and the headers `lekto-*`) and answers at "
+            "`/external/tasks/{id}/result`. Its owner must be able to read the document, "
+            "otherwise the document waits for a person (unless one decided already). Needs "
+            "`LEKTO_PUBLIC_URL`."
+        )
+    )
+    timeout_seconds: int = Field(
+        default=int(DEFAULT_TIMEOUT.total_seconds()),
+        ge=int(MIN_TIMEOUT.total_seconds()),
+        le=int(MAX_TIMEOUT.total_seconds()),
+        description="The time to answer, from sending (the request may wait for its webhook).",
+    )
+    missing: Missing = Field(
+        default=Missing.RED,
+        description=(
+            "Without an answer (none in time, an error, an invalid one): `red` fails the node "
+            "(no rule acts), `yellow` ends the rule here (its steps before count) and holds "
+            "the document for a person, `continue` goes on without `steps.<name>`. After a "
+            "person decided in the run, it is only reported."
+        ),
+    )
+
+
+class ConditionStepAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["condition"]
+    conditions: "AllGroup | AnyGroup" = Field(
+        description=(
+            "On the document as the rule's steps before left it, and on `step` (what a step "
+            "that asks brought). If they do not hold, the rule ends here; its steps before "
+            "count."
+        )
+    )
+
+
 ActionSchema = Annotated[
     SetSpaceAction
     | SetContactAction
@@ -216,7 +308,10 @@ ActionSchema = Annotated[
     | AddTagsAction
     | RemoveTagsAction
     | SetFieldAction
-    | ForceReviewAction,
+    | ForceReviewAction
+    | SendWebhookAction
+    | AskWebhookAction
+    | ConditionStepAction,
     Field(discriminator="type"),
 ]
 
@@ -256,12 +351,23 @@ class RuleDefinitionIn(BaseModel):
     triggers: list[Trigger] = Field(
         default_factory=lambda: list(Trigger),
         min_length=1,
-        description="`ingest`: when a document arrives; `change`: when a person changes it.",
+        description=(
+            "`ingest`: when a document arrives; `change`: when a person changes it. A rule "
+            "with a step that asks a webhook: `ingest` only."
+        ),
     )
     conditions: AllGroup | AnyGroup = Field(
         description=f"Nested at most {MAX_DEPTH} deep, at most {MAX_CONDITIONS} conditions."
     )
-    actions: list[ActionSchema] = Field(min_length=1, max_length=MAX_ACTIONS)
+    actions: list[ActionSchema] = Field(
+        min_length=1,
+        max_length=MAX_ACTIONS,
+        description=(
+            "The steps, in order: actions, steps that ask a webhook and condition steps. Each "
+            "rule works on its own copy of the document and sees what its own steps before set; "
+            "the actions of all rules are combined at the end."
+        ),
+    )
 
     def to_json(self) -> JsonValue:
         data: JsonValue = self.model_dump(mode="json", by_alias=True, exclude_defaults=True)
@@ -431,9 +537,21 @@ class TemplatePreviewIn(BaseModel):
         },
     )
 
-    template: str = Field(max_length=MAX_TEXT, description=TEMPLATE_DESCRIPTION)
+    template: str = Field(
+        max_length=MAX_BODY_TEMPLATE,
+        description=TEMPLATE_DESCRIPTION
+        + f" At most {MAX_TEXT} characters, a webhook's body {MAX_BODY_TEMPLATE}.",
+    )
     document_id: UUID | None = Field(
         default=None, description="A document the caller may read, to render the template with."
+    )
+    purpose: Literal["rule", "webhook"] = Field(
+        default="rule",
+        description=(
+            "`webhook`: the template of a webhook's body. It sees `event` (here a "
+            "`webhook.test`), `document_id`, `lane` and `link` too, is rendered as it is "
+            "(whitespace kept) and must make JSON."
+        ),
     )
     document_type_id: UUID | None = Field(
         default=None,
@@ -532,6 +650,14 @@ class ApplyPreviewItemOut(BaseModel):
     )
     accepted: ApplyOutcomeOut | None = Field(
         description="With its conflicts accepted (only for documents with conflicts)."
+    )
+    sends: list[UUID] = Field(
+        default_factory=list,
+        description="The webhooks applying would send a request through, about this document.",
+    )
+    sends_refused: list[ReasonOut] = Field(
+        default_factory=list,
+        description="Requests that would not go, and why (the owner may not read the document).",
     )
 
 

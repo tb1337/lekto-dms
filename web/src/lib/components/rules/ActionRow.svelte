@@ -12,27 +12,46 @@
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { ACTION_LABELS } from '#lib/rules/describe.ts';
-	import { defaultValue, type ActionNode } from '#lib/rules/model.ts';
+	import ConditionGroup from '#lib/components/rules/ConditionGroup.svelte';
+	import { Input } from '#lib/components/ui/input/index.ts';
+	import {
+		MISSING,
+		defaultValue,
+		type ActionNode,
+		type Missing,
+		type RuleModel
+	} from '#lib/rules/model.ts';
+	import { session } from '#lib/session.svelte.ts';
 	import { tagOptions } from '#lib/tags.ts';
 
-	// One action. `targets` are where the rule may file: the spaces whoever saves it edits, and
-	// other users' personal spaces (handing the document over). `onunreadable` says while the
-	// value's text cannot be read (see `ValueInput`).
+	// One step: an action, a step that asks a webhook, or a condition. `targets` are where the
+	// rule may file: the spaces whoever saves it edits, and other users' personal spaces
+	// (handing the document over). `onunreadable` says while the value's text cannot be read
+	// (see `ValueInput`). A condition step edits its conditions in `model` (the limits are the
+	// rule's), with `errors` by key; `steps` are the names of the steps before that ask.
 	let {
 		action,
 		lookup,
 		targets,
 		error,
+		model = null,
+		errors = {},
+		steps = [],
 		onremove,
 		onup,
 		ondown,
-		onunreadable
+		onunreadable,
+		onconditionunreadable
 	}: {
 		action: ActionNode;
 		lookup: Lookup;
 		targets: readonly { value: string; label: string }[];
 		error?: string;
+		model?: RuleModel | null;
+		errors?: Record<string, string>;
+		steps?: readonly string[];
 		onunreadable?: (unreadable: boolean) => void;
+		onconditionunreadable?: (key: string, unreadable: boolean) => void;
 		onremove: () => void;
 		onup?: () => void;
 		ondown?: () => void;
@@ -49,11 +68,25 @@
 			!targets.some((entry) => entry.value === action.space_id)
 	);
 
+	// A rule sends only through the webhooks of whoever saves it.
+	const webhooks = $derived(
+		(lookup.webhooks ?? [])
+			.filter((webhook) => webhook.owner_id === session.user?.id)
+			.map((webhook) => ({ value: webhook.id, label: webhook.name }))
+	);
+
 	const field = $derived(
 		action.type === 'set_field'
 			? (lookup.fields.find((entry) => entry.id === action.field_id) ?? null)
 			: null
 	);
+
+	const MISSING_LABELS: Record<Missing, () => string> = {
+		red: m.rule_missing_red,
+		yellow: m.rule_missing_yellow,
+		continue: m.rule_missing_continue
+	};
+	const missingOptions = MISSING.map((value) => ({ value, label: MISSING_LABELS[value]() }));
 </script>
 
 <div class="flex flex-col gap-2 rounded-xl border bg-background p-3" data-key={action.key}>
@@ -101,6 +134,7 @@
 					{label}
 					{invalid}
 					fields={lookup.fields}
+					{steps}
 					bind:value={action.template}
 				/>
 			{:else if action.type === 'add_tags' || action.type === 'remove_tags'}
@@ -133,6 +167,7 @@
 						{invalid}
 						template
 						fields={lookup.fields}
+						{steps}
 						id="value-{action.key}"
 						label={m.rule_condition_value()}
 						value={action.value}
@@ -148,8 +183,86 @@
 					label={m.rule_review_reason()}
 					{invalid}
 					fields={lookup.fields}
+					{steps}
 					bind:value={action.reason}
 				/>
+			{:else if action.type === 'ask_webhook'}
+				<div class="grid gap-3 sm:grid-cols-2">
+					<Field.Field>
+						<Field.Label for="ask-name-{action.key}">{m.rule_ask_name()}</Field.Label>
+						<Input
+							id="ask-name-{action.key}"
+							class="font-mono"
+							maxlength={50}
+							aria-invalid={invalid || undefined}
+							bind:value={action.name}
+						/>
+					</Field.Field>
+					<Field.Field>
+						<Field.Label for="ask-webhook-{action.key}">{m.rule_ask_webhook()}</Field.Label>
+						<Select
+							id="ask-webhook-{action.key}"
+							aria-invalid={(invalid && !action.webhook_id) || undefined}
+							bind:value={action.webhook_id}
+							options={withChoice(webhooks, action.webhook_id, m.rule_webhook_unknown())}
+							class="h-10"
+						/>
+					</Field.Field>
+					<Field.Field>
+						<Field.Label for="ask-timeout-{action.key}">{m.rule_ask_timeout()}</Field.Label>
+						<Input
+							id="ask-timeout-{action.key}"
+							type="number"
+							min={0.5}
+							max={1440}
+							step={0.5}
+							value={String(action.timeout_seconds / 60)}
+							oninput={(event) => {
+								if (action.type === 'ask_webhook') {
+									action.timeout_seconds = Math.round(Number(event.currentTarget.value) * 60);
+								}
+							}}
+						/>
+					</Field.Field>
+					<Field.Field>
+						<Field.Label for="ask-missing-{action.key}">{m.rule_ask_missing()}</Field.Label>
+						<Select
+							id="ask-missing-{action.key}"
+							value={action.missing}
+							options={missingOptions}
+							onchange={(next) => {
+								if (action.type === 'ask_webhook') action.missing = next as Missing;
+							}}
+							class="h-10"
+						/>
+					</Field.Field>
+				</div>
+				<p class="text-sm text-muted-foreground">{m.rule_ask_name_hint()}</p>
+				<p class="text-sm text-muted-foreground">
+					{webhooks.length ? m.rule_ask_hint() : m.rule_send_webhook_none()}
+				</p>
+			{:else if action.type === 'condition' && model}
+				<ConditionGroup
+					group={action.conditions}
+					{model}
+					{lookup}
+					{errors}
+					{steps}
+					top
+					onunreadable={onconditionunreadable}
+				/>
+				<p class="text-sm text-muted-foreground">{m.rule_condition_step_hint()}</p>
+			{:else if action.type === 'send_webhook'}
+				<Select
+					aria-label={label}
+					aria-invalid={invalid || undefined}
+					bind:value={action.webhook_id}
+					options={withChoice(webhooks, action.webhook_id, m.rule_webhook_unknown())}
+					class="h-10"
+				/>
+				<p class="text-sm text-muted-foreground">
+					{webhooks.length ? m.rule_send_webhook_hint() : m.rule_send_webhook_none()}
+				</p>
 			{/if}
 		</div>
 		<div class="flex gap-0.5">

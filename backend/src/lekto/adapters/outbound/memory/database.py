@@ -119,6 +119,7 @@ DOCUMENT_IDENTIFIERS = Table[IdentifiersRow]("document identifiers", _no_keys)
 CLASSIFIER_MODELS = Table("classifier model", _classifier_model_keys)
 WEBHOOKS = Table("webhook", _no_keys)
 WEBHOOK_DELIVERIES = Table("webhook delivery", _no_keys)
+TASKS = Table("task", _no_keys)
 LENSES = Table("lens", _lens_keys)
 
 

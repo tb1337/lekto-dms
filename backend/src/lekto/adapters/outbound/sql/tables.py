@@ -331,7 +331,8 @@ documents = Table(
     Column("first_lane", Text, nullable=True),
     Column("processing_status", Text, nullable=False),
     Column("processing_run", Integer, nullable=False),
-    # State of every node in the current run: {node: {status, outcome, started_at, finished_at}}.
+    # State of every node in the current run: {node: {status, outcome, started_at, finished_at}},
+    # a delegated node with its `deadline`.
     # The default is for the column's addition (revision 0010); every row is written in full.
     Column("processing_nodes", json_type(), nullable=False, server_default="{}"),
     # The current run reads the pages with the vision language model (`Processing.vision`).
@@ -735,11 +736,24 @@ webhooks = Table(
     Column("name", Text, nullable=False),
     Column("url", Text, nullable=False),
     Column("event_types", json_type(), nullable=False),
-    # The signing secrets as `SecretCipher` made them; the previous one only during the grace
-    # period after renewing.
-    Column("secret", LargeBinary, nullable=False),
+    # The signing secrets as `SecretCipher` made them, none if the webhook does not sign; the
+    # previous one only during the grace period after renewing.
+    Column("secret", LargeBinary, nullable=True),
+    # The webhook's own headers: their names (a JSON list, in order) and their values
+    # (`webhooks.headers_to_bytes`, encrypted; NULL without headers).
+    Column("header_names", json_type(), nullable=False, server_default="[]"),
+    Column("headers", LargeBinary, nullable=True),
+    # What the requests carry (`webhooks.BodyFormat`), and the template of a `template` body.
+    Column("body", Text, nullable=False, server_default="thin"),
+    Column("body_template", Text, nullable=True),
     Column("previous_secret", LargeBinary, nullable=True),
     Column("previous_valid_until", UtcDateTime, nullable=True),
+    # How many tasks the webhook takes at the same time (`Webhook.max_open_tasks`).
+    Column("max_open_tasks", Integer, nullable=False, server_default="4"),
+    # The model call the webhook serves as (`webhooks.ModelCallKind`) and its consumer's time
+    # to answer; both NULL for none.
+    Column("model_call", Text, nullable=True),
+    Column("model_call_timeout_seconds", Integer, nullable=True),
     Column("active", Boolean, nullable=False),
     Column("disabled_reason", Text, nullable=True),
     Column("failed_streak", Integer, nullable=False),
@@ -791,4 +805,39 @@ webhook_deliveries = Table(
     Column("next_attempt_at", UtcDateTime, nullable=True),
     Index(None, "webhook_id", "id"),
     Index(None, "started_at"),
+)
+
+# Tasks (`domain.tasks`): requests through a webhook that expect an answer. No foreign keys:
+# a task outlives its webhook (it runs to its deadline) and its document (a late answer is
+# refused as stale). `step` names the rule step that asks (JSON), `reason` why a task did not
+# get its answer (a reason's JSON); `request` is the request with the one-time token,
+# encrypted, until it is delivered; `token_hash` stays.
+tasks = Table(
+    "tasks",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("kind", Text, nullable=False),
+    Column("document_id", Uuid, nullable=False),
+    Column("node", Text, nullable=False),
+    Column("run", Integer, nullable=False),
+    Column("webhook_id", Uuid, nullable=False),
+    Column("owner_id", Uuid, nullable=False),
+    Column("step", json_type(), nullable=True),
+    Column("timeout_seconds", Integer, nullable=False),
+    Column("status", Text, nullable=False),
+    Column("token_hash", Text, nullable=True),
+    Column("request", LargeBinary, nullable=True),
+    # What the node needs to read the answer (`Task.context`), a JSON object.
+    Column("context", json_type(), nullable=False, server_default="{}"),
+    Column("answer", json_type(), nullable=True),
+    Column("producer", Text, nullable=True),
+    Column("reason", json_type(), nullable=True),
+    Column("created_at", UtcDateTime, nullable=False),
+    Column("opened_at", UtcDateTime, nullable=True),
+    Column("deadline", UtcDateTime, nullable=True),
+    Column("settled_at", UtcDateTime, nullable=True),
+    Column("version", Integer, nullable=False),
+    Index(None, "document_id", "node", "run"),
+    Index(None, "webhook_id", "status", "created_at"),
+    Index(None, "settled_at"),
 )

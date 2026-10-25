@@ -6,7 +6,9 @@ Lekto writes some texts from the values of a document. These texts are templates
 - a document type's title pattern;
 - the title a rule sets;
 - the value of a text field a rule sets;
-- the reason of a forced review.
+- the reason of a forced review;
+- the body of a webhook with the body `template` (it has to make JSON; see
+  [Webhook bodies](#webhook-bodies)).
 
 The template editor writes them with you and shows the result on a document you choose.
 
@@ -44,6 +46,7 @@ attributes of objects, no `include` or `render`.
 | `channel` | how the document came: `web` (uploaded in the web UI), `api` (with an API token), `migration` (taken over from Paperless-ngx) | `web` |
 | `pages` | the number of pages | `2` |
 | `field.<key>` | the value of a field, see below | |
+| `steps.<name>` | in a rule's step: what a step before it that asks a webhook brought (its answer, JSON: objects with `.key`, lists with `.0`, …); missing without an answer | `{{ steps.accounting.beleg }}` → `B-4711` |
 
 A list written without a filter runs its items together (`SteuerWichtig`); join it with
 `| join: ', '`.
@@ -96,6 +99,11 @@ The `datetime` format uses the
 `QQQ` the quarter (`Q1`). `currency` always writes `LEKTO_DEFAULT_CURRENCY`. For an amount in
 another currency, write the amount itself (`{{ field.betrag }}`), which keeps its currency.
 
+`json` writes a value as JSON, as the API writes it, for the body of a webhook: text in quotes
+with what needs escaping escaped, a number as its exact decimal text (`"37.5"`), an amount as
+`{"amount": "5914.00", "currency": "EUR"}`, a date as `"2026-03-14"`, a period as
+`{"start": …, "end": …}`, yes/no as `true` or `false`, a list as a list.
+
 ## Missing values
 
 A value the document does not have (no contact yet, an empty field) is left out. Writing it
@@ -139,12 +147,43 @@ Bitte prüfen: {{ document_type }} mit {{ tags | join: ', ' | default: 'keinen T
 
 → `Bitte prüfen: Rechnung mit keinen Tags` where the document has no tags.
 
+## Webhook bodies
+
+A webhook with the body `template` sends what its template makes, which has to be JSON. Besides
+the values above it sees:
+
+| Value | Content |
+| --- | --- |
+| `event.type`, `event.id`, `event.occurred_at` | the event (`document.filed`, …, `rule.send` for a rule's request) |
+| `document_id` | the document's ID |
+| `lane` | `green`, `yellow` or `red`; missing while it is processed |
+| `link` | the document in the web UI (`LEKTO_PUBLIC_URL/ui/documents/<id>`); missing without `LEKTO_PUBLIC_URL` |
+| `rule.id`, `rule.name` | the rule that sends or asks; missing for an event |
+| `task.id`, `task.callback`, `task.token`, `task.deadline` | a task's request (it expects an answer): where and with which token to answer, and by when; missing otherwise |
+| `steps.<name>` | in a task of a rule's step: what the rule's steps before brought; missing otherwise |
+
+Write every value with `json`, and a value that may be missing with `| default: nil | json`
+(`null` then). A Home Assistant notification:
+
+```liquid
+{"title": {{ document_type | default: "Dokument" | json }},
+ "message": {{ title | json }},
+ "amount": {{ field.betrag.amount | default: nil | json }},
+ "url": {{ link | default: nil | json }}}
+```
+
+→ `{"title": "Rechnung", "message": "Strom März", "amount": "120.50", "url": "https://…"}`
+
+The template is rendered as written, whitespace kept. A request whose template does not make
+JSON, or writes a missing value, is not sent; the webhook's log says why.
+
 ## Limits
 
 - A loop stops after 1,000 turns.
 - The output stops after 10,000 characters.
-- A title is at most 500 characters.
+- A title is at most 500 characters, a webhook's body template 10,000.
 
 `POST /api/v1/templates/preview` checks a template and renders it with a document the caller may
 read. It also gives that document's values as a template writes them, which is what the template
-editor shows.
+editor shows. With `purpose: webhook` it checks a webhook's body template: with the values above,
+as written, and whether it makes JSON.

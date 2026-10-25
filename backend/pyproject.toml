@@ -147,6 +147,7 @@ type = "forbidden"
 source_modules = [
     "lekto.core.services._access",
     "lekto.core.services._jobs",
+    "lekto.core.services._templates",
     "lekto.core.services.objects",
 ]
 forbidden_modules = ["lekto.core.services"]

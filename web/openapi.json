@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lekto DMS API",
-    "description": "Lekto is a headless document management system; this API is the only way in.\n\nErrors are problem details (RFC 9457, `application/problem+json`).\n\nAuthentication: a session cookie from `POST /auth/login` (web UI; changing requests also send\nthe header `X-CSRF-Token`) or a personal API token as `Authorization: Bearer lekto_…`. Every\nendpoint needs one of them (401 without), except health and the sign-in endpoints: `POST\n/auth/login` and, below `/auth/oidc`, information, start and callback. A `read` token may only\nread (403). The own sign-in (password, sessions, TOTP, API tokens, provider links) and\ncreating users or resetting their sign-in need a session; a token gets 403 there. Documents\nand spaces the caller may not see are \"not found\" (404), the same as ones that do not exist.\n\nThe same services are available to AI clients over MCP (Streamable HTTP, stateless) at\n`/api/v1/mcp`, with the same API tokens as bearer; it is not part of this OpenAPI document.\nTools: `search`, `get_document`, `get_text`, `update_metadata` (needs a `read_write` token),\n`list_tags`.\n",
+    "description": "Lekto is a headless document management system; this API is the only way in.\n\nErrors are problem details (RFC 9457, `application/problem+json`).\n\nAuthentication: a session cookie from `POST /auth/login` (web UI; changing requests also send\nthe header `X-CSRF-Token`) or a personal API token as `Authorization: Bearer lekto_…`. Every\nendpoint needs one of them (401 without), except health, the sign-in endpoints (`POST\n/auth/login` and, below `/auth/oidc`, information, start and callback) and the answer to a task\n(`/external/tasks/{id}/result`, with the task's own token). A `read` token may only\nread (403). The own sign-in (password, sessions, TOTP, API tokens, provider links) and\ncreating users or resetting their sign-in need a session; a token gets 403 there. Documents\nand spaces the caller may not see are \"not found\" (404), the same as ones that do not exist.\n\nThe same services are available to AI clients over MCP (Streamable HTTP, stateless) at\n`/api/v1/mcp`, with the same API tokens as bearer; it is not part of this OpenAPI document.\nTools: `search`, `get_document`, `get_text`, `update_metadata` (needs a `read_write` token),\n`list_tags`.\n",
     "version": "0.0.0.dev0"
   },
   "paths": {
@@ -15329,7 +15329,7 @@
           "webhooks"
         ],
         "summary": "Create a webhook",
-        "description": "Lekto sends a signed request to the URL for each event of the chosen types on documents within the reach of the webhook's owner: every document in the spaces they edit, the green ones in the spaces they read (an admin's webhooks too; the rights of an admin do not widen them). The answer holds the secret, shown only once. A user has at most as many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409).",
+        "description": "Lekto sends a request to the URL for each event of the chosen types on documents within the reach of the webhook's owner: every document in the spaces they edit, the green ones in the spaces they read (an admin's webhooks too; the rights of an admin do not widen them). A signed webhook's answer holds the secret, shown only once. A user has at most as many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409).",
         "operationId": "create_webhook_api_v1_webhooks_post",
         "requestBody": {
           "required": true,
@@ -15846,7 +15846,7 @@
           "webhooks"
         ],
         "summary": "Renew the secret",
-        "description": "A new secret, shown only now. The old one keeps signing next to it for a while (`previous_secret_valid_until`), so the receiver can switch without a gap; renewing again ends that at once. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).",
+        "description": "A new secret, shown only now. The old one keeps signing next to it for a while (`previous_secret_valid_until`), so the receiver can switch without a gap; renewing again ends that at once. A webhook without a secret signs from now on. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).",
         "operationId": "renew_secret_api_v1_webhooks__id__secret_post",
         "parameters": [
           {
@@ -15867,6 +15867,126 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WebhookCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Stop signing",
+        "description": "The secret goes (an old one still in its grace period too): requests carry no `webhook-signature` any more. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).",
+        "operationId": "remove_secret_api_v1_webhooks__id__secret_delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookOut"
                 }
               }
             }
@@ -16237,6 +16357,290 @@
           },
           {
             "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/external/tasks/{id}/result": {
+      "post": {
+        "tags": [
+          "external"
+        ],
+        "summary": "Answer a task",
+        "description": "The consumer of a task (a request with the headers `lekto-task-id`, `lekto-callback`, `lekto-task-token`, `lekto-deadline`) answers it here, with the task's token as `Authorization: Bearer`. The token holds for one answer, until the deadline.\n\nThe body is an envelope: `status` `ok` with `answer` (any JSON; a rule step's answer is `steps.<name>` for the steps after it), or `status` `error` with `reason` (a text, shown cut to 300 characters); `producer` (optional) names what answered. `error`, an envelope that is not valid (422) and an answer larger than 1 MB (413) count as no answer: the step goes on as it says for a missing answer, and the token is used up. 409: the task was answered before, or its document was processed again or deleted. 401: unknown task or token, or the deadline has passed.",
+        "operationId": "answer_task_api_v1_external_tasks__id__result_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "the request body is larger than 1048576 bytes"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskAnswer"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "taskToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/external/tasks/{id}/files/{name}": {
+      "get": {
+        "tags": [
+          "external"
+        ],
+        "summary": "A file of a model call's document",
+        "description": "The request of a model call (`external.propose`, `external.extract`) links the document's files: `content.json` (the structure of the text: pages, lines and words with their boxes) and `pages/<n>.webp` (the image of page n). Each link is signed and holds until the task's deadline, as long as the document is not processed again (409). 401: the link is unknown, altered, or its time is up.",
+        "operationId": "task_file_api_v1_external_tasks__id__files__name__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "expires",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "When the link ends (Unix seconds).",
+              "title": "Expires"
+            },
+            "description": "When the link ends (Unix seconds)."
+          },
+          {
+            "name": "signature",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Lekto's signature.",
+              "title": "Signature"
+            },
+            "description": "Lekto's signature."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {},
+              "image/webp": {}
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "fileSignature": []
           }
         ]
       }
@@ -17650,6 +18054,371 @@
       }
     }
   },
+  "webhooks": {
+    "events": {
+      "post": {
+        "summary": "An event about a document",
+        "description": "To the webhooks that subscribed to its type (`event_types`), for the documents their owner may read; `webhook.test` on request.\n\nThe body as the webhook's `body` says: `thin`, `full`, or what its own template makes (then any JSON).",
+        "operationId": "webhook_events",
+        "parameters": [
+          {
+            "description": "The event's (or task's) id; the same in a repeated request.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "webhook-id",
+            "in": "header"
+          },
+          {
+            "description": "Unix seconds of the attempt.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "webhook-timestamp",
+            "in": "header"
+          },
+          {
+            "description": "With a secret only: `v1,<base64 HMAC-SHA256>` of `<id>.<timestamp>.<body>` (Standard Webhooks), several apart by spaces while a renewed secret signs too.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "name": "webhook-signature",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Taken. Other answers, or none, count as failed: an event is repeated with growing pauses, a task's request until its deadline. A task is answered at its callback, not here."
+          }
+        }
+      }
+    },
+    "rule.send": {
+      "post": {
+        "summary": "A rule sends",
+        "description": "A rule's step `send_webhook`, through its author's webhook.\n\nThe body as the webhook's `body` says: `thin`, `full`, or what its own template makes (then any JSON).",
+        "operationId": "webhook_rule_send",
+        "parameters": [
+          {
+            "description": "The event's (or task's) id; the same in a repeated request.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "webhook-id",
+            "in": "header"
+          },
+          {
+            "description": "Unix seconds of the attempt.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "webhook-timestamp",
+            "in": "header"
+          },
+          {
+            "description": "With a secret only: `v1,<base64 HMAC-SHA256>` of `<id>.<timestamp>.<body>` (Standard Webhooks), several apart by spaces while a renewed secret signs too.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "name": "webhook-signature",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleSendBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Taken. Other answers, or none, count as failed: an event is repeated with growing pauses, a task's request until its deadline. A task is answered at its callback, not here."
+          }
+        }
+      }
+    },
+    "rule.ask": {
+      "post": {
+        "summary": "A rule asks",
+        "description": "A rule's step `ask_webhook`: a task, answered at its callback. Template bodies see `task` too.\n\nThe body as the webhook's `body` says: `thin`, `full`, or what its own template makes (then any JSON).",
+        "operationId": "webhook_rule_ask",
+        "parameters": [
+          {
+            "description": "The event's (or task's) id; the same in a repeated request.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "webhook-id",
+            "in": "header"
+          },
+          {
+            "description": "Unix seconds of the attempt.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "webhook-timestamp",
+            "in": "header"
+          },
+          {
+            "description": "With a secret only: `v1,<base64 HMAC-SHA256>` of `<id>.<timestamp>.<body>` (Standard Webhooks), several apart by spaces while a renewed secret signs too.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "name": "webhook-signature",
+            "in": "header"
+          },
+          {
+            "description": "The task's id.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "lekto-task-id",
+            "in": "header"
+          },
+          {
+            "description": "Where to answer (`POST`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "lekto-callback",
+            "in": "header"
+          },
+          {
+            "description": "The one-time token, as `Authorization: Bearer` of the answer.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "lekto-task-token",
+            "in": "header"
+          },
+          {
+            "description": "Until when the answer is taken (UTC).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "lekto-deadline",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleAskBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Taken. Other answers, or none, count as failed: an event is repeated with growing pauses, a task's request until its deadline. A task is answered at its callback, not here."
+          }
+        }
+      }
+    },
+    "external.propose": {
+      "post": {
+        "summary": "The model call `propose`",
+        "description": "To the admin's webhook that serves as `propose`, for every document: the context of `signal_llm`, always as this JSON, whatever the webhook's `body`. Answer with `status: ok` and `answer` after `answer_schema`; an error, an answer that does not fit (422) or none by the deadline make the document red.",
+        "operationId": "webhook_external_propose",
+        "parameters": [
+          {
+            "description": "The event's (or task's) id; the same in a repeated request.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "webhook-id",
+            "in": "header"
+          },
+          {
+            "description": "Unix seconds of the attempt.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "webhook-timestamp",
+            "in": "header"
+          },
+          {
+            "description": "With a secret only: `v1,<base64 HMAC-SHA256>` of `<id>.<timestamp>.<body>` (Standard Webhooks), several apart by spaces while a renewed secret signs too.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "name": "webhook-signature",
+            "in": "header"
+          },
+          {
+            "description": "The task's id.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "lekto-task-id",
+            "in": "header"
+          },
+          {
+            "description": "Where to answer (`POST`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "lekto-callback",
+            "in": "header"
+          },
+          {
+            "description": "The one-time token, as `Authorization: Bearer` of the answer.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "lekto-task-token",
+            "in": "header"
+          },
+          {
+            "description": "Until when the answer is taken (UTC).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "lekto-deadline",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeContext"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Taken. Other answers, or none, count as failed: an event is repeated with growing pauses, a task's request until its deadline. A task is answered at its callback, not here."
+          }
+        }
+      }
+    },
+    "external.extract": {
+      "post": {
+        "summary": "The model call `extract`",
+        "description": "To the admin's webhook that serves as `extract`, for the fields the proposal did not give (the judge decided another type, or there is no proposal): the fields to read, always as this JSON. Answered as `external.propose`.",
+        "operationId": "webhook_external_extract",
+        "parameters": [
+          {
+            "description": "The event's (or task's) id; the same in a repeated request.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "webhook-id",
+            "in": "header"
+          },
+          {
+            "description": "Unix seconds of the attempt.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "webhook-timestamp",
+            "in": "header"
+          },
+          {
+            "description": "With a secret only: `v1,<base64 HMAC-SHA256>` of `<id>.<timestamp>.<body>` (Standard Webhooks), several apart by spaces while a renewed secret signs too.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "name": "webhook-signature",
+            "in": "header"
+          },
+          {
+            "description": "The task's id.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "lekto-task-id",
+            "in": "header"
+          },
+          {
+            "description": "Where to answer (`POST`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "lekto-callback",
+            "in": "header"
+          },
+          {
+            "description": "The one-time token, as `Authorization: Bearer` of the answer.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "lekto-task-token",
+            "in": "header"
+          },
+          {
+            "description": "Until when the answer is taken (UTC).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "lekto-deadline",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractContext"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Taken. Other answers, or none, count as failed: an event is repeated with growing pauses, a task's request until its deadline. A task is answered at its callback, not here."
+          }
+        }
+      }
+    }
+  },
   "components": {
     "schemas": {
       "AccountOut": {
@@ -18041,6 +18810,23 @@
               }
             ],
             "description": "With its conflicts accepted (only for documents with conflicts)."
+          },
+          "sends": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Sends",
+            "description": "The webhooks applying would send a request through, about this document."
+          },
+          "sends_refused": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonOut"
+            },
+            "type": "array",
+            "title": "Sends Refused",
+            "description": "Requests that would not go, and why (the owner may not read the document)."
           }
         },
         "type": "object",
@@ -18250,6 +19036,52 @@
         "title": "ArrivalStepOut",
         "description": "What the rules of one space did to the document when it entered the space."
       },
+      "AskWebhookAction": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "ask_webhook",
+            "title": "Type"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Name",
+            "description": "Small letters, digits and `_`, unique in the rule: the steps after it see the answer as `steps.<name>`.",
+            "examples": [
+              "accounting"
+            ]
+          },
+          "webhook_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Webhook Id",
+            "description": "A webhook of whoever saves the rule (someone else's is not found). It gets a task (`rule.ask`, with `task` and the headers `lekto-*`) and answers at `/external/tasks/{id}/result`. Its owner must be able to read the document, otherwise the document waits for a person (unless one decided already). Needs `LEKTO_PUBLIC_URL`."
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "maximum": 86400.0,
+            "minimum": 30.0,
+            "title": "Timeout Seconds",
+            "description": "The time to answer, from sending (the request may wait for its webhook).",
+            "default": 300
+          },
+          "missing": {
+            "$ref": "#/components/schemas/Missing",
+            "description": "Without an answer (none in time, an error, an invalid one): `red` fails the node (no rule acts), `yellow` ends the rule here (its steps before count) and holds the document for a person, `continue` goes on without `steps.<name>`. After a person decided in the run, it is only reported.",
+            "default": "red"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "name",
+          "webhook_id"
+        ],
+        "title": "AskWebhookAction"
+      },
       "Assignment": {
         "type": "string",
         "enum": [
@@ -18417,6 +19249,15 @@
         ],
         "title": "BlockingSpaceOut",
         "description": "A space that stops deleting a user until the deletion settles it."
+      },
+      "BodyFormat": {
+        "type": "string",
+        "enum": [
+          "thin",
+          "full",
+          "template"
+        ],
+        "title": "BodyFormat"
       },
       "BoxOut": {
         "properties": {
@@ -18887,6 +19728,7 @@
       "ConditionField": {
         "type": "string",
         "enum": [
+          "step",
           "contact",
           "contact_group",
           "document_type",
@@ -18917,6 +19759,12 @@
                 "type": "boolean"
               },
               {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
                 "$ref": "#/components/schemas/MoneyValue"
               },
               {
@@ -18929,11 +19777,30 @@
                 "type": "array"
               },
               {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
                 "type": "null"
               }
             ],
             "title": "Value",
-            "description": "None for `present` and `missing`, a list for `in`, otherwise one value: an id, a channel, a text or pattern, a date `YYYY-MM-DD` (also for `gt` and `lt` of a period field), or a field value as in `fields` of a document."
+            "description": "None for `present` and `missing`, a list for `in`, otherwise one value: an id, a channel, a text or pattern, a date `YYYY-MM-DD` (also for `gt` and `lt` of a period field), a field value as in `fields` of a document, or (for `step`) a text, a number or true/false."
           },
           "field_id": {
             "anyOf": [
@@ -18947,6 +19814,22 @@
             ],
             "title": "Field Id",
             "description": "Only when `field` is `field`."
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path",
+            "description": "Only when `field` is `step`: the name of a step before that asks, then keys of its answer (a number for an item of a list), separated by dots.",
+            "examples": [
+              "accounting.paid"
+            ]
           },
           "case_sensitive": {
             "type": "boolean",
@@ -18962,7 +19845,7 @@
           "op"
         ],
         "title": "ConditionSchema",
-        "description": "`field` `op` `value`. Operators by field: contact, document_type: `is`, `in`, `present`,\n`missing`; topic: the same, where a topic matches the ones below it too (unknown while the\nmodel set it and nobody confirmed it); tags (document tags), contact_group (the groups of\nthe document's contact),\ndocument_type_group (those of its type): `contains` (this one), `in` (one of), `present`\n(any), `missing` (none), where a tag or group matches the ones below it too; channel:\n`is`, `in`; text: `contains`, `matches` (regular expression); document_date and\nnumber, amount, date fields: `is`, `gt`, `lt`, `present`, `missing`; text and link\nfields: `is`, `in`, `contains`, `matches`, `present`, `missing`; choice: `is`, `in`,\n`present`, `missing`; boolean: `is`, `present`, `missing`; period fields: `is`,\n`overlaps` (shares a day with the given period), `gt` (starts after the date), `lt` (ends\nbefore the date), `present`, `missing`.",
+        "description": "`field` `op` `value`. Operators by field: contact, document_type: `is`, `in`, `present`,\n`missing`; topic: the same, where a topic matches the ones below it too (unknown while the\nmodel set it and nobody confirmed it); tags (document tags), contact_group (the groups of\nthe document's contact),\ndocument_type_group (those of its type): `contains` (this one), `in` (one of), `present`\n(any), `missing` (none), where a tag or group matches the ones below it too; channel:\n`is`, `in`; text: `contains`, `matches` (regular expression); document_date and\nnumber, amount, date fields: `is`, `gt`, `lt`, `present`, `missing`; text and link\nfields: `is`, `in`, `contains`, `matches`, `present`, `missing`; choice: `is`, `in`,\n`present`, `missing`; boolean: `is`, `present`, `missing`; period fields: `is`,\n`overlaps` (shares a day with the given period), `gt` (starts after the date), `lt` (ends\nbefore the date), `present`, `missing`; step (in a condition step only: what a step that\nasks brought, at `path`): `is`, `in` (texts without case, numbers as numbers, true or\nfalse), `contains` (a text in a text, an item of a list), `gt`, `lt` (a number or a date),\n`present`, `missing`.",
         "examples": [
           {
             "field": "contact",
@@ -18976,6 +19859,62 @@
             "value": "Rechnung\\s+Nr"
           }
         ]
+      },
+      "ConditionStepAction-Input": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "condition",
+            "title": "Type"
+          },
+          "conditions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AllGroup-Input"
+              },
+              {
+                "$ref": "#/components/schemas/AnyGroup-Input"
+              }
+            ],
+            "title": "Conditions",
+            "description": "On the document as the rule's steps before left it, and on `step` (what a step that asks brought). If they do not hold, the rule ends here; its steps before count."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "conditions"
+        ],
+        "title": "ConditionStepAction"
+      },
+      "ConditionStepAction-Output": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "condition",
+            "title": "Type"
+          },
+          "conditions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AllGroup-Output"
+              },
+              {
+                "$ref": "#/components/schemas/AnyGroup-Output"
+              }
+            ],
+            "title": "Conditions",
+            "description": "On the document as the rule's steps before left it, and on `step` (what a step that asks brought). If they do not hold, the rule ends here; its steps before count."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "conditions"
+        ],
+        "title": "ConditionStepAction"
       },
       "ConfirmRequest": {
         "properties": {
@@ -20908,6 +21847,74 @@
           }
         ]
       },
+      "EventBody": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The event's id, also in `webhook-id`: a repeated request has it too."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "document.confirmed",
+              "document.deleted",
+              "document.filed",
+              "document.lane_changed",
+              "document.moved",
+              "document.node_completed",
+              "document.node_deferred",
+              "document.node_delegated",
+              "document.node_started",
+              "document.received",
+              "document.review_required",
+              "document.updated",
+              "webhook.test"
+            ],
+            "title": "Type"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id",
+            "description": "null for `webhook.test`."
+          },
+          "document": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SentDocument"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Body `full` only; null when the document is gone (`document.deleted`)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "occurred_at",
+          "document_id"
+        ],
+        "title": "EventBody",
+        "description": "An event (body `thin`), with the document for body `full`."
+      },
       "ExchangeNode": {
         "type": "string",
         "enum": [
@@ -20916,6 +21923,58 @@
           "fields"
         ],
         "title": "ExchangeNode"
+      },
+      "ExtractContext": {
+        "properties": {
+          "contract": {
+            "type": "string",
+            "const": "extract-ext-1",
+            "title": "Contract",
+            "default": "extract-ext-1"
+          },
+          "task": {
+            "$ref": "#/components/schemas/ModelCallTask"
+          },
+          "document": {
+            "$ref": "#/components/schemas/ModelCallDocument"
+          },
+          "document_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Type"
+          },
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ListedField"
+            },
+            "type": "object",
+            "title": "Fields",
+            "description": "The fields to read, by key."
+          },
+          "answer_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Answer Schema",
+            "description": "The JSON Schema of `answer` (strict: every property required, nothing else allowed, null for what the document does not show), built from the master data of the moment; the rules for each value are its `description`. Usable as structured output."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "task",
+          "document",
+          "document_type",
+          "fields",
+          "answer_schema"
+        ],
+        "title": "ExtractContext",
+        "description": "`fields`' request (`external.extract`) for the fields the proposal did not give (the\njudge decided another type, or there is no proposal). Lekto checks the answer as a\nlanguage model's."
       },
       "FactsOut": {
         "properties": {
@@ -21982,6 +23041,15 @@
             "type": "array",
             "title": "Requires",
             "description": "The nodes whose results this node needs."
+          },
+          "waits_for": {
+            "items": {
+              "$ref": "#/components/schemas/Node"
+            },
+            "type": "array",
+            "title": "Waits For",
+            "description": "Nodes this node also waits for without needing their results; processing again from one of them leaves this node alone.",
+            "default": []
           }
         },
         "type": "object",
@@ -22002,6 +23070,69 @@
         ],
         "title": "Grouping",
         "description": "What the documents of a lens stand under: nothing, the month of their document date, how\nsoon their deadline is due, their type or their contact."
+      },
+      "HeaderIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "examples": [
+              "Authorization"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Value",
+            "description": "Without line breaks or other control characters.",
+            "examples": [
+              "Bearer <token>"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "value"
+        ],
+        "title": "HeaderIn"
+      },
+      "HeaderPatch": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "examples": [
+              "Authorization"
+            ]
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "Left out or null: the header keeps the value it has (a new header needs one)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "HeaderPatch"
       },
       "Health": {
         "properties": {
@@ -23462,6 +24593,38 @@
         "title": "LinkOut",
         "description": "A link to an account at the identity provider."
       },
+      "ListedContact": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Aliases",
+            "description": "Other names it is written as."
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Topics",
+            "description": "The topics the contact enables (for `topic`)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "aliases",
+          "topics"
+        ],
+        "title": "ListedContact"
+      },
       "ListedDocument": {
         "properties": {
           "id": {
@@ -23758,6 +24921,124 @@
             "uploaded_by": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b"
           }
         ]
+      },
+      "ListedDocumentType": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fields",
+            "description": "The keys of its fields (`fields`)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "fields"
+        ],
+        "title": "ListedDocumentType"
+      },
+      "ListedField": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "type": {
+            "$ref": "#/components/schemas/FieldType"
+          },
+          "form": {
+            "type": "string",
+            "title": "Form",
+            "description": "How the answer writes the value."
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choices",
+            "description": "For `choice` only."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "What belongs in the field."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "form"
+        ],
+        "title": "ListedField"
+      },
+      "ListedSpace": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "What `space` of the answer names (`s1`, …)."
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "description"
+        ],
+        "title": "ListedSpace"
       },
       "LocationOut": {
         "properties": {
@@ -24242,6 +25523,83 @@
         ],
         "title": "MetadataSource"
       },
+      "Missing": {
+        "type": "string",
+        "enum": [
+          "red",
+          "yellow",
+          "continue"
+        ],
+        "title": "Missing",
+        "description": "What a step that asks does without an answer (none in time, an error, an invalid\none)."
+      },
+      "ModelCallDocument": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "pages": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pages"
+          },
+          "received": {
+            "type": "string",
+            "format": "date",
+            "title": "Received"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "The text read from the document, in full; pages apart by form feeds."
+          },
+          "structure": {
+            "type": "string",
+            "title": "Structure",
+            "description": "Signed link to `content.json`: the pages, lines and words of the text with their boxes. Valid until the deadline."
+          },
+          "page_images": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Page Images",
+            "description": "Signed links to the page images (WebP), page 1 first. Valid until the deadline."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "filename",
+          "media_type",
+          "pages",
+          "received",
+          "text",
+          "structure",
+          "page_images"
+        ],
+        "title": "ModelCallDocument"
+      },
+      "ModelCallKind": {
+        "type": "string",
+        "enum": [
+          "propose",
+          "extract"
+        ],
+        "title": "ModelCallKind",
+        "description": "A request to the language model a webhook may take over."
+      },
       "ModelCallOut": {
         "properties": {
           "system": {
@@ -24283,6 +25641,59 @@
         ],
         "title": "ModelCallOut",
         "description": "One request to the language model and its answer."
+      },
+      "ModelCallTask": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "callback": {
+            "type": "string",
+            "title": "Callback"
+          },
+          "token": {
+            "type": "string",
+            "title": "Token",
+            "description": "One-time token (`lkt_…`)."
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Deadline"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "external.propose",
+              "external.extract"
+            ],
+            "title": "Kind"
+          },
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          },
+          "run": {
+            "type": "integer",
+            "title": "Run",
+            "description": "The document's processing run; a later run refuses the answer."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "callback",
+          "token",
+          "deadline",
+          "kind",
+          "document_id",
+          "run"
+        ],
+        "title": "ModelCallTask"
       },
       "MoneyValue": {
         "properties": {
@@ -24371,6 +25782,26 @@
             "space_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b"
           }
         ]
+      },
+      "Named": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "Named"
       },
       "NamedContactOut": {
         "properties": {
@@ -24521,7 +25952,7 @@
           },
           "status": {
             "$ref": "#/components/schemas/NodeStatus",
-            "description": "`waiting`: not run yet (it runs once the nodes it needs are done); `running`: a worker is at it; `done`: has an outcome; `skipped`: left out in this run."
+            "description": "`waiting`: not run yet (it runs once the nodes it needs are done); `running`: a worker is at it; `delegated`: waits for answers to its tasks (running externally); `done`: has an outcome; `skipped`: left out in this run."
           },
           "outcome": {
             "anyOf": [
@@ -24557,6 +25988,19 @@
               }
             ],
             "title": "Finished At"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline",
+            "description": "A delegated node: when the last of its open tasks ends at the latest; none while they wait to be sent."
           }
         },
         "type": "object",
@@ -24575,7 +26019,8 @@
           "waiting",
           "running",
           "done",
-          "skipped"
+          "skipped",
+          "delegated"
         ],
         "title": "NodeStatus"
       },
@@ -25199,6 +26644,89 @@
           }
         ]
       },
+      "ProposeContext": {
+        "properties": {
+          "contract": {
+            "type": "string",
+            "const": "propose-ext-1",
+            "title": "Contract",
+            "default": "propose-ext-1"
+          },
+          "task": {
+            "$ref": "#/components/schemas/ModelCallTask"
+          },
+          "document": {
+            "$ref": "#/components/schemas/ModelCallDocument"
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/ListedContact"
+            },
+            "type": "array",
+            "title": "Contacts",
+            "description": "The 20 contacts the text names most."
+          },
+          "document_types": {
+            "items": {
+              "$ref": "#/components/schemas/ListedDocumentType"
+            },
+            "type": "array",
+            "title": "Document Types"
+          },
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ListedField"
+            },
+            "type": "object",
+            "title": "Fields",
+            "description": "The fields that may be read, by key."
+          },
+          "general_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "General Fields",
+            "description": "The keys of the fields of every document."
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "spaces": {
+            "items": {
+              "$ref": "#/components/schemas/ListedSpace"
+            },
+            "type": "array",
+            "title": "Spaces",
+            "description": "Empty with fewer than two spaces to choose."
+          },
+          "answer_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Answer Schema",
+            "description": "The JSON Schema of `answer` (strict: every property required, nothing else allowed, null for what the document does not show), built from the master data of the moment; the rules for each value are its `description`. Usable as structured output."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "task",
+          "document",
+          "contacts",
+          "document_types",
+          "fields",
+          "general_fields",
+          "tags",
+          "spaces",
+          "answer_schema"
+        ],
+        "title": "ProposeContext",
+        "description": "`signal_llm`'s request (`external.propose`): the context to propose the document's\nmetadata from. No prompt: the consumer makes its own. Lekto checks the answer as a\nlanguage model's: its structure at once (422), its values against the text and the other\nsignals; a contact turns green only with a second signal or hard evidence."
+      },
       "ReadingOut": {
         "properties": {
           "vision": {
@@ -25455,6 +26983,8 @@
           "username_of_other",
           "lenses_limit",
           "webhooks_limit",
+          "model_call_taken",
+          "model_call_admins",
           "open_fields",
           "duplicate_of",
           "duplicate_unseen",
@@ -25511,6 +27041,16 @@
           "rule_disabled_deleted",
           "rule_disabled_personal_space",
           "rule_disabled_choice",
+          "rule_webhook_gone",
+          "rule_webhook_unreadable",
+          "task_no_answer",
+          "task_error",
+          "task_invalid",
+          "task_too_large",
+          "task_undelivered",
+          "task_run_over",
+          "task_run_stopped",
+          "rule_asks_on_arrival",
           "skip_changed_meanwhile",
           "skip_not_available",
           "not_iban",
@@ -25573,7 +27113,12 @@
           "url_no_host",
           "url_credentials",
           "url_fragment",
-          "no_event_types",
+          "header_name_invalid",
+          "header_reserved",
+          "header_value_invalid",
+          "header_twice",
+          "headers_limit",
+          "header_value_missing",
           "icon_invalid",
           "colour_invalid",
           "card_field_unknown",
@@ -25915,6 +27460,73 @@
         ],
         "title": "RuleApplicationOut"
       },
+      "RuleAskBody": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The task's id."
+          },
+          "type": {
+            "type": "string",
+            "const": "rule.ask",
+            "title": "Type",
+            "default": "rule.ask"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          },
+          "rule": {
+            "$ref": "#/components/schemas/SentRule"
+          },
+          "task": {
+            "$ref": "#/components/schemas/SentTask"
+          },
+          "document": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SentDocument"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Body `full` only."
+          },
+          "steps": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps",
+            "description": "Body `full` only: what the rule's steps before brought."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "occurred_at",
+          "document_id",
+          "rule",
+          "task"
+        ],
+        "title": "RuleAskBody",
+        "description": "A rule step that asks (`rule.ask`): a task. Its answer (`answer` of the envelope, any\nJSON) is `steps.<name>` for the steps after it."
+      },
       "RuleChange": {
         "properties": {
           "name": {
@@ -25938,7 +27550,7 @@
             "type": "array",
             "minItems": 1,
             "title": "Triggers",
-            "description": "`ingest`: when a document arrives; `change`: when a person changes it."
+            "description": "`ingest`: when a document arrives; `change`: when a person changes it. A rule with a step that asks a webhook: `ingest` only."
           },
           "conditions": {
             "anyOf": [
@@ -25981,14 +27593,26 @@
                 },
                 {
                   "$ref": "#/components/schemas/ForceReviewAction"
+                },
+                {
+                  "$ref": "#/components/schemas/SendWebhookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/AskWebhookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/ConditionStepAction-Input"
                 }
               ],
               "discriminator": {
                 "propertyName": "type",
                 "mapping": {
                   "add_tags": "#/components/schemas/AddTagsAction",
+                  "ask_webhook": "#/components/schemas/AskWebhookAction",
+                  "condition": "#/components/schemas/ConditionStepAction-Input",
                   "force_review": "#/components/schemas/ForceReviewAction",
                   "remove_tags": "#/components/schemas/RemoveTagsAction",
+                  "send_webhook": "#/components/schemas/SendWebhookAction",
                   "set_contact": "#/components/schemas/SetContactAction",
                   "set_document_type": "#/components/schemas/SetDocumentTypeAction",
                   "set_field": "#/components/schemas/SetFieldAction",
@@ -26001,7 +27625,8 @@
             "type": "array",
             "maxItems": 20,
             "minItems": 1,
-            "title": "Actions"
+            "title": "Actions",
+            "description": "The steps, in order: actions, steps that ask a webhook and condition steps. Each rule works on its own copy of the document and sees what its own steps before set; the actions of all rules are combined at the end."
           },
           "scope": {
             "anyOf": [
@@ -26109,7 +27734,7 @@
             "type": "array",
             "minItems": 1,
             "title": "Triggers",
-            "description": "`ingest`: when a document arrives; `change`: when a person changes it."
+            "description": "`ingest`: when a document arrives; `change`: when a person changes it. A rule with a step that asks a webhook: `ingest` only."
           },
           "conditions": {
             "anyOf": [
@@ -26152,14 +27777,26 @@
                 },
                 {
                   "$ref": "#/components/schemas/ForceReviewAction"
+                },
+                {
+                  "$ref": "#/components/schemas/SendWebhookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/AskWebhookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/ConditionStepAction-Input"
                 }
               ],
               "discriminator": {
                 "propertyName": "type",
                 "mapping": {
                   "add_tags": "#/components/schemas/AddTagsAction",
+                  "ask_webhook": "#/components/schemas/AskWebhookAction",
+                  "condition": "#/components/schemas/ConditionStepAction-Input",
                   "force_review": "#/components/schemas/ForceReviewAction",
                   "remove_tags": "#/components/schemas/RemoveTagsAction",
+                  "send_webhook": "#/components/schemas/SendWebhookAction",
                   "set_contact": "#/components/schemas/SetContactAction",
                   "set_document_type": "#/components/schemas/SetDocumentTypeAction",
                   "set_field": "#/components/schemas/SetFieldAction",
@@ -26172,7 +27809,8 @@
             "type": "array",
             "maxItems": 20,
             "minItems": 1,
-            "title": "Actions"
+            "title": "Actions",
+            "description": "The steps, in order: actions, steps that ask a webhook and condition steps. Each rule works on its own copy of the document and sees what its own steps before set; the actions of all rules are combined at the end."
           },
           "scope": {
             "$ref": "#/components/schemas/RuleScope",
@@ -26357,14 +27995,26 @@
                 },
                 {
                   "$ref": "#/components/schemas/ForceReviewAction"
+                },
+                {
+                  "$ref": "#/components/schemas/SendWebhookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/AskWebhookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/ConditionStepAction-Output"
                 }
               ],
               "discriminator": {
                 "propertyName": "type",
                 "mapping": {
                   "add_tags": "#/components/schemas/AddTagsAction",
+                  "ask_webhook": "#/components/schemas/AskWebhookAction",
+                  "condition": "#/components/schemas/ConditionStepAction-Output",
                   "force_review": "#/components/schemas/ForceReviewAction",
                   "remove_tags": "#/components/schemas/RemoveTagsAction",
+                  "send_webhook": "#/components/schemas/SendWebhookAction",
                   "set_contact": "#/components/schemas/SetContactAction",
                   "set_document_type": "#/components/schemas/SetDocumentTypeAction",
                   "set_field": "#/components/schemas/SetFieldAction",
@@ -26521,6 +28171,15 @@
             "type": "array",
             "title": "Notes",
             "description": "Actions that were not applied, and why."
+          },
+          "sends": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Sends",
+            "description": "The webhooks the rule sends through (`send_webhook`): once the document is filed, or, after a change, once it is stored, if their owner may read the document."
           }
         },
         "type": "object",
@@ -26542,6 +28201,55 @@
           "space"
         ],
         "title": "RuleScope"
+      },
+      "RuleSendBody": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "type": {
+            "type": "string",
+            "const": "rule.send",
+            "title": "Type",
+            "default": "rule.send"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          },
+          "rule": {
+            "$ref": "#/components/schemas/SentRule"
+          },
+          "document": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SentDocument"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Body `full` only."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "occurred_at",
+          "document_id",
+          "rule"
+        ],
+        "title": "RuleSendBody",
+        "description": "A rule's request (`rule.send`), when the document is filed (on arrival) or when the\nrule is applied to existing documents."
       },
       "RuleVersionOut": {
         "properties": {
@@ -26600,14 +28308,26 @@
                 },
                 {
                   "$ref": "#/components/schemas/ForceReviewAction"
+                },
+                {
+                  "$ref": "#/components/schemas/SendWebhookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/AskWebhookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/ConditionStepAction-Output"
                 }
               ],
               "discriminator": {
                 "propertyName": "type",
                 "mapping": {
                   "add_tags": "#/components/schemas/AddTagsAction",
+                  "ask_webhook": "#/components/schemas/AskWebhookAction",
+                  "condition": "#/components/schemas/ConditionStepAction-Output",
                   "force_review": "#/components/schemas/ForceReviewAction",
                   "remove_tags": "#/components/schemas/RemoveTagsAction",
+                  "send_webhook": "#/components/schemas/SendWebhookAction",
                   "set_contact": "#/components/schemas/SetContactAction",
                   "set_document_type": "#/components/schemas/SetDocumentTypeAction",
                   "set_field": "#/components/schemas/SetFieldAction",
@@ -26923,6 +28643,233 @@
           "since"
         ],
         "title": "SearchStatusOut"
+      },
+      "SendWebhookAction": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "send_webhook",
+            "title": "Type"
+          },
+          "webhook_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Webhook Id",
+            "description": "A webhook of whoever saves the rule (someone else's is not found). It gets a request of type `rule.send` with the rule's `id` and `name`, in the webhook's body format: on arrival once the document is filed (a yellow one after it was confirmed, a red one never), after a change once it is stored. Its owner must be able to read the document: on arrival the document turns yellow otherwise (unless a person decided already), else it is only reported."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "webhook_id"
+        ],
+        "title": "SendWebhookAction"
+      },
+      "SentDocument": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "original_filename": {
+            "type": "string",
+            "title": "Original Filename"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Named"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "document_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Named"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "topic": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Named"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/Named"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "document_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Date"
+          },
+          "added": {
+            "type": "string",
+            "format": "date",
+            "title": "Added",
+            "description": "When it came in."
+          },
+          "space": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Named"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lane": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "green",
+                  "yellow",
+                  "red"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lane"
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "pages": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pages"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Fields",
+            "description": "The fields with a value, by key, each in its JSON form."
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link",
+            "description": "Into the web UI (`LEKTO_PUBLIC_URL`); null without a public URL."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "original_filename",
+          "contact",
+          "document_type",
+          "topic",
+          "tags",
+          "document_date",
+          "added",
+          "space",
+          "lane",
+          "channel",
+          "pages",
+          "fields",
+          "link"
+        ],
+        "title": "SentDocument",
+        "description": "The document as it is when the request goes (body `full`)."
+      },
+      "SentRule": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "SentRule"
+      },
+      "SentTask": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "callback": {
+            "type": "string",
+            "title": "Callback"
+          },
+          "token": {
+            "type": "string",
+            "title": "Token",
+            "description": "One-time token (`lkt_…`)."
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Deadline"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "callback",
+          "token",
+          "deadline"
+        ],
+        "title": "SentTask",
+        "description": "A task: answer it at `callback` with `token` as `Authorization: Bearer` by `deadline`\n(`POST /api/v1/external/tasks/{id}/result`)."
       },
       "SessionOut": {
         "properties": {
@@ -27993,9 +29940,9 @@
         "properties": {
           "template": {
             "type": "string",
-            "maxLength": 500,
+            "maxLength": 10000,
             "title": "Template",
-            "description": "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md"
+            "description": "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md At most 500 characters, a webhook's body 10000."
           },
           "document_id": {
             "anyOf": [
@@ -28009,6 +29956,16 @@
             ],
             "title": "Document Id",
             "description": "A document the caller may read, to render the template with."
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "rule",
+              "webhook"
+            ],
+            "title": "Purpose",
+            "description": "`webhook`: the template of a webhook's body. It sees `event` (here a `webhook.test`), `document_id`, `lane` and `link` too, is rendered as it is (whitespace kept) and must make JSON.",
+            "default": "rule"
           },
           "document_type_id": {
             "anyOf": [
@@ -28726,22 +30683,74 @@
               "type": "string"
             },
             "type": "array",
-            "minItems": 1,
             "title": "Event Types",
-            "description": "Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.node_deferred`, `document.node_started`, `document.received`, `document.updated`, or `*` for all, also future ones."
+            "description": "Event types: `document.confirmed`, `document.deleted`, `document.filed`, `document.lane_changed`, `document.moved`, `document.node_completed`, `document.node_deferred`, `document.node_delegated`, `document.node_started`, `document.received`, `document.review_required`, `document.updated`, or `*` for all, also future ones. None: the webhook serves rules only.",
+            "default": []
           },
           "active": {
             "type": "boolean",
             "title": "Active",
             "default": true
+          },
+          "signed": {
+            "type": "boolean",
+            "title": "Signed",
+            "description": "With a secret that signs every request (`webhook-signature`, Standard Webhooks), shown once in the answer. Without: no signature, e.g. for a receiver that checks a header instead.",
+            "default": true
+          },
+          "headers": {
+            "items": {
+              "$ref": "#/components/schemas/HeaderIn"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Headers",
+            "description": "Headers of the webhook's own, sent with every request (at most 20), e.g. `Authorization` for a token the receiver checks. Lekto sets `content-type`, `content-length`, `host`, `connection`, `transfer-encoding` and the headers beginning with `webhook-` or `lekto-` itself; those are refused. The values are stored encrypted and never shown again; the names are.",
+            "default": []
+          },
+          "body": {
+            "$ref": "#/components/schemas/BodyFormat",
+            "description": "What a request carries: `thin`, the event (`id`, `type`, `occurred_at`, `document_id`); `full`, the event and `document` as it is when the request goes (title, contact, type, topic, tags, date, space, lane, the fields with a value by key, `link` into the web UI); `template`, the JSON `body_template` makes of them.",
+            "default": "thin"
+          },
+          "body_template": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 10000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Template",
+            "description": "For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; in a rule's request `rule` (`id`, `name`), in a task's also `task` (`id`, `callback`, `token`, `deadline`) and `steps.<name>`. The filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`."
+          },
+          "max_open_tasks": {
+            "type": "integer",
+            "maximum": 64.0,
+            "minimum": 1.0,
+            "title": "Max Open Tasks",
+            "description": "How many tasks (requests that expect an answer, e.g. a rule step that asks) the webhook takes at the same time, 1 to 64; more wait in Lekto, and their time to answer starts when they are sent.",
+            "default": 4
+          },
+          "model_call": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebhookModelCallIn"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The request to the language model the webhook takes over, for every document: `propose` (the proposal of `signal_llm`) or `extract` (the values of the fields the proposal did not give, in `fields`). Lekto sends it as a task with a fixed contract (`external.propose`, `external.extract` under `webhooks`), whatever `body` says. Only an admin gives it to an admin's webhook; of the active webhooks at most one serves each kind (409). null: none."
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "name",
-          "url",
-          "event_types"
+          "url"
         ],
         "title": "WebhookCreate",
         "examples": [
@@ -28786,6 +30795,51 @@
             "type": "boolean",
             "title": "Active"
           },
+          "signed": {
+            "type": "boolean",
+            "title": "Signed",
+            "description": "Whether requests carry a `webhook-signature`."
+          },
+          "headers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Headers",
+            "description": "The names of the webhook's own headers, in order."
+          },
+          "body": {
+            "$ref": "#/components/schemas/BodyFormat",
+            "description": "What a request carries: `thin`, the event (`id`, `type`, `occurred_at`, `document_id`); `full`, the event and `document` as it is when the request goes (title, contact, type, topic, tags, date, space, lane, the fields with a value by key, `link` into the web UI); `template`, the JSON `body_template` makes of them."
+          },
+          "body_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Template",
+            "description": "For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; in a rule's request `rule` (`id`, `name`), in a task's also `task` (`id`, `callback`, `token`, `deadline`) and `steps.<name>`. The filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`."
+          },
+          "max_open_tasks": {
+            "type": "integer",
+            "title": "Max Open Tasks",
+            "description": "How many tasks (requests that expect an answer, e.g. a rule step that asks) the webhook takes at the same time, 1 to 64; more wait in Lekto, and their time to answer starts when they are sent."
+          },
+          "model_call": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebhookModelCallOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The request to the language model the webhook takes over, for every document: `propose` (the proposal of `signal_llm`) or `extract` (the values of the fields the proposal did not give, in `fields`). Lekto sends it as a task with a fixed contract (`external.propose`, `external.extract` under `webhooks`), whatever `body` says. Only an admin gives it to an admin's webhook; of the active webhooks at most one serves each kind (409). null: none."
+          },
           "disabled_reason": {
             "anyOf": [
               {
@@ -28827,9 +30881,16 @@
             "title": "Updated At"
           },
           "secret": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Secret",
-            "description": "The signing secret (`whsec_…`); shown only now. Receivers verify the `webhook-signature` header with it.",
+            "description": "The signing secret (`whsec_…`); shown only now. Receivers verify the `webhook-signature` header with it. null for a webhook created without one.",
             "examples": [
               "whsec_<secret shown once>"
             ]
@@ -28843,6 +30904,12 @@
           "url",
           "event_types",
           "active",
+          "signed",
+          "headers",
+          "body",
+          "body_template",
+          "max_open_tasks",
+          "model_call",
           "disabled_reason",
           "failed_streak",
           "previous_secret_valid_until",
@@ -28851,6 +30918,44 @@
           "secret"
         ],
         "title": "WebhookCreated"
+      },
+      "WebhookModelCallIn": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ModelCallKind"
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "maximum": 86400.0,
+            "minimum": 30.0,
+            "title": "Timeout Seconds",
+            "description": "How long the consumer has to answer, from sending.",
+            "default": 300
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "WebhookModelCallIn"
+      },
+      "WebhookModelCallOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ModelCallKind"
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "title": "Timeout Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "timeout_seconds"
+        ],
+        "title": "WebhookModelCallOut"
       },
       "WebhookOut": {
         "properties": {
@@ -28882,6 +30987,51 @@
           "active": {
             "type": "boolean",
             "title": "Active"
+          },
+          "signed": {
+            "type": "boolean",
+            "title": "Signed",
+            "description": "Whether requests carry a `webhook-signature`."
+          },
+          "headers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Headers",
+            "description": "The names of the webhook's own headers, in order."
+          },
+          "body": {
+            "$ref": "#/components/schemas/BodyFormat",
+            "description": "What a request carries: `thin`, the event (`id`, `type`, `occurred_at`, `document_id`); `full`, the event and `document` as it is when the request goes (title, contact, type, topic, tags, date, space, lane, the fields with a value by key, `link` into the web UI); `template`, the JSON `body_template` makes of them."
+          },
+          "body_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Template",
+            "description": "For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; in a rule's request `rule` (`id`, `name`), in a task's also `task` (`id`, `callback`, `token`, `deadline`) and `steps.<name>`. The filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`."
+          },
+          "max_open_tasks": {
+            "type": "integer",
+            "title": "Max Open Tasks",
+            "description": "How many tasks (requests that expect an answer, e.g. a rule step that asks) the webhook takes at the same time, 1 to 64; more wait in Lekto, and their time to answer starts when they are sent."
+          },
+          "model_call": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebhookModelCallOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The request to the language model the webhook takes over, for every document: `propose` (the proposal of `signal_llm`) or `extract` (the values of the fields the proposal did not give, in `fields`). Lekto sends it as a task with a fixed contract (`external.propose`, `external.extract` under `webhooks`), whatever `body` says. Only an admin gives it to an admin's webhook; of the active webhooks at most one serves each kind (409). null: none."
           },
           "disabled_reason": {
             "anyOf": [
@@ -28932,6 +31082,12 @@
           "url",
           "event_types",
           "active",
+          "signed",
+          "headers",
+          "body",
+          "body_template",
+          "max_open_tasks",
+          "model_call",
           "disabled_reason",
           "failed_streak",
           "previous_secret_valid_until",
@@ -28973,15 +31129,14 @@
                 "items": {
                   "type": "string"
                 },
-                "type": "array",
-                "minItems": 1
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
             "title": "Event Types",
-            "description": "Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.node_deferred`, `document.node_started`, `document.received`, `document.updated`, or `*` for all, also future ones."
+            "description": "Event types: `document.confirmed`, `document.deleted`, `document.filed`, `document.lane_changed`, `document.moved`, `document.node_completed`, `document.node_deferred`, `document.node_delegated`, `document.node_started`, `document.received`, `document.review_required`, `document.updated`, or `*` for all, also future ones. Empty: the webhook serves rules only."
           },
           "active": {
             "anyOf": [
@@ -28994,6 +31149,71 @@
             ],
             "title": "Active",
             "description": "Switching on clears the failure count and the reason."
+          },
+          "headers": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/HeaderPatch"
+                },
+                "type": "array",
+                "maxItems": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headers",
+            "description": "All of the webhook's own headers from now on (empty: none). Headers of the webhook's own, sent with every request (at most 20), e.g. `Authorization` for a token the receiver checks. Lekto sets `content-type`, `content-length`, `host`, `connection`, `transfer-encoding` and the headers beginning with `webhook-` or `lekto-` itself; those are refused. The values are stored encrypted and never shown again; the names are."
+          },
+          "body": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BodyFormat"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What a request carries: `thin`, the event (`id`, `type`, `occurred_at`, `document_id`); `full`, the event and `document` as it is when the request goes (title, contact, type, topic, tags, date, space, lane, the fields with a value by key, `link` into the web UI); `template`, the JSON `body_template` makes of them. Left out: body and template stay."
+          },
+          "body_template": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 10000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Template",
+            "description": "For `body: template`: Liquid that makes JSON. It sees what a rule's template sees (`title`, `contact`, `field.<key>`, ...), `event` (`type`, `id`, `occurred_at`), `document_id`, `lane` and `link`; in a rule's request `rule` (`id`, `name`), in a task's also `task` (`id`, `callback`, `token`, `deadline`) and `steps.<name>`. The filter `json` writes a value as JSON (`{{ title | json }}`), `| default: nil` a missing one as `null`. Only together with `body`."
+          },
+          "max_open_tasks": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 64.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Open Tasks",
+            "description": "How many tasks (requests that expect an answer, e.g. a rule step that asks) the webhook takes at the same time, 1 to 64; more wait in Lekto, and their time to answer starts when they are sent."
+          },
+          "model_call": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebhookModelCallIn"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The request to the language model the webhook takes over, for every document: `propose` (the proposal of `signal_llm`) or `extract` (the values of the fields the proposal did not give, in `fields`). Lekto sends it as a task with a fixed contract (`external.propose`, `external.extract` under `webhooks`), whatever `body` says. Only an admin gives it to an admin's webhook; of the active webhooks at most one serves each kind (409). null: none. Left out: it stays."
           }
         },
         "additionalProperties": false,
@@ -29075,6 +31295,70 @@
           "occurred_at"
         ],
         "title": "EventMessage",
+        "type": "object"
+      },
+      "TaskAnswer": {
+        "additionalProperties": false,
+        "description": "The envelope of an answer to a task. Lekto reads it itself (an envelope that is not\nvalid uses the token up); this model describes it.",
+        "examples": [
+          {
+            "answer": {
+              "paid": true
+            },
+            "producer": "my-flow 1.2",
+            "status": "ok"
+          },
+          {
+            "reason": "the accounting system is down",
+            "status": "error"
+          }
+        ],
+        "properties": {
+          "status": {
+            "enum": [
+              "ok",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "producer": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "What answered, for the log.",
+            "title": "Producer"
+          },
+          "answer": {
+            "default": null,
+            "description": "With `status: ok`: any JSON. A rule step's answer is `steps.<name>` for the steps after it.",
+            "title": "Answer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "With `status: error`: why; shown as plain text, cut to 300 characters.",
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "TaskAnswer",
         "type": "object"
       },
       "InputErrorOut": {
@@ -29267,6 +31551,17 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Personal API token (`lekto_…`); scope `read` allows reading only."
+      },
+      "taskToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The one-time token of a task (`lkt_…`), from its request (`lekto-task-token`); only for answering that task."
+      },
+      "fileSignature": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "signature",
+        "description": "Lekto's signature in a link to a file of a model call's document, with `expires`; from the request of the model call."
       }
     }
   },
@@ -29732,6 +32027,11 @@
     "webhooks_limit": {
       "max": "number"
     },
+    "model_call_taken": {
+      "webhook": "text",
+      "kind": "text"
+    },
+    "model_call_admins": {},
     "open_fields": {
       "fields": "fields"
     },
@@ -29848,6 +32148,38 @@
     },
     "rule_disabled_choice": {
       "field": "text"
+    },
+    "rule_webhook_gone": {
+      "rule": "text"
+    },
+    "rule_webhook_unreadable": {
+      "rule": "text"
+    },
+    "task_no_answer": {
+      "webhook": "text"
+    },
+    "task_error": {
+      "webhook": "text",
+      "reason": "text"
+    },
+    "task_invalid": {
+      "webhook": "text",
+      "detail": "text"
+    },
+    "task_too_large": {
+      "webhook": "text",
+      "limit": "text"
+    },
+    "task_undelivered": {
+      "webhook": "text",
+      "error": "text"
+    },
+    "task_run_over": {},
+    "task_run_stopped": {
+      "webhook": "text"
+    },
+    "rule_asks_on_arrival": {
+      "rule": "text"
     },
     "skip_changed_meanwhile": {},
     "skip_not_available": {},
@@ -29989,7 +32321,25 @@
     "url_no_host": {},
     "url_credentials": {},
     "url_fragment": {},
-    "no_event_types": {},
+    "header_name_invalid": {
+      "name": "text"
+    },
+    "header_reserved": {
+      "name": "text"
+    },
+    "header_value_invalid": {
+      "name": "text",
+      "max": "number"
+    },
+    "header_twice": {
+      "name": "text"
+    },
+    "headers_limit": {
+      "max": "number"
+    },
+    "header_value_missing": {
+      "name": "text"
+    },
     "icon_invalid": {
       "icon": "text",
       "max": "number"

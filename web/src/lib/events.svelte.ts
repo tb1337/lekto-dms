@@ -10,6 +10,7 @@ export const DOCUMENT_EVENT_TYPES = [
 	'document.received',
 	'document.node_started',
 	'document.node_deferred',
+	'document.node_delegated',
 	'document.node_completed',
 	'document.lane_changed',
 	'document.filed',
@@ -17,6 +18,17 @@ export const DOCUMENT_EVENT_TYPES = [
 	'document.deleted'
 ] as const;
 export type DocumentEventType = (typeof DOCUMENT_EVENT_TYPES)[number];
+
+/** Events about a document for webhooks only: what the others say, in the words a receiver
+ * outside wants (waits for a review, confirmed, moved or handed over). The web UI does not
+ * listen to them. */
+export const WEBHOOK_EVENT_TYPES = [
+	...DOCUMENT_EVENT_TYPES,
+	'document.review_required',
+	'document.confirmed',
+	'document.moved'
+] as const;
+export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number];
 
 /** The events without a document for every user: a new model of the classifier. */
 export const SYSTEM_EVENT_TYPES = ['classifier.trained'] as const;
@@ -31,6 +43,7 @@ export type SearchEventType = (typeof SEARCH_EVENT_TYPES)[number];
 export const NODE_EVENTS: ReadonlySet<DocumentEventType> = new Set<DocumentEventType>([
 	'document.node_started',
 	'document.node_deferred',
+	'document.node_delegated',
 	'document.node_completed'
 ]);
 

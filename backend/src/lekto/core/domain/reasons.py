@@ -238,6 +238,8 @@ class ReasonCode(StrEnum):
     USERNAME_OF_OTHER = "username_of_other"
     LENSES_LIMIT = "lenses_limit"
     WEBHOOKS_LIMIT = "webhooks_limit"
+    MODEL_CALL_TAKEN = "model_call_taken"
+    MODEL_CALL_ADMINS = "model_call_admins"
     OPEN_FIELDS = "open_fields"
     DUPLICATE_OF = "duplicate_of"
     DUPLICATE_UNSEEN = "duplicate_unseen"
@@ -295,6 +297,16 @@ class ReasonCode(StrEnum):
     RULE_DISABLED_DELETED = "rule_disabled_deleted"
     RULE_DISABLED_PERSONAL_SPACE = "rule_disabled_personal_space"
     RULE_DISABLED_CHOICE = "rule_disabled_choice"
+    RULE_WEBHOOK_GONE = "rule_webhook_gone"
+    RULE_WEBHOOK_UNREADABLE = "rule_webhook_unreadable"
+    TASK_NO_ANSWER = "task_no_answer"
+    TASK_ERROR = "task_error"
+    TASK_INVALID = "task_invalid"
+    TASK_TOO_LARGE = "task_too_large"
+    TASK_UNDELIVERED = "task_undelivered"
+    TASK_RUN_OVER = "task_run_over"
+    TASK_RUN_STOPPED = "task_run_stopped"
+    RULE_ASKS_ON_ARRIVAL = "rule_asks_on_arrival"
     SKIP_CHANGED_MEANWHILE = "skip_changed_meanwhile"
     SKIP_NOT_AVAILABLE = "skip_not_available"
     # value checks a person meets in the UI
@@ -358,7 +370,12 @@ class ReasonCode(StrEnum):
     URL_NO_HOST = "url_no_host"
     URL_CREDENTIALS = "url_credentials"
     URL_FRAGMENT = "url_fragment"
-    NO_EVENT_TYPES = "no_event_types"
+    HEADER_NAME_INVALID = "header_name_invalid"
+    HEADER_RESERVED = "header_reserved"
+    HEADER_VALUE_INVALID = "header_value_invalid"
+    HEADER_TWICE = "header_twice"
+    HEADERS_LIMIT = "headers_limit"
+    HEADER_VALUE_MISSING = "header_value_missing"
     ICON_INVALID = "icon_invalid"
     COLOUR_INVALID = "colour_invalid"
     CARD_FIELD_UNKNOWN = "card_field_unknown"
@@ -646,6 +663,8 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.USERNAME_OF_OTHER: "username '{username}' is another user's name",
     ReasonCode.LENSES_LIMIT: "at most {max:number} lenses per user",
     ReasonCode.WEBHOOKS_LIMIT: "at most {max:number} webhooks per user",
+    ReasonCode.MODEL_CALL_TAKEN: "webhook '{webhook}' serves as the model call '{kind}' already",
+    ReasonCode.MODEL_CALL_ADMINS: "only an admin's webhook serves as a model call",
     ReasonCode.OPEN_FIELDS: "decide the open fields first: {fields:fields}",
     ReasonCode.DUPLICATE_OF: "duplicate of document {id}",
     ReasonCode.DUPLICATE_UNSEEN: "the file lies in Lekto already, in a space you cannot see",
@@ -712,6 +731,27 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.RULE_DISABLED_DELETED: "{kind:thing} '{name}' was deleted",
     ReasonCode.RULE_DISABLED_PERSONAL_SPACE: "the personal space of '{user}' was deleted",
     ReasonCode.RULE_DISABLED_CHOICE: "field '{field}' no longer allows a value the rule uses",
+    ReasonCode.RULE_WEBHOOK_GONE: (
+        "rule '{rule}': its webhook is gone or no longer belongs to whoever saved the rule; "
+        "nothing sent"
+    ),
+    ReasonCode.RULE_WEBHOOK_UNREADABLE: (
+        "rule '{rule}': the owner of its webhook may not read the document; nothing sent"
+    ),
+    ReasonCode.TASK_NO_ANSWER: "webhook '{webhook}' gave no answer in time",
+    ReasonCode.TASK_ERROR: "webhook '{webhook}' answered with an error: {reason}",
+    ReasonCode.TASK_INVALID: "the answer of webhook '{webhook}' is invalid: {detail}",
+    ReasonCode.TASK_TOO_LARGE: "the answer of webhook '{webhook}' is larger than {limit} bytes",
+    ReasonCode.TASK_UNDELIVERED: (
+        "the request could not be delivered to webhook '{webhook}': {error}"
+    ),
+    ReasonCode.TASK_RUN_OVER: "the document was processed again or deleted",
+    ReasonCode.TASK_RUN_STOPPED: (
+        "processing failed meanwhile: nothing was sent to webhook '{webhook}'"
+    ),
+    ReasonCode.RULE_ASKS_ON_ARRIVAL: (
+        "rule '{rule}' asks a webhook: it runs on arrival only, not on existing documents"
+    ),
     ReasonCode.SKIP_CHANGED_MEANWHILE: "changed meanwhile; not applied",
     ReasonCode.SKIP_NOT_AVAILABLE: "not available",
     ReasonCode.NOT_IBAN: "'{value}' is not a valid IBAN",
@@ -793,7 +833,15 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.URL_NO_HOST: "the URL needs a host",
     ReasonCode.URL_CREDENTIALS: "the URL must not contain a user name or password",
     ReasonCode.URL_FRAGMENT: "the URL must not have a fragment",
-    ReasonCode.NO_EVENT_TYPES: "choose at least one event type",
+    ReasonCode.HEADER_NAME_INVALID: "'{name}' is no valid header name",
+    ReasonCode.HEADER_RESERVED: "Lekto sets the header '{name}' itself",
+    ReasonCode.HEADER_VALUE_INVALID: (
+        "the value of '{name}' must have 1 to {max:number} printable ASCII characters, spaces "
+        "only inside"
+    ),
+    ReasonCode.HEADER_TWICE: "the header '{name}' is given twice",
+    ReasonCode.HEADERS_LIMIT: "at most {max:number} headers",
+    ReasonCode.HEADER_VALUE_MISSING: "give a value for the new header '{name}'",
     ReasonCode.ICON_INVALID: (
         "'{icon}' is no icon name (lower-case letters, digits and hyphens, at most "
         "{max:number} characters)"

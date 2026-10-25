@@ -1,13 +1,13 @@
 /**
  * What the pages of one rule share (the view, the editor, the apply page, a version): the
- * rule's data is loaded beside the master data (`loadLookup`), which is kept while the page
+ * rule's data is loaded beside the master data (`loadRuleLookup`, with the webhooks), which is kept while the page
  * moves to another rule, and an answer that arrives after a later load started is dropped
  * (another rule in the URL meanwhile, or a reload after a master data dialog saved).
  */
 import { untrack } from 'svelte';
 import { describeError } from '#lib/errors.ts';
 import { latest } from '#lib/latest.ts';
-import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
+import { loadRuleLookup, type Lookup } from '#lib/masterdata.svelte.ts';
 
 export class RuleLoader {
 	/** The master data; null until the first load succeeded. */
@@ -29,7 +29,7 @@ export class RuleLoader {
 		const current = this.#begin();
 		const kept = options.fresh ? null : untrack(() => this.lookup);
 		try {
-			const [found, loaded] = await Promise.all([data(), kept ?? loadLookup()]);
+			const [found, loaded] = await Promise.all([data(), kept ?? loadRuleLookup()]);
 			if (!current()) return;
 			this.lookup = loaded;
 			this.problem = null;

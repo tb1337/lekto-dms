@@ -27,14 +27,15 @@ from lekto.core.ports.repository import (
     RuleRepository,
     SpaceRepository,
     TagRepository,
+    TaskRepository,
     UserRepository,
     WebhookRepository,
 )
 
 
 class UnitOfWork(Protocol):
-    """One transaction over repositories (rules, webhooks and the inbox included), processing
-    log, outbox, job queue and identity.
+    """One transaction over repositories (rules, webhooks, tasks and the inbox included),
+    processing log, outbox, job queue and identity.
 
     State change, events and jobs are committed together or not at all:
 
@@ -82,6 +83,8 @@ class UnitOfWork(Protocol):
     def classifier_models(self) -> ClassifierModelRepository: ...
     @property
     def webhooks(self) -> WebhookRepository: ...
+    @property
+    def tasks(self) -> TaskRepository: ...
     @property
     def lenses(self) -> LensRepository: ...
     @property

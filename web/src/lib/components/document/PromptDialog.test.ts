@@ -38,4 +38,16 @@ describe('PromptDialog', () => {
 		expect(screen.getByText('first of reader')).toBeTruthy();
 		expect(screen.queryByText('second of reader')).toBeNull();
 	});
+
+	it('shows what went to a webhook without a system message', async () => {
+		render(PromptDialog, {
+			open: true,
+			title: 'Prompt · Recognise',
+			meta: 'agent 1',
+			calls: [call('')]
+		});
+		expect(await screen.findByText('the text')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: m.prompt_system() })).toBeNull();
+		expect(screen.getByRole('button', { name: m.prompt_answer() })).toBeTruthy();
+	});
 });

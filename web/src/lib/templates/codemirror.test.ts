@@ -9,7 +9,8 @@ const { completionSource, mountTemplateEditor } = await import('./codemirror.ts'
 const lists = () => ({
 	names: [
 		{ name: 'title', label: 'Title' },
-		{ name: 'contact', label: 'Contact' }
+		{ name: 'contact', label: 'Contact' },
+		{ name: 'steps.flow', label: 'Answer of flow' }
 	],
 	fields: [{ key: 'la_brutto', name: 'LA_Brutto' }]
 });
@@ -26,6 +27,7 @@ describe('completion', () => {
 		expect(result?.options.map((option) => [option.label, option.apply])).toEqual([
 			['title', 'title }}'],
 			['contact', 'contact }}'],
+			['steps.flow', 'steps.flow }}'],
 			['field.la_brutto', 'field.la_brutto }}']
 		]);
 		// Listed as given, not by the alphabet.
@@ -41,6 +43,12 @@ describe('completion', () => {
 		expect(filters?.options.find((option) => option.label === 'date')?.apply).toBe("date: '%Y-%m'");
 		expect(complete('{% ')?.options.map((option) => option.label)).toContain('if');
 		expect(complete('Lohn ')).toBeNull();
+	});
+
+	it('offers the steps before that ask after steps.', () => {
+		expect(complete('{{ steps.')?.options.map((option) => [option.label, option.apply])).toEqual([
+			['flow', 'flow }}']
+		]);
 	});
 });
 

@@ -178,6 +178,14 @@ export function completionSource(lists: () => Completions) {
 			case 'tag':
 				options = TAGS.map((tag) => ({ label: tag, apply: `${tag} `, type: 'keyword' }));
 				break;
+			case 'step':
+				options = names
+					.filter((name) => name.name.startsWith('steps.'))
+					.map((name) => {
+						const step = name.name.slice('steps.'.length);
+						return { label: step, apply: step + close, detail: name.label, type: 'property' };
+					});
+				break;
 			case 'value':
 				options = [
 					...names.map((name, index) => ({

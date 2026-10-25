@@ -12,8 +12,8 @@ from lekto.core.domain.jobs import OPEN_STATES, JobState
 from lekto.core.domain.master_data import Contact
 from lekto.core.domain.pipeline import Node
 from lekto.core.domain.users import Role
+from lekto.core.services._jobs import NODE_JOB, NodeJob
 from lekto.core.services.jobs import JobsService, KindSummary, RetryWay
-from lekto.core.services.pipeline import NODE_JOB, NodeJob
 from tests.builders import NOW, incoming
 from tests.unit.services.support import World
 

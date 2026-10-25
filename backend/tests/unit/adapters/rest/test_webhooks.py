@@ -6,6 +6,7 @@ from lekto.adapters.inbound.rest import PREFIX
 from lekto.adapters.outbound.memory import FakeWebhookSender
 from lekto.core.domain.identity import TokenScope
 from lekto.core.domain.ids import DocumentId, EventId, WebhookId, new_id
+from lekto.core.domain.users import Role
 from lekto.core.domain.webhooks import DeliveryOutcome, WebhookDelivery
 from tests.api import auth, bearer
 from tests.unit.adapters.rest.support import Api, post
@@ -21,6 +22,7 @@ async def test_a_webhook_is_created_changed_switched_off_and_deleted(api: Api) -
     user = await api.user()
     created = await post(api, "/webhooks", BODY, auth(user))
     assert created["secret"].startswith("whsec_")
+    assert created["max_open_tasks"] == 4
     assert created["active"] is True and created["event_types"] == [
         "document.filed",
         "document.lane_changed",
@@ -34,7 +36,9 @@ async def test_a_webhook_is_created_changed_switched_off_and_deleted(api: Api) -
     assert all("secret" not in item for item in listed)
 
     changed = await api.client.patch(
-        url, json={"name": "HA", "event_types": ["*"], "active": False}, headers=auth(user)
+        url,
+        json={"name": "HA", "event_types": ["*"], "active": False, "max_open_tasks": 8},
+        headers=auth(user),
     )
     assert changed.status_code == 200, changed.text
     assert (changed.json()["name"], changed.json()["event_types"], changed.json()["active"]) == (
@@ -42,6 +46,9 @@ async def test_a_webhook_is_created_changed_switched_off_and_deleted(api: Api) -
         ["*"],
         False,
     )
+    assert changed.json()["max_open_tasks"] == 8
+    too_many = await api.client.patch(url, json={"max_open_tasks": 65}, headers=auth(user))
+    assert too_many.status_code == 422
     assert (await api.client.delete(url, headers=auth(user))).status_code == 204
     assert (await api.client.get(url, headers=auth(user))).status_code == 404
 
@@ -60,12 +67,95 @@ async def test_the_secret_is_renewed_once_with_the_old_one_still_valid(api: Api)
     assert "secret" not in shown and shown["previous_secret_valid_until"] is not None
 
 
+async def test_a_webhook_with_own_headers_and_without_a_secret(api: Api) -> None:
+    user = await api.user()
+    body = {
+        **BODY,
+        "signed": False,
+        "headers": [
+            {"name": "Authorization", "value": "Bearer t0ken"},
+            {"name": "X-Tenant", "value": "home"},
+        ],
+    }
+    created = await post(api, "/webhooks", body, auth(user))
+    assert created["secret"] is None and created["signed"] is False
+    assert created["headers"] == ["Authorization", "X-Tenant"]
+    assert "t0ken" not in str(created)
+    url = f"{PREFIX}/webhooks/{created['id']}"
+
+    # A value left out is kept; only the names are ever shown.
+    changed = await api.client.patch(
+        url,
+        json={"headers": [{"name": "Authorization"}, {"name": "X-Other", "value": "1"}]},
+        headers=auth(user),
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["headers"] == ["Authorization", "X-Other"]
+    missing = await api.client.patch(url, json={"headers": [{"name": "X-New"}]}, headers=auth(user))
+    assert missing.status_code == 422, missing.text
+
+    signed = await api.client.post(f"{url}/secret", headers=auth(user))
+    assert signed.status_code == 200 and signed.json()["secret"].startswith("whsec_")
+    assert signed.json()["signed"] is True
+    unsigned = await api.client.delete(f"{url}/secret", headers=auth(user))
+    assert unsigned.status_code == 200, unsigned.text
+    assert unsigned.json()["signed"] is False
+    assert unsigned.json()["previous_secret_valid_until"] is None
+
+
+async def test_reserved_or_repeated_headers_are_a_422(api: Api) -> None:
+    user = await api.user()
+    for headers in (
+        [{"name": "Content-Type", "value": "text/plain"}],
+        [{"name": "webhook-signature", "value": "v1,x"}],
+        [{"name": "X", "value": "a"}, {"name": "X", "value": "b"}],
+        [{"name": "X", "value": "a"}, {"name": "x", "value": "b"}],
+        [{"name": "X Y", "value": "a"}],
+        [{"name": "X", "value": "line\nbreak"}],
+    ):
+        response = await api.client.post(
+            f"{PREFIX}/webhooks", json={**BODY, "headers": headers}, headers=auth(user)
+        )
+        assert response.status_code == 422, (headers, response.text)
+
+
+async def test_a_webhook_with_a_template_body_and_its_preview(api: Api) -> None:
+    user = await api.user()
+    template = '{"message": {{ title | json }}, "event": {{ event.type | json }}}'
+    created = await post(
+        api, "/webhooks", {**BODY, "body": "template", "body_template": template}, auth(user)
+    )
+    assert (created["body"], created["body_template"]) == ("template", template)
+    bad = await api.client.post(
+        f"{PREFIX}/webhooks",
+        json={**BODY, "body": "template", "body_template": '{"x": {{ nonsense }}}'},
+        headers=auth(user),
+    )
+    assert bad.status_code == 422, bad.text
+    changed = await api.client.patch(
+        f"{PREFIX}/webhooks/{created['id']}", json={"body": "full"}, headers=auth(user)
+    )
+    assert (changed.json()["body"], changed.json()["body_template"]) == ("full", None)
+
+    preview = await api.client.post(
+        f"{PREFIX}/templates/preview",
+        json={"template": template, "purpose": "webhook"},
+        headers=auth(user),
+    )
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["error"] is None
+    assert set(preview.json()["used"]) == {"title", "event.type"}
+    rule = await api.client.post(
+        f"{PREFIX}/templates/preview", json={"template": "{{ event.type }}"}, headers=auth(user)
+    )
+    assert rule.json()["error"] == "unknown value event.type"
+
+
 async def test_invalid_input_is_a_422(api: Api) -> None:
     user = await api.user()
     for body in (
         {**BODY, "url": "ftp://x"},
         {**BODY, "url": "https://user:pw@example.org"},
-        {**BODY, "event_types": []},
         {**BODY, "event_types": ["document.nonsense"]},
         {**BODY, "name": ""},
         {**BODY, "extra": 1},
@@ -203,3 +293,35 @@ async def test_test_requests_answer_429_beyond_the_limit(api: Api) -> None:
     assert refused.headers["Retry-After"] == "60"
     sender = api.container.webhook_sender
     assert isinstance(sender, FakeWebhookSender) and len(sender.requests) == 10
+
+
+async def test_an_admins_webhook_serves_as_a_model_call(api: Api) -> None:
+    admin, user = await api.user(role=Role.ADMIN), await api.user()
+    body = BODY | {"event_types": [], "model_call": {"kind": "propose"}}
+    created = await post(api, "/webhooks", body, auth(admin))
+    assert created["model_call"] == {"kind": "propose", "timeout_seconds": 300}
+    url = f"{PREFIX}/webhooks/{created['id']}"
+    # Left out it stays, given it changes, null ends it.
+    kept = await api.client.patch(url, json={"name": "agent"}, headers=auth(admin))
+    assert kept.json()["model_call"] == {"kind": "propose", "timeout_seconds": 300}
+    changed = await api.client.patch(
+        url, json={"model_call": {"kind": "extract", "timeout_seconds": 900}}, headers=auth(admin)
+    )
+    assert changed.json()["model_call"] == {"kind": "extract", "timeout_seconds": 900}
+    # A second one of the same kind conflicts; a user may not; the time is limited.
+    second = await api.client.post(
+        f"{PREFIX}/webhooks",
+        json=BODY | {"model_call": {"kind": "extract"}},
+        headers=auth(admin),
+    )
+    assert second.status_code == 409
+    assert second.json()["reason"]["code"] == "model_call_taken"
+    refused = await api.client.post(f"{PREFIX}/webhooks", json=body, headers=auth(user))
+    assert refused.status_code == 403
+    assert refused.json()["reason"]["code"] == "model_call_admins"
+    short = await api.client.patch(
+        url, json={"model_call": {"kind": "extract", "timeout_seconds": 5}}, headers=auth(admin)
+    )
+    assert short.status_code == 422
+    ended = await api.client.patch(url, json={"model_call": None}, headers=auth(admin))
+    assert ended.json()["model_call"] is None

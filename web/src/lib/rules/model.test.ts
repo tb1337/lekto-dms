@@ -192,7 +192,8 @@ describe('the rule model', () => {
 			tags: ['contains', 'in', 'present', 'missing'],
 			channel: ['is', 'in'],
 			text: ['contains', 'matches'],
-			document_date: ['is', 'gt', 'lt', 'present', 'missing']
+			document_date: ['is', 'gt', 'lt', 'present', 'missing'],
+			step: ['is', 'in', 'contains', 'gt', 'lt', 'present', 'missing']
 		});
 		expect(FIELD_TYPE_OPERATORS.boolean).toEqual(['is', 'present', 'missing']);
 		expect(FIELD_TYPE_OPERATORS.choice).toEqual(['is', 'in', 'present', 'missing']);
@@ -454,5 +455,107 @@ describe('errors of saving', () => {
 		expect(Object.keys(saveErrors(type, typed).byKey)).toEqual([typed.actions[0].key]);
 		const other = failed(409, 'changed meanwhile');
 		expect(saveErrors(other, model)).toEqual({ byKey: {}, general: 'changed meanwhile' });
+	});
+});
+
+describe('steps of a rule', () => {
+	const HOOK = ID(900);
+	const stepsDefinition: ApiDefinition = {
+		name: 'Invoices',
+		priority: 100,
+		triggers: ['ingest'],
+		conditions: {
+			all: [{ field: 'channel', op: 'is', value: 'api', field_id: null, case_sensitive: false }],
+			not: false
+		},
+		actions: [
+			{
+				type: 'ask_webhook',
+				name: 'flow',
+				webhook_id: HOOK,
+				timeout_seconds: 120,
+				missing: 'yellow'
+			},
+			{
+				type: 'condition',
+				conditions: {
+					any: [
+						{
+							field: 'step',
+							op: 'is',
+							value: true,
+							path: 'flow.paid',
+							field_id: null,
+							case_sensitive: false
+						},
+						{
+							field: 'step',
+							op: 'gt',
+							value: 12.5,
+							path: 'flow.amount',
+							field_id: null,
+							case_sensitive: false
+						}
+					],
+					not: false
+				}
+			},
+			{ type: 'add_tags', tag_ids: [ID(1)] }
+		]
+	};
+
+	it('gives asking and condition steps back unchanged', () => {
+		const model = fromApi(stepsDefinition);
+		const condition = model.actions[1];
+		expect(condition.type === 'condition' && condition.conditions.kind).toBe('group');
+		expect(toApi(model)).toEqual(stepsDefinition);
+	});
+
+	it('runs a rule that asks on arrival only', () => {
+		const model = fromApi(stepsDefinition);
+		expect(validate(model, FIELDS)).toEqual({});
+		model.triggers = ['change', 'ingest'];
+		expect(validate(model, FIELDS).triggers).toEqual({ code: 'triggers_ask' });
+	});
+
+	it('checks names, times and what a condition step looks at', () => {
+		const model = fromApi(stepsDefinition);
+		const [ask, condition] = model.actions;
+		if (ask.type !== 'ask_webhook' || condition.type !== 'condition') throw new Error('steps');
+		ask.timeout_seconds = 10;
+		expect(validate(model, FIELDS)[ask.key]).toMatchObject({ code: 'timeout' });
+		ask.timeout_seconds = 60;
+		ask.name = 'Flow';
+		const problems = validate(model, FIELDS);
+		expect(problems[ask.key]).toEqual({ code: 'step_name' });
+		const [first, second] = conditionsOf(condition.conditions);
+		expect(problems[first.key]).toEqual({ code: 'step_unknown' });
+		second.path = 'flow..amount';
+		expect(validate(model, FIELDS)[second.key]).toEqual({ code: 'path' });
+	});
+
+	it('wants an action besides conditions, and a step name once', () => {
+		const model = newModel();
+		model.name = 'x';
+		model.triggers = ['ingest'];
+		model.actions = [newAction('condition')];
+		expect(validate(model, FIELDS).actions).toEqual({ code: 'actions_none' });
+		const one = newAction('ask_webhook');
+		const two = newAction('ask_webhook');
+		for (const step of [one, two]) {
+			if (step.type === 'ask_webhook') Object.assign(step, { name: 'flow', webhook_id: HOOK });
+		}
+		model.actions = [one, two];
+		expect(validate(model, FIELDS)[two.key]).toEqual({ code: 'twice' });
+	});
+
+	it('names the webhook a step asks and the ids its conditions name', () => {
+		const model = fromApi(stepsDefinition);
+		expect(referencedIds(model.actions[0])).toEqual([HOOK]);
+		const condition = newAction('condition');
+		if (condition.type === 'condition') {
+			condition.conditions.items = [{ ...newCondition('contact'), value: ID(5) }];
+		}
+		expect(referencedIds(condition)).toEqual([ID(5)]);
 	});
 });

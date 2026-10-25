@@ -24,6 +24,12 @@ export function pipeline(): Promise<Pipeline> {
 	return asked;
 }
 
+/** Whether a node is at work: a worker runs it, or it waits for the answers to its tasks
+ * (`delegated`, running externally). */
+export function isAtWork(state: NodeState): boolean {
+	return state.status === 'running' || state.status === 'delegated';
+}
+
 /** For tests: ask again. */
 export function forgetPipeline(): void {
 	asked = null;
@@ -64,12 +70,12 @@ export function reprocessable(graph: readonly GraphNode[], processing: Processin
 
 /**
  * The nodes in rows by level: a node's level is one more than the highest level of the nodes it
- * needs, so nodes that run side by side share a row.
+ * needs or waits for, so nodes that run side by side share a row.
  */
 export function levels(graph: readonly GraphNode[]): Node[][] {
 	const level = new Map<Node, number>();
 	for (const entry of graph) {
-		const needed = entry.requires.map((node) => level.get(node) ?? 0);
+		const needed = [...entry.requires, ...entry.waits_for].map((node) => level.get(node) ?? 0);
 		level.set(entry.node, needed.length === 0 ? 0 : Math.max(...needed) + 1);
 	}
 	const rows: Node[][] = [];
@@ -95,7 +101,7 @@ export function progress(processing: Processing): Progress {
 	return {
 		done: nodes.filter((state) => state.status === 'done' || state.status === 'skipped').length,
 		total: nodes.length,
-		running: nodes.filter((state) => state.status === 'running').map((state) => state.node)
+		running: nodes.filter(isAtWork).map((state) => state.node)
 	};
 }
 

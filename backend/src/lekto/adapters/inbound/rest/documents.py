@@ -358,7 +358,9 @@ async def preview_change(
         rules=(
             None
             if change.rules is None
-            else [RuleReportOut.of(report) for report in change.rules.plan.reports]
+            else [
+                RuleReportOut.of(report, change.rules.sends) for report in change.rules.plan.reports
+            ]
         ),
         visibility=(VisibilityOut.of(change.document, change.space) if readable else None),
     )
@@ -829,7 +831,9 @@ def _changed(change: MetadataChange) -> DocumentChanged | DocumentOutOfReach:
     details = DocumentDetails.of(change.document, change.access)
     rules = None
     if change.rules is not None:
-        rules = [RuleReportOut.of(report) for report in change.rules.plan.reports]
+        rules = [
+            RuleReportOut.of(report, change.rules.sends) for report in change.rules.plan.reports
+        ]
     return DocumentChanged(**details.model_dump(), rules=rules)
 
 

@@ -48,13 +48,13 @@ const lookup = {
 const tobi = { id: TOBI, admin: false };
 
 const graph: GraphNode[] = [
-	{ node: 'receive', requires: [] },
-	{ node: 'ocr', requires: ['receive'] },
-	{ node: 'signal_llm', requires: ['ocr'] },
-	{ node: 'judge', requires: ['signal_llm'] },
-	{ node: 'fields', requires: ['judge'] },
-	{ node: 'apply_rules', requires: ['fields'] },
-	{ node: 'file', requires: ['apply_rules'] }
+	{ node: 'receive', requires: [], waits_for: [] },
+	{ node: 'ocr', requires: ['receive'], waits_for: [] },
+	{ node: 'signal_llm', requires: ['ocr'], waits_for: [] },
+	{ node: 'judge', requires: ['signal_llm'], waits_for: [] },
+	{ node: 'fields', requires: ['judge'], waits_for: [] },
+	{ node: 'apply_rules', requires: ['fields'], waits_for: [] },
+	{ node: 'file', requires: ['apply_rules'], waits_for: [] }
 ];
 const NODES = graph.map((entry) => entry.node);
 

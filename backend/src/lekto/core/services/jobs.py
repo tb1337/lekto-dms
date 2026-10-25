@@ -28,8 +28,8 @@ from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import load_actor, require_admin
+from lekto.core.services._jobs import NODE_JOB
 from lekto.core.services._kept import Kept
-from lekto.core.services.pipeline import NODE_JOB
 
 PAGE_LIMIT = 100
 SAMPLE = 2000

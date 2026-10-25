@@ -78,7 +78,7 @@ function toneOf(step: Step): BandTone | null {
 	const state = step.state;
 	if (state === null || state.status === 'skipped') return null;
 	if (step.done.from !== null) return 'carried';
-	if (state.status === 'running') return 'running';
+	if (state.status === 'running' || state.status === 'delegated') return 'running';
 	if (state.status === 'waiting') return 'waiting';
 	if (state.outcome === 'failed') return 'red';
 	if (state.outcome === 'uncertain') return 'yellow';

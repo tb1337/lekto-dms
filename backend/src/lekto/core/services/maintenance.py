@@ -80,9 +80,9 @@ class MaintenanceService:
         session_idle: timedelta,
         object_store: ObjectStore | None = None,
     ) -> None:
-        """Every `interval`, remove finished jobs and delivered events older than
-        `retention`, sessions that expired or were idle for `session_idle`, and counts of
-        failed sign-ins that no longer matter."""
+        """Every `interval`, remove finished jobs, delivered events, webhook deliveries and
+        ended tasks older than `retention`, sessions that expired or were idle for
+        `session_idle`, and counts of failed sign-ins that no longer matter."""
         self._uow = uow
         self._clock = clock
         self._bus = event_bus
@@ -163,6 +163,7 @@ class MaintenanceService:
                 sessions = await uow.sessions.purge(now=now, idle_before=now - self._session_idle)
                 failures = await uow.login_failures.purge(before=now - _FAILURE_RETENTION)
                 deliveries = await uow.webhooks.purge_deliveries(before=before)
+                tasks = await uow.tasks.purge(before=before)
                 secrets = await _drop_expired_secrets(uow, now)
                 inbox = await uow.inbox.purge(before=now - DONE_PERIOD)
                 await uow.jobs.complete(job, now=now)
@@ -183,6 +184,7 @@ class MaintenanceService:
                 "sessions_removed": sessions,
                 "login_failures_removed": failures,
                 "webhook_deliveries_removed": deliveries,
+                "tasks_removed": tasks,
                 "webhook_secrets_dropped": secrets,
                 "inbox_marks_removed": inbox,
             },

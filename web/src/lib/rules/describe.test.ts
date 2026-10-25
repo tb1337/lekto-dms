@@ -81,7 +81,8 @@ describe('conditions on groups', () => {
 			op: 'contains' as const,
 			value: 'g1',
 			fieldId: null,
-			caseSensitive: false
+			caseSensitive: false,
+			path: null
 		};
 		expect(describeCondition(condition, groups)).toBe(
 			`${m.rule_field_contact_group()} ${m.rule_op_tags_contains()} Insurer › Health insurer`
@@ -115,7 +116,8 @@ describe('the topic', () => {
 			op: 'is' as const,
 			value: 't1',
 			fieldId: null,
-			caseSensitive: false
+			caseSensitive: false,
+			path: null
 		};
 		expect(describeCondition(condition, topics)).toBe(
 			`${m.field_topic()} ${m.rule_op_is()} Insurance › Health`

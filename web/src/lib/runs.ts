@@ -6,6 +6,7 @@
 import type { components } from '#lib/api/schema.ts';
 import {
 	descendants,
+	isAtWork,
 	type GraphNode,
 	type Node,
 	type NodeState,
@@ -180,9 +181,7 @@ export function glance(
 	} else {
 		const span = runSpan(entries, run);
 		const running = current
-			? processing.nodes
-					.filter((state) => state.status === 'running')
-					.map((state) => state.started_at)
+			? processing.nodes.filter(isAtWork).map((state) => state.started_at)
 			: [];
 		started =
 			[span?.started, ...running]

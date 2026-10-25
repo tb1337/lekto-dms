@@ -45,6 +45,7 @@ def build_worker(container: Container, settings: Settings, services: Services) -
         indexing=services.indexing,
         rules=services.rule_applications,
         webhooks=services.webhook_delivery,
+        tasks=services.tasks,
         webhook_concurrency=settings.webhook_concurrency,
         classifier=services.classifier,
         logos=services.logos,

@@ -295,7 +295,13 @@
 								>
 								{#if conflict}<Badge variant="outline">{m.rule_conflict()}</Badge>{/if}
 							</span>
-							<RuleEffects effects={item.changes} notes={item.notes} {lookup} />
+							<RuleEffects
+								effects={item.changes}
+								notes={item.notes}
+								sends={item.sends}
+								refused={item.sends_refused}
+								{lookup}
+							/>
 							{#if item.outcome.chain.length > 0}
 								<ul class="flex flex-col gap-0.5">
 									{#each chainLines(item.outcome, rule?.name ?? '', lookup, session.user?.id) as line, index (index)}

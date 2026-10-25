@@ -56,6 +56,22 @@ class NodeDeferred(DocumentEvent):
 
 
 @dataclass(frozen=True, kw_only=True)
+class NodeDelegated(DocumentEvent):
+    """The node waits for answers to its tasks ("running externally"); `deadline`: when the
+    last of its open tasks ends at the latest (None while they wait to be sent)."""
+
+    type: ClassVar[str] = "document.node_delegated"
+    node: Node
+    run: int
+    deadline: datetime | None
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.deadline is not None:
+            object.__setattr__(self, "deadline", require_utc(self.deadline, "deadline"))
+
+
+@dataclass(frozen=True, kw_only=True)
 class NodeCompleted(DocumentEvent):
     type: ClassVar[str] = "document.node_completed"
     node: Node
@@ -76,6 +92,33 @@ class LaneChanged(DocumentEvent):
 class DocumentFiled(DocumentEvent):
     type: ClassVar[str] = "document.filed"
     space_id: SpaceId
+
+
+@dataclass(frozen=True, kw_only=True)
+class ReviewRequired(DocumentEvent):
+    """The document waits in the inbox for its editors: uncertain (yellow) or failed (red)."""
+
+    type: ClassVar[str] = "document.review_required"
+    lane: Lane
+
+
+@dataclass(frozen=True, kw_only=True)
+class DocumentConfirmed(DocumentEvent):
+    """A person confirmed the document in the inbox; processing goes on from there."""
+
+    type: ClassVar[str] = "document.confirmed"
+
+
+@dataclass(frozen=True, kw_only=True)
+class DocumentMoved(DocumentEvent):
+    """The document lies in another space (`space_id`): a person moved or handed it over
+    (`by_person`), or processing or a rule did. `handed_over`: into the personal space of
+    another user than the one who moved it (or, moved by processing or a rule, uploaded it)."""
+
+    type: ClassVar[str] = "document.moved"
+    space_id: SpaceId
+    by_person: bool
+    handed_over: bool
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -121,9 +164,13 @@ DOCUMENT_EVENT_TYPES: dict[str, type[DocumentEvent]] = {
         DocumentReceived,
         NodeStarted,
         NodeDeferred,
+        NodeDelegated,
         NodeCompleted,
         LaneChanged,
+        ReviewRequired,
+        DocumentConfirmed,
         DocumentFiled,
+        DocumentMoved,
         DocumentUpdated,
         DocumentDeleted,
     )

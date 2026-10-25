@@ -1416,8 +1416,9 @@ language model of `LEKTO_LLM_*`, for every document (an exception to "webhooks s
 owner may read"). Of the active webhooks of active admins at most one serves each kind (`409`
 `model_call_taken`); a webhook switched off, deleted, or whose owner is no admin any more serves
 no more, and the language model answers again (without one `signal_llm` abstains).
-`propose` takes over `signal_llm` (prompt `propose-5`), `extract` the request of `fields` when
-the judge decided another type than the proposal (prompt `extract-5`). The node sends a task
+`propose` takes over `signal_llm` (prompt `propose-5`), `extract` the request of `fields` for
+the fields the proposal did not give (another type decided, or no proposal; prompt
+`extract-5`). The node sends a task
 whose body is always the context, whatever the webhook's `body`: `contract` (`propose-ext-1`,
 `extract-ext-1`), `task` (`id`, `kind`, `document_id`, `run`, `deadline`, `callback`, `token`),
 `document` (`filename`, `media_type`, `pages`, `received`, the text in full, and signed links to

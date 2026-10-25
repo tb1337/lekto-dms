@@ -2,7 +2,7 @@
 
 An admin's webhook can take over Lekto's two requests to the language model: `propose` (the
 signal `signal_llm`: sender, type, topic, tags, date, title, space and fields) and `extract`
-(the fields of a type the judge decided other than the proposal). Lekto then sends the context
+(the fields the proposal did not give: the judge decided another type, or there is none). Lekto then sends the context
 as a task and waits for the answer instead of calling `LEKTO_LLM_*`. The contract is in the
 OpenAPI document (`/api/v1/openapi.json`) under `webhooks`: `external.propose` and
 `external.extract`.

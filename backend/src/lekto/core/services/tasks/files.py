@@ -19,7 +19,8 @@ from lekto.core.domain.tasks import Task
 from lekto.core.ports.identity import DecryptionError, SecretCipher
 from lekto.core.services.objects import page_key, structure_key
 
-FILES_PATH = "/api/v1/external/tasks/{id}/files/{name}"
+EXTERNAL_TASKS_PATH = "/api/v1/external/tasks/"
+FILES_PATH = EXTERNAL_TASKS_PATH + "{id}/files/{name}"
 STRUCTURE = "content.json"
 _PAGE = re.compile(r"pages/([1-9][0-9]{0,4})\.webp")
 

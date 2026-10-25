@@ -59,7 +59,7 @@ from lekto.core.domain.jobs import Job, RetryPolicy
 from lekto.core.domain.json_value import JsonObject, as_object
 from lekto.core.domain.permissions import in_reach
 from lekto.core.domain.reasons import ReasonCode, because
-from lekto.core.domain.tasks import Task, TaskStatus
+from lekto.core.domain.tasks import Task, TaskKind, TaskStatus
 from lekto.core.domain.templates import RULE
 from lekto.core.domain.users import User
 from lekto.core.domain.webhooks import (
@@ -698,6 +698,9 @@ async def _owners_who_may_read(
 DOCUMENT_UNAVAILABLE = "the document is not available to the owner"
 
 
+MODEL_CALLS = frozenset({TaskKind.PROPOSE.value, TaskKind.EXTRACT.value})
+
+
 async def _reason_to_drop(
     uow: UnitOfWork, webhook: Webhook, event_type: str, document_id: DocumentId | None
 ) -> str | None:
@@ -712,6 +715,8 @@ async def _reason_to_drop(
     document = await uow.documents.find(document_id)
     if document is None:
         return DOCUMENT_UNAVAILABLE
+    if event_type in MODEL_CALLS:  # the webhook of a model call sees every document, an admin's
+        return None if owner.is_active_admin else "the owner is no admin any more"
     if not await _may_read(uow, owner, document):
         return DOCUMENT_UNAVAILABLE  # the same words: gone and hidden must not be told apart
     return None

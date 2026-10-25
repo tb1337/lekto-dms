@@ -12,9 +12,9 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from lekto.core.domain.ids import DocumentId, WebhookId
-from lekto.core.domain.pipeline import Node
+from lekto.core.domain.pipeline import Node, ProcessingStatus
 from lekto.core.domain.reasons import ReasonCode, because
-from lekto.core.domain.tasks import Task
+from lekto.core.domain.tasks import Task, TaskKind
 from lekto.core.domain.webhooks import DEFAULT_OPEN_TASKS, Webhook
 from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services._jobs import enqueue_nodes
@@ -62,8 +62,8 @@ async def wake_queue(
     uow: UnitOfWork, webhook_id: WebhookId, now: datetime, *, storing: DocumentId | None = None
 ) -> None:
     """Give the room the webhook has among its open tasks to the tasks that wait longest:
-    their nodes run anew and send them. A waiting task whose run is over is cancelled.
-    `storing`: as `end_task`."""
+    their nodes run anew and send them. A waiting task whose run is over, or failed meanwhile,
+    is cancelled. `storing`: as `end_task`."""
     webhook = await uow.webhooks.find(webhook_id)
     room = (
         DEFAULT_OPEN_TASKS if webhook is None else webhook.max_open_tasks
@@ -74,6 +74,10 @@ async def wake_queue(
         document = await uow.documents.find(task.document_id)
         if document is None or document.processing.run != task.run:
             task.cancel(because(ReasonCode.TASK_RUN_OVER), now)
+            await uow.tasks.update(task)
+        elif document.processing.status is not ProcessingStatus.PROCESSING:
+            name = str(webhook_id) if webhook is None else webhook.name
+            task.cancel(because(ReasonCode.TASK_RUN_STOPPED, webhook=name), now)
             await uow.tasks.update(task)
         elif task.document_id != storing:
             await wake_node(uow, task.document_id, task.node, task.run, now)
@@ -90,13 +94,17 @@ async def cancel_tasks(uow: UnitOfWork, document_id: DocumentId, now: datetime) 
 
 
 async def drop_queued(uow: UnitOfWork, webhook: Webhook, now: datetime) -> None:
-    """The webhook goes: its tasks that wait to be sent never will; they fail, and their
-    nodes go on as without an answer. Its open tasks run to their deadline."""
+    """The webhook goes: its tasks that wait to be sent never will. A rule's fail, and their
+    nodes go on as without an answer; a model call's are cancelled, and their nodes ask anew
+    (another webhook, or the language model). Its open tasks run to their deadline."""
     while queued := await uow.tasks.queued(webhook.id, limit=100):
         for task in queued:
             gone = because(
                 ReasonCode.TASK_UNDELIVERED, webhook=webhook.name, error="the webhook was deleted"
             )
-            task.fail(gone, now)
+            if task.kind is TaskKind.ASK:
+                task.fail(gone, now)
+            else:
+                task.cancel(gone, now)
             await uow.tasks.update(task)
             await wake_node(uow, task.document_id, task.node, task.run, now)

@@ -113,9 +113,9 @@ def describe(app: FastAPI) -> None:
         operation_id="webhook_external_extract",
         summary="The model call `extract`",
         description=(
-            "To the admin's webhook that serves as `extract`, when the judge decided another "
-            "type than the proposal: the fields of that type to read, always as this JSON. "
-            "Answered as `external.propose`."
+            "To the admin's webhook that serves as `extract`, for the fields the proposal did "
+            "not give (the judge decided another type, or there is no proposal): the fields to "
+            "read, always as this JSON. Answered as `external.propose`."
         ),
         openapi_extra={"parameters": SIGNED + TASK},
     )

@@ -26,7 +26,14 @@ from lekto.core.domain.fields import FieldDefinition, FieldType
 from lekto.core.domain.ids import FieldId
 from lekto.core.domain.json_value import JsonObject, JsonValue, as_object
 from lekto.core.domain.master_data import one_line
-from lekto.core.domain.pipeline import MODEL, TRUNCATED, Node, NodeResult, Outcome
+from lekto.core.domain.pipeline import (
+    MODEL,
+    TRUNCATED,
+    Node,
+    NodeResult,
+    Outcome,
+    ProcessingStatus,
+)
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.tasks import DEFAULT_TIMEOUT, Task, TaskKind, TaskStatus
 from lekto.core.domain.webhooks import ModelCallKind, Webhook
@@ -380,8 +387,17 @@ async def model_call_state(
 
 
 async def _latest(uow: UnitOfWork, document: Document, kind: TaskKind) -> Task | None:
+    """The latest task of the model call in the document's run; one cancelled because its
+    webhook serves no more does not count: the node asks anew."""
     tasks = await uow.tasks.list_for_run(document.id, NODES[kind], document.processing.run)
-    return next((task for task in reversed(tasks) if task.kind is kind), None)
+    return next(
+        (
+            task
+            for task in reversed(tasks)
+            if task.kind is kind and task.status is not TaskStatus.CANCELLED
+        ),
+        None,
+    )
 
 
 @dataclass(frozen=True)
@@ -404,19 +420,31 @@ class ExternalCall:
             return Delegation(None, again=True)
         if task is not None and task.status is TaskStatus.OPEN:
             return Delegation(task.deadline)
+        if document.processing.status is not ProcessingStatus.PROCESSING:
+            # The run failed meanwhile: the document goes out to no one.
+            stopped = because(ReasonCode.TASK_RUN_STOPPED, webhook=self.state.name)
+            if task is not None:  # it waited for room: it frees its place
+                task.cancel(stopped, now)
+                await end_task(uow, task, now, storing=document.id)
+            return NodeResult(outcome=Outcome.UNCERTAIN, reasons=(stopped,))
         if self.context is None:
             return Delegation(None, again=True)  # it waits to be sent: the next run sends it
-        webhook = self.state.webhook if task is None else await uow.webhooks.find(task.webhook_id)
-        if webhook is None:  # its webhook went, and the task with it
-            assert task is not None
-            gone = because(
-                ReasonCode.TASK_UNDELIVERED,
-                webhook=self.state.name,
-                error="the webhook was deleted",
-            )
-            task.fail(gone, now)
-            await end_task(uow, task, now, storing=document.id)
+        serving = await serving_model_call(uow, _ROLES[kind])
+        webhook = serving if task is None else await uow.webhooks.find(task.webhook_id)
+        if webhook is None or serving is None or serving.id != webhook.id:
+            # The role moved on (or the webhook went) since the node read it: it asks anew,
+            # whoever answers now.
+            if task is not None:
+                gone = because(
+                    ReasonCode.TASK_UNDELIVERED,
+                    webhook=self.state.name,
+                    error="the webhook serves the model call no more",
+                )
+                task.cancel(gone, now)
+                await end_task(uow, task, now, storing=document.id)
             return Delegation(None, again=True)
+        if task is None and (self.state.webhook is None or self.state.webhook.id != webhook.id):
+            return Delegation(None, again=True)  # the context was made for another webhook
         role = webhook.model_call
         ask = Ask(
             kind=kind,

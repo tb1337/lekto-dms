@@ -1872,6 +1872,7 @@
 	"reason_task_too_large": "Die Antwort von Webhook „{webhook}“ ist größer als {limit} Bytes.",
 	"reason_task_undelivered": "Die Anfrage an Webhook „{webhook}“ ließ sich nicht zustellen: {error}",
 	"reason_task_run_over": "Das Dokument wurde neu verarbeitet oder gelöscht.",
+	"reason_task_run_stopped": "Die Verarbeitung ist inzwischen gescheitert: An Webhook „{webhook}“ ging nichts.",
 	"reason_rule_asks_on_arrival": "Regel „{rule}“ fragt einen Webhook: Sie läuft nur beim Eingang, nicht auf bestehenden Dokumenten.",
 	"reason_skip_changed_meanwhile": "inzwischen geändert; nicht angewendet",
 	"reason_skip_not_available": "nicht verfügbar",

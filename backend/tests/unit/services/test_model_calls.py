@@ -20,7 +20,14 @@ from lekto.core.domain.exchanges import exchanges_from_json
 from lekto.core.domain.fields import Money
 from lekto.core.domain.ids import DocumentTypeId, TaskId
 from lekto.core.domain.json_value import JsonObject, JsonValue
-from lekto.core.domain.pipeline import Lane, Node, NodeResult, NodeStatus, Outcome
+from lekto.core.domain.pipeline import (
+    Lane,
+    Node,
+    NodeResult,
+    NodeStatus,
+    Outcome,
+    ProcessingStatus,
+)
 from lekto.core.domain.reasons import ReasonCode
 from lekto.core.domain.tasks import TaskKind, TaskStatus
 from lekto.core.domain.users import Role, User
@@ -95,8 +102,9 @@ class Calls:
     webhooks: dict[ModelCallKind, Webhook]
     pipeline: PipelineService
 
-    async def arrive(self) -> Document:
-        received = await self.pipeline.receive(self.admin.id, incoming_pdf(), filename="a.pdf")
+    async def arrive(self, by: User | None = None) -> Document:
+        uploader = (by or self.admin).id
+        received = await self.pipeline.receive(uploader, incoming_pdf(), filename="a.pdf")
         await self.run()
         return await self.stored(received)
 
@@ -403,7 +411,7 @@ async def test_the_pipeline_runs_a_node_anew_at_once_when_asked(world: World) ->
     assert document.lane is Lane.GREEN
 
 
-async def test_a_queued_task_whose_webhook_went_fails(world: World) -> None:
+async def test_a_queued_model_call_whose_webhook_went_asks_the_model_again(world: World) -> None:
     f = await calls(world, ModelCallKind.PROPOSE)
     webhook = f.webhooks[ModelCallKind.PROPOSE]
     await world.webhooks.update(f.admin.id, webhook.id, max_open_tasks=1)
@@ -414,7 +422,79 @@ async def test_a_queued_task_whose_webhook_went_fails(world: World) -> None:
     assert queued.status is TaskStatus.QUEUED and len(f.sent()) == 1
     await world.webhooks.delete(f.admin.id, webhook.id)
     await f.run()
-    assert (await f.stored(second)).lane is Lane.RED
+    # No webhook serves any more and there is no model: the signal abstains, as without both.
+    result = await f.node(second, Node.SIGNAL_LLM)
+    assert result.outcome is Outcome.OK and "abstained" in result.output
+    async with world.uow() as uow:
+        (cancelled,) = await uow.tasks.list_for_run(second.id, Node.SIGNAL_LLM, 1)
+    assert cancelled.status is TaskStatus.CANCELLED
     assert (await f.stored(first)).processing.nodes[Node.SIGNAL_LLM].status is (
         NodeStatus.DELEGATED
     )
+
+
+async def test_the_model_call_sees_documents_its_admin_may_not_read(world: World) -> None:
+    f = await calls(world, ModelCallKind.PROPOSE)
+    user = await world.user()
+    document = await f.arrive(by=user)  # in the user's personal space
+    (request,) = f.sent()
+    assert body(request)["document"]["text"] == INVOICE
+    assert await f.answer(request, ok(proposal())) is None
+    assert (await f.node(document, Node.SIGNAL_LLM)).outcome is Outcome.OK
+
+
+async def test_a_role_that_moved_on_meanwhile_sends_nothing(world: World) -> None:
+    f = await calls(world, ModelCallKind.PROPOSE)
+    webhook = f.webhooks[ModelCallKind.PROPOSE]
+    owner = await world.user()
+    received = await f.pipeline.receive(owner.id, incoming_pdf(), filename="a.pdf")
+    async with world.uow() as uow:
+        document = await uow.documents.get(received.id)
+    await world.object_store.put(text_key(document.id), INVOICE.encode(), content_type="text/plain")
+    signal = LlmSignal(
+        world.uow, world.object_store, None, world.clock, builders.CLASSIFICATION, desk=world.desk()
+    )
+    call = await signal.run(document)  # the node reads the role ...
+    assert isinstance(call, ExternalCall) and call.context is not None
+    await world.webhooks.update(f.admin.id, webhook.id, model_call=None)  # ... it goes
+    async with world.uow() as uow:
+        stored = await uow.documents.get(document.id)
+        assert await call.apply(uow, stored, world.clock.now()) == Delegation(None, again=True)
+        assert await uow.tasks.list_for_run(document.id, Node.SIGNAL_LLM, 1) == []
+
+
+async def test_a_run_that_failed_meanwhile_sends_nothing_and_frees_the_queue(
+    world: World,
+) -> None:
+    f = await calls(world, ModelCallKind.PROPOSE)
+    webhook = f.webhooks[ModelCallKind.PROPOSE]
+    await world.webhooks.update(f.admin.id, webhook.id, max_open_tasks=1)
+    await f.arrive()
+    second = await f.arrive()
+    third = await f.arrive()
+    for document in (second, third):  # another signal failed meanwhile
+        async with world.uow() as uow:
+            stored = await uow.documents.get(document.id)
+            stored.processing.status = ProcessingStatus.FAILED
+            await uow.documents.update(stored)
+            await uow.commit()
+    # The node of the third reads it: nothing goes out, and its waiting task frees its place.
+    async with world.uow() as uow:
+        stored = await uow.documents.get(third.id)
+    signal = LlmSignal(
+        world.uow, world.object_store, None, world.clock, builders.CLASSIFICATION, desk=world.desk()
+    )
+    call = await signal.run(stored)
+    assert isinstance(call, ExternalCall)
+    async with world.uow() as uow:
+        result = await call.apply(uow, stored, world.clock.now())
+        await uow.commit()
+    assert isinstance(result, NodeResult) and result.reasons[0].code is ReasonCode.TASK_RUN_STOPPED
+    # The first answers: the second's waiting task is cancelled, not sent.
+    (request,) = f.sent()
+    assert await f.answer(request, ok(proposal())) is None
+    assert len(f.sent()) == 1
+    async with world.uow() as uow:
+        for document in (second, third):
+            (task,) = await uow.tasks.list_for_run(document.id, Node.SIGNAL_LLM, 1)
+            assert task.status is TaskStatus.CANCELLED

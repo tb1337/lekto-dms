@@ -2047,7 +2047,7 @@ export interface webhooks {
 		put?: never;
 		/**
 		 * The model call `extract`
-		 * @description To the admin's webhook that serves as `extract`, when the judge decided another type than the proposal: the fields of that type to read, always as this JSON. Answered as `external.propose`.
+		 * @description To the admin's webhook that serves as `extract`, for the fields the proposal did not give (the judge decided another type, or there is no proposal): the fields to read, always as this JSON. Answered as `external.propose`.
 		 */
 		post: operations['webhook_external_extract'];
 		delete?: never;
@@ -3737,9 +3737,9 @@ export interface components {
 		ExchangeNode: 'ocr' | 'signal_llm' | 'fields';
 		/**
 		 * ExtractContext
-		 * @description `fields`' request (`external.extract`), when the judge decided another type than the
-		 *     proposal: the fields of that type to read. Lekto checks the answer as a language
-		 *     model's.
+		 * @description `fields`' request (`external.extract`) for the fields the proposal did not give (the
+		 *     judge decided another type, or there is no proposal). Lekto checks the answer as a
+		 *     language model's.
 		 */
 		ExtractContext: {
 			/**
@@ -6080,6 +6080,7 @@ export interface components {
 			| 'task_too_large'
 			| 'task_undelivered'
 			| 'task_run_over'
+			| 'task_run_stopped'
 			| 'rule_asks_on_arrival'
 			| 'skip_changed_meanwhile'
 			| 'skip_not_available'

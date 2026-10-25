@@ -322,6 +322,7 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	task_too_large: entry(m.reason_task_too_large),
 	task_undelivered: entry(m.reason_task_undelivered),
 	task_run_over: entry(m.reason_task_run_over),
+	task_run_stopped: entry(m.reason_task_run_stopped),
 	rule_asks_on_arrival: entry(m.reason_rule_asks_on_arrival),
 	skip_changed_meanwhile: entry(m.reason_skip_changed_meanwhile),
 	skip_not_available: entry(m.reason_skip_not_available),

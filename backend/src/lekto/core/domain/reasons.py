@@ -302,6 +302,7 @@ class ReasonCode(StrEnum):
     TASK_TOO_LARGE = "task_too_large"
     TASK_UNDELIVERED = "task_undelivered"
     TASK_RUN_OVER = "task_run_over"
+    TASK_RUN_STOPPED = "task_run_stopped"
     RULE_ASKS_ON_ARRIVAL = "rule_asks_on_arrival"
     SKIP_CHANGED_MEANWHILE = "skip_changed_meanwhile"
     SKIP_NOT_AVAILABLE = "skip_not_available"
@@ -737,6 +738,9 @@ TEMPLATES: Mapping[ReasonCode, str] = {
         "the request could not be delivered to webhook '{webhook}': {error}"
     ),
     ReasonCode.TASK_RUN_OVER: "the document was processed again or deleted",
+    ReasonCode.TASK_RUN_STOPPED: (
+        "processing failed meanwhile: nothing was sent to webhook '{webhook}'"
+    ),
     ReasonCode.RULE_ASKS_ON_ARRIVAL: (
         "rule '{rule}' asks a webhook: it runs on arrival only, not on existing documents"
     ),

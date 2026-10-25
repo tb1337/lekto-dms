@@ -188,9 +188,9 @@ class ProposeContext(Sent):
 
 
 class ExtractContext(Sent):
-    """`fields`' request (`external.extract`), when the judge decided another type than the
-    proposal: the fields of that type to read. Lekto checks the answer as a language
-    model's."""
+    """`fields`' request (`external.extract`) for the fields the proposal did not give (the
+    judge decided another type, or there is no proposal). Lekto checks the answer as a
+    language model's."""
 
     contract: Literal["extract-ext-1"] = EXTRACT_CONTRACT  # type: ignore[assignment]
     task: ModelCallTask

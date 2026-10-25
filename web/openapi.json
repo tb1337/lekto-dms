@@ -17441,7 +17441,7 @@
     "external.extract": {
       "post": {
         "summary": "The model call `extract`",
-        "description": "To the admin's webhook that serves as `extract`, when the judge decided another type than the proposal: the fields of that type to read, always as this JSON. Answered as `external.propose`.",
+        "description": "To the admin's webhook that serves as `extract`, for the fields the proposal did not give (the judge decided another type, or there is no proposal): the fields to read, always as this JSON. Answered as `external.propose`.",
         "operationId": "webhook_external_extract",
         "parameters": [
           {
@@ -20984,7 +20984,7 @@
           "answer_schema"
         ],
         "title": "ExtractContext",
-        "description": "`fields`' request (`external.extract`), when the judge decided another type than the\nproposal: the fields of that type to read. Lekto checks the answer as a language\nmodel's."
+        "description": "`fields`' request (`external.extract`) for the fields the proposal did not give (the\njudge decided another type, or there is no proposal). Lekto checks the answer as a\nlanguage model's."
       },
       "FactsOut": {
         "properties": {
@@ -25445,6 +25445,7 @@
           "task_too_large",
           "task_undelivered",
           "task_run_over",
+          "task_run_stopped",
           "rule_asks_on_arrival",
           "skip_changed_meanwhile",
           "skip_not_available",
@@ -30250,6 +30251,9 @@
       "error": "text"
     },
     "task_run_over": {},
+    "task_run_stopped": {
+      "webhook": "text"
+    },
     "rule_asks_on_arrival": {
       "rule": "text"
     },

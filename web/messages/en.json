@@ -1872,6 +1872,7 @@
 	"reason_task_too_large": "The answer of webhook “{webhook}” is larger than {limit} bytes.",
 	"reason_task_undelivered": "The request could not be delivered to webhook “{webhook}”: {error}",
 	"reason_task_run_over": "The document was processed again or deleted.",
+	"reason_task_run_stopped": "Processing failed meanwhile: nothing was sent to webhook “{webhook}”.",
 	"reason_rule_asks_on_arrival": "Rule “{rule}” asks a webhook: it runs on arrival only, not on existing documents.",
 	"reason_skip_changed_meanwhile": "changed meanwhile; not applied",
 	"reason_skip_not_available": "not available",

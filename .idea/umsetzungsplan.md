@@ -1693,6 +1693,15 @@ Mock: https://claude.ai/artifact/CZha1VoRbf2KxJQCAZx5ma (vier Reiter hell und du
 
 **B gebaut (24.10.2026):** Die Routen stehen neben `POST /search/reindex`: `GET /search/status` und `POST /search/check` (nicht unter `/documents/search`, das ist die Suche selbst). Das letzte Ergebnis von „Genau prüfen“ hält die Seite nur, solange sie offen ist („Gerade geprüft · dauerte 3,4s“); wer wann zuletzt prüfte, merkt sich Lekto nicht. Die Dokumente der Datenbank zählt `DocumentRepository.count_all`. Der Reiter fragt alle zehn Sekunden.
 
+**C1 – Entwurf (Frage-Antwort-Runde 25.10.2026):**
+
+- **Befund korrigiert:** Eine Änderung in der Dokumentansicht hält sehr wohl fest, was sich änderte: Seit dem 07.10. schreibt sie einen Eintrag `rules:change` mit `changed`, `corrected`, `tags_added` und `tags_removed`; ein Verschieben schreibt `person:space`. Lauf 1 endet immer am ersten Stopp: Bestätigen, Wiederholen und neu Verarbeiten beginnen einen neuen Lauf.
+- **Zwei Tabellen** statt einer (Tobi: „ok“): `first_runs` (eine Zeile je Dokument: Beginn von Lauf 1, erster Stopp, Arbeitszeit, Dauer je Schritt) und `field_verdicts` (eine Zeile je Dokument und Feld: Urteil, wann und wo entschieden, je Signal genannt/anders/nicht genannt). So zählt SQL die Urteile mit `GROUP BY`, auf SQLite und Postgres gleich. `first_lane` und `channel` bleiben am Dokument.
+- **Urteil je Feld beim ersten Entscheid über dieses Feld** (Empfehlung Claude, angenommen): Bestätigen im Posteingang entscheidet alle Felder; eine bestätigende Änderung in der Dokumentansicht die geänderten und die, die die Automatik sicher gesetzt hat; Verschieben oder Übergeben nur den Space. Ein Feld mit Urteil behält es. Nichts entscheiden der Abgleich der Migration (`confirm=False`), ein beim Upload gewählter Space und ein Dokument, an dem eine Person schon in Lauf 1 etwas änderte (kein Urteil).
+- **Urteile:** vorher ein Wert, danach derselbe: übernommen; vorher leer, danach der Vorschlag: Vorschlag angenommen; es gab Wert oder Vorschlag, danach etwas anderes oder nichts: korrigiert; weder noch, danach ein Wert: ergänzt; beide leer: kein Urteil. Tags als Menge ohne die von Hand gesetzten. Signale nur für Felder mit einem Wert (Kontakt, Typ, Thema, Space; das Datum nur das Sprachmodell).
+- **Nachtrag** (Tobi: „okay machen“, abweichend von Entscheidung 7): aus den Bestätigungen im Posteingang und den Änderungen in der Dokumentansicht (`rules:change` einer Person), korrigiert oder ergänzt nach der Prüfung des Judge davor. Treffer der Signale nur, wo der entschiedene Wert bekannt ist.
+- **Messung** mit einem Skript außerhalb des Repos; das Ergebnis steht hier.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

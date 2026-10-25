@@ -9,22 +9,28 @@ run. The lane it stopped in is `Document.first_lane`.
 
 A verdict compares three values of a field, as JSON (`values_of`): the automation's (what the
 document held before the person decided, unless the check of the field was uncertain: that
-value was not applied), the suggestion of an uncertain check, and the person's (what the
-document holds after their decision):
+value was not applied), the suggestion of the check (an uncertain check's, or what an OK check
+proposed without setting it: tags and a topic the signals named but not surely enough, a space
+the document could lie in), and the person's (what the document holds after their decision):
 
 - `TAKEN`: the automation's value stands.
-- `ACCEPTED`: the automation had no value; the person took its suggestion.
+- `ACCEPTED`: the person took the suggestion: as the value, or (tags) added to the
+  automation's tags, some of them at least, dropping none.
 - `CORRECTED`: the automation had a value or a suggestion; the person chose another, or none.
 - `ADDED`: the automation had neither; the person gave a value.
 - `EARLY`: the person decided before the first run stopped, when there was nothing to judge
   yet.
 
-Without a value on any side, a field gets no verdict. Tags are compared as a set, without the
-tags set by hand (status tags such as "to pay" say nothing about the automation). Per signal, a
-verdict tells whether the signal named the person's value, another value or none, for the
-fields with one value the signals name candidates for (contact, type, topic, space).
+Without a value on any side, a field gets no verdict; neither does the space when the
+automation neither chose nor suggested one (the signals disagreed, or nothing spoke for a
+move): a document always lies somewhere, that is no value of the automation's. Tags are
+compared as a set, without the tags set by hand (status tags such as "to pay" say nothing
+about the automation). Per signal, a verdict tells whether the signal named the person's
+value, another value or none, for the fields with one value the signals name candidates for
+(contact, type, topic, space).
 """
 
+import logging
 from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
@@ -50,6 +56,8 @@ from lekto.core.domain.ids import DocumentId, TagId
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.pipeline import OUTSIDE_PIPELINE, PERSON, Node, NodeRun
 from lekto.core.domain.validation import require_utc
+
+logger = logging.getLogger(__name__)
 
 # --- the first run ------------------------------------------------------------------------------
 
@@ -86,7 +94,9 @@ class FirstRun:
     def of(cls, document_id: DocumentId, log: Iterable[NodeRun], stopped_at: datetime) -> Self:
         """The first run from the document's log up to the stop: the entries of run 1 that the
         nodes wrote (not those of people or changes, `OUTSIDE_PIPELINE`). It began when the
-        receiving began."""
+        receiving began. The receiving is logged by the API process, the stop by a worker: if
+        their clocks disagree so far that the stop lies before the start, the run began at its
+        stop (a duration of 0, not a failure of the node)."""
         entries = [
             entry
             for entry in log
@@ -97,14 +107,19 @@ class FirstRun:
         if not entries:
             raise ValidationError(f"document {document_id} has no entries of its first run")
         received = [entry.started_at for entry in entries if entry.node is Node.RECEIVE]
+        started_at = min(received or [entry.started_at for entry in entries])
+        if stopped_at < started_at:
+            logger.warning(
+                "the first run stopped before it started: the clocks of the API and the worker "
+                "disagree",
+                extra={"document_id": str(document_id), "skew": str(started_at - stopped_at)},
+            )
+            started_at = stopped_at
         steps: dict[Node, timedelta] = {}
         for entry in entries:
             steps[entry.node] = steps.get(entry.node, timedelta(0)) + entry.duration
         return cls(
-            document_id=document_id,
-            started_at=min(received or [entry.started_at for entry in entries]),
-            stopped_at=stopped_at,
-            steps=steps,
+            document_id=document_id, started_at=started_at, stopped_at=stopped_at, steps=steps
         )
 
 
@@ -225,6 +240,8 @@ def judge_fields(
     for name in sorted(fields):
         check = checks.get(name)
         automatic, suggestion = _automatic(name, check, before)
+        if name == SPACE and _empty(automatic) and _empty(suggestion):
+            continue  # it lies somewhere, but the automation neither chose nor suggested
         value = after.get(name)
         verdict = _verdict(automatic, suggestion, value)
         if verdict is None:
@@ -261,12 +278,16 @@ def early_verdicts(
 def _automatic(
     name: str, check: FieldCheck | None, before: Mapping[str, JsonValue]
 ) -> tuple[JsonValue, JsonValue]:
-    """The automation's value of field `name`, and its suggestion. An uncertain check's value
-    was not applied: the document holds none then, or one a rule set; the space it lies in is
-    where it landed, which the automation did not choose."""
+    """The automation's value of field `name`, and its suggestion. An OK check's value was
+    applied (the document holds it, or one a rule set since); what it suggested beside is what
+    a person may take. An uncertain check's value was not applied: the document holds none
+    then, or one a rule set; the space it lies in is where it landed, which the automation did
+    not choose."""
     value = before.get(name)
-    if check is None or check.ok:
+    if check is None:
         return value, None
+    if check.ok:
+        return value, check.suggestion
     if name == SPACE:
         return None, check.suggestion
     return value, check.suggestion
@@ -274,10 +295,27 @@ def _automatic(
 
 def _verdict(automatic: JsonValue, suggestion: JsonValue, value: JsonValue) -> Verdict | None:
     if not _empty(automatic):
-        return Verdict.TAKEN if _same(value, automatic) else Verdict.CORRECTED
+        if _same(value, automatic):
+            return Verdict.TAKEN
+        if not _empty(suggestion) and _took(value, automatic, suggestion):
+            return Verdict.ACCEPTED
+        return Verdict.CORRECTED
     if not _empty(suggestion):
         return Verdict.ACCEPTED if _same(value, suggestion) else Verdict.CORRECTED
     return None if _empty(value) else Verdict.ADDED
+
+
+def _took(value: JsonValue, automatic: JsonValue, suggestion: JsonValue) -> bool:
+    """Whether `value` is the automation's value with its suggestion taken: the suggestion
+    itself, or (tags) the automation's tags with suggested ones added, dropping none."""
+    if isinstance(value, list) and isinstance(automatic, list) and isinstance(suggestion, list):
+        kept, had, offered = (
+            set(map(str, value)),
+            set(map(str, automatic)),
+            set(map(str, suggestion)),
+        )
+        return had < kept <= had | offered
+    return _same(value, suggestion)
 
 
 def _signals(check: FieldCheck | None, value: JsonValue) -> dict[Node, bool]:

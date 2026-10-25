@@ -37,9 +37,12 @@ class Scene:
     pipeline: PipelineService
 
 
-def judged(named: Contact, other: Contact, *, sure_date: bool) -> MetadataResult:
+def judged(
+    named: Contact, other: Contact, *, sure_date: bool, space_suggestion: SpaceId | None = None
+) -> MetadataResult:
     """The judge sets `named` as the contact (the language model named it, the classifier
-    `other`); the date is sure, or uncertain without a suggestion."""
+    `other`); the date is sure, or uncertain without a suggestion; with `space_suggestion`, the
+    space is uncertain with that suggestion."""
     candidates = (
         Candidate(
             value=str(named.id),
@@ -70,9 +73,20 @@ def judged(named: Contact, other: Contact, *, sure_date: bool) -> MetadataResult
             reasons=(written("no date"),),
         ),
     ]
+    if space_suggestion is not None:
+        checks.append(
+            FieldCheck(
+                field=SPACE,
+                outcome=Outcome.UNCERTAIN,
+                confidence=0.5,
+                reasons=(written("space"),),
+                suggestion=str(space_suggestion),
+            )
+        )
+    uncertain = [check.field for check in checks if not check.ok]
     result = NodeResult(
-        outcome=Outcome.OK if sure_date else Outcome.UNCERTAIN,
-        reasons=() if sure_date else (written("document_date"),),
+        outcome=Outcome.UNCERTAIN if uncertain else Outcome.OK,
+        reasons=tuple(written(name) for name in uncertain),
         model_version="fake-llm 1",
         output={"fields": checks_to_json(checks)},
     )
@@ -80,7 +94,7 @@ def judged(named: Contact, other: Contact, *, sure_date: bool) -> MetadataResult
     return MetadataResult(result, changes)
 
 
-async def scene(world: World, *, sure_date: bool) -> Scene:
+async def scene(world: World, *, sure_date: bool, space_suggestion: SpaceId | None = None) -> Scene:
     owner = await world.user()
     named = Contact.create(name="Stadtwerke", now=NOW)
     other = Contact.create(name="Gemeindewerke", now=NOW)
@@ -88,7 +102,8 @@ async def scene(world: World, *, sure_date: bool) -> Scene:
         await uow.contacts.add(named)
         await uow.contacts.add(other)
         await uow.commit()
-    pipeline = world.pipeline({Node.JUDGE: Returns(judged(named, other, sure_date=sure_date))})
+    verdict = judged(named, other, sure_date=sure_date, space_suggestion=space_suggestion)
+    pipeline = world.pipeline({Node.JUDGE: Returns(verdict)})
     return Scene(owner, named, other, pipeline)
 
 
@@ -233,3 +248,22 @@ async def test_a_space_chosen_on_upload_is_not_judged(world: World) -> None:
     await world.documents.move(s.owner.id, document.id, home.id)
 
     assert SPACE not in await verdicts(world, document)
+
+
+async def test_the_space_the_automation_asked_about_since_the_upload_is_judged(
+    world: World,
+) -> None:
+    owner = await world.user()
+    archive = await world.spaces.create(owner.id, "Archive")
+    home = await world.personal_space(owner)
+    s = await scene(world, sure_date=True, space_suggestion=home.id)
+    s.owner = owner
+    document = await received(s, archive.id)  # chosen on upload
+    await world.drain(s.pipeline)
+
+    await s.pipeline.confirm(s.owner.id, document.id, DocumentChanges(), accept_suggestions=True)
+
+    found = await verdicts(world, document)
+    assert (found[SPACE].verdict, found[SPACE].decision) == (Verdict.ACCEPTED, Decision.INBOX)
+    async with world.uow() as uow:
+        assert (await uow.documents.get(document.id)).space_id == home.id

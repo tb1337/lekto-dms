@@ -52,7 +52,9 @@ async def keep_verdicts(
     before keeps its verdict. A person who decides before the first run stopped gets `EARLY`
     for the fields they set. The space is not judged if a person (or the source system)
     decided it before (`space_decided`; None: as `before` tells, `space_confirmed_at`), such as
-    on upload. `log`: the document's log, if read already."""
+    on upload, unless the automation asked about it since (its check is open): the person's
+    answer to that is their first decision on what the automation proposed. `log`: the
+    document's log, if read already."""
     manual = await _manual_tags(uow, before.tag_ids | after.tag_ids)
     applying = {
         field_key(id)
@@ -66,14 +68,17 @@ async def keep_verdicts(
         return
     values = values_of(before, manual)
     fields = decided_fields(decision, before=values, given=given, applying=applying)
-    decided = before.space_confirmed_at is not None if space_decided is None else space_decided
-    if decided:
-        fields -= {SPACE}
     if not fields:
         return
     checks: Mapping[str, FieldCheck] = field_checks(
         await uow.processing_log.list_for(after.id) if log is None else log
     )
+    decided = before.space_confirmed_at is not None if space_decided is None else space_decided
+    space = checks.get(SPACE)
+    if decided and (space is None or space.ok):
+        fields -= {SPACE}
+        if not fields:
+            return
     verdicts = judge_fields(
         after.id,
         decision,

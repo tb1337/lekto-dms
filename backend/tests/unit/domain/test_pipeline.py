@@ -57,10 +57,11 @@ def test_the_graph_is_in_topological_order_with_one_source_and_one_sink() -> Non
     assert Node.RECEIVE.descendants == frozenset(NODES) - {Node.RECEIVE}
 
 
-def test_ocr_and_pages_run_side_by_side_and_filing_waits_for_both() -> None:
+def test_ocr_and_pages_run_side_by_side_and_the_model_and_filing_wait_for_both() -> None:
     assert Node.RECEIVE.successors == {Node.OCR, Node.PAGES}
     assert Node.PAGES.requires == {Node.RECEIVE}
-    assert Node.PAGES.descendants == {Node.FILE}
+    assert Node.PAGES.successors == {Node.SIGNAL_LLM, Node.FILE}
+    assert Node.SIGNAL_LLM.requires == {Node.PARSE, Node.PAGES}
     assert Node.FILE.requires == {Node.APPLY_RULES, Node.PAGES}
     assert Node.OCR.descendants == {
         Node.PARSE,
@@ -73,6 +74,7 @@ def test_ocr_and_pages_run_side_by_side_and_filing_waits_for_both() -> None:
     assert Node.APPLY_RULES.ancestors == {
         Node.RECEIVE,
         Node.OCR,
+        Node.PAGES,
         Node.PARSE,
         *SIGNALS,
         Node.JUDGE,
@@ -252,16 +254,16 @@ def test_a_result_names_the_nodes_that_became_due_with_it() -> None:
     assert status(document) is ProcessingStatus.COMPLETED
 
 
-def test_filing_waits_for_the_pages() -> None:
+def test_the_language_model_waits_for_the_pages() -> None:
+    """The page images are there when a model call goes to a webhook."""
     document = builders.received()
-    for node in (Node.OCR, Node.PARSE, *SIGNAL_NODES, Node.JUDGE, Node.FIELDS):
+    for node in (Node.OCR, Node.PARSE, *CURRENT_NODES):
         document.record_result(node, 1, OK, NOW)
-    assert document.record_result(Node.APPLY_RULES, 1, OK, NOW) == ()
     assert status(document) is ProcessingStatus.PROCESSING
     assert document.processing.due() == (Node.PAGES,)
-    assert not document.is_awaiting(Node.FILE, 1)
-    assert document.record_result(Node.PAGES, 1, OK, NOW) == (Node.FILE,)
-    assert document.is_awaiting(Node.FILE, 1)
+    assert not document.is_awaiting(Node.SIGNAL_LLM, 1)
+    assert document.record_result(Node.PAGES, 1, OK, NOW) == (Node.SIGNAL_LLM,)
+    assert document.is_awaiting(Node.SIGNAL_LLM, 1)
 
 
 def test_a_worker_starts_a_due_node() -> None:
@@ -508,11 +510,12 @@ def test_reprocessing_from_the_judge_runs_the_signals_a_document_skipped() -> No
     assert document.reprocess_from(Node.JUDGE, NOW) == CURRENT_NODES
 
 
-def test_reprocessing_the_pages_leaves_the_text_branch_alone() -> None:
+def test_reprocessing_the_pages_asks_the_language_model_again() -> None:
     document = builders.run_pipeline(builders.received())
     assert document.reprocess_from(Node.PAGES, NOW) == (Node.PAGES,)
-    assert set(document.processing.outcomes) == set(NODES) - {Node.PAGES, Node.FILE}
-    assert document.record_result(Node.PAGES, 2, OK, NOW) == (Node.FILE,)
+    again = {Node.PAGES, Node.SIGNAL_LLM, Node.JUDGE, Node.FIELDS, Node.APPLY_RULES, Node.FILE}
+    assert set(document.processing.outcomes) == set(NODES) - again
+    assert document.record_result(Node.PAGES, 2, OK, NOW) == (Node.SIGNAL_LLM,)
 
 
 def test_reprocess_rules() -> None:
@@ -721,12 +724,9 @@ def test_event_ids_are_unique() -> None:
     assert new_id() not in ids
 
 
-def up_to_the_rules(*, pages_running: bool = False) -> Document:
-    """A document whose rules a worker started; `pages_running`: the page images are still
-    being made."""
+def up_to_the_rules() -> Document:
+    """A document whose rules a worker started."""
     document = builders.received()
-    if pages_running:
-        document.start_node(Node.PAGES, 1, NOW)
     while due := [node for node in document.processing.due() if node is not Node.APPLY_RULES]:
         document.record_result(due[0], 1, OK, NOW)
     document.start_node(Node.APPLY_RULES, 1, NOW)
@@ -772,14 +772,18 @@ def test_only_a_delegated_node_has_a_deadline() -> None:
 
 
 def test_a_delegated_node_waits_out_a_failure_and_a_retry_repeats_it() -> None:
-    document = up_to_the_rules(pages_running=True)
-    document.delegate_node(Node.APPLY_RULES, 1, None, LATER)
-    document.record_result(Node.PAGES, 1, FAILED, LATER)
+    document = builders.received()
+    for node in (Node.OCR, Node.PAGES, Node.PARSE):
+        document.record_result(node, 1, OK, NOW)
+    document.start_node(Node.SIGNAL_CLASSIFIER, 1, NOW)
+    document.start_node(Node.SIGNAL_LLM, 1, NOW)
+    document.delegate_node(Node.SIGNAL_LLM, 1, None, LATER)
+    document.record_result(Node.SIGNAL_CLASSIFIER, 1, FAILED, LATER)
     assert (status(document), document.lane) == (ProcessingStatus.FAILED, Lane.RED)
     with pytest.raises(InvalidTransitionError, match="still running"):
         document.confirm(Node.APPLY_RULES, LATER)
-    assert not document.resume_node(Node.APPLY_RULES, 1, LATER)  # nothing new starts
-    assert document.processing.nodes[Node.APPLY_RULES] == NodeState()
+    assert not document.resume_node(Node.SIGNAL_LLM, 1, LATER)  # nothing new starts
+    assert document.processing.nodes[Node.SIGNAL_LLM] == NodeState()
     document.retry(LATER)
     assert document.processing.run == 2
-    assert document.processing.nodes[Node.APPLY_RULES] == NodeState()
+    assert document.processing.nodes[Node.SIGNAL_LLM] == NodeState()

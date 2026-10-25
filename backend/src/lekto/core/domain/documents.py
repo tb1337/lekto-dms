@@ -478,9 +478,10 @@ class Document:
         """A person has decided what was uncertain or failed (the inbox): the results of the
         nodes that are not run again count as OK from now on, processing runs again from
         `resume_at` (applying rules, or extracting fields after a type correction) up to filing.
-        Nodes that never ran and are not needed to resume (the pages after a failed OCR) run
-        now. The metadata and the space count as confirmed (the person kept or chose it), and
-        the document is new for no one: the run a person decided in never makes it new.
+        Nodes that never ran and are not needed to resume run now, and so do the pages that
+        never ran (after a failed OCR): the page images are not part of what a person decides.
+        The metadata and the space count as confirmed (the person kept or chose it), and the
+        document is new for no one: the run a person decided in never makes it new.
         Returns the nodes whose results the person overruled.
 
         Only for documents in the inbox (yellow or red, not being processed, no node still
@@ -513,8 +514,10 @@ class Document:
         for node, state in processing.nodes.items():
             if node in again or state.status is NodeStatus.SKIPPED or state.outcome is Outcome.OK:
                 continue
-            if state.status is NodeStatus.WAITING and node not in resume_at.ancestors:
-                continue  # never ran and not needed to resume: it runs now
+            if state.status is NodeStatus.WAITING and (
+                node not in resume_at.ancestors or node is Node.PAGES
+            ):
+                continue  # never ran and not needed to resume, or the page images: it runs now
             overruled.append(node)
             processing.nodes[node] = NodeState(
                 status=NodeStatus.DONE,

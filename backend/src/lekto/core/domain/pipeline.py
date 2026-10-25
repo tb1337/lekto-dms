@@ -73,6 +73,8 @@ GRAPH: Mapping[Node, frozenset[Node]] = {
     Node.PAGES: frozenset({Node.RECEIVE}),
     Node.PARSE: frozenset({Node.OCR}),
     **dict.fromkeys(SIGNALS, frozenset({Node.PARSE})),
+    # The page images are there when a model call goes to a webhook (`webhooks-und-auftraege.md`).
+    Node.SIGNAL_LLM: frozenset({Node.PARSE, Node.PAGES}),
     Node.JUDGE: SIGNALS,
     Node.FIELDS: frozenset({Node.JUDGE}),
     Node.APPLY_RULES: frozenset({Node.FIELDS}),

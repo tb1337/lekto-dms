@@ -928,6 +928,29 @@ where it is and edits where it goes (global: admins); every version names its sp
   enable the topic. `add_tags` and `remove_tags` take document tags (also those set by hand);
   a tag above one the document keeps or gets is not added, a parent gives way to a child
   added. Saving a rule checks the scope of every tag it names (`422`).
+- **Steps** (Tobi, 25.10.2026, `.idea/webhooks-und-auftraege.md`). The actions are an ordered,
+  linear sequence of at most 20 steps, which may also ask a webhook and check:
+  - `ask_webhook` (`name`, `webhook_id`, `timeout_seconds`, default 300, 30 to 86,400;
+    `missing`, default `red`): a task through a webhook of whoever saves the rule (see
+    *Tasks* under Webhooks); the node waits for the answer ("running externally"), and the
+    steps after it see it as `steps.<name>`. Without an answer (none in time, an error, an
+    invalid one) `red` fails the node (no rule acts), `yellow` ends the rule there (its steps
+    before count) and holds the document for a person, `continue` goes on without
+    `steps.<name>`. After a person decided in the run it is only reported (`steps_reported`).
+    A rule with such a step runs on arrival only (`triggers: ["ingest"]`), is not applied to
+    existing documents (`409`, `rule_asks_on_arrival`) and needs `LEKTO_PUBLIC_URL`. A
+    confirmation in the inbox that changes nothing keeps the answers of the run before; one
+    that changes something, and processing again, ask anew. Outside processing (the rules a
+    space runs when a person moves a document into it) the step is not asked: the rule ends
+    there.
+  - `condition` (`conditions`, a group as in the head): on the document as the rule's own
+    steps before left it, and on what a step brought (`{"field": "step", "path":
+    "accounting.paid", "op": "is", "value": true}`; `is`, `in`, `contains`, `gt`, `lt`,
+    `present`, `missing`). If it does not hold, the rule ends there; its steps before count.
+  Each rule works on its own copy of the document; the actions of all rules are combined at
+  the end, as before. Templates see `steps.<name>` of the steps before them that ask
+  (`{{ steps.accounting.beleg }}`). The log shows each step (`steps`: a condition's `holds`,
+  a question's task, status and answer).
 - **Templates** (in full, with examples: [docs/templates.md](../docs/templates.md)). A title,
   the value of a text field and a review's reason are Liquid templates (`python-liquid`,
   `adapters/outbound/liquid`): `{{ contact }}`, `{% if field.la_brutto %}`,

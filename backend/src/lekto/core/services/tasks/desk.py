@@ -89,14 +89,18 @@ class TaskDesk:
         node: Node,
         asks: Sequence[Ask],
         now: datetime,
+        *,
+        locked: bool = False,
     ) -> list[Task]:
         """A task for each ask in the document's current run (the one it had, or a new one),
         sent if its webhook has room and no task waits before it; in the order given. A task
         whose request cannot be made fails at once: the node reads its tasks again. Locks
-        `TASKS_LOCK` (a unit of work locks one name, before its other writes)."""
+        `TASKS_LOCK` (a unit of work locks one name, before its other writes), unless the
+        caller did (`locked`)."""
         if not asks:
             return []
-        await uow.lock(TASKS_LOCK)
+        if not locked:
+            await uow.lock(TASKS_LOCK)
         placed: list[Task] = []
         for ask in asks:
             task = ask.task

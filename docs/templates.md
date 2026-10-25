@@ -46,6 +46,7 @@ attributes of objects, no `include` or `render`.
 | `channel` | how the document came: `web` (uploaded in the web UI), `api` (with an API token), `migration` (taken over from Paperless-ngx) | `web` |
 | `pages` | the number of pages | `2` |
 | `field.<key>` | the value of a field, see below | |
+| `steps.<name>` | in a rule's step: what a step before it that asks a webhook brought (its answer, JSON: objects with `.key`, lists with `.0`, …); missing without an answer | `{{ steps.accounting.beleg }}` → `B-4711` |
 
 A list written without a filter runs its items together (`SteuerWichtig`); join it with
 `| join: ', '`.

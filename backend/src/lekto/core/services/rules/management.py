@@ -38,6 +38,7 @@ from lekto.core.domain.permissions import space_role
 from lekto.core.domain.reasons import Action, ReasonCode, because
 from lekto.core.domain.rules import (
     MAX_TEXT,
+    AskWebhook,
     ForceReview,
     Rule,
     RuleDefinition,
@@ -51,6 +52,7 @@ from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.templates import (
     FIELD,
     NAMES,
+    STEPS,
     WEBHOOK_NAMES,
     TemplateValue,
     rename_field_key,
@@ -184,6 +186,7 @@ class RuleService:
             await check_references(uow, rule.definition, author=user)
             check_patterns(self._patterns, rule.definition)
             await check_templates(uow, self._templates, rule.definition)
+            self._check_asks(rule.definition)
             await uow.rules.add(rule)
             await uow.commit()
         return rule
@@ -227,7 +230,9 @@ class RuleService:
         except ValidationError as invalid:
             return TemplatePreview(error=str(invalid), values=written)
         paths = tuple(sorted(used))
-        names = WEBHOOK_NAMES if webhook else NAMES
+        # A rule's template may write what a step before it asks for; the preview knows no
+        # answer, so such a value is missing here.
+        names = WEBHOOK_NAMES if webhook else (*NAMES, STEPS)
         unknown = unknown_values(used, {item.key for item in applying}, names)
         if unknown:
             return TemplatePreview(used=paths, error=f"unknown value {unknown[0]}", values=written)
@@ -284,6 +289,7 @@ class RuleService:
             await check_references(uow, definition, author=user)
             check_patterns(self._patterns, definition)
             await check_templates(uow, self._templates, definition)
+            self._check_asks(definition)
             if enabled is True:
                 rule.enable(self._clock.now())
             elif enabled is False:
@@ -291,6 +297,14 @@ class RuleService:
             await uow.rules.update(rule)
             await uow.commit()
         return rule
+
+    def _check_asks(self, definition: RuleDefinition) -> None:
+        """A step that asks needs `LEKTO_PUBLIC_URL`: the consumer answers there
+        (ValidationError)."""
+        if definition.asks and self._link_base is None:
+            raise ValidationError(
+                "a step that asks a webhook needs LEKTO_PUBLIC_URL: its consumer answers there"
+            )
 
     async def set_enabled(self, actor: UserId, id: RuleId, enabled: bool) -> Rule:
         """Enabling checks the references again (they may have been deleted meanwhile)."""
@@ -324,8 +338,8 @@ async def check_references(
     in the conditions on groups, topics in those on the topic and in "set topic", document
     tags elsewhere; ValidationError), the rule's `author` may file into the spaces it
     files into, unless one is the personal space of another, active user (handing over;
-    PermissionDeniedError; checked again whenever it runs), and sends only through their own
-    webhooks (someone else's is not found)."""
+    PermissionDeniedError; checked again whenever it runs), and sends and asks only through
+    their own webhooks (someone else's is not found)."""
     references = definition.references()
     for webhook_id in references.webhooks:
         webhook = await uow.webhooks.find(webhook_id)
@@ -383,12 +397,17 @@ async def check_templates(
             used = templates.check(template)
         except ValidationError as error:
             raise ValidationError(f"actions[{index}]: {error}") from None
-        unknown = unknown_values(used, keys)
+        asked = {step.name for step in definition.actions[:index] if isinstance(step, AskWebhook)}
+        steps = {path for path in used if path.split(".")[0] == STEPS}
+        unknown = unknown_values(used - steps, keys)
+        unknown += sorted(
+            path for path in steps if path.partition(".")[2].split(".")[0] not in asked
+        )
         if unknown:
             known = ", ".join(name for name in NAMES if name != FIELD)
             raise ValidationError(
-                f"actions[{index}]: unknown value {unknown[0]}; templates know {known} and "
-                "field.<key> of an existing field"
+                f"actions[{index}]: unknown value {unknown[0]}; templates know {known}, "
+                "field.<key> of an existing field and steps.<name> of a step before that asks"
             )
 
 

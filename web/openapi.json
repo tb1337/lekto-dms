@@ -17616,6 +17616,52 @@
         "title": "ArrivalStepOut",
         "description": "What the rules of one space did to the document when it entered the space."
       },
+      "AskWebhookAction": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "ask_webhook",
+            "title": "Type"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Name",
+            "description": "Small letters, digits and `_`, unique in the rule: the steps after it see the answer as `steps.<name>`.",
+            "examples": [
+              "accounting"
+            ]
+          },
+          "webhook_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Webhook Id",
+            "description": "A webhook of whoever saves the rule (someone else's is not found). It gets a task (`rule.ask`, with `task` and the headers `lekto-*`) and answers at `/external/tasks/{id}/result`. Its owner must be able to read the document, otherwise the document waits for a person (unless one decided already). Needs `LEKTO_PUBLIC_URL`."
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "maximum": 86400.0,
+            "minimum": 30.0,
+            "title": "Timeout Seconds",
+            "description": "The time to answer, from sending (the request may wait for its webhook).",
+            "default": 300
+          },
+          "missing": {
+            "$ref": "#/components/schemas/Missing",
+            "description": "Without an answer (none in time, an error, an invalid one): `red` fails the node (no rule acts), `yellow` ends the rule here (its steps before count) and holds the document for a person, `continue` goes on without `steps.<name>`. After a person decided in the run, it is only reported.",
+            "default": "red"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "name",
+          "webhook_id"
+        ],
+        "title": "AskWebhookAction"
+      },
       "Assignment": {
         "type": "string",
         "enum": [
@@ -18165,6 +18211,7 @@
       "ConditionField": {
         "type": "string",
         "enum": [
+          "step",
           "contact",
           "contact_group",
           "document_type",
@@ -18195,6 +18242,12 @@
                 "type": "boolean"
               },
               {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
                 "$ref": "#/components/schemas/MoneyValue"
               },
               {
@@ -18207,11 +18260,30 @@
                 "type": "array"
               },
               {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
                 "type": "null"
               }
             ],
             "title": "Value",
-            "description": "None for `present` and `missing`, a list for `in`, otherwise one value: an id, a channel, a text or pattern, a date `YYYY-MM-DD` (also for `gt` and `lt` of a period field), or a field value as in `fields` of a document."
+            "description": "None for `present` and `missing`, a list for `in`, otherwise one value: an id, a channel, a text or pattern, a date `YYYY-MM-DD` (also for `gt` and `lt` of a period field), a field value as in `fields` of a document, or (for `step`) a text, a number or true/false."
           },
           "field_id": {
             "anyOf": [
@@ -18225,6 +18297,22 @@
             ],
             "title": "Field Id",
             "description": "Only when `field` is `field`."
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path",
+            "description": "Only when `field` is `step`: the name of a step before that asks, then keys of its answer (a number for an item of a list), separated by dots.",
+            "examples": [
+              "accounting.paid"
+            ]
           },
           "case_sensitive": {
             "type": "boolean",
@@ -18240,7 +18328,7 @@
           "op"
         ],
         "title": "ConditionSchema",
-        "description": "`field` `op` `value`. Operators by field: contact, document_type: `is`, `in`, `present`,\n`missing`; topic: the same, where a topic matches the ones below it too (unknown while the\nmodel set it and nobody confirmed it); tags (document tags), contact_group (the groups of\nthe document's contact),\ndocument_type_group (those of its type): `contains` (this one), `in` (one of), `present`\n(any), `missing` (none), where a tag or group matches the ones below it too; channel:\n`is`, `in`; text: `contains`, `matches` (regular expression); document_date and\nnumber, amount, date fields: `is`, `gt`, `lt`, `present`, `missing`; text and link\nfields: `is`, `in`, `contains`, `matches`, `present`, `missing`; choice: `is`, `in`,\n`present`, `missing`; boolean: `is`, `present`, `missing`; period fields: `is`,\n`overlaps` (shares a day with the given period), `gt` (starts after the date), `lt` (ends\nbefore the date), `present`, `missing`.",
+        "description": "`field` `op` `value`. Operators by field: contact, document_type: `is`, `in`, `present`,\n`missing`; topic: the same, where a topic matches the ones below it too (unknown while the\nmodel set it and nobody confirmed it); tags (document tags), contact_group (the groups of\nthe document's contact),\ndocument_type_group (those of its type): `contains` (this one), `in` (one of), `present`\n(any), `missing` (none), where a tag or group matches the ones below it too; channel:\n`is`, `in`; text: `contains`, `matches` (regular expression); document_date and\nnumber, amount, date fields: `is`, `gt`, `lt`, `present`, `missing`; text and link\nfields: `is`, `in`, `contains`, `matches`, `present`, `missing`; choice: `is`, `in`,\n`present`, `missing`; boolean: `is`, `present`, `missing`; period fields: `is`,\n`overlaps` (shares a day with the given period), `gt` (starts after the date), `lt` (ends\nbefore the date), `present`, `missing`; step (in a condition step only: what a step that\nasks brought, at `path`): `is`, `in` (texts without case, numbers as numbers, true or\nfalse), `contains` (a text in a text, an item of a list), `gt`, `lt` (a number or a date),\n`present`, `missing`.",
         "examples": [
           {
             "field": "contact",
@@ -18254,6 +18342,62 @@
             "value": "Rechnung\\s+Nr"
           }
         ]
+      },
+      "ConditionStepAction-Input": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "condition",
+            "title": "Type"
+          },
+          "conditions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AllGroup-Input"
+              },
+              {
+                "$ref": "#/components/schemas/AnyGroup-Input"
+              }
+            ],
+            "title": "Conditions",
+            "description": "On the document as the rule's steps before left it, and on `step` (what a step that asks brought). If they do not hold, the rule ends here; its steps before count."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "conditions"
+        ],
+        "title": "ConditionStepAction"
+      },
+      "ConditionStepAction-Output": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "condition",
+            "title": "Type"
+          },
+          "conditions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AllGroup-Output"
+              },
+              {
+                "$ref": "#/components/schemas/AnyGroup-Output"
+              }
+            ],
+            "title": "Conditions",
+            "description": "On the document as the rule's steps before left it, and on `step` (what a step that asks brought). If they do not hold, the rule ends here; its steps before count."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "conditions"
+        ],
+        "title": "ConditionStepAction"
       },
       "ConfirmRequest": {
         "properties": {
@@ -23011,6 +23155,16 @@
         ],
         "title": "MetadataSource"
       },
+      "Missing": {
+        "type": "string",
+        "enum": [
+          "red",
+          "yellow",
+          "continue"
+        ],
+        "title": "Missing",
+        "description": "What a step that asks does without an answer (none in time, an error, an invalid\none)."
+      },
       "ModelCallOut": {
         "properties": {
           "system": {
@@ -24269,6 +24423,7 @@
           "task_too_large",
           "task_undelivered",
           "task_run_over",
+          "rule_asks_on_arrival",
           "skip_changed_meanwhile",
           "skip_not_available",
           "not_iban",
@@ -24692,7 +24847,7 @@
             "type": "array",
             "minItems": 1,
             "title": "Triggers",
-            "description": "`ingest`: when a document arrives; `change`: when a person changes it."
+            "description": "`ingest`: when a document arrives; `change`: when a person changes it. A rule with a step that asks a webhook: `ingest` only."
           },
           "conditions": {
             "anyOf": [
@@ -24738,12 +24893,20 @@
                 },
                 {
                   "$ref": "#/components/schemas/SendWebhookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/AskWebhookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/ConditionStepAction-Input"
                 }
               ],
               "discriminator": {
                 "propertyName": "type",
                 "mapping": {
                   "add_tags": "#/components/schemas/AddTagsAction",
+                  "ask_webhook": "#/components/schemas/AskWebhookAction",
+                  "condition": "#/components/schemas/ConditionStepAction-Input",
                   "force_review": "#/components/schemas/ForceReviewAction",
                   "remove_tags": "#/components/schemas/RemoveTagsAction",
                   "send_webhook": "#/components/schemas/SendWebhookAction",
@@ -24759,7 +24922,8 @@
             "type": "array",
             "maxItems": 20,
             "minItems": 1,
-            "title": "Actions"
+            "title": "Actions",
+            "description": "The steps, in order: actions, steps that ask a webhook and condition steps. Each rule works on its own copy of the document and sees what its own steps before set; the actions of all rules are combined at the end."
           },
           "scope": {
             "anyOf": [
@@ -24867,7 +25031,7 @@
             "type": "array",
             "minItems": 1,
             "title": "Triggers",
-            "description": "`ingest`: when a document arrives; `change`: when a person changes it."
+            "description": "`ingest`: when a document arrives; `change`: when a person changes it. A rule with a step that asks a webhook: `ingest` only."
           },
           "conditions": {
             "anyOf": [
@@ -24913,12 +25077,20 @@
                 },
                 {
                   "$ref": "#/components/schemas/SendWebhookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/AskWebhookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/ConditionStepAction-Input"
                 }
               ],
               "discriminator": {
                 "propertyName": "type",
                 "mapping": {
                   "add_tags": "#/components/schemas/AddTagsAction",
+                  "ask_webhook": "#/components/schemas/AskWebhookAction",
+                  "condition": "#/components/schemas/ConditionStepAction-Input",
                   "force_review": "#/components/schemas/ForceReviewAction",
                   "remove_tags": "#/components/schemas/RemoveTagsAction",
                   "send_webhook": "#/components/schemas/SendWebhookAction",
@@ -24934,7 +25106,8 @@
             "type": "array",
             "maxItems": 20,
             "minItems": 1,
-            "title": "Actions"
+            "title": "Actions",
+            "description": "The steps, in order: actions, steps that ask a webhook and condition steps. Each rule works on its own copy of the document and sees what its own steps before set; the actions of all rules are combined at the end."
           },
           "scope": {
             "$ref": "#/components/schemas/RuleScope",
@@ -25122,12 +25295,20 @@
                 },
                 {
                   "$ref": "#/components/schemas/SendWebhookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/AskWebhookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/ConditionStepAction-Output"
                 }
               ],
               "discriminator": {
                 "propertyName": "type",
                 "mapping": {
                   "add_tags": "#/components/schemas/AddTagsAction",
+                  "ask_webhook": "#/components/schemas/AskWebhookAction",
+                  "condition": "#/components/schemas/ConditionStepAction-Output",
                   "force_review": "#/components/schemas/ForceReviewAction",
                   "remove_tags": "#/components/schemas/RemoveTagsAction",
                   "send_webhook": "#/components/schemas/SendWebhookAction",
@@ -25378,12 +25559,20 @@
                 },
                 {
                   "$ref": "#/components/schemas/SendWebhookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/AskWebhookAction"
+                },
+                {
+                  "$ref": "#/components/schemas/ConditionStepAction-Output"
                 }
               ],
               "discriminator": {
                 "propertyName": "type",
                 "mapping": {
                   "add_tags": "#/components/schemas/AddTagsAction",
+                  "ask_webhook": "#/components/schemas/AskWebhookAction",
+                  "condition": "#/components/schemas/ConditionStepAction-Output",
                   "force_review": "#/components/schemas/ForceReviewAction",
                   "remove_tags": "#/components/schemas/RemoveTagsAction",
                   "send_webhook": "#/components/schemas/SendWebhookAction",
@@ -28623,6 +28812,9 @@
       "error": "text"
     },
     "task_run_over": {},
+    "rule_asks_on_arrival": {
+      "rule": "text"
+    },
     "skip_changed_meanwhile": {},
     "skip_not_available": {},
     "not_iban": {

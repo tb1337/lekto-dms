@@ -64,11 +64,11 @@ from lekto.core.services.rules.running import (
     problem_output,
     provenance,
     reachable_rules,
-    run_rules,
     send_now,
     space_choice,
     space_rules,
 )
+from lekto.core.services.rules.steps import run_rules
 
 
 @dataclass(frozen=True)

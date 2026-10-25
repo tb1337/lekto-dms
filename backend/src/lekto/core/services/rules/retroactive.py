@@ -26,6 +26,7 @@ from uuid import UUID
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import (
     ConcurrencyError,
+    InvalidTransitionError,
     NotFoundError,
     PermissionDeniedError,
     ValidationError,
@@ -44,7 +45,14 @@ from lekto.core.domain.pipeline import (
 )
 from lekto.core.domain.reasons import Reason, ReasonCode, because, reasons_to_json
 from lekto.core.domain.rule_planner import Effect, Mode, Note, NoteKind
-from lekto.core.domain.rules import Rule, RuleApplication, RuleScope, SetSpace, Trigger
+from lekto.core.domain.rules import (
+    Rule,
+    RuleApplication,
+    RuleDefinition,
+    RuleScope,
+    SetSpace,
+    Trigger,
+)
 from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.object_store import ObjectStore
@@ -71,8 +79,8 @@ from lekto.core.services.rules.running import (
     provenance,
     queue_sends,
     reachable_rules,
-    run_rules,
 )
+from lekto.core.services.rules.steps import run_rules
 
 log = logging.getLogger(__name__)
 
@@ -266,7 +274,7 @@ class RuleApplicationService:
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             rule = await _applicable_rule(uow, user, id)
-            await uow.rules.get_version(rule.id, version)
+            _not_asking((await uow.rules.get_version(rule.id, version)).definition)
             application = RuleApplication.create(
                 rule_id=rule.id,
                 rule_version=version,
@@ -514,12 +522,20 @@ async def _applicable_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
     rule = await visible_rule(uow, user, id)
     if rule.deleted_at is not None:
         raise NotFoundError("rule", id)
+    _not_asking(rule.definition)
     if rule.space_id is not None:
         space = await uow.spaces.find(rule.space_id)
         role = None if space is None else space_role(user, space)
         if role is None or not role.can_edit:
             raise PermissionDeniedError(because(ReasonCode.SPACE_RULE_APPLY))
     return rule
+
+
+def _not_asking(definition: RuleDefinition) -> None:
+    """A rule whose steps ask a webhook runs on arrival only (Tobi, 25.10.2026):
+    InvalidTransitionError."""
+    if definition.asks:
+        raise InvalidTransitionError(because(ReasonCode.RULE_ASKS_ON_ARRIVAL, rule=definition.name))
 
 
 async def _following(uow: UnitOfWork, rule: Rule) -> list[Rule]:

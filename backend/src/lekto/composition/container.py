@@ -115,6 +115,7 @@ from lekto.core.services.rules.nodes import ApplyRulesNode, FileNode
 from lekto.core.services.rules.retroactive import RuleApplicationService
 from lekto.core.services.search import SearchPolicy, SearchService
 from lekto.core.services.spaces import SpaceService
+from lekto.core.services.tasks.desk import TaskDesk
 from lekto.core.services.tasks.service import TaskService
 from lekto.core.services.users import UserService
 from lekto.core.services.webhooks import (
@@ -671,6 +672,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
     )
     index, embeddings = container.search_index, container.embeddings
     facts = FactsSignal(uow, store, container.codes)
+    public_url = None if settings.public_url is None else str(settings.public_url)
     executors: dict[Node, NodeExecutor] = {
         Node.OCR: OcrNode(store, container.ocr),
         Node.PAGES: PagesNode(store, container.pages),
@@ -686,7 +688,13 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             locator=container.locator,
         ),
         Node.APPLY_RULES: ApplyRulesNode(
-            uow, store, container.patterns, container.templates, max_text=settings.rules_max_text
+            uow,
+            store,
+            container.patterns,
+            container.templates,
+            max_text=settings.rules_max_text,
+            desk=TaskDesk(container.cipher, container.templates, link_base=public_url),
+            link_base=public_url,
         ),
         Node.FILE: FileNode(),
     }

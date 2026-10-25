@@ -30,8 +30,8 @@ from lekto.core.services.rules.running import (
     active_rules,
     prepare,
     provenance,
-    run_rules,
 )
+from lekto.core.services.rules.steps import run_rules
 from tests.builders import TEMPLATES
 from tests.unit.services.rules_support import (
     Classifies,

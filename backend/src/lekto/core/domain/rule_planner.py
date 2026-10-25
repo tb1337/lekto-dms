@@ -78,6 +78,7 @@ from lekto.core.domain.reasons import Reason, ReasonCode, because, written
 from lekto.core.domain.rule_conditions import Match, Taxonomy
 from lekto.core.domain.rules import (
     AddTags,
+    AskWebhook,
     ForceReview,
     RemoveTags,
     RuleScope,
@@ -88,8 +89,9 @@ from lekto.core.domain.rules import (
     SetSpace,
     SetTitle,
     SetTopic,
+    StepCondition,
 )
-from lekto.core.domain.templates import Render, TemplateValue, template_values
+from lekto.core.domain.templates import STEPS, Render, TemplateValue, template_values
 
 
 class Mode(StrEnum):
@@ -144,6 +146,10 @@ class Situation:
       themselves (or hand over), whoever saved the rule.
     - `taxonomy`: the tag trees (tags added are document tags, the result is normalised) and
       the groups of the contacts and types the rules may leave (for templates).
+    - `actions`: of a rule whose steps ended early (a condition that does not hold, a step that
+      asks without an answer), the actions before that; others act with all of theirs.
+    - `steps`: what a rule's steps that ask brought, by step name; its templates see them as
+      `steps.<name>`.
     """
 
     mode: Mode
@@ -165,6 +171,8 @@ class Situation:
     accept_conflicts: bool = False
     taxonomy: Taxonomy = field(default_factory=Taxonomy)
     applier: UserId | None = None
+    actions: Mapping[RuleId, Sequence[object]] = field(default_factory=dict)
+    steps: Mapping[RuleId, Mapping[str, TemplateValue]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -325,7 +333,7 @@ class _Planner:
 
     def run(self) -> RulePlan:
         for match, report in zip(self._matched, self._reports, strict=True):
-            for action in match.rule.definition.actions:
+            for action in self._s.actions.get(match.rule.id, match.rule.definition.actions):
                 self._collect(match, report, action)
         result: dict[str, JsonValue] = {}
         self._person_topic()
@@ -353,7 +361,7 @@ class _Planner:
         values = self._values(result, type_after, fields, tags)
         self._title(result, values)
         for report, reason in self._review_reasons:
-            self._review(report, self._reason(reason, values))
+            self._review(report, self._reason(report, reason, values))
         changes = DocumentChanges(fields=fields)
         if CONTACT in result:
             changes = replace(changes, contact_id=ContactId(UUID(str(result[CONTACT]))))
@@ -443,8 +451,8 @@ class _Planner:
                 self._candidates.setdefault(name, []).append(_Candidate(report, value, match))
             case ForceReview(reason=reason):
                 self._review_reasons.append((report, reason))
-            case SendWebhook():
-                pass  # no change of the document: the run sends apart (`running.Send`)
+            case SendWebhook() | AskWebhook() | StepCondition():
+                pass  # no change of the document: the run sends, asks and checks apart
 
     def _candidate(
         self, field_name: str, value: str, id: object, match: Match, report: RuleReport
@@ -764,10 +772,13 @@ class _Planner:
             ],
         )
 
-    def _reason(self, template: str, values: Mapping[str, TemplateValue]) -> str:
+    def _reason(
+        self, report: RuleReport, template: str, values: Mapping[str, TemplateValue]
+    ) -> str:
         """A review's reason; as written where it cannot be rendered (the review holds)."""
         try:
-            return " ".join(self._s.render(template, values).split()) or template
+            rendered = self._s.render(template, self._with_steps(report, values))
+            return " ".join(rendered.split()) or template
         except (MissingValueError, ValidationError):
             return template
 
@@ -781,7 +792,7 @@ class _Planner:
         """The rendered template; None, and why in the report, if a value is missing or the
         template cannot be rendered."""
         try:
-            return self._s.render(template, values)
+            return self._s.render(template, self._with_steps(report, values))
         except MissingValueError as error:
             missing = because(ReasonCode.TEMPLATE_MISSING_VALUE, path=error.path)
             report.notes.append(Note(field_name, NoteKind.SKIPPED, missing))
@@ -789,6 +800,13 @@ class _Planner:
         except ValidationError as error:
             report.notes.append(Note(field_name, NoteKind.SKIPPED, _error(error)))
             return None
+
+    def _with_steps(
+        self, report: RuleReport, values: Mapping[str, TemplateValue]
+    ) -> Mapping[str, TemplateValue]:
+        """`values` with what the rule's steps that ask brought (`steps.<name>`)."""
+        steps = self._s.steps.get(report.rule_id)
+        return values if not steps else {**values, STEPS: steps}
 
     # --- helpers ------------------------------------------------------------------------------
 

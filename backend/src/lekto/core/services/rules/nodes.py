@@ -1,5 +1,6 @@
 """The pipeline nodes `apply_rules` and `file`."""
 
+import copy
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -32,6 +33,8 @@ from lekto.core.services.inbox import MODEL_NODES, latest_entries
 from lekto.core.services.rules.running import (
     SENDS,
     SENDS_REFUSED,
+    STEPS_LOG,
+    STEPS_REPORTED,
     Chain,
     Prepared,
     Send,
@@ -44,9 +47,11 @@ from lekto.core.services.rules.running import (
     provenance,
     queue_sends,
     reachable_rules,
-    run_rules,
     space_rules,
 )
+from lekto.core.services.rules.steps import TaskBook, run_rules, task_book
+from lekto.core.services.tasks.desk import TASKS_LOCK, Ask, TaskDesk
+from lekto.core.services.tasks.settling import Delegation
 
 
 class ApplyRulesNode:
@@ -63,7 +68,13 @@ class ApplyRulesNode:
     has no value after the rules (issue #52), and a rule's request through a webhook whose
     owner may not read the document, unless a person decided in this run (it is only reported
     then: no click can grant the right). The requests the rules send go when the document is
-    filed (`FileNode`), from the output's `sends`."""
+    filed (`FileNode`), from the output's `sends`.
+
+    A rule whose steps ask a webhook (`steps`) has the node hand the request to a task and wait
+    (`Delegation`): the chain is first walked on a copy of the document; while a rule waits for
+    an answer nothing is applied, and the node runs anew whenever one of its tasks ends. Once
+    every rule has what it waits for, the chain runs for real, with the answers. A step without
+    an answer that says "red" fails the node, and no rule acts."""
 
     def __init__(
         self,
@@ -73,12 +84,18 @@ class ApplyRulesNode:
         templates: TemplateRenderer,
         *,
         max_text: int,
+        desk: TaskDesk | None = None,
+        link_base: str | None = None,
     ) -> None:
+        """`desk`: places the tasks of steps that ask (without, no rule asks); `link_base`
+        (`LEKTO_PUBLIC_URL`): the document's link in what a step asks with."""
         self._uow = uow
         self._store = store
         self._matcher = matcher
         self._templates = templates
         self._max_text = max_text
+        self._desk = desk
+        self._link_base = link_base
 
     async def run(self, document: Document) -> "RulesResult":
         async with self._uow() as uow:
@@ -88,7 +105,29 @@ class ApplyRulesNode:
         prepared = await prepare(
             self._store, self._matcher, rules, document, max_text=self._max_text
         )
-        return RulesResult(prepared, self._matcher, self._templates)
+        asks = self._desk is not None and any(rule.definition.asks for rule in rules)
+        return RulesResult(
+            prepared,
+            self._matcher,
+            self._templates,
+            desk=self._desk if asks else None,
+            link_base=self._link_base,
+        )
+
+
+@dataclass
+class _Chain:
+    """What walking the chain of spaces brought: the node's result, or the requests to send
+    and whether a rule waits for an answer (nothing is final then), or a failure (red)."""
+
+    result: NodeResult
+    asks: list[Ask]
+    waiting: bool
+    failed: bool
+
+    @property
+    def pending(self) -> bool:
+        return bool(self.asks) or self.waiting
 
 
 @dataclass(frozen=True)
@@ -96,10 +135,49 @@ class RulesResult:
     prepared: Prepared
     matcher: PatternMatcher
     templates: TemplateRenderer
+    desk: TaskDesk | None = None
+    link_base: str | None = None
 
-    async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
-        definitions = await field_definitions(uow)
+    async def apply(
+        self, uow: UnitOfWork, document: Document, now: datetime
+    ) -> NodeResult | Delegation:
         log = await uow.processing_log.list_for(document.id)
+        if self.desk is None:
+            return (await self._chain(uow, document, now, log, None, probe=False)).result
+        locked = False
+        while True:
+            book = await task_book(uow, document, log)
+            probe = await self._chain(uow, copy.deepcopy(document), now, log, book, probe=True)
+            if probe.failed or not probe.pending:
+                break
+            if probe.asks:
+                if not locked:
+                    await uow.lock(TASKS_LOCK)
+                    locked = True
+                placed = await self.desk.place(
+                    uow, document, Node.APPLY_RULES, probe.asks, now, locked=True
+                )
+                if any(task.status.settled for task in placed):
+                    continue  # a request could not be made: the steps read it as no answer
+            book = await task_book(uow, document, log)
+            return Delegation(book.open_deadline())
+        if probe.failed:
+            return probe.result  # red: no rule acts
+        return (await self._chain(uow, document, now, log, book, probe=False)).result
+
+    async def _chain(
+        self,
+        uow: UnitOfWork,
+        document: Document,
+        now: datetime,
+        log: Sequence[NodeRun],
+        book: TaskBook | None,
+        *,
+        probe: bool,
+    ) -> _Chain:
+        """Walk the chain of spaces on `document` (`probe`: a copy, nothing else is written).
+        Stops where a rule waits for an answer or the node fails."""
+        definitions = await field_definitions(uow)
         earlier = [space for space in chain_before(log) if space != document.space_id]
         visited = [*earlier, document.space_id]
         first = True
@@ -109,6 +187,9 @@ class RulesResult:
         reasons: list[Reason] = []
         sends: list[Send] = []
         refused: list[Reason] = []
+        asks: list[Ask] = []
+        waiting = False
+        failures: list[Reason] = []
         while True:
             # The first space with the global rules, every one it enters with its own.
             rules = (
@@ -134,18 +215,27 @@ class RulesResult:
                 origin=origin,
                 definitions=definitions,
                 locked=origin.person,
+                book=book,
+                link_base=self.link_base,
+                now=now,
             )
             output = _merged(output, run.output())
+            if run.failures or run.pending:
+                asks += run.asks
+                waiting = waiting or run.waiting
+                failures += run.failures
+                break
             reasons += run.plan.reasons
+            reasons += run.reviews
             target = run.plan.space
             if target is not None and target != document.space_id and target in visited:
                 reasons.append(back_and_forth(await _names(uow, [*visited, target])))
                 problem = await apply_plan(
-                    uow, document, replace(run.plan, space=None), definitions, now
+                    uow, document, replace(run.plan, space=None), definitions, now, arrive=not probe
                 )
                 reasons += [problem] if problem else []
                 break
-            problem = await apply_plan(uow, document, run.plan, definitions, now)
+            problem = await apply_plan(uow, document, run.plan, definitions, now, arrive=not probe)
             reasons += [problem] if problem else []
             ok, not_sent = await deliverable(uow, run.sends, document)
             sends += ok
@@ -158,12 +248,21 @@ class RulesResult:
             TRIGGER: Trigger.INGEST.value,
             "rules": checked_rules(looked),
         }
+        if earlier:
+            input["chain"] = [str(space) for space in earlier]
+        if failures:
+            failed = NodeResult(
+                outcome=Outcome.FAILED,
+                reasons=tuple(failures),
+                model_version=RULES,
+                input=input,
+                output=output,
+            )
+            return _Chain(failed, asks, waiting, failed=True)
         if len(visited) > len(earlier) + 1:
             output["spaces"] = [str(space) for space in visited[len(earlier) :]]
             if _suggested_here(log, document):
                 document.settle(Node.JUDGE, now)
-        if earlier:
-            input["chain"] = [str(space) for space in earlier]
         if sends:
             output[SENDS] = [send.to_json() for send in sends]
         if refused:
@@ -180,7 +279,7 @@ class RulesResult:
             )
         else:
             result = NodeResult(outcome=Outcome.OK, model_version=RULES, input=input, output=output)
-        return _waiting_for_hand(document, definitions, result)
+        return _Chain(_waiting_for_hand(document, definitions, result), asks, waiting, failed=False)
 
 
 def _suggested_here(log: Sequence[NodeRun], document: Document) -> bool:
@@ -231,7 +330,7 @@ def _merged(output: JsonObject, more: JsonObject) -> JsonObject:
     if not output:
         return more
     merged: JsonObject = dict(output)
-    for key in ("rules", CHECKS, "reviews", "problems"):
+    for key in ("rules", CHECKS, "reviews", "problems", STEPS_LOG, STEPS_REPORTED):
         if key in more:
             merged[key] = [*as_list(output.get(key)), *as_list(more[key])]
     return merged

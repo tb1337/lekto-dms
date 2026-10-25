@@ -41,7 +41,7 @@ from lekto.core.services.rules.nodes import ApplyRulesNode, FileNode
 from lekto.core.services.rules.retroactive import RuleApplicationService
 from lekto.core.services.users import UserService
 from tests.builders import TEMPLATES, incoming
-from tests.unit.services.support import World
+from tests.unit.services.support import LINK_BASE, World
 
 MAX_TEXT = 10_000
 MAX_DOCUMENTS = 100
@@ -194,7 +194,9 @@ class RuleWorld:
 
     @property
     def rules(self) -> RuleService:
-        return RuleService(self.world.uow, self.world.clock, TEMPLATES, self.matcher)
+        return RuleService(
+            self.world.uow, self.world.clock, TEMPLATES, self.matcher, link_base=LINK_BASE
+        )
 
     @property
     def applications(self) -> RuleApplicationService:
@@ -242,6 +244,8 @@ class RuleWorld:
                 self.matcher,
                 TEMPLATES,
                 max_text=MAX_TEXT,
+                desk=self.world.desk(),
+                link_base=LINK_BASE,
             ),
             Node.FILE: FileNode(),
         }

@@ -65,7 +65,6 @@ from lekto.core.domain.rule_conditions import (
     TEXT_TARGET,
     Facts,
     Taxonomy,
-    matches,
     pattern_subjects,
     pattern_text,
 )
@@ -74,7 +73,6 @@ from lekto.core.domain.rule_planner import (
     RulePlan,
     Situation,
     SpaceTarget,
-    plan,
     reviewing_rules,
 )
 from lekto.core.domain.rules import Rule, SetSpace, Trigger
@@ -86,6 +84,7 @@ from lekto.core.services._access import space_label
 from lekto.core.services._tags import tag_tree
 from lekto.core.services.inbox import MODEL_NODES, arrived, field_checks, latest_entries
 from lekto.core.services.objects import load_text
+from lekto.core.services.tasks.desk import Ask
 from lekto.core.services.titles import machine_title
 from lekto.core.services.webhooks.delivery import queue_rule_send
 
@@ -669,6 +668,12 @@ class Send:
 
 SENDS = "sends"
 """Key of the requests a rule run sends, in its log entry's output."""
+STEPS_LOG = "steps"
+"""Key of the steps of the rules that ask or check between their actions, in a log entry's
+output: per rule (`rule_id`, `steps`), each step (`step`, its index; `type`; a condition's
+`holds`; a question's `name`, `task_id`, `status`, `answer` or `reason`)."""
+STEPS_REPORTED = "steps_reported"
+"""Key of the answers that did not come after a person decided, only reported."""
 SENDS_REFUSED = "sends_refused"
 """Key of the requests it could not send, with why, in its log entry's output."""
 
@@ -722,73 +727,37 @@ async def send_now(
 
 @dataclass(frozen=True)
 class RuleRun:
-    """The plan of one rule run, with the patterns that could not run and the requests the
-    matching rules send (`sends`)."""
+    """The plan of one rule run (`steps.run_rules`), with the patterns that could not run and
+    the requests the matching rules send (`sends`). Of rules with steps (`steps.Walk`): the
+    requests to send for steps that ask (`asks`) and whether one waits for a task that was
+    sent (`waiting`), why the document waits for a person (`reviews`) or the node fails
+    (`failures`) without an answer, what is only reported (`notes`), and each rule's steps
+    for the log (`steps`)."""
 
     plan: RulePlan
     problems: tuple[str, ...]
     sends: tuple[Send, ...] = ()
+    asks: tuple[Ask, ...] = ()
+    waiting: bool = False
+    reviews: tuple[Reason, ...] = ()
+    failures: tuple[Reason, ...] = ()
+    notes: tuple[Reason, ...] = ()
+    steps: tuple[JsonObject, ...] = ()
+
+    @property
+    def pending(self) -> bool:
+        """A rule waits for an answer: the run's plan is not final."""
+        return bool(self.asks) or self.waiting
 
     def output(self) -> JsonObject:
         data = self.plan.to_json()
         if self.problems:
             data["problems"] = list[JsonValue](self.problems)
+        if self.steps:
+            data[STEPS_LOG] = list[JsonValue](self.steps)
+        if self.notes:
+            data[STEPS_REPORTED] = reasons_to_json(self.notes)
         return data
-
-
-async def run_rules(
-    uow: UnitOfWork,
-    matcher: PatternMatcher,
-    templates: TemplateRenderer,
-    *,
-    mode: Mode,
-    document: Document,
-    rules: Sequence[Rule],
-    prepared: Prepared,
-    origin: Provenance,
-    definitions: Mapping[FieldId, FieldDefinition],
-    before: tuple[Document, Mapping[PatternKey, bool]] | None = None,
-    locked: Collection[str] = (),
-    accept_conflicts: bool = False,
-    applier: UserId | None = None,
-) -> RuleRun:
-    """Evaluate `rules` on the document and plan their change (nothing is applied). `before`:
-    for a change, the state before it and its field pattern results; only rules that become
-    true with the change act. `applier`: who applies the rules to existing documents."""
-    patterns, problems = await field_patterns(matcher, rules, document)
-    loaded = await taxonomy(uow, [document, *([] if before is None else [before[0]])], rules)
-    now_facts = facts(document, prepared, patterns, origin, loaded.taxonomy)
-    before_facts = None
-    if before is not None:
-        before_facts = facts(before[0], prepared, before[1], origin, loaded.taxonomy)
-    matched = matches(rules, now_facts, definitions, before=before_facts)
-    context = await situation(
-        uow,
-        mode=mode,
-        document=document,
-        rules=[match.rule for match in matched],
-        definitions=definitions,
-        origin=origin,
-        templates=templates,
-        locked=locked,
-        person_added_tags=origin.tags_added,
-        person_removed_tags=origin.tags_removed,
-        accept_conflicts=accept_conflicts,
-        loaded=loaded,
-        applier=applier,
-    )
-    sends = tuple(
-        Send(
-            rule_id=match.rule.id,
-            version=match.rule.current.number,
-            name=match.rule.definition.name,
-            author=match.rule.current.created_by,
-            webhook_id=action.webhook_id,
-        )
-        for match in matched
-        for action in match.rule.definition.sends
-    )
-    return RuleRun(plan(matched, context), prepared.problems + problems, sends)
 
 
 async def apply_plan(
@@ -797,9 +766,12 @@ async def apply_plan(
     rule_plan: RulePlan,
     definitions: Mapping[FieldId, FieldDefinition],
     now: datetime,
+    *,
+    arrive: bool = True,
 ) -> Reason | None:
     """Apply the planned change and space; the reason if the change no longer fits (nothing
-    is applied then)."""
+    is applied then). `arrive` false: on a copy that is not stored (the inbox learns
+    nothing of a move)."""
     try:
         document.apply_changes(rule_plan.changes, definitions, now)
     except ValidationError as error:
@@ -812,5 +784,6 @@ async def apply_plan(
             now,
             handed_over=target.personal_of not in (None, document.uploaded_by),
         )
-        await arrived(uow, document, source, now)
+        if arrive:
+            await arrived(uow, document, source, now)
     return None

@@ -349,7 +349,11 @@
 									tickMultiline: true,
 									tickOcclusion: { priority: 'start-end', padding: 8 }
 								},
-								yAxis: { ticks: 4, format: (value: number) => percent(value) }
+								// The floor's label would touch the name of the first model below it.
+								yAxis: {
+									ticks: 4,
+									format: (value: number) => (value === floor ? '' : percent(value))
+								}
 							}}
 						>
 							{#snippet marks({ context })}

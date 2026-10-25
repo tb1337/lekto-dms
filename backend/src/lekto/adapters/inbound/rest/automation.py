@@ -18,8 +18,8 @@ router = APIRouter(prefix="/automation", tags=["automation"], dependencies=PROTE
 SCOPE = (
     "For the documents of the channels given (by default `web` and `api`: migrated documents "
     "bring the metadata of the source system) and the period (30 days, the current month and "
-    "the eleven before it, or all time); the whole system's numbers, naming no document. Counted "
-    "again at most once a minute."
+    "the eleven before it, or all time; the history by month reaches back five years at most); "
+    "the whole system's numbers, naming no document. Counted again at most once a minute."
 )
 
 

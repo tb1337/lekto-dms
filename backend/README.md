@@ -218,8 +218,9 @@ shows them on the page "System" to every user (`AutomationService`): the documen
 their first run, what became of them, the history by month, the times (median and 90th
 percentile, per step too) and the verdicts per field; `GET /automation/signals` the hits of each
 signal per field. Both take the channels (`channel`, by default `web` and `api`), the period
-(`period`: `30d`, `12m`, `all`) and the time zone the months begin in (`tz`); a report is kept
-for a minute.
+(`period`: `30d`, `12m`, `all`; the history by month of all time reaches back five years at
+most) and the time zone the months begin in (`tz`); a report is kept for a minute per API
+process (`services/_kept.py`).
 
 | Node | Input | Derivatives (object store) | Outcome |
 | --- | --- | --- | --- |

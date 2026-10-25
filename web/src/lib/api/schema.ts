@@ -2034,7 +2034,7 @@ export interface paths {
 		};
 		/**
 		 * How the automation did
-		 * @description The documents by the lane their first run stopped in, what became of them, the history by month, how long the first runs took and worked (per step too), and how people judged what the automation set, per field, at their first decision on it. For the documents of the channels given (by default `web` and `api`: migrated documents bring the metadata of the source system) and the period (30 days, the current month and the eleven before it, or all time); the whole system's numbers, naming no document. Counted again at most once a minute.
+		 * @description The documents by the lane their first run stopped in, what became of them, the history by month, how long the first runs took and worked (per step too), and how people judged what the automation set, per field, at their first decision on it. For the documents of the channels given (by default `web` and `api`: migrated documents bring the metadata of the source system) and the period (30 days, the current month and the eleven before it, or all time; the history by month reaches back five years at most); the whole system's numbers, naming no document. Counted again at most once a minute.
 		 */
 		get: operations['automation_api_v1_automation_get'];
 		put?: never;
@@ -2054,7 +2054,7 @@ export interface paths {
 		};
 		/**
 		 * How often each signal hit
-		 * @description Per field and signal (language model, classifier, similar documents, facts in the text), how often the signal's best value was the one a person decided at their first decision on the field, and how often another. For the documents of the channels given (by default `web` and `api`: migrated documents bring the metadata of the source system) and the period (30 days, the current month and the eleven before it, or all time); the whole system's numbers, naming no document. Counted again at most once a minute.
+		 * @description Per field and signal (language model, classifier, similar documents, facts in the text), how often the signal's best value was the one a person decided at their first decision on the field, and how often another. For the documents of the channels given (by default `web` and `api`: migrated documents bring the metadata of the source system) and the period (30 days, the current month and the eleven before it, or all time; the history by month reaches back five years at most); the whole system's numbers, naming no document. Counted again at most once a minute.
 		 */
 		get: operations['signals_api_v1_automation_signals_get'];
 		put?: never;

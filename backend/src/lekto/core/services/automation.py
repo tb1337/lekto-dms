@@ -10,11 +10,11 @@ many documents, reading the times of every first run takes most of a second.
 """
 
 from collections import defaultdict
-from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from enum import StrEnum
-from typing import Any, cast
+from typing import Any
 
 from lekto.core.domain.classification import DOCUMENT_DATE, field_id_of
 from lekto.core.domain.documents import Channel
@@ -26,13 +26,14 @@ from lekto.core.ports.clock import Clock
 from lekto.core.ports.repository import FactsScope, LaneCount
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from lekto.core.services._access import load_actor
+from lekto.core.services._kept import Kept
 
-KEPT = timedelta(minutes=1)
-"""How long a report is kept before it is counted again."""
 DEFAULT_CHANNELS = frozenset({Channel.WEB, Channel.API})
 HISTORY_MONTHS = 12
 """The months of the history, for the periods that end now; all time goes back to the first."""
-_ALL_MONTHS = 60  # how far all time looks back for the history
+ALL_MONTHS = 60
+"""How far the history of all time looks back, at most: five years of months is what a chart
+still tells apart; the counts of all time are not bounded."""
 _MICROSECOND = timedelta(microseconds=1)
 
 
@@ -142,7 +143,7 @@ class AutomationService:
     def __init__(self, uow: UnitOfWorkFactory, clock: Clock) -> None:
         self._uow = uow
         self._clock = clock
-        self._kept: dict[tuple[object, ...], tuple[datetime, object]] = {}
+        self._kept = Kept(clock)
 
     async def report(
         self,
@@ -160,7 +161,7 @@ class AutomationService:
             now = self._clock.now()
             since = _since(period, now, zone)
             scope = FactsScope(channels=chosen, since=since)
-            starts = _month_starts(now, zone, _ALL_MONTHS if period is Period.ALL else None)
+            starts = _month_starts(now, zone, ALL_MONTHS if period is Period.ALL else None)
             async with self._uow() as uow:
                 lanes = await uow.processing_facts.lane_counts(scope)
                 history = await uow.processing_facts.lanes_by_period(
@@ -188,7 +189,7 @@ class AutomationService:
                 fields=_fields(verdicts, names),
             )
 
-        return await self._kept_for(("report", chosen, period, str(zone)), count)
+        return await self._kept.get(("report", chosen, period, str(zone)), count)
 
     async def signals(
         self,
@@ -231,22 +232,11 @@ class AutomationService:
             hits.sort(key=lambda item: (_field_order(item.field), NODES.index(item.signal)))
             return SignalReport(chosen, period, since, tuple(hits))
 
-        return await self._kept_for(("signals", chosen, period, str(zone)), count)
+        return await self._kept.get(("signals", chosen, period, str(zone)), count)
 
     async def _actor(self, actor: UserId) -> None:
         async with self._uow() as uow:
             await load_actor(uow, actor)
-
-    async def _kept_for[T](self, key: tuple[object, ...], count: Callable[[], Awaitable[T]]) -> T:
-        """The report under `key` counted within the last minute, else counted now."""
-        now = self._clock.now()
-        kept = self._kept.get(key)
-        if kept is not None and now - kept[0] < KEPT:
-            return cast(T, kept[1])
-        report = await count()
-        self._kept = {k: v for k, v in self._kept.items() if now - v[0] < KEPT}
-        self._kept[key] = (now, report)
-        return report
 
 
 def _since(period: Period, now: datetime, zone: tzinfo) -> datetime | None:

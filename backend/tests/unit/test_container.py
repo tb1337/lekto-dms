@@ -236,10 +236,11 @@ async def test_a_vision_model_reads_pages_when_configured(
     assert timeout == timedelta(minutes=10)  # for the whole document
     # Reading a document with the model may take longer than OCR: that OCR holds its job
     # longer, every other node as before.
-    assert container.node_lease(configured) == timedelta(minutes=10) + WORK_LEASE_MARGIN
+    # The model's signal may ask four times (proposal and facts, each once more): 4 times 5 min.
+    assert container.node_lease(configured) == timedelta(minutes=20) + WORK_LEASE_MARGIN
     assert container.vision_lease(configured) is None  # no longer than the others
     slow = settings(vlm_base_url="https://chat.example/api", vlm_model="m", vlm_timeout="1800")
-    assert container.node_lease(slow) == timedelta(minutes=10) + WORK_LEASE_MARGIN
+    assert container.node_lease(slow) == timedelta(minutes=20) + WORK_LEASE_MARGIN
     assert container.vision_lease(slow) == timedelta(minutes=30) + WORK_LEASE_MARGIN
     assert build_services(build_memory_container(), slow).pipeline.vision_lease == (
         timedelta(minutes=30) + WORK_LEASE_MARGIN
@@ -259,10 +260,10 @@ def test_services_take_their_tuning_from_the_settings() -> None:
     services = build_services(build_memory_container(), configured)
     pipeline = services.pipeline
     assert pipeline.retry_policy == RetryPolicy(max_attempts=5, delay=timedelta(seconds=10))
-    assert pipeline.lease == timedelta(minutes=5) + WORK_LEASE_MARGIN
-    # A classification node may ask the model twice.
+    # The model's signal may ask four times: 4 times 100 s beyond the OCR's 300 s.
+    assert pipeline.lease == timedelta(seconds=400) + WORK_LEASE_MARGIN
     longer = build_services(build_memory_container(), settings(llm_timeout="400")).pipeline
-    assert longer.lease == timedelta(seconds=800) + WORK_LEASE_MARGIN
+    assert longer.lease == timedelta(seconds=1600) + WORK_LEASE_MARGIN
     assert isinstance(pipeline.executor(Node.OCR), OcrNode)
     assert isinstance(pipeline.executor(Node.PARSE), ParseNode)
     maintenance = services.maintenance

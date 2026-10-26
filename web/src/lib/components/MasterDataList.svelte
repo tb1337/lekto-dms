@@ -120,6 +120,7 @@
 		const notes: { text: string; title?: string }[] = [];
 		if (item.title_pattern)
 			notes.push({ text: m.master_title_pattern(), title: item.title_pattern });
+		if (item.relation_target) notes.push({ text: m.master_relation_target() });
 		const fieldsText = fieldsNote(item);
 		if (fieldsText) notes.push({ text: fieldsText });
 		return notes;

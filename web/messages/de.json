@@ -1608,6 +1608,8 @@
 	"field_def_required_hint": "Ein Pflichtfeld muss erkannt werden, sonst wartet das Dokument im Posteingang. Ein optionales darf leer bleiben; ein erkannter Wert muss im Dokument stehen.",
 	"master_title_pattern": "Titelmuster",
 	"master_title_pattern_hint": "Setzt den Titel der Dokumente dieses Typs; Werte und Felder über den Template-Editor rechts.",
+	"master_relation_target": "Bezugsziel",
+	"master_relation_target_hint": "Verträge, Policen und Ähnliches: Dokumente mit derselben Vertrags- oder Kundennummer beziehen sich auf Dokumente dieses Typs. Ohne den Schalter verbindet eine solche Nummer keine Dokumente.",
 	"master_type_fields": "Felder",
 	"master_type_add_field": "Feld hinzufügen",
 	"master_type_no_fields": "Noch keine eigenen Felder.",

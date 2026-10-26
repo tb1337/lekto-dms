@@ -1542,7 +1542,7 @@
 	"identifier_kind_child_benefit_number": "Child benefit number",
 	"facts_numbers": "Numbers of the document",
 	"facts_numbers_hint": "Its own, a strand’s, or another document’s it refers to",
-	"reason_not_of_kind": "“{value}” is not valid as {kind}",
+	"reason_not_of_kind": "{kind}: “{value}” is not valid",
 	"identifier_user": "Belongs to",
 	"identifier_user_none": "Nobody",
 	"identifier_learned": "learned",

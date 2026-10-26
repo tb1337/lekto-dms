@@ -1542,7 +1542,7 @@
 	"identifier_kind_child_benefit_number": "Kindergeldnummer",
 	"facts_numbers": "Nummern des Dokuments",
 	"facts_numbers_hint": "Eigene, eines Strangs oder eines Dokuments, auf das es verweist",
-	"reason_not_of_kind": "„{value}“ ist als {kind} nicht gültig",
+	"reason_not_of_kind": "{kind}: „{value}“ ist nicht gültig",
 	"identifier_user": "Gehört zu",
 	"identifier_user_none": "Niemandem",
 	"identifier_learned": "gelernt",

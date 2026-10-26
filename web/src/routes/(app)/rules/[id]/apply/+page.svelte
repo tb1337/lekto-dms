@@ -31,6 +31,7 @@
 	} from '#lib/rules/apply.ts';
 	import { RuleLoader } from '#lib/rules/page.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
+	import { Choice, ChoiceBox } from '#lib/components/ui/choice/index.ts';
 
 	type Rule = components['schemas']['RuleOut'];
 	const PAGE = 50;
@@ -277,9 +278,8 @@
 					{@const conflict = hasConflict(item)}
 					<li class="flex gap-3 rounded-2xl border bg-card p-4" class:border-lane-yellow={conflict}>
 						{#if !conflict}
-							<input
-								type="checkbox"
-								class="mt-1 size-4 shrink-0 accent-primary"
+							<ChoiceBox
+								class="mt-1"
 								aria-label={m.rule_select_document({ title: item.title })}
 								checked={chosen.has(item.document_id)}
 								onchange={(event) => choose(item, event.currentTarget.checked)}
@@ -319,15 +319,13 @@
 										{/each}
 									</ul>
 								{/if}
-								<label class="flex w-fit items-center gap-2 font-medium">
-									<input
-										type="checkbox"
-										class="size-4 accent-primary"
-										checked={accepted.has(item.document_id)}
-										onchange={(event) => choose(item, event.currentTarget.checked)}
-									/>
+								<Choice
+									checked={accepted.has(item.document_id)}
+									onchange={(event) => choose(item, event.currentTarget.checked)}
+									class="font-medium"
+								>
 									{m.rule_accept_conflict()}
-								</label>
+								</Choice>
 							{/if}
 						</div>
 					</li>

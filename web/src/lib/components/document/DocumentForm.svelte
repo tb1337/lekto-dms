@@ -69,6 +69,7 @@
 	import { suggestedSpace, unseenBy, unseenHere } from '#lib/space-suggestion.ts';
 	import { cn } from '#lib/utils.ts';
 	import { above, normalise, ofScope } from '#lib/tags.ts';
+	import { Choice } from '#lib/components/ui/choice/index.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
 	type Patch = components['schemas']['DocumentPatch'];
@@ -972,10 +973,9 @@
 			<p class="text-sm text-muted-foreground">{m.edit_read_only()}</p>
 		{:else if confirming}
 			{#if next}
-				<label class="flex items-center gap-2 text-sm text-muted-foreground">
-					<input type="checkbox" bind:checked={openNext} class="size-4 accent-primary" />
+				<Choice bind:checked={openNext} class="text-muted-foreground">
 					{m.review_next_document()}
-				</label>
+				</Choice>
 			{/if}
 			{#if filingHint}
 				<p

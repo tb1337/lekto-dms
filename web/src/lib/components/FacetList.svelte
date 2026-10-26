@@ -19,6 +19,7 @@
 	import TypeIcon from '#lib/components/TypeIcon.svelte';
 	import { formatNumber } from '#lib/i18n.ts';
 	import { matchesWords, searchWords, toggled } from '#lib/picking.ts';
+	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
 
 	// A long list of a group of the filters, kept short: the most frequent values (`top`, most
 	// first) and the chosen ones with a box each, a field that searches all of them, and every
@@ -81,11 +82,9 @@
 					<label
 						class="flex min-h-9 cursor-pointer items-center gap-2.5 rounded-lg px-1.5 text-sm hover:bg-secondary"
 					>
-						<input
-							type="checkbox"
+						<ChoiceBox
 							checked={selected.includes(item.id)}
 							onchange={(event) => toggle(item.id, event.currentTarget.checked)}
-							class="size-4 shrink-0 accent-primary"
 						/>
 						<TypeIcon icon={item.icon} class="size-3.5 shrink-0 text-muted-foreground" />
 						<span class="min-w-0 flex-1 truncate" title={item.title ?? item.label}>

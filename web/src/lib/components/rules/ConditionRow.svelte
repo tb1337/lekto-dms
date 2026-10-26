@@ -17,6 +17,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { CHANNEL_LABELS, fieldLabel, operatorLabel } from '#lib/rules/describe.ts';
 	import { tagOptions } from '#lib/tags.ts';
+	import { Choice } from '#lib/components/ui/choice/index.ts';
 	import {
 		CHANNELS,
 		CONDITION_FIELDS,
@@ -309,14 +310,9 @@
 				/>
 			{/if}
 			{#if condition.op === 'matches'}
-				<label class="mt-2 flex items-center gap-2 text-sm">
-					<input
-						type="checkbox"
-						class="size-4 accent-primary"
-						bind:checked={condition.caseSensitive}
-					/>
+				<Choice bind:checked={condition.caseSensitive} class="mt-2">
 					{m.rule_case_sensitive()}
-				</label>
+				</Choice>
 			{/if}
 		</div>
 		<div class="flex gap-0.5">

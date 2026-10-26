@@ -16,6 +16,7 @@
 	import type { FieldDefinition, MasterData } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
+	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
 
 	type DataType = components['schemas']['FieldType'];
 
@@ -226,12 +227,11 @@
 							global === every && 'border-primary bg-primary/10 hover:bg-primary/10'
 						)}
 					>
-						<input
+						<ChoiceBox
 							type="radio"
 							name="field-def-scope"
 							checked={global === every}
 							onchange={() => (global = every)}
-							class="size-4 shrink-0 accent-primary"
 						/>
 						{every ? m.field_def_scope_global() : m.field_def_scope_some()}
 					</label>

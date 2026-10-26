@@ -7,6 +7,7 @@
 	import { formatNumber } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { matchesWords, searchWords, toggled } from '#lib/picking.ts';
+	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
 
 	// Every value of a group of the filters, to search and choose from: by name, under their
 	// first letter, each with its count and what it belongs to (`hint`). Choices apply at once.
@@ -68,11 +69,9 @@
 							<label
 								class="flex min-h-10 cursor-pointer items-center gap-3 rounded-lg px-2 text-sm hover:bg-secondary"
 							>
-								<input
-									type="checkbox"
+								<ChoiceBox
 									checked={selected.includes(item.id)}
 									onchange={(event) => toggle(item.id, event.currentTarget.checked)}
-									class="size-4 shrink-0 accent-primary"
 								/>
 								<TypeIcon icon={item.icon} class="size-3.5 shrink-0 text-muted-foreground" />
 								<span class="min-w-0 flex-1 truncate" title={item.title ?? item.label}>

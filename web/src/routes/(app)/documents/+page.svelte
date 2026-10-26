@@ -30,7 +30,7 @@
 	import Lenses from '#lib/components/Lenses.svelte';
 	import Segmented from '#lib/components/Segmented.svelte';
 	import SortMenu from '#lib/components/SortMenu.svelte';
-	import { Button } from '#lib/components/ui/button/index.ts';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import * as Sheet from '#lib/components/ui/sheet/index.ts';
 	import { coalesced } from '#lib/coalesce.ts';
 	import { describeError } from '#lib/errors.ts';
@@ -88,6 +88,9 @@
 	import { FIELD_FRAME } from '#lib/components/ui/field-look.ts';
 	import IconButton from '#lib/components/IconButton.svelte';
 	import Loading from '#lib/components/Loading.svelte';
+	import Upload from '@lucide/svelte/icons/upload';
+	import { BASE } from '#lib/base.ts';
+	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
 
 	// The documents (the archive): listed (newest document date first) or, with words in `q`,
 	// searched (by relevance), with the same filters; sorted as chosen, as a grid or a list, by
@@ -127,7 +130,6 @@
 	const streaming = $derived(layout === 'stream' && !searching);
 	// Counts the events that change documents: the stream loads again.
 	let streamVersion = $state(0);
-	const nextLayout = $derived(LAYOUTS[(LAYOUTS.indexOf(layout) + 1) % LAYOUTS.length]);
 	// The names the filters and the documents show.
 	const pageLookup = new PageLookup();
 	const lookup = $derived(pageLookup.value);
@@ -703,20 +705,40 @@ row of filters, on a desktop narrow by the title. -->
 						</Sheet.Content>
 					</Sheet.Root>
 					{#if !streaming}{@render sortMenu(true)}{/if}
-					<button
-						type="button"
-						class="grid size-11 shrink-0 place-items-center rounded-xl border border-input bg-background hover:bg-secondary"
-						aria-label={LAYOUT_LABELS[nextLayout]()}
-						onclick={() => show(nextLayout)}
-					>
-						{#if nextLayout === 'list'}
-							<List class="size-4" aria-hidden="true" />
-						{:else if nextLayout === 'stream'}
-							<Waypoints class="size-4" aria-hidden="true" />
-						{:else}
-							<LayoutGrid class="size-4" aria-hidden="true" />
-						{/if}
-					</button>
+					<!-- The layout as a menu that shows the current one, as the sort beside it. -->
+					<DropdownMenu.Root>
+						<DropdownMenu.Trigger>
+							{#snippet child({ props })}
+								<IconButton
+									{...props}
+									variant="outline"
+									class="size-11 shrink-0"
+									label={m.layout_current({ layout: LAYOUT_LABELS[layout]() })}
+									tooltip={false}
+								>
+									{#if layout === 'list'}
+										<List aria-hidden="true" />
+									{:else if layout === 'stream'}
+										<Waypoints aria-hidden="true" />
+									{:else}
+										<LayoutGrid aria-hidden="true" />
+									{/if}
+								</IconButton>
+							{/snippet}
+						</DropdownMenu.Trigger>
+						<DropdownMenu.Content align="end" class="w-48">
+							<DropdownMenu.RadioGroup
+								value={layout}
+								onValueChange={(next) => show(next as Layout)}
+							>
+								{#each LAYOUTS as option (option)}
+									<DropdownMenu.RadioItem value={option}>
+										{LAYOUT_LABELS[option]()}
+									</DropdownMenu.RadioItem>
+								{/each}
+							</DropdownMenu.RadioGroup>
+						</DropdownMenu.Content>
+					</DropdownMenu.Root>
 				</div>
 				{#if lens && changed}
 					<LensChanges
@@ -793,6 +815,15 @@ row of filters, on a desktop narrow by the title. -->
 						: searching
 							? m.search_none()
 							: m.documents_none()}
+					{#snippet action()}
+						{#if !isFiltered(filters) && !searching}
+							<!-- Documents come in through the inbox, the one place to upload. -->
+							<a href="{BASE}/inbox" class={cn(buttonVariants({ variant: 'outline' }))}>
+								<Upload aria-hidden="true" />
+								{m.documents_to_inbox()}
+							</a>
+						{/if}
+					{/snippet}
 				</EmptyNote>
 			{:else}
 				<div class="flex flex-col gap-6" aria-busy={list.loading}>

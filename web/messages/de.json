@@ -468,7 +468,7 @@
 	"period_to": "bis {date}",
 	"period_span": "{from} bis {to}",
 	"documents_total": "Dokumente: {count}",
-	"documents_none": "Noch keine Dokumente. Lade das erste hoch.",
+	"documents_none": "Noch keine Dokumente. Dokumente kommen über den Posteingang herein.",
 	"documents_none_filtered": "Kein Dokument passt zu diesen Filtern.",
 	"documents_no_date": "Ohne Dokumentdatum",
 	"document_not_found": "Dieses Dokument gibt es nicht, oder Du darfst es nicht sehen.",
@@ -2433,5 +2433,17 @@
 	"rule_generic": "Regel",
 	"webhook_generic": "Webhook",
 	"webhook_edit_generic": "Webhook bearbeiten",
-	"doc_delete_named": "„{title}“ löschen"
+	"doc_delete_named": "„{title}“ löschen",
+	"unsaved_title": "Änderungen verwerfen?",
+	"unsaved_hint": "Du hast etwas geändert, das noch nicht gespeichert ist. Wenn Du gehst, ist es verloren.",
+	"unsaved_discard": "Verwerfen",
+	"nav_more": "Mehr",
+	"documents_to_inbox": "Im Posteingang hochladen",
+	"members_remove_confirm": "Die Person sieht die Dokumente dieses Space danach nicht mehr.",
+	"members_remove_do": "Entfernen",
+	"relations_remove_confirm": "Beide Dokumente bleiben; nur der Bezug zwischen ihnen entfällt.",
+	"date_pick": "Im Kalender wählen",
+	"date_previous_month": "Voriger Monat",
+	"date_next_month": "Nächster Monat",
+	"layout_current": "Darstellung: {layout}"
 }

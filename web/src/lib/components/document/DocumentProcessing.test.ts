@@ -12,6 +12,7 @@ import DocumentProcessing from './DocumentProcessing.svelte';
 type Document = components['schemas']['DocumentDetails'];
 
 vi.mock('$app/navigation', () => ({
+	beforeNavigate: vi.fn(),
 	goto: vi.fn(async (href: string) =>
 		(await import('#lib/testing/page-state.svelte.ts')).goTo(href, { id: 'doc-1' })
 	)

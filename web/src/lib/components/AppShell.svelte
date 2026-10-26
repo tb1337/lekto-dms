@@ -17,10 +17,8 @@
 	import { API_DOCS, BASE } from '#lib/base.ts';
 	import BetaPill from '#lib/components/BetaPill.svelte';
 	import HeaderSearch from '#lib/components/HeaderSearch.svelte';
-	import LanguageMenu from '#lib/components/LanguageMenu.svelte';
 	import Logo from '#lib/components/Logo.svelte';
 	import Segmented from '#lib/components/Segmented.svelte';
-	import ThemeMenu from '#lib/components/ThemeMenu.svelte';
 	import { buttonVariants } from '#lib/components/ui/button/index.ts';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
 	import * as Sheet from '#lib/components/ui/sheet/index.ts';
@@ -40,6 +38,9 @@
 	import { cn } from '#lib/utils.ts';
 	import { onChange } from '#lib/watch.svelte.ts';
 	import { Separator } from '#lib/components/ui/separator/index.ts';
+	import LanguageChoices from '#lib/components/LanguageChoices.svelte';
+	import ThemeChoices from '#lib/components/ThemeChoices.svelte';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -152,15 +153,46 @@
 		<div class="flex h-16 items-center gap-2 px-4 max-[380px]:px-3 sm:gap-4 sm:px-8 lg:gap-7">
 			<a href={home()} class="rounded-md text-lg"><Logo /></a>
 
-			<!-- The menu in the header where it fits: from xl (German names are long). -->
-			<nav aria-label={m.nav_main()} class="hidden min-w-0 flex-1 items-center gap-1 xl:flex">
+			<!-- The menu in the header from lg (web/DESIGN.md, "Navigation"): the work, then setting
+			     up and operating; below xl that second group behind "More" (German names are long). -->
+			<nav aria-label={m.nav_main()} class="hidden min-w-0 flex-1 items-center gap-1 lg:flex">
 				{#each workSections as section (section.path)}
 					{@render pill(section, false)}
 				{/each}
 				<Separator orientation="vertical" class="mx-2 h-5 self-center" />
 				{#each setupSections as section (section.path)}
-					{@render pill(section, false)}
+					<span class="hidden xl:contents">{@render pill(section, false)}</span>
 				{/each}
+				{#if setupSections.length > 0}
+					{@const within = setupSections.some((section) => isCurrent(section, currentPath))}
+					<DropdownMenu.Root>
+						<DropdownMenu.Trigger
+							class={cn(
+								'flex h-9 items-center gap-1 rounded-full px-3 text-sm whitespace-nowrap transition-colors hover:text-foreground xl:hidden',
+								within ? 'bg-secondary font-medium text-foreground' : 'text-muted-foreground'
+							)}
+						>
+							{m.nav_more()}
+							<ChevronDown class="size-4" aria-hidden="true" />
+						</DropdownMenu.Trigger>
+						<DropdownMenu.Content align="start" class="w-56">
+							{#each setupSections as section (section.path)}
+								<DropdownMenu.Item>
+									{#snippet child({ props })}
+										<a
+											{...props}
+											href={href(section)}
+											aria-current={isCurrent(section, currentPath) ? 'page' : undefined}
+										>
+											<section.icon aria-hidden="true" />
+											{section.label()}
+										</a>
+									{/snippet}
+								</DropdownMenu.Item>
+							{/each}
+						</DropdownMenu.Content>
+					</DropdownMenu.Root>
+				{/if}
 			</nav>
 
 			<div class="ml-auto flex items-center gap-1.5 max-[380px]:gap-1 sm:gap-2">
@@ -178,10 +210,9 @@
 					<SearchIcon aria-hidden="true" />
 				</a>
 				<!-- On a phone the header holds only the magnifier and the menu: language, theme and
-				     the account are in the sheet (Tobi, 26.10.2026). -->
+				     the account are in the sheet (Tobi, 26.10.2026). Wider, language and theme are in
+				     the account's menu (web/DESIGN.md, "Navigation"). -->
 				{#if !phone.current}
-					<LanguageMenu />
-					<ThemeMenu />
 					<DropdownMenu.Root>
 						<DropdownMenu.Trigger
 							class={cn(
@@ -217,6 +248,10 @@
 								</DropdownMenu.CheckboxItem>
 								<DropdownMenu.Separator />
 							{/if}
+							<LanguageChoices />
+							<DropdownMenu.Separator />
+							<ThemeChoices />
+							<DropdownMenu.Separator />
 							<DropdownMenu.Item onSelect={() => goto(href(SETTINGS))}>
 								<SETTINGS.icon aria-hidden="true" />
 								{SETTINGS.label()}
@@ -244,7 +279,7 @@
 				     the right. On a phone it holds the account too (Tobi, 26.10.2026, variant A). -->
 				<Sheet.Root bind:open={menuOpen}>
 					<Sheet.Trigger
-						class={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'relative xl:hidden')}
+						class={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'relative lg:hidden')}
 						aria-label={phone.current && scope.allUsers ? m.nav_open_all_users() : m.nav_open()}
 					>
 						<Menu aria-hidden="true" />

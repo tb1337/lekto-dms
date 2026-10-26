@@ -8,6 +8,7 @@
 	import { isMoney, isPeriod } from '#lib/fields.ts';
 	import PeriodInput from '#lib/components/PeriodInput.svelte';
 	import type { Value } from '#lib/rules/model.ts';
+	import DateInput from '#lib/components/DateInput.svelte';
 
 	// One value of a field in its JSON form: text, number and date as text, yes/no as a
 	// boolean, an amount with its currency, a choice from the field's list. `textual` asks for
@@ -163,12 +164,14 @@
 			options={choices}
 			onchange={(next) => onchange(next)}
 		/>
+	{:else if dateField}
+		<DateInput {id} {label} {invalid} value={text} onchange={(next) => onchange(next)} />
 	{:else}
 		<Input
 			{id}
 			aria-label={label}
 			aria-invalid={invalid || undefined}
-			type={dateField ? 'date' : type === 'link' ? 'url' : 'text'}
+			type={type === 'link' ? 'url' : 'text'}
 			inputmode={type === 'number' ? 'decimal' : undefined}
 			value={text}
 			oninput={(event) =>

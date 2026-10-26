@@ -39,6 +39,7 @@
 		general,
 		busy,
 		cancelHref,
+		oncancel,
 		onsubmit
 	}: {
 		model: RuleModel;
@@ -56,6 +57,8 @@
 		general: string | null;
 		busy: boolean;
 		cancelHref: string;
+		/** "Cancel" was chosen: the changes are dropped on purpose (no question on leaving). */
+		oncancel?: () => void;
 		onsubmit: () => void;
 	} = $props();
 
@@ -190,7 +193,9 @@
 		{#if general}<Field.Error>{general}</Field.Error>{/if}
 		<p class="text-sm text-muted-foreground">{m.rule_save_hint()}</p>
 		<div class="flex flex-wrap justify-end gap-2">
-			<a href={cancelHref} class={cn(buttonVariants({ variant: 'ghost' }))}>{m.cancel()}</a>
+			<a href={cancelHref} class={cn(buttonVariants({ variant: 'ghost' }))} onclick={oncancel}
+				>{m.cancel()}</a
+			>
 			<Button type="submit" disabled={busy || blocked}>{m.rule_save()}</Button>
 		</div>
 	</div>

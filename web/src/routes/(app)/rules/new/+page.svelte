@@ -14,10 +14,15 @@
 	import PageHeader from '#lib/components/page/PageHeader.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import Loading from '#lib/components/Loading.svelte';
+	import UnsavedGuard from '#lib/components/UnsavedGuard.svelte';
 
 	const model = $state(newModel());
 	// Empty: the caller's personal space, once the spaces are known.
 	let chosen = $state('');
+	// What it was, to ask before changes are lost; cleared once saved or cancelled.
+	const initial = JSON.stringify(toApi(model));
+	let leaving = $state(false);
+	const changed = $derived(chosen !== '' || JSON.stringify(toApi(model)) !== initial);
 	let lookup = $state<Lookup | null>(null);
 	let problem = $state<string | null>(null);
 	const form = new RuleForm();
@@ -45,11 +50,15 @@
 	async function save() {
 		if (!lookup || !form.check(model, lookup.fields)) return;
 		const rule = await form.save(model, () => createSwitchedOff(place, toApi(model)));
-		if (rule) await goto(`${BASE}/rules/${rule.id}/apply?saved=1`);
+		if (!rule) return;
+		leaving = true;
+		await goto(`${BASE}/rules/${rule.id}/apply?saved=1`);
 	}
 </script>
 
 <svelte:head><title>{m.rule_new_title()} · {m.app_name()}</title></svelte:head>
+
+<UnsavedGuard dirty={changed && !leaving} />
 
 <div class="flex flex-col gap-6">
 	<PageHeader title={m.rule_new_title()} back={{ href: `${BASE}/rules`, label: m.nav_rules() }} />
@@ -70,6 +79,7 @@
 			general={form.general}
 			busy={form.busy}
 			cancelHref="{BASE}/rules"
+			oncancel={() => (leaving = true)}
 			onsubmit={save}
 		/>
 	{/if}

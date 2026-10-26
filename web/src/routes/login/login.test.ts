@@ -6,7 +6,7 @@ import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
 import Page from './+page.svelte';
 
-vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
+vi.mock('$app/navigation', () => ({ beforeNavigate: vi.fn(), goto: vi.fn() }));
 
 const fetchMock = vi.fn<(request: Request) => Promise<Response>>();
 

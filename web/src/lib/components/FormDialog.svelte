@@ -7,6 +7,8 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 
 	// A short form in a dialog (a space, a webhook, a code, a token): its title, the fields
 	// (`children`, told the error for `aria-invalid`), what the API answered below them, and
@@ -22,6 +24,9 @@
 		destructive = false,
 		class: className,
 		action,
+		ondelete,
+		deleteTitle = '',
+		deleteDescription = '',
 		children: fields
 	}: {
 		open?: boolean;
@@ -34,8 +39,14 @@
 		/** The width of the dialog. */
 		class?: string;
 		action: () => Promise<void>;
+		/** Deleting what the dialog edits: asked first, in the footer as the editors have it. */
+		ondelete?: () => Promise<void>;
+		deleteTitle?: string;
+		deleteDescription?: string;
 		children: Snippet<[string | null]>;
 	} = $props();
+
+	let confirming = $state(false);
 </script>
 
 <Dialog.Root bind:open>
@@ -86,6 +97,17 @@
 						{#if description}<p class="text-sm text-muted-foreground">{description}</p>{/if}
 						{@render fields(error)}
 						{#if error}<Field.Error>{error}</Field.Error>{/if}
+						{#if ondelete}
+							<Button
+								type="button"
+								variant="outline"
+								class="mt-2 h-11 text-destructive"
+								onclick={() => (confirming = true)}
+							>
+								<Trash2 aria-hidden="true" />
+								{deleteTitle}
+							</Button>
+						{/if}
 					</div>
 				{:else}
 					<Dialog.Header>
@@ -95,6 +117,18 @@
 					{@render fields(error)}
 					{#if error}<Field.Error>{error}</Field.Error>{/if}
 					<Dialog.Footer>
+						{#if ondelete}
+							<Button
+								type="button"
+								variant="ghost"
+								class="text-destructive hover:text-destructive sm:mr-auto"
+								aria-label={deleteTitle}
+								onclick={() => (confirming = true)}
+							>
+								<Trash2 aria-hidden="true" />
+								{m.delete_title()}
+							</Button>
+						{/if}
 						<Button type="button" variant="ghost" onclick={() => (open = false)}
 							>{m.cancel()}</Button
 						>
@@ -111,3 +145,16 @@
 		</AsyncForm>
 	</Dialog.Content>
 </Dialog.Root>
+
+{#if ondelete}
+	<ConfirmDialog
+		bind:open={confirming}
+		title={deleteTitle}
+		description={deleteDescription}
+		confirmLabel={m.delete_title()}
+		onconfirm={async () => {
+			await ondelete();
+			open = false;
+		}}
+	/>
+{/if}

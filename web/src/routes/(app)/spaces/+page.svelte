@@ -2,7 +2,6 @@
 	import Archive from '@lucide/svelte/icons/archive';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Plus from '@lucide/svelte/icons/plus';
-	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import UserRound from '@lucide/svelte/icons/user-round';
 	import Users from '@lucide/svelte/icons/users';
 	import { untrack } from 'svelte';
@@ -39,7 +38,6 @@
 	let problem = $state<string | null>(null);
 	let creating = $state(false);
 	let editing = $state<Space | null>(null);
-	let removing = $state<Space | null>(null);
 	let leaving = $state<Space | null>(null);
 	let choosing = $state<string | null>(null);
 
@@ -116,9 +114,12 @@
 		await load();
 	}
 
-	async function remove() {
-		if (!removing) return;
-		await unwrap(api.DELETE('/api/v1/spaces/{id}', { params: { path: { id: removing.id } } }));
+	async function removeEditing() {
+		if (editing) await remove(editing);
+	}
+
+	async function remove(space: Space) {
+		await unwrap(api.DELETE('/api/v1/spaces/{id}', { params: { path: { id: space.id } } }));
 		toast.success(m.space_deleted());
 		await load();
 	}
@@ -199,11 +200,6 @@
 					<LogOut aria-hidden="true" />
 				</IconButton>
 			{/if}
-			{#if canManageSpace(space, session.user)}
-				<IconButton label={m.space_delete({ name: space.name })} onclick={() => (removing = space)}>
-					<Trash2 aria-hidden="true" />
-				</IconButton>
-			{/if}
 		</div>
 		{#if canDescribeSpace(space, session.user)}
 			<EditButton label={m.space_edit({ name: label(space) })} onclick={() => (editing = space)} />
@@ -224,13 +220,9 @@
 	initialDescription={editing?.description ?? ''}
 	named={editing?.personal_of === null}
 	onsubmit={change}
-/>
-<ConfirmDialog
-	bind:open={() => removing !== null, (open) => !open && (removing = null)}
-	title={m.space_delete({ name: removing?.name ?? '' })}
-	description={m.space_delete_confirm()}
-	confirmLabel={m.delete_title()}
-	onconfirm={remove}
+	ondelete={editing && canManageSpace(editing, session.user) ? removeEditing : undefined}
+	deleteTitle={m.space_delete({ name: editing?.name ?? '' })}
+	deleteDescription={m.space_delete_confirm()}
 />
 <ConfirmDialog
 	bind:open={() => leaving !== null, (open) => !open && (leaving = null)}

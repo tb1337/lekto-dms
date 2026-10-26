@@ -468,7 +468,7 @@
 	"period_to": "until {date}",
 	"period_span": "{from} to {to}",
 	"documents_total": "Documents: {count}",
-	"documents_none": "No documents yet. Upload the first one.",
+	"documents_none": "No documents yet. Documents come in through the inbox.",
 	"documents_none_filtered": "No document matches these filters.",
 	"documents_no_date": "No document date",
 	"document_not_found": "This document does not exist or you may not see it.",
@@ -2433,5 +2433,17 @@
 	"rule_generic": "Rule",
 	"webhook_generic": "Webhook",
 	"webhook_edit_generic": "Edit webhook",
-	"doc_delete_named": "Delete “{title}”"
+	"doc_delete_named": "Delete “{title}”",
+	"unsaved_title": "Discard your changes?",
+	"unsaved_hint": "You changed something that is not saved yet. If you leave, it is lost.",
+	"unsaved_discard": "Discard",
+	"nav_more": "More",
+	"documents_to_inbox": "Upload in the inbox",
+	"members_remove_confirm": "They no longer see the documents of this space.",
+	"members_remove_do": "Remove",
+	"relations_remove_confirm": "Both documents stay; only the relation between them goes.",
+	"date_pick": "Choose in the calendar",
+	"date_previous_month": "Previous month",
+	"date_next_month": "Next month",
+	"layout_current": "Layout: {layout}"
 }

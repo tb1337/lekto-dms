@@ -73,6 +73,8 @@
 	import { cardVariants } from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
+	import UnsavedGuard from '#lib/components/UnsavedGuard.svelte';
+	import DateInput from '#lib/components/DateInput.svelte';
 
 	type Document = components['schemas']['DocumentDetails'];
 	type Patch = components['schemas']['DocumentPatch'];
@@ -426,6 +428,8 @@
 	}
 
 	const dirty = $derived(Object.keys(buildPatch()).length > 0);
+	// Confirmed: what follows (a reload, the next document) is no loss to ask about.
+	let settled = $state(false);
 
 	function readProblem(error: unknown): void {
 		fieldErrors = fieldMessages(error);
@@ -457,6 +461,7 @@
 				})
 			);
 			baseline = null;
+			settled = true;
 			if (enabling) onenabled?.();
 			// The answer says `access: null` when the caller cannot read the document any more.
 			const away =
@@ -514,6 +519,7 @@
 			);
 			preview = null;
 			baseline = null;
+			settled = true;
 			if (enabling) onenabled?.();
 			toast.success(m.document_saved());
 			if ('title' in result) onsaved(result);
@@ -622,6 +628,8 @@
 
 	const located = $derived([...evidence.values()].some((entry) => entry.check.locations?.length));
 </script>
+
+<UnsavedGuard dirty={dirty && !busy && !settled} />
 
 <form
 	class={cn(cardVariants({ size: 'flush' }), 'flex h-full min-h-0 flex-col overflow-hidden')}
@@ -746,7 +754,7 @@
 				onfocus={focus}
 				onjump={jump}
 			>
-				<Input id="doc-date" type="date" bind:value={date} disabled={!editable} />
+				<DateInput id="doc-date" label={m.field_date()} bind:value={date} disabled={!editable} />
 			</FieldShell>
 			<FieldShell
 				key="contact"

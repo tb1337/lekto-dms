@@ -260,10 +260,10 @@
 
 @layer components {
 	/*
-	 * A mark on a document's image, a tag or the page count on a card (Tobi, 20.10.2026: variant
-	 * I of the canvas page "Kennzeichen"): its colour of the design on glass, so that the text of
-	 * the page below blurs, and an edge dark outside and light inside with a shadow, so that it
-	 * stands apart from light and dark pages alike. The ground (82 % of its colour) comes with it.
+	 * A mark on a document's image (the page count on a card, a mark on a page): its colour of
+	 * the design on glass, so that the text of the page below blurs, and an edge dark outside and
+	 * light inside with a shadow, so that it stands apart from light and dark pages alike. The
+	 * ground (82 % of its colour) comes with it. Tags stand below the image (web/DESIGN.md).
 	 */
 	.mark-glass {
 		-webkit-backdrop-filter: blur(10px) saturate(1.4);

@@ -16,7 +16,7 @@ vi.mock('$app/state', () => ({
 		}
 	}
 }));
-vi.mock('$app/navigation', () => ({ goto: nav.goto }));
+vi.mock('$app/navigation', () => ({ beforeNavigate: vi.fn(), goto: nav.goto }));
 
 const fetchMock = vi.fn<(request: Request) => Promise<Response>>();
 

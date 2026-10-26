@@ -10,7 +10,7 @@ import { SETTINGS } from '#lib/sections.ts';
 import { session, type User } from '#lib/session.svelte.ts';
 import AppShell from './AppShell.svelte';
 
-vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
+vi.mock('$app/navigation', () => ({ beforeNavigate: vi.fn(), goto: vi.fn() }));
 vi.mock('$app/state', () => ({ page: { url: new URL('http://lekto/ui/inbox') } }));
 
 const children = createRawSnippet(() => ({ render: () => '<p>content</p>' }));
@@ -114,7 +114,11 @@ describe('AppShell', () => {
 		// The line stands after the fourth link.
 		const line = nav.querySelector('[data-slot="separator"]');
 		expect(line?.previousElementSibling?.getAttribute('href')).toBe('/ui/spaces');
-		expect(line?.nextElementSibling?.getAttribute('href')).toBe('/ui/rules');
+		// Below xl the second group stands behind "More"; from xl each link (in its wrapper).
+		const next = line?.nextElementSibling;
+		expect((next?.matches('a') ? next : next?.querySelector('a'))?.getAttribute('href')).toBe(
+			'/ui/rules'
+		);
 		expect(within(nav).getByRole('link', { name: `${m.nav_expected()} ${m.beta()}` })).toBeTruthy();
 	});
 
@@ -192,14 +196,15 @@ describe('AppShell', () => {
 		expect(screen.getByText('content')).toBeTruthy();
 	});
 
-	it('keeps language and theme in the header, beside the account menu', async () => {
+	it('keeps language and theme in the account menu (web/DESIGN.md, "Navigation")', async () => {
 		phone.override(false);
 		signIn('user');
 		render(AppShell, { children });
-		expect(screen.getByRole('button', { name: m.theme_label() })).toBeTruthy();
-		expect(screen.getByRole('button', { name: /^Sprache|^Language/ })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: m.theme_label() })).toBeNull();
 		const menu = await openAccountMenu();
-		expect(within(menu).queryByRole('menuitemradio')).toBeNull();
+		expect(within(menu).getAllByRole('menuitemradio').length).toBeGreaterThanOrEqual(5);
+		expect(within(menu).getByText(m.theme_label())).toBeTruthy();
+		expect(within(menu).getByText(m.language_label())).toBeTruthy();
 	});
 
 	it('moves the account into the navigation sheet on a phone', async () => {

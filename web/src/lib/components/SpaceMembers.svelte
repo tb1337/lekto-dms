@@ -21,6 +21,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 	import IconButton from '#lib/components/IconButton.svelte';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 
 	type Role = components['schemas']['SpaceRole'];
 
@@ -82,6 +83,9 @@
 		}
 	}
 
+	// Removing a member asks first (web/DESIGN.md, "Destructive actions").
+	let removing = $state<(typeof space.members)[number] | null>(null);
+
 	async function remove(id: string) {
 		busy = true;
 		try {
@@ -124,7 +128,7 @@
 						<IconButton
 							disabled={busy}
 							label={m.members_remove({ name: userLabel(member) })}
-							onclick={() => remove(member.user_id)}
+							onclick={() => (removing = member)}
 						>
 							<X aria-hidden="true" />
 						</IconButton>
@@ -140,7 +144,7 @@
 						<IconButton
 							disabled={busy}
 							label={m.members_remove({ name: name(member.user_id) })}
-							onclick={() => remove(member.user_id)}
+							onclick={() => (removing = member)}
 						>
 							<X aria-hidden="true" />
 						</IconButton>
@@ -180,3 +184,13 @@
 		{/if}
 	</Dialog.Content>
 </Dialog.Root>
+
+<ConfirmDialog
+	bind:open={() => removing !== null, (next) => !next && (removing = null)}
+	title={m.members_remove({ name: removing ? userLabel(removing) : '' })}
+	description={m.members_remove_confirm()}
+	confirmLabel={m.members_remove_do()}
+	onconfirm={async () => {
+		if (removing) await remove(removing.user_id);
+	}}
+/>

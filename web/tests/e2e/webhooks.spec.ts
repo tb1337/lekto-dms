@@ -74,11 +74,10 @@ test('a webhook is created, tested, changed and deleted', async ({ page }) => {
 	await page.waitForURL(url);
 	await expect(page.getByRole('heading', { name: `${NAME} v2`, level: 1 })).toBeVisible();
 
-	// Deleted from the list.
-	await page.getByRole('link', { name: 'Webhooks' }).first().click();
-	await page.waitForURL('**/ui/webhooks');
+	// Deleted on its page, then gone from the list.
 	await page.getByRole('button', { name: `Delete ${NAME} v2` }).click();
 	await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
+	await page.waitForURL('**/ui/webhooks');
 	await expect(page.getByText(`${NAME} v2`)).toHaveCount(0);
 
 	expect(problems).toEqual([]);

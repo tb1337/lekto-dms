@@ -18,6 +18,7 @@
 	import PageHeader from '#lib/components/page/PageHeader.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import Loading from '#lib/components/Loading.svelte';
+	import UnsavedGuard from '#lib/components/UnsavedGuard.svelte';
 
 	type Rule = components['schemas']['RuleOut'];
 
@@ -43,6 +44,14 @@
 	);
 
 	// The rule files where whoever saves it may file (the API checks it for the caller).
+	// Changed since it loaded, to ask before it is lost; cleared once saved or cancelled.
+	let leaving = $state(false);
+	const changed = $derived(
+		rule !== null &&
+			model !== null &&
+			(place !== current || JSON.stringify(toApi(model)) !== JSON.stringify(toApi(fromApi(rule))))
+	);
+
 	const targets = $derived(spaceOptions(lookup?.spaces ?? [], lookup?.users ?? [], session.user));
 
 	$effect(() => {
@@ -64,6 +73,7 @@
 		const before = toApi(fromApi(rule));
 		const moved = place !== current;
 		if (!moved && JSON.stringify(definition) === JSON.stringify(before)) {
+			leaving = true;
 			await goto(`${BASE}/rules/${rule.id}`);
 			return;
 		}
@@ -71,7 +81,9 @@
 		const saved = await form.save(model, () =>
 			changeSwitchedOff(target, definition, moved ? place : undefined)
 		);
-		if (saved) await goto(`${BASE}/rules/${saved.id}/apply?saved=1`);
+		if (!saved) return;
+		leaving = true;
+		await goto(`${BASE}/rules/${saved.id}/apply?saved=1`);
 	}
 </script>
 
@@ -80,6 +92,8 @@
 		>{rule ? m.rule_edit_title({ name: rule.name }) : m.rule_edit_generic()} · {m.app_name()}</title
 	></svelte:head
 >
+
+<UnsavedGuard dirty={changed && !leaving} />
 
 <div class="flex flex-col gap-6">
 	<PageHeader
@@ -104,6 +118,7 @@
 			general={form.general}
 			busy={form.busy}
 			cancelHref="{BASE}/rules/{rule.id}"
+			oncancel={() => (leaving = true)}
 			onsubmit={save}
 		/>
 	{/if}

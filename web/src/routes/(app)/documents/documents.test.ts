@@ -36,7 +36,7 @@ class FakeSource {
 }
 
 const state = vi.hoisted(() => ({ url: new URL('http://lekto/ui/documents') }));
-vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
+vi.mock('$app/navigation', () => ({ beforeNavigate: vi.fn(), goto: vi.fn() }));
 vi.mock('$app/state', () => ({
 	page: {
 		get url() {

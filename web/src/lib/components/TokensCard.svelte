@@ -20,6 +20,7 @@
 	import IconButton from '#lib/components/IconButton.svelte';
 	import Loading from '#lib/components/Loading.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
+	import DateInput from '#lib/components/DateInput.svelte';
 
 	type Token = components['schemas']['TokenOut'];
 	type Scope = components['schemas']['TokenScope'];
@@ -154,7 +155,7 @@
 	</Field.Field>
 	<Field.Field>
 		<Field.Label for="token-expires">{m.token_expires_on()}</Field.Label>
-		<Input id="token-expires" type="date" min={today} bind:value={expires} />
+		<DateInput id="token-expires" label={m.token_expires_on()} min={today} bind:value={expires} />
 		<Field.Description>{m.token_expires_hint()}</Field.Description>
 	</Field.Field>
 </FormDialog>

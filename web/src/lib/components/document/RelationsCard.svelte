@@ -20,6 +20,7 @@
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
 	import IconButton from '#lib/components/IconButton.svelte';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 
 	type Relations = components['schemas']['RelationsOut'];
 	type Related = components['schemas']['RelatedOut'];
@@ -74,6 +75,9 @@
 				),
 			done
 		);
+	// Removing a relation asks first; rejecting a suggestion does not (web/DESIGN.md).
+	let removing = $state<{ id: string; title: string } | null>(null);
+
 	const unrelate = (other: string, done: string) =>
 		act(
 			() =>
@@ -190,10 +194,9 @@
 							? m.relations_reject_short()
 							: m.relations_remove_short()}
 						onclick={() =>
-							unrelate(
-								item.document.id,
-								group.key === 'suggested' ? m.relations_rejected() : m.relations_removed()
-							)}
+							group.key === 'suggested'
+								? unrelate(item.document.id, m.relations_rejected())
+								: (removing = item.document)}
 					>
 						<X aria-hidden="true" />
 					</IconButton>
@@ -212,3 +215,13 @@
 		</div>
 	{/if}
 </Card.Root>
+
+<ConfirmDialog
+	bind:open={() => removing !== null, (next) => !next && (removing = null)}
+	title={m.relations_remove({ title: removing?.title ?? '' })}
+	description={m.relations_remove_confirm()}
+	confirmLabel={m.relations_remove_short()}
+	onconfirm={async () => {
+		if (removing) await unrelate(removing.id, m.relations_removed());
+	}}
+/>

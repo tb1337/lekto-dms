@@ -42,3 +42,6 @@ if (!document.execCommand) {
 
 // CodeMirror needs a browser's layout; component tests edit templates in a plain text area.
 vi.mock('#lib/templates/codemirror.ts', () => import('#lib/testing/fake-template-editor.ts'));
+
+// The date picker (bits-ui) needs a browser's layout; component tests type a plain date input.
+vi.mock('#lib/components/DateInput.svelte', () => import('#lib/testing/FakeDateInput.svelte'));

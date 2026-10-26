@@ -12,15 +12,12 @@
 		lookup,
 		interactive = false,
 		size = 'sm',
-		onImage = false,
 		class: className
 	}: {
 		document: { tag_ids: readonly string[]; topic_id?: string | null };
 		lookup: Lookup | null;
 		interactive?: boolean;
 		size?: 'sm' | 'md';
-		/** On a document's image (a card): as glass with an edge. */
-		onImage?: boolean;
 		class?: string;
 	} = $props();
 
@@ -32,7 +29,7 @@
 
 {#if tags.length > 0 || topics.length > 0}
 	<span class={cn('flex min-w-0 flex-wrap gap-1', className)}>
-		{#each topics as tag (tag.id)}<TagChip {tag} topic {interactive} {size} {onImage} />{/each}
-		{#each tags as tag (tag.id)}<TagChip {tag} {interactive} {size} {onImage} />{/each}
+		{#each topics as tag (tag.id)}<TagChip {tag} topic {interactive} {size} />{/each}
+		{#each tags as tag (tag.id)}<TagChip {tag} {interactive} {size} />{/each}
 	</span>
 {/if}

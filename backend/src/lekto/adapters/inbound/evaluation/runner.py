@@ -25,6 +25,7 @@ from lekto.adapters.inbound.evaluation.cases import (
     Case,
     EvaluationSet,
     Expected,
+    ExpectedFact,
     MasterDataSpec,
     Run,
     TrainingDocument,
@@ -41,6 +42,7 @@ from lekto.core.domain.classification import (
     FieldCheck,
     field_key,
 )
+from lekto.core.domain.document_facts import FactState
 from lekto.core.domain.documents import UNSET, Channel, Document, DocumentChanges
 from lekto.core.domain.fields import FieldDefinition, field_from_json, field_to_json
 from lekto.core.domain.identifiers import Identifier, IdentifierKind
@@ -138,6 +140,7 @@ class CaseResult:
     corrected: frozenset[str] = frozenset()  # fields the person changed afterwards, likewise
     by_hand: frozenset[str] = frozenset()  # fields set by hand only: no model checks, not scored
     topic: str | None = None
+    facts: frozenset[ExpectedFact] = frozenset()  # the document's facts (none rejected)
 
 
 async def evaluate(
@@ -379,7 +382,14 @@ async def _run(
     seconds = time.perf_counter() - started
     document = await environment.documents.get(owner.id, received.id)
     log = await environment.documents.processing_log(owner.id, received.id)
-    return replace(_result(case, received, document, log, master, seconds), run=environment.run)
+    stored = (await environment.documents.facts(owner.id, received.id)).stored
+    facts = frozenset(
+        (fact.kind, fact.value, fact.role)
+        for fact in stored.values()
+        if fact.state is not FactState.REJECTED
+    )
+    result = _result(case, received, document, log, master, seconds)
+    return replace(result, run=environment.run, facts=facts)
 
 
 async def _corrected(

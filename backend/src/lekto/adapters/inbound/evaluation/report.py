@@ -76,6 +76,9 @@ class Summary:
     seconds: list[float]
     tags_set: int = 0  # documents tags were set on without a person
     tags_corrected: int = 0  # of those, the person changed the tags afterwards
+    facts_expected: int = 0  # facts the cases that score them expect
+    facts_right: int = 0  # of those, the document has with their role
+    facts_missed: list[str] = field(default_factory=list)  # the others, with what it has
 
     @property
     def tag_precision(self) -> float:
@@ -146,6 +149,15 @@ def summarise(results: Sequence[CaseResult], *, fake: bool) -> Summary:
         if TAGS in result.automatic and applied:
             summary.tags_set += 1
             summary.tags_corrected += TAGS in result.corrected
+        if expected.facts is not None:
+            summary.facts_expected += len(expected.facts)
+            summary.facts_right += len(expected.facts & result.facts)
+            roles = {(kind, value): role for kind, value, role in result.facts}
+            summary.facts_missed += [
+                f"{case.name}: {kind.value} {value} {role.value} "
+                f"({'missing' if (kind, value) not in roles else roles[(kind, value)].value})"
+                for kind, value, role in sorted(expected.facts - result.facts)
+            ]
         summary.tags_tp += len(applied & expected.tags)
         summary.tags_fp += len(applied - expected.tags)
         summary.tags_fn += len(expected.tags - applied)
@@ -258,6 +270,13 @@ def render(runs: Mapping[Run, Sequence[CaseResult]], info: RunInfo) -> str:
             f"{item.tags_fn} missing); corrected afterwards on {item.tags_corrected} of "
             f"{item.tags_set} documents they were set on."
         )
+    for run, item in summaries.items():
+        if item.facts_expected:
+            missed = f": {'; '.join(item.facts_missed)}" if item.facts_missed else ""
+            lines.append(
+                f"Facts ({_RUN_TITLES[run]}): {item.facts_right} of {item.facts_expected} "
+                f"expected with their role{missed}."
+            )
     for run, results in runs.items():
         lines += _run_section(run, results, summaries[run], info)
         lines += _labels_section(run, results)

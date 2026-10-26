@@ -37,12 +37,15 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from lekto.core.domain.document_facts import FactRole
 from lekto.core.domain.fields import FieldType
+from lekto.core.domain.identifiers import IdentifierKind, normalise_identifier
 from lekto.core.domain.json_value import JsonObject, JsonValue
 from lekto.core.domain.master_data import Assignment
 from lekto.core.domain.pipeline import Lane
 from lekto.core.ports.llm import StructuredRequest
 from lekto.core.services.classification.prompts import (
+    FACTS_SCHEMA,
     FIELDS_OF_TYPE,
     PROPOSE_SCHEMA,
     SPACES_HEADING,
@@ -112,6 +115,10 @@ class MasterDataSpec:
     users: tuple[UserSpec, ...] = ()
 
 
+type ExpectedFact = tuple[IdentifierKind, str, FactRole]
+"""A fact a case's document must have: its kind, its value (normalised) and its role."""
+
+
 @dataclass(frozen=True)
 class Expected:
     lane: Lane
@@ -123,6 +130,7 @@ class Expected:
     lanes: dict[Run, Lane] = field(default_factory=dict)
     topic: str | None = None
     space: str | None = None
+    facts: frozenset[ExpectedFact] | None = None  # None: the case's facts are not scored
 
     def lane_in(self, run: Run) -> Lane:
         return self.lanes.get(run, self.lane)
@@ -134,15 +142,18 @@ class FakeAnswer:
     fields: dict[str, JsonValue]
     lane: Lane
     lanes: dict[Run, Lane] = field(default_factory=dict)
+    facts: tuple[JsonValue, ...] = ()  # the entries of the answer to the facts request
 
     def lane_in(self, run: Run) -> Lane:
         return self.lanes.get(run, self.lane)
 
     def respond(self, request: StructuredRequest) -> JsonObject:
-        """The answer to a request of the language model's signal (`proposal`) or of the fields
-        node."""
+        """The answer to a request of the language model's signal (`proposal`, `facts`) or of
+        the fields node."""
         if request.schema_name == PROPOSE_SCHEMA:
             return self._proposal(request.task)
+        if request.schema_name == FACTS_SCHEMA:
+            return {"facts": list(self.facts)}
         keys = dict(_KEY_LINE.findall(request.task))
         empty: JsonObject = {"value": None, "evidence": None, "label": None}
         return {"fields": {key: self.fields.get(name, empty) for key, name in keys.items()}}
@@ -432,6 +443,7 @@ def _case(markdown: Path, master: MasterDataSpec) -> Case:
             lanes=_lanes(expected_data),
             topic=expected_data.get("topic"),
             space=expected_data.get("space"),
+            facts=_facts(expected_data["facts"]) if "facts" in expected_data else None,
         )
         fake = None
         if data.get("fake") is not None:
@@ -446,6 +458,7 @@ def _case(markdown: Path, master: MasterDataSpec) -> Case:
                     if "lane" in fake_data or "lanes" in fake_data
                     else dict(expected.lanes)
                 ),
+                facts=tuple(fake_data.get("facts", ())),
             )
         case = Case(
             name=name,
@@ -460,6 +473,15 @@ def _case(markdown: Path, master: MasterDataSpec) -> Case:
         raise EvaluationSetError(f"{name}: {error!r}") from None
     _check_names(case, master)
     return case
+
+
+def _facts(items: Any) -> frozenset[ExpectedFact]:
+    """The facts expected, each with its kind, its value as written and its role."""
+    facts: set[ExpectedFact] = set()
+    for item in items:
+        kind = IdentifierKind(item["kind"])
+        facts.add((kind, normalise_identifier(kind, str(item["value"])), FactRole(item["role"])))
+    return frozenset(facts)
 
 
 def _topic(item: Any) -> tuple[str, str | None]:

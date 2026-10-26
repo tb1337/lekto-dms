@@ -1,0 +1,116 @@
+{
+  "description": "Corrected power bill for a billing period: its own invoice number, the number of the invoice it replaces (a reference), the customer and the meter number.",
+  "expected": {
+    "lane": "green",
+    "contact": "Stadtwerke Musterstadt GmbH",
+    "document_type": "Rechnung",
+    "tags": [
+      "Strom"
+    ],
+    "document_date": "2026-04-20",
+    "fields": {
+      "Betrag": {
+        "amount": "78.71",
+        "currency": "EUR"
+      },
+      "Rechnungsnummer": "R-2026-005102",
+      "Kundennummer": "100 200 300",
+      "Fällig am": "2026-05-05"
+    },
+    "facts": [
+      {
+        "kind": "invoice_number",
+        "value": "R-2026-005102",
+        "role": "own"
+      },
+      {
+        "kind": "invoice_number",
+        "value": "R-2026-004711",
+        "role": "refers"
+      },
+      {
+        "kind": "customer_number",
+        "value": "100 200 300",
+        "role": "contact"
+      },
+      {
+        "kind": "meter_number",
+        "value": "1ESY1234567",
+        "role": "target"
+      }
+    ]
+  },
+  "fake": {
+    "classification": {
+      "contact": {
+        "value": "Stadtwerke Musterstadt GmbH",
+        "evidence": "Stadtwerke Musterstadt GmbH"
+      },
+      "document_type": "Rechnung",
+      "new_document_type": null,
+      "tags": [
+        "Strom"
+      ],
+      "new_tags": [],
+      "document_date": {
+        "value": "2026-04-20",
+        "evidence": "Musterstadt, 20.04.2026"
+      }
+    },
+    "fields": {
+      "Betrag": {
+        "value": {
+          "amount": "78.71",
+          "currency": "EUR"
+        },
+        "evidence": "Gesamtbetrag | 78,71 €",
+        "label": "Gesamtbetrag"
+      },
+      "Rechnungsnummer": {
+        "value": "R-2026-005102",
+        "evidence": "Rechnungsnummer: R-2026-005102",
+        "label": "Rechnungsnummer"
+      },
+      "Kundennummer": {
+        "value": "100 200 300",
+        "evidence": "Kundennummer: 100 200 300",
+        "label": "Kundennummer"
+      },
+      "Fällig am": {
+        "value": "2026-05-05",
+        "evidence": "am 05.05.2026 per Lastschrift",
+        "label": null
+      }
+    },
+    "facts": [
+      {
+        "kind": "invoice_number",
+        "value": "R-2026-005102",
+        "role": "own",
+        "evidence": "Rechnungsnummer: R-2026-005102",
+        "label": "Rechnungsnummer"
+      },
+      {
+        "kind": "invoice_number",
+        "value": "R-2026-004711",
+        "role": "refers",
+        "evidence": "ersetzt Ihre Rechnung Nr. R-2026-004711",
+        "label": "Rechnung Nr."
+      },
+      {
+        "kind": "customer_number",
+        "value": "100 200 300",
+        "role": "contact",
+        "evidence": "Kundennummer: 100 200 300",
+        "label": "Kundennummer"
+      },
+      {
+        "kind": "meter_number",
+        "value": "1ESY1234567",
+        "role": "target",
+        "evidence": "Zählernummer: 1ESY1234567",
+        "label": "Zählernummer"
+      }
+    ]
+  }
+}

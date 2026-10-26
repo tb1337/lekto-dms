@@ -205,3 +205,15 @@ describe('the role of a fact of each kind', () => {
 		expect(KIND_ROLES).toEqual(roles);
 	});
 });
+
+describe('the counts of the facts', () => {
+	it('leave out what a person rejected', () => {
+		const rejected = {
+			...FACTS,
+			identifiers: FACTS.identifiers.map((item) => ({ ...item, state: 'rejected' as const }))
+		};
+		// The names of the contact stay.
+		const names = grouped(FACTS).own.filter((entry) => !('kind' in entry)).length;
+		expect(factCounts(rejected)).toMatchObject({ evidence: names, unknown: 0 });
+	});
+});

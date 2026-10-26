@@ -281,9 +281,12 @@ export function grouped(facts: Facts): {
 /** What the chip at the contact field counts. */
 export function factCounts(facts: Facts): { evidence: number; unknown: number; codes: number } {
 	const groups = grouped(facts);
+	// A fact a person rejected is none of the document's.
+	const kept = (entries: readonly (NamedContact | FoundIdentifier)[]) =>
+		entries.filter((entry) => !('state' in entry) || entry.state !== 'rejected').length;
 	return {
-		evidence: groups.own.length,
-		unknown: groups.unknown.length,
+		evidence: kept(groups.own),
+		unknown: kept(groups.unknown),
 		codes: facts.codes?.length ?? 0
 	};
 }

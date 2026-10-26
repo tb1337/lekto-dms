@@ -4,6 +4,7 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import InfoHint from '#lib/components/InfoHint.svelte';
 	import ProfileForm from '#lib/components/ProfileForm.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import UserDeleteDialog from '#lib/components/UserDeleteDialog.svelte';
@@ -132,7 +133,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-w-lg">
+	<Dialog.Content class="sm:max-w-[40rem]">
 		<Dialog.Header>
 			<Dialog.Title>{account ? userLabel(account) : m.loading()}</Dialog.Title>
 		</Dialog.Header>
@@ -186,7 +187,10 @@
 				{/if}
 
 				<section class="flex flex-col gap-3 border-t pt-4" aria-labelledby="user-profile">
-					<h3 id="user-profile" class="text-sm font-semibold">{m.profile_title()}</h3>
+					<div class="flex items-center gap-1">
+						<h3 id="user-profile" class="text-sm font-semibold">{m.profile_title()}</h3>
+						<InfoHint text={m.profile_hint()} about={m.profile_title()} />
+					</div>
 					<ProfileForm userId={account.id} onsaved={onchanged} />
 				</section>
 

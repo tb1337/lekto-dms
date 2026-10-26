@@ -7,6 +7,7 @@
 	import type { components } from '#lib/api/schema.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import PasswordCard from '#lib/components/PasswordCard.svelte';
+	import InfoHint from '#lib/components/InfoHint.svelte';
 	import ProfileForm from '#lib/components/ProfileForm.svelte';
 	import TokensCard from '#lib/components/TokensCard.svelte';
 	import TotpCard from '#lib/components/TotpCard.svelte';
@@ -103,7 +104,10 @@
 
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>{m.profile_title()}</Card.Title>
+				<Card.Title class="flex items-center gap-1">
+					{m.profile_title()}
+					<InfoHint text={m.profile_hint()} about={m.profile_title()} />
+				</Card.Title>
 			</Card.Header>
 			<Card.Content>
 				<ProfileForm onsaved={saved} />

@@ -225,15 +225,18 @@ export function openAt(text: string, cursor: number): number {
 	return before.indexOf(close, open + 2) < 0 ? open : -1;
 }
 
-export type SpotKind = 'value' | 'field' | 'step' | 'filter' | 'tag';
+export type SpotKind = 'value' | 'field' | 'step' | 'path' | 'filter' | 'tag';
 
-/** What fits at the cursor: a value, a field's key after `field.`, a filter after `|`, or a
- * tag after `{%`; `from` is where the word typed so far begins. */
+/** What fits at the cursor: a value, a field's key after `field.`, the next part of a path
+ * after `facts.` (`facts.refers.`, `facts.girocode.`), a filter after `|`, or a tag after `{%`;
+ * `from` is where the word typed so far begins. */
 export interface Spot {
 	kind: SpotKind;
 	from: number;
 	/** Inside `{{ … }}` (else `{% … %}`). */
 	value: boolean;
+	/** For a path: what stands before the word (`facts.refers.`). */
+	path?: string;
 }
 
 export function completionSpot(text: string, cursor: number): Spot | null {
@@ -247,6 +250,8 @@ export function completionSpot(text: string, cursor: number): Spot | null {
 	if (/\|\s*$/.test(lead)) return { kind: 'filter', from, value };
 	if (/(?:^|[^\w.])field\.$/.test(lead)) return { kind: 'field', from, value };
 	if (/(?:^|[^\w.])steps\.$/.test(lead)) return { kind: 'step', from, value };
+	const path = /(?:^|[^\w.])(facts\.(?:\w+\.)*)$/.exec(lead);
+	if (path) return { kind: 'path', from, value, path: path[1] };
 	if (lead.endsWith('.')) return null;
 	if (!value && /^-?\s*$/.test(lead)) return { kind: 'tag', from, value };
 	const starts =

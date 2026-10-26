@@ -1,4 +1,5 @@
 import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
+import { KIND_ROLES } from '#lib/facts.ts';
 import { IDENTIFIER_KINDS, NUMBER_KINDS, kindLabel } from '#lib/identifiers.ts';
 import { m } from '#lib/paraglide/messages.js';
 
@@ -91,7 +92,11 @@ const GIROCODE_PARTS = ['amount', 'iban', 'name', 'purpose', 'bic'] as const;
  * kinds a document refers by), the GiroCode on its pages, and all facts (`fact_list`). A
  * person's kinds alone are not among them. */
 export function factNames(): { name: string; label: string }[] {
-	const kinds = [...new Set([...NUMBER_KINDS, ...IDENTIFIER_KINDS])];
+	// A kind that refers to another document by default (`your_reference`, `letter_date`):
+	// only below `facts.refers`.
+	const kinds = [...new Set([...NUMBER_KINDS, ...IDENTIFIER_KINDS])].filter(
+		(kind) => KIND_ROLES[kind] !== 'refers'
+	);
 	return [
 		...kinds.map((kind) => ({
 			name: `facts.${kind}`,

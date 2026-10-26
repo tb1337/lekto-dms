@@ -69,7 +69,11 @@ beforeEach(() => {
 				return json({ used: [], missing: null, error: null, values: null, ...unreadable });
 			}
 			const values = body.document_id
-				? { contact: 'Stadtwerke', 'field.la_brutto': '3.650,00 EUR' }
+				? {
+						contact: 'Stadtwerke',
+						'field.la_brutto': '3.650,00 EUR',
+						'facts.invoice_number': 'RE-2026-0412'
+					}
 				: null;
 			const rendered = body.document_id
 				? body.template.replace('{{ field.la_brutto }}', '3.650,00 EUR')
@@ -167,8 +171,10 @@ describe('TemplateInput', () => {
 		expect(await within(sheet).findByText('Lohn März')).toBeTruthy();
 		expect(listed[0].searchParams.get('document_type_id')).toBe(PAYSLIP);
 		expect(await within(sheet).findByText('3.650,00 EUR')).toBeTruthy();
-		// Only the fields of the type.
+		// Only the fields of the type; the facts the document shows.
 		expect(within(sheet).queryByText('field.betrag')).toBeNull();
+		expect(within(sheet).getByText('RE-2026-0412')).toBeTruthy();
+		expect(within(sheet).queryByText('facts.order_number')).toBeNull();
 
 		draft.setSelectionRange(5, 5);
 		await user.click(

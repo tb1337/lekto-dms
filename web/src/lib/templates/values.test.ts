@@ -12,6 +12,14 @@ describe('the values of a template', () => {
 		expect(templateNames('rule').some((entry) => entry.name.startsWith('steps.'))).toBe(false);
 	});
 
+	it('offers a reference by default only below facts.refers', () => {
+		const names = templateNames('rule').map((entry) => entry.name);
+		expect(names).toContain('facts.invoice_number');
+		expect(names).toContain('facts.refers.letter_date');
+		expect(names).not.toContain('facts.letter_date');
+		expect(names).not.toContain('facts.tax_id');
+	});
+
 	it('gives a webhook the task besides', () => {
 		expect(templateNames('webhook').map((entry) => entry.name)).toContain('task.token');
 	});

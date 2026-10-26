@@ -18,6 +18,7 @@
 	import { TEMPLATES_GUIDE } from '#lib/templates/guide.ts';
 	import { FILTERS, FILTER_CHIPS, insertFilter, insertValue } from '#lib/templates/liquid.ts';
 	import {
+		factNames,
 		LIST_NAMES,
 		TEMPLATE_NAMES,
 		TEMPLATE_NAME_LABELS,
@@ -104,6 +105,14 @@
 	});
 
 	const chips = FILTER_CHIPS.map((name) => FILTERS.find((filter) => filter.name === name)!);
+
+	// The facts the reference document has, with their names (the preview gives their values).
+	const factLabels = new Map(factNames().map((fact) => [fact.name, fact.label]));
+	const shownFacts = $derived(
+		Object.keys(preview?.values ?? {})
+			.filter((path) => path.startsWith('facts.'))
+			.map((path) => ({ name: path, label: factLabels.get(path) ?? path }))
+	);
 
 	function insert(path: string) {
 		handle?.edit((text, from, to) => insertValue(text, from, to, path, LIST_NAMES.has(path)));
@@ -193,6 +202,17 @@
 							)}
 						{/each}
 					{/if}
+				</ul>
+			</section>
+			<section class="flex flex-col gap-1.5" aria-labelledby="{id}-facts">
+				<h3 id="{id}-facts" class="text-sm font-medium">{m.template_facts()}</h3>
+				<!-- Those the document shows; all of them by typing `facts.` in the editor. -->
+				<ul class="divide-y rounded-lg border">
+					{#each shownFacts as fact (fact.name)}
+						{@render row(fact.name, fact.label)}
+					{/each}
+					<!-- A list: no value to show. -->
+					{@render row('fact_list', m.template_value_fact_list(), true)}
 				</ul>
 			</section>
 			{#if fields.length > 0}

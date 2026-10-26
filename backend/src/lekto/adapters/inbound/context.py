@@ -32,6 +32,7 @@ from lekto.core.services.rules import RuleService
 from lekto.core.services.rules.retroactive import RuleApplicationService
 from lekto.core.services.search import SearchService
 from lekto.core.services.spaces import SpaceService
+from lekto.core.services.stream import StreamService
 from lekto.core.services.tasks.service import TaskService
 from lekto.core.services.users import UserService
 from lekto.core.services.webhooks import WebhookDeliveryService, WebhookService
@@ -61,6 +62,7 @@ class ApiContext:
     lenses: LensService
     relations: RelationService
     expected: ExpectedService
+    stream: StreamService
     jobs: JobsService
     automation: AutomationService
     event_bus: EventBus

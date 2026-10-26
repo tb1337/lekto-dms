@@ -10370,6 +10370,354 @@
         ]
       }
     },
+    "/api/v1/documents/stream": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "The documents in a stream",
+        "description": "The documents the filters of `GET /documents` find among those the caller reads (with `all_users`, an admin's, every user's), in lanes: a series (one contact and type, and one contract or customer number, at a steady interval) with the relation target its documents refer to at its start and the document it expects next; branches (documents that refer to one of a series, with the chain of theirs); chains of documents related only among themselves; and the rest in one lane. At most the 500 newest documents and 24 lanes of series and chains (`truncated`).",
+        "operationId": "stream_api_v1_documents_stream_get",
+        "parameters": [
+          {
+            "name": "all_users",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Every user's documents instead of the caller's reach (admins).",
+              "default": false,
+              "title": "All Users"
+            },
+            "description": "Every user's documents instead of the caller's reach (admins)."
+          },
+          {
+            "name": "contact_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Id"
+            }
+          },
+          {
+            "name": "document_type_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Type Id"
+            }
+          },
+          {
+            "name": "tag_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag Id"
+            }
+          },
+          {
+            "name": "space_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Space Id"
+            }
+          },
+          {
+            "name": "lane",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LaneFilter"
+                  },
+                  "maxItems": 4
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lane"
+            }
+          },
+          {
+            "name": "field_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Field Id"
+            }
+          },
+          {
+            "name": "contact_group_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Group Id"
+            }
+          },
+          {
+            "name": "document_type_group_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Type Group Id"
+            }
+          },
+          {
+            "name": "topic_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic Id"
+            }
+          },
+          {
+            "name": "document_date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Date From"
+            }
+          },
+          {
+            "name": "document_date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Date To"
+            }
+          },
+          {
+            "name": "fact",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 5
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none.",
+              "title": "Fact"
+            },
+            "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/classifier": {
       "get": {
         "tags": [
@@ -22828,6 +23176,47 @@
         ],
         "title": "ExchangeNode"
       },
+      "ExpectedNextOut": {
+        "properties": {
+          "next_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Next Date"
+          },
+          "next_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Period",
+            "description": "In ISO notation (`2026-11`), where it has one."
+          },
+          "state": {
+            "$ref": "#/components/schemas/SeriesState"
+          },
+          "cadence": {
+            "$ref": "#/components/schemas/Cadence"
+          },
+          "spread_days": {
+            "type": "integer",
+            "title": "Spread Days"
+          }
+        },
+        "type": "object",
+        "required": [
+          "next_date",
+          "next_period",
+          "state",
+          "cadence",
+          "spread_days"
+        ],
+        "title": "ExpectedNextOut",
+        "description": "The document a series expects next: a placeholder at the end of its lane."
+      },
       "ExpectedOut": {
         "properties": {
           "contact": {
@@ -25256,6 +25645,16 @@
         "title": "LaneFilter",
         "description": "A lane, or `processing`: documents that have no lane yet."
       },
+      "LaneKind": {
+        "type": "string",
+        "enum": [
+          "series",
+          "branch",
+          "chain",
+          "single"
+        ],
+        "title": "LaneKind"
+      },
       "LanesOut": {
         "properties": {
           "green": {
@@ -25311,7 +25710,8 @@
         "type": "string",
         "enum": [
           "grid",
-          "list"
+          "list",
+          "stream"
         ],
         "title": "Layout"
       },
@@ -31117,6 +31517,247 @@
           "metadata"
         ],
         "title": "StoredFileOut"
+      },
+      "StreamDocumentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "document_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Date"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "document_type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Type Id"
+          },
+          "lane": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lane"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "document_date",
+          "created_at",
+          "contact_id",
+          "document_type_id",
+          "lane"
+        ],
+        "title": "StreamDocumentOut",
+        "description": "A document as the stream shows it."
+      },
+      "StreamLaneOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/LaneKind",
+            "description": "`series`; `branch` (documents that refer to one of a series, with the chain of theirs); `chain` (documents related only among themselves); `single` (documents without series and relation)."
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/StreamDocumentOut"
+            },
+            "type": "array",
+            "title": "Documents",
+            "description": "Oldest first."
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id",
+            "description": "Of a series."
+          },
+          "document_type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Type Id",
+            "description": "Of a series."
+          },
+          "number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number",
+            "description": "The contract or customer number a series follows."
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StreamDocumentOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The relation target at the start of a series (the contract)."
+          },
+          "expected": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpectedNextOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of a series that has not ended: the document it expects next."
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent",
+            "description": "Of a branch: the index of its series lane."
+          },
+          "joins": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joins",
+            "description": "Of a branch: the document of the series it refers to."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "documents",
+          "contact_id",
+          "document_type_id",
+          "number",
+          "target",
+          "expected",
+          "parent",
+          "joins"
+        ],
+        "title": "StreamLaneOut"
+      },
+      "StreamOut": {
+        "properties": {
+          "lanes": {
+            "items": {
+              "$ref": "#/components/schemas/StreamLaneOut"
+            },
+            "type": "array",
+            "title": "Lanes"
+          },
+          "relations": {
+            "items": {
+              "$ref": "#/components/schemas/StreamRelationOut"
+            },
+            "type": "array",
+            "title": "Relations",
+            "description": "The set relations among its documents; the direction as stored."
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "More documents (500) or lanes (24) than a stream shows: a narrower filter shows it whole."
+          }
+        },
+        "type": "object",
+        "required": [
+          "lanes",
+          "relations",
+          "truncated"
+        ],
+        "title": "StreamOut"
+      },
+      "StreamRelationOut": {
+        "properties": {
+          "newer": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Newer"
+          },
+          "older": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Older"
+          }
+        },
+        "type": "object",
+        "required": [
+          "newer",
+          "older"
+        ],
+        "title": "StreamRelationOut"
       },
       "Strength": {
         "type": "string",

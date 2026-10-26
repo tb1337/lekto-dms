@@ -81,7 +81,7 @@
 	let sort = $state('');
 	let dueId = $state('');
 	let grouping = $state<Grouping>('none');
-	let layout = $state<'grid' | 'list'>('grid');
+	let layout = $state<Layout>('grid');
 	let cardIds = $state<string[]>([]);
 	let dragged = $state<number | null>(null);
 
@@ -279,7 +279,8 @@
 					value={layout}
 					options={[
 						{ value: 'grid', label: m.layout_grid() },
-						{ value: 'list', label: m.layout_list() }
+						{ value: 'list', label: m.layout_list() },
+						{ value: 'stream', label: m.layout_stream() }
 					]}
 					onchange={(next) => (layout = next as 'grid' | 'list')}
 				/>

@@ -1125,6 +1125,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/documents/stream': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The documents in a stream
+		 * @description The documents the filters of `GET /documents` find among those the caller reads (with `all_users`, an admin's, every user's), in lanes: a series (one contact and type, and one contract or customer number, at a steady interval) with the relation target its documents refer to at its start and the document it expects next; branches (documents that refer to one of a series, with the chain of theirs); chains of documents related only among themselves; and the rest in one lane. At most the 500 newest documents and 24 lanes of series and chains (`truncated`).
+		 */
+		get: operations['stream_api_v1_documents_stream_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/classifier': {
 		parameters: {
 			query?: never;
@@ -4121,6 +4141,26 @@ export interface components {
 		 */
 		ExchangeNode: 'ocr' | 'signal_llm' | 'fields';
 		/**
+		 * ExpectedNextOut
+		 * @description The document a series expects next: a placeholder at the end of its lane.
+		 */
+		ExpectedNextOut: {
+			/**
+			 * Next Date
+			 * Format: date
+			 */
+			next_date: string;
+			/**
+			 * Next Period
+			 * @description In ISO notation (`2026-11`), where it has one.
+			 */
+			next_period: string | null;
+			state: components['schemas']['SeriesState'];
+			cadence: components['schemas']['Cadence'];
+			/** Spread Days */
+			spread_days: number;
+		};
+		/**
 		 * ExpectedOut
 		 * @description A series and the document it expects next.
 		 */
@@ -5352,6 +5392,11 @@ export interface components {
 		 * @enum {string}
 		 */
 		LaneFilter: 'green' | 'yellow' | 'red' | 'processing';
+		/**
+		 * LaneKind
+		 * @enum {string}
+		 */
+		LaneKind: 'series' | 'branch' | 'chain' | 'single';
 		/** LanesOut */
 		LanesOut: {
 			/**
@@ -5389,7 +5434,7 @@ export interface components {
 		 * Layout
 		 * @enum {string}
 		 */
-		Layout: 'grid' | 'list';
+		Layout: 'grid' | 'list' | 'stream';
 		/**
 		 * LensCreate
 		 * @example {
@@ -8434,6 +8479,98 @@ export interface components {
 			sha256: string;
 			/** @description Null if the file cannot be read for it (damaged, encrypted). */
 			metadata: components['schemas']['FileMetadataOut'] | null;
+		};
+		/**
+		 * StreamDocumentOut
+		 * @description A document as the stream shows it.
+		 */
+		StreamDocumentOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Title */
+			title: string;
+			/** Document Date */
+			document_date: string | null;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/** Contact Id */
+			contact_id: string | null;
+			/** Document Type Id */
+			document_type_id: string | null;
+			lane: components['schemas']['Lane'] | null;
+		};
+		/** StreamLaneOut */
+		StreamLaneOut: {
+			/** @description `series`; `branch` (documents that refer to one of a series, with the chain of theirs); `chain` (documents related only among themselves); `single` (documents without series and relation). */
+			kind: components['schemas']['LaneKind'];
+			/**
+			 * Documents
+			 * @description Oldest first.
+			 */
+			documents: components['schemas']['StreamDocumentOut'][];
+			/**
+			 * Contact Id
+			 * @description Of a series.
+			 */
+			contact_id: string | null;
+			/**
+			 * Document Type Id
+			 * @description Of a series.
+			 */
+			document_type_id: string | null;
+			/**
+			 * Number
+			 * @description The contract or customer number a series follows.
+			 */
+			number: string | null;
+			/** @description The relation target at the start of a series (the contract). */
+			target: components['schemas']['StreamDocumentOut'] | null;
+			/** @description Of a series that has not ended: the document it expects next. */
+			expected: components['schemas']['ExpectedNextOut'] | null;
+			/**
+			 * Parent
+			 * @description Of a branch: the index of its series lane.
+			 */
+			parent: number | null;
+			/**
+			 * Joins
+			 * @description Of a branch: the document of the series it refers to.
+			 */
+			joins: string | null;
+		};
+		/** StreamOut */
+		StreamOut: {
+			/** Lanes */
+			lanes: components['schemas']['StreamLaneOut'][];
+			/**
+			 * Relations
+			 * @description The set relations among its documents; the direction as stored.
+			 */
+			relations: components['schemas']['StreamRelationOut'][];
+			/**
+			 * Truncated
+			 * @description More documents (500) or lanes (24) than a stream shows: a narrower filter shows it whole.
+			 */
+			truncated: boolean;
+		};
+		/** StreamRelationOut */
+		StreamRelationOut: {
+			/**
+			 * Newer
+			 * Format: uuid
+			 */
+			newer: string;
+			/**
+			 * Older
+			 * Format: uuid
+			 */
+			older: string;
 		};
 		/**
 		 * Strength
@@ -18368,6 +18505,110 @@ export interface operations {
 					 *       "title": "Service Unavailable",
 					 *       "status": 503,
 					 *       "detail": "database: unreachable"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	stream_api_v1_documents_stream_get: {
+		parameters: {
+			query?: {
+				/** @description Every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+				contact_id?: string[] | null;
+				document_type_id?: string[] | null;
+				tag_id?: string[] | null;
+				space_id?: string[] | null;
+				lane?: components['schemas']['LaneFilter'][] | null;
+				field_id?: string | null;
+				contact_group_id?: string[] | null;
+				document_type_group_id?: string[] | null;
+				topic_id?: string[] | null;
+				document_date_from?: string | null;
+				document_date_to?: string | null;
+				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				fact?: string[] | null;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['StreamOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

@@ -51,6 +51,7 @@ class Grouping(StrEnum):
 class Layout(StrEnum):
     GRID = "grid"
     LIST = "list"
+    STREAM = "stream"  # the documents in lanes (#145, `services.stream`)
 
 
 class RelativePeriod(StrEnum):

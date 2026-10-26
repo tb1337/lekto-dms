@@ -222,6 +222,7 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
         (f"{PREFIX}/documents/{{id}}/facts", "get"),
         (f"{PREFIX}/documents/{{id}}/facts/decisions", "post"),
         (f"{PREFIX}/expected", "get"),
+        (f"{PREFIX}/documents/stream", "get"),
         (f"{PREFIX}/documents/{{id}}/relations", "get"),
         (f"{PREFIX}/documents/{{id}}/relations", "post"),
         (f"{PREFIX}/documents/{{id}}/relations/{{other_id}}", "delete"),

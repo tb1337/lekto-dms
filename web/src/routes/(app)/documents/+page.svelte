@@ -2,6 +2,8 @@
 	import LayoutGrid from '@lucide/svelte/icons/layout-grid';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import List from '@lucide/svelte/icons/list';
+	import Waypoints from '@lucide/svelte/icons/waypoints';
+	import StreamView from '#lib/components/documents/StreamView.svelte';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import Info from '@lucide/svelte/icons/info';
 	import X from '@lucide/svelte/icons/x';
@@ -53,6 +55,7 @@
 		rememberSort,
 		rememberLayout,
 		rememberedLayout,
+		LAYOUTS,
 		sortFieldOf,
 		sortLabel,
 		sortShort,
@@ -94,6 +97,19 @@
 	// The search field follows the URL (back button, links) until the user types.
 	let text = $derived(query);
 	let layout = $state<Layout>(rememberedLayout());
+	// A link may ask for a layout (`layout=stream`: the stream of a contact, #145).
+	const asked = $derived(LAYOUTS.find((value) => value === params.get('layout')) ?? null);
+	$effect(() => {
+		if (asked) layout = asked;
+	});
+	// The stream shows the filters' documents in lanes; a search by words lists its hits.
+	const LAYOUT_LABELS: Record<Layout, () => string> = {
+		grid: m.layout_grid,
+		list: m.layout_list,
+		stream: m.layout_stream
+	};
+	const streaming = $derived(layout === 'stream' && !searching);
+	const nextLayout = $derived(LAYOUTS[(LAYOUTS.indexOf(layout) + 1) % LAYOUTS.length]);
 	// The names the filters and the documents show.
 	const pageLookup = new PageLookup();
 	const lookup = $derived(pageLookup.value);
@@ -513,7 +529,8 @@ row of filters, on a desktop narrow by the title. -->
 						value={layout}
 						options={[
 							{ value: 'grid', label: m.layout_grid(), icon: LayoutGrid },
-							{ value: 'list', label: m.layout_list(), icon: List }
+							{ value: 'list', label: m.layout_list(), icon: List },
+							{ value: 'stream', label: m.layout_stream(), icon: Waypoints }
 						]}
 						onchange={(next) => show(next as Layout)}
 					/>
@@ -614,11 +631,13 @@ row of filters, on a desktop narrow by the title. -->
 					<button
 						type="button"
 						class="grid size-11 shrink-0 place-items-center rounded-xl border border-input bg-background hover:bg-secondary"
-						aria-label={layout === 'grid' ? m.layout_list() : m.layout_grid()}
-						onclick={() => show(layout === 'grid' ? 'list' : 'grid')}
+						aria-label={LAYOUT_LABELS[nextLayout]()}
+						onclick={() => show(nextLayout)}
 					>
-						{#if layout === 'grid'}
+						{#if nextLayout === 'list'}
 							<List class="size-4" aria-hidden="true" />
+						{:else if nextLayout === 'stream'}
+							<Waypoints class="size-4" aria-hidden="true" />
 						{:else}
 							<LayoutGrid class="size-4" aria-hidden="true" />
 						{/if}
@@ -676,7 +695,9 @@ row of filters, on a desktop narrow by the title. -->
 				</div>
 			{/if}
 
-			{#if list.error}
+			{#if streaming}
+				<StreamView query={apiQuery(filters, scope.allUsers)} {lookup} />
+			{:else if list.error}
 				<LoadProblem problem={describeError(list.error)} onretry={() => list.reload()}>
 					{#if indexDown}
 						<Button

@@ -489,6 +489,12 @@ class DocumentFactRepository(Protocol):
         included."""
         ...
 
+    async def of_documents(
+        self, documents: Collection[DocumentId]
+    ) -> dict[DocumentId, list[DocumentFact]]:
+        """`of_document` for each of `documents` at once; one without facts is left out."""
+        ...
+
     async def replace_found(self, document: DocumentId, found: Collection[DocumentFact]) -> None:
         """Make `found` (each `FactState.FOUND`, a kind and value once) the facts the sources
         found for `document`: those found before go, what a person decided stays and is not

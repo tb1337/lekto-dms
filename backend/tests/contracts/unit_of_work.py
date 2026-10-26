@@ -1049,6 +1049,11 @@ class UnitOfWorkContract:
         async with uow_factory() as uow:
             # As the text reads: by position, those only in a code last.
             assert await uow.document_facts.of_document(document.id) == [vat, iban, coded]
+            # Several documents at once; one without facts is left out.
+            other = DocumentId(new_id())
+            assert await uow.document_facts.of_documents([document.id, other]) == {
+                document.id: [vat, iban, coded]
+            }
         rejected = replace(vat, state=FactState.REJECTED)
         async with uow_factory() as uow:
             await uow.document_facts.decide(document.id, rejected)

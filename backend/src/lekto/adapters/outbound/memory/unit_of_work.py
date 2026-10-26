@@ -675,6 +675,12 @@ class MemoryDocumentFactRepository:
         row = self._uow._row(DOCUMENT_FACTS, document)
         return [] if row is _REMOVED else list(row.facts)
 
+    async def of_documents(
+        self, documents: Collection[DocumentId]
+    ) -> dict[DocumentId, list[DocumentFact]]:
+        found = {id: await self.of_document(id) for id in documents}
+        return {id: facts for id, facts in found.items() if facts}
+
     async def replace_found(self, document: DocumentId, found: Collection[DocumentFact]) -> None:
         self._uow._check_open()
         check_found(found)

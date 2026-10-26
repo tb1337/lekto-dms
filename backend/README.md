@@ -628,17 +628,23 @@ and the space, the fields node reads the fields of the decided type and the titl
   order number); a contract, policy or customer number shared with a document of a relation
   target's type (and, for such a document, the documents that share its number); the same
   contact, type and period (a field of type period) at another document date, unless their
-  personnel, customer or contract numbers differ (two people's payslips); the day of a letter it
+  personnel, customer, contract or a person's numbers differ (two people's payslips); the day of a letter it
   answers (`letter_date`) as the date of a document of the same contact. One document of the
   same contact sets the relation, several (or one without a contact) are suggestions, another
-  contact's none. A pair a person decided, or Lekto found before, stays; a suggestion of Lekto's
-  becomes set when a source is sure now. The node never makes a document yellow; its log names
+  contact's none (a document with a contact looks only among its contact's documents). Two
+  relation targets are never related by a customer number, by a contract number only as a
+  suggestion. A pair a person decided stays; a suggestion of Lekto's becomes set when a source
+  is sure now, and a relation of Lekto's no person decided goes when no source finds it any
+  more (a contact corrected since). The node never makes a document yellow; its log names
   the relations it made (`relate-1`). Outside processing a job (`pipeline.relate`) finds them
   again after a person decided the contact, type, date, fields or facts or confirmed the
   document, and `lekto relate` queues it for every document not being processed (after the
   update to this version, and after marking a relation target). The rules see the set
-  relations (condition `relation`), and confirming a document with Lekto's relations takes
-  them (`field_verdicts`). Lekto relates across spaces; only who reads both ends sees one.
+  relations to documents the rule's author may read (condition `relation`), and confirming a
+  document with relations Lekto set takes them (`field_verdicts`; a suggestion stays the
+  person's to decide). Lekto relates across spaces; only who reads both ends sees one, in the
+  relations and in the log of `relate`. Every change of relations, Lekto's or a person's, holds
+  one lock.
 - **The kinds of facts** (`IdentifierKind`, issue #145 PR 4; one module per kind in
   `domain/identifiers`): besides IBAN, VAT ID, customer and personnel number, e-mail domain and
   a person's numbers, those that point to the contact (creditor ID with its check digits,

@@ -205,14 +205,15 @@
 						{/if}
 					{:else}
 						<div class="flex justify-between text-sm">
-							<button
-								type="button"
-								class="text-muted-foreground hover:text-foreground"
-								onclick={back}>{m.login_back()}</button
+							<Button
+								variant="link"
+								size="inline"
+								class="font-normal text-muted-foreground hover:text-foreground"
+								onclick={back}>{m.login_back()}</Button
 							>
-							<button type="button" class="font-medium text-brand" onclick={swapCode}>
+							<Button variant="link" size="inline" onclick={swapCode}>
 								{step === 'recovery' ? m.login_use_totp() : m.login_use_recovery()}
-							</button>
+							</Button>
 						</div>
 					{/if}
 				</form>

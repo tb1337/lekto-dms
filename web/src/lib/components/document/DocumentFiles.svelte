@@ -8,7 +8,6 @@
 	import FilePlus from '@lucide/svelte/icons/file-plus';
 	import Inbox from '@lucide/svelte/icons/inbox';
 	import Pencil from '@lucide/svelte/icons/pencil';
-	import SearchIcon from '@lucide/svelte/icons/search';
 	import { untrack } from 'svelte';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
@@ -39,6 +38,10 @@
 	import { cn } from '#lib/utils.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import * as Table from '#lib/components/ui/table/index.ts';
+	import { Badge } from '#lib/components/ui/badge/index.ts';
+	import type { Tone } from '#lib/tones.ts';
+	import SearchField from '#lib/components/SearchField.svelte';
 
 	// The document's files as a passport (Tobi, 20.10.2026; not a table as in Paperless-ngx): the
 	// life of the file from the sender to its last change in Lekto, one passport each for the
@@ -133,16 +136,10 @@
 	};
 
 	type FirstLane = NonNullable<Reviewed['first_lane']>;
-	const FIRST_LANES: Record<FirstLane, { label: () => string; tone: string }> = {
-		green: {
-			label: m.files_first_lane_green,
-			tone: 'bg-lane-green text-lane-green-foreground'
-		},
-		yellow: {
-			label: m.files_first_lane_yellow,
-			tone: 'bg-lane-yellow text-lane-yellow-foreground'
-		},
-		red: { label: m.files_first_lane_red, tone: 'bg-lane-red text-lane-red-foreground' }
+	const FIRST_LANES: Record<FirstLane, { label: () => string; tone: Tone }> = {
+		green: { label: m.files_first_lane_green, tone: 'green' },
+		yellow: { label: m.files_first_lane_yellow, tone: 'yellow' },
+		red: { label: m.files_first_lane_red, tone: 'red' }
 	};
 
 	const life = $derived(files ? lifeOf(files, document) : []);
@@ -225,32 +222,24 @@
 				{#if metadata}
 					<div class="flex flex-wrap gap-1.5">
 						{#if metadata.pdf_version}
-							<span
-								class="rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-muted-foreground"
-							>
+							<Badge variant="muted">
 								{m.files_pdf_version({ version: metadata.pdf_version })}
-							</span>
+							</Badge>
 						{/if}
 						{#if metadata.pdfa}
-							<span
-								class="rounded-full bg-lane-green px-2 py-0.5 text-xs font-semibold text-lane-green-foreground"
-							>
+							<Badge variant="green">
 								{fileKind(file)}
-							</span>
+							</Badge>
 						{/if}
 						{#if metadata.width && metadata.height}
-							<span
-								class="rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-muted-foreground"
-							>
+							<Badge variant="muted">
 								{m.files_pixels_value({ width: metadata.width, height: metadata.height })}
-							</span>
+							</Badge>
 						{/if}
 						{#if metadata.dpi}
-							<span
-								class="rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-muted-foreground"
-							>
+							<Badge variant="muted">
 								{m.files_dpi_value({ dpi: formatNumber(metadata.dpi) })}
-							</span>
+							</Badge>
 						{/if}
 					</div>
 				{/if}
@@ -471,9 +460,7 @@
 						{@const first = FIRST_LANES[document.first_lane]}
 						<dl class="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t pt-3 text-sm">
 							<dt class="text-muted-foreground">{m.files_first_lane()}</dt>
-							<dd class={cn('rounded-full px-2 py-0.5 text-xs font-semibold', first.tone)}>
-								{first.label()}
-							</dd>
+							<dd><Badge variant={first.tone}>{first.label()}</Badge></dd>
 						</dl>
 					{/if}
 				</Card.Root>
@@ -505,18 +492,7 @@
 								total: formatNumber(all.length)
 							})}
 						</span>
-						<label
-							class="flex h-10 min-w-0 flex-[1_1_14rem] items-center gap-2 rounded-full border border-input bg-card px-3.5 text-muted-foreground focus-within:border-ring dark:bg-input/30"
-						>
-							<SearchIcon class="size-4 shrink-0" aria-hidden="true" />
-							<input
-								type="search"
-								bind:value={query}
-								placeholder={m.files_search()}
-								aria-label={m.files_search()}
-								class="h-full min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground sm:text-sm"
-							/>
-						</label>
+						<SearchField bind:value={query} label={m.files_search()} class="flex-[1_1_14rem]" />
 						{#if files.archive}
 							<Segmented
 								bind:value={which}
@@ -544,39 +520,39 @@
 						<p class="text-sm text-muted-foreground">{m.files_metadata_none()}</p>
 					{:else}
 						<div class="overflow-x-auto">
-							<table class="w-full min-w-[34rem] table-fixed border-collapse text-sm">
+							<Table.Root class="w-full min-w-[34rem] table-fixed border-collapse text-sm">
 								<colgroup><col class="w-[30%]" /><col /><col class="w-28" /></colgroup>
-								<thead>
-									<tr
-										class="text-left text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-									>
-										<th class="px-2.5 pb-2 font-semibold">{m.files_key()}</th>
-										<th class="px-2.5 pb-2 font-semibold">{m.files_value()}</th>
-										<th class="px-2.5 pb-2 font-semibold">{m.files_source()}</th>
-									</tr>
-								</thead>
-								<tbody>
+								<Table.Header>
+									<Table.Row>
+										<Table.Head class="px-2.5">{m.files_key()}</Table.Head>
+										<Table.Head class="px-2.5">{m.files_value()}</Table.Head>
+										<Table.Head class="px-2.5">{m.files_source()}</Table.Head>
+									</Table.Row>
+								</Table.Header>
+								<Table.Body>
 									{#each entries as entry, index (index)}
-										<tr class="border-t align-top">
-											<td class="px-2.5 py-2 font-mono text-meta break-all">{entry.key}</td>
-											<td class="px-2.5 py-2 break-words whitespace-pre-line">{entry.value}</td>
-											<td class="px-2.5 py-2">
-												<span
-													class="rounded-full bg-secondary px-2 py-0.5 text-micro font-semibold text-muted-foreground"
-												>
+										<Table.Row class="border-t align-top">
+											<Table.Cell class="px-2.5 py-2 font-mono text-meta break-all"
+												>{entry.key}</Table.Cell
+											>
+											<Table.Cell class="px-2.5 py-2 break-words whitespace-pre-line"
+												>{entry.value}</Table.Cell
+											>
+											<Table.Cell class="px-2.5 py-2">
+												<Badge variant="muted">
 													{SOURCES[entry.source]()}
-												</span>
-											</td>
-										</tr>
+												</Badge>
+											</Table.Cell>
+										</Table.Row>
 									{:else}
-										<tr class="border-t">
-											<td colspan="3" class="px-2.5 py-3 text-muted-foreground">
+										<Table.Row class="border-t">
+											<Table.Cell colspan={3} class="px-2.5 py-3 text-muted-foreground">
 												{m.assignment_none_found()}
-											</td>
-										</tr>
+											</Table.Cell>
+										</Table.Row>
 									{/each}
-								</tbody>
-							</table>
+								</Table.Body>
+							</Table.Root>
 						</div>
 					{/if}
 				</Card.Root>

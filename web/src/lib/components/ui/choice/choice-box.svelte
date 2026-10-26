@@ -1,6 +1,7 @@
 <script lang="ts" generics="T">
-	// The one native checkbox or radio button of the UI. Alone it sits in a row or card that is
-	// itself the label; with a text beside it, use `Choice`. A test forbids raw inputs elsewhere.
+	// The one checkbox or radio button of the UI: a native input (keyboard, forms), drawn from the
+	// tokens. Alone it sits in a row or card that is itself the label; with a text beside it, use
+	// `Choice`. A test forbids raw inputs elsewhere.
 	import type { HTMLInputAttributes } from 'svelte/elements';
 	import { cn } from '#lib/utils.ts';
 
@@ -56,8 +57,12 @@
 	onchange={change}
 	data-slot="choice-box"
 	class={cn(
-		'size-4 shrink-0 accent-primary outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50',
-		type === 'radio' ? 'rounded-full' : 'rounded-xs',
+		// Drawn from the tokens, not by the system (web/DESIGN.md, "Checkboxes"): the frame of the
+		// fields, filled with the primary colour when chosen, a tick or a dot drawn by CSS.
+		'grid size-4 shrink-0 cursor-pointer appearance-none place-content-center border border-input bg-card transition-colors outline-none checked:border-primary checked:bg-primary focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30 dark:checked:bg-primary',
+		type === 'radio'
+			? 'rounded-full checked:before:size-1.5 checked:before:rounded-full checked:before:bg-primary-foreground'
+			: 'rounded-xs checked:before:h-[9px] checked:before:w-[5px] checked:before:-translate-y-px checked:before:rotate-45 checked:before:border-r-2 checked:before:border-b-2 checked:before:border-primary-foreground',
 		className
 	)}
 	{...restProps}

@@ -12,7 +12,7 @@
 	import { session } from '#lib/session.svelte.ts';
 	import { creatable, createWithDetails } from '#lib/tag-create.ts';
 	import { pathLabel } from '#lib/tags.ts';
-	import { cn } from '#lib/utils.ts';
+	import Chip from '#lib/components/Chip.svelte';
 
 	// The one field for tags: a document's tags, a contact's or a type's groups, a contact's
 	// topics. Their chips to remove and a dashed button that opens the choice (`TagPickerList`):
@@ -98,22 +98,18 @@
 {/snippet}
 
 {#snippet add(props: Record<string, unknown> = {})}
-	<button
-		type="button"
+	<Chip
+		variant="add"
 		{...props}
 		aria-label={addLabel}
-		class={cn(
-			'inline-flex h-8 items-center gap-1.5 border border-dashed border-muted-foreground/50 px-3 text-sm text-brand transition-colors hover:bg-secondary max-sm:h-11',
-			isTopic ? 'rounded-md' : 'rounded-full'
-		)}
 		onclick={() => {
 			query = '';
 			open = true;
 		}}
 	>
-		<Plus class="size-4" aria-hidden="true" />
+		{#snippet icon()}<Plus class="size-4 shrink-0" aria-hidden="true" />{/snippet}
 		{addText}
-	</button>
+	</Chip>
 {/snippet}
 
 <div

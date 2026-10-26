@@ -72,6 +72,7 @@
 	import { Choice } from '#lib/components/ui/choice/index.ts';
 	import { cardVariants } from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import { Badge } from '#lib/components/ui/badge/index.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
 	type Patch = components['schemas']['DocumentPatch'];
@@ -632,12 +633,10 @@
 	{#if end || (reviewing && undecided > 0)}
 		<PaneHead {end}>
 			{#if reviewing && undecided > 0}
-				<span
-					class="inline-flex h-6 items-center gap-1.5 rounded-full bg-lane-yellow px-2.5 text-xs font-medium text-lane-yellow-foreground"
-				>
+				<Badge variant="yellow">
 					<span class="size-[7px] rounded-full bg-lane-yellow-foreground" aria-hidden="true"></span>
 					{undecided === 1 ? m.review_undecided_one() : m.review_undecided({ count: undecided })}
-				</span>
+				</Badge>
 			{/if}
 		</PaneHead>
 	{/if}

@@ -45,9 +45,11 @@
 		TAG_KIND_ORDER
 	} from '#lib/tag-kinds.ts';
 	import { below, ofScope, visibleRows } from '#lib/tags.ts';
-	import { cn } from '#lib/utils.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import Chip from '#lib/components/Chip.svelte';
+	import { Badge } from '#lib/components/ui/badge/index.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// Every kind of tag in one place: a filter by kind (in the URL), one section per kind with
 	// its tree (sections collapse, remembered in this browser), the search of the page over all
@@ -201,19 +203,9 @@
 		class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0 sm:pb-0"
 	>
 		{#each [null, ...TAG_KIND_ORDER] as kind (kind ?? 'all')}
-			<button
-				type="button"
-				aria-pressed={filter === kind}
-				class={cn(
-					'h-9 shrink-0 rounded-full border px-3.5 text-sm whitespace-nowrap transition-colors max-sm:h-11',
-					filter === kind
-						? 'border-primary bg-primary/10 font-medium text-foreground'
-						: 'border-input bg-card hover:bg-secondary'
-				)}
-				onclick={() => choose(kind)}
-			>
+			<Chip pressed={filter === kind} class="shrink-0" onclick={() => choose(kind)}>
 				{kind ? KINDS[kind].title() : m.tag_kinds_all()}
-			</button>
+			</Chip>
 		{/each}
 	</div>
 
@@ -259,16 +251,15 @@
 					<span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">
 						{#if !phone.current}{SECTIONS[kind].about()}{/if}
 					</span>
-					<Button
-						variant={phone.current ? 'ghost' : 'outline'}
-						size="icon"
-						class="size-11 shrink-0 rounded-full text-brand sm:size-8"
-						aria-label={KINDS[kind].add()}
-						title={KINDS[kind].add()}
+					<IconButton
+						label={KINDS[kind].add()}
+						variant="outline"
+						size="sm"
+						class="shrink-0 text-brand"
 						onclick={() => masterDataDialogs.open(kind)}
 					>
 						<Plus aria-hidden="true" />
-					</Button>
+					</IconButton>
 				</div>
 				{#if open}
 					{#if rows.length === 0}
@@ -320,11 +311,9 @@
 											group={tag.scope === 'contact' || tag.scope === 'document_type'}
 										/>
 										{#each hints(tag) as hint (hint)}
-											<span
-												class="rounded-full bg-secondary px-2 text-xs leading-5 text-muted-foreground"
-											>
+											<Badge variant="muted">
 												{hint}
-											</span>
+											</Badge>
 										{/each}
 										{#if !phone.current && hasChildren}
 											<span class="text-sm text-muted-foreground">

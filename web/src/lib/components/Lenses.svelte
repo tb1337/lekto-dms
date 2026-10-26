@@ -6,6 +6,8 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
+	import IconButton from '#lib/components/IconButton.svelte';
+	import Chip from '#lib/components/Chip.svelte';
 
 	// The user's lenses as links: all documents first, then each lens; `onadd` offers a new one
 	// from the filters. Beside the list a card (`list`), on a phone a row of chips (`chips`).
@@ -43,15 +45,15 @@
 				{m.lens_title()}
 			</Eyebrow>
 			{#if onadd}
-				<button
-					type="button"
-					class="grid size-7 place-items-center rounded-full border bg-background text-brand hover:bg-secondary"
-					aria-label={m.lens_new()}
-					title={m.lens_new()}
+				<IconButton
+					label={m.lens_new()}
+					variant="outline"
+					size="sm"
+					class="text-brand"
 					onclick={onadd}
 				>
-					<Plus class="size-3.5" aria-hidden="true" />
-				</button>
+					<Plus aria-hidden="true" />
+				</IconButton>
 			{/if}
 		</div>
 		<ul class="flex flex-col">
@@ -108,14 +110,10 @@
 			</a>
 		{/each}
 		{#if onadd}
-			<button
-				type="button"
-				class="grid size-8 shrink-0 place-items-center rounded-full border border-dashed text-brand"
-				aria-label={m.lens_new()}
-				onclick={onadd}
-			>
-				<Plus class="size-3.5" aria-hidden="true" />
-			</button>
+			<Chip variant="add" class="shrink-0" onclick={onadd}>
+				{#snippet icon()}<Plus class="size-4 shrink-0" aria-hidden="true" />{/snippet}
+				{m.lens_new()}
+			</Chip>
 		{/if}
 	</nav>
 {/if}

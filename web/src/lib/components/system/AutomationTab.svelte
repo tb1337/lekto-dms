@@ -1,6 +1,5 @@
 <script lang="ts">
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
-	import Check from '@lucide/svelte/icons/check';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import { BarChart } from 'layerchart';
 	import { untrack } from 'svelte';
@@ -22,6 +21,11 @@
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
+	import Chip from '#lib/components/Chip.svelte';
+	import Segmented from '#lib/components/Segmented.svelte';
+	import { Button } from '#lib/components/ui/button/index.ts';
+	import { Badge } from '#lib/components/ui/badge/index.ts';
+	import { Separator } from '#lib/components/ui/separator/index.ts';
 
 	// The tab "Automation" of the page "System" (Tobi, 24.10.2026): how the documents went
 	// through their first run, what became of them, how long it took, and how people judged what
@@ -44,23 +48,20 @@
 		{ value: '12m', label: m.automation_period_12m },
 		{ value: 'all', label: m.automation_period_all }
 	];
-	const LANES: { lane: Lane; label: () => string; chip: string; solid: string }[] = [
+	const LANES: { lane: Lane; label: () => string; solid: string }[] = [
 		{
 			lane: 'green',
 			label: m.lane_green,
-			chip: 'bg-lane-green text-lane-green-foreground ring-lane-green-foreground/35',
 			solid: 'bg-chart-1'
 		},
 		{
 			lane: 'yellow',
 			label: m.lane_yellow,
-			chip: 'bg-lane-yellow text-lane-yellow-foreground ring-lane-yellow-foreground/35',
 			solid: 'bg-chart-2'
 		},
 		{
 			lane: 'red',
 			label: m.lane_red,
-			chip: 'bg-lane-red text-lane-red-foreground ring-lane-red-foreground/35',
 			solid: 'bg-chart-3'
 		}
 	];
@@ -152,13 +153,12 @@
 	// What became of the documents of each first lane: their lanes now.
 	const flows = $derived(
 		report
-			? LANES.map(({ lane, label, chip }) => {
+			? LANES.map(({ lane, label }) => {
 					const parts = report!.flow.filter((item) => item.first_lane === lane);
 					const count = parts.reduce((sum, item) => sum + item.count, 0);
 					return {
 						lane,
 						label,
-						chip,
 						count,
 						parts: parts.map((item) => ({
 							key: (item.lane ?? 'running') as Lane | 'running',
@@ -282,40 +282,19 @@
 			<span class="text-meta text-muted-foreground">{m.automation_channel()}</span>
 			{#each CHANNELS as item (item.value)}
 				{@const on = channels.includes(item.value)}
-				<button
-					type="button"
-					aria-pressed={on}
-					onclick={() => toggle(item.value)}
-					class={cn(
-						'inline-flex h-11 items-center gap-1.5 rounded-full border px-3.5 text-meta sm:h-[34px]',
-						on
-							? 'border-primary bg-panel font-medium text-brand'
-							: 'bg-card text-muted-foreground hover:text-foreground'
-					)}
-				>
-					{#if on}<Check class="size-3.5" aria-hidden="true" />{/if}{item.label()}
-				</button>
+				<Chip pressed={on} onclick={() => toggle(item.value)}>{item.label()}</Chip>
 			{/each}
 		</div>
-		<div role="group" aria-label={m.automation_period()} class="flex items-center gap-2">
-			<span class="text-meta text-muted-foreground">{m.automation_period()}</span>
-			<div class="flex gap-0.5 rounded-full bg-muted p-[3px]">
-				{#each PERIODS as item (item.value)}
-					<button
-						type="button"
-						aria-pressed={period === item.value}
-						onclick={() => (period = item.value)}
-						class={cn(
-							'h-10 rounded-full px-3 text-meta sm:h-[30px]',
-							period === item.value
-								? 'bg-card font-medium text-foreground shadow-xs'
-								: 'text-muted-foreground hover:text-foreground'
-						)}
-					>
-						{item.label()}
-					</button>
-				{/each}
-			</div>
+		<div class="flex items-center gap-2">
+			<span id="automation-period" class="text-meta text-muted-foreground"
+				>{m.automation_period()}</span
+			>
+			<Segmented
+				size="sm"
+				labelledby="automation-period"
+				bind:value={() => period, (next) => (period = next as typeof period)}
+				options={PERIODS.map((item) => ({ value: item.value, label: item.label() }))}
+			/>
 		</div>
 	</div>
 
@@ -347,16 +326,9 @@
 						{/each}
 					</div>
 					<div class="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-4">
-						{#each LANES as { lane, label, chip } (lane)}
+						{#each LANES as { lane, label } (lane)}
 							<div class="flex flex-col gap-1">
-								<span
-									class={cn(
-										'inline-flex h-6 items-center self-start rounded-full px-2.5 text-xs font-medium ring-1 ring-inset',
-										chip
-									)}
-								>
-									{label()}
-								</span>
+								<Badge variant={lane} size="md" class="self-start">{label()}</Badge>
 								<span class="text-figure tabular-nums">
 									{percent(report.lanes[lane], total)}
 								</span>
@@ -387,7 +359,7 @@
 				<span class="text-meta text-muted-foreground">
 					{m.automation_duration_p90({ duration: duration(report.duration.p90_ms) })}
 				</span>
-				<div aria-hidden="true" class="my-4 h-px bg-border"></div>
+				<Separator class="my-4" />
 				<div class="flex items-baseline gap-2">
 					<span class="text-xl font-semibold tabular-nums">{duration(report.work.median_ms)}</span>
 					<span class="text-meta text-muted-foreground">{m.automation_work()}</span>
@@ -409,14 +381,7 @@
 						{@const caption = flow.parts.map((part) => part.text).join(' · ')}
 						<div class="grid grid-cols-1 items-start gap-x-5 gap-y-2 sm:grid-cols-[170px_1fr]">
 							<div class="flex h-6 items-center gap-2">
-								<span
-									class={cn(
-										'inline-flex h-6 items-center rounded-full px-2.5 text-xs font-medium ring-1 ring-inset',
-										flow.chip
-									)}
-								>
-									{flow.label()}
-								</span>
+								<Badge variant={flow.lane} size="md">{flow.label()}</Badge>
 								<span class="font-semibold tabular-nums">{formatNumber(flow.count)}</span>
 								<ArrowRight class="size-4 text-muted-foreground" aria-hidden="true" />
 							</div>
@@ -589,17 +554,18 @@
 								{/each}
 							</div>
 							{#if custom.length > SHOWN_CUSTOM}
-								<button
-									type="button"
+								<Button
+									variant="link"
+									size="inline"
+									class="min-h-11 self-start pl-[22px] text-meta font-normal sm:min-h-0"
 									onclick={() => (allCustom = !allCustom)}
-									class="min-h-11 self-start pl-[22px] text-meta text-brand hover:underline sm:min-h-0"
 								>
 									{allCustom
 										? m.automation_custom_fewer()
 										: m.automation_custom_more({
 												count: formatNumber(custom.length - SHOWN_CUSTOM)
 											})}
-								</button>
+								</Button>
 							{/if}
 						{/if}
 					</div>

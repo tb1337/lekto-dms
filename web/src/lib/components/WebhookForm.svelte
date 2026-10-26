@@ -13,13 +13,14 @@
 	import Segmented from '#lib/components/Segmented.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
-	import { Button } from '#lib/components/ui/button/index.ts';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import { Choice } from '#lib/components/ui/choice/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { WEBHOOK_EVENT_TYPES, type WebhookEventType } from '#lib/events.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
+	import { cn } from '#lib/utils.ts';
 
 	type Webhook = components['schemas']['WebhookOut'];
 	type Body = components['schemas']['BodyFormat'];
@@ -350,13 +351,11 @@
 		<Choice bind:checked={active} class="font-medium">{m.webhook_active()}</Choice>
 		<div class="flex flex-col gap-3 border-t pt-4">
 			{#if error}<Field.Error>{error}</Field.Error>{/if}
-			<div class="flex flex-wrap gap-2">
+			<div class="flex flex-wrap justify-end gap-2">
+				<a href={cancelHref} class={cn(buttonVariants({ variant: 'ghost' }))}>{m.cancel()}</a>
 				<Button type="submit" disabled={busy || incomplete}>
 					{webhook ? m.save() : m.create()}
 				</Button>
-				<a href={cancelHref} class="inline-flex h-9 items-center px-3 text-sm hover:underline">
-					{m.cancel()}
-				</a>
 			</div>
 		</div>
 	{/snippet}

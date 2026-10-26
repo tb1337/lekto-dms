@@ -1,6 +1,5 @@
 <script lang="ts">
 	import Plus from '@lucide/svelte/icons/plus';
-	import X from '@lucide/svelte/icons/x';
 	import Select from '#lib/components/Select.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
@@ -13,6 +12,7 @@
 		type IdentifierKind
 	} from '#lib/identifiers.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import Chip from '#lib/components/Chip.svelte';
 
 	// The facts the documents have (#145): those chosen, each to let go, and one more by its
 	// kind, value and role, any of them open (a value needs its kind). A person's kinds only
@@ -53,19 +53,13 @@
 
 <div class="flex flex-col gap-2">
 	{#each facts as fact (fact)}
-		<span
-			class="inline-flex max-w-full items-center gap-1.5 self-start rounded-full border bg-card pr-1 pl-3 text-sm"
+		<Chip
+			variant="selected"
+			class="self-start"
+			removeLabel={m.filter_remove({ name: factFilterLabel(fact) })}
+			onremove={() => onchange(facts.filter((entry) => entry !== fact))}
+			>{factFilterLabel(fact)}</Chip
 		>
-			<span class="truncate">{factFilterLabel(fact)}</span>
-			<button
-				type="button"
-				class="grid size-6 shrink-0 place-items-center rounded-full hover:bg-secondary"
-				aria-label={m.filter_remove({ name: factFilterLabel(fact) })}
-				onclick={() => onchange(facts.filter((entry) => entry !== fact))}
-			>
-				<X class="size-3.5" aria-hidden="true" />
-			</button>
-		</span>
 	{/each}
 	<form
 		class="flex flex-col gap-2"

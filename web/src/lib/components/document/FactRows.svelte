@@ -2,6 +2,7 @@
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { factsOf } from '#lib/step-details.ts';
+	import Chip from '#lib/components/Chip.svelte';
 
 	// What the text names (Tobi, 23.10.2026), as rows of its entry: the contacts as chips, the
 	// identifiers with their contact, the identifiers no contact has, the persons with the
@@ -14,7 +15,7 @@
 <dt class="text-muted-foreground">{m.signal_named()}</dt>
 <dd class="flex min-w-0 flex-wrap gap-1.5 py-0.5">
 	{#each facts.named as name, index (index)}
-		<span class="rounded-full border bg-card px-2.5 py-0.5 text-meta">{name}</span>
+		<Chip variant="outline" size="sm">{name}</Chip>
 	{:else}
 		<span class="text-muted-foreground">{m.signal_none()}</span>
 	{/each}

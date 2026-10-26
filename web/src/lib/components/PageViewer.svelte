@@ -24,6 +24,7 @@
 		type Point,
 		type Room
 	} from '#lib/viewer/zoom.ts';
+	import { Separator } from '#lib/components/ui/separator/index.ts';
 
 	// The pages of a document side by side, wrapping into rows: the zoom decides how many stand
 	// in a row (`viewer/zoom.ts`). Ctrl or ⌘ with the wheel, a pinch, the buttons and the keys
@@ -335,7 +336,7 @@
 		>
 			<Plus aria-hidden="true" />
 		</Button>
-		<span class="mx-1 h-5 w-px bg-border" aria-hidden="true"></span>
+		<Separator orientation="vertical" class="mx-1 h-5 self-center" />
 		<Segmented
 			size="sm"
 			names="@3xl"

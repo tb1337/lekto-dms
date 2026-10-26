@@ -19,6 +19,8 @@
 	import { MARK, ON_MARK, STRIPE } from '#lib/step-look.ts';
 	import { PHASE_LABELS, type Phase } from '#lib/steps.ts';
 	import { cn } from '#lib/utils.ts';
+	import { Badge } from '#lib/components/ui/badge/index.ts';
+	import type { Tone } from '#lib/tones.ts';
 
 	// The run in one bar (`band`): the phases side by side by how long they took, the steps by
 	// their duration and colour, the steps that ran beside the longest one as thin stripes below
@@ -94,14 +96,14 @@
 		waiting: 'border-muted-foreground',
 		carried: 'border-muted-foreground'
 	};
-	// The state in the reading line, as the chip of its lane.
-	const chips: Record<BandTone, string> = {
-		green: 'bg-lane-green text-lane-green-foreground',
-		yellow: 'bg-lane-yellow text-lane-yellow-foreground',
-		red: 'bg-lane-red text-lane-red-foreground',
-		running: 'bg-lane-running text-lane-running-foreground',
-		waiting: 'bg-muted text-muted-foreground',
-		carried: 'bg-muted text-muted-foreground'
+	// The state in the reading line, as the badge of its lane.
+	const BADGE_TONE: Record<BandTone, Tone> = {
+		green: 'green',
+		yellow: 'yellow',
+		red: 'red',
+		running: 'running',
+		waiting: 'muted',
+		carried: 'muted'
 	};
 	const words: Record<Exclude<BandTone, 'carried'>, () => string> = {
 		green: m.outcome_ok,
@@ -287,9 +289,7 @@
 		aria-hidden="true"
 	>
 		{#if lit}
-			<span class={cn('shrink-0 rounded-full px-2 py-px text-xs font-semibold', chips[lit.tone])}>
-				{word(lit)}
-			</span>
+			<Badge variant={BADGE_TONE[lit.tone]} class="shrink-0">{word(lit)}</Badge>
 			<strong class="shrink-0 font-semibold text-foreground">{NODE_LABELS[lit.node]()}</strong>
 			{#if duration(lit)}<span class="shrink-0 tabular-nums">· {duration(lit)}</span>{/if}
 			{#if reading(lit.node)}

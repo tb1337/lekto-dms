@@ -14,6 +14,7 @@
 	import { cn } from '#lib/utils.ts';
 	import { Choice, ChoiceBox } from '#lib/components/ui/choice/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import { Badge } from '#lib/components/ui/badge/index.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
 
@@ -96,11 +97,9 @@
 			<SectionTitle size="card" level={3} id="filing-title">
 				{m.filing_title()}
 			</SectionTitle>
-			<span
-				class="ml-auto rounded-full bg-lane-yellow px-2.5 py-0.5 text-xs font-medium text-lane-yellow-foreground"
-			>
+			<Badge variant="yellow" class="ml-auto">
 				{filing.status}
-			</span>
+			</Badge>
 		</div>
 		<p class="text-sm text-muted-foreground">
 			{whereText(document.space_id, lookup, viewer, green)}
@@ -128,9 +127,7 @@
 						<span class="flex flex-wrap items-center gap-2">
 							<span class="font-semibold">{option.title}</span>
 							{#if option.suggested}
-								<span class="rounded-full bg-panel px-2 text-micro leading-5 font-medium text-brand"
-									>{m.filing_suggested()}</span
-								>
+								<Badge variant="primary">{m.filing_suggested()}</Badge>
 							{/if}
 						</span>
 						{#if option.chips.length > 0}
@@ -202,9 +199,7 @@
 				<dt class="text-muted-foreground">{m.filing_visible()}</dt>
 				<dd class="flex flex-wrap gap-1.5">
 					{#each memberChips(space.members, viewer, green) as chip (chip.key)}
-						<span class="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground"
-							>{chip.text}</span
-						>
+						<Badge variant="muted">{chip.text}</Badge>
 					{/each}
 				</dd>
 			{/if}

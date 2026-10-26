@@ -21,6 +21,9 @@
 	import { cn } from '#lib/utils.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import * as Table from '#lib/components/ui/table/index.ts';
+	import { Badge } from '#lib/components/ui/badge/index.ts';
+	import { Separator } from '#lib/components/ui/separator/index.ts';
 
 	// The tab "Classifier" of the page "System" (Tobi, 24.10.2026): what the latest model
 	// learned and how well, how far the next training is, how the models got better, and how
@@ -293,7 +296,7 @@
 						? m.classifier_next_text({ number: status.model.number })
 						: m.classifier_first_text()}
 				</span>
-				<div aria-hidden="true" class="my-1 h-px bg-border"></div>
+				<Separator class="my-1" />
 				<span class="text-meta text-muted-foreground">
 					{m.classifier_confirmed_total({ count: formatNumber(status.confirmed) })}
 				</span>
@@ -389,46 +392,44 @@
 				<p class="mt-3 text-muted-foreground">{m.classifier_signals_none()}</p>
 			{:else}
 				<div class="mt-4 overflow-x-auto">
-					<table class="w-full min-w-[720px] border-collapse tabular-nums">
-						<thead>
-							<tr>
-								<th
+					<Table.Root class="w-full min-w-[720px] border-collapse tabular-nums">
+						<Table.Header>
+							<Table.Row>
+								<Table.Head
 									scope="col"
 									class="border-b pr-3 pb-2.5 text-left text-xs font-medium text-muted-foreground"
 								>
 									{m.classifier_signal()}
-								</th>
+								</Table.Head>
 								{#each FIELDS as field (field)}
-									<th
+									<Table.Head
 										scope="col"
 										class="border-b px-3 pb-2.5 text-left text-xs font-medium text-muted-foreground"
 									>
 										{fieldLabel(field, null)}
-									</th>
+									</Table.Head>
 								{/each}
-							</tr>
-						</thead>
-						<tbody>
+							</Table.Row>
+						</Table.Header>
+						<Table.Body>
 							{#each table as row (row.signal)}
-								<tr>
-									<th
+								<Table.Row>
+									<Table.Head
 										scope="row"
 										class="border-b py-3.5 pr-3 text-left font-medium whitespace-nowrap"
 									>
 										{NODE_LABELS[row.signal]()}
-									</th>
+									</Table.Head>
 									{#each row.cells as cell (cell.field)}
-										<td class="border-b px-3 py-3.5 align-top">
+										<Table.Cell class="border-b px-3 py-3.5 align-top">
 											{#if cell.rate}
 												<div class="flex min-w-[110px] flex-col gap-[5px]">
 													<span class={cn('text-lg font-semibold', cell.best && 'text-brand')}>
 														{percent(cell.rate.share)}
 														{#if cell.best}
-															<span
-																class="ml-1.5 inline-flex h-[18px] items-center rounded-full bg-panel px-[7px] align-[2px] text-micro font-medium text-brand"
-															>
+															<Badge variant="primary" class="ml-1.5 align-middle">
 																{m.classifier_signal_best()}
-															</span>
+															</Badge>
 														{/if}
 													</span>
 													<div class="h-1.5 overflow-hidden rounded-full bg-muted">
@@ -449,12 +450,12 @@
 													>–</span
 												>
 											{/if}
-										</td>
+										</Table.Cell>
 									{/each}
-								</tr>
+								</Table.Row>
 							{/each}
-						</tbody>
-					</table>
+						</Table.Body>
+					</Table.Root>
 				</div>
 			{/if}
 		</Card.Root>

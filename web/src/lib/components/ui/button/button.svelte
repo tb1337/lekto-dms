@@ -16,7 +16,7 @@
 					'hover:bg-muted hover:text-foreground dark:hover:bg-muted/50 aria-expanded:bg-muted aria-expanded:text-foreground',
 				destructive:
 					'bg-destructive/10 hover:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/20 text-destructive focus-visible:border-destructive/40 dark:hover:bg-destructive/30',
-				link: 'text-brand underline-offset-4 hover:underline'
+				link: 'font-medium text-brand underline-offset-4 hover:underline'
 			},
 			size: {
 				default:
@@ -28,7 +28,9 @@
 				'icon-xs':
 					"size-6 rounded-md in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
 				'icon-sm': 'size-8 rounded-lg in-data-[slot=button-group]:rounded-lg',
-				'icon-lg': 'size-12'
+				'icon-lg': 'size-12',
+				/** A text action inside running text (`link`): no height, no padding. */
+				inline: 'h-auto gap-1 p-0'
 			}
 		},
 		defaultVariants: {

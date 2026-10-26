@@ -53,6 +53,7 @@
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
+	import { Badge } from '#lib/components/ui/badge/index.ts';
 
 	// The facts beside the text: what supports the document's contact, what speaks of other
 	// contacts, the identifiers of no contact (admins attach them, with a topic of the contact,
@@ -653,11 +654,9 @@
 						<div class="flex flex-wrap items-center gap-2">
 							<span class="text-sm font-medium">{code.giro ? m.code_giro() : code.format}</span>
 							{#if code.giro}
-								<span
-									class="rounded-full bg-secondary px-2 py-0.5 text-micro font-medium text-muted-foreground"
-								>
+								<Badge variant="muted">
 									{m.code_giro_badge({ format: code.format })}
-								</span>
+								</Badge>
 							{/if}
 							<!-- One code however often it is printed: a chip per page, as at a field. -->
 							<span class="ml-auto flex flex-wrap justify-end gap-1">
@@ -687,12 +686,10 @@
 									<dd class="flex flex-wrap items-center gap-1.5">
 										{formatMoney(code.giro.amount.amount, code.giro.amount.currency)}
 										{#each code.fields as field (field)}
-											<span
-												class="inline-flex items-center gap-1 rounded-full bg-lane-green px-2 py-0.5 text-micro font-medium text-lane-green-foreground"
-											>
+											<Badge variant="green">
 												<Check class="size-3" aria-hidden="true" />
 												{m.code_same_as({ field: fieldName(field) })}
-											</span>
+											</Badge>
 										{/each}
 									</dd>
 								{/if}

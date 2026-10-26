@@ -112,7 +112,7 @@ describe('AppShell', () => {
 			'/ui/system'
 		]);
 		// The line stands after the fourth link.
-		const line = nav.querySelector('.w-px');
+		const line = nav.querySelector('[data-slot="separator"]');
 		expect(line?.previousElementSibling?.getAttribute('href')).toBe('/ui/spaces');
 		expect(line?.nextElementSibling?.getAttribute('href')).toBe('/ui/rules');
 		expect(within(nav).getByRole('link', { name: `${m.nav_expected()} ${m.beta()}` })).toBeTruthy();

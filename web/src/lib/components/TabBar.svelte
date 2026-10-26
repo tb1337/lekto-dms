@@ -15,19 +15,35 @@
 	import { slidingPill } from '#lib/sliding-pill.ts';
 	import { cn } from '#lib/utils.ts';
 
-	// The tabs of a page (inbox, document, master data): links in a pill, the current one on a
-	// light pill that moves over when another is chosen (`sliding-pill.ts`; Tobi, 20.10.2026).
-	// Where they are wider than the room (a phone) they scroll sideways in their own row, the
-	// current one in view, again when counts widen them; with `fill` they share a phone's width
-	// equally instead.
+	// The tabs of a page (inbox, document, master data, system), web/DESIGN.md "Tabs and
+	// switches": links over a line, the current one underlined in the brand colour; the line
+	// moves over when another is chosen (`sliding-pill.ts`). Unlike `Segmented` (a pill: how to
+	// show something) they lead somewhere. Where they are wider than the room (a phone) they
+	// scroll sideways in their own row, the current one in view, and the cut edge fades so that
+	// it shows there is more; with `fill` they share a phone's width equally instead.
 	let {
 		label,
 		tabs,
 		current,
-		fill = false
-	}: { label: string; tabs: readonly Tab[]; current: string; fill?: boolean } = $props();
+		fill = false,
+		class: className = ''
+	}: {
+		label: string;
+		tabs: readonly Tab[];
+		current: string;
+		fill?: boolean;
+		class?: string;
+	} = $props();
 
 	let bar = $state<HTMLElement | null>(null);
+	/** Which edges have more behind them. */
+	let more = $state<{ start: boolean; end: boolean }>({ start: false, end: false });
+
+	function measure() {
+		if (!bar) return;
+		const end = bar.scrollWidth - bar.clientWidth - bar.scrollLeft;
+		more = { start: bar.scrollLeft > 1, end: end > 1 };
+	}
 
 	$effect(() => {
 		void current;
@@ -36,6 +52,14 @@
 		if (!bar || !chosen) return;
 		const left = chosen.offsetLeft - (bar.clientWidth - chosen.offsetWidth) / 2;
 		bar.scrollLeft = Math.max(0, left);
+		measure();
+	});
+
+	$effect(() => {
+		if (!bar) return;
+		const sizes = new ResizeObserver(measure);
+		sizes.observe(bar);
+		return () => sizes.disconnect();
 	});
 </script>
 
@@ -43,23 +67,30 @@
 	bind:this={bar}
 	{@attach slidingPill}
 	aria-label={label}
+	onscroll={measure}
+	data-more-start={more.start || undefined}
+	data-more-end={more.end || undefined}
 	class={cn(
-		'relative flex w-fit max-w-full gap-1 overflow-x-auto rounded-full bg-secondary p-1',
-		fill && 'max-sm:grid max-sm:w-full max-sm:auto-cols-fr max-sm:grid-flow-col'
+		'relative flex w-full max-w-full [scrollbar-width:none] gap-1 overflow-x-auto border-b',
+		'data-more-end:[mask-image:linear-gradient(to_right,black_85%,transparent)]',
+		'data-more-start:[mask-image:linear-gradient(to_left,black_85%,transparent)]',
+		'data-more-start:data-more-end:[mask-image:linear-gradient(to_right,transparent,black_15%,black_85%,transparent)]',
+		fill && 'max-sm:grid max-sm:auto-cols-fr max-sm:grid-flow-col',
+		className
 	)}
 >
 	<span
 		data-pill
 		hidden
 		aria-hidden="true"
-		class="pointer-events-none absolute top-0 left-0 rounded-full bg-card shadow-sm data-moving:motion-safe:transition-[transform,width,height] data-moving:motion-safe:duration-300 data-moving:motion-safe:ease-out"
+		class="pointer-events-none absolute top-0 left-0 after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-brand data-moving:motion-safe:transition-[transform,width,height] data-moving:motion-safe:duration-300 data-moving:motion-safe:ease-out"
 	></span>
 	{#each tabs as tab (tab.key)}
 		<a
 			href={tab.href}
 			aria-current={tab.key === current ? 'page' : undefined}
 			class={cn(
-				'relative inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-full px-3.5 text-sm whitespace-nowrap transition-colors sm:h-[34px] sm:px-4',
+				'relative inline-flex h-11 shrink-0 items-center justify-center gap-1.5 px-3 text-sm whitespace-nowrap transition-colors',
 				fill && 'max-sm:px-1',
 				tab.key === current
 					? 'font-medium text-foreground'

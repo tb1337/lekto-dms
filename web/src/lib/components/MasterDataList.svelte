@@ -1,5 +1,4 @@
 <script lang="ts">
-	import X from '@lucide/svelte/icons/x';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -22,6 +21,7 @@
 	import { scope } from '#lib/scope.svelte.ts';
 	import { below, pathLabel } from '#lib/tags.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
+	import Chip from '#lib/components/Chip.svelte';
 
 	// Contacts (with their logo or initials, groups, aliases, identifiers, topics) or document
 	// types (with their icon, description, groups, title pattern, fields, whether a relation
@@ -172,19 +172,11 @@
 				? m.master_filter_group({ name: pathLabel(filterTag) })
 				: m.master_filter_topic({ name: pathLabel(filterTag) })}
 		<div>
-			<span
-				class="inline-flex h-9 max-w-full items-center gap-1 rounded-full border bg-card pr-1 pl-3.5 text-sm max-sm:h-11"
+			<Chip
+				variant="selected"
+				removeLabel={m.master_filter_remove({ name: label })}
+				onremove={() => goto(`?tab=${kind}`, { reset: false })}>{label}</Chip
 			>
-				<span class="min-w-0 truncate">{label}</span>
-				<button
-					type="button"
-					class="relative grid size-7 shrink-0 place-items-center rounded-full after:absolute after:-inset-1 hover:bg-secondary max-sm:size-9"
-					aria-label={m.master_filter_remove({ name: label })}
-					onclick={() => goto(`?tab=${kind}`, { reset: false })}
-				>
-					<X class="size-4" aria-hidden="true" />
-				</button>
-			</span>
 		</div>
 	{/if}
 	<PanelState

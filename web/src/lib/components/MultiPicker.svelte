@@ -1,10 +1,10 @@
 <script lang="ts">
-	import X from '@lucide/svelte/icons/x';
-	import { Input } from '#lib/components/ui/input/index.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { matchesWords, searchWords, toggled } from '#lib/picking.ts';
 	import { cn } from '#lib/utils.ts';
 	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
+	import Chip from '#lib/components/Chip.svelte';
+	import SearchField from '#lib/components/SearchField.svelte';
 
 	export interface PickerOption {
 		value: string;
@@ -53,28 +53,16 @@
 >
 	<div class="flex flex-wrap gap-1.5">
 		{#each chips as value (value)}
-			<span class="inline-flex h-7 items-center gap-1 rounded-full bg-secondary pr-1 pl-3 text-sm">
-				{labelOf(value)}
-				<button
-					type="button"
-					class="grid size-5 place-items-center rounded-full hover:bg-background"
-					aria-label={m.rule_remove_value({ name: labelOf(value) })}
-					onclick={() => toggle(value, false)}
-				>
-					<X class="size-3" aria-hidden="true" />
-				</button>
-			</span>
+			<Chip
+				removeLabel={m.rule_remove_value({ name: labelOf(value) })}
+				onremove={() => toggle(value, false)}>{labelOf(value)}</Chip
+			>
 		{:else}
 			<span class="px-1 text-sm text-muted-foreground">{m.rule_nothing_chosen()}</span>
 		{/each}
 	</div>
 	{#if options.length > 6}
-		<Input
-			bind:value={query}
-			placeholder={m.rule_filter()}
-			aria-label={m.rule_filter()}
-			class="h-9"
-		/>
+		<SearchField bind:value={query} label={m.rule_filter()} />
 	{/if}
 	<ul class="flex max-h-44 flex-col overflow-y-auto">
 		{#each shown as option (option.value)}

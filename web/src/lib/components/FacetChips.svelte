@@ -20,6 +20,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { flipped } from '#lib/picking.ts';
 	import { cn } from '#lib/utils.ts';
+	import { Button } from '#lib/components/ui/button/index.ts';
 
 	// Values of the filters as the chips they are everywhere (`chipLook`, as TagChip draws them): a
 	// tag round in its colour, a topic square, a group outlined in its colour, a plain value as an
@@ -88,14 +89,15 @@
 			{/each}
 		</div>
 		{#if more && items.length > limit}
-			<button
-				type="button"
-				class="text-sm text-brand hover:underline"
+			<Button
+				variant="link"
+				size="inline"
+				class="text-sm font-normal"
 				aria-expanded={open}
 				onclick={() => (open = !open)}
 			>
 				{open ? m.facet_fewer() : more(items.length)}
-			</button>
+			</Button>
 		{/if}
 	</div>
 {/if}

@@ -21,6 +21,8 @@
 	import { cn } from '#lib/utils.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import { Badge } from '#lib/components/ui/badge/index.ts';
+	import { Separator } from '#lib/components/ui/separator/index.ts';
 
 	// The tab "Search index" of the page "System" (Tobi, 24.10.2026): how much of the documents
 	// the index holds, with vectors, what is still to do and how long an indexing takes; admins
@@ -138,15 +140,13 @@
 				<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 					{@render heading(m.search_state_title(), m.search_state_info())}
 					{#if status.index.indexing}
-						<span
-							class="inline-flex h-[26px] items-center gap-2 rounded-full bg-note px-2.5 text-xs font-medium text-note-foreground"
-						>
+						<Badge variant="note" size="md">
 							<span
 								aria-hidden="true"
 								class="size-2 rounded-full bg-note-foreground ring-[3px] ring-note-foreground/20"
 							></span>
 							{m.search_writing()}
-						</span>
+						</Badge>
 					{/if}
 				</div>
 				<div class="flex flex-col gap-2">
@@ -223,7 +223,7 @@
 						{m.search_open_unknown()}
 					{/if}
 				</span>
-				<div aria-hidden="true" class="my-1.5 h-px bg-border"></div>
+				<Separator class="my-1.5" />
 				<span class="text-meta text-muted-foreground">
 					{m.search_open_split({
 						running: formatNumber(status.running),

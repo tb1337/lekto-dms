@@ -2,7 +2,6 @@
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import MultiPicker from '#lib/components/MultiPicker.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import { namedOptions, withChoice } from '#lib/components/rules/options.ts';
 	import ValueInput from '#lib/components/rules/ValueInput.svelte';
@@ -26,6 +25,7 @@
 	} from '#lib/rules/model.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { tagOptions } from '#lib/tags.ts';
+	import TagPicker from '#lib/components/TagPicker.svelte';
 
 	// One step: an action, a step that asks a webhook, or a condition. `targets` are where the
 	// rule may file: the spaces whoever saves it edits, and other users' personal spaces
@@ -161,10 +161,13 @@
 					bind:value={action.template}
 				/>
 			{:else if action.type === 'add_tags' || action.type === 'remove_tags'}
-				<MultiPicker
+				<!-- The one field for tags, in their colours, as at a document. -->
+				<TagPicker
+					id="tags-{action.key}"
 					{label}
-					{invalid}
-					options={tagOptions(lookup.tags, 'document')}
+					title={m.field_tags()}
+					scope="document"
+					tags={lookup.tags}
 					selected={action.tag_ids}
 					onchange={(next) => {
 						if (action.type === 'add_tags' || action.type === 'remove_tags') action.tag_ids = next;

@@ -194,6 +194,7 @@
 				count: inbox.summary ? entry.count(inbox.summary) : 0
 			}))}
 			current={tab ?? ''}
+			class="min-w-0 flex-1 basis-80"
 		/>
 		{#if (tab === null || tab === 'new') && fresh > 0}
 			<Button variant="ghost" class="h-11 sm:h-9" onclick={() => (askAll = true)}>

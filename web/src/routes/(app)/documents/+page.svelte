@@ -85,6 +85,7 @@
 	import { returnTo } from '#lib/return-to.svelte.ts';
 	import PageTitle from '#lib/components/page/PageTitle.svelte';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import { FIELD_FRAME } from '#lib/components/ui/field-look.ts';
 
 	// The documents (the archive): listed (newest document date first) or, with words in `q`,
 	// searched (by relevance), with the same filters; sorted as chosen, as a grid or a list, by
@@ -482,10 +483,10 @@ row of filters, on a desktop narrow by the title. -->
 	<form
 		role="search"
 		class={cn(
-			'min-w-0 items-center gap-2 rounded-full border border-input bg-background focus-within:border-ring',
+			FIELD_FRAME,
 			compact
-				? cn('h-9 w-64 pr-1 pl-3', places.title)
-				: cn('flex h-11 flex-1 pr-1.5 pl-4', places.phone)
+				? cn('h-10 w-64 pr-1 pl-3', places.title)
+				: cn('flex h-11 flex-1 pr-1.5 pl-3.5', places.phone)
 		)}
 		onsubmit={(event) => {
 			event.preventDefault();

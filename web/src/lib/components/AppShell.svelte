@@ -39,6 +39,7 @@
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 	import { onChange } from '#lib/watch.svelte.ts';
+	import { Separator } from '#lib/components/ui/separator/index.ts';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -156,7 +157,7 @@
 				{#each workSections as section (section.path)}
 					{@render pill(section, false)}
 				{/each}
-				<div class="mx-2 h-5 w-px bg-border" aria-hidden="true"></div>
+				<Separator orientation="vertical" class="mx-2 h-5 self-center" />
 				{#each setupSections as section (section.path)}
 					{@render pill(section, false)}
 				{/each}
@@ -273,20 +274,20 @@
 									/>
 								</label>
 							{/if}
-							<div class="mx-4 my-2 h-px bg-border"></div>
+							<Separator class="mx-4 my-2 w-auto" />
 						{/if}
 						<nav aria-label={m.nav_main()} class="flex flex-col gap-1">
 							{#each workSections as section (section.path)}
 								{@render pill(section, true)}
 							{/each}
-							<div class="mx-4 my-2 h-px bg-border"></div>
+							<Separator class="mx-4 my-2 w-auto" />
 							{#each setupSections as section (section.path)}
 								{@render pill(section, true)}
 							{/each}
 						</nav>
 						{#if phone.current}
 							<div class="mt-auto flex flex-col gap-1 pt-2">
-								<div class="mx-4 my-2 h-px bg-border"></div>
+								<Separator class="mx-4 my-2 w-auto" />
 								<div class="flex h-10 items-center justify-between gap-2 px-4">
 									<span
 										id="sheet-language"
@@ -320,7 +321,7 @@
 										onchange={(value) => setMode(value as 'light' | 'dark' | 'system')}
 									/>
 								</div>
-								<div class="mx-4 my-2 h-px bg-border"></div>
+								<Separator class="mx-4 my-2 w-auto" />
 								<button
 									type="button"
 									onclick={() => open(SETTINGS)}

@@ -35,6 +35,7 @@
 	import { LIST_SORTS, sortLabel } from '#lib/listing.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import Chip from '#lib/components/Chip.svelte';
 
 	type Listed = components['schemas']['ListedDocument'];
 
@@ -251,21 +252,15 @@
 				<div class="flex flex-wrap gap-1.5">
 					{#each GROUPINGS as option (option.value)}
 						{@const active = grouping === option.value}
-						<button
-							type="button"
-							aria-pressed={active}
+						<Chip
+							pressed={active}
 							disabled={option.value === 'due' && !dueId}
 							title={option.value === 'due' && !dueId ? m.lens_grouping_due_hint() : undefined}
-							class={[
-								'h-8 rounded-full border px-3 text-sm transition-colors disabled:opacity-50',
-								active
-									? 'border-primary bg-panel font-semibold text-brand'
-									: 'bg-background hover:bg-secondary'
-							]}
+							class="disabled:opacity-50"
 							onclick={() => (grouping = option.value)}
 						>
 							{option.label()}
-						</button>
+						</Chip>
 					{/each}
 				</div>
 			</div>

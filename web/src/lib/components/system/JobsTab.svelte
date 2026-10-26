@@ -36,6 +36,8 @@
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import { cardVariants } from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import type { Tone } from '#lib/tones.ts';
+	import { Badge } from '#lib/components/ui/badge/index.ts';
 
 	// The tab "Jobs" of the page "System" (Tobi, 24.10.2026; a table with pages since
 	// 26.10.2026): whether a worker takes jobs, how many stand where, and the jobs as a table,
@@ -189,14 +191,12 @@
 				: m.jobs_none_done({ date: keptSince })
 	);
 
-	const CHIP =
-		'inline-flex h-[22px] items-center rounded-full px-2 text-xs font-medium whitespace-nowrap';
-	const TONES: Record<JobState, string> = {
-		running: 'bg-primary/10 text-brand ring-1 ring-primary/30 ring-inset',
-		due: 'bg-muted text-muted-foreground',
-		planned: 'bg-note text-note-foreground ring-1 ring-note-foreground/30 ring-inset',
-		failed: 'bg-lane-red text-lane-red-foreground ring-1 ring-lane-red-foreground/35 ring-inset',
-		done: 'bg-lane-green text-lane-green-foreground ring-1 ring-lane-green-foreground/35 ring-inset'
+	const TONES: Record<JobState, Tone> = {
+		running: 'primary',
+		due: 'muted',
+		planned: 'note',
+		failed: 'red',
+		done: 'green'
 	};
 	const NUMBER = 'text-right tabular-nums';
 </script>
@@ -325,7 +325,7 @@
 										{job.node ? NODE_LABELS[job.node]() : kindLabel(job.kind)}
 									</Table.Cell>
 									<Table.Cell>
-										<span class={cn(CHIP, TONES[job.state])}>{STATE_LABELS[job.state]()}</span>
+										<Badge variant={TONES[job.state]}>{STATE_LABELS[job.state]()}</Badge>
 									</Table.Cell>
 									<Table.Cell class="max-w-[22rem] truncate">
 										{#if job.document}

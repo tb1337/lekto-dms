@@ -193,6 +193,16 @@
 	"jobs_in": "in {duration}",
 	"jobs_in_attempt": "in {duration} · attempt {attempt}",
 	"jobs_so_far": "{duration} so far",
+	"search_state_info": "Lekto counts the documents in the database and the entries in the index. “With vectors” also counts vectors of an earlier model; whether everything is current, “Check thoroughly” tells. A reconciliation every six hours and at every start of the worker writes missing and outdated entries again.",
+	"search_open_info": "Every event at a document makes an index job; it reads the current state and writes it to the index. “Done in about” is estimated from the index jobs of the last ten minutes.",
+	"search_durations_info": "Median and P90 of the done index jobs within the retention period, with and without embedding. The time lies almost entirely with the embedding service; the index writes a document in a few milliseconds.",
+	"search_check_info": "Compares every document in the database with the index and counts what is missing, outdated, embedded with another model or gone. It queues no jobs; the next reconciliation or a rebuild repairs it.",
+	"search_reindex_title": "Rebuild the index",
+	"search_reindex_info": "Builds a new index from the database and the object store next to the active one and swaps it in at the end. Needed after a change of the embedding model or when “Check thoroughly” shows many outdated entries; small things the reconciliation repairs by itself. A rebuild that is running already is not queued twice.",
+	"search_reindex_button": "Rebuild",
+	"search_reindex_confirm_title": "Rebuild the search index?",
+	"search_reindex_confirm_text": "While it rebuilds, Lekto searches by words only, not by meaning. With many documents it takes hours; the search keeps working meanwhile.",
+	"search_reindex_queued": "Rebuild queued",
 	"job_kind_pipeline_node": "Processing step",
 	"job_kind_pipeline_catch_up": "Catching up a step",
 	"job_kind_pipeline_reparse": "Reading the text again",
@@ -2374,9 +2384,5 @@
 	"action_delete_document": "delete this document",
 	"action_reset_own_password": "reset their own password here",
 	"action_turn_off_own_totp": "turn off their own two-factor sign-in here",
-	"classifier_signals_text": "How often a signal's best suggestion was the value the person confirmed at their first decision. Below: how often the signal suggested anything at all.",
-	"search_meaning_hint": "Vectors of an earlier model count too; whether all are current, “Check thoroughly” tells.",
-	"search_open_hint": "estimated from the index jobs done in the last ten minutes",
-	"search_durations_note": "The time goes almost entirely to the embedding service; the index writes a document in milliseconds.",
-	"search_check_text": "Compares every document in the database with the index and counts what is missing, stale or left over. Nothing is queued; the next reconciliation repairs it."
+	"classifier_signals_text": "How often a signal's best suggestion was the value the person confirmed at their first decision. Below: how often the signal suggested anything at all."
 }

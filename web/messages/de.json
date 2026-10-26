@@ -193,6 +193,16 @@
 	"jobs_in": "in {duration}",
 	"jobs_in_attempt": "in {duration} · {attempt}. Versuch",
 	"jobs_so_far": "bisher {duration}",
+	"search_state_info": "Lekto zählt die Dokumente der Datenbank und die Einträge im Index. „Mit Vektoren“ zählt auch Vektoren eines früheren Modells; ob alles aktuell ist, sagt „Genau prüfen“. Ein Abgleich alle sechs Stunden und bei jedem Start des Workers schreibt fehlende und veraltete Einträge nach.",
+	"search_open_info": "Jedes Ereignis an einem Dokument erzeugt einen Index-Job; er liest den aktuellen Stand und schreibt ihn in den Index. „Fertig in etwa“ ist aus den Index-Jobs der letzten zehn Minuten geschätzt.",
+	"search_durations_info": "Median und P90 der erledigten Index-Jobs innerhalb der Aufbewahrung, mit und ohne Embedding. Die Zeit liegt fast ganz beim Embedding-Dienst; der Index schreibt ein Dokument in wenigen Millisekunden.",
+	"search_check_info": "Vergleicht jedes Dokument der Datenbank mit dem Index und zählt, was fehlt, veraltet ist, mit einem anderen Modell eingebettet wurde oder nicht mehr existiert. Es legt keine Jobs an; repariert wird beim nächsten Abgleich oder mit dem Neuaufbau.",
+	"search_reindex_title": "Index neu aufbauen",
+	"search_reindex_info": "Baut neben dem aktiven Index einen neuen aus Datenbank und Objektspeicher und tauscht ihn am Ende aus. Nötig nach einem Wechsel des Embedding-Modells oder wenn „Genau prüfen“ viele veraltete Einträge zeigt; Kleines repariert der Abgleich von selbst. Ein Neuaufbau, der schon läuft, wird nicht doppelt eingereiht.",
+	"search_reindex_button": "Neu aufbauen",
+	"search_reindex_confirm_title": "Suchindex neu aufbauen?",
+	"search_reindex_confirm_text": "Während des Neuaufbaus sucht Lekto nur nach Wörtern, nicht nach Bedeutung. Bei vielen Dokumenten dauert es Stunden; die Suche bleibt dabei nutzbar.",
+	"search_reindex_queued": "Neuaufbau eingereiht",
 	"job_kind_pipeline_node": "Verarbeitungsschritt",
 	"job_kind_pipeline_catch_up": "Schritt nachholen",
 	"job_kind_pipeline_reparse": "Text neu lesen",
@@ -2374,9 +2384,5 @@
 	"action_delete_document": "dieses Dokument löschen",
 	"action_reset_own_password": "ihr eigenes Passwort zurücksetzen",
 	"action_turn_off_own_totp": "ihre eigene Zwei-Faktor-Anmeldung ausschalten",
-	"classifier_signals_text": "Wie oft der beste Vorschlag eines Signals der Wert war, den die Person beim ersten Entscheid bestätigt hat. Darunter: wie oft das Signal überhaupt etwas vorgeschlagen hat.",
-	"search_meaning_hint": "„Mit Vektoren“ zählt auch Vektoren eines früheren Modells; ob alles aktuell ist, sagt „Genau prüfen“.",
-	"search_open_hint": "geschätzt aus den Index-Jobs der letzten zehn Minuten",
-	"search_durations_note": "Die Zeit liegt fast ganz beim Embedding-Dienst; der Index schreibt ein Dokument in wenigen Millisekunden.",
-	"search_check_text": "Vergleicht jedes Dokument der Datenbank mit dem Index und zählt, was fehlt, veraltet ist oder nicht mehr existiert. Es legt keine Jobs an; repariert wird beim nächsten Abgleich."
+	"classifier_signals_text": "Wie oft der beste Vorschlag eines Signals der Wert war, den die Person beim ersten Entscheid bestätigt hat. Darunter: wie oft das Signal überhaupt etwas vorgeschlagen hat."
 }

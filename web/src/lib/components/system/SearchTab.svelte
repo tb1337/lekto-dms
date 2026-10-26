@@ -1,12 +1,15 @@
 <script lang="ts">
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
+	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import { ApiError } from '#lib/api/problem.ts';
 	import type { components } from '#lib/api/schema.ts';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import InfoTip from '#lib/components/InfoTip.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { formatDuration } from '#lib/duration.ts';
@@ -21,7 +24,8 @@
 	// the index holds, with vectors, what is still to do and how long an indexing takes; admins
 	// check it against the database ("Check thoroughly": it only counts). Without embeddings it
 	// shows nothing of the meaning (Tobi, 24.10.2026). It asks again every ten seconds while
-	// the page is in view.
+	// the page is in view. Admins rebuild the index (Tobi, 26.10.2026), after a question: the
+	// search works by words only meanwhile.
 	type Status = components['schemas']['SearchStatusOut'];
 	type Check = components['schemas']['IndexCheckOut'];
 
@@ -32,6 +36,7 @@
 	let missing = $state(false);
 	let check = $state<Check | null>(null);
 	let checking = $state(false);
+	let rebuildAsked = $state(false);
 
 	async function load() {
 		try {
@@ -64,6 +69,12 @@
 		}
 	}
 
+	async function rebuild() {
+		await unwrap(api.POST('/api/v1/search/reindex'));
+		toast.success(m.search_reindex_queued());
+		void load();
+	}
+
 	const share = (part: number, whole: number) =>
 		whole === 0 ? 1 : Math.min(1, Math.max(0, part / whole));
 	const percent = (value: number) =>
@@ -75,6 +86,15 @@
 	const embedded = $derived(status ? share(status.index.embedded, status.index.documents) : 0);
 	const since = $derived(status ? formatDate(status.since, { dateStyle: 'medium' }) : '');
 </script>
+
+{#snippet heading(text: string, about: string)}
+	<div class="flex items-center gap-1">
+		<h2 class="font-semibold">{text}</h2>
+		<InfoTip label={m.hint_about({ name: text })} size="sm" class="w-80">
+			<p>{about}</p>
+		</InfoTip>
+	</div>
+{/snippet}
 
 {#snippet bar(value: number, label: string)}
 	<div
@@ -116,7 +136,7 @@
 				class="flex min-w-0 flex-[2_1_520px] flex-col gap-5 rounded-2xl border bg-card px-5 py-4 sm:px-6"
 			>
 				<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-					<h2 class="font-semibold">{m.search_state_title()}</h2>
+					{@render heading(m.search_state_title(), m.search_state_info())}
 					{#if status.index.indexing}
 						<span
 							class="inline-flex h-[26px] items-center gap-2 rounded-full bg-note px-2.5 text-xs font-medium text-note-foreground"
@@ -159,7 +179,6 @@
 							<span class="text-[1.375rem] font-semibold tabular-nums">{percent(embedded)}</span>
 						</div>
 						{@render bar(embedded, m.search_meaning())}
-						<span class="text-xs text-muted-foreground">{m.search_meaning_hint()}</span>
 					</div>
 				{/if}
 				<div class="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
@@ -190,7 +209,7 @@
 			<section
 				class="flex min-w-0 flex-[1_1_280px] flex-col gap-2.5 rounded-2xl border bg-card px-5 py-4 sm:px-6"
 			>
-				<h2 class="font-semibold">{m.search_open_title()}</h2>
+				{@render heading(m.search_open_title(), m.search_open_info())}
 				<div class="flex items-baseline gap-2">
 					<span class="text-[1.875rem] font-semibold tracking-tight tabular-nums">
 						{formatNumber(status.queued + status.running)}
@@ -206,7 +225,6 @@
 						{m.search_open_unknown()}
 					{/if}
 				</span>
-				<span class="text-[0.8125rem] text-muted-foreground">{m.search_open_hint()}</span>
 				<div aria-hidden="true" class="my-1.5 h-px bg-border"></div>
 				<span class="text-[0.8125rem] text-muted-foreground">
 					{m.search_open_split({
@@ -224,8 +242,8 @@
 		</div>
 
 		<section class="rounded-2xl border bg-card px-5 py-4 sm:px-6">
-			<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<h2 class="font-semibold">{m.search_durations_title()}</h2>
+			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+				{@render heading(m.search_durations_title(), m.search_durations_info())}
 				<span class="text-[0.8125rem] text-muted-foreground">
 					{m.search_durations_since({ date: since })}
 				</span>
@@ -257,21 +275,13 @@
 						{/if}
 					{/each}
 				</div>
-				{#if meaning}
-					<p class="mt-3.5 max-w-3xl text-[0.8125rem] text-muted-foreground">
-						{m.search_durations_note()}
-					</p>
-				{/if}
 			{/if}
 		</section>
 
 		{#if session.isAdmin}
 			<section class="flex flex-col gap-4 rounded-2xl border bg-card px-5 py-4 sm:px-6">
-				<div class="flex flex-wrap items-start justify-between gap-3">
-					<div class="flex max-w-2xl flex-col gap-1">
-						<h2 class="font-semibold">{m.search_check_title()}</h2>
-						<span class="text-[0.8125rem] text-muted-foreground">{m.search_check_text()}</span>
-					</div>
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					{@render heading(m.search_check_title(), m.search_check_info())}
 					<Button variant="outline" disabled={checking} onclick={runCheck}>
 						<ListChecks aria-hidden="true" />{m.search_check_button()}
 					</Button>
@@ -303,6 +313,28 @@
 					</div>
 				{/if}
 			</section>
+
+			<section class="flex flex-col gap-4 rounded-2xl border bg-card px-5 py-4 sm:px-6">
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					{@render heading(m.search_reindex_title(), m.search_reindex_info())}
+					<Button
+						variant="outline"
+						disabled={status.index.indexing}
+						onclick={() => (rebuildAsked = true)}
+					>
+						<RefreshCw aria-hidden="true" />{m.search_reindex_button()}
+					</Button>
+				</div>
+			</section>
 		{/if}
 	{/if}
 </div>
+
+<ConfirmDialog
+	bind:open={rebuildAsked}
+	title={m.search_reindex_confirm_title()}
+	description={m.search_reindex_confirm_text()}
+	confirmLabel={m.search_reindex_button()}
+	destructive={false}
+	onconfirm={rebuild}
+/>

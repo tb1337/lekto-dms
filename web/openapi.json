@@ -22366,6 +22366,12 @@
             ],
             "title": "Icon"
           },
+          "relation_target": {
+            "type": "boolean",
+            "title": "Relation Target",
+            "description": "Documents refer to those of the type (a contract, a policy) by a contract or customer number they share; without it such a number connects no documents.",
+            "default": false
+          },
           "fields": {
             "items": {
               "$ref": "#/components/schemas/FieldAssignmentIn"
@@ -22471,6 +22477,11 @@
             "examples": [
               "receipt"
             ]
+          },
+          "relation_target": {
+            "type": "boolean",
+            "title": "Relation Target",
+            "description": "Documents refer to those of the type (a contract, a policy) by a contract or customer number they share; without it such a number connects no documents."
           }
         },
         "type": "object",
@@ -22481,7 +22492,8 @@
           "description",
           "title_pattern",
           "group_ids",
-          "icon"
+          "icon",
+          "relation_target"
         ],
         "title": "DocumentTypeOut"
       },
@@ -22568,6 +22580,17 @@
               }
             ],
             "title": "Icon"
+          },
+          "relation_target": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relation Target"
           }
         },
         "additionalProperties": false,

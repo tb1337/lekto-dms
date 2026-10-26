@@ -38,6 +38,8 @@ export type Item = MasterData & {
 	identifiers?: IdentifierOut[];
 	description?: string | null;
 	title_pattern?: string | null;
+	/** A document type others refer to by a contract or customer number (#145). */
+	relation_target?: boolean;
 	group_ids?: string[];
 	topic_ids?: string[];
 	scope?: Tag['scope'];
@@ -80,6 +82,8 @@ export interface Values {
 	rejected_identifiers: IdentifierIn[];
 	description: string | null;
 	title_pattern: string | null;
+	/** Whether documents refer to those of the document type by a contract or customer number. */
+	relation_target: boolean;
 	/** A document type's fields, global ones aside; null where they do not change. */
 	fields: { id: string; required: boolean }[] | null;
 	/** The groups of a contact or a document type. */
@@ -143,24 +147,25 @@ export const KINDS: Record<SimpleKind, KindOps> = {
 		list: (options) => unwrap(api.GET('/api/v1/document-types', listQuery(options))),
 		get: (id) => unwrap(api.GET('/api/v1/document-types/{id}', path(id))),
 		// With its fields, in one request: all or nothing (issue #73).
-		create: ({ name, description, title_pattern, group_ids, icon, fields }) =>
+		create: ({ name, description, title_pattern, relation_target, group_ids, icon, fields }) =>
 			unwrap(
 				api.POST('/api/v1/document-types', {
 					body: {
 						name,
 						description,
 						title_pattern,
+						relation_target,
 						group_ids,
 						icon,
 						fields: (fields ?? []).map(({ id, required }) => ({ field_id: id, required }))
 					}
 				})
 			),
-		change: (id, { name, description, title_pattern, group_ids, icon }) =>
+		change: (id, { name, description, title_pattern, relation_target, group_ids, icon }) =>
 			unwrap(
 				api.PATCH('/api/v1/document-types/{id}', {
 					...path(id),
-					body: { name, description, title_pattern, group_ids, icon }
+					body: { name, description, title_pattern, relation_target, group_ids, icon }
 				})
 			),
 		remove: (id) => unwrap(api.DELETE('/api/v1/document-types/{id}', path(id)))

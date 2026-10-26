@@ -1858,6 +1858,12 @@ Stand: Vorschlag Creamy, 25.10.2026, zur Freigabe durch Tobi. Release offen. Sam
 - Nicht behoben: je Bezug eine oder zwei Abfragen (N+1); der Zeitraum im Beleg roh in ISO.
 - Offen für Tobi: Darf eine Person einen von ihr verworfenen Vorschlag von Lekto wieder setzen und bleibt er dann Lektos (so umgesetzt)?
 
+**PR 10 – Umsetzung und Review (26.10.2026, `feature/relation-target`, PR #157, gestapelt auf #156):**
+
+- `DocumentType.relation_target` (Revision 0049, nicht null, Vorgabe aus), in `POST`/`PATCH /document-types` und der Antwort; Web: Schalter „Bezugsziel“ mit Hinweis im Typdialog, Vermerk in der Liste. Wirkung erst mit PR 11 (Knoten `relate`).
+- Geprüft: 4557 Unit- und Integrationstests, 1211 Vitest (Exit 0 nach dem Rebase auf die Korrektur von PR 9), Browser hell, dunkel, Handybreite.
+- Review durch einen separaten Agenten: kein Fehler im eigenen Diff (Migration auf SQLite und Postgres samt Downgrade, Hin- und Rückweg, REST mit null und ohne Feld, alle Stellen, die Typen kopieren); der rote Testlauf kam aus PR 9. Übernommen: Test für `PATCH` mit null, Kommentar der Liste.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

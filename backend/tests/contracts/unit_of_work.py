@@ -777,11 +777,11 @@ class UnitOfWorkContract:
 
     async def test_field_definition_round_trip(self, uow_factory: UnitOfWorkFactory) -> None:
         """Scope and choices; a field required for some of its types or, global, everywhere.
-        A document type keeps its title pattern."""
+        A document type keeps its title pattern and whether it is a relation target."""
         invoice = DocumentType.create(
             name="Invoice", now=NOW, title_pattern="{document_date:YYYY} {field:Number}"
         )
-        reminder = DocumentType.create(name="Reminder", now=NOW)
+        reminder = DocumentType.create(name="Reminder", now=NOW, relation_target=True)
         bound = FieldDefinition.create(
             name="Billing period",
             data_type=FieldType.CHOICE,
@@ -806,6 +806,8 @@ class UnitOfWorkContract:
             assert (await uow.document_types.get(invoice.id)).title_pattern == (
                 "{document_date:YYYY} {field:Number}"
             )
+            assert await uow.document_types.get(reminder.id) == reminder
+            assert not (await uow.document_types.get(invoice.id)).relation_target
             stored = await uow.fields.get(bound.id)
             assert stored.is_required_for(invoice.id)
             assert not stored.is_required_for(reminder.id)

@@ -1608,6 +1608,8 @@
 	"field_def_required_hint": "A required field must be recognised, else the document waits in the inbox. An optional one may stay empty; a value it gets must stand in the document.",
 	"master_title_pattern": "Title pattern",
 	"master_title_pattern_hint": "Sets the title of the documents of this type; values and fields through the template editor on the right.",
+	"master_relation_target": "Relation target",
+	"master_relation_target_hint": "Contracts, policies and the like: documents with the same contract or customer number refer to documents of this type. Without it such a number connects no documents.",
 	"master_type_fields": "Fields",
 	"master_type_add_field": "Add a field",
 	"master_type_no_fields": "No fields of its own yet.",

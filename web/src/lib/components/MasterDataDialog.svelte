@@ -109,6 +109,7 @@
 	let identifiers = $state<IdentifierRow[]>([]);
 	let description = $state('');
 	let titlePattern = $state('');
+	let relationTarget = $state(false);
 	let assigned = $state<Assignment[]>([]);
 	let groupIds = $state<string[]>([]);
 	let topicIds = $state<string[]>([]);
@@ -201,6 +202,7 @@
 		identifiers = rowsOf(initial?.identifiers);
 		description = initial?.description ?? '';
 		titlePattern = initial?.title_pattern ?? '';
+		relationTarget = initial?.relation_target ?? false;
 		groupIds = [...(initial?.group_ids ?? [])];
 		topicIds = [...(initial?.topic_ids ?? [])];
 		kind = scope;
@@ -238,6 +240,7 @@
 				...changesOf(identifiers, topicIds),
 				description: description.trim() || null,
 				title_pattern: titlePattern.trim() || null,
+				relation_target: relationTarget,
 				fields: extra === 'description' && fields ? assigned : null,
 				group_ids: groupIds,
 				topic_ids: topicIds,
@@ -547,6 +550,22 @@
 					</a>
 				{/if}
 			</Field.Field>
+			<div class="flex items-center gap-1">
+				<label class="flex items-center gap-2 text-sm font-medium">
+					<input
+						type="checkbox"
+						bind:checked={relationTarget}
+						class="size-4 accent-primary"
+						aria-describedby="{uid}-relation-target-hint"
+					/>
+					{m.master_relation_target()}
+				</label>
+				<InfoHint
+					text={m.master_relation_target_hint()}
+					about={m.master_relation_target()}
+					id="{uid}-relation-target-hint"
+				/>
+			</div>
 		{/if}
 	{/if}
 	{#if part === 'identifiers'}

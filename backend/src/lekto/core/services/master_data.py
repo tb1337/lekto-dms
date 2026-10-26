@@ -269,18 +269,22 @@ class MasterDataService:
         group_ids: Collection[TagId] = (),
         icon: str | None = None,
         fields: Mapping[FieldId, bool] | None = None,
+        relation_target: bool = False,
     ) -> DocumentType:
         """`fields`: the fields that belong to it besides the global ones, each required (True)
         or optional, as `assign_fields` sets them, in the same transaction (issue #73: all or
         nothing). `title_pattern` (a template, `domain.templates`) may name them and the global
         fields; it is carried out by a rule of the type (`rules.title_rule`). `group_ids`: type
-        groups (tags of scope `document_type`). `icon`: the name of a Lucide icon."""
+        groups (tags of scope `document_type`). `icon`: the name of a Lucide icon.
+        `relation_target`: documents refer to those of the type by a contract or customer
+        number (`DocumentType.relation_target`)."""
         item = DocumentType.create(
             name=name,
             now=self._now(),
             description=description,
             title_pattern=title_pattern,
             icon=icon,
+            relation_target=relation_target,
         )
 
         async def check(uow: UnitOfWork) -> None:
@@ -305,10 +309,12 @@ class MasterDataService:
         title_pattern: str | Unset | None = UNSET,
         group_ids: Collection[TagId] | None = None,
         icon: str | Unset | None = UNSET,
+        relation_target: bool | None = None,
     ) -> DocumentType:
-        """`None` (name, groups) or UNSET (description, title pattern, icon) leaves it as it
-        is; None removes a description, pattern or icon. A pattern's fields must apply to the
-        type. `group_ids` replaces the type groups (tags of scope `document_type`)."""
+        """`None` (name, groups, relation target) or UNSET (description, title pattern, icon)
+        leaves it as it is; None removes a description, pattern or icon. A pattern's fields
+        must apply to the type. `group_ids` replaces the type groups (tags of scope
+        `document_type`)."""
 
         def change(item: DocumentType) -> None:
             if name is not None:
@@ -319,6 +325,8 @@ class MasterDataService:
                 item.set_title_pattern(title_pattern)
             if not isinstance(icon, Unset):
                 item.set_icon(icon)
+            if relation_target is not None:
+                item.mark_relation_target(relation_target)
 
         async def check(uow: UnitOfWork, item: DocumentType) -> None:
             if group_ids is not None:

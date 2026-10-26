@@ -87,6 +87,7 @@
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import { FIELD_FRAME } from '#lib/components/ui/field-look.ts';
 	import IconButton from '#lib/components/IconButton.svelte';
+	import Loading from '#lib/components/Loading.svelte';
 
 	// The documents (the archive): listed (newest document date first) or, with words in `q`,
 	// searched (by relevance), with the same filters; sorted as chosen, as a grid or a list, by
@@ -845,7 +846,7 @@ row of filters, on a desktop narrow by the title. -->
 					{/each}
 				</div>
 				{#if list.loading && !list.loaded}
-					<p class="text-muted-foreground">{m.loading()}</p>
+					<Loading />
 				{/if}
 				{#if list.hasMore}
 					<div class="flex justify-center">

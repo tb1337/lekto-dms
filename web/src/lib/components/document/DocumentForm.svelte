@@ -729,8 +729,10 @@
 					bind:value={title}
 					disabled={!editable}
 					aria-invalid={fieldErrors.title ? true : undefined}
+					aria-describedby={fieldErrors.title ? 'doc-title-error' : undefined}
 				/>
-				{#if fieldErrors.title}<p class="text-sm text-destructive">{fieldErrors.title}</p>{/if}
+				{#if fieldErrors.title}<Field.Error id="doc-title-error">{fieldErrors.title}</Field.Error
+					>{/if}
 			</FieldShell>
 			<FieldShell
 				key="document_date"
@@ -1015,7 +1017,7 @@
 </form>
 
 <Dialog.Root open={preview !== null} onOpenChange={(open) => !open && (preview = null)}>
-	<Dialog.Content class="sm:max-w-xl">
+	<Dialog.Content size="lg">
 		<Dialog.Header>
 			<Dialog.Title>{m.dryrun_title()}</Dialog.Title>
 			<Dialog.Description>{m.dryrun_hint()}</Dialog.Description>

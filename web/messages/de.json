@@ -2432,5 +2432,6 @@
 	"rule_apply_generic": "Regel anwenden",
 	"rule_generic": "Regel",
 	"webhook_generic": "Webhook",
-	"webhook_edit_generic": "Webhook bearbeiten"
+	"webhook_edit_generic": "Webhook bearbeiten",
+	"doc_delete_named": "„{title}“ löschen"
 }

@@ -16,6 +16,7 @@
 	import PageHeader from '#lib/components/page/PageHeader.svelte';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import Loading from '#lib/components/Loading.svelte';
 
 	type Expected = components['schemas']['ExpectedOut'];
 	type State = Expected['state'];
@@ -94,7 +95,7 @@
 	{#if problem}
 		<LoadProblem {problem} onretry={() => attempt++} />
 	{:else if !found}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else if found.length === 0}
 		<EmptyNote>{m.expected_none()}</EmptyNote>
 	{:else}

@@ -18,6 +18,8 @@
 	import { formatDate } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import IconButton from '#lib/components/IconButton.svelte';
+	import Loading from '#lib/components/Loading.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 
 	type Token = components['schemas']['TokenOut'];
 	type Scope = components['schemas']['TokenScope'];
@@ -87,9 +89,9 @@
 	</Card.Header>
 	<Card.Content>
 		{#if problem}
-			<p class="text-destructive">{problem}</p>
+			<LoadProblem {problem} onretry={load} />
 		{:else if tokens === null}
-			<p class="text-muted-foreground">{m.loading()}</p>
+			<Loading />
 		{:else if tokens.length === 0}
 			<p class="text-muted-foreground">{m.token_none()}</p>
 		{:else}

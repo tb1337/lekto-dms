@@ -101,7 +101,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-w-lg">
+	<Dialog.Content size="md">
 		<Dialog.Header>
 			<Dialog.Title>{m.members_title({ name: label })}</Dialog.Title>
 			<Dialog.Description>

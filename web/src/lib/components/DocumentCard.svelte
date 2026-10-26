@@ -95,7 +95,9 @@
 				{/if}
 			</div>
 			<div class="flex min-w-0 flex-1 flex-col gap-1 p-3">
-				<span class="line-clamp-2 leading-snug font-semibold group-hover:underline">
+				<span
+					class="line-clamp-2 leading-snug font-semibold break-words hyphens-auto group-hover:underline"
+				>
 					{document.title}
 				</span>
 				<span

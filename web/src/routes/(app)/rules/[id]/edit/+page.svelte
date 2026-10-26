@@ -17,6 +17,7 @@
 	import { session } from '#lib/session.svelte.ts';
 	import PageHeader from '#lib/components/page/PageHeader.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
+	import Loading from '#lib/components/Loading.svelte';
 
 	type Rule = components['schemas']['RuleOut'];
 
@@ -89,7 +90,7 @@
 	{#if problem}
 		<LoadProblem {problem} onretry={() => loader.retry()} />
 	{:else if !rule || !model || !lookup}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<RuleBuilder
 			{model}

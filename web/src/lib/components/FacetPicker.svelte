@@ -49,7 +49,7 @@
 </script>
 
 <Dialog.Root bind:open onOpenChange={(next) => next || (query = '')}>
-	<Dialog.Content class="flex max-h-[85dvh] flex-col gap-3 sm:max-w-md">
+	<Dialog.Content size="md" class="flex max-h-[85dvh] flex-col gap-3">
 		<Dialog.Header>
 			<Dialog.Title>{title}</Dialog.Title>
 		</Dialog.Header>

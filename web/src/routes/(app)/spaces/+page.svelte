@@ -32,6 +32,7 @@
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import IconButton from '#lib/components/IconButton.svelte';
+	import Loading from '#lib/components/Loading.svelte';
 
 	let spaces = $state<Space[] | null>(null);
 	let users = $state<UserName[]>([]);
@@ -138,7 +139,7 @@
 	{#if problem}
 		<LoadProblem {problem} onretry={load} />
 	{:else if !spaces}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<section class="flex flex-col gap-3" aria-labelledby="own-spaces">
 			<SectionTitle id="own-spaces">{m.spaces_own()}</SectionTitle>

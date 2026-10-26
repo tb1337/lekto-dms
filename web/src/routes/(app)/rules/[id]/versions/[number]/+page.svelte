@@ -13,6 +13,7 @@
 	import PageHeader from '#lib/components/page/PageHeader.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import * as Card from '#lib/components/ui/card/index.ts';
+	import Loading from '#lib/components/Loading.svelte';
 
 	// One saved version of a rule, to read (decision E4: no restoring).
 	const id = $derived(page.params.id ?? '');
@@ -66,7 +67,7 @@
 	{#if problem}
 		<LoadProblem {problem} onretry={() => loader.retry()} />
 	{:else if !version}
-		<p class="text-muted-foreground" role="status">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<p class="text-sm text-muted-foreground">{m.rule_version_hint()}</p>
 		<Card.Root as="section">

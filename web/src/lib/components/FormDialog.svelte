@@ -5,10 +5,13 @@
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { phone } from '#lib/phone.svelte.ts';
+	import { cn } from '#lib/utils.ts';
 
 	// A short form in a dialog (a space, a webhook, a code, a token): its title, the fields
 	// (`children`, told the error for `aria-invalid`), what the API answered below them, and
-	// "Cancel" beside the submit button. `action` runs on submit; the dialog is busy meanwhile,
+	// "Cancel" before the submit button. On a phone it fills the screen with the bar of every
+	// editor ("Cancel" · title · submit; web/DESIGN.md, "Dialogs"). `action` runs on submit; the dialog is busy meanwhile,
 	// closes when it resolves and stays open with the error when it throws.
 	let {
 		open = $bindable(false),
@@ -36,25 +39,74 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class={className}>
-		<AsyncForm class="flex flex-col gap-4" {action} ondone={() => (open = false)}>
+	<Dialog.Content
+		size="md"
+		showCloseButton={!phone.current}
+		class={cn(
+			phone.current &&
+				'top-0 left-0 flex h-dvh max-h-dvh w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-0 bg-background p-0',
+			className
+		)}
+	>
+		<AsyncForm
+			class={cn('flex flex-col gap-4', phone.current && 'min-h-0 flex-1 gap-0')}
+			{action}
+			ondone={() => (open = false)}
+		>
 			{#snippet children({ busy, error })}
-				<Dialog.Header>
-					<Dialog.Title>{title}</Dialog.Title>
-					{#if description}<Dialog.Description>{description}</Dialog.Description>{/if}
-				</Dialog.Header>
-				{@render fields(error)}
-				{#if error}<Field.Error>{error}</Field.Error>{/if}
-				<Dialog.Footer>
-					<Button type="button" variant="ghost" onclick={() => (open = false)}>{m.cancel()}</Button>
-					<Button
-						type="submit"
-						variant={destructive ? 'destructive' : 'default'}
-						disabled={busy || disabled}
+				{#if phone.current}
+					<!-- On a phone the editor pattern of web/DESIGN.md: full screen, a bar on top. -->
+					<div
+						class="grid h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 border-b bg-card px-1"
 					>
-						{submitLabel}
-					</Button>
-				</Dialog.Footer>
+						<Button
+							type="button"
+							variant="ghost"
+							class="h-11 justify-self-start px-3 text-base font-normal text-brand"
+							onclick={() => (open = false)}
+						>
+							{m.cancel()}
+						</Button>
+						<Dialog.Title class="max-w-[50vw] truncate text-base font-semibold"
+							>{title}</Dialog.Title
+						>
+						<Button
+							type="submit"
+							variant="ghost"
+							class={cn(
+								'h-11 justify-self-end px-3 text-base font-semibold',
+								destructive ? 'text-destructive' : 'text-brand'
+							)}
+							disabled={busy || disabled}
+						>
+							{submitLabel}
+						</Button>
+					</div>
+					<div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain p-4">
+						{#if description}<p class="text-sm text-muted-foreground">{description}</p>{/if}
+						{@render fields(error)}
+						{#if error}<Field.Error>{error}</Field.Error>{/if}
+					</div>
+				{:else}
+					<Dialog.Header>
+						<Dialog.Title>{title}</Dialog.Title>
+						{#if description}<Dialog.Description>{description}</Dialog.Description>{/if}
+					</Dialog.Header>
+					{@render fields(error)}
+					{#if error}<Field.Error>{error}</Field.Error>{/if}
+					<Dialog.Footer>
+						<Button type="button" variant="ghost" onclick={() => (open = false)}
+							>{m.cancel()}</Button
+						>
+						<Button
+							type="submit"
+							variant={destructive ? 'destructive' : 'default'}
+							disabled={busy || disabled}
+						>
+							{submitLabel}
+						</Button>
+					</Dialog.Footer>
+				{/if}
 			{/snippet}
 		</AsyncForm>
 	</Dialog.Content>

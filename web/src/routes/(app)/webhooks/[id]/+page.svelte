@@ -29,6 +29,7 @@
 	import PageHeader from '#lib/components/page/PageHeader.svelte';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import IconButton from '#lib/components/IconButton.svelte';
+	import Loading from '#lib/components/Loading.svelte';
 
 	type Webhook = components['schemas']['WebhookOut'];
 	type Outcome = components['schemas']['DeliveryOutcome'];
@@ -179,7 +180,7 @@
 	{#if problem}
 		<LoadProblem {problem} onretry={() => void load(id)} />
 	{:else if !webhook}
-		<p class="text-muted-foreground" role="status">{m.loading()}</p>
+		<Loading />
 	{/if}
 
 	<section class="flex flex-col gap-3" aria-labelledby="webhook-deliveries">

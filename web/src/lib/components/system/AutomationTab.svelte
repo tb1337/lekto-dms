@@ -26,6 +26,7 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Separator } from '#lib/components/ui/separator/index.ts';
+	import Loading from '#lib/components/Loading.svelte';
 
 	// The tab "Automation" of the page "System" (Tobi, 24.10.2026): how the documents went
 	// through their first run, what became of them, how long it took, and how people judged what
@@ -301,7 +302,7 @@
 	{#if problem && !report}
 		<LoadProblem {problem} onretry={load} />
 	{:else if !report}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<div class="flex flex-wrap gap-6">
 			<Card.Root as="section" size="lg" class="flex min-w-0 flex-[2_1_520px] flex-col gap-4">

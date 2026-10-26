@@ -17,7 +17,7 @@
 </script>
 
 <Card.Root as="section" size="flush" class="px-3" aria-labelledby="{id}-title">
-	<h3 class="m-0">
+	<h2 class="m-0">
 		<button
 			type="button"
 			id="{id}-title"
@@ -35,7 +35,7 @@
 				aria-hidden="true"
 			/>
 		</button>
-	</h3>
+	</h2>
 	{#if open}
 		<div id="{id}-body" class="flex flex-col gap-3 pb-3">
 			{@render children()}

@@ -29,6 +29,7 @@
 	} from '#lib/stream.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import { cardVariants } from '#lib/components/ui/card/index.ts';
+	import Loading from '#lib/components/Loading.svelte';
 
 	// The documents of the filters in lanes (#145): a series with its relation target at the
 	// start and its expected document at the end, branches off it, chains, and the rest. On the
@@ -173,7 +174,7 @@
 {#if problem}
 	<LoadProblem {problem} onretry={() => attempt++} />
 {:else if !stream}
-	<p class="text-muted-foreground">{m.loading()}</p>
+	<Loading />
 {:else if lanes.length === 0}
 	<EmptyNote>{m.stream_none()}</EmptyNote>
 {:else}

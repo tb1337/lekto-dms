@@ -3,7 +3,7 @@
 	import { cn } from '#lib/utils.ts';
 
 	// The icon of `static/favicon.svg` before the wordmark (Tobi, 26.10.2026), in the brand colour
-	// (lighter in the dark theme) and sized by the writing, wherever the logo stands: the header,
+	// (lighter in the dark theme, the strokes then dark for contrast) and sized by the writing, wherever the logo stands: the header,
 	// the navigation sheet, the sign-in and the error page. Screen readers hear the name.
 	let { class: className = '' }: { class?: string } = $props();
 </script>
@@ -21,13 +21,25 @@
 		<path
 			d="M7 9.5H12M7 15.5H10M7 21.5H12"
 			fill="none"
-			stroke="#fff"
+			class="stroke-primary-foreground"
 			stroke-opacity="0.6"
 			stroke-width="2.4"
 			stroke-linecap="round"
 		/>
-		<circle cx="18.5" cy="15" r="5.5" fill="none" stroke="#fff" stroke-width="2.8" />
-		<path d="M22.6 19.1L26 22.5" stroke="#fff" stroke-width="3" stroke-linecap="round" />
+		<circle
+			cx="18.5"
+			cy="15"
+			r="5.5"
+			fill="none"
+			class="stroke-primary-foreground"
+			stroke-width="2.8"
+		/>
+		<path
+			d="M22.6 19.1L26 22.5"
+			class="stroke-primary-foreground"
+			stroke-width="3"
+			stroke-linecap="round"
+		/>
 	</svg>
 	lekto
 </span>

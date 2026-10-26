@@ -38,7 +38,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-w-xl">
+	<Dialog.Content size="lg">
 		<Dialog.Header>
 			<Dialog.Title>{m.upload_title()}</Dialog.Title>
 			<Dialog.Description>{m.upload_hint()}</Dialog.Description>

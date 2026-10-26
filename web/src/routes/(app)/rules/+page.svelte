@@ -26,6 +26,7 @@
 	import { cn } from '#lib/utils.ts';
 	import PageHeader from '#lib/components/page/PageHeader.svelte';
 	import * as Card from '#lib/components/ui/card/index.ts';
+	import Loading from '#lib/components/Loading.svelte';
 
 	type Rule = components['schemas']['RuleOut'];
 
@@ -99,7 +100,7 @@
 	{#if problem}
 		<LoadProblem {problem} onretry={load} />
 	{:else if !rules}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else if rules.length === 0}
 		<EmptyNote>{m.rules_none()}</EmptyNote>
 	{:else}

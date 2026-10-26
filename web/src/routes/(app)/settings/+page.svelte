@@ -21,6 +21,8 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import Loading from '#lib/components/Loading.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 
 	type Me = components['schemas']['Me'];
 	type Oidc = components['schemas']['OidcInfo'];
@@ -87,12 +89,9 @@
 	{/if}
 
 	{#if problem}
-		<div class="flex flex-col items-start gap-3">
-			<p class="text-destructive">{problem}</p>
-			<Button variant="outline" onclick={load}>{m.retry()}</Button>
-		</div>
+		<LoadProblem {problem} onretry={load} />
 	{:else if me === null}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<Card.Root>
 			<Card.Header>

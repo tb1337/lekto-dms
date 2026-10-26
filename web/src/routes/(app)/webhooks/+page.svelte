@@ -17,6 +17,7 @@
 	import { cn } from '#lib/utils.ts';
 	import PageHeader from '#lib/components/page/PageHeader.svelte';
 	import * as Card from '#lib/components/ui/card/index.ts';
+	import Loading from '#lib/components/Loading.svelte';
 
 	type Webhook = components['schemas']['WebhookOut'];
 
@@ -54,7 +55,7 @@
 	{#if problem}
 		<LoadProblem {problem} onretry={load} />
 	{:else if !hooks}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else if hooks.length === 0}
 		<EmptyNote>{m.webhook_none()}</EmptyNote>
 	{:else}

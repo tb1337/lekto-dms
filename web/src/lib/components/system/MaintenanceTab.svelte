@@ -15,6 +15,7 @@
 	import { session } from '#lib/session.svelte.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import Loading from '#lib/components/Loading.svelte';
 
 	// The tab "Maintenance" of the page "System" (Tobi, 26.10.2026): what Lekto does by itself
 	// for new documents, caught up on over the existing ones, one row each: name, the why and
@@ -136,7 +137,7 @@
 	{#if problem && !summary}
 		<LoadProblem {problem} onretry={load} />
 	{:else if !summary}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<Card.Root as="section" size="flush" class="px-5 py-1 sm:px-6">
 			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3.5">

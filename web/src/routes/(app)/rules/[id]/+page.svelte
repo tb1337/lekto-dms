@@ -33,6 +33,7 @@
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import IconButton from '#lib/components/IconButton.svelte';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import Loading from '#lib/components/Loading.svelte';
 
 	type Rule = components['schemas']['RuleOut'];
 	type Version = components['schemas']['RuleVersionOut'];
@@ -177,7 +178,7 @@
 	{#if problem}
 		<LoadProblem {problem} onretry={() => loader.retry()} />
 	{:else if !rule}
-		<p class="text-muted-foreground" role="status">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<Card.Root as="section">
 			<RuleView definition={rule} {lookup} />

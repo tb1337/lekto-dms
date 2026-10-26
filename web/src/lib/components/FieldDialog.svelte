@@ -139,7 +139,7 @@
 	deleteDescription={m.master_delete_confirm()}
 	{tabs}
 	bind:tab
-	class="h-[min(46.25rem,calc(100dvh-2rem))] sm:max-w-[37.5rem]"
+	class="h-[min(46.25rem,calc(100dvh-2rem))]"
 >
 	{#if tab === 'general'}
 		<Field.Field>

@@ -204,7 +204,7 @@
 	ondelete={initial ? remove : undefined}
 	deleteTitle={m.lens_delete({ name: initial?.name ?? '' })}
 	deleteDescription={m.lens_delete_confirm()}
-	class="sm:max-w-3xl"
+	size="xl"
 >
 	<div class="grid gap-6 sm:grid-cols-[minmax(0,1fr)_15rem]">
 		<div class="flex min-w-0 flex-col gap-5">

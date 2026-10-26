@@ -41,7 +41,7 @@
 {#if variant === 'list'}
 	<Card.Root as="section" size="flush" class="px-2 pb-2" aria-labelledby="{id}-title">
 		<div class="flex h-10 items-center gap-2 px-1">
-			<Eyebrow as="h3" id="{id}-title" class="m-0 flex-1 tracking-wider">
+			<Eyebrow as="h2" id="{id}-title" class="m-0 flex-1 tracking-wider">
 				{m.lens_title()}
 			</Eyebrow>
 			{#if onadd}

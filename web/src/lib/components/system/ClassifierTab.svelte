@@ -24,6 +24,7 @@
 	import * as Table from '#lib/components/ui/table/index.ts';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Separator } from '#lib/components/ui/separator/index.ts';
+	import Loading from '#lib/components/Loading.svelte';
 
 	// The tab "Classifier" of the page "System" (Tobi, 24.10.2026): what the latest model
 	// learned and how well, how far the next training is, how the models got better, and how
@@ -180,7 +181,7 @@
 	{:else if problem && !status}
 		<LoadProblem {problem} onretry={load} />
 	{:else if !status}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<div class="flex flex-wrap gap-6">
 			<Card.Root as="section" size="lg" class="flex min-w-0 flex-[2_1_560px] flex-col gap-[18px]">

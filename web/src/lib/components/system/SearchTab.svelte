@@ -23,6 +23,7 @@
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Separator } from '#lib/components/ui/separator/index.ts';
+	import Loading from '#lib/components/Loading.svelte';
 
 	// The tab "Search index" of the page "System" (Tobi, 24.10.2026): how much of the documents
 	// the index holds, with vectors, what is still to do and how long an indexing takes; admins
@@ -133,7 +134,7 @@
 	{:else if problem && !status}
 		<LoadProblem {problem} onretry={load} />
 	{:else if !status}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<div class="flex flex-wrap gap-6">
 			<Card.Root as="section" size="lg" class="flex min-w-0 flex-[2_1_520px] flex-col gap-5">

@@ -29,6 +29,7 @@
 	import { uploads } from '#lib/upload.svelte.ts';
 	import { onChange } from '#lib/watch.svelte.ts';
 	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import Loading from '#lib/components/Loading.svelte';
 
 	// The inbox, the way in: documents come here by the upload button (with the dialog) or by
 	// dropping files and folders on the page (at once into the personal space; not on a phone),
@@ -227,7 +228,7 @@
 			{/each}
 		</ul>
 		{#if list.loading && !list.loaded}
-			<p class="text-muted-foreground">{m.loading()}</p>
+			<Loading />
 		{/if}
 		{#if list.hasMore}
 			<div class="flex justify-center">

@@ -72,6 +72,7 @@
 	import { onChange } from '#lib/watch.svelte.ts';
 	import BackLink from '#lib/components/BackLink.svelte';
 	import { returnTo } from '#lib/return-to.svelte.ts';
+	import Loading from '#lib/components/Loading.svelte';
 
 	type Document = components['schemas']['DocumentDetails'];
 
@@ -432,7 +433,7 @@
 			onretry={notFound ? undefined : load}
 		/>
 	{:else if !document}
-		<p class="text-muted-foreground" role="status">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<DocumentHeader
 			bind:this={header}
@@ -616,7 +617,7 @@
 									/>
 								{/key}
 							{:else}
-								<p class="text-muted-foreground">{m.loading()}</p>
+								<Loading />
 							{/if}
 						</div>
 					{/if}

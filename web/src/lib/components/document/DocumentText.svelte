@@ -15,6 +15,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 
 	// What was read from the document: the text as it is set, in a fixed-pitch font so that its
 	// columns line up, page by page; `marks` (what a fact points to) and `quotes` (those of the
@@ -198,7 +199,7 @@
 	<!-- As set: no wrapping, the card scrolls sideways. -->
 	<div bind:this={textBox} class="relative min-h-0 flex-1 overflow-auto" onscroll={follow}>
 		{#if problem}
-			<p class="p-6 text-destructive" role="alert">{problem}</p>
+			<div class="p-6"><LoadProblem {problem} onretry={loadText} /></div>
 		{:else if text === null}
 			<p class="p-6 text-sm text-muted-foreground">{loading ? m.loading() : m.text_none()}</p>
 		{:else}

@@ -97,7 +97,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="sm:max-w-3xl">
+	<Dialog.Content size="xl">
 		<Dialog.Header>
 			<Dialog.Title>{title}</Dialog.Title>
 			<Dialog.Description>{meta}</Dialog.Description>

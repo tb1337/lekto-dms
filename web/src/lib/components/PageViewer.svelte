@@ -25,6 +25,8 @@
 	} from '#lib/viewer/zoom.ts';
 	import { Separator } from '#lib/components/ui/separator/index.ts';
 	import IconButton from '#lib/components/IconButton.svelte';
+	import Loading from '#lib/components/Loading.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 
 	// The pages of a document side by side, wrapping into rows: the zoom decides how many stand
 	// in a row (`viewer/zoom.ts`). Ctrl or ⌘ with the wheel, a pinch, the buttons and the keys
@@ -361,9 +363,9 @@
 		class="justify-[safe_center] relative flex min-h-[24rem] flex-1 touch-pan-x touch-pan-y [scrollbar-gutter:stable] flex-wrap content-start gap-3 overflow-auto p-3"
 	>
 		{#if loading}
-			<p class="w-full py-16 text-center text-muted-foreground">{m.loading()}</p>
+			<Loading class="w-full py-16 text-center" />
 		{:else if problem}
-			<p class="w-full py-16 text-center text-destructive" role="alert">{problem}</p>
+			<div class="w-full p-6"><LoadProblem {problem} /></div>
 		{:else}
 			{#each sizes as size, index (index)}
 				<div

@@ -34,6 +34,7 @@
 	import PageHeader from '#lib/components/page/PageHeader.svelte';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import Loading from '#lib/components/Loading.svelte';
 
 	type Rule = components['schemas']['RuleOut'];
 	const PAGE = 50;
@@ -208,7 +209,7 @@
 	{#if problem}
 		<LoadProblem {problem} onretry={() => loader.retry()} />
 	{:else if !rule}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else if application}
 		{@const finished = application.status === 'done' || application.status === 'failed'}
 		<Card.Root as="section" class="flex flex-col gap-4" aria-live="polite">
@@ -342,7 +343,7 @@
 		{#if previewError}
 			<LoadProblem problem={previewError} onretry={() => void more()} />
 		{:else if loading && items.length === 0}
-			<p class="text-muted-foreground">{m.loading()}</p>
+			<Loading />
 		{/if}
 
 		{#if !complete && !previewError}

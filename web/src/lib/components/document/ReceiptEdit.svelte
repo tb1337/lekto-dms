@@ -58,7 +58,12 @@
 <Popover.Root bind:open onOpenChange={opened}>
 	<Popover.Trigger>
 		{#snippet child({ props })}
-			<IconButton {...props} size="sm" class="text-muted-foreground" label={m.files_received_edit()}>
+			<IconButton
+				{...props}
+				size="sm"
+				class="text-muted-foreground"
+				label={m.files_received_edit()}
+			>
 				<Pencil aria-hidden="true" />
 			</IconButton>
 		{/snippet}

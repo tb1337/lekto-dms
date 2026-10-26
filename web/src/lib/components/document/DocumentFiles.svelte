@@ -42,6 +42,8 @@
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import type { Tone } from '#lib/tones.ts';
 	import SearchField from '#lib/components/SearchField.svelte';
+	import Loading from '#lib/components/Loading.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 
 	// The document's files as a passport (Tobi, 20.10.2026; not a table as in Paperless-ngx): the
 	// life of the file from the sender to its last change in Lekto, one passport each for the
@@ -347,9 +349,9 @@
 	<!-- Positioned: what is only for screen readers stays inside the scrolling area. -->
 	<div class="@container relative min-h-0 flex-1 overflow-y-auto bg-surface p-3.5">
 		{#if problem}
-			<p class="p-2 text-destructive" role="alert">{problem}</p>
+			<div class="p-2"><LoadProblem {problem} onretry={load} /></div>
 		{:else if !files}
-			<p class="p-2 text-sm text-muted-foreground">{m.loading()}</p>
+			<Loading class="p-2 text-sm" />
 		{:else}
 			{@const largest = Math.max(files.original.size, files.archive?.size ?? 0, 1)}
 			<div class="flex flex-col gap-3.5">

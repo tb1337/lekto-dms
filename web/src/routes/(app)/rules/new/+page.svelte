@@ -13,6 +13,7 @@
 	import { session } from '#lib/session.svelte.ts';
 	import PageHeader from '#lib/components/page/PageHeader.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
+	import Loading from '#lib/components/Loading.svelte';
 
 	const model = $state(newModel());
 	// Empty: the caller's personal space, once the spaces are known.
@@ -56,7 +57,7 @@
 	{#if problem}
 		<LoadProblem {problem} onretry={loadLookup} />
 	{:else if !lookup}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<RuleBuilder
 			{model}

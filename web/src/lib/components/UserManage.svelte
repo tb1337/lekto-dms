@@ -18,6 +18,7 @@
 	import { session } from '#lib/session.svelte.ts';
 	import { Choice } from '#lib/components/ui/choice/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 
 	type Account = components['schemas']['AccountOut'];
 	type Role = components['schemas']['Role'];
@@ -134,12 +135,12 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="sm:max-w-[40rem]">
+	<Dialog.Content size="lg">
 		<Dialog.Header>
 			<Dialog.Title>{account ? userLabel(account) : m.loading()}</Dialog.Title>
 		</Dialog.Header>
 		{#if problem}
-			<p class="text-destructive" role="alert">{problem}</p>
+			<LoadProblem {problem} onretry={() => load()} />
 		{:else if account}
 			<div class="flex max-h-[70vh] flex-col gap-5 overflow-auto">
 				<Field.Field>

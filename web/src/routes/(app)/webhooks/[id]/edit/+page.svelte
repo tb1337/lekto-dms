@@ -10,6 +10,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import PageHeader from '#lib/components/page/PageHeader.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
+	import Loading from '#lib/components/Loading.svelte';
 
 	type Webhook = components['schemas']['WebhookOut'];
 
@@ -51,7 +52,7 @@
 	{#if problem}
 		<LoadProblem {problem} onretry={() => attempt++} />
 	{:else if !webhook}
-		<p class="text-muted-foreground" role="status">{m.loading()}</p>
+		<Loading />
 	{:else}
 		{#key webhook.id}
 			<WebhookForm

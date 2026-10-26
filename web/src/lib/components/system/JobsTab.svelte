@@ -38,6 +38,7 @@
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import type { Tone } from '#lib/tones.ts';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
+	import Loading from '#lib/components/Loading.svelte';
 
 	// The tab "Jobs" of the page "System" (Tobi, 24.10.2026; a table with pages since
 	// 26.10.2026): whether a worker takes jobs, how many stand where, and the jobs as a table,
@@ -214,7 +215,7 @@
 	{#if problem && !summary}
 		<LoadProblem {problem} onretry={loadSummary} />
 	{:else if !summary || !all}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 			<p class="flex items-center gap-2.5">
@@ -387,7 +388,7 @@
 					/>
 				</div>
 			{:else}
-				<p class="mt-3 text-muted-foreground">{m.loading()}</p>
+				<Loading class="mt-3" />
 			{/if}
 		</Card.Root>
 

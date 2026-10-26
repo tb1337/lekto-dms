@@ -1842,6 +1842,14 @@ Stand: Vorschlag Creamy, 25.10.2026, zur Freigabe durch Tobi. Release offen. Sam
 - Review durch einen separaten Agenten, behoben: Eine Suche mit Fakt-Filter fand nichts (die Prüfung der Treffer gegen die Datenbank kannte die Fakten nicht); Fakten einer Person über die Rolle `person` und als Suchwort auch für Nicht-Admins; Fakten aus `read-codes` erreichten den Index nie; ein Wert mit Doppelpunkt oder ein unbekannter Teil in einem Link brach die Seite; nach dem Übernehmen in eine Lens blieb der Hinweis „geändert“; eine Lens mit Fakten einer Person für Nicht-Admins; englische Fehlermeldung bei einem falschen Filter; das Handy-Abzeichen zählte keine Fakten.
 - Offen für Tobi: `document.updated` mit `facts` erreicht auch Webhooks; der Filter auf `email_domain` vergleicht genau (ohne Subdomains).
 
+**PR 8 – Umsetzung und Review (26.10.2026, `feature/rule-facts`, PR #155, gestapelt auf #154):**
+
+- Bedingung „Fakt“ (Art, Rolle oder jede; vorhanden, fehlt, ist, eine von, Muster gegen jeden Wert für sich); verworfene zählen nicht, nie unbekannt. Templates sehen `facts.<art>`, `facts.refers.<art>`, `facts.girocode.*` und `fact_list`, Webhooks auch. Web: Bedingung im Baukasten, Fakten im Template-Editor (Vervollständigung nach `facts.`, Liste der Fakten des Beispieldokuments), Doku `docs/templates.md`.
+- Geprüft: 4545 Unit- und Integrationstests, 1208 Vitest; `lekto evaluate --fake` unverändert.
+- Review durch einen separaten Agenten, behoben: Nicht-Admins konnten Regeln auf Fakten einer Person schreiben und rückwirkend anwenden (jetzt nur Admins, wie beim Filter); Templates gaben Fakten mit Rolle `person` aus; `facts.girocode` fehlte in Vorschau, Webhook-Bodys und fragenden Schritten; Werte mit Zeilenumbruch oder weichem Trennzeichen kamen roh in Felder (jetzt eine Zeile); ein Muster lief über mehrere Werte hinweg (jetzt jeder Wert für sich, ohne `(?m)`); die Entscheidung einer Person über einen Fakt ließ keine Regel laufen (jetzt die Änderungsregeln mit Fakten vorher und nachher, ein korrigierter Wert bleibt so geschrieben, wie die Person ihn schrieb); unbekannte Pfade unter `facts.` wurden gespeichert; `prepare` las `codes.json` bei jeder Änderung (jetzt nur, wenn eine Regel sie brauchen kann); Vervollständigung endete nach dem Punkt, die Liste der Werte zeigte keine Fakten, `facts.letter_date` und `facts.your_reference` wurden angeboten, obwohl sie fast immer Verweise sind.
+- Nicht behoben: `fact_list` ohne Filter schreibt Python-Darstellungen; ein Muster wie `(?V1)x` gibt beim Speichern 500 (`regex`-Adapter fängt nur `regex.error`, älter als dieser PR).
+- Offen für Tobi: Ob die Entscheidung über einen Fakt Änderungsregeln (und damit Webhooks) auslösen soll; ob Regeln auf Fakten einer Person wirklich nur für Admins sind.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

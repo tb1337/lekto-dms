@@ -9898,6 +9898,28 @@
               ],
               "title": "Document Date To"
             }
+          },
+          {
+            "name": "fact",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 5
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none.",
+              "title": "Fact"
+            },
+            "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none."
           }
         ],
         "responses": {
@@ -11133,6 +11155,28 @@
               ],
               "title": "Document Date To"
             }
+          },
+          {
+            "name": "fact",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 5
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none.",
+              "title": "Fact"
+            },
+            "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none."
           }
         ],
         "responses": {
@@ -11459,6 +11503,28 @@
               ],
               "title": "Document Date To"
             }
+          },
+          {
+            "name": "fact",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 5
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none.",
+              "title": "Fact"
+            },
+            "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none."
           }
         ],
         "responses": {
@@ -22286,6 +22352,46 @@
           }
         ]
       },
+      "FactFilterBody": {
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IdentifierKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FactRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FactFilterBody",
+        "description": "A fact the documents have: of `kind`, with `value` (as written; it needs its kind), in\n`role`; what is null is any."
+      },
       "FactOrigin": {
         "type": "string",
         "enum": [
@@ -24703,6 +24809,15 @@
               }
             ],
             "description": "A period that moves with the day the lens is opened; not together with `document_date_from` or `_to`."
+          },
+          "facts": {
+            "items": {
+              "$ref": "#/components/schemas/FactFilterBody"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Facts",
+            "description": "Facts the documents have, each (`fact` of `GET /documents`)."
           }
         },
         "additionalProperties": false,
@@ -27513,6 +27628,8 @@
           "fact_kind_unknown",
           "fact_not_in_text",
           "fact_not_asked",
+          "fact_criterion_empty",
+          "fact_filter_of_person",
           "fact_of_a_person",
           "fact_not_found",
           "fact_exists",
@@ -32719,6 +32836,8 @@
       "kind": "text",
       "role": "text"
     },
+    "fact_criterion_empty": {},
+    "fact_filter_of_person": {},
     "fact_of_a_person": {},
     "fact_not_found": {
       "kind": "identifier_kind",

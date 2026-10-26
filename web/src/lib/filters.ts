@@ -22,6 +22,8 @@ export interface Filters {
 	/** The document date lies between them, both days included (ISO days; either open). */
 	dateFrom: string | null;
 	dateTo: string | null;
+	/** Facts the document has, each as `kind:value:role` (any part empty for any); all. */
+	facts: string[];
 }
 
 export const NO_FILTERS: Filters = {
@@ -34,7 +36,8 @@ export const NO_FILTERS: Filters = {
 	spaces: [],
 	field: null,
 	dateFrom: null,
-	dateTo: null
+	dateTo: null,
+	facts: []
 };
 
 const LISTS = {
@@ -61,13 +64,14 @@ export function parseFilters(params: URLSearchParams): Filters {
 		spaces: all(LISTS.spaces),
 		field: params.get('field') || null,
 		dateFrom: day(params.get('date_from')),
-		dateTo: day(params.get('date_to'))
+		dateTo: day(params.get('date_to')),
+		facts: all('fact')
 	};
 }
 
 /** Write the filters into `params` (other parameters stay). */
 export function writeFilters(params: URLSearchParams, filters: Filters): URLSearchParams {
-	for (const key of [...Object.values(LISTS), 'field', 'date_from', 'date_to']) {
+	for (const key of [...Object.values(LISTS), 'field', 'date_from', 'date_to', 'fact']) {
 		params.delete(key);
 	}
 	for (const [list, key] of Object.entries(LISTS) as [keyof typeof LISTS, string][]) {
@@ -76,6 +80,7 @@ export function writeFilters(params: URLSearchParams, filters: Filters): URLSear
 	if (filters.field) params.set('field', filters.field);
 	if (filters.dateFrom) params.set('date_from', filters.dateFrom);
 	if (filters.dateTo) params.set('date_to', filters.dateTo);
+	for (const fact of filters.facts) params.append('fact', fact);
 	return params;
 }
 
@@ -93,6 +98,7 @@ export function apiQuery(filters: Filters, allUsers = false) {
 		field_id: filters.field ?? undefined,
 		document_date_from: filters.dateFrom ?? undefined,
 		document_date_to: filters.dateTo ?? undefined,
+		fact: list(filters.facts),
 		all_users: allUsers || undefined
 	};
 }
@@ -103,6 +109,7 @@ export function isFiltered(filters: Filters): boolean {
 		filters.field ||
 		filters.dateFrom ||
 		filters.dateTo ||
+		filters.facts.length > 0 ||
 		Object.keys(LISTS).some((list) => filters[list as keyof typeof LISTS].length > 0)
 	);
 }

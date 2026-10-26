@@ -5,7 +5,8 @@ and admins decide; the kinds that are a person's alone (tax ID, social security 
 `person_only`) only admins.
 A decision outlasts the runs of the facts signal (`DocumentFactRepository.replace_found`).
 
-The person's first decision about the facts of a document is a verdict on them
+A decision is a change of the document (`document.updated` with the field `facts`): the search
+index takes it in. The person's first decision about the facts of a document is a verdict on them
 (`first_runs.FACTS`): a correction or a rejection says the sources were wrong, an addition that
 they missed one. An admin who corrects a contact's kind of fact may correct it at the document's
 contact too (`at_contact`): the old value is rejected there (training does not learn it again),
@@ -24,6 +25,7 @@ from lekto.core.domain.document_facts import (
     added,
     corrected,
     person_fact,
+    person_only,
     rejected,
 )
 from lekto.core.domain.documents import Document
@@ -33,10 +35,10 @@ from lekto.core.domain.errors import (
     PermissionDeniedError,
     ValidationError,
 )
+from lekto.core.domain.events import DocumentUpdated
 from lekto.core.domain.first_runs import FACTS, Decision, FieldVerdict, Verdict
 from lekto.core.domain.identifiers import (
     CONTACT_KINDS,
-    TYPES,
     Identifier,
     IdentifierKind,
     IdentifierSource,
@@ -160,6 +162,11 @@ async def decide_fact(
                         fact.key for fact in facts.values() if FactOrigin.CODE in fact.origins
                     },
                 )
+        # The document's facts changed: the search index and those who follow it learn of it.
+        if decision.action is not FactAction.CORRECT or verdict is not None:
+            await uow.outbox.add(
+                [DocumentUpdated(document_id=id, occurred_at=now, fields=(FACTS,))]
+            )
         if verdict is not None:
             if document.processing.run == 1 and document.first_lane is None:
                 verdict = Verdict.EARLY  # before the first run stopped: nothing to judge
@@ -175,11 +182,6 @@ async def decide_fact(
                 ]
             )
         await uow.commit()
-
-
-def person_only(kind: IdentifierKind) -> bool:
-    """A kind of a person's and no contact's (the IBAN is both)."""
-    return TYPES[kind].for_persons and not TYPES[kind].for_contacts
 
 
 def _fact(facts: dict[Key, DocumentFact], key: Key) -> DocumentFact:

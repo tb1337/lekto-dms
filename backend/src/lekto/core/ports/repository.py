@@ -26,7 +26,7 @@ from typing import Protocol
 from uuid import UUID
 
 from lekto.core.domain.classifier import ClassifierModel
-from lekto.core.domain.document_facts import DocumentFact
+from lekto.core.domain.document_facts import DocumentFact, FactCriterion
 from lekto.core.domain.documents import Channel, Document, Sha256
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.fields import FieldDefinition, sort_value
@@ -164,7 +164,8 @@ class DocumentFilter:
     `labelled`: whether a person confirmed the metadata or decided the space (the classifier's
     examples; not in the search index).
     `field`: a value for it is set. `document_dates`: the document date lies in the period (a
-    document without one does not match)."""
+    document without one does not match). `facts`: the document has a fact that matches each
+    (`FactCriterion`; none a person rejected)."""
 
     contacts: frozenset[ContactId] | None = None
     document_types: frozenset[DocumentTypeId] | None = None
@@ -178,6 +179,7 @@ class DocumentFilter:
     labelled: bool | None = None
     field: FieldId | None = None
     document_dates: Period | None = None
+    facts: tuple[FactCriterion, ...] = ()
 
     def __post_init__(self) -> None:
         for sets in (self.tags, self.contact_groups, self.document_type_groups):
@@ -207,6 +209,7 @@ class DocumentFilter:
             and (self.confirmed is None or view.confirmed is self.confirmed)
             and (self.labelled is None or view.labelled is self.labelled)
             and (self.field is None or self.field in view.fields)
+            and all(criterion.token in view.facts for criterion in self.facts)
             and (
                 self.document_dates is None
                 or (
@@ -245,6 +248,7 @@ class FilterView:
     fields: frozenset[FieldId]
     document_date: date | None = None
     labelled: bool = False  # not in the search index
+    facts: frozenset[str] = frozenset()  # `document_facts.fact_tokens`
 
     @classmethod
     def of(
@@ -253,6 +257,7 @@ class FilterView:
         *,
         contact_groups: frozenset[TagId] = frozenset(),
         document_type_groups: frozenset[TagId] = frozenset(),
+        facts: frozenset[str] = frozenset(),
     ) -> "FilterView":
         return cls(
             contact=document.contact_id,
@@ -267,6 +272,7 @@ class FilterView:
             fields=frozenset(document.fields),
             document_date=document.document_date,
             labelled=document.confirmed_at is not None or document.space_confirmed_at is not None,
+            facts=facts,
         )
 
 

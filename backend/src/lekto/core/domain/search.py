@@ -22,11 +22,12 @@ from lekto.core.domain.pipeline import Lane
 
 PROCESSING = "processing"
 """The lane value of a document that has none yet."""
-LAYOUT = 6
+LAYOUT = 7
 """The shape of what the index holds of a document. An entry of an older layout is written
 anew by the reconciliation (2: the ids of the fields with a value, and the title's sort key;
 3: `space_id` instead of `drawer_id`; 4: tags with their ancestors, and the groups of the
-contact and the type; 5: the topic with its ancestors; 6: no owner, rights by space only)."""
+contact and the type; 5: the topic with its ancestors; 6: no owner, rights by space only;
+7: the facts, by their tokens and their values)."""
 FIRST_LAYOUT = 1
 """The layout of an entry that names none: written before layouts were counted."""
 
@@ -79,6 +80,10 @@ class IndexDocument:
     topics: tuple[str, ...] = ()
     fields: tuple[str, ...] = ()
     field_ids: tuple[FieldId, ...] = ()  # the fields with a value, for the filter
+    # The facts (none rejected): their tokens for the filter (`document_facts.fact_tokens`),
+    # their values, normalised, for the words ("R20260815" for "R-2026-0815").
+    facts: tuple[str, ...] = ()
+    fact_values: tuple[str, ...] = ()
     document_date: date | None = None
     created_at: datetime
     # A person set or confirmed its metadata (`Document.confirmed_at`): it may vote as a

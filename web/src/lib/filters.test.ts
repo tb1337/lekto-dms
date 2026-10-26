@@ -15,7 +15,7 @@ describe('filters in the URL', () => {
 		const params = new URLSearchParams(
 			'contact=c1&contact=c2&type=t1&tag=a&tag=b&contact_group=g1&type_group=g2&type_group=g3' +
 				'&space=d1&lane=red&lane=bogus&field=f1&topic=p1&topic=p2&date_from=2026-09-01' +
-				'&date_to=2026-09-30&q=x'
+				'&date_to=2026-09-30&q=x&fact=invoice_number:4711:refers&fact=::own'
 		);
 		const filters = parseFilters(params);
 		expect(filters).toEqual({
@@ -28,7 +28,8 @@ describe('filters in the URL', () => {
 			spaces: ['d1'],
 			field: 'f1',
 			dateFrom: '2026-09-01',
-			dateTo: '2026-09-30'
+			dateTo: '2026-09-30',
+			facts: ['invoice_number:4711:refers', '::own']
 		});
 		// The archive has no lanes; an older link's lane narrows nothing.
 		expect(apiQuery(filters)).not.toHaveProperty('lane');
@@ -49,6 +50,9 @@ describe('filters in the URL', () => {
 		expect(apiQuery(filters).document_date_from).toBe('2026-09-01');
 		expect(apiQuery(filters).document_date_to).toBe('2026-09-30');
 		expect(out.get('q')).toBe('x');
+		// Facts: all of them.
+		expect(out.getAll('fact')).toEqual(['invoice_number:4711:refers', '::own']);
+		expect(apiQuery(filters).fact).toEqual(['invoice_number:4711:refers', '::own']);
 		// Whom the list covers is a setting, not part of the link.
 		expect(out.has('all')).toBe(false);
 		expect(apiQuery(filters, true).all_users).toBe(true);
@@ -68,6 +72,7 @@ describe('filters in the URL', () => {
 			field_id: undefined,
 			document_date_from: undefined,
 			document_date_to: undefined,
+			fact: undefined,
 			all_users: undefined
 		});
 		expect(parseFilters(new URLSearchParams('date_from=gestern')).dateFrom).toBeNull();

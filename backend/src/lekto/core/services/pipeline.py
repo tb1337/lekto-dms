@@ -31,7 +31,8 @@ from lekto.core.domain.errors import (
     UnsupportedMediaTypeError,
     ValidationError,
 )
-from lekto.core.domain.first_runs import Decision
+from lekto.core.domain.events import DocumentUpdated
+from lekto.core.domain.first_runs import FACTS, Decision
 from lekto.core.domain.ids import DocumentId, SpaceId, TagId, UserId
 from lekto.core.domain.imports import IMPORTED, ImportedMetadata
 from lekto.core.domain.inbox import Confirmation
@@ -930,7 +931,11 @@ class PipelineService:
         async def apply(uow: UnitOfWork) -> None:
             current = await uow.documents.find(document_id)
             if current is not None:
-                await outcome.apply(uow, current, self._clock.now())
+                now = self._clock.now()
+                await outcome.apply(uow, current, now)
+                # Its facts changed outside processing: the search index takes them in.
+                updated = DocumentUpdated(document_id=document_id, occurred_at=now, fields=(FACTS,))
+                await uow.outbox.add([updated])
 
         await self._jobs.end(job, also=apply)
 

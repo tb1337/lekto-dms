@@ -318,6 +318,8 @@ class ReasonCode(StrEnum):
     FACT_KIND_UNKNOWN = "fact_kind_unknown"
     FACT_NOT_IN_TEXT = "fact_not_in_text"
     FACT_NOT_ASKED = "fact_not_asked"
+    FACT_CRITERION_EMPTY = "fact_criterion_empty"
+    FACT_FILTER_OF_PERSON = "fact_filter_of_person"
     FACT_OF_A_PERSON = "fact_of_a_person"
     FACT_NOT_FOUND = "fact_not_found"
     FACT_EXISTS = "fact_exists"
@@ -772,6 +774,10 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.FACT_KIND_UNKNOWN: "'{kind}' is no kind of fact Lekto knows",
     ReasonCode.FACT_NOT_IN_TEXT: "'{value}' does not appear in the text",
     ReasonCode.FACT_NOT_ASKED: "a fact '{kind}' in the role '{role}' was not asked for",
+    ReasonCode.FACT_CRITERION_EMPTY: (
+        "a filter by facts names a kind, a role, or a kind with its value"
+    ),
+    ReasonCode.FACT_FILTER_OF_PERSON: "only admins find documents by a person's numbers",
     ReasonCode.FACT_OF_A_PERSON: "the value is one of a person's numbers",
     ReasonCode.FACT_NOT_FOUND: "the document has no fact {kind:identifier_kind} '{value}'",
     ReasonCode.FACT_EXISTS: "the document has the fact {kind:identifier_kind} '{value}' already",

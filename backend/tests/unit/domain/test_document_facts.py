@@ -7,11 +7,13 @@ import pytest
 from lekto.core.domain.document_facts import (
     ROLES,
     DocumentFact,
+    FactCriterion,
     FactOrigin,
     FactRole,
     FactState,
     ReadFact,
     checked_read,
+    fact_tokens,
     found_facts,
     merged,
     with_read,
@@ -219,3 +221,29 @@ def test_the_day_of_a_letter_needs_its_letter() -> None:
     assert isinstance(letter, DocumentFact)
     week = check(text, read("letter_date", "2026-W25-4", "refers", "Ihr Schreiben vom 18.06.2026"))
     assert isinstance(week, Reason)
+
+
+def test_a_criterion_finds_a_fact_by_its_parts() -> None:
+    fact = DocumentFact(
+        kind=IdentifierKind.INVOICE_NUMBER,
+        value="R20260815",
+        role=FactRole.OWN,
+        origins=frozenset({FactOrigin.PATTERN}),
+    )
+    tokens = fact_tokens([fact])
+    kind = IdentifierKind.INVOICE_NUMBER
+    for criterion in (
+        FactCriterion.written(kind, "R-2026-0815", FactRole.OWN),
+        FactCriterion.written(kind, "r 2026 0815", None),
+        FactCriterion(kind, role=FactRole.OWN),
+        FactCriterion(kind),
+        FactCriterion(role=FactRole.OWN),
+    ):
+        assert criterion.token in tokens
+    assert FactCriterion(role=FactRole.REFERS).token not in tokens
+    assert fact_tokens([replace(fact, state=FactState.REJECTED)]) == frozenset()
+    for wrong in ({}, {"value": "4711"}):
+        with pytest.raises(ValidationError):
+            FactCriterion(**wrong)  # type: ignore[arg-type]
+    with pytest.raises(ValidationError):
+        FactCriterion.written(IdentifierKind.CREDITOR_ID, "DE00", None)

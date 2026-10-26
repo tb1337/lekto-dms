@@ -4099,6 +4099,17 @@ export interface components {
 			at_contact: boolean;
 		};
 		/**
+		 * FactFilterBody
+		 * @description A fact the documents have: of `kind`, with `value` (as written; it needs its kind), in
+		 *     `role`; what is null is any.
+		 */
+		FactFilterBody: {
+			kind?: components['schemas']['IdentifierKind'] | null;
+			/** Value */
+			value?: string | null;
+			role?: components['schemas']['FactRole'] | null;
+		};
+		/**
 		 * FactOrigin
 		 * @description Where a fact comes from; one fact may come from several sources.
 		 * @enum {string}
@@ -5297,6 +5308,11 @@ export interface components {
 			document_date_to?: string | null;
 			/** @description A period that moves with the day the lens is opened; not together with `document_date_from` or `_to`. */
 			document_period?: components['schemas']['RelativePeriod'] | null;
+			/**
+			 * Facts
+			 * @description Facts the documents have, each (`fact` of `GET /documents`).
+			 */
+			facts?: components['schemas']['FactFilterBody'][];
 		};
 		/**
 		 * LensOrder
@@ -6863,6 +6879,8 @@ export interface components {
 			| 'fact_kind_unknown'
 			| 'fact_not_in_text'
 			| 'fact_not_asked'
+			| 'fact_criterion_empty'
+			| 'fact_filter_of_person'
 			| 'fact_of_a_person'
 			| 'fact_not_found'
 			| 'fact_exists'
@@ -17630,6 +17648,8 @@ export interface operations {
 				topic_id?: string[] | null;
 				document_date_from?: string | null;
 				document_date_to?: string | null;
+				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				fact?: string[] | null;
 			};
 			header?: never;
 			path?: never;
@@ -18331,6 +18351,8 @@ export interface operations {
 				topic_id?: string[] | null;
 				document_date_from?: string | null;
 				document_date_to?: string | null;
+				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				fact?: string[] | null;
 			};
 			header?: never;
 			path?: never;
@@ -18641,6 +18663,8 @@ export interface operations {
 				topic_id?: string[] | null;
 				document_date_from?: string | null;
 				document_date_to?: string | null;
+				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				fact?: string[] | null;
 			};
 			header?: never;
 			path?: never;

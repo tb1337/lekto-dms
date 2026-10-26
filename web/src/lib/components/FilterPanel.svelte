@@ -3,9 +3,11 @@
 	import type { components } from '#lib/api/schema.ts';
 	import FacetChips, { type ChipItem } from '#lib/components/FacetChips.svelte';
 	import FacetList, { type FacetItem } from '#lib/components/FacetList.svelte';
+	import FactFilter from '#lib/components/FactFilter.svelte';
 	import FilterSection from '#lib/components/FilterSection.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import PeriodFacet from '#lib/components/PeriodFacet.svelte';
+	import { factFilterLabel } from '#lib/facts.ts';
 	import type { Filters } from '#lib/filters.ts';
 	import { formatNumber } from '#lib/i18n.ts';
 	import { spaceLabel, type Lookup, type TagScope } from '#lib/masterdata.svelte.ts';
@@ -150,6 +152,7 @@
 	let topicOpen = $state(initial.topics.length > 0);
 	let tagsOpen = $state(true);
 	let furtherOpen = $state(initial.spaces.length > 0 || initial.field !== null);
+	let factsOpen = $state(initial.facts.length > 0);
 </script>
 
 <div class="flex flex-col gap-2">
@@ -274,4 +277,15 @@
 			{/if}
 		</FilterSection>
 	{/if}
+	<FilterSection
+		title={m.facet_facts()}
+		summary={chosenSummary(filters.facts.map(factFilterLabel))}
+		bind:open={factsOpen}
+	>
+		<FactFilter
+			facts={filters.facts}
+			admin={session.isAdmin}
+			onchange={(next) => set({ facts: next })}
+		/>
+	</FilterSection>
 </div>

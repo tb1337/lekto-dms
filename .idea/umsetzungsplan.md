@@ -1835,6 +1835,13 @@ Stand: Vorschlag Creamy, 25.10.2026, zur Freigabe durch Tobi. Release offen. Sam
 - Review durch einen separaten Agenten, behoben: `at_contact` ließ einen gelernten falschen Wert neben dem neuen stehen und machte einen privat gelernten für alle sichtbar; das Training lernte verworfene Fakten; Zurücknehmen baute den Fakt aus der alten Entscheidung (Rolle der Person blieb, ein inzwischen gefundener ging verloren); gefundene Fakten einer Person sahen auch Admins nirgends; ein Urteil vor dem ersten Stopp war nicht „früh“; das Korrekturformular verlor die Eingabe beim Nachladen; der Stift erschien an Kennungen ohne gehaltenen Fakt; eine Verwerfung nannte die Person nicht als Herkunft.
 - Offen für Tobi: Ereignis `document.updated` mit `fields: ["facts"]` bei einer Entscheidung (kommt mit PR 7, damit der Suchindex sie aufnimmt; auch für Webhooks sichtbar); das Training liest die Fakten je Dokument einzeln (bei sehr vielen Dokumenten langsamer).
 
+**PR 7 – Umsetzung und Review (26.10.2026, `feature/search-facts`, PR #154, gestapelt auf #153):**
+
+- Filter `fact` (`art:wert:rolle`, jeder Teil offen, der Wert wie geschrieben, darf Doppelpunkte enthalten) in Liste, Suche und Zählungen, mehrfach (alle müssen gelten); SQL über `document_facts`, Speicher über Tokens je Fakt, Suchindex Layout 7 (`facts` filterbar, `fact_values` durchsuchbar, normalisiert). Fakten einer Person (Arten allein einer Person, Rolle `person`) nur für Admins, auch in einer Lens; ihre Werte sind keine Wörter der Suche. Eine Entscheidung über einen Fakt und `read-codes` senden `document.updated` mit `facts`: der Index nimmt sie sofort auf. Lens hält `facts`. Web: Abschnitt „Fakten“ im Filterbereich, Chips, Lenses.
+- Geprüft: 4535 Unit- und Integrationstests (Vertragstests auf Speicher, SQLite, Postgres, Meilisearch), 1205 Vitest, Browser hell, dunkel, Handybreite.
+- Review durch einen separaten Agenten, behoben: Eine Suche mit Fakt-Filter fand nichts (die Prüfung der Treffer gegen die Datenbank kannte die Fakten nicht); Fakten einer Person über die Rolle `person` und als Suchwort auch für Nicht-Admins; Fakten aus `read-codes` erreichten den Index nie; ein Wert mit Doppelpunkt oder ein unbekannter Teil in einem Link brach die Seite; nach dem Übernehmen in eine Lens blieb der Hinweis „geändert“; eine Lens mit Fakten einer Person für Nicht-Admins; englische Fehlermeldung bei einem falschen Filter; das Handy-Abzeichen zählte keine Fakten.
+- Offen für Tobi: `document.updated` mit `facts` erreicht auch Webhooks; der Filter auf `email_domain` vergleicht genau (ohne Subdomains).
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

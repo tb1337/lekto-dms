@@ -15,6 +15,7 @@ from datetime import date, datetime
 from enum import Enum, StrEnum
 from typing import Self
 
+from lekto.core.domain.document_facts import FactCriterion
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.ids import (
     ContactId,
@@ -31,6 +32,8 @@ from lekto.core.domain.validation import require_name, require_utc
 MAX_NAME_LENGTH = 100
 MAX_CARD_FIELDS = 3
 MAX_QUERY_LENGTH = 500  # as the search takes it
+MAX_FILTER_FACTS = 5
+"""Facts a lens's filter names at most."""
 MAX_FILTER_VALUES = 200  # of each kind
 
 
@@ -81,9 +84,9 @@ class LensSort(StrEnum):
 @dataclass(frozen=True, kw_only=True)
 class LensFilter:
     """The filters of a lens, as the documents list takes them: one of the contacts, types,
-    groups, topics and spaces each, all of the tags, a value for `field_id`, and the document
+    groups, topics and spaces each, all of the tags, a value for `field_id`, the document
     date either between `date_from` and `date_to` (both included, either open) or in
-    `relative_period`."""
+    `relative_period`, and each of the `facts`."""
 
     contact_ids: tuple[ContactId, ...] = ()
     document_type_ids: tuple[DocumentTypeId, ...] = ()
@@ -96,8 +99,13 @@ class LensFilter:
     date_from: date | None = None
     date_to: date | None = None
     relative_period: RelativePeriod | None = None
+    facts: tuple[FactCriterion, ...] = ()
 
     def __post_init__(self) -> None:
+        facts = tuple(dict.fromkeys(self.facts))
+        if len(facts) > MAX_FILTER_FACTS:
+            raise ValidationError(f"facts: at most {MAX_FILTER_FACTS}")
+        object.__setattr__(self, "facts", facts)
         for name in (
             "contact_ids",
             "document_type_ids",

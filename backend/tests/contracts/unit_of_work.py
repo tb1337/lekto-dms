@@ -11,6 +11,7 @@ from lekto.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSourc
 from lekto.core.domain.classifier import ClassifierModel
 from lekto.core.domain.document_facts import (
     DocumentFact,
+    FactCriterion,
     FactOrigin,
     FactRole,
     FactState,
@@ -1549,6 +1550,39 @@ class UnitOfWorkContract:
         assert sorted(await paged(NEWEST_FIRST, since_christmas)) == ["arzt", "bank", "Ärztebrief"]
         before = DocumentFilter(document_dates=Period(date.min, date(2025, 12, 23)))
         assert await paged(NEWEST_FIRST, before) == []
+
+    async def test_query_finds_documents_by_their_facts(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """A fact by kind, value and role, or a part of it; none a person rejected."""
+        owner, space = await owner_with_space(uow_factory)
+        reminder, invoice, other = (builders.processed(owner, space) for _ in range(3))
+        number = found(IdentifierKind.INVOICE_NUMBER, "4711", position=1)
+        async with uow_factory() as uow:
+            for document in (reminder, invoice, other):
+                await uow.documents.add(document)
+            await uow.document_facts.replace_found(
+                reminder.id, [replace(number, role=FactRole.REFERS)]
+            )
+            await uow.document_facts.replace_found(invoice.id, [number])
+            await uow.document_facts.replace_found(other.id, [number])
+            await uow.document_facts.decide(other.id, replace(number, state=FactState.REJECTED))
+            await uow.commit()
+
+        async def having(*criteria: FactCriterion) -> set[DocumentId]:
+            async with uow_factory() as uow:
+                listed = await uow.documents.query(DocumentFilter(facts=criteria), limit=9)
+                visible = await uow.documents.query_visible(
+                    owner.id, DocumentFilter(facts=criteria), limit=9
+                )
+            assert {item.id for item in listed} == {item.id for item in visible}
+            return {item.id for item in listed}
+
+        kind = IdentifierKind.INVOICE_NUMBER
+        assert await having(FactCriterion(kind, "4711")) == {reminder.id, invoice.id}
+        assert await having(FactCriterion(kind, "4711", FactRole.REFERS)) == {reminder.id}
+        assert await having(FactCriterion(role=FactRole.OWN)) == {invoice.id}
+        assert await having(FactCriterion(kind, "4712")) == set()
 
     async def test_query_sorts_by_when_documents_came_in_and_by_arrival(
         self, uow_factory: UnitOfWorkFactory

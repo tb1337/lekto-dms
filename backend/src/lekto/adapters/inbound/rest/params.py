@@ -10,9 +10,13 @@ from uuid import UUID
 from fastapi import Depends, Query
 from fastapi.exceptions import RequestValidationError
 
+from lekto.core.domain.document_facts import FactCriterion, FactRole
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId
 from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.search import PROCESSING, lane_value
 from lekto.core.ports.repository import DocumentFilter
 
@@ -21,6 +25,8 @@ SESSION_ONLY_NOTE = " Needs a session; API tokens are refused (403)."
 
 MAX_IDS = 50
 """Ids of one kind a filter names at most."""
+MAX_FACTS = 5
+"""Facts a filter names at most."""
 
 
 class LaneFilter(StrEnum):
@@ -52,6 +58,19 @@ def document_filter(
     topic_id: Ids = None,
     document_date_from: date | None = None,
     document_date_to: date | None = None,
+    fact: Annotated[
+        list[str] | None,
+        Query(
+            max_length=MAX_FACTS,
+            description=(
+                "A fact the document has (none a person rejected), as `kind:value:role`: the "
+                "value as written (it needs its kind; it may hold colons), any part empty for "
+                "any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all "
+                "of them. A person's facts (the kinds that are a person's alone, the role "
+                "`person`) only for admins (403); 422 for one that is none."
+            ),
+        ),
+    ] = None,
 ) -> DocumentFilter:
     """The query parameters of the document list as a filter (the search takes the same).
     Several contacts, types, spaces, contact groups, type groups or topics: one of them (each
@@ -78,6 +97,27 @@ def document_filter(
         lanes=None if not lane else frozenset(_LANES[item] for item in lane),
         field=None if field_id is None else FieldId(field_id),
         document_dates=_dates(document_date_from, document_date_to),
+        facts=tuple(_fact(item) for item in dict.fromkeys(fact or ())),
+    )
+
+
+def _fact(written: str) -> FactCriterion:
+    """A fact of the filter as `kind:value:role`: the kind before the first colon, the role
+    after the last, the value between (a value may hold colons, a time of day). 422 with the
+    reason for one that is none."""
+    kind, colon, rest = written.partition(":")
+    value, colon_too, role = rest.rpartition(":")
+    if not (colon and colon_too):
+        raise ValidationError(because(ReasonCode.FACT_CRITERION_EMPTY))
+    kind, value, role = kind.strip(), value.strip(), role.strip()
+    if kind and kind not in IdentifierKind:
+        raise ValidationError(because(ReasonCode.FACT_KIND_UNKNOWN, kind=kind))
+    if role and role not in FactRole:
+        raise ValidationError(because(ReasonCode.FACT_KIND_UNKNOWN, kind=role))
+    return FactCriterion.written(
+        IdentifierKind(kind) if kind else None,
+        value or None,
+        FactRole(role) if role else None,
     )
 
 

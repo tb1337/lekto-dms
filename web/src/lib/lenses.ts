@@ -6,6 +6,7 @@
  */
 
 import type { components } from '#lib/api/schema.ts';
+import { factFilter, parseFactFilter } from '#lib/facts.ts';
 import {
 	relativeOf,
 	relativePeriod,
@@ -33,7 +34,10 @@ export function filtersOf(filter: LensFilter, today: Date): Filters {
 		topics: filter.topic_ids ?? [],
 		spaces: filter.space_ids ?? [],
 		field: filter.field_id ?? null,
-		...period
+		...period,
+		facts: (filter.facts ?? []).map((fact) =>
+			factFilter(fact.kind ?? null, fact.value ?? null, fact.role ?? null)
+		)
 	};
 }
 
@@ -65,7 +69,11 @@ export function lensFilter(filters: Filters, today: Date): LensFilter {
 		field_id: filters.field,
 		document_date_from: relative ? null : filters.dateFrom,
 		document_date_to: relative ? null : filters.dateTo,
-		document_period: relative
+		document_period: relative,
+		facts: filters.facts.map((fact) => {
+			const { kind, value, role } = parseFactFilter(fact);
+			return { kind, value, role };
+		})
 	};
 }
 

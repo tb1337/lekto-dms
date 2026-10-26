@@ -5,6 +5,7 @@ from dataclasses import replace
 from uuid import UUID
 
 from lekto.core.domain.classification import CHECKS
+from lekto.core.domain.document_facts import FactCriterion, FactRole, person_only
 from lekto.core.domain.documents import Document, DocumentChanges, Sha256, Unset
 from lekto.core.domain.errors import (
     AuthenticationError,
@@ -27,6 +28,7 @@ from lekto.core.domain.pipeline import Node, NodeRun
 from lekto.core.domain.reasons import Action, ReasonCode, because
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
+from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services._tags import tag_tree
 
@@ -317,3 +319,21 @@ async def _readable(
         else:
             result[key] = await _readable(item, may_read, neighbours=False)
     return result
+
+
+def check_fact_filter(user: User, filter: DocumentFilter) -> None:
+    """Only admins find documents by a person's facts: of a kind a person's alone (a tax ID
+    found on a document is that person's) or in the role `person`; PermissionDeniedError
+    otherwise."""
+    if user.is_active_admin:
+        return
+    if any(of_a_person(item) for item in filter.facts):
+        raise PermissionDeniedError(because(ReasonCode.FACT_FILTER_OF_PERSON))
+
+
+def of_a_person(criterion: FactCriterion) -> bool:
+    """Whether a filter by facts looks for a person's: by a kind a person's alone, or by the
+    role `person`."""
+    return (criterion.kind is not None and person_only(criterion.kind)) or (
+        criterion.role is FactRole.PERSON
+    )

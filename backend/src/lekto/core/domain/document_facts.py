@@ -113,6 +113,12 @@ def role_of(kind: IdentifierKind) -> FactRole:
     return ROLES[kind]
 
 
+def person_only(kind: IdentifierKind) -> bool:
+    """A kind of a person's and no contact's (the IBAN is both): only admins and that person
+    see such a fact, only admins decide or find documents by it."""
+    return TYPES[kind].for_persons and not TYPES[kind].for_contacts
+
+
 @dataclass(frozen=True, kw_only=True)
 class DocumentFact:
     """A fact of a document. `value`: normalised, as Lekto compares it (`normalise_identifier`);
@@ -384,3 +390,70 @@ def withdrawn(fact: DocumentFact) -> DocumentFact | None:
     if not sources:
         return None
     return replace(fact, origins=sources, state=FactState.FOUND)
+
+
+# --- finding documents by their facts (PR 7) --------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FactCriterion:
+    """Documents with a fact (none a person rejected) of `kind`, with `value` (normalised, as
+    `normalise_identifier` gives it) and in `role`; what is None is any. A value needs its kind,
+    and something is given."""
+
+    kind: IdentifierKind | None = None
+    value: str | None = None
+    role: FactRole | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind is None and self.value is None and self.role is None:
+            raise ValidationError(because(ReasonCode.FACT_CRITERION_EMPTY))
+        if self.value is not None and self.kind is None:
+            raise ValidationError(because(ReasonCode.FACT_CRITERION_EMPTY))
+
+    @classmethod
+    def written(
+        cls, kind: IdentifierKind | None, value: str | None, role: FactRole | None
+    ) -> "FactCriterion":
+        """A criterion with the value as a person writes it (ValidationError, with the kind's
+        reason, if it is none of the kind)."""
+        normalised = None
+        if value is not None and value.strip():
+            if kind is None:
+                raise ValidationError(because(ReasonCode.FACT_CRITERION_EMPTY))
+            normalised = normalise_identifier(kind, value)
+        return cls(kind, normalised, role)
+
+    @property
+    def token(self) -> str:
+        """The token of the criterion among a document's `fact_tokens`."""
+        return _token(self.kind, self.value, self.role)
+
+
+def _token(kind: IdentifierKind | None, value: str | None, role: FactRole | None) -> str:
+    return "|".join(
+        (
+            "*" if kind is None else kind.value,
+            "*" if value is None else value,
+            "*" if role is None else role.value,
+        )
+    )
+
+
+def fact_tokens(facts: Iterable[DocumentFact]) -> frozenset[str]:
+    """What a filter by facts looks for in a document (`FactCriterion.token`): each fact not
+    rejected by its kind, value and role, also without the value, the role or both, and by its
+    role alone."""
+    tokens: set[str] = set()
+    for fact in facts:
+        if fact.state is FactState.REJECTED:
+            continue
+        kind, value, role = fact.kind, fact.value, fact.role
+        tokens |= {
+            _token(kind, value, role),
+            _token(kind, value, None),
+            _token(kind, None, role),
+            _token(kind, None, None),
+            _token(None, None, role),
+        }
+    return frozenset(tokens)

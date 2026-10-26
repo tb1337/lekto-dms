@@ -21,6 +21,7 @@
 		type RuleModel
 	} from '#lib/rules/model.ts';
 	import { cn } from '#lib/utils.ts';
+	import { Choice } from '#lib/components/ui/choice/index.ts';
 
 	// A group of conditions: and/or, turned around or not, with conditions and subgroups.
 	// `onunreadable` says, by the condition's key, while a value's text cannot be read.
@@ -82,10 +83,7 @@
 			onchange={(mode) => (group.mode = mode === 'any' ? 'any' : 'all')}
 			class="h-10 w-full sm:w-56"
 		/>
-		<label class="flex items-center gap-2 text-sm">
-			<input type="checkbox" class="size-4 accent-primary" bind:checked={group.negate} />
-			{m.rule_negate()}
-		</label>
+		<Choice bind:checked={group.negate}>{m.rule_negate()}</Choice>
 		{#if !root}
 			<div class="ml-auto flex gap-0.5">
 				<Button

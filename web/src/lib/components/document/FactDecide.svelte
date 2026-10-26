@@ -13,6 +13,7 @@
 	} from '#lib/facts.ts';
 	import { kindLabel } from '#lib/identifiers.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { Choice } from '#lib/components/ui/choice/index.ts';
 
 	// A person's decision about one fact of the document: its value and role corrected (for
 	// admins at the document's contact too), rejected, or a decision withdrawn. A rejected fact
@@ -91,10 +92,9 @@
 			/>
 		</label>
 		{#if contact && changedValue}
-			<label class="flex items-start gap-2.5 text-sm">
-				<input type="checkbox" bind:checked={atContact} class="mt-1 accent-primary" />
+			<Choice bind:checked={atContact}>
 				<span>{m.facts_decide_at_contact({ contact })}</span>
-			</label>
+			</Choice>
 		{/if}
 	{/if}
 	<div class="flex flex-wrap justify-end gap-2">

@@ -6,6 +6,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { toggled } from '#lib/picking.ts';
 	import { matchesQuery, ofScope, pathLabel } from '#lib/tags.ts';
+	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
 
 	// Several tags of one scope to choose: a search over their paths, then every tag of the scope
 	// that may be chosen (`offered`) with a checkbox, nested as in its tree; while searching the
@@ -88,9 +89,7 @@
 								<span class="text-xs text-muted-foreground">{pathLabel(tag)}</span>
 							{/if}
 						</span>
-						<input
-							type="checkbox"
-							class="size-5 shrink-0 accent-primary"
+						<ChoiceBox
 							aria-label={pathLabel(tag)}
 							checked={selected.includes(tag.id)}
 							onchange={(event) => toggle(tag.id, event.currentTarget.checked)}

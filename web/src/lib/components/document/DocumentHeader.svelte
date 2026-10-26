@@ -26,9 +26,7 @@
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
-	import { Checkbox } from '#lib/components/ui/checkbox/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
-	import { Label } from '#lib/components/ui/label/index.ts';
 	import { documentApi, inboxDocument, tabHref, type Neighbours } from '#lib/document-view.ts';
 	import { reportError } from '#lib/errors.ts';
 	import { readersLaterText, visibleText, type Viewer } from '#lib/filing.ts';
@@ -41,6 +39,7 @@
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 	import { adviceText, visionAvailable, type Reading, type Vision } from '#lib/vision.ts';
+	import { Choice } from '#lib/components/ui/choice/index.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
 	type ReprocessNode = components['schemas']['ReprocessNode'];
@@ -448,10 +447,9 @@
 		</Field.Field>
 		{#if askVision && readable && vision}
 			<div class="flex flex-col gap-1.5">
-				<div class="flex items-center gap-2">
-					<Checkbox id="reprocess-vision" bind:checked={visionAgain} />
-					<Label for="reprocess-vision">{m.reprocess_vision_again()}</Label>
-				</div>
+				<Choice bind:checked={visionAgain} class="font-medium">
+					{m.reprocess_vision_again()}
+				</Choice>
 				<p class="pl-6 text-sm text-muted-foreground">
 					{visionAgain
 						? m.vision_hint({ endpoint: vision.endpoint, model: vision.model })

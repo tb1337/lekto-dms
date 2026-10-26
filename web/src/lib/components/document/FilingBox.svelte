@@ -12,6 +12,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { unseenText } from '#lib/space-suggestion.ts';
 	import { cn } from '#lib/utils.ts';
+	import { Choice, ChoiceBox } from '#lib/components/ui/choice/index.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
 
@@ -114,13 +115,13 @@
 						option.choosable ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'
 					)}
 				>
-					<input
+					<ChoiceBox
 						type="radio"
 						name="filing"
 						value={option.value}
 						bind:group={choice}
 						disabled={!option.choosable}
-						class="mt-0.5 size-[18px] shrink-0 accent-primary"
+						class="mt-1"
 					/>
 					<span class="flex min-w-0 flex-col gap-1.5">
 						<span class="flex flex-wrap items-center gap-2">
@@ -154,16 +155,9 @@
 				<div
 					class="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3.5 has-[input[type=radio]:checked]:border-primary has-[input[type=radio]:checked]:ring-1 has-[input[type=radio]:checked]:ring-primary"
 				>
-					<label class="flex cursor-pointer items-center gap-3">
-						<input
-							type="radio"
-							name="filing"
-							value="other"
-							bind:group={choice}
-							class="size-[18px] shrink-0 accent-primary"
-						/>
+					<Choice type="radio" name="filing" value="other" bind:group={choice} class="text-base">
 						<span class="font-semibold">{m.filing_other()}</span>
-					</label>
+					</Choice>
 					<div class="ml-auto min-w-[12rem] flex-1">
 						<Select
 							id="filing-other"

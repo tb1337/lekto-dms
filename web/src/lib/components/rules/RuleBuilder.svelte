@@ -8,6 +8,7 @@
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { ACTION_LABELS, TRIGGER_LABELS } from '#lib/rules/describe.ts';
+	import { Choice } from '#lib/components/ui/choice/index.ts';
 	import {
 		ACTION_TYPES,
 		LIMITS,
@@ -132,15 +133,12 @@
 	<fieldset class="flex flex-col gap-2">
 		<legend class="mb-2 text-sm font-medium">{m.rule_triggers()}</legend>
 		{#each TRIGGERS as trigger (trigger)}
-			<label class="flex items-center gap-2 text-sm">
-				<input
-					type="checkbox"
-					class="size-4 accent-primary"
-					checked={model.triggers.includes(trigger)}
-					onchange={(event) => toggleTrigger(trigger, event.currentTarget.checked)}
-				/>
+			<Choice
+				checked={model.triggers.includes(trigger)}
+				onchange={(event) => toggleTrigger(trigger, event.currentTarget.checked)}
+			>
 				{TRIGGER_LABELS[trigger]()}
-			</label>
+			</Choice>
 		{/each}
 		{#if asks}<p class="text-sm text-muted-foreground">{m.rule_triggers_ask_hint()}</p>{/if}
 		{#if errors.triggers}<Field.Error>{errors.triggers}</Field.Error>{/if}

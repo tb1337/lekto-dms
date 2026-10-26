@@ -4,13 +4,12 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
-	import { Checkbox } from '#lib/components/ui/checkbox/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
-	import { Label } from '#lib/components/ui/label/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { describeError, fieldErrors } from '#lib/errors.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
+	import { Choice } from '#lib/components/ui/choice/index.ts';
 
 	// Changing the password ends every session and starts a new one for this browser.
 	let current = $state('');
@@ -76,10 +75,7 @@
 				<Field.Description>{m.password_rules()}</Field.Description>
 				{#if errors.new_password}<Field.Error>{errors.new_password}</Field.Error>{/if}
 			</Field.Field>
-			<div class="flex items-center gap-2">
-				<Checkbox id="pw-revoke" bind:checked={revoke} />
-				<Label for="pw-revoke">{m.password_revoke_tokens()}</Label>
-			</div>
+			<Choice bind:checked={revoke} class="font-medium">{m.password_revoke_tokens()}</Choice>
 			{#if problem}<p role="alert" class="text-sm text-destructive">{problem}</p>{/if}
 			<div>
 				<Button type="submit" disabled={busy || current === '' || next === ''}>

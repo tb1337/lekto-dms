@@ -15,6 +15,7 @@
 	import { WEBHOOK_EVENT_TYPES, type WebhookEventType } from '#lib/events.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
+	import { Choice } from '#lib/components/ui/choice/index.ts';
 
 	type Webhook = components['schemas']['WebhookOut'];
 	type Created = components['schemas']['WebhookCreated'];
@@ -202,17 +203,11 @@
 	</Field.Field>
 	<fieldset class="flex flex-col gap-2">
 		<legend class="mb-1 text-sm font-medium">{m.webhook_events()}</legend>
-		<label class="flex items-center gap-2 text-sm">
-			<input type="checkbox" bind:checked={all} class="size-4 accent-primary" />
-			{m.webhook_events_all()}
-		</label>
+		<Choice bind:checked={all}>{m.webhook_events_all()}</Choice>
 		{#if !all}
 			<p class="pl-6 text-sm text-muted-foreground">{m.webhook_events_none_hint()}</p>
 			{#each WEBHOOK_EVENT_TYPES as type (type)}
-				<label class="flex items-center gap-2 pl-6 text-sm">
-					<input type="checkbox" value={type} bind:group={types} class="size-4 accent-primary" />
-					{labels[type]()}
-				</label>
+				<Choice value={type} bind:group={types} class="ml-6">{labels[type]()}</Choice>
 			{/each}
 		{/if}
 	</fieldset>
@@ -324,14 +319,8 @@
 		</div>
 	{/if}
 	<Field.Field>
-		<label class="flex items-center gap-2 text-sm">
-			<input type="checkbox" bind:checked={signed} class="size-4 accent-primary" />
-			{m.webhook_signed()}
-		</label>
+		<Choice bind:checked={signed}>{m.webhook_signed()}</Choice>
 		<Field.Description>{m.webhook_signed_hint()}</Field.Description>
 	</Field.Field>
-	<label class="flex items-center gap-2 text-sm">
-		<input type="checkbox" bind:checked={active} class="size-4 accent-primary" />
-		{m.webhook_active()}
-	</label>
+	<Choice bind:checked={active}>{m.webhook_active()}</Choice>
 </FormDialog>

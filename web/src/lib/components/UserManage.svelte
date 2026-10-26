@@ -15,6 +15,7 @@
 	import { userLabel } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
+	import { Choice } from '#lib/components/ui/choice/index.ts';
 
 	type Account = components['schemas']['AccountOut'];
 	type Role = components['schemas']['Role'];
@@ -175,10 +176,7 @@
 								<Field.Description>{m.password_rules()}</Field.Description>
 							{/if}
 						</Field.Field>
-						<label class="flex items-center gap-2 text-sm">
-							<input type="checkbox" bind:checked={revoke} class="size-4 accent-primary" />
-							{m.user_revoke_tokens()}
-						</label>
+						<Choice bind:checked={revoke}>{m.user_revoke_tokens()}</Choice>
 						<div>
 							<Button type="submit" disabled={busy || password === ''}
 								>{m.user_password_reset()}</Button

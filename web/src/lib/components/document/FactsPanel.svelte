@@ -49,6 +49,7 @@
 	import { phone } from '#lib/phone.svelte.ts';
 	import { pathLabel, tagOptions } from '#lib/tags.ts';
 	import { cn } from '#lib/utils.ts';
+	import { Choice } from '#lib/components/ui/choice/index.ts';
 
 	// The facts beside the text: what supports the document's contact, what speaks of other
 	// contacts, the identifiers of no contact (admins attach them, with a topic of the contact,
@@ -447,14 +448,7 @@
 					{m.facts_attach_title({ kind: kindLabel(identifier.kind) })}
 				</span>
 				{#if facts.contact_id}
-					<label class="flex items-start gap-2.5 text-sm">
-						<input
-							type="radio"
-							name="attach-target"
-							value="document"
-							bind:group={target}
-							class="mt-1 accent-primary"
-						/>
+					<Choice type="radio" name="attach-target" value="document" bind:group={target}>
 						<span class="flex flex-col">
 							<span class="inline-flex items-center gap-1.5">
 								<ContactAvatar contact={contactOf(facts.contact_id) ?? { name: '…' }} size="xs" />
@@ -462,18 +456,11 @@
 							</span>
 							<span class="text-xs text-muted-foreground">{m.facts_attach_document_contact()}</span>
 						</span>
-					</label>
+					</Choice>
 				{/if}
-				<label class="flex items-center gap-2.5 text-sm">
-					<input
-						type="radio"
-						name="attach-target"
-						value="other"
-						bind:group={target}
-						class="accent-primary"
-					/>
+				<Choice type="radio" name="attach-target" value="other" bind:group={target}>
 					{m.facts_attach_other()}
-				</label>
+				</Choice>
 				{#if target === 'other'}
 					<Select
 						bind:value={other}

@@ -79,13 +79,16 @@ GRAPH: Mapping[Node, frozenset[Node]] = {
     Node.PAGES: frozenset({Node.RECEIVE}),
     Node.PARSE: frozenset({Node.OCR}),
     **dict.fromkeys(SIGNALS, frozenset({Node.PARSE})),
+    Node.SIGNAL_FACTS: frozenset({Node.PARSE, Node.SIGNAL_LLM}),
     Node.JUDGE: SIGNALS,
     Node.FIELDS: frozenset({Node.JUDGE}),
     Node.APPLY_RULES: frozenset({Node.FIELDS}),
     Node.FILE: frozenset({Node.APPLY_RULES, Node.PAGES}),
 }
 """What each node needs. `receive` is the source, `file` the only sink: every other node is
-one of its ancestors, so filing is the last thing that happens to a document."""
+one of its ancestors, so filing is the last thing that happens to a document. The facts signal
+needs the language model's: it keeps the facts the model read with their role among the
+document's facts (#145), and runs again when the model is asked again."""
 
 WAITS: Mapping[Node, frozenset[Node]] = {Node.SIGNAL_LLM: frozenset({Node.PAGES})}
 """Nodes a node waits for without needing their results: the page images are there when a model

@@ -244,10 +244,13 @@ def test_a_result_names_the_nodes_that_became_due_with_it() -> None:
     document = builders.received()
     assert document.record_result(Node.OCR, 1, OK, NOW) == (Node.PARSE,)
     assert document.record_result(Node.PAGES, 1, OK, NOW) == ()
-    assert document.record_result(Node.PARSE, 1, OK, NOW) == SIGNAL_NODES
-    for signal in SIGNAL_NODES[:-1]:
+    first = tuple(node for node in SIGNAL_NODES if node is not Node.SIGNAL_FACTS)
+    assert document.record_result(Node.PARSE, 1, OK, NOW) == first
+    # The facts signal keeps the facts the language model read: it runs after it.
+    assert document.record_result(Node.SIGNAL_LLM, 1, OK, NOW) == (Node.SIGNAL_FACTS,)
+    for signal in (Node.SIGNAL_CLASSIFIER, Node.SIGNAL_NEIGHBOURS):
         assert document.record_result(signal, 1, OK, NOW) == ()
-    assert document.record_result(SIGNAL_NODES[-1], 1, OK, NOW) == (Node.JUDGE,)
+    assert document.record_result(Node.SIGNAL_FACTS, 1, OK, NOW) == (Node.JUDGE,)
     document.record_result(Node.JUDGE, 1, OK, NOW)
     document.record_result(Node.FIELDS, 1, OK, NOW)
     assert document.record_result(Node.APPLY_RULES, 1, OK, NOW) == (Node.FILE,)
@@ -255,10 +258,17 @@ def test_a_result_names_the_nodes_that_became_due_with_it() -> None:
     assert status(document) is ProcessingStatus.COMPLETED
 
 
+def test_asking_the_language_model_again_reads_the_facts_again() -> None:
+    """Its facts with their role come into the document's facts through the facts signal."""
+    document = builders.run_pipeline(builders.received())
+    assert document.reprocess_from(Node.SIGNAL_LLM, NOW) == (Node.SIGNAL_LLM,)
+    assert document.record_result(Node.SIGNAL_LLM, 2, OK, NOW) == (Node.SIGNAL_FACTS,)
+
+
 def test_the_language_model_waits_for_the_pages() -> None:
     """The page images are there when a model call goes to a webhook."""
     document = builders.received()
-    for node in (Node.OCR, Node.PARSE, *CURRENT_NODES):
+    for node in (Node.OCR, Node.PARSE, Node.SIGNAL_CLASSIFIER, Node.SIGNAL_NEIGHBOURS):
         document.record_result(node, 1, OK, NOW)
     assert status(document) is ProcessingStatus.PROCESSING
     assert document.processing.due() == (Node.PAGES,)
@@ -506,7 +516,9 @@ def test_reprocessing_from_the_judge_runs_the_signals_a_document_skipped() -> No
     document = builders.run_pipeline(builders.received())
     for signal in SIGNALS:
         document.processing.nodes[signal] = NodeState(status=NodeStatus.SKIPPED)
-    assert document.reprocess_from(Node.JUDGE, NOW) == SIGNAL_NODES
+    # The facts signal after the language model's.
+    first = tuple(node for node in SIGNAL_NODES if node is not Node.SIGNAL_FACTS)
+    assert document.reprocess_from(Node.JUDGE, NOW) == first
     builders.run_pipeline(document)
     assert document.reprocess_from(Node.JUDGE, NOW) == CURRENT_NODES
 
@@ -521,7 +533,7 @@ def test_reprocessing_the_pages_leaves_the_text_branch_alone() -> None:
 
 def test_failed_pages_retried_let_the_model_run_after_them() -> None:
     document = builders.received()
-    for node in (Node.OCR, Node.PARSE, *CURRENT_NODES):
+    for node in (Node.OCR, Node.PARSE, Node.SIGNAL_CLASSIFIER, Node.SIGNAL_NEIGHBOURS):
         document.record_result(node, 1, OK, NOW)
     document.record_result(Node.PAGES, 1, FAILED, NOW)
     assert document.processing.nodes[Node.SIGNAL_LLM] == NodeState()  # never ran

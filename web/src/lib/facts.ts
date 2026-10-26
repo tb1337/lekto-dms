@@ -16,6 +16,7 @@ export type CodeFacts = components['schemas']['CodeOut'];
 export type CodePlace = components['schemas']['CodePlaceOut'];
 export type Span = components['schemas']['SpanOut'];
 export type FoundPerson = components['schemas']['FoundPersonOut'];
+export type DocumentNumber = components['schemas']['DocumentNumberOut'];
 export type Strength = FoundPerson['strength'];
 export type FactRole = components['schemas']['FactRole'];
 

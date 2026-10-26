@@ -103,7 +103,10 @@ def test_a_tax_id_needs_its_label_or_its_groups() -> None:
 
 def test_the_social_security_label_is_no_customer_label() -> None:
     assert identifiers_in("Rentenversicherungsnummer: 4711 0815") == set()
-    assert identifiers_in("Versicherungsnummer: 4711-0815") == {(CUSTOMER, "47110815")}
+    # An insurer's "Versicherungsnummer" is a policy number since #145.
+    assert identifiers_in("Versicherungsnummer: 4711-0815") == {
+        (IdentifierKind.POLICY_NUMBER, "47110815")
+    }
 
 
 def test_a_persons_numbers_are_never_learned() -> None:

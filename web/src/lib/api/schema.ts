@@ -3701,6 +3701,33 @@ export interface components {
 			| 'field'
 			| '-field';
 		/**
+		 * DocumentNumberOut
+		 * @description A number of the document that is no contact's or person's identifier: its own (invoice,
+		 *     credit note, order number), a strand's (file reference, "Unser Zeichen", claim, ticket) or
+		 *     another document's it refers to ("Ihre Rechnung Nr.", "Ihr Zeichen").
+		 */
+		DocumentNumberOut: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @description Normalised, as Lekto compares it.
+			 */
+			value: string;
+			/**
+			 * Written
+			 * @description As the text writes it where it stands first.
+			 */
+			written: string | null;
+			role: components['schemas']['FactRole'];
+			/** Origins */
+			origins: components['schemas']['FactOrigin'][];
+			/**
+			 * Spans
+			 * @description Where it stands in the text.
+			 */
+			spans: components['schemas']['SpanOut'][];
+		};
+		/**
 		 * DocumentOutOfReach
 		 * @description After a change: the rules filed the document where the caller can no longer read it.
 		 *     The change is stored; nothing else about the document is shown.
@@ -4065,6 +4092,11 @@ export interface components {
 			 * @description The codes on the pages; null while they are not read (`read-codes`).
 			 */
 			codes: components['schemas']['CodeOut'][] | null;
+			/**
+			 * Numbers
+			 * @description The document's numbers that are no contact's or person's identifier, as the text reads: as the facts signal kept them (empty until it ran again after 0.7).
+			 */
+			numbers?: components['schemas']['DocumentNumberOut'][];
 			/**
 			 * Persons
 			 * @description The users the document names, the surest first: for the editors of its space and admins; null for readers. What is private about a person (aliases, birth date, identifiers, a contact's number that names them) finds them only for admins and that person: anyone else sees another user only where the text has their display name (that a number is Anna's tax ID is Anna's).
@@ -4619,6 +4651,8 @@ export interface components {
 		};
 		/**
 		 * IdentifierKind
+		 * @description The kinds of identifiers, which are the kinds of facts too (`domain.document_facts`;
+		 *     `.idea/fakten.md`, the catalog by role).
 		 * @enum {string}
 		 */
 		IdentifierKind:
@@ -4630,7 +4664,26 @@ export interface components {
 			| 'tax_id'
 			| 'social_security_number'
 			| 'health_insurance_number'
-			| 'email_address';
+			| 'email_address'
+			| 'creditor_id'
+			| 'commercial_register'
+			| 'tax_number'
+			| 'contract_number'
+			| 'policy_number'
+			| 'membership_number'
+			| 'meter_number'
+			| 'loan_number'
+			| 'mandate_reference'
+			| 'license_plate'
+			| 'invoice_number'
+			| 'credit_note_number'
+			| 'order_number'
+			| 'file_reference'
+			| 'our_reference'
+			| 'claim_number'
+			| 'ticket_number'
+			| 'your_reference'
+			| 'child_benefit_number';
 		/** IdentifierOut */
 		IdentifierOut: {
 			kind: components['schemas']['IdentifierKind'];
@@ -6694,6 +6747,7 @@ export interface components {
 			| 'not_iban'
 			| 'not_vat_id'
 			| 'not_customer_number'
+			| 'not_of_kind'
 			| 'not_personnel_number'
 			| 'not_domain'
 			| 'free_mail_domain'

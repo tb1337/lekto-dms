@@ -162,6 +162,29 @@ describe('FactsPanel', () => {
 		expect(customer.getAttribute('aria-pressed')).toBe('true');
 	});
 
+	it('lists the document’s numbers with their roles and marks them', async () => {
+		const onmark = vi.fn();
+		const spans = [{ start: 30, end: 34, locations: [] }];
+		const numbers = [
+			{
+				kind: 'invoice_number',
+				value: '4711',
+				written: '4711',
+				role: 'refers',
+				origins: ['pattern'],
+				spans
+			}
+		];
+		render(FactsPanel, props({ onmark, facts: { ...FACTS, numbers } }));
+		expect(screen.getByRole('heading', { name: m.facts_numbers() })).toBeTruthy();
+		const row = screen.getByRole('button', {
+			name: new RegExp(`^${m.identifier_kind_invoice_number()}`)
+		});
+		expect(row.textContent).toContain(m.fact_role_refers());
+		await fireEvent.mouseEnter(row.parentElement!);
+		expect(onmark).toHaveBeenLastCalledWith(spans, false, m.identifier_kind_invoice_number());
+	});
+
 	it('marks what of a code stands in the text, and shows a code on each of its pages', async () => {
 		const onmark = vi.fn();
 		const onshowcode = vi.fn();

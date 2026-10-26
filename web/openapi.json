@@ -21275,6 +21275,59 @@
         "title": "DocumentListSort",
         "description": "The keys of `DocumentSort`, and `field`: by the value of the field `sort_field_id`.\nOnly the list sorts by a field; the search index holds no field values."
       },
+      "DocumentNumberOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "Normalised, as Lekto compares it."
+          },
+          "written": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Written",
+            "description": "As the text writes it where it stands first."
+          },
+          "role": {
+            "$ref": "#/components/schemas/FactRole"
+          },
+          "origins": {
+            "items": {
+              "$ref": "#/components/schemas/FactOrigin"
+            },
+            "type": "array",
+            "title": "Origins"
+          },
+          "spans": {
+            "items": {
+              "$ref": "#/components/schemas/SpanOut"
+            },
+            "type": "array",
+            "title": "Spans",
+            "description": "Where it stands in the text."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value",
+          "written",
+          "role",
+          "origins",
+          "spans"
+        ],
+        "title": "DocumentNumberOut",
+        "description": "A number of the document that is no contact's or person's identifier: its own (invoice,\ncredit note, order number), a strand's (file reference, \"Unser Zeichen\", claim, ticket) or\nanother document's it refers to (\"Ihre Rechnung Nr.\", \"Ihr Zeichen\")."
+      },
       "DocumentOutOfReach": {
         "properties": {
           "id": {
@@ -22044,6 +22097,14 @@
             ],
             "title": "Codes",
             "description": "The codes on the pages; null while they are not read (`read-codes`)."
+          },
+          "numbers": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentNumberOut"
+            },
+            "type": "array",
+            "title": "Numbers",
+            "description": "The document's numbers that are no contact's or person's identifier, as the text reads: as the facts signal kept them (empty until it ran again after 0.7)."
           },
           "persons": {
             "anyOf": [
@@ -23297,9 +23358,29 @@
           "tax_id",
           "social_security_number",
           "health_insurance_number",
-          "email_address"
+          "email_address",
+          "creditor_id",
+          "commercial_register",
+          "tax_number",
+          "contract_number",
+          "policy_number",
+          "membership_number",
+          "meter_number",
+          "loan_number",
+          "mandate_reference",
+          "license_plate",
+          "invoice_number",
+          "credit_note_number",
+          "order_number",
+          "file_reference",
+          "our_reference",
+          "claim_number",
+          "ticket_number",
+          "your_reference",
+          "child_benefit_number"
         ],
-        "title": "IdentifierKind"
+        "title": "IdentifierKind",
+        "description": "The kinds of identifiers, which are the kinds of facts too (`domain.document_facts`;\n`.idea/fakten.md`, the catalog by role)."
       },
       "IdentifierOut": {
         "properties": {
@@ -27124,6 +27205,7 @@
           "not_iban",
           "not_vat_id",
           "not_customer_number",
+          "not_of_kind",
           "not_personnel_number",
           "not_domain",
           "free_mail_domain",
@@ -32309,6 +32391,10 @@
     "not_customer_number": {
       "value": "text"
     },
+    "not_of_kind": {
+      "value": "text",
+      "kind": "identifier_kind"
+    },
     "not_personnel_number": {
       "value": "text"
     },
@@ -32527,6 +32613,101 @@
       "names_user": false
     },
     "email_address": {
+      "contact": false,
+      "person": true,
+      "names_user": false
+    },
+    "creditor_id": {
+      "contact": true,
+      "person": false,
+      "names_user": false
+    },
+    "commercial_register": {
+      "contact": true,
+      "person": false,
+      "names_user": false
+    },
+    "tax_number": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "contract_number": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "policy_number": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "membership_number": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "meter_number": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "loan_number": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "mandate_reference": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "license_plate": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "invoice_number": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "credit_note_number": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "order_number": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "file_reference": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "our_reference": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "claim_number": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "ticket_number": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "your_reference": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "child_benefit_number": {
       "contact": false,
       "person": true,
       "names_user": false

@@ -11,12 +11,23 @@ export type ContactNumberOut = components['schemas']['ContactNumberOut'];
 export type IdentifierKind = IdentifierIn['kind'];
 export type IdentifierSource = IdentifierOut['source'];
 
+/** The kinds of a contact's identifiers, in the order the contact dialog offers them. */
 export const IDENTIFIER_KINDS: readonly IdentifierKind[] = [
 	'iban',
 	'vat_id',
 	'customer_number',
+	'contract_number',
+	'policy_number',
+	'membership_number',
 	'personnel_number',
-	'email_domain'
+	'email_domain',
+	'creditor_id',
+	'commercial_register',
+	'tax_number',
+	'meter_number',
+	'loan_number',
+	'mandate_reference',
+	'license_plate'
 ];
 
 /** The kinds of a person's own identifiers (a user's profile). */
@@ -25,40 +36,76 @@ export const PERSON_KINDS: readonly IdentifierKind[] = [
 	'tax_id',
 	'social_security_number',
 	'health_insurance_number',
-	'email_address'
+	'email_address',
+	'child_benefit_number'
 ];
 
 /** The kinds of a contact's identifiers that may name the user they belong to. */
-export const NAMING_KINDS: readonly IdentifierKind[] = ['customer_number', 'personnel_number'];
+export const NAMING_KINDS: readonly IdentifierKind[] = [
+	'customer_number',
+	'personnel_number',
+	'contract_number',
+	'policy_number',
+	'membership_number',
+	'meter_number',
+	'loan_number',
+	'mandate_reference',
+	'license_plate',
+	'tax_number'
+];
+
+/** The kinds of a document's numbers that are no contact's or person's identifier. */
+export const NUMBER_KINDS: readonly IdentifierKind[] = [
+	'invoice_number',
+	'credit_note_number',
+	'order_number',
+	'file_reference',
+	'our_reference',
+	'claim_number',
+	'ticket_number',
+	'your_reference'
+];
 
 /** The label of a kind as the log or a candidate names it; a kind this UI does not know stays
  * as written. */
 export function labelOfKind(kind: string): string {
-	const known: readonly string[] = [...IDENTIFIER_KINDS, ...PERSON_KINDS];
+	const known: readonly string[] = [...IDENTIFIER_KINDS, ...PERSON_KINDS, ...NUMBER_KINDS];
 	return known.includes(kind) ? kindLabel(kind as IdentifierKind) : kind;
 }
 
+const KIND_LABELS: Record<IdentifierKind, () => string> = {
+	iban: m.identifier_kind_iban,
+	vat_id: m.identifier_kind_vat_id,
+	customer_number: m.identifier_kind_customer_number,
+	personnel_number: m.identifier_kind_personnel_number,
+	email_domain: m.identifier_kind_email_domain,
+	tax_id: m.identifier_kind_tax_id,
+	social_security_number: m.identifier_kind_social_security_number,
+	health_insurance_number: m.identifier_kind_health_insurance_number,
+	email_address: m.identifier_kind_email_address,
+	creditor_id: m.identifier_kind_creditor_id,
+	commercial_register: m.identifier_kind_commercial_register,
+	tax_number: m.identifier_kind_tax_number,
+	contract_number: m.identifier_kind_contract_number,
+	policy_number: m.identifier_kind_policy_number,
+	membership_number: m.identifier_kind_membership_number,
+	meter_number: m.identifier_kind_meter_number,
+	loan_number: m.identifier_kind_loan_number,
+	mandate_reference: m.identifier_kind_mandate_reference,
+	license_plate: m.identifier_kind_license_plate,
+	invoice_number: m.identifier_kind_invoice_number,
+	credit_note_number: m.identifier_kind_credit_note_number,
+	order_number: m.identifier_kind_order_number,
+	file_reference: m.identifier_kind_file_reference,
+	our_reference: m.identifier_kind_our_reference,
+	your_reference: m.identifier_kind_your_reference,
+	claim_number: m.identifier_kind_claim_number,
+	ticket_number: m.identifier_kind_ticket_number,
+	child_benefit_number: m.identifier_kind_child_benefit_number
+};
+
 export function kindLabel(kind: IdentifierKind): string {
-	switch (kind) {
-		case 'iban':
-			return m.identifier_kind_iban();
-		case 'vat_id':
-			return m.identifier_kind_vat_id();
-		case 'customer_number':
-			return m.identifier_kind_customer_number();
-		case 'personnel_number':
-			return m.identifier_kind_personnel_number();
-		case 'email_domain':
-			return m.identifier_kind_email_domain();
-		case 'tax_id':
-			return m.identifier_kind_tax_id();
-		case 'social_security_number':
-			return m.identifier_kind_social_security_number();
-		case 'health_insurance_number':
-			return m.identifier_kind_health_insurance_number();
-		case 'email_address':
-			return m.identifier_kind_email_address();
-	}
+	return KIND_LABELS[kind]();
 }
 
 /** One row of the editor; `key` keeps a row apart while its value is typed. `topic_id`: the

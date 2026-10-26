@@ -557,7 +557,21 @@ and the space, the fields node reads the fields of the decided type and the titl
   the signal replaces the facts found before; a person's decision stays. The facts tell on the
   confirmed documents of how many contacts an identifier stands; `GET /documents/{id}/facts`
   names each identifier's `role` and `origins`. Revision 0047 takes over the rows of
-  `document_identifiers` (role of their kind, origin `pattern`). It also finds
+  `document_identifiers` (role of their kind, origin `pattern`).
+- **The kinds of facts** (`IdentifierKind`, issue #145 PR 4; one module per kind in
+  `domain/identifiers`): besides IBAN, VAT ID, customer and personnel number, e-mail domain and
+  a person's numbers, those that point to the contact (creditor ID with its check digits,
+  commercial register number `HRB 12345` anywhere, a company's tax number), to what a series
+  refers to (contract, policy, membership, meter, loan number, mandate reference, licence plate;
+  a contact's, which may name a user), mark the document (invoice, credit note, order number),
+  join a strand (file reference, "Unser Zeichen", claim, ticket number), refer to a document
+  ("Ihr Zeichen"), point to a person (child benefit number). Each is found after its labels
+  (German and English); a number written after "Ihr", "Ihre" or "your" ("Ihre Rechnung Nr.
+  4711") refers to another's document (role `refers`). The customer number lost the labels of
+  contracts, policies and memberships; a contact's customer number still matches those kinds
+  with its value, and an admin may change its kind in the contact dialog. A value that does not
+  fit a kind is refused with `not_of_kind`. The facts report lists the document's numbers that
+  are no contact's or person's identifier (`numbers`). It also finds
   persons (`persons`: user id, strength, kinds of evidence, never the values): one of their
   own identifiers, or a contact's customer or personnel number that names them, is `hard`;
   their birth date in the text `medium`; their display name or an alias `weak` (an address

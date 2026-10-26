@@ -13,7 +13,7 @@ from uuid import UUID
 from lekto.core.domain import media_types
 from lekto.core.domain.classification import CONFIRMING, SPACE
 from lekto.core.domain.codes import Code, GiroCode, code_identifiers, codes_from_json, giro_code
-from lekto.core.domain.document_facts import DocumentFact
+from lekto.core.domain.document_facts import NUMBER_KINDS, DocumentFact, FactState
 from lekto.core.domain.documents import Channel, Document, DocumentChanges, confirms
 from lekto.core.domain.errors import (
     ConflictError,
@@ -23,7 +23,7 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.exchanges import RunExchange, exchanges_from_json
-from lekto.core.domain.facts import Facts, facts_in, on_pages
+from lekto.core.domain.facts import Facts, Span, facts_in, identifier_spans, on_pages
 from lekto.core.domain.fields import SORTABLE_TYPES, FieldType, FieldValue
 from lekto.core.domain.first_runs import Decision
 from lekto.core.domain.identifiers import IdentifierKind
@@ -185,6 +185,23 @@ class DocumentFacts:
     # The facts kept for the document (`domain.document_facts`) by kind and value: their role
     # and where they come from; one the facts signal has not kept yet has none.
     stored: Mapping[tuple[IdentifierKind, str], DocumentFact] = field(default_factory=dict)
+    # The document's numbers that are no contact's or person's identifier (its own, a strand's,
+    # another document's it refers to), as the text reads, with where they stand.
+    numbers: tuple["DocumentNumber", ...] = ()
+
+
+@dataclass(frozen=True)
+class DocumentNumber:
+    """A fact of a kind no contact or person has (`NUMBER_KINDS`) and where it stands."""
+
+    fact: DocumentFact
+    spans: tuple[Span, ...]
+
+    def on(self, places: TextPlaces) -> "DocumentNumber":
+        placed = tuple(
+            replace(span, locations=places.locations(span.start, span.end)) for span in self.spans
+        )
+        return DocumentNumber(self.fact, placed)
 
 
 async def _check_sortable(uow: UnitOfWork, order: DocumentOrder) -> None:
@@ -376,12 +393,21 @@ class DocumentService:
         codes = await self._codes(id)
         pages = await load_layout(store, id)
 
-        def found() -> Facts:
+        def found() -> tuple[Facts, tuple[DocumentNumber, ...]]:
             facts = facts_in(text, contacts, codes or (), persons=persons, places=True)
-            return on_pages(facts, TextPlaces(text, pages)) if pages else facts
+            numbers = tuple(
+                DocumentNumber(fact, identifier_spans(text, fact.kind, fact.value))
+                for fact in stored.values()
+                if fact.kind in NUMBER_KINDS and fact.state is not FactState.REJECTED
+            )
+            if pages:
+                places = TextPlaces(text, pages)
+                facts = on_pages(facts, places)
+                numbers = tuple(item.on(places) for item in numbers)
+            return facts, numbers
 
         # Matching every contact's names against a long text takes a while: not in the loop.
-        facts = await asyncio.to_thread(found)
+        facts, numbers = await asyncio.to_thread(found)
         amounts = {
             field: value
             for field, value in document.fields.items()
@@ -411,6 +437,7 @@ class DocumentService:
                 else None
             ),
             stored=stored,
+            numbers=numbers,
         )
 
     async def _codes(self, id: DocumentId) -> tuple[Code, ...] | None:

@@ -93,7 +93,9 @@ def test_identifiers_in_a_letter() -> None:
         (IBAN, THEIR_IBAN),
         (VAT, "DE123456789"),
         (CUSTOMER, "47110815"),
-        (CUSTOMER, "123456789"),
+        # Kinds of their own since #145: the contract number, the company's tax number.
+        (IdentifierKind.CONTRACT_NUMBER, "123456789"),
+        (IdentifierKind.TAX_NUMBER, "1234567890"),
         (CUSTOMER, "K77881"),
         (DOMAIN, "stadtwerke-musterstadt.de"),
         (IdentifierKind.EMAIL_ADDRESS, "service@stadtwerke-musterstadt.de"),
@@ -283,9 +285,24 @@ def test_who_sees_a_contacts_identifier() -> None:
 def test_every_kind_has_its_type_and_says_whose_it_is() -> None:
     assert set(TYPES) == set(IdentifierKind)
     assert all(TYPES[kind].kind is kind for kind in IdentifierKind)
-    assert frozenset({IBAN, VAT, CUSTOMER, PERSONNEL, DOMAIN}) == CONTACT_KINDS
-    assert frozenset({IBAN, TAX, SOCIAL, HEALTH, ADDRESS}) == PERSON_KINDS
-    assert frozenset({CUSTOMER, PERSONNEL}) == NAMING_KINDS
+    contracts = {
+        IdentifierKind.CONTRACT_NUMBER,
+        IdentifierKind.POLICY_NUMBER,
+        IdentifierKind.MEMBERSHIP_NUMBER,
+        IdentifierKind.METER_NUMBER,
+        IdentifierKind.LOAN_NUMBER,
+        IdentifierKind.MANDATE_REFERENCE,
+        IdentifierKind.LICENSE_PLATE,
+    }
+    companies = {
+        IdentifierKind.CREDITOR_ID,
+        IdentifierKind.COMMERCIAL_REGISTER,
+        IdentifierKind.TAX_NUMBER,
+    }
+    assert {IBAN, VAT, CUSTOMER, PERSONNEL, DOMAIN} | contracts | companies == CONTACT_KINDS
+    assert {IBAN, TAX, SOCIAL, HEALTH, ADDRESS, IdentifierKind.CHILD_BENEFIT_NUMBER} == PERSON_KINDS
+    # A tax number may be the one the tax office gave a user.
+    assert {CUSTOMER, PERSONNEL, IdentifierKind.TAX_NUMBER} | contracts == NAMING_KINDS
     assert catalog()["customer_number"] == {"contact": True, "person": False, "names_user": True}
 
 

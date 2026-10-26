@@ -314,6 +314,7 @@ class ReasonCode(StrEnum):
     NOT_IBAN = "not_iban"
     NOT_VAT_ID = "not_vat_id"
     NOT_CUSTOMER_NUMBER = "not_customer_number"
+    NOT_OF_KIND = "not_of_kind"
     NOT_PERSONNEL_NUMBER = "not_personnel_number"
     NOT_DOMAIN = "not_domain"
     FREE_MAIL_DOMAIN = "free_mail_domain"
@@ -758,6 +759,7 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.SKIP_NOT_AVAILABLE: "not available",
     ReasonCode.NOT_IBAN: "'{value}' is not a valid IBAN",
     ReasonCode.NOT_VAT_ID: "'{value}' is not a VAT number",
+    ReasonCode.NOT_OF_KIND: "'{value}' is no valid {kind:identifier_kind}",
     ReasonCode.NOT_CUSTOMER_NUMBER: (
         "'{value}' is no customer number (4 to 30 letters and digits, one a digit)"
     ),
@@ -954,6 +956,7 @@ KINDS: Mapping[str, str] = {
     "thing": "thing",
     "action": "action",
     "field_type": "field_type",
+    "identifier_kind": "identifier_kind",
 }
 """The kinds a template may give a parameter (after its colon; none: text), by the name the
 catalog gives them: `number` a number, `percent` a fraction from 0 to 1, `date` a day in ISO
@@ -964,7 +967,7 @@ a list of names one after the other (spaces a document went through), `reason` a
 (`Reason.to_json`), `list` a list of names, quoted and joined by commas, `nodes` a list of
 nodes of the pipeline (`ocr`, ...), `thing` what something is, as an English noun (`document
 type`, `title`), `action` one of `Action` (what only some may do), `field_type` a field's data
-type (`amount`)."""
+type (`amount`), `identifier_kind` a kind of identifier or fact (`invoice_number`)."""
 
 
 class _Formatter(string.Formatter):
@@ -997,6 +1000,8 @@ class _Formatter(string.Formatter):
                     return str(value)
             case "field_type":
                 return _FIELD_TYPES.get(str(value), str(value))
+            case "identifier_kind":
+                return str(value).replace("_", " ")
             case "reason":
                 try:
                     return Reason.from_json(value).text  # type: ignore[arg-type]

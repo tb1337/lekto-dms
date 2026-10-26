@@ -39,7 +39,7 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.facts import NAME, Strength, facts_in
-from lekto.core.domain.identifiers import IdentifierKind, identifiers_in, places_in
+from lekto.core.domain.identifiers import IdentifierKind, identifiers_in, places_in, referred_in
 from lekto.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId, UserId
 from lekto.core.domain.json_value import (
     JsonObject,
@@ -150,7 +150,8 @@ class FactsSignal:
         for code in codes or ():
             in_codes |= code_identifiers(code)
         places = await asyncio.to_thread(places_in, text)
-        found = await asyncio.to_thread(found_facts, text, in_text, in_codes, places)
+        referred = await asyncio.to_thread(referred_in, text)
+        found = await asyncio.to_thread(found_facts, text, in_text, in_codes, places, referred)
         result = NodeResult(outcome=Outcome.OK, model_version=FACTS, output=output)
         return FactsResult(result, found)
 

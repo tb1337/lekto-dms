@@ -13,6 +13,7 @@ from lekto.core.domain.identifiers import (
     IdentifierKind,
     IdentifierSource,
     of_person,
+    related_keys,
     seen_by,
 )
 from lekto.core.domain.ids import SpaceId
@@ -69,6 +70,7 @@ async def claim_identifiers(
     dropped: list[Contact] = []
     for contact in contacts:
         mine = {item.key for item in contact.identifiers}
+        same = {related for key in mine for related in related_keys(key)}
         personal = sorted(key for key in mine if of_person(key, persons))
         if personal:
             _, value = personal[0]
@@ -79,7 +81,7 @@ async def claim_identifiers(
             if other.id == contact.id:
                 continue
             changed = False
-            for theirs in [item for item in other.identifiers if item.key in mine]:
+            for theirs in [item for item in other.identifiers if item.key in same]:
                 if theirs.source is IdentifierSource.MANUAL:
                     if not sees(theirs):
                         raise ConflictError(

@@ -79,6 +79,19 @@ class FoundIdentifierOut(BaseModel):
     )
 
 
+class DocumentNumberOut(BaseModel):
+    """A number of the document that is no contact's or person's identifier: its own (invoice,
+    credit note, order number), a strand's (file reference, "Unser Zeichen", claim, ticket) or
+    another document's it refers to ("Ihre Rechnung Nr.", "Ihr Zeichen")."""
+
+    kind: IdentifierKind
+    value: str = Field(description="Normalised, as Lekto compares it.")
+    written: str | None = Field(description="As the text writes it where it stands first.")
+    role: FactRole
+    origins: list[FactOrigin]
+    spans: list[SpanOut] = Field(description="Where it stands in the text.")
+
+
 class FoundPersonOut(BaseModel):
     """A user the document names, with the kinds of evidence (never the values)."""
 
@@ -212,6 +225,13 @@ class FactsOut(BaseModel):
     codes: list[CodeOut] | None = Field(
         description="The codes on the pages; null while they are not read (`read-codes`)."
     )
+    numbers: list[DocumentNumberOut] = Field(
+        default_factory=list,
+        description=(
+            "The document's numbers that are no contact's or person's identifier, as the text "
+            "reads: as the facts signal kept them (empty until it ran again after 0.7)."
+        ),
+    )
     persons: list[FoundPersonOut] | None = Field(
         default=None,
         description=(
@@ -258,6 +278,17 @@ class FactsOut(BaseModel):
                 for item in report.facts.identifiers
             ],
             codes=None if report.codes is None else [CodeOut.of(item) for item in report.codes],
+            numbers=[
+                DocumentNumberOut(
+                    kind=item.fact.kind,
+                    value=item.fact.value,
+                    written=item.fact.written,
+                    role=item.fact.role,
+                    origins=sorted(item.fact.origins),
+                    spans=[SpanOut.of(span) for span in item.spans],
+                )
+                for item in report.numbers
+            ],
             persons=(
                 None
                 if report.person_names is None

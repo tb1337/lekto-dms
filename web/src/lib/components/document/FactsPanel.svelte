@@ -27,6 +27,7 @@
 		strengthLabel,
 		type CodeFacts,
 		type CodePlace,
+		type DocumentNumber,
 		type Facts,
 		type FoundIdentifier,
 		type FoundPerson,
@@ -120,6 +121,7 @@
 		'kind' in entry ? `id:${identifierKey(entry)}` : `name:${entry.contact_id}`;
 	const codeId = (index: number) => `code:${index}`;
 	const personId = (person: FoundPerson) => `person:${person.user_id}`;
+	const numberId = (number: DocumentNumber) => `number:${number.kind}:${number.value}`;
 
 	$effect(() => {
 		const id = active;
@@ -138,6 +140,11 @@
 		if (id.startsWith('person:')) {
 			const person = facts.persons?.find((item) => personId(item) === id);
 			onmark(person?.spans ?? [], scroll, person?.name ?? '');
+			return;
+		}
+		if (id.startsWith('number:')) {
+			const number = facts.numbers?.find((item) => numberId(item) === id);
+			onmark(number?.spans ?? [], scroll, number ? kindLabel(number.kind) : '');
 			return;
 		}
 		const entry = [...facts.named, ...facts.identifiers].find((item) => entryId(item) === id);
@@ -417,6 +424,40 @@
 			{/each}
 		{/if}
 	</section>
+
+	{#if facts.numbers && facts.numbers.length > 0}
+		<!-- The document's own numbers, a strand's, another document's it refers to (#145). -->
+		<section aria-labelledby="numbers-title" class="rounded-2xl border bg-card p-3.5">
+			<div class="flex items-baseline gap-2 px-1 pb-1">
+				<h2 id="numbers-title" class="text-[15px] font-semibold">{m.facts_numbers()}</h2>
+				<span class="text-xs text-muted-foreground">{m.facts_numbers_hint()}</span>
+			</div>
+			{#each facts.numbers as number (numberId(number))}
+				{@const id = numberId(number)}
+				<div
+					class={cn('rounded-xl transition-colors', active === id && 'bg-panel')}
+					onmouseenter={() => (hover = id)}
+					onmouseleave={() => (hover = null)}
+					role="presentation"
+				>
+					<button
+						type="button"
+						class="flex w-full min-w-0 flex-col items-start gap-0.5 px-2.5 py-2 text-left"
+						aria-pressed={pinned === id}
+						onclick={() => pin(id)}
+						onfocus={() => (hover = id)}
+						onblur={() => (hover = null)}
+					>
+						<span class="text-xs font-medium text-muted-foreground">
+							{kindLabel(number.kind)}
+							<span class="font-normal">· {roleLabel(number.role)}</span>
+						</span>
+						<span class="font-mono text-[13px] break-words">{number.written ?? number.value}</span>
+					</button>
+				</div>
+			{/each}
+		</section>
+	{/if}
 
 	{#if facts.persons && facts.persons.length > 0}
 		<section aria-labelledby="persons-title" class="rounded-2xl border bg-card p-3.5">

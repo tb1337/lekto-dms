@@ -3,6 +3,8 @@ import {
 	codeSpans,
 	evidenceLabel,
 	factCounts,
+	factFilterLabel,
+	parseFactFilter,
 	grouped,
 	inUnits,
 	KIND_ROLES,
@@ -218,5 +220,17 @@ describe('the counts of the facts', () => {
 		// The names of the contact stay.
 		const names = grouped(FACTS).own.filter((entry) => !('kind' in entry)).length;
 		expect(factCounts(rejected)).toMatchObject({ evidence: names, unknown: 0 });
+	});
+});
+
+describe('a fact of the filter', () => {
+	it('keeps colons in its value and names what it does not know as written', () => {
+		expect(parseFactFilter('letter_date:15.08.2026 10:30:refers')).toEqual({
+			kind: 'letter_date',
+			value: '15.08.2026 10:30',
+			role: 'refers'
+		});
+		expect(parseFactFilter('::own')).toEqual({ kind: null, value: null, role: 'own' });
+		expect(factFilterLabel('bogus:1:nonsense')).toBe('bogus 1 · nonsense');
 	});
 });

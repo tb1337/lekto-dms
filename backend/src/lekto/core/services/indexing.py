@@ -45,7 +45,13 @@ from decimal import Decimal
 from enum import StrEnum
 from uuid import UUID
 
-from lekto.core.domain.document_facts import DocumentFact, FactState, fact_tokens
+from lekto.core.domain.document_facts import (
+    DocumentFact,
+    FactRole,
+    FactState,
+    fact_tokens,
+    person_only,
+)
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import (
     ConcurrencyError,
@@ -506,9 +512,17 @@ class IndexingService:
             fields=_field_texts(document),
             field_ids=tuple(document.fields),
             facts=tuple(sorted(fact_tokens(snapshot.facts))),
+            # A person's numbers are no words of the search: only admins find them (by the
+            # filter), and the text holds what it shows anyway.
             fact_values=tuple(
                 sorted(
-                    {fact.value for fact in snapshot.facts if fact.state is not FactState.REJECTED}
+                    {
+                        fact.value
+                        for fact in snapshot.facts
+                        if fact.state is not FactState.REJECTED
+                        and not person_only(fact.kind)
+                        and fact.role is not FactRole.PERSON
+                    }
                 )
             ),
             document_date=document.document_date,

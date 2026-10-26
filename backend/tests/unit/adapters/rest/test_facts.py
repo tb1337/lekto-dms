@@ -246,6 +246,10 @@ async def test_documents_are_found_by_their_facts(facts_api: Api) -> None:
     assert await listed("nonsense") == 422
     assert await listed(":4711:") == 422  # a value needs its kind
     assert await listed("tax_id::") == 403  # a person's kind
+    assert await listed("::person") == 403  # a person's role
+    assert await listed("letter_date:15.08.2026 10:30:") == []  # a value may hold colons
+    unknown = await api.client.get(DOCUMENTS, params={"fact": "bogus::"}, headers=auth(owner))
+    assert (unknown.status_code, unknown.json()["reason"]["code"]) == (422, "fact_kind_unknown")
     facets = await api.client.get(
         f"{DOCUMENTS}/facets", params={"fact": "invoice_number::"}, headers=auth(owner)
     )
@@ -263,3 +267,9 @@ async def test_documents_are_found_by_their_facts(facts_api: Api) -> None:
     assert lens.json()["filter"]["facts"] == [
         {"kind": "invoice_number", "value": "R1001", "role": None}
     ]
+    personal = await api.client.post(
+        f"{PREFIX}/lenses",
+        json={"name": "Steuer", "filter": {"facts": [{"kind": "tax_id"}]}},
+        headers=auth(owner),
+    )
+    assert personal.status_code == 403

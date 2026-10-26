@@ -19,8 +19,14 @@ from lekto.core.domain.lenses import UNSET, Grouping, Lens, LensChanges
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
+from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
-from lekto.core.services._access import field_definitions, load_actor
+from lekto.core.services._access import (
+    check_fact_filter,
+    field_definitions,
+    load_actor,
+    of_a_person,
+)
 
 MAX_LENSES = 100
 """Lenses a user has at most."""
@@ -59,6 +65,7 @@ class LensService:
             lens = Lens.create(owner_id=user.id, name=name, position=position, now=now)
             lens.change(changes, now=now)
             _check_fields(lens, await field_definitions(uow))
+            check_fact_filter(user, DocumentFilter(facts=lens.filter.facts))
             await uow.lenses.add(lens)
             await uow.commit()
             return lens
@@ -71,6 +78,7 @@ class LensService:
             lens = existing.prune(await _own(uow, user, id))
             lens.change(changes, now=self._clock.now())
             _check_fields(lens, existing.fields)
+            check_fact_filter(user, DocumentFilter(facts=lens.filter.facts))
             await uow.lenses.update(lens)
             await uow.commit()
             return lens
@@ -133,6 +141,7 @@ class _Existing:
     tags: frozenset[UUID]
     spaces: frozenset[UUID]
     fields: dict[FieldId, FieldDefinition]
+    admin: bool = False  # a person's facts only an admin's lens keeps
 
     def prune(self, lens: Lens) -> Lens:
         """`lens` without what is gone (not stored)."""
@@ -151,6 +160,7 @@ class _Existing:
             tag_ids=tuple(id for id in filter.tag_ids if id in self.tags),
             space_ids=tuple(id for id in filter.space_ids if id in self.spaces),
             field_id=filter.field_id if filter.field_id in self.fields else None,
+            facts=tuple(item for item in filter.facts if self.admin or not of_a_person(item)),
         )
         due = self.fields.get(lens.due_field_id) if lens.due_field_id else None
         due_kept = due is not None and due.data_type is FieldType.DATE
@@ -183,4 +193,5 @@ async def _existing(uow: UnitOfWork, user: User) -> _Existing:
         tags=frozenset(item.id for item in await uow.tags.list_all()),
         spaces=frozenset(space.id for space in spaces),
         fields=await field_definitions(uow),
+        admin=user.is_active_admin,
     )

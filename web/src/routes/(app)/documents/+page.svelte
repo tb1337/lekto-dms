@@ -137,6 +137,8 @@
 			);
 			toast.success(m.lens_saved({ name: kept.name }));
 			await loadLenses();
+			// As the lens keeps it (a fact's value normalised): the page no longer differs.
+			go(lensParams(kept, today));
 		} catch (error) {
 			toast.error(describeError(error));
 		} finally {
@@ -162,6 +164,9 @@
 		else next.delete('sort');
 		if (saved.sort_field_id) next.set('sort_field', saved.sort_field_id);
 		else next.delete('sort_field');
+		// The facts as the lens keeps them (their values normalised), so the page is the lens.
+		next.delete('fact');
+		for (const fact of lensParams(saved, today).getAll('fact')) next.append('fact', fact);
 		layout = saved.layout;
 		go(next);
 	}
@@ -192,7 +197,8 @@
 			filters.topics.length +
 			filters.spaces.length +
 			(filters.field ? 1 : 0) +
-			(filters.dateFrom || filters.dateTo ? 1 : 0)
+			(filters.dateFrom || filters.dateTo ? 1 : 0) +
+			filters.facts.length
 	);
 
 	async function loadLenses() {

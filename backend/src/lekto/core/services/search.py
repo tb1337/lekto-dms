@@ -23,6 +23,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
+from lekto.core.domain.document_facts import fact_tokens
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import EmbeddingsError, SearchUnavailableError, ValidationError
 from lekto.core.domain.events import SearchMeaningReady
@@ -237,7 +238,16 @@ class SearchService:
                 space = by_id[document.space_id]
                 allowed = all_users or reach_access(user, document, space) is not None
                 access = document_access(user, document, space)
-                if not allowed or access is None or not matches(document, filter, contacts, types):
+                facts = (
+                    fact_tokens(await uow.document_facts.of_document(document.id))
+                    if filter.facts
+                    else frozenset()
+                )
+                if (
+                    not allowed
+                    or access is None
+                    or not matches(document, filter, contacts, types, facts)
+                ):
                     continue  # the index is behind: a membership or a lane has changed
                 items.append(SearchItem(document, access, hit.score, hit.snippet))
             waiting = await in_inbox(

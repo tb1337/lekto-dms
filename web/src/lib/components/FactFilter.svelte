@@ -76,7 +76,11 @@
 	>
 		<Select
 			aria-label={m.facts_add_kind()}
-			bind:value={kind}
+			value={kind}
+			onchange={(next) => {
+				kind = next;
+				if (!next) value = ''; // a value needs its kind
+			}}
 			options={[
 				{ value: '', label: m.filter_fact_any_kind() },
 				...kinds.map((item) => ({ value: item, label: kindLabel(item) }))

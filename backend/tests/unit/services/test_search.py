@@ -8,6 +8,7 @@ from datetime import timedelta
 import pytest
 
 from lekto.adapters.outbound.memory import FakeEmbeddings, ManualClock
+from lekto.core.domain.document_facts import FactCriterion, FactRole
 from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.errors import (
     AuthenticationError,
@@ -17,6 +18,7 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.events import SearchMeaningReady
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import DocumentId
 from lekto.core.domain.pipeline import Node
 from lekto.core.domain.reasons import ReasonCode, because
@@ -25,6 +27,7 @@ from lekto.core.domain.users import Role, User
 from lekto.core.ports.embeddings import EmbeddingResult, Embeddings
 from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.search_index import SearchQuery, SearchResult
+from lekto.core.services.fact_decisions import FactAction, FactDecision
 from lekto.core.services.search import (
     KEEP_VECTORS,
     WARM_EVERY,
@@ -460,3 +463,33 @@ async def test_admins_search_their_reach_or_everything(scene: Scene) -> None:
 async def test_the_search_tells_whether_it_takes_the_meaning_into_account(scene: Scene) -> None:
     assert scene.search().meaning
     assert not scene.search(embeddings=None).meaning
+
+
+async def test_the_search_finds_documents_by_their_facts(scene: Scene) -> None:
+    """A fact filter holds on the hits as on the index; a person's facts only for admins, and
+    their values are no words of the search."""
+    world = scene.setup.world
+    document = scene.private_document
+    admin = await world.user("admin", role=Role.ADMIN)
+    for kind, value, role in (
+        (IdentifierKind.CONTRACT_NUMBER, "V-1001", FactRole.TARGET),
+        (IdentifierKind.TAX_ID, "86095742001", FactRole.PERSON),
+    ):
+        await world.documents.decide_fact(
+            admin.id,
+            document.id,
+            FactDecision(action=FactAction.ADD, kind=kind, value=value, role=role),
+        )
+    await scene.setup.settle()
+    contract = DocumentFilter(
+        facts=(FactCriterion.written(IdentifierKind.CONTRACT_NUMBER, "V-1001", None),)
+    )
+    assert await scene.ids(scene.owner, "Mietvertrag", contract) == {document.id}
+    assert await scene.ids(scene.owner, "V1001") == {document.id}
+    assert await scene.ids(scene.owner, "86095742001") == set()
+    with pytest.raises(PermissionDeniedError):
+        await scene.ids(
+            scene.reader,
+            "Mietvertrag",
+            DocumentFilter(facts=(FactCriterion(role=FactRole.PERSON),)),
+        )

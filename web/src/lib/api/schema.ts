@@ -17648,7 +17648,7 @@ export interface operations {
 				topic_id?: string[] | null;
 				document_date_from?: string | null;
 				document_date_to?: string | null;
-				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. The kinds that are a person's alone only for admins (403). */
+				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
 				fact?: string[] | null;
 			};
 			header?: never;
@@ -18351,7 +18351,7 @@ export interface operations {
 				topic_id?: string[] | null;
 				document_date_from?: string | null;
 				document_date_to?: string | null;
-				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. The kinds that are a person's alone only for admins (403). */
+				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
 				fact?: string[] | null;
 			};
 			header?: never;
@@ -18663,7 +18663,7 @@ export interface operations {
 				topic_id?: string[] | null;
 				document_date_from?: string | null;
 				document_date_to?: string | null;
-				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. The kinds that are a person's alone only for admins (403). */
+				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
 				fact?: string[] | null;
 			};
 			header?: never;

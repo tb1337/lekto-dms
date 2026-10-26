@@ -163,7 +163,10 @@ async def decide_fact(
                     },
                 )
         # The document's facts changed: the search index and those who follow it learn of it.
-        await uow.outbox.add([DocumentUpdated(document_id=id, occurred_at=now, fields=(FACTS,))])
+        if decision.action is not FactAction.CORRECT or verdict is not None:
+            await uow.outbox.add(
+                [DocumentUpdated(document_id=id, occurred_at=now, fields=(FACTS,))]
+            )
         if verdict is not None:
             if document.processing.run == 1 and document.first_lane is None:
                 verdict = Verdict.EARLY  # before the first run stopped: nothing to judge

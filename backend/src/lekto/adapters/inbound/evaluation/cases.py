@@ -26,8 +26,11 @@ Layout of a set directory:
   `document_date`, optionally `recipient`, `topic`, `title` and `language`, from which the
   answer of the language model's signal is built; `fields`: proposals by field name
   (`value`, `evidence`, `label`), in that answer as text; `lane`: the lane this answer leads
-  to, if not the expected one). `expected` and `fake` may give `lanes` by run where a run
-  differs; `runs` names the runs a case belongs to (default: both).
+  to, if not the expected one; `facts`: the entries of the answer to the facts request,
+  `kind`, `value`, `role`, `evidence`, `label`). `expected.facts` (`kind`, `value` as
+  written, `role`) are the facts the document must have, scored where given. `expected` and
+  `fake` may give `lanes` by run where a run differs; `runs` names the runs a case belongs to
+  (default: both).
 """
 
 import json

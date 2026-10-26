@@ -10,9 +10,11 @@
 	import { copyText } from '#lib/clipboard.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import Segmented from '#lib/components/Segmented.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import { formatNumber } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { phone } from '#lib/phone.svelte.ts';
 	import { splitInput } from '#lib/usage.ts';
 
 	type Part = 'system' | 'document' | 'task' | 'retry' | 'user' | 'answer';
@@ -59,6 +61,9 @@
 		if (same.length > 1) return m.prompt_attempt({ number, total: same.length });
 		return m.prompt_proposal();
 	}
+	const callOptions = $derived(
+		[...calls.keys()].map((index) => ({ value: String(index), label: callLabel(index) }))
+	);
 	const text = (of: Call, which: Part) => of[which] ?? '';
 	// The parts the call has: those it sent, and the answer.
 	const shown = $derived(
@@ -109,14 +114,20 @@
 				}))}
 				onchange={(next) => (chosenPart = next as Part)}
 			/>
-			{#if calls.length > 1}
+			{#if calls.length > 2 && phone.current}
+				<!-- More than two calls do not fit side by side on a phone: a list to choose. -->
+				<Select
+					class="w-auto min-w-40"
+					aria-label={m.prompt_attempt_choice()}
+					value={String(attempt)}
+					options={callOptions}
+					onchange={(next) => (chosen = { among: calls, index: Number(next) })}
+				/>
+			{:else if calls.length > 1}
 				<Segmented
 					label={m.prompt_attempt_choice()}
 					value={String(attempt)}
-					options={[...calls.keys()].map((index) => ({
-						value: String(index),
-						label: callLabel(index)
-					}))}
+					options={callOptions}
 					onchange={(next) => (chosen = { among: calls, index: Number(next) })}
 				/>
 			{/if}

@@ -3,8 +3,8 @@
 	import { changeLanguage, getLocale, LANGUAGE_NAMES, locales, type Locale } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
-	// The languages as a group of a menu: the language menu's own, and the account menu's on a
-	// phone (where the header has no room for the language menu).
+	// The languages as a group of the language menu. (On a phone the navigation sheet holds the
+	// languages as pills instead; `AppShell`.)
 	const current = getLocale();
 </script>
 

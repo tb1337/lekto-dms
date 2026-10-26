@@ -203,6 +203,7 @@
 	"nav_settings": "Settings",
 	"nav_users": "Users",
 	"nav_master_data": "Master data",
+	"nav_open_all_users": "Open navigation, all users included",
 	"nav_open": "Open navigation",
 	"account_menu": "Account {username}",
 	"account_menu_all_users": "Account {username}, all users included",

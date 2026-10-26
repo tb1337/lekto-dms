@@ -15,13 +15,14 @@ a person's correction (`FactState`, later) outlasts it.
 
 import re
 from collections.abc import Collection, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 
 from lekto.core.domain.errors import ValidationError
-from lekto.core.domain.evidence import normalise
+from lekto.core.domain.evidence import contains, normalise
 from lekto.core.domain.facts import identifier_spans
-from lekto.core.domain.identifiers import TYPES, IdentifierKind, Key, type_of
+from lekto.core.domain.identifiers import TYPES, IdentifierKind, Key, normalise_identifier, type_of
+from lekto.core.domain.reasons import Reason, ReasonCode, because
 
 
 class FactRole(StrEnum):
@@ -85,6 +86,7 @@ ROLES: Mapping[IdentifierKind, FactRole] = {
     IdentifierKind.CLAIM_NUMBER: FactRole.THREAD,
     IdentifierKind.TICKET_NUMBER: FactRole.THREAD,
     IdentifierKind.YOUR_REFERENCE: FactRole.REFERS,
+    IdentifierKind.LETTER_DATE: FactRole.REFERS,
     IdentifierKind.CHILD_BENEFIT_NUMBER: FactRole.PERSON,
 }
 """The role a fact of each kind has until a source tells (a test holds that no kind is
@@ -224,3 +226,68 @@ def check_decided(fact: DocumentFact) -> None:
     """A fact a person decided; ValidationError for one as found."""
     if not fact.state.by_person:
         raise ValidationError("a decision is a person's: added, corrected or rejected")
+
+
+# --- facts a reader gives: the language model ------------------------------------------------
+
+
+@dataclass(frozen=True, kw_only=True)
+class ReadFact:
+    """A fact as a reader that is no pattern gives it (the language model), unchecked: its kind
+    and role as named, the value as written, the passage that shows it and its label."""
+
+    kind: str
+    value: str
+    role: str
+    evidence: str | None = None
+    label: str | None = None
+
+
+def checked_read(text: str, read: ReadFact) -> DocumentFact | Reason:
+    """The fact `read` gives, checked as a field's value is: a kind Lekto knows (one of a
+    person's is no reader's to give), a value of it, standing in the text, and a passage of the
+    text that shows it (`QUOTE_*`); its role as given. Why not, otherwise."""
+    try:
+        kind = IdentifierKind(read.kind)
+        role = FactRole(read.role)
+    except ValueError:
+        return because(ReasonCode.FACT_KIND_UNKNOWN, kind=read.kind)
+    if TYPES[kind].for_persons:
+        return because(ReasonCode.FACT_KIND_UNKNOWN, kind=read.kind)
+    try:
+        value = normalise_identifier(kind, read.value)
+    except ValidationError as error:
+        return error.reason
+    where = _first(text, "", kind, value, None)
+    if where is None:
+        return because(ReasonCode.FACT_NOT_IN_TEXT, value=read.value)
+    evidence = (read.evidence or "").strip()
+    if not evidence:
+        return because(ReasonCode.QUOTE_MISSING)
+    if not contains(normalise(text), evidence):
+        return because(ReasonCode.QUOTE_NOT_IN_TEXT)
+    if re.search(type_of(kind).written(value), evidence, re.IGNORECASE) is None:
+        return because(ReasonCode.QUOTE_WITHOUT_VALUE)
+    return DocumentFact(
+        kind=kind,
+        value=value,
+        role=role,
+        origins=frozenset({FactOrigin.MODEL}),
+        written=text[where[0] : where[1]],
+        position=where[0],
+    )
+
+
+def with_read(found: Iterable[DocumentFact], read: Iterable[DocumentFact]) -> list[DocumentFact]:
+    """The facts the patterns and codes found, with what a reader gave (checked): a fact of the
+    same kind and value is one fact with both origins, in the role the reader gave (`fakten.md`,
+    decision 3: the language model decides the role); a fact only the reader gave comes in."""
+    facts = {fact.key: fact for fact in found}
+    for fact in read:
+        known = facts.get(fact.key)
+        facts[fact.key] = (
+            fact
+            if known is None
+            else replace(known, role=fact.role, origins=known.origins | fact.origins)
+        )
+    return sorted(facts.values(), key=reading_order)

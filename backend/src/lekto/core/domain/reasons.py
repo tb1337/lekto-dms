@@ -315,6 +315,8 @@ class ReasonCode(StrEnum):
     NOT_VAT_ID = "not_vat_id"
     NOT_CUSTOMER_NUMBER = "not_customer_number"
     NOT_OF_KIND = "not_of_kind"
+    FACT_KIND_UNKNOWN = "fact_kind_unknown"
+    FACT_NOT_IN_TEXT = "fact_not_in_text"
     NOT_PERSONNEL_NUMBER = "not_personnel_number"
     NOT_DOMAIN = "not_domain"
     FREE_MAIL_DOMAIN = "free_mail_domain"
@@ -759,6 +761,8 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.SKIP_NOT_AVAILABLE: "not available",
     ReasonCode.NOT_IBAN: "'{value}' is not a valid IBAN",
     ReasonCode.NOT_VAT_ID: "'{value}' is not a VAT number",
+    ReasonCode.FACT_KIND_UNKNOWN: "'{kind}' is no kind of fact Lekto knows",
+    ReasonCode.FACT_NOT_IN_TEXT: "'{value}' does not appear in the text",
     ReasonCode.NOT_OF_KIND: "'{value}' is no valid {kind:identifier_kind}",
     ReasonCode.NOT_CUSTOMER_NUMBER: (
         "'{value}' is no customer number (4 to 30 letters and digits, one a digit)"

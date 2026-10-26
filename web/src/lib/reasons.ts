@@ -338,6 +338,8 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	not_vat_id: entry(m.reason_not_vat_id),
 	not_customer_number: entry(m.reason_not_customer_number),
 	not_of_kind: entry(m.reason_not_of_kind, { kind: 'identifier_kind' }),
+	fact_kind_unknown: entry(m.reason_fact_kind_unknown),
+	fact_not_in_text: entry(m.reason_fact_not_in_text),
 	not_personnel_number: entry(m.reason_not_personnel_number),
 	not_domain: entry(m.reason_not_domain),
 	free_mail_domain: entry(m.reason_free_mail_domain),

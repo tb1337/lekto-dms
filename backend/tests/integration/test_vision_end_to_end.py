@@ -112,6 +112,8 @@ def answers(case: Case) -> FakeLanguageModel:
     }
 
     def respond(request: StructuredRequest) -> str:
+        if request.schema_name == "facts":
+            return json.dumps({"facts": []})
         assert request.schema_name == "proposal", request.schema_name
         return json.dumps(proposal)
 

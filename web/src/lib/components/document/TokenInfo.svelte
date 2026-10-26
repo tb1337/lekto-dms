@@ -25,15 +25,14 @@
 					speed: formatNumber(rate, { maximumFractionDigits: 1 })
 				});
 	}
-	// The model, and how often it was asked: once per page, or the attempts when more than one.
+	// The model, and how often it was asked: once per page, the requests about the document
+	// (the proposal and the facts), and the attempts when more than one.
 	const heading = $derived(
 		[
 			model,
-			pages
-				? m.prompt_calls({ count: usage.attempts })
-				: usage.attempts > 1
-					? m.prompt_attempts({ count: usage.attempts })
-					: null
+			pages ? m.prompt_calls({ count: usage.attempts }) : null,
+			!pages && usage.requests > 1 ? m.prompt_requests({ count: usage.requests }) : null,
+			!pages && usage.attempts > 1 ? m.prompt_attempts({ count: usage.attempts }) : null
 		]
 			.filter(Boolean)
 			.join(' · ')

@@ -52,6 +52,18 @@ describe('usageOf', () => {
 	});
 });
 
+describe('a further request about the document', () => {
+	it('counts as a request, not as another attempt, and its tokens add up', () => {
+		const usage = usageOf({
+			tokens: [
+				{ prompt: 2400, completion: 80, usage: {} },
+				{ prompt: 2500, completion: 30, cached: 2300, request: 'facts', usage: {} }
+			]
+		});
+		expect(usage).toMatchObject({ input: 4900, cached: 2300, attempts: 1, requests: 2 });
+	});
+});
+
 describe('tokens from a cache', () => {
 	it('sums what the endpoints took from their cache, where they said', () => {
 		const tokens = [

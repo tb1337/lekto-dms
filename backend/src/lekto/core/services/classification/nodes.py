@@ -32,6 +32,7 @@ from lekto.core.domain.classification import (
 )
 from lekto.core.domain.documents import UNSET, Document, DocumentChanges, Unset
 from lekto.core.domain.errors import (
+    LanguageModelError,
     NotFoundError,
     UnprocessableDocumentError,
     ValidationError,
@@ -109,11 +110,14 @@ from lekto.core.services.classification.answers import (
     Proposal,
     StoredProposal,
     extract_schema,
+    facts_schema,
     field_keys,
     key_ids,
     parse_extract,
+    parse_facts,
     parse_propose,
     propose_schema,
+    read_fact_to_json,
 )
 from lekto.core.services.classification.external import (
     ExternalCall,
@@ -128,6 +132,10 @@ from lekto.core.services.classification.external import (
 from lekto.core.services.classification.prompts import (
     EXTRACT_PROMPT,
     EXTRACT_SCHEMA,
+    FACT_KINDS,
+    FACT_ROLES,
+    FACTS_PROMPT,
+    FACTS_SCHEMA,
     PROPOSE_PROMPT,
     PROPOSE_SCHEMA,
     SYSTEM,
@@ -135,11 +143,15 @@ from lekto.core.services.classification.prompts import (
     document_marker,
     document_message,
     extract_task,
+    facts_task,
     propose_task,
     retry_note,
 )
 from lekto.core.services.classification.signals import (
     ABSTAINED,
+    FACTS_ERROR,
+    FACTS_INPUT,
+    MODEL_FACTS,
     PROPOSAL,
     abstained,
     abstained_reason,
@@ -265,13 +277,18 @@ class _ModelStep:
         schema: JsonObject,
         name: str,
         parse: Callable[[str], T],
+        *,
+        calls: list[ModelCall] | None = None,
+        request: str = "",
     ) -> tuple[T, list[StructuredAnswer]]:
         """The parsed answer and all answers; once more after an unfit one, with the note what
         was wrong after the task (the call begins as the first did). What was sent and received
-        is kept beside the document (`exchanges_key`), also when the node fails."""
+        is kept beside the document (`exchanges_key`), also when the node fails; `calls`: those
+        of the node's run before, kept with these, and `request` names this further request
+        about the document (`ModelCall.request`)."""
         assert self._model is not None
         answers: list[StructuredAnswer] = []
-        calls: list[ModelCall] = []
+        kept: list[ModelCall] = calls if calls is not None else []
         errors: list[str] = []
         text = document_message(sent)
         retry: str | None = None
@@ -288,12 +305,13 @@ class _ModelStep:
                     )
                 )
                 answers.append(answer)
-                calls.append(
+                kept.append(
                     ModelCall(
                         system=SYSTEM,
                         document=text,
                         task=task,
                         retry=retry,
+                        request=request,
                         answer=answer.content,
                         model=answer.model,
                         usage=answer.usage,
@@ -306,8 +324,8 @@ class _ModelStep:
                     retry = retry_note(str(error))
             raise _UnfitAnswerError(errors, answers)
         finally:
-            if calls:
-                await keep_calls(self._store, document, node, calls)
+            if kept:
+                await keep_calls(self._store, document, node, kept)
 
     def _input(self, document: Document, text: str, sent: Shortened, prompt: str) -> JsonObject:
         assert self._model is not None
@@ -452,6 +470,7 @@ class LlmSignal(_ModelStep):
             "spaces": {key: str(space.id) for key, space in spaces.items()},
         }
         try:
+            calls: list[ModelCall] = []
             answer, answers = await self._ask(
                 document,
                 Node.SIGNAL_LLM,
@@ -467,17 +486,53 @@ class LlmSignal(_ModelStep):
                 schema,
                 PROPOSE_SCHEMA,
                 lambda content: parse_propose(content, list(keys), list(spaces)),
+                calls=calls,
             )
         except _UnfitAnswerError as error:
             return self._unfit(error, input)
         chosen = {key: space.id for key, space in spaces.items()}
+        read, asked = await self._facts(document, sent, calls)
+        output = _answered(answers, answer.raw) | read
+        output["tokens"] = [
+            *tokens_of(item.usage for item in answers),
+            *tokens_of((item.usage for item in asked), request=FACTS_SCHEMA),
+        ]
         return NodeResult(
             outcome=Outcome.OK,
             model_version=_model_version(answers[-1]),
-            input=input,
-            output=_answered(answers, answer.raw)
-            | {PROPOSAL: StoredProposal.of(answer, key_ids(keys), chosen).to_json()},
+            input=input | {FACTS_INPUT: FACTS_PROMPT},
+            output=output | {PROPOSAL: StoredProposal.of(answer, key_ids(keys), chosen).to_json()},
         )
+
+    async def _facts(
+        self, document: Document, sent: Shortened, calls: list[ModelCall]
+    ) -> tuple[JsonObject, list[StructuredAnswer]]:
+        """The facts with their role the model reads (`facts-1`), a second request on the
+        beginning the first shared (system prompt and document: prompt caching), and its
+        answers. What goes wrong is in the output and never fails the signal: the proposal
+        stands without facts."""
+        try:
+            read, answers = await self._ask(
+                document,
+                Node.SIGNAL_LLM,
+                sent,
+                facts_task(marker=document_marker(sent)),
+                facts_schema([kind.value for kind in FACT_KINDS], [r.value for r in FACT_ROLES]),
+                FACTS_SCHEMA,
+                parse_facts,
+                calls=calls,
+                request=FACTS_SCHEMA,
+            )
+        except _UnfitAnswerError as error:
+            return {FACTS_ERROR: str(error)}, error.answers
+        except LanguageModelError as error:
+            log.warning(
+                "the language model read no facts: %s",
+                error,
+                extra={"document_id": str(document.id)},
+            )
+            return {FACTS_ERROR: str(error)}, []
+        return {MODEL_FACTS: [read_fact_to_json(fact) for fact in read]}, answers
 
     async def _answered(self, document: Document, text: str, outside: ModelCallState) -> NodeResult:
         """What the webhook's task brought: its proposal, as the model's, or why none."""

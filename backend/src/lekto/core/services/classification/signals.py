@@ -29,7 +29,13 @@ from lekto.core.domain.codes import (
     codes_from_json,
     codes_to_json,
 )
-from lekto.core.domain.document_facts import DocumentFact, found_facts
+from lekto.core.domain.document_facts import (
+    DocumentFact,
+    ReadFact,
+    checked_read,
+    found_facts,
+    with_read,
+)
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import (
     ClassifierError,
@@ -52,7 +58,7 @@ from lekto.core.domain.json_value import (
 )
 from lekto.core.domain.master_data import Contact
 from lekto.core.domain.permissions import Reach, reach_access
-from lekto.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
+from lekto.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome, ProcessingHistory
 from lekto.core.domain.profiles import Person
 from lekto.core.domain.reasons import Reason, ReasonCode, because, written
 from lekto.core.domain.search import Visibility
@@ -72,7 +78,7 @@ from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.search_index import SearchIndex, SimilarQuery
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._spaces import SpaceCandidates, space_candidates
-from lekto.core.services.classification.answers import StoredProposal
+from lekto.core.services.classification.answers import StoredProposal, read_fact_from_json
 from lekto.core.services.classifier import ClassifierService
 from lekto.core.services.indexing import split_sections
 from lekto.core.services.nodes import ARCHIVE_FILE, work_directory
@@ -87,6 +93,16 @@ ABSTAINED_REASON = "abstained_reason"
 """Key of the same with its code (`Reason.to_json`)."""
 PROPOSAL = "proposal"
 """Key of the language model's proposal (`StoredProposal`) in the output of `signal_llm`."""
+MODEL_FACTS = "facts"
+"""Key of the facts with their role the language model read, in the output of `signal_llm`
+(`facts-1`; `document_facts.ReadFact` as JSON, unchecked)."""
+FACTS_ERROR = "facts_error"
+"""Why the language model read no facts, in the output of `signal_llm`."""
+FACTS_INPUT = "facts_prompt"
+"""The version of the facts prompt, in the input of `signal_llm`."""
+READ_FACTS = "read_facts"
+"""Key of what became of the language model's facts in the output of `signal_facts`: how many
+it took, and those it refused with why."""
 FACTS = "facts"
 _RANKED = 5  # classes of contact and type the classifier's signal keeps
 _CANDIDATES_MASS = 0.5  # the candidate spaces hold this much of the classifier's: renormalised
@@ -152,6 +168,21 @@ class FactsSignal:
         places = await asyncio.to_thread(places_in, text)
         referred = await asyncio.to_thread(referred_in, text)
         found = await asyncio.to_thread(found_facts, text, in_text, in_codes, places, referred)
+        async with self._uow() as uow:
+            log = await uow.processing_log.list_for(document.id)
+        read = model_facts(ProcessingHistory(log).signals())
+        if read is not None:
+            checked = [(fact, checked_read(text, fact)) for fact in read]
+            taken = [item for _, item in checked if isinstance(item, DocumentFact)]
+            found = tuple(with_read(found, taken))
+            output[READ_FACTS] = {
+                "taken": len(taken),
+                "refused": [
+                    {"kind": fact.kind, "value": fact.value, "reason": item.to_json()}
+                    for fact, item in checked
+                    if isinstance(item, Reason)
+                ],
+            }
         result = NodeResult(outcome=Outcome.OK, model_version=FACTS, output=output)
         return FactsResult(result, found)
 
@@ -475,6 +506,18 @@ def signals_of(entries: Mapping[Node, NodeRun]) -> Signals:
         facts=_facts_view(output(Node.SIGNAL_FACTS)),
         neighbours_know=_known_view(neighbours),
     )
+
+
+def model_facts(entries: Mapping[Node, NodeRun]) -> list[ReadFact] | None:
+    """The facts with their role the language model read (`facts-1`), unchecked; None if it
+    read none (no model, a webhook, an answer from before #145, or the call went wrong)."""
+    entry = entries.get(Node.SIGNAL_LLM)
+    if entry is None:
+        return None
+    items = entry.result.output.get(MODEL_FACTS)
+    if not isinstance(items, list):
+        return None
+    return [fact for fact in map(read_fact_from_json, items) if fact is not None]
 
 
 def model_proposal(entries: Mapping[Node, NodeRun]) -> StoredProposal | None:

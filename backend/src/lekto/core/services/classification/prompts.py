@@ -16,14 +16,18 @@ import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from lekto.core.domain.document_facts import FactRole
 from lekto.core.domain.fields import FieldDefinition, FieldType
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.master_data import one_line
 from lekto.core.domain.text import Shortened
 
 EXTRACT_PROMPT = "extract-6"
 PROPOSE_PROMPT = "propose-6"
+FACTS_PROMPT = "facts-1"
 PROPOSE_SCHEMA = "proposal"
 EXTRACT_SCHEMA = "fields"
+FACTS_SCHEMA = "facts"
 """Names of the JSON schemas of the two requests (`StructuredRequest.schema_name`)."""
 
 TITLE_CHARACTERS = 80  # the title the model is asked for; `MAX_TITLE` is what the domain takes
@@ -157,6 +161,10 @@ SPACES_HEADING = "Spaces (where the document is filed; who may see it follows fr
 
 PROPOSE_TASK = "Task: propose the metadata of the document {where} above."
 EXTRACT_TASK = "Task: extract the values of the listed fields from the document {where} above."
+FACTS_TASK = (
+    "Task: list the facts of the document {where} above: the numbers and references of the "
+    "listed kinds it shows, each with its role."
+)
 """The first line of a task; `{where}` names the document's markers (`document_marker`), so the
 task holds to the real frame, not to one the document's text may forge."""
 
@@ -305,4 +313,71 @@ def document_message(text: Shortened) -> str:
     return (
         f"The document follows between <{marker}> and </{marker}>.\n{note}"
         f"<{marker}>\n{text.text}\n</{marker}>"
+    )
+
+
+FACT_KINDS: dict[IdentifierKind, str] = {
+    IdentifierKind.CUSTOMER_NUMBER: "a customer number or customer account at the sender",
+    IdentifierKind.PERSONNEL_NUMBER: "an employee's number at the employer",
+    IdentifierKind.CREDITOR_ID: "a SEPA creditor identifier (Gläubiger-ID)",
+    IdentifierKind.COMMERCIAL_REGISTER: "a commercial register number (HRB 12345)",
+    IdentifierKind.TAX_NUMBER: (
+        "a tax number (Steuernummer): a company's, or the one the tax office gave the addressee"
+    ),
+    IdentifierKind.CONTRACT_NUMBER: "a contract number",
+    IdentifierKind.POLICY_NUMBER: "an insurance policy number (Versicherungsscheinnummer)",
+    IdentifierKind.MEMBERSHIP_NUMBER: "a membership number",
+    IdentifierKind.METER_NUMBER: "a meter number or metering point (Zählernummer, Zählpunkt)",
+    IdentifierKind.LOAN_NUMBER: "a loan or credit number",
+    IdentifierKind.MANDATE_REFERENCE: "a SEPA mandate reference",
+    IdentifierKind.LICENSE_PLATE: "a car's licence plate",
+    IdentifierKind.INVOICE_NUMBER: "the number of an invoice",
+    IdentifierKind.CREDIT_NOTE_NUMBER: "the number of a credit note",
+    IdentifierKind.ORDER_NUMBER: "the number of an order or a job",
+    IdentifierKind.FILE_REFERENCE: "a file reference of a case (Aktenzeichen, Geschäftszeichen)",
+    IdentifierKind.OUR_REFERENCE: 'the sender\'s reference ("Unser Zeichen")',
+    IdentifierKind.CLAIM_NUMBER: "a claim number of an insurance case",
+    IdentifierKind.TICKET_NUMBER: "a ticket or case number of a request",
+    IdentifierKind.YOUR_REFERENCE: 'the addressee\'s reference ("Ihr Zeichen")',
+    IdentifierKind.LETTER_DATE: (
+        'the day of a letter of the addressee this one answers ("Ihr Schreiben vom …"), '
+        "as YYYY-MM-DD"
+    ),
+}
+"""The kinds the language model reads (`facts-1`), each with what it is; a person's numbers and
+what the patterns read surely (IBAN, VAT ID, e-mail) are not asked for."""
+
+FACT_ROLES: dict[FactRole, str] = {
+    FactRole.CONTACT: "it marks the sender: a number the sender gave the addressee",
+    FactRole.TARGET: (
+        "it points to the contract, policy, meter, loan or car the document is about"
+    ),
+    FactRole.OWN: "it is this document's own number (the number of this invoice)",
+    FactRole.THREAD: "it joins the letters of one matter: a file reference, a claim, a ticket",
+    FactRole.REFERS: (
+        "it is the number or day of another document this one refers to "
+        '("Ihre Rechnung Nr. 4711", "Ihr Schreiben vom 18.06.2026")'
+    ),
+}
+"""What each role the language model gives means (`facts-1`; no person's role)."""
+
+FACTS_RULE = """\
+one entry per number or reference of a listed kind the document shows, with its kind, the \
+value as written in the document (a day of a letter as YYYY-MM-DD), its role, the evidence and \
+the label; the same value once. A number the document names as another's ("Ihre Rechnung Nr. \
+4711" in a reminder) has the role refers; the document's own invoice number the role own. \
+Leave out what is of no listed kind, and amounts, dates and periods that are no reference."""
+
+
+def facts_task(*, marker: str | None = None) -> str:
+    """The task of the facts call: the kinds and roles, then what the answer's facts are."""
+    kinds = "\n".join(f"- {kind.value}: {text}" for kind, text in FACT_KINDS.items())
+    roles = "\n".join(f"- {role.value}: {text}" for role, text in FACT_ROLES.items())
+    return "\n\n".join(
+        [
+            _task_line(FACTS_TASK, marker),
+            "Kinds:\n" + kinds,
+            "Roles:\n" + roles,
+            _parts({"facts": FACTS_RULE}),
+        ]
     )

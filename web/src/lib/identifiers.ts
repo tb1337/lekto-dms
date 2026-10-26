@@ -63,7 +63,8 @@ export const NUMBER_KINDS: readonly IdentifierKind[] = [
 	'our_reference',
 	'claim_number',
 	'ticket_number',
-	'your_reference'
+	'your_reference',
+	'letter_date'
 ];
 
 /** The label of a kind as the log or a candidate names it; a kind this UI does not know stays
@@ -99,6 +100,7 @@ const KIND_LABELS: Record<IdentifierKind, () => string> = {
 	file_reference: m.identifier_kind_file_reference,
 	our_reference: m.identifier_kind_our_reference,
 	your_reference: m.identifier_kind_your_reference,
+	letter_date: m.identifier_kind_letter_date,
 	claim_number: m.identifier_kind_claim_number,
 	ticket_number: m.identifier_kind_ticket_number,
 	child_benefit_number: m.identifier_kind_child_benefit_number

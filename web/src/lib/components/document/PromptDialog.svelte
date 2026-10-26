@@ -48,6 +48,17 @@
 	const attempt = $derived(chosen?.among === calls ? chosen.index : 0);
 
 	const call = $derived(calls[Math.min(attempt, calls.length - 1)] ?? null);
+	// Each call by its request: the attempts of the first, then a further one (the facts).
+	function callLabel(index: number): string {
+		const of = calls[index];
+		const same = calls.filter((other) => other.request === of.request);
+		const number = same.indexOf(of) + 1;
+		if (of.request === 'facts') {
+			return same.length > 1 ? m.prompt_facts_attempt({ number }) : m.prompt_facts();
+		}
+		if (same.length > 1) return m.prompt_attempt({ number, total: same.length });
+		return m.prompt_proposal();
+	}
 	const text = (of: Call, which: Part) => of[which] ?? '';
 	// The parts the call has: those it sent, and the answer.
 	const shown = $derived(
@@ -104,7 +115,7 @@
 					value={String(attempt)}
 					options={[...calls.keys()].map((index) => ({
 						value: String(index),
-						label: m.prompt_attempt({ number: index + 1, total: calls.length })
+						label: callLabel(index)
 					}))}
 					onchange={(next) => (chosen = { among: calls, index: Number(next) })}
 				/>

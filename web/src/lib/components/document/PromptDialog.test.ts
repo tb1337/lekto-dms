@@ -39,6 +39,23 @@ describe('PromptDialog', () => {
 		expect(screen.queryByText('second of reader')).toBeNull();
 	});
 
+	it('names the request for the facts apart from the attempts of the proposal', async () => {
+		const user = userEvent.setup();
+		const facts = { ...call('the system'), user: '', task: 'list the facts', request: 'facts' };
+		render(PromptDialog, {
+			open: true,
+			title: 'Prompt · Language model',
+			meta: 'm',
+			calls: [call('the system'), call('the system'), facts as Call]
+		});
+		expect(
+			await screen.findByRole('button', { name: m.prompt_attempt({ number: 2, total: 2 }) })
+		).toBeTruthy();
+		await user.click(screen.getByRole('button', { name: m.prompt_facts() }));
+		await user.click(await screen.findByRole('button', { name: m.prompt_task() }));
+		expect(screen.getByText('list the facts')).toBeTruthy();
+	});
+
 	it('shows what went to a webhook without a system message', async () => {
 		render(PromptDialog, {
 			open: true,

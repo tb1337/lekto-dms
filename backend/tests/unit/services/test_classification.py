@@ -16,6 +16,7 @@ from lekto.adapters.outbound.memory.processing import FAKE_PDF
 from lekto.adapters.outbound.ocrmypdf.hocr import hocr_words
 from lekto.adapters.outbound.regex import RegexPatternMatcher
 from lekto.core.domain.classification import TITLE, FieldCheck, checks_from_json, field_key
+from lekto.core.domain.document_facts import FactOrigin, FactRole
 from lekto.core.domain.documents import UNSET, Document, DocumentChanges
 from lekto.core.domain.errors import LanguageModelError
 from lekto.core.domain.events import DocumentFiled
@@ -45,7 +46,7 @@ from lekto.core.services.classification.nodes import (
     JudgeNode,
     LlmSignal,
 )
-from lekto.core.services.classification.prompts import SYSTEM
+from lekto.core.services.classification.prompts import FACTS_SCHEMA, SYSTEM
 from lekto.core.services.classification.signals import (
     ABSTAINED,
     ClassifierSignal,
@@ -171,11 +172,14 @@ def extraction(**values: Any) -> JsonObject:
     return {"fields": defaults | values}
 
 
-def model(*answers: JsonObject | str) -> FakeLanguageModel:
-    """Answers in turn; the last one again and again."""
+def model(*answers: JsonObject | str, facts: JsonObject | str | None = None) -> FakeLanguageModel:
+    """Answers in turn; the last one again and again. The request for the facts (`facts-1`)
+    it answers with `facts`, by default with none."""
     remaining = list(answers)
 
     def respond(request: StructuredRequest) -> JsonObject | str:
+        if request.schema_name == FACTS_SCHEMA:
+            return {"facts": []} if facts is None else facts
         return remaining.pop(0) if len(remaining) > 1 else remaining[0]
 
     return FakeLanguageModel(respond)
@@ -319,8 +323,13 @@ async def test_the_signal_asks_once_and_keeps_the_proposal(world: World) -> None
         "a4": str(fields["Rechnungsnummer"].id),
     }
     assert output(result)["attempts"] == 1
-    # Per attempt; the fake model reports no usage.
-    assert output(result)["tokens"] == [{"prompt": None, "completion": None, "usage": {}}]
+    # Per attempt, then the request for the facts; the fake model reports no usage.
+    assert output(result)["tokens"] == [
+        {"prompt": None, "completion": None, "usage": {}},
+        {"prompt": None, "completion": None, "request": "facts", "usage": {}},
+    ]
+    assert output(result)["facts"] == []
+    assert result.input["facts_prompt"] == "facts-1"
     assert output(result)["answer"] == proposal()
     kept = output(result)["proposal"]
     assert kept["sender"] == {"value": "Stadtwerke Musterstadt GmbH", "evidence": None}
@@ -336,9 +345,16 @@ async def test_the_signal_asks_once_and_keeps_the_proposal(world: World) -> None
     }
     assert str(fields["Bezahlt"].id) not in kept["fields"]
 
-    (request,) = fake.requests
+    request, facts = fake.requests
     assert request.schema_name == "proposal"
     assert request.system == SYSTEM
+    # The facts on the same beginning: system prompt and document (prompt caching).
+    assert (facts.schema_name, facts.system, facts.document) == (
+        "facts",
+        SYSTEM,
+        request.document,
+    )
+    assert "- invoice_number: the number of an invoice" in facts.task
     assert (
         "Fields:\n"
         '- a2: "Fällig am" (date)\n'
@@ -366,7 +382,7 @@ async def test_an_unfit_answer_is_asked_again(world: World) -> None:
     result = await signal_step(world, fake).run(await document_with(world))
     assert result.outcome is Outcome.OK
     assert output(result)["attempts"] == 2
-    first, second = fake.requests
+    first, second, _facts = fake.requests
     # Once more as before, with the note last: the two calls begin alike.
     assert (second.system, second.document, second.task) == (
         first.system,
@@ -412,7 +428,8 @@ async def test_what_was_sent_is_kept_per_run(world: World) -> None:
 
     (kept,) = await exchanges(world, document, Node.SIGNAL_LLM)
     assert kept.run == document.processing.run
-    first, second = kept.calls
+    first, second, facts = kept.calls
+    assert facts.task == fake.requests[2].task  # the request for the facts, kept with them
     sent = fake.requests[0]
     assert (first.system, first.document, first.task) == (SYSTEM, sent.document, sent.task)
     assert (first.user, first.retry) == ("", None)
@@ -424,7 +441,7 @@ async def test_what_was_sent_is_kept_per_run(world: World) -> None:
     # The same run again replaces its calls; a later run is added.
     await signal_step(world, model(proposal())).run(document)
     (again,) = await exchanges(world, document, Node.SIGNAL_LLM)
-    assert len(again.calls) == 1
+    assert len(again.calls) == 2  # the proposal and the facts
     later = replace(document, processing=replace(document.processing, run=2))
     await signal_step(world, model(proposal())).run(later)
     assert [run.run for run in await exchanges(world, document, Node.SIGNAL_LLM)] == [1, 2]
@@ -1638,7 +1655,7 @@ async def test_a_field_set_by_hand_is_never_asked_for(world: World) -> None:
     document = await document_with(world, type=seeded.types["Rechnung"])
     fake = model(proposal())
     await signal_step(world, fake).run(document)
-    (request,) = fake.requests
+    request, _facts = fake.requests
     assert "Rechnungsnummer" not in request.task and "Bezahlt" not in request.task
 
     given = extraction()["fields"]
@@ -1677,7 +1694,8 @@ async def test_the_calls_about_a_document_begin_alike(world: World) -> None:
     await fields_step(world, extracting).run(document)
 
     assert result.outcome is Outcome.OK, result.reasons
-    (first,) = proposing.requests
+    first, facts = proposing.requests
+    assert (facts.system, facts.document) == (first.system, first.document)
     assert extracting.requests  # the judge took the type the model did not choose
     for second in extracting.requests:  # also once more after an answer that did not fit
         assert (first.system, first.document) == (second.system, second.document)
@@ -1802,7 +1820,12 @@ async def test_a_title_of_its_own_stays_but_the_machine_s_is_replaced(world: Wor
 def responder(
     propose: JsonObject, extract: JsonObject
 ) -> Callable[[StructuredRequest], JsonObject]:
-    return lambda request: propose if request.schema_name == "proposal" else extract
+    def respond(request: StructuredRequest) -> JsonObject:
+        if request.schema_name == FACTS_SCHEMA:
+            return {"facts": []}
+        return propose if request.schema_name == "proposal" else extract
+
+    return respond
 
 
 async def run(world: World, fake: FakeLanguageModel) -> tuple[Any, Document]:
@@ -1844,7 +1867,8 @@ async def test_a_verified_document_is_filed_green(world: World) -> None:
     assert document.fields[seeded.fields["Rechnungsbetrag"].id] == Money(Decimal("84.20"), "EUR")
     assert document.title == "Stromrechnung März 2026"
     assert DocumentFiled.type in world.event_types()
-    assert len(fake.requests) == 1  # one request for the whole document
+    # One request for the whole document, one for its facts on the same beginning.
+    assert [request.schema_name for request in fake.requests] == ["proposal", FACTS_SCHEMA]
     log = await world.documents.processing_log(owner.id, document.id)
     proposed = next(entry for entry in log if entry.node is Node.SIGNAL_LLM)
     assert proposed.result.output["answer"] == proposal()
@@ -1944,3 +1968,66 @@ async def test_field_quotes_show_amounts_and_dates_but_never_yes_or_no(world: Wo
     assert field_check(seeded, result, "Fällig am").quote_shows_value is True
     assert field_check(seeded, result, "Bezahlt").quote_shows_value is False
     assert field_check(seeded, result, "Rechnungsnummer").quote_shows_value is None
+
+
+async def test_the_facts_the_model_read_are_the_document_s_with_their_role(world: World) -> None:
+    """The model's second request on the same beginning: what it read, checked, joins what the
+    patterns found, in the role it gave; what does not stand in the text is refused."""
+    await seed(world)
+    read: JsonObject = {
+        "facts": [
+            {
+                "kind": "invoice_number",
+                "value": "R-2026-0815",
+                "role": "own",
+                "evidence": "Rechnung Nr. R-2026-0815",
+                "label": "Rechnung Nr.",
+            },
+            {
+                "kind": "meter_number",
+                "value": "1ESY999",
+                "role": "target",
+                "evidence": "Zähler 1ESY999",
+                "label": None,
+            },
+        ]
+    }
+
+    def respond(request: StructuredRequest) -> JsonObject:
+        if request.schema_name == FACTS_SCHEMA:
+            return read
+        return proposal() if request.schema_name == "proposal" else extraction()
+
+    owner, document = await run(world, FakeLanguageModel(respond))
+    async with world.uow() as uow:
+        kept = await uow.document_facts.of_document(document.id)
+    (invoice,) = [fact for fact in kept if fact.kind is IdentifierKind.INVOICE_NUMBER]
+    assert (invoice.value, invoice.role, invoice.origins) == (
+        "R20260815",
+        FactRole.OWN,
+        frozenset({FactOrigin.PATTERN, FactOrigin.MODEL}),
+    )
+    assert all(fact.kind is not IdentifierKind.METER_NUMBER for fact in kept)
+    log = await world.documents.processing_log(owner.id, document.id)
+    facts = next(entry for entry in log if entry.node is Node.SIGNAL_FACTS)
+    assert facts.result.output["read_facts"] == {
+        "taken": 1,
+        "refused": [
+            {
+                "kind": "meter_number",
+                "value": "1ESY999",
+                "reason": {"code": "fact_not_in_text", "params": {"value": "1ESY999"}},
+            }
+        ],
+    }
+
+
+async def test_facts_the_model_cannot_read_leave_its_proposal(world: World) -> None:
+    await seed(world)
+    fake = model(proposal(), facts="not json")
+    result = await signal_step(world, fake).run(await document_with(world))
+    assert result.outcome is Outcome.OK
+    assert "facts" not in output(result)
+    assert output(result)["facts_error"].startswith("the answer is not JSON")
+    assert output(result)["proposal"]["title"] == "Stromrechnung März 2026"
+    assert len(fake.requests) == 3  # the facts once more after the first unfit answer

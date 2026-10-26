@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Self
 from uuid import UUID
 
+from lekto.core.domain.document_facts import ReadFact
 from lekto.core.domain.documents import MAX_TITLE
 from lekto.core.domain.fields import FieldDefinition, FieldType
 from lekto.core.domain.ids import FieldId
@@ -460,3 +461,86 @@ def _texts(value: JsonValue, where: str) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise AnswerError(f"{where}: expected a list of texts")
     return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+
+
+# --- facts with their role (`facts-1`) ----------------------------------------------------
+
+_FACT_ENTRY = ("kind", "value", "role", "evidence", _LABEL)
+
+
+def facts_schema(kinds: Sequence[str], roles: Sequence[str]) -> JsonObject:
+    """A list of facts, each of one of `kinds` in one of `roles`, the value as written, the
+    passage that shows it and its label."""
+    entry = _object(
+        {
+            "kind": {"type": "string", "enum": list(kinds)},
+            "value": {"type": "string"},
+            "role": {"type": "string", "enum": list(roles)},
+            "evidence": dict(_TEXT_OR_NULL),
+            _LABEL: dict(_TEXT_OR_NULL),
+        }
+    )
+    return _object({"facts": {"type": "array", "items": entry}})
+
+
+def parse_facts(content: str) -> list[ReadFact]:
+    """Strict about the structure (an entry with a field missing or more is invalid); a fact of
+    a kind or role not listed, or without a value, is kept for the check to refuse
+    (`document_facts.checked_read`)."""
+    data = _load(content)
+    _require_fields(data, ("facts",), "the answer")
+    entries = data["facts"]
+    if not isinstance(entries, list):
+        raise AnswerError("facts: expected a list")
+    facts: list[ReadFact] = []
+    for index, entry in enumerate(entries):
+        where = f"facts[{index}]"
+        if not isinstance(entry, dict):
+            raise AnswerError(f"{where}: expected an object")
+        _require_fields(entry, _FACT_ENTRY[:4], where, optional=(_LABEL,))
+        kind, value, role = (entry[name] for name in ("kind", "value", "role"))
+        if not (isinstance(kind, str) and isinstance(value, str) and isinstance(role, str)):
+            raise AnswerError(f"{where}: kind, value and role are texts")
+        evidence = _text_or_null(entry["evidence"], f"{where}.evidence")
+        label = entry.get(_LABEL)
+        if not value.strip():
+            continue
+        facts.append(
+            ReadFact(
+                kind=kind.strip(),
+                value=value.strip()[:_EVIDENCE_LENGTH],
+                role=role.strip(),
+                evidence=evidence[:_EVIDENCE_LENGTH] if evidence else None,
+                label=one_line(label)[:_EVIDENCE_LENGTH].strip() or None
+                if isinstance(label, str) and label.strip()
+                else None,
+            )
+        )
+    return facts
+
+
+def read_fact_to_json(fact: ReadFact) -> JsonObject:
+    return {
+        "kind": fact.kind,
+        "value": fact.value,
+        "role": fact.role,
+        "evidence": fact.evidence,
+        "label": fact.label,
+    }
+
+
+def read_fact_from_json(data: JsonValue) -> ReadFact | None:
+    """A fact as the log keeps it; None for what is no such entry."""
+    item = as_object(data)
+    if item is None:
+        return None
+    kind, value, role = (as_text(item.get(name)) for name in ("kind", "value", "role"))
+    if kind is None or value is None or role is None:
+        return None
+    return ReadFact(
+        kind=kind,
+        value=value,
+        role=role,
+        evidence=as_text(item.get("evidence")),
+        label=as_text(item.get(_LABEL)),
+    )

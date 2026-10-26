@@ -23377,6 +23377,7 @@
           "claim_number",
           "ticket_number",
           "your_reference",
+          "letter_date",
           "child_benefit_number"
         ],
         "title": "IdentifierKind",
@@ -25757,6 +25758,15 @@
             "title": "Retry",
             "description": "After an answer that did not fit: what was wrong, sent last."
           },
+          "request": {
+            "type": "string",
+            "enum": [
+              "",
+              "facts"
+            ],
+            "title": "Request",
+            "description": "A further request about the document (`facts`: the facts with their role); empty for the node's first request and its attempts."
+          },
           "answer": {
             "type": "string",
             "title": "Answer",
@@ -25783,6 +25793,7 @@
           "document",
           "task",
           "retry",
+          "request",
           "answer",
           "model",
           "usage"
@@ -27206,6 +27217,8 @@
           "not_vat_id",
           "not_customer_number",
           "not_of_kind",
+          "fact_kind_unknown",
+          "fact_not_in_text",
           "not_personnel_number",
           "not_domain",
           "free_mail_domain",
@@ -28563,7 +28576,7 @@
             },
             "type": "array",
             "title": "Calls",
-            "description": "One call, or two after an answer that did not fit the schema."
+            "description": "One call, or two after an answer that did not fit the schema; then those of a further request (`request`)."
           }
         },
         "type": "object",
@@ -32395,6 +32408,12 @@
       "value": "text",
       "kind": "identifier_kind"
     },
+    "fact_kind_unknown": {
+      "kind": "text"
+    },
+    "fact_not_in_text": {
+      "value": "text"
+    },
     "not_personnel_number": {
       "value": "text"
     },
@@ -32703,6 +32722,11 @@
       "names_user": false
     },
     "your_reference": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "letter_date": {
       "contact": false,
       "person": false,
       "names_user": false

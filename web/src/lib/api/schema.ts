@@ -4683,6 +4683,7 @@ export interface components {
 			| 'claim_number'
 			| 'ticket_number'
 			| 'your_reference'
+			| 'letter_date'
 			| 'child_benefit_number';
 		/** IdentifierOut */
 		IdentifierOut: {
@@ -5838,6 +5839,12 @@ export interface components {
 			 */
 			retry: string | null;
 			/**
+			 * Request
+			 * @description A further request about the document (`facts`: the facts with their role); empty for the node's first request and its attempts.
+			 * @enum {string}
+			 */
+			request: '' | 'facts';
+			/**
 			 * Answer
 			 * @description The model's text as it came.
 			 */
@@ -6748,6 +6755,8 @@ export interface components {
 			| 'not_vat_id'
 			| 'not_customer_number'
 			| 'not_of_kind'
+			| 'fact_kind_unknown'
+			| 'fact_not_in_text'
 			| 'not_personnel_number'
 			| 'not_domain'
 			| 'free_mail_domain'
@@ -7450,7 +7459,7 @@ export interface components {
 			run: number;
 			/**
 			 * Calls
-			 * @description One call, or two after an answer that did not fit the schema.
+			 * @description One call, or two after an answer that did not fit the schema; then those of a further request (`request`).
 			 */
 			calls: components['schemas']['ModelCallOut'][];
 		};

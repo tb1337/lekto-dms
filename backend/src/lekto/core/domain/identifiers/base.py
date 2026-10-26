@@ -48,6 +48,7 @@ class IdentifierKind(StrEnum):
     TICKET_NUMBER = "ticket_number"  # Ticket-, Vorgangsnummer
     # Refer to a document.
     YOUR_REFERENCE = "your_reference"  # "Ihr Zeichen"
+    LETTER_DATE = "letter_date"  # "Ihr Schreiben vom 18.06.2026": the day of that letter
     # Point to a person.
     CHILD_BENEFIT_NUMBER = "child_benefit_number"  # Kindergeldnummer
 

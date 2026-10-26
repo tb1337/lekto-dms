@@ -612,6 +612,10 @@ class ModelCallOut(BaseModel):
     retry: str | None = Field(
         description="After an answer that did not fit: what was wrong, sent last."
     )
+    request: Literal["", "facts"] = Field(
+        description="A further request about the document (`facts`: the facts with their "
+        "role); empty for the node's first request and its attempts."
+    )
     answer: str = Field(description="The model's text as it came.")
     model: str = Field(examples=["qwen3:8b"])
     usage: dict[str, Any] = Field(
@@ -630,6 +634,7 @@ class ModelCallOut(BaseModel):
             document=call.document,
             task=call.task,
             retry=call.retry,
+            request="facts" if call.request == "facts" else "",
             answer=call.answer,
             model=call.model,
             usage=dict(call.usage),
@@ -641,7 +646,8 @@ class RunExchangeOut(BaseModel):
 
     run: int
     calls: list[ModelCallOut] = Field(
-        description="One call, or two after an answer that did not fit the schema."
+        description="One call, or two after an answer that did not fit the schema; then those "
+        "of a further request (`request`)."
     )
 
     @classmethod

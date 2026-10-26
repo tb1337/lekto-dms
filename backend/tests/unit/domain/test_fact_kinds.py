@@ -66,6 +66,9 @@ K = IdentifierKind
         ("Einzug durch DE98ZZZ09999999999", K.CREDITOR_ID, "DE98ZZZ09999999999"),
         ("Kindergeldnummer 123FK456789", K.CHILD_BENEFIT_NUMBER, "123FK456789"),
         ("Kindergeldnummer: 123 FK 456789", K.CHILD_BENEFIT_NUMBER, "123FK456789"),
+        ("Bezug: Ihr Schreiben vom 18.06.2026", K.LETTER_DATE, "2026-06-18"),
+        ("vielen Dank für Ihre E-Mail vom 3. März 2026", K.LETTER_DATE, "2026-03-03"),
+        ("your letter of 18 June 2026", K.LETTER_DATE, "2026-06-18"),
         # A label at the end of a compound word.
         ("Bausparvertragsnummer 12345678", K.CONTRACT_NUMBER, "12345678"),
         ("Hausratversicherungsnummer 12345", K.POLICY_NUMBER, "12345"),
@@ -93,6 +96,9 @@ def test_each_kind_is_found_and_normalised(text: str, kind: IdentifierKind, valu
         ("IBAN DE89 3704 0044 0532 0130 00", K.CREDITOR_ID),  # no letter in the business code
         ("Gläubiger-ID DE98ZZZ09999999998", K.CREDITOR_ID),  # the check digits do not fit
         ("Aktenzeichen: bitte angeben", K.FILE_REFERENCE),
+        # No century to read a two-digit year in; no letter of the addressee's.
+        ("Ihr Schreiben vom 18.06.26", K.LETTER_DATE),
+        ("Unser Schreiben vom 18.06.2026", K.LETTER_DATE),
         # A label is a whole word.
         ("Invoice November 2026", K.INVOICE_NUMBER),
         ("Membership November 2026", K.MEMBERSHIP_NUMBER),
@@ -127,6 +133,7 @@ def test_every_kind_has_a_role_and_the_numbers_of_documents_are_no_identifiers()
     assert ROLES[K.INVOICE_NUMBER] is FactRole.OWN
     assert ROLES[K.FILE_REFERENCE] is FactRole.THREAD
     assert ROLES[K.YOUR_REFERENCE] is FactRole.REFERS
+    assert ROLES[K.LETTER_DATE] is FactRole.REFERS
     assert ROLES[K.CONTRACT_NUMBER] is FactRole.TARGET
     assert ROLES[K.CREDITOR_ID] is FactRole.CONTACT
     assert ROLES[K.CHILD_BENEFIT_NUMBER] is FactRole.PERSON
@@ -139,6 +146,7 @@ def test_every_kind_has_a_role_and_the_numbers_of_documents_are_no_identifiers()
         K.CLAIM_NUMBER,
         K.TICKET_NUMBER,
         K.YOUR_REFERENCE,
+        K.LETTER_DATE,
     } == NUMBER_KINDS
 
 

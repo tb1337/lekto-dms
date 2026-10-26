@@ -143,3 +143,48 @@ async def test_who_sees_and_who_sets_a_relation(world: World) -> None:
         newer.id: True,
         invoice.id: True,
     }
+
+
+async def test_a_date_that_turns_the_pair_turns_the_relation(world: World) -> None:
+    """Stored in the order of when it was set, read in the order of the dates now: found,
+    changed and removed from either end, never twice."""
+    owner = await world.user()
+    space = await world.personal_space(owner)
+    first = await stored(world, owner, space, date(2026, 1, 31))
+    second = await stored(world, owner, space, date(2026, 6, 20))
+    relations = service(world)
+    await relations.relate(owner.id, second.id, first.id)
+    await world.documents.change_metadata(
+        owner.id, second.id, DocumentChanges(document_date=date(2025, 12, 1))
+    )
+    seen = await relations.relations(owner.id, first.id)
+    assert [(item.other.id, item.changeable) for item in seen.refers_to] == [(second.id, True)]
+    with pytest.raises(ConflictError):
+        await relations.relate(owner.id, first.id, second.id)
+    await relations.unrelate(owner.id, second.id, first.id)
+    assert (await relations.relations(owner.id, first.id)).refers_to == ()
+
+
+async def test_a_rejection_outlasts_setting_and_removing_by_hand(world: World) -> None:
+    owner = await world.user()
+    space = await world.personal_space(owner)
+    invoice = await stored(world, owner, space, date(2026, 6, 4))
+    reminder = await stored(world, owner, space, date(2026, 7, 20))
+    async with world.uow() as uow:
+        await uow.document_relations.put(
+            Relation(
+                newer=reminder.id,
+                older=invoice.id,
+                origin=RelationOrigin.LEKTO,
+                state=RelationState.SUGGESTED,
+                created_at=NOW,
+            )
+        )
+        await uow.commit()
+    relations = service(world)
+    await relations.unrelate(owner.id, reminder.id, invoice.id)
+    await relations.relate(owner.id, reminder.id, invoice.id)
+    await relations.unrelate(owner.id, reminder.id, invoice.id)
+    async with world.uow() as uow:
+        kept = await uow.document_relations.find(reminder.id, invoice.id)
+    assert kept is not None and kept.state is RelationState.REJECTED

@@ -260,6 +260,10 @@ async def test_get_document_names_its_relations_one_may_read(api: Api, scene: Sc
     assert relation["direction"] in ("refers_to", "referred_by")
     reader = data(await call(api, scene.headers["reader"], "get_document", id=scene.green))
     assert reader["relations"] == []
+    changed = data(
+        await call(api, scene.headers["owner"], "update_metadata", id=scene.green, title="Neu")
+    )
+    assert [item["id"] for item in changed["document"]["relations"]] == [scene.yellow]
 
 
 async def test_a_document_one_may_not_read_is_just_not_found(api: Api, scene: Scene) -> None:

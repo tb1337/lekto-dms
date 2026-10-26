@@ -270,6 +270,24 @@ def document_out(document: Document, access: SpaceRole, names: Names) -> Documen
     )
 
 
+async def relation_refs(
+    context: ApiContext, user: UserId, id: DocumentId, names: Names
+) -> list[RelationRef]:
+    """The document's relations with documents `user` reads too, as the tools give them."""
+    related = await context.relations.relations(user, id)
+    return [
+        RelationRef(
+            id=item.other.id,
+            title=item.other.title,
+            document_type=names.document_type(item.other.document_type_id),
+            document_date=item.other.document_date,
+            direction=item.direction.value,
+            suggested=item.relation.state is RelationState.SUGGESTED,
+        )
+        for item in (*related.refers_to, *related.referred_by, *related.suggested)
+    ]
+
+
 def principal_of(ctx: Context) -> Principal:
     """The caller, put there by the bearer check in front of the server."""
     request = ctx.request_context.request
@@ -382,19 +400,8 @@ def build_server(context: ApiContext) -> MCPServer:
         user = principal_of(ctx).id
         view = await context.documents.view(user, DocumentId(id))
         names = await Names.load(context, user)
-        related = await context.relations.relations(user, DocumentId(id))
         out = document_out(view.document, view.access, names)
-        out.relations = [
-            RelationRef(
-                id=item.other.id,
-                title=item.other.title,
-                document_type=names.document_type(item.other.document_type_id),
-                document_date=item.other.document_date,
-                direction=item.direction.value,
-                suggested=item.relation.state is RelationState.SUGGESTED,
-            )
-            for item in (*related.refers_to, *related.referred_by, *related.suggested)
-        ]
+        out.relations = await relation_refs(context, user, DocumentId(id), names)
         return out
 
     @server.tool(
@@ -487,7 +494,9 @@ def build_server(context: ApiContext) -> MCPServer:
             id=change.document.id,
             access=change.access,
             # A change of a document leaves the master data as it is.
-            document=document_out(change.document, change.access, names),
+            document=document_out(change.document, change.access, names).model_copy(
+                update={"relations": await relation_refs(context, user, change.document.id, names)}
+            ),
             rules=(
                 None
                 if change.rules is None

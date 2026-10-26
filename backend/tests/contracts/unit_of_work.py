@@ -1147,9 +1147,15 @@ class UnitOfWorkContract:
         async with uow_factory() as uow:
             assert await uow.document_relations.of_document(invoice.id) == [accepted]
             await uow.documents.remove(reminder.id)
+            await uow.document_relations.put(later)
             await uow.commit()
         async with uow_factory() as uow:
-            assert await uow.document_relations.of_document(invoice.id) == []
+            assert await uow.document_relations.of_document(invoice.id) == [later]
+            # Gone with the older document too.
+            await uow.documents.remove(invoice.id)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.document_relations.of_document(other.id) == []
 
     async def test_remove_document(self, uow_factory: UnitOfWorkFactory) -> None:
         owner, space = await owner_with_space(uow_factory)

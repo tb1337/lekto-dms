@@ -85,13 +85,15 @@ class RelationService:
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             newer, older = await _pair(uow, user, id, other)
-            known = await uow.document_relations.find(newer.id, older.id)
+            known = await find_pair(uow, newer.id, older.id)
             if known is not None and known.state is RelationState.SET:
                 raise ConflictError(because(ReasonCode.RELATION_EXISTS))
             accepting = known is not None and known.state is RelationState.SUGGESTED
+            # One Lekto made stays Lekto's (a suggestion accepted, a rejection taken back):
+            # removed again, it is rejected again, not forgotten.
             relation = (
                 replace(known, state=RelationState.SET, decided_by=user.id, decided_at=now)
-                if accepting and known is not None
+                if known is not None
                 else Relation(
                     newer=newer.id,
                     older=older.id,
@@ -115,7 +117,7 @@ class RelationService:
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             newer, older = await _pair(uow, user, id, other)
-            known = await uow.document_relations.find(newer.id, older.id)
+            known = await find_pair(uow, newer.id, older.id)
             if known is None or known.state is RelationState.REJECTED:
                 raise NotFoundError(
                     "relation", f"{newer.id}:{older.id}", because(ReasonCode.RELATION_NOT_FOUND)
@@ -127,8 +129,15 @@ class RelationService:
                 await uow.document_relations.put(rejected)
                 await _verdict(uow, newer, Verdict.CORRECTED, now)
             else:
-                await uow.document_relations.remove(newer.id, older.id)
+                await uow.document_relations.remove(known.newer, known.older)
             await uow.commit()
+
+
+async def find_pair(uow: UnitOfWork, first: DocumentId, second: DocumentId) -> Relation | None:
+    """The relation between the two documents, stored in either order: it keeps the order of
+    when it was made, and a document date set or changed since may have turned it."""
+    found = await uow.document_relations.find(first, second)
+    return found or await uow.document_relations.find(second, first)
 
 
 async def visible_relations(
@@ -148,7 +157,8 @@ async def visible_relations(
             spaces[other.space_id] = await uow.spaces.get(other.space_id)
         if not can_read_document(user, other, spaces[other.space_id]):
             continue
-        newer = document if relation.newer == document.id else other
+        # The direction as the documents' dates are now (`find_pair`).
+        newer = document if _newer(document, other) == document.id else other
         found.append(
             Related(
                 relation,
@@ -168,13 +178,18 @@ async def _pair(
         raise ConflictError(because(ReasonCode.RELATION_TO_ITSELF))
     first, _ = await readable_document(uow, user, id)
     second, _ = await readable_document(uow, user, other)
-    newer_id, _ = ordered(
+    newer, older = (first, second) if _newer(first, second) == first.id else (second, first)
+    await writable_document(uow, user, newer.id)
+    return newer, older
+
+
+def _newer(first: Document, second: Document) -> DocumentId:
+    """Which of the two is the newer, by their document dates now (`relations.ordered`)."""
+    newer, _ = ordered(
         (first.id, first.document_date, first.created_at),
         (second.id, second.document_date, second.created_at),
     )
-    newer, older = (first, second) if newer_id == first.id else (second, first)
-    await writable_document(uow, user, newer.id)
-    return newer, older
+    return newer
 
 
 async def _verdict(uow: UnitOfWork, newer: Document, verdict: Verdict, now: datetime) -> None:

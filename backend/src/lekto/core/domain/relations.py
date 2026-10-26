@@ -6,7 +6,11 @@ have no kind of their own, the types at both ends give their sense.
 A relation is set (sure), suggested (unsure: shown at the document, never yellow), or rejected
 by a person (so recognition does not suggest it again). It comes from a person or from Lekto,
 with the evidence Lekto had (a shared number, a period). Only who reads both documents sees it;
-who edits the newer and reads the older sets or removes it by hand."""
+who edits the newer and reads the older sets or removes it by hand.
+
+The pair is stored in the order of when it was made; a document date set or changed since may
+turn it, so the direction is read from the documents' dates now (`services.relations`), and a
+pair is looked up in either order."""
 
 from dataclasses import dataclass, field
 from datetime import date, datetime

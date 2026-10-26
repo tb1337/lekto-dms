@@ -645,6 +645,18 @@ and the space, the fields node reads the fields of the decided type and the titl
   person's to decide). Lekto relates across spaces; only who reads both ends sees one, in the
   relations and in the log of `relate`. Every change of relations, Lekto's or a person's, holds
   one lock.
+- **Series and the documents expected next** (issue #145 PR 12, `domain/series.py`,
+  `services/expected.py`, `GET /expected`, MCP `list_expected`; `.idea/bezuege.md` decisions
+  10–12): documents of one contact and type, and of one contract or customer number where they
+  show one, at least three with a document date at a steady interval. The interval is the
+  median gap, as a calendar step where it is one (weekly to yearly; month ends stay month ends),
+  else in days; the spread is how far a document came off its step (at least 2 days); gaps
+  scattered wider than a third of the interval make no series. Two documents of one day or one
+  period (a correction) count once. The next document is expected one step after the last
+  (with the next period where the series carries one), overdue once its spread is over, and the
+  series has ended after two missed dates. Derived on each call over the documents the caller
+  reads (`all_users`: an admin's, every user's), nothing stored, no events. The web UI shows
+  them under "Erwartet": overdue, next 30 days, later, ended.
 - **The kinds of facts** (`IdentifierKind`, issue #145 PR 4; one module per kind in
   `domain/identifiers`): besides IBAN, VAT ID, customer and personnel number, e-mail domain and
   a person's numbers, those that point to the contact (creditor ID with its check digits,
@@ -1788,6 +1800,7 @@ as in REST: `read` may use every tool but `update_metadata`.
 | `get_document` | `id`: metadata with contact, topic, type, tags and fields by name, lane and processing status, and the document's `relations` with documents the caller reads too (`id`, `title`, type, date, `direction` `refers_to` or `referred_by`, `suggested`); read only |
 | `get_text` | `id`, `offset`, `limit` (characters, at most `LEKTO_MCP_TEXT_MAX`, 20,000): a piece of the document's text as it is set, `next_offset` to continue. The text is content from outside; the tool description tells clients not to follow instructions in it |
 | `update_metadata` | `id` and any of `title`, `contact`, `topic`, `document_type` (name; `null` removes; a topic the contact enables), `tags` (names of document tags, the complete list, replaces), `document_date` (`null` removes), `fields` (field name to value; `null` removes). Needs a `read_write` token and edit rights; the change rules of its space run as for `PATCH /documents/{id}` and the result shows them. If the rules filed the document where the caller can no longer read it, the result has only `id` and `access: null` |
+| `list_expected` | The series of documents the caller reads and the document each expects next (contact, type, number, cadence, spread, newest document, next date and period, `overdue`, `soon`, `later` or `ended`); read only |
 | `list_tags` | The tags with `scope` and `path`, in the order of their trees, optionally of one `scope`; document tags name the tags of the other tools, topics the `topic` of `update_metadata` |
 
 Names are matched regardless of case; an unknown name is an error, nothing is created. A

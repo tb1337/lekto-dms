@@ -109,6 +109,8 @@
 		stream: m.layout_stream
 	};
 	const streaming = $derived(layout === 'stream' && !searching);
+	// Counts the events that change documents: the stream loads again.
+	let streamVersion = $state(0);
 	const nextLayout = $derived(LAYOUTS[(LAYOUTS.indexOf(layout) + 1) % LAYOUTS.length]);
 	// The names the filters and the documents show.
 	const pageLookup = new PageLookup();
@@ -328,6 +330,7 @@
 		const refresh = coalesced(() => {
 			void list.refresh();
 			void loadFacets();
+			streamVersion += 1;
 		}, 400);
 		const stop = events.subscribe(refresh);
 		const stopMeaning = events.on('search.meaning_ready', (event) =>
@@ -375,6 +378,13 @@
 	function show(next: Layout) {
 		layout = next;
 		rememberLayout(next);
+		// A link's `layout` has done its work: the choice is the person's from here.
+		if (params.has('layout')) {
+			// eslint-disable-next-line svelte/prefer-svelte-reactivity
+			const next = new URLSearchParams(page.url.search);
+			next.delete('layout');
+			go(next);
+		}
 	}
 
 	// While a list sorts by a field (a lens may), its two directions are offered too.
@@ -522,7 +532,7 @@ row of filters, on a desktop narrow by the title. -->
 			<div class="ml-auto flex items-center gap-2">
 				<div class="hidden items-center gap-2 lg:flex">
 					{@render searchForm(true)}
-					{@render sortMenu(false)}
+					{#if !streaming}{@render sortMenu(false)}{/if}
 					<Segmented
 						names="hidden"
 						label={m.layout_label()}
@@ -627,7 +637,7 @@ row of filters, on a desktop narrow by the title. -->
 							</Sheet.Footer>
 						</Sheet.Content>
 					</Sheet.Root>
-					{@render sortMenu(true)}
+					{#if !streaming}{@render sortMenu(true)}{/if}
 					<button
 						type="button"
 						class="grid size-11 shrink-0 place-items-center rounded-xl border border-input bg-background hover:bg-secondary"
@@ -696,7 +706,7 @@ row of filters, on a desktop narrow by the title. -->
 			{/if}
 
 			{#if streaming}
-				<StreamView query={apiQuery(filters, scope.allUsers)} {lookup} />
+				<StreamView query={apiQuery(filters, scope.allUsers)} {lookup} version={streamVersion} />
 			{:else if list.error}
 				<LoadProblem problem={describeError(list.error)} onretry={() => list.reload()}>
 					{#if indexDown}

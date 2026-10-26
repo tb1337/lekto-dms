@@ -282,7 +282,7 @@
 						{ value: 'list', label: m.layout_list() },
 						{ value: 'stream', label: m.layout_stream() }
 					]}
-					onchange={(next) => (layout = next as 'grid' | 'list')}
+					onchange={(next) => (layout = next as Layout)}
 				/>
 			</div>
 

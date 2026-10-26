@@ -3957,6 +3957,12 @@ export interface components {
 			/** Icon */
 			icon?: string | null;
 			/**
+			 * Relation Target
+			 * @description Documents refer to those of the type (a contract, a policy) by a contract or customer number they share; without it such a number connects no documents.
+			 * @default false
+			 */
+			relation_target: boolean;
+			/**
 			 * Fields
 			 * @description The fields of the type besides the global ones, each once, required or optional: set with it in one transaction (as `PUT /document-types/{id}/fields`).
 			 */
@@ -4005,6 +4011,11 @@ export interface components {
 			 * @example receipt
 			 */
 			icon: string | null;
+			/**
+			 * Relation Target
+			 * @description Documents refer to those of the type (a contract, a policy) by a contract or customer number they share; without it such a number connects no documents.
+			 */
+			relation_target: boolean;
 		};
 		/**
 		 * DocumentTypePatch
@@ -4025,6 +4036,8 @@ export interface components {
 			group_ids?: string[] | null;
 			/** Icon */
 			icon?: string | null;
+			/** Relation Target */
+			relation_target?: boolean | null;
 		};
 		/**
 		 * EventBody

@@ -145,6 +145,7 @@ class SqlDocumentTypeRepository(SqlNamedRepository[DocumentTypeId, DocumentType]
             "description": entity.description,
             "title_pattern": entity.title_pattern,
             "icon": entity.icon,
+            "relation_target": entity.relation_target,
         }
 
     async def _entities(self, rows: Sequence[Row[Any]]) -> list[DocumentType]:
@@ -159,6 +160,7 @@ class SqlDocumentTypeRepository(SqlNamedRepository[DocumentTypeId, DocumentType]
                 title_pattern=row.title_pattern,
                 group_ids=frozenset(TagId(group.tag_id) for group in groups[row.id]),
                 icon=row.icon,
+                relation_target=row.relation_target,
                 created_at=row.created_at,
                 version=row.version,
             )

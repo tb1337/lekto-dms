@@ -161,6 +161,8 @@ document_types = _master_data(
     Column("title_pattern", Text, nullable=True),
     # The name of a Lucide icon.
     Column("icon", Text, nullable=True),
+    # Documents refer to those of the type by a contract or customer number (issue #145).
+    Column("relation_target", Boolean, nullable=False, server_default=false()),
 )
 # Names are unique per scope (a contact group may be named like a document tag).
 tags = Table(

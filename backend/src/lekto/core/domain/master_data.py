@@ -371,13 +371,17 @@ class DocumentType(MasterData):
     `title_pattern`: a template (Liquid, `domain.templates`) for the title of its documents,
     carried out by a rule the type keeps (`rules.title_rule`); its syntax and fields are the
     service's to check. `group_ids`: the type groups it is in (tags of scope
-    `document_type`). `icon`: the name of a Lucide icon (`appearance.checked_icon`)."""
+    `document_type`). `icon`: the name of a Lucide icon (`appearance.checked_icon`).
+    `relation_target`: documents refer to those of the type (a contract, a policy) by a contract
+    or customer number they share (`.idea/bezuege.md`, decision 8); without it such a number
+    connects no documents (it would connect every invoice with every other)."""
 
     id: DocumentTypeId
     description: str | None = None
     title_pattern: str | None = None
     group_ids: frozenset[TagId] = frozenset()
     icon: str | None = None
+    relation_target: bool = False
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -395,6 +399,7 @@ class DocumentType(MasterData):
         description: str | None = None,
         title_pattern: str | None = None,
         icon: str | None = None,
+        relation_target: bool = False,
     ) -> Self:
         return cls(
             id=DocumentTypeId(new_id()),
@@ -403,10 +408,14 @@ class DocumentType(MasterData):
             description=description,
             title_pattern=title_pattern,
             icon=icon,
+            relation_target=relation_target,
         )
 
     def describe(self, description: str | None) -> None:
         self.description = checked_description(description)
+
+    def mark_relation_target(self, target: bool) -> None:
+        self.relation_target = target
 
     def set_icon(self, icon: str | None) -> None:
         self.icon = checked_icon(icon)

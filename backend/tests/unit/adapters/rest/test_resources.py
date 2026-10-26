@@ -1184,3 +1184,20 @@ async def test_topics_at_contacts_identifiers_and_documents(api: Api) -> None:
     assert (
         await api.client.delete(f"{PREFIX}/tags/{insurance['id']}", headers=a)
     ).status_code == 409
+
+
+async def test_a_document_type_is_a_relation_target(api: Api) -> None:
+    """Issue #145: an admin marks a type whose documents others refer to by a number."""
+    a = auth(await api.admin())
+    contract = await post(api, "/document-types", {"name": "Vertrag", "relation_target": True}, a)
+    assert contract["relation_target"] is True
+    invoice = await post(api, "/document-types", {"name": "Rechnung"}, a)
+    assert invoice["relation_target"] is False
+    path = f"{PREFIX}/document-types/{invoice['id']}"
+    changed = await api.client.patch(path, json={"relation_target": True}, headers=a)
+    assert changed.json()["relation_target"] is True
+    renamed = await api.client.patch(path, json={"name": "Rechnungen"}, headers=a)
+    assert renamed.json()["relation_target"] is True  # left out: it stays
+    user = auth(await api.user())
+    denied = await api.client.patch(path, json={"relation_target": False}, headers=user)
+    assert denied.status_code == 403

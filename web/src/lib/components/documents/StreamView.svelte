@@ -82,9 +82,14 @@
 				: scroller.scrollWidth;
 		});
 	});
-	// The lane names, then one column per month (a narrow one per gap).
+	// The lane names, then one column per month (a narrow one per gap). The grid is at least
+	// as wide as its columns, so that the sticky lane names stay while it scrolls; wider, the
+	// months share the room.
 	const columns = $derived(
 		`13rem ${axis.map((column) => (column.kind === 'gap' ? '3rem' : 'minmax(7.5rem, 1fr)')).join(' ')}`
+	);
+	const minWidth = $derived(
+		`calc(13rem + ${axis.filter((column) => column.kind === 'month').length} * 7.5rem + ${axis.filter((column) => column.kind === 'gap').length} * 3rem)`
 	);
 	const lanes = $derived(stream?.lanes ?? []);
 	const folded = $derived(lanes.filter((lane) => lane.folded).length);
@@ -211,6 +216,7 @@
 				<div
 					class="grid"
 					style:grid-template-columns={columns}
+					style:min-width={minWidth}
 					role="table"
 					aria-label={m.stream_lanes()}
 				>

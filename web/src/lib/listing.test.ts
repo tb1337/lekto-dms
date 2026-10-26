@@ -1,9 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { NO_FILTERS } from './filters.ts';
 import {
 	byMonth,
+	filtersCollapsed,
 	monthOf,
+	rememberFilters,
+	rememberFiltersCollapsed,
 	rememberSort,
 	rememberLayout,
+	rememberedFilters,
 	rememberedLayout,
 	sortFieldOf,
 	sortOf
@@ -46,6 +51,53 @@ describe('the sort of the document view', () => {
 		expect(rememberedLayout()).toBe('grid');
 		rememberLayout('list');
 		expect(rememberedLayout()).toBe('list');
+	});
+});
+
+describe('the filters the document view remembers', () => {
+	it('keeps the filters as set, and forgets them once none is left', () => {
+		expect(rememberedFilters()).toBeNull();
+		rememberFilters({ ...NO_FILTERS, contacts: ['c1', 'c2'], dateFrom: '2026-01-01' });
+		expect(rememberedFilters()).toEqual({
+			...NO_FILTERS,
+			contacts: ['c1', 'c2'],
+			dateFrom: '2026-01-01'
+		});
+		rememberFilters(NO_FILTERS);
+		expect(rememberedFilters()).toBeNull();
+		expect(localStorage.getItem('lekto.documents.filters')).toBeNull();
+	});
+
+	it('counts what was stored but narrows nothing as none', () => {
+		localStorage.setItem('lekto.documents.filters', 'contact=&date_from=yesterday');
+		expect(rememberedFilters()).toBeNull();
+	});
+
+	it('remembers the panel collapsed, open at first', () => {
+		expect(filtersCollapsed()).toBe(false);
+		rememberFiltersCollapsed(true);
+		expect(filtersCollapsed()).toBe(true);
+		rememberFiltersCollapsed(false);
+		expect(filtersCollapsed()).toBe(false);
+		expect(localStorage.getItem('lekto.documents.filters-collapsed')).toBeNull();
+	});
+
+	it('works without storage: nothing remembered, nothing thrown', () => {
+		const storage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')!;
+		Object.defineProperty(globalThis, 'localStorage', {
+			configurable: true,
+			get() {
+				throw new Error('blocked');
+			}
+		});
+		try {
+			expect(() => rememberFilters({ ...NO_FILTERS, contacts: ['c1'] })).not.toThrow();
+			expect(rememberedFilters()).toBeNull();
+			expect(() => rememberFiltersCollapsed(true)).not.toThrow();
+			expect(filtersCollapsed()).toBe(false);
+		} finally {
+			Object.defineProperty(globalThis, 'localStorage', storage);
+		}
 	});
 });
 

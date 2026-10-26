@@ -69,6 +69,9 @@ describe('RelationsCard', () => {
 		expect(new URL(posted!.url).pathname).toBe('/api/v1/documents/reminder/relations');
 		expect(await posted!.clone().json()).toEqual({ document_id: 'invoice' });
 		expect(screen.queryByText(m.relations_suggested())).toBeNull();
+		// The picker is named as it reads, and asks for nothing until it opens.
+		expect(screen.getByRole('button', { name: m.relations_add() })).toBeTruthy();
+		expect(fetchMock.mock.calls.some(([request]) => request.url.includes('limit=50'))).toBe(false);
 	});
 
 	it('offers nothing to change to a reader', async () => {

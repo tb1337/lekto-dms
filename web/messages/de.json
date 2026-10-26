@@ -1758,6 +1758,8 @@
 	"relations_set": "Bezug gesetzt",
 	"relations_accepted": "Vorschlag angenommen",
 	"relations_removed": "Bezug entfernt",
+	"relations_reject": "Bezug zu {title} verwerfen",
+	"relations_rejected": "Vorschlag verworfen",
 	"relations_accept": "Bezug zu {title} annehmen",
 	"relations_accept_short": "Annehmen",
 	"relations_remove": "Bezug zu {title} entfernen",

@@ -1758,6 +1758,8 @@
 	"relations_set": "Relation set",
 	"relations_accepted": "Suggestion accepted",
 	"relations_removed": "Relation removed",
+	"relations_reject": "Reject the relation with {title}",
+	"relations_rejected": "Suggestion rejected",
 	"relations_accept": "Accept the relation with {title}",
 	"relations_accept_short": "Accept",
 	"relations_remove": "Remove the relation with {title}",

@@ -53,6 +53,12 @@ function documentRoutes(id: string, current: () => Document): Parameters<typeof 
 		[`GET /api/v1/documents/${id}`]: () => current(),
 		[`GET /api/v1/documents/${id}/review`]: () => ({ document: current(), open: [], nodes: [] }),
 		[`GET /api/v1/documents/${id}/reading`]: () => ({ vision: false, pages: [], advice: null }),
+		[`GET /api/v1/documents/${id}/relations`]: () => ({
+			refers_to: [],
+			referred_by: [],
+			suggested: [],
+			editable: true
+		}),
 		// The properties tab says so; the test looks at seen.
 		[`GET /api/v1/documents/${id}/files`]: () =>
 			json({ type: 'about:blank', title: 'Not Found', status: 404 }, 404)

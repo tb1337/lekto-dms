@@ -2,6 +2,7 @@
 	import Check from '@lucide/svelte/icons/check';
 	import Link2 from '@lucide/svelte/icons/link-2';
 	import X from '@lucide/svelte/icons/x';
+	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
@@ -12,7 +13,7 @@
 	} from '#lib/components/templates/ReferencePicker.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { formatDate } from '#lib/i18n.ts';
-	import { kindLabel, type IdentifierKind } from '#lib/identifiers.ts';
+	import { labelOfKind } from '#lib/identifiers.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { reportError } from '#lib/errors.ts';
@@ -53,6 +54,7 @@
 			toast.success(done);
 		} catch (error) {
 			reportError(error);
+			await load(); // as it is now: another may have changed it
 		} finally {
 			busy = false;
 		}
@@ -85,7 +87,7 @@
 		const picked = adding;
 		if (!picked) return;
 		adding = null;
-		void relate(picked.id, m.relations_set());
+		if (!untrack(() => busy)) void relate(picked.id, m.relations_set());
 	});
 
 	const typeName = (id: string | null | undefined) =>
@@ -97,7 +99,7 @@
 		const found = item.evidence as Record<string, unknown>;
 		if (found.kind === 'fact' && typeof found.fact_kind === 'string') {
 			return m.relations_evidence_fact({
-				kind: kindLabel(found.fact_kind as IdentifierKind),
+				kind: labelOfKind(found.fact_kind),
 				value: String(found.value ?? '')
 			});
 		}
@@ -110,9 +112,13 @@
 	const groups = $derived(
 		relations
 			? [
-					{ key: 'refers_to', title: m.relations_refers_to(), items: relations.refers_to },
-					{ key: 'referred_by', title: m.relations_referred_by(), items: relations.referred_by },
-					{ key: 'suggested', title: m.relations_suggested(), items: relations.suggested }
+					{ key: 'refers_to', title: m.relations_refers_to(), items: relations.refers_to ?? [] },
+					{
+						key: 'referred_by',
+						title: m.relations_referred_by(),
+						items: relations.referred_by ?? []
+					},
+					{ key: 'suggested', title: m.relations_suggested(), items: relations.suggested ?? [] }
 				].filter((group) => group.items.length > 0)
 			: []
 	);
@@ -166,11 +172,17 @@
 						size="icon"
 						class="size-8 shrink-0"
 						disabled={busy}
-						aria-label={m.relations_remove({ title: item.document.title })}
+						aria-label={group.key === 'suggested'
+							? m.relations_reject({ title: item.document.title })
+							: m.relations_remove({ title: item.document.title })}
 						title={group.key === 'suggested'
 							? m.relations_reject_short()
 							: m.relations_remove_short()}
-						onclick={() => unrelate(item.document.id, m.relations_removed())}
+						onclick={() =>
+							unrelate(
+								item.document.id,
+								group.key === 'suggested' ? m.relations_rejected() : m.relations_removed()
+							)}
 					>
 						<X aria-hidden="true" />
 					</Button>
@@ -180,7 +192,12 @@
 	{/each}
 	{#if relations?.editable}
 		<div class="mt-2 px-1">
-			<ReferencePicker bind:value={adding} preselect={false} label={m.relations_add()} />
+			<ReferencePicker
+				bind:value={adding}
+				preselect={false}
+				label={m.relations_add()}
+				exclude={documentId}
+			/>
 		</div>
 	{/if}
 </section>

@@ -25,14 +25,18 @@
 		value = $bindable(null),
 		documentType = undefined,
 		preselect = true,
-		label = undefined
+		label = undefined,
+		exclude = undefined
 	}: {
 		value?: Reference | null;
 		documentType?: string | null;
-		/** Whether the newest document is chosen at first (a template's example). */
+		/** Whether the newest document is chosen at first (a template's example); without, the
+		 * newest are only fetched once the list opens. */
 		preselect?: boolean;
-		/** What the trigger says while nothing is chosen. */
+		/** What the trigger says (and is named) while nothing is chosen. */
 		label?: string;
+		/** A document not to offer (the one being related). */
+		exclude?: string;
 	} = $props();
 
 	let open = $state(false);
@@ -48,6 +52,7 @@
 
 	$effect(() => {
 		const kind = documentType ?? null;
+		if (!preselect && !open) return;
 		let current = true;
 		const newest = async (type: string | null) =>
 			(
@@ -103,7 +108,7 @@
 		};
 	});
 
-	const shown = $derived(found ?? recent);
+	const shown = $derived((found ?? recent).filter((item) => item.id !== exclude));
 
 	function choose(item: Reference) {
 		value = item;
@@ -115,7 +120,7 @@
 <Popover.Root bind:open>
 	<Popover.Trigger
 		class={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-between font-normal')}
-		aria-label={m.template_reference_choose()}
+		aria-label={value ? m.template_reference_choose() : (label ?? m.template_reference_choose())}
 	>
 		<span class="truncate">{value?.title ?? label ?? m.template_reference_none()}</span>
 		<ChevronsUpDown class="opacity-50" aria-hidden="true" />

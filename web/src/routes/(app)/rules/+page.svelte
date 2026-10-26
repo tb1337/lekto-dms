@@ -106,12 +106,13 @@
 	{:else}
 		<ul class="flex flex-col gap-2">
 			{#each rules as rule (rule.id)}
-				<Card.Root as="li" size="row" class="flex flex-wrap items-center gap-3">
+				<!-- The name's link takes the whole row; the switch and the pencil stand above it. -->
+				<Card.Root as="li" size="row" class="relative flex flex-wrap items-center gap-3">
 					<div class="flex min-w-0 flex-1 flex-col gap-1">
 						<span class="flex flex-wrap items-center gap-2">
 							<a
 								href="{BASE}/rules/{rule.id}"
-								class="truncate font-medium hover:underline"
+								class="truncate font-medium after:absolute after:inset-0 hover:underline"
 								aria-label={m.rule_open({ name: rule.name })}>{rule.name}</a
 							>
 							<Badge variant="note">
@@ -141,11 +142,13 @@
 						<Switch
 							bind:checked={() => rule.enabled, (enabled) => switchRule(rule, enabled)}
 							disabled={busy === rule.id}
+							class="relative z-10"
 							aria-label={rule.enabled
 								? m.rule_switch_off({ name: rule.name })
 								: m.rule_switch_on({ name: rule.name })}
 						/>
 						<EditButton
+							class="relative z-10"
 							label={m.rule_edit_title({ name: rule.name })}
 							href="{BASE}/rules/{rule.id}/edit"
 						/>

@@ -199,7 +199,7 @@
 	<div
 		role="group"
 		aria-label={m.tag_kinds_label()}
-		class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0 sm:pb-0"
+		class="-mx-4 -my-1.5 flex gap-2 overflow-x-auto px-4 py-1.5 sm:mx-0 sm:flex-wrap sm:px-0"
 	>
 		{#each [null, ...TAG_KIND_ORDER] as kind (kind ?? 'all')}
 			<Chip pressed={filter === kind} class="shrink-0" onclick={() => choose(kind)}>

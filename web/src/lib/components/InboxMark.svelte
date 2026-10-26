@@ -22,7 +22,7 @@
 		{...props}
 		href={inboxDocument(id)}
 		class={cn(
-			'relative inline-flex shrink-0 items-center gap-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors after:absolute after:-inset-2',
+			'relative inline-flex shrink-0 items-center gap-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors after:absolute after:-inset-2.5',
 			badge
 				? 'size-6 justify-center border border-primary/30 bg-primary/10 text-brand hover:bg-primary/20'
 				: 'h-7 border bg-card px-2 text-brand hover:border-primary sm:px-2.5',

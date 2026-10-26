@@ -20,7 +20,7 @@
 		class="w-80"
 		buttonClass={cn(
 			PILL,
-			'h-6 gap-1.5 border border-beta-foreground/15 px-2.5 text-xs hover:bg-beta-foreground/12 data-open:bg-beta-foreground/12',
+			'relative h-6 gap-1.5 border border-beta-foreground/15 px-2.5 text-xs after:absolute after:inset-x-0 after:-inset-y-2.5 hover:bg-beta-foreground/12 data-open:bg-beta-foreground/12',
 			className
 		)}
 	>

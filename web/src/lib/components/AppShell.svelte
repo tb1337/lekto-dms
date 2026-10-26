@@ -151,7 +151,9 @@
 		<!-- Narrower gaps on a phone, and a little narrower below 380 pixels, so that the wordmark,
 		     the magnifier and the menu fit beside each other down to 360. -->
 		<div class="flex h-16 items-center gap-2 px-4 max-[380px]:px-3 sm:gap-4 sm:px-8 lg:gap-7">
-			<a href={home()} class="rounded-md text-lg"><Logo /></a>
+			<a href={home()} class="relative rounded-md text-lg after:absolute after:-inset-y-1.5"
+				><Logo /></a
+			>
 
 			<!-- The menu in the header from lg (web/DESIGN.md, "Navigation"): the work, then setting
 			     up and operating; below xl that second group behind "More" (German names are long). -->

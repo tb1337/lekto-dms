@@ -93,16 +93,17 @@
 		</ul>
 	</Card.Root>
 {:else}
-	<nav class="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1" aria-label={m.lens_title()}>
+	<nav class="-mx-4 -my-1.5 flex gap-1.5 overflow-x-auto px-4 py-1.5" aria-label={m.lens_title()}>
 		{#each entries as entry (entry.id)}
 			{@const current = entry.id === active}
 			<a
 				href={entry.href}
 				aria-current={current ? 'page' : undefined}
 				class={[
-					'inline-flex h-8 shrink-0 items-center rounded-full px-3 text-sm whitespace-nowrap',
+					// Chips as everywhere (web/DESIGN.md): the chosen one in the selected look.
+					'relative inline-flex h-8 shrink-0 items-center rounded-full px-3 text-sm whitespace-nowrap after:absolute after:inset-x-0 after:-inset-y-1.5',
 					current
-						? 'bg-primary font-semibold text-primary-foreground'
+						? 'bg-panel font-medium text-brand ring-1 ring-primary/30 ring-inset'
 						: 'border bg-card hover:bg-secondary'
 				]}
 			>

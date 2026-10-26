@@ -49,7 +49,7 @@
 		aria-label={ariaLabel}
 		aria-invalid={ariaInvalid}
 		onchange={(event) => onchange?.(event.currentTarget.value)}
-		class={cn(FIELD, className)}
+		class={cn(FIELD, className, 'max-sm:h-11')}
 	>
 		{#each options as option (option.value)}
 			<option value={option.value}>{option.label}</option>

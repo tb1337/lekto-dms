@@ -61,10 +61,13 @@
 	{:else}
 		<ul class="flex flex-col gap-2">
 			{#each hooks as hook (hook.id)}
-				<Card.Root as="li" size="row" class="flex flex-wrap items-center gap-3">
+				<!-- The name's link takes the whole row; the pencil stands above it. -->
+				<Card.Root as="li" size="row" class="relative flex flex-wrap items-center gap-3">
 					<div class="flex min-w-0 flex-1 flex-col gap-1">
 						<span class="flex flex-wrap items-center gap-2">
-							<a href="{BASE}/webhooks/{hook.id}" class="truncate font-medium hover:underline"
+							<a
+								href="{BASE}/webhooks/{hook.id}"
+								class="truncate font-medium after:absolute after:inset-0 hover:underline"
 								>{hook.name}</a
 							>
 							<Badge variant={hook.active ? 'green' : 'muted'}>
@@ -92,6 +95,7 @@
 						{/if}
 					</div>
 					<EditButton
+						class="relative z-10"
 						label={m.webhook_edit_named({ name: hook.name })}
 						href="{BASE}/webhooks/{hook.id}/edit"
 					/>

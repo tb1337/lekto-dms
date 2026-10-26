@@ -82,7 +82,7 @@
 			? buttonClass
 			: cn(
 					// A finger's tap on a phone reaches beyond the small icon.
-					'relative grid place-items-center text-muted-foreground after:absolute after:-inset-2 hover:text-foreground',
+					'relative grid place-items-center text-muted-foreground after:absolute after:-inset-2.5 hover:text-foreground',
 					size === 'sm' ? 'size-6' : 'size-7',
 					open && 'bg-secondary text-foreground'
 				)

@@ -19,12 +19,14 @@
 				link: 'font-medium text-brand underline-offset-4 hover:underline'
 			},
 			size: {
+				// On a phone every button takes a finger's 44 pixels (web/DESIGN.md, "Touch targets"):
+				// the default ones grow, the small ones get a larger invisible hit area.
 				default:
-					'h-10 gap-2 px-4 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3',
+					'h-10 gap-2 px-4 max-sm:h-11 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3',
 				xs: "h-6 gap-1 rounded-md px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
-				sm: "h-8 gap-1 rounded-lg px-2.5 text-meta in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
+				sm: "relative h-8 gap-1 rounded-lg px-2.5 text-meta max-sm:after:absolute max-sm:after:inset-x-0 max-sm:after:-inset-y-1.5 in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
 				lg: 'h-12 gap-2 px-5 text-md font-semibold has-data-[icon=inline-end]:pr-4 has-data-[icon=inline-start]:pl-4',
-				icon: 'size-10',
+				icon: 'size-10 max-sm:size-11',
 				'icon-xs':
 					"size-6 rounded-md in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
 				'icon-sm': 'size-8 rounded-lg in-data-[slot=button-group]:rounded-lg',
@@ -67,6 +69,7 @@
 	<a
 		bind:this={ref}
 		data-slot="button"
+		data-inline={size === 'inline' || undefined}
 		class={cn(buttonVariants({ variant, size }), className)}
 		href={disabled ? undefined : href}
 		aria-disabled={disabled}
@@ -80,6 +83,7 @@
 	<button
 		bind:this={ref}
 		data-slot="button"
+		data-inline={size === 'inline' || undefined}
 		class={cn(buttonVariants({ variant, size }), className)}
 		{type}
 		{disabled}

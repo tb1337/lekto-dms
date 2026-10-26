@@ -566,7 +566,6 @@ row of filters, on a desktop narrow by the title. -->
 						? m.filters_expand_active({ count: formatNumber(activeFilters) })
 						: m.filters_expand()
 					: m.filters_collapse()}
-				title={collapsed ? m.filters_expand() : m.filters_collapse()}
 				aria-expanded={!collapsed}
 				aria-controls={collapsed ? undefined : asideId}
 				onclick={toggleFilters}

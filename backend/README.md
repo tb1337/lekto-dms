@@ -662,6 +662,16 @@ and the space, the fields node reads the fields of the decided type and the titl
   documents the caller reads (`all_users`: an admin's, every user's), nothing stored, no events;
   MCP lists the ended ones only with `include_ended`. The web UI shows
   them under "Erwartet": overdue, next 30 days, later, ended.
+- **The stream** (issue #145 PR 13, `services/stream.py`, `GET /documents/stream`;
+  `.idea/bezuege.md` decisions 13–17): the documents the filters of `GET /documents` find, in
+  lanes: a series with the relation target its documents refer to at its start (the contract)
+  and the document it expects next at its end; branches (documents that refer to one of a
+  series without belonging to it, with the chain of theirs); chains of documents related only
+  among themselves; the rest in one lane ("single"). At most the 500 newest documents and 24
+  lanes of series and chains (`truncated`: a narrower filter shows it whole). It is the third
+  layout of the document list and of a lens (`layout: stream`); the document view links to the
+  stream of its contact (`/documents?contact=…&layout=stream`). On a wide screen the months run
+  from left to right, on a phone each lane runs down, newest first.
 - **The kinds of facts** (`IdentifierKind`, issue #145 PR 4; one module per kind in
   `domain/identifiers`): besides IBAN, VAT ID, customer and personnel number, e-mail domain and
   a person's numbers, those that point to the contact (creditor ID with its check digits,

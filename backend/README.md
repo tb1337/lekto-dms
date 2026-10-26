@@ -606,7 +606,8 @@ and the space, the fields node reads the fields of the decided type and the titl
   another ("bezieht sich auf": the correction to the original, the reminder to the invoice, the
   invoice to the contract), many to many and without a kind of its own; the document types at
   both ends tell what it means. A relation points from the newer document to the older (by their
-  document dates, else when they came in), so it is set from either end. It is set (by a person
+  document dates, else when they came in), so it is set from either end; a date set or changed
+  later turns it (the pair is stored once, its direction read from the dates now). It is set (by a person
   or, sure, by Lekto) or suggested (Lekto was unsure; a person accepts or rejects it) and never
   makes a document yellow; a rejected suggestion stays as rejected and is not suggested again,
   a person's relation that is removed goes. Only who reads both documents sees a relation; who

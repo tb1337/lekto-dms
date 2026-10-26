@@ -42,6 +42,8 @@ const FACTS: Facts = {
 			contact_id: UTILITY,
 			in_text: true,
 			in_code: true,
+			role: 'contact',
+			origins: ['pattern', 'code'],
 			spans: [{ start: 40, end: 67, locations: [] }],
 			other_contacts: 0
 		},
@@ -51,6 +53,8 @@ const FACTS: Facts = {
 			contact_id: null,
 			in_text: true,
 			in_code: false,
+			role: 'contact',
+			origins: ['pattern'],
 			spans: [{ start: 80, end: 89, locations: [] }],
 			other_contacts: 0
 		},
@@ -60,6 +64,8 @@ const FACTS: Facts = {
 			contact_id: null,
 			in_text: true,
 			in_code: false,
+			role: 'contact',
+			origins: ['pattern'],
 			spans: [{ start: 100, end: 127, locations: [] }],
 			other_contacts: 6
 		}
@@ -128,6 +134,8 @@ describe('FactsPanel', () => {
 		expect(screen.getAllByText('DE89 3704 0044 0532 0130 00')).toHaveLength(2);
 		expect(screen.getByText(m.facts_unknown())).toBeTruthy();
 		expect(screen.getByText('20047718')).toBeTruthy();
+		// Each with what it is to the document.
+		expect(screen.getAllByText(`· ${m.fact_role_contact()}`)).toHaveLength(3);
 		// The owner's own IBAN stands on many contacts' documents.
 		expect(screen.getByText(m.facts_other_contacts({ count: 6 }))).toBeTruthy();
 		// Only a pin to attach, its label on hover.

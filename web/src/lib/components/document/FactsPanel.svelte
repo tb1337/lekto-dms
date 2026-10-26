@@ -22,6 +22,7 @@
 		evidenceLabel,
 		grouped,
 		identifierKey,
+		roleLabel,
 		shown,
 		strengthLabel,
 		type CodeFacts,
@@ -247,6 +248,9 @@
 						: named?.alias
 							? m.facts_alias()
 							: m.facts_name()}
+					{#if identifier}
+						<span class="font-normal">· {roleLabel(identifier.role)}</span>
+					{/if}
 				</span>
 				<span class={cn('text-sm break-words', identifier && 'font-mono text-[13px]')}>
 					{identifier ? shown(identifier) : named?.name}

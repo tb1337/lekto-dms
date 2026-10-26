@@ -47,6 +47,7 @@ from lekto.core.domain.identifiers.reading import (
     identifiers_from,
     identifiers_in,
     of_person,
+    places_in,
 )
 from lekto.core.domain.identifiers.registry import (
     CONTACT_KINDS,
@@ -86,6 +87,7 @@ __all__ = [
     "mine_identifiers",
     "normalise_identifier",
     "of_person",
+    "places_in",
     "seen_by",
     "social_security_number_valid",
     "tax_id_valid",

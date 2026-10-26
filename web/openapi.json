@@ -21976,6 +21976,30 @@
         "title": "ExtractContext",
         "description": "`fields`' request (`external.extract`) for the fields the proposal did not give (the\njudge decided another type, or there is no proposal). Lekto checks the answer as a\nlanguage model's."
       },
+      "FactOrigin": {
+        "type": "string",
+        "enum": [
+          "pattern",
+          "code",
+          "model",
+          "person"
+        ],
+        "title": "FactOrigin",
+        "description": "Where a fact comes from; one fact may come from several sources."
+      },
+      "FactRole": {
+        "type": "string",
+        "enum": [
+          "contact",
+          "target",
+          "own",
+          "thread",
+          "refers",
+          "person"
+        ],
+        "title": "FactRole",
+        "description": "What a fact is to the document that shows it (`fakten.md`, Rollen)."
+      },
       "FactsOut": {
         "properties": {
           "contact_id": {
@@ -22054,8 +22078,12 @@
                 "in_code": false,
                 "in_text": true,
                 "kind": "customer_number",
+                "origins": [
+                  "pattern"
+                ],
                 "other_contact_ids": [],
                 "other_contacts": 0,
+                "role": "contact",
                 "spans": [
                   {
                     "end": 421,
@@ -22889,6 +22917,18 @@
             "title": "Spans",
             "description": "Where it stands in the text."
           },
+          "role": {
+            "$ref": "#/components/schemas/FactRole",
+            "description": "What it is to the document (`contact`: points to the contact, `target`: to what a series refers to, `own`: marks the document, `thread`: joins a strand, `refers`: refers to another document, `person`: points to a person). As kept for the document; until the facts signal ran again after 0.7, the role of its kind."
+          },
+          "origins": {
+            "items": {
+              "$ref": "#/components/schemas/FactOrigin"
+            },
+            "type": "array",
+            "title": "Origins",
+            "description": "Where it comes from: `pattern` (the text), `code`, `model`, `person`."
+          },
           "other_contacts": {
             "anyOf": [
               {
@@ -22926,6 +22966,8 @@
           "in_text",
           "in_code",
           "spans",
+          "role",
+          "origins",
           "other_contacts"
         ],
         "title": "FoundIdentifierOut"

@@ -17,6 +17,21 @@ export type CodePlace = components['schemas']['CodePlaceOut'];
 export type Span = components['schemas']['SpanOut'];
 export type FoundPerson = components['schemas']['FoundPersonOut'];
 export type Strength = FoundPerson['strength'];
+export type FactRole = components['schemas']['FactRole'];
+
+const ROLE_LABELS: Record<FactRole, () => string> = {
+	contact: m.fact_role_contact,
+	target: m.fact_role_target,
+	own: m.fact_role_own,
+	thread: m.fact_role_thread,
+	refers: m.fact_role_refers,
+	person: m.fact_role_person
+};
+
+/** What a fact is to the document, in words ("points to the contact"). */
+export function roleLabel(role: FactRole): string {
+	return ROLE_LABELS[role]();
+}
 
 /** How surely the document names a person, in words. */
 export function strengthLabel(strength: Strength): string {

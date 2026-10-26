@@ -384,10 +384,11 @@ document_fields = Table(
     Column("value_boolean", Boolean, nullable=True),
 )
 
-# What the facts signal last found a document to show, in its text or its codes (kind and
-# normalised value of an identifier): on how many contacts' confirmed documents a value stands.
-document_identifiers = Table(
-    "document_identifiers",
+# The facts of a document (`domain.document_facts`): kind and normalised value, its role, where
+# it comes from (`origins`, comma-separated), as written and where it stands first in the text,
+# and whether a person decided it (`state`). Until 0047 `document_identifiers` (kind and value).
+document_facts = Table(
+    "document_facts",
     metadata,
     Column(
         "document_id",
@@ -397,6 +398,11 @@ document_identifiers = Table(
     ),
     Column("kind", Text, primary_key=True),
     Column("value", Text, primary_key=True),
+    Column("role", Text, nullable=False),
+    Column("origins", Text, nullable=False),
+    Column("written", Text, nullable=True),
+    Column("position", Integer, nullable=True),
+    Column("state", Text, nullable=False, server_default="found"),
     Index(None, "kind", "value"),
 )
 

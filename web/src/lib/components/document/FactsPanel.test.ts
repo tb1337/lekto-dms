@@ -5,6 +5,7 @@ import type { Facts } from '#lib/facts.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { choose } from '#lib/testing/select.ts';
 import FactsPanel from './FactsPanel.svelte';
 
 const UTILITY = 'contact-1';
@@ -186,7 +187,7 @@ describe('FactsPanel', () => {
 			name: new RegExp(`^${m.identifier_kind_invoice_number()}`)
 		});
 		expect(row.textContent).toContain(m.fact_role_refers());
-		await fireEvent.mouseEnter(row.parentElement!);
+		await fireEvent.mouseEnter(row.closest('[role="presentation"]')!);
 		expect(onmark).toHaveBeenLastCalledWith(spans, false, m.identifier_kind_invoice_number());
 	});
 
@@ -228,6 +229,64 @@ describe('FactsPanel', () => {
 		const [request] = fetchMock.mock.calls[0];
 		expect(new URL(request.url).pathname).toBe(`/api/v1/contacts/${UTILITY}/identifiers`);
 		expect(await request.json()).toEqual({ kind: 'customer_number', value: '20047718' });
+	});
+
+	it('lets an editor correct, reject and add a fact (#145)', async () => {
+		const onchanged = vi.fn();
+		const number = {
+			kind: 'invoice_number' as const,
+			value: '4711',
+			written: '4711',
+			role: 'own' as const,
+			origins: ['pattern' as const],
+			state: 'found' as const,
+			spans: []
+		};
+		const rejected = { ...number, value: 'M77', written: 'M-77', state: 'rejected' as const };
+		render(
+			FactsPanel,
+			props({ onchanged, facts: { ...FACTS, editable: true, numbers: [number, rejected] } })
+		);
+		const user = userEvent.setup();
+		const body = async (index: number) => fetchMock.mock.calls[index][0].json();
+
+		// The role of the invoice it refers to.
+		await user.click(
+			screen.getByRole('button', { name: m.facts_decide_value_label({ value: '4711' }) })
+		);
+		await choose(user, screen.getByRole('combobox', { name: m.facts_decide_role() }), 'refers');
+		await user.click(screen.getByRole('button', { name: m.facts_decide_save() }));
+		await waitFor(() => expect(onchanged).toHaveBeenCalledTimes(1));
+		expect(await body(0)).toEqual({
+			at_contact: false,
+			action: 'correct',
+			kind: 'invoice_number',
+			value: '4711',
+			role: 'refers'
+		});
+
+		// A rejected one is only restored.
+		expect(screen.getByText(m.facts_state_rejected())).toBeTruthy();
+		await user.click(
+			screen.getByRole('button', { name: m.facts_decide_value_label({ value: 'M-77' }) })
+		);
+		expect(screen.queryByRole('button', { name: m.facts_decide_save() })).toBeNull();
+		await user.click(screen.getByRole('button', { name: m.facts_decide_restore() }));
+		await waitFor(() => expect(onchanged).toHaveBeenCalledTimes(2));
+		expect((await body(1)).action).toBe('withdraw');
+
+		// Added, with the role of its kind.
+		await user.click(screen.getByRole('button', { name: m.facts_add() }));
+		await user.type(screen.getByRole('textbox', { name: m.facts_decide_value() }), 'R-1001');
+		await user.click(screen.getByRole('button', { name: m.facts_add_save() }));
+		await waitFor(() => expect(onchanged).toHaveBeenCalledTimes(3));
+		expect(await body(2)).toEqual({
+			at_contact: false,
+			action: 'add',
+			kind: 'invoice_number',
+			value: 'R-1001',
+			role: 'own'
+		});
 	});
 
 	it("opens the contact's dialog from its name, for admins", async () => {

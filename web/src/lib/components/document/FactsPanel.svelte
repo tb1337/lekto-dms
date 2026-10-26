@@ -1,6 +1,8 @@
 <script lang="ts">
 	import Check from '@lucide/svelte/icons/check';
 	import Copy from '@lucide/svelte/icons/copy';
+	import Pencil from '@lucide/svelte/icons/pencil';
+	import Plus from '@lucide/svelte/icons/plus';
 	import Pin from '@lucide/svelte/icons/pin';
 	import ScanQrCode from '@lucide/svelte/icons/scan-qr-code';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
@@ -13,6 +15,8 @@
 	import { copyText } from '#lib/clipboard.ts';
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
 	import CodeThumb from '#lib/components/document/CodeThumb.svelte';
+	import FactAdd from '#lib/components/document/FactAdd.svelte';
+	import FactDecide from '#lib/components/document/FactDecide.svelte';
 	import SourceChip from '#lib/components/document/SourceChip.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -24,18 +28,21 @@
 		identifierKey,
 		roleLabel,
 		shown,
+		stateLabel,
 		strengthLabel,
 		type CodeFacts,
 		type CodePlace,
 		type DocumentNumber,
+		type FactDecision,
 		type Facts,
 		type FoundIdentifier,
 		type FoundPerson,
+		type KeptFact,
 		type NamedContact,
 		type Span
 	} from '#lib/facts.ts';
 	import { formatMoney } from '#lib/i18n.ts';
-	import { kindLabel } from '#lib/identifiers.ts';
+	import { IDENTIFIER_KINDS, kindLabel } from '#lib/identifiers.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -72,7 +79,7 @@
 		/** Show a code where it stands on its page. */
 		/** Show the code on one of its pages, all its places marked. */
 		onshowcode: (code: CodeFacts, place: CodePlace) => void;
-		/** After an identifier was attached. */
+		/** After an identifier was attached, or a person decided about a fact. */
 		onchanged: () => void;
 	} = $props();
 
@@ -85,6 +92,9 @@
 	let other = $state('');
 	let attachTopic = $state('');
 	let busy = $state(false);
+	// The fact a person decides about (its entry's id), and whether they add one (#145 PR 6).
+	let deciding = $state<string | null>(null);
+	let adding = $state(false);
 	// A click keeps a mark: the text scrolls to it (also when the entry was marked already).
 	let reveal = false;
 	let clicks = $state(0);
@@ -147,6 +157,11 @@
 			onmark(number?.spans ?? [], scroll, number ? kindLabel(number.kind) : '');
 			return;
 		}
+		if (id.startsWith('decided:')) {
+			const fact = facts.decided?.find((item) => decidedId(item) === id);
+			onmark(fact?.spans ?? [], scroll, fact ? kindLabel(fact.kind) : '');
+			return;
+		}
 		const entry = [...facts.named, ...facts.identifiers].find((item) => entryId(item) === id);
 		onmark(entry?.spans ?? [], scroll, entry ? entryLabel(entry) : '');
 	});
@@ -199,6 +214,33 @@
 		}
 	}
 
+	async function decide(decision: FactDecision) {
+		busy = true;
+		try {
+			await unwrap(
+				api.POST('/api/v1/documents/{id}/facts/decisions', {
+					params: { path: { id: documentId } },
+					body: { at_contact: false, ...decision }
+				})
+			);
+			toast.success(m.facts_decided_done({ kind: kindLabel(decision.kind) }));
+			deciding = null;
+			adding = false;
+			onchanged();
+		} catch (error) {
+			reportError(error);
+		} finally {
+			busy = false;
+		}
+	}
+
+	// The contact an admin corrects a contact's kind of fact at too: the document's.
+	const correctAt = (kind: KeptFact['kind']) =>
+		admin && facts.contact_id && IDENTIFIER_KINDS.includes(kind)
+			? contactName(facts.contact_id)
+			: null;
+	const decidedId = (fact: KeptFact) => `decided:${fact.kind}:${fact.value}`;
+
 	const copy = (text: string) => copyText(text);
 
 	const fieldName = (id: string) => lookup?.fields.find((field) => field.id === id)?.name ?? '…';
@@ -230,6 +272,70 @@
 	{/if}
 {/snippet}
 
+{#snippet decideButton(id: string, fact: KeptFact)}
+	<Button
+		variant="ghost"
+		size="icon"
+		class="size-8 shrink-0"
+		aria-label={m.facts_decide_value_label({ value: fact.written ?? shown(fact) })}
+		title={m.facts_decide()}
+		aria-expanded={deciding === id}
+		onclick={() => {
+			deciding = deciding === id ? null : id;
+			attaching = null;
+		}}
+	>
+		<Pencil aria-hidden="true" />
+	</Button>
+{/snippet}
+
+{#snippet keptRow(id: string, fact: KeptFact, spans: Span[])}
+	<div
+		class={cn('rounded-xl transition-colors', active === id && 'bg-panel')}
+		onmouseenter={() => (hover = id)}
+		onmouseleave={() => (hover = null)}
+		role="presentation"
+	>
+		<div class="flex items-center gap-2">
+			<button
+				type="button"
+				class="flex min-w-0 flex-1 flex-col items-start gap-0.5 px-2.5 py-2 text-left"
+				aria-pressed={pinned === id}
+				disabled={spans.length === 0}
+				onclick={() => pin(id)}
+				onfocus={() => (hover = id)}
+				onblur={() => (hover = null)}
+			>
+				<span class="text-xs font-medium text-muted-foreground">
+					{kindLabel(fact.kind)}
+					<span class="font-normal">· {roleLabel(fact.role)}</span>
+				</span>
+				<span
+					class={cn(
+						'font-mono text-[13px] break-words',
+						fact.state === 'rejected' && 'text-muted-foreground line-through'
+					)}>{fact.written ?? fact.value}</span
+				>
+				{#if stateLabel(fact.state)}
+					<span class="text-xs text-muted-foreground">{stateLabel(fact.state)}</span>
+				{/if}
+			</button>
+			{#if facts.editable}
+				<div class="pr-1.5">{@render decideButton(id, fact)}</div>
+			{/if}
+		</div>
+		{#if deciding === id}
+			<FactDecide
+				{fact}
+				contact={correctAt(fact.kind)}
+				{busy}
+				ondecide={decide}
+				oncancel={() => (deciding = null)}
+			/>
+		{/if}
+	</div>
+{/snippet}
+
 {#snippet entryRow(entry: Entry, contactId: string | null)}
 	{@const id = entryId(entry)}
 	{@const identifier = 'kind' in entry ? entry : null}
@@ -259,9 +365,18 @@
 						<span class="font-normal">· {roleLabel(identifier.role)}</span>
 					{/if}
 				</span>
-				<span class={cn('text-sm break-words', identifier && 'font-mono text-[13px]')}>
+				<span
+					class={cn(
+						'text-sm break-words',
+						identifier && 'font-mono text-[13px]',
+						identifier?.state === 'rejected' && 'text-muted-foreground line-through'
+					)}
+				>
 					{identifier ? shown(identifier) : named?.name}
 				</span>
+				{#if identifier && stateLabel(identifier.state)}
+					<span class="text-xs text-muted-foreground">{stateLabel(identifier.state)}</span>
+				{/if}
 				{#if identifier?.topic_id && topicName(identifier.topic_id)}
 					<span class="text-xs text-muted-foreground">
 						{m.facts_topic({ topic: topicName(identifier.topic_id) ?? '' })}
@@ -273,7 +388,10 @@
 					</span>
 				{/if}
 			</button>
-			{#if identifier && !identifier.contact_id && admin}
+			{#if identifier && facts.editable}
+				{@render decideButton(id, identifier)}
+			{/if}
+			{#if identifier && !identifier.contact_id && admin && identifier.state !== 'rejected'}
 				<!-- Only the pin: the label would repeat on every line. -->
 				<Button
 					variant="outline"
@@ -307,6 +425,15 @@
 						: m.facts_other_contacts({ count: identifier.other_contacts })}
 				{/if}
 			</div>
+		{/if}
+		{#if identifier && deciding === id}
+			<FactDecide
+				fact={identifier}
+				contact={correctAt(identifier.kind)}
+				{busy}
+				ondecide={decide}
+				oncancel={() => (deciding = null)}
+			/>
 		{/if}
 		{#if identifier && attaching === id}
 			<form
@@ -425,37 +552,37 @@
 		{/if}
 	</section>
 
-	{#if facts.numbers && facts.numbers.length > 0}
-		<!-- The document's own numbers, a strand's, another document's it refers to (#145). -->
+	{#if (facts.numbers && facts.numbers.length > 0) || (facts.decided && facts.decided.length > 0) || facts.editable}
+		<!-- The document's own numbers, a strand's, another document's it refers to (#145); the
+		     facts of other kinds a person decided that the text does not show; adding one. -->
 		<section aria-labelledby="numbers-title" class="rounded-2xl border bg-card p-3.5">
 			<div class="flex items-baseline gap-2 px-1 pb-1">
 				<h2 id="numbers-title" class="text-[15px] font-semibold">{m.facts_numbers()}</h2>
 				<span class="text-xs text-muted-foreground">{m.facts_numbers_hint()}</span>
 			</div>
-			{#each facts.numbers as number (numberId(number))}
-				{@const id = numberId(number)}
-				<div
-					class={cn('rounded-xl transition-colors', active === id && 'bg-panel')}
-					onmouseenter={() => (hover = id)}
-					onmouseleave={() => (hover = null)}
-					role="presentation"
-				>
-					<button
-						type="button"
-						class="flex w-full min-w-0 flex-col items-start gap-0.5 px-2.5 py-2 text-left"
-						aria-pressed={pinned === id}
-						onclick={() => pin(id)}
-						onfocus={() => (hover = id)}
-						onblur={() => (hover = null)}
-					>
-						<span class="text-xs font-medium text-muted-foreground">
-							{kindLabel(number.kind)}
-							<span class="font-normal">· {roleLabel(number.role)}</span>
-						</span>
-						<span class="font-mono text-[13px] break-words">{number.written ?? number.value}</span>
-					</button>
-				</div>
+			{#each facts.numbers ?? [] as number (numberId(number))}
+				{@render keptRow(numberId(number), number, number.spans)}
 			{/each}
+			{#if facts.decided && facts.decided.length > 0}
+				<h3 class="mt-3 px-1 text-xs font-semibold text-muted-foreground">
+					{m.facts_decided()}
+				</h3>
+				{#each facts.decided as fact (decidedId(fact))}
+					{@render keptRow(decidedId(fact), fact, fact.spans)}
+				{/each}
+			{/if}
+			{#if facts.editable}
+				<div class="mt-2 px-1">
+					{#if adding}
+						<FactAdd {admin} {busy} ondecide={decide} oncancel={() => (adding = false)} />
+					{:else}
+						<Button variant="outline" size="sm" onclick={() => (adding = true)}>
+							<Plus aria-hidden="true" />
+							{m.facts_add()}
+						</Button>
+					{/if}
+				</div>
+			{/if}
 		</section>
 	{/if}
 

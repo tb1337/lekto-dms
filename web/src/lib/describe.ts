@@ -16,7 +16,9 @@ const FIELD_LABELS: Record<string, () => string> = {
 	tags: m.field_tags,
 	document_date: m.field_date,
 	space: m.field_space,
-	correspondent: m.field_contact
+	correspondent: m.field_contact,
+	// A person's verdict on a document's facts (#145).
+	facts: m.facts_title
 };
 
 /** The name of a field in a change: `field:<id>` shows the field's name. */

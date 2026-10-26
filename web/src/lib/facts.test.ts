@@ -5,6 +5,7 @@ import {
 	factCounts,
 	grouped,
 	inUnits,
+	KIND_ROLES,
 	pageRanges,
 	quoteStretches,
 	segmentsOf,
@@ -13,6 +14,7 @@ import {
 	strengthLabel,
 	type Facts
 } from './facts.ts';
+import openapi from '../../openapi.json';
 import { m } from '#lib/paraglide/messages.js';
 
 const CONTACT = 'contact-1';
@@ -192,5 +194,14 @@ describe('the persons a document names', () => {
 			m.facts_person_alias(),
 			m.facts_person_name()
 		]);
+	});
+});
+
+describe('the role of a fact of each kind', () => {
+	it('is the one the API names', () => {
+		const roles = (openapi as unknown as { 'x-fact-roles': Record<string, string> })[
+			'x-fact-roles'
+		];
+		expect(KIND_ROLES).toEqual(roles);
 	});
 });

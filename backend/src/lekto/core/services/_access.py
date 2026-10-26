@@ -26,6 +26,7 @@ from lekto.core.domain.permissions import (
 )
 from lekto.core.domain.pipeline import Node, NodeRun
 from lekto.core.domain.reasons import Action, ReasonCode, because
+from lekto.core.domain.rules import ConditionField, RuleDefinition
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
 from lekto.core.ports.repository import DocumentFilter
@@ -329,6 +330,19 @@ def check_fact_filter(user: User, filter: DocumentFilter) -> None:
         return
     if any(of_a_person(item) for item in filter.facts):
         raise PermissionDeniedError(because(ReasonCode.FACT_FILTER_OF_PERSON))
+
+
+def check_rule_facts(user: User, definition: RuleDefinition) -> None:
+    """Only admins write and apply rules on a person's facts, as only they find documents by
+    them (`check_fact_filter`): a condition on a kind a person's alone or in the role `person`;
+    PermissionDeniedError otherwise."""
+    if user.is_active_admin:
+        return
+    for condition in definition.all_conditions():
+        if condition.field is ConditionField.FACT and of_a_person(
+            FactCriterion(kind=condition.fact_kind, role=condition.fact_role)
+        ):
+            raise PermissionDeniedError(because(ReasonCode.RULE_FACT_OF_PERSON))
 
 
 def of_a_person(criterion: FactCriterion) -> bool:

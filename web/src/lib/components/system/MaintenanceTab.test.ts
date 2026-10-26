@@ -29,7 +29,8 @@ function routes(logoFetch = true) {
 			meaning_search: false
 		}),
 		'POST /api/v1/pipeline/relate': () => ({ queued: 1284 }),
-		'POST /api/v1/pipeline/read-codes': () => ({ queued: 0 })
+		'POST /api/v1/pipeline/read-codes': () => ({ queued: 0 }),
+		'POST /api/v1/pipeline/render-pages': () => ({ queued: 1 })
 	});
 }
 
@@ -73,7 +74,7 @@ describe('the maintenance tab', () => {
 		);
 	});
 
-	it('says when there was nothing to queue', async () => {
+	it('says when there was nothing to queue, and when one document was', async () => {
 		const success = vi.spyOn(toast, 'success');
 		vi.stubGlobal('fetch', routes());
 		render(MaintenanceTab);
@@ -84,6 +85,17 @@ describe('the maintenance tab', () => {
 		const dialog = await screen.findByRole('alertdialog');
 		await userEvent.click(within(dialog).getByRole('button', { name: m.maintenance_run() }));
 		await waitFor(() => expect(success).toHaveBeenCalledWith(m.maintenance_queued_none()));
+		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+		// The closed dialog still holds the page's pointer events for a moment.
+		const user = userEvent.setup({ pointerEventsCheck: 0 });
+		const pages = screen.getByText(m.maintenance_pages_name()).closest('li') as HTMLElement;
+		await user.click(within(pages).getByRole('button', { name: m.maintenance_run() }));
+		await user.click(
+			within(await screen.findByRole('alertdialog')).getByRole('button', {
+				name: m.maintenance_run()
+			})
+		);
+		await waitFor(() => expect(success).toHaveBeenCalledWith(m.maintenance_queued_document_one()));
 	});
 
 	it('holds the logos back while Lekto does not fetch them', async () => {

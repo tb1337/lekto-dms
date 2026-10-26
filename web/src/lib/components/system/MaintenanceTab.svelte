@@ -38,6 +38,15 @@
 	let asked = $state<Action | null>(null);
 	let open = $state(false);
 
+	const documents = (count: number) =>
+		count === 1
+			? m.maintenance_queued_document_one()
+			: m.maintenance_queued_documents({ count: formatNumber(count) });
+	const contacts = (count: number) =>
+		count === 1
+			? m.maintenance_queued_contact_one()
+			: m.maintenance_queued_contacts({ count: formatNumber(count) });
+
 	const ACTIONS: Action[] = [
 		{
 			key: 'relate',
@@ -46,7 +55,7 @@
 			confirm: m.maintenance_relate_confirm(),
 			kind: 'pipeline.relate',
 			queue: async () => (await unwrap(api.POST('/api/v1/pipeline/relate'))).queued,
-			queued: (count) => m.maintenance_queued_documents({ count: formatNumber(count) })
+			queued: documents
 		},
 		{
 			key: 'pages',
@@ -55,7 +64,7 @@
 			confirm: m.maintenance_pages_confirm(),
 			kind: 'pipeline.catch_up',
 			queue: async () => (await unwrap(api.POST('/api/v1/pipeline/render-pages'))).queued,
-			queued: (count) => m.maintenance_queued_documents({ count: formatNumber(count) })
+			queued: documents
 		},
 		{
 			key: 'codes',
@@ -64,7 +73,7 @@
 			confirm: m.maintenance_codes_confirm(),
 			kind: 'pipeline.facts',
 			queue: async () => (await unwrap(api.POST('/api/v1/pipeline/read-codes'))).queued,
-			queued: (count) => m.maintenance_queued_documents({ count: formatNumber(count) })
+			queued: documents
 		},
 		{
 			key: 'logos',
@@ -73,7 +82,7 @@
 			confirm: m.maintenance_logos_confirm(),
 			kind: 'contacts.logo',
 			queue: async () => (await unwrap(api.POST('/api/v1/contacts/logos/fetch'))).queued,
-			queued: (count) => m.maintenance_queued_contacts({ count: formatNumber(count) })
+			queued: contacts
 		}
 	];
 

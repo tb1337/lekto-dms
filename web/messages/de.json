@@ -1775,6 +1775,8 @@
 	"expected_spread": "± {count} Tage",
 	"expected_documents": "{count} Dokumente",
 	"expected_last": "Zuletzt:",
+	"expected_next": "nächstes {date}",
+	"expected_was": "fällig war {date}",
 	"expected_for": "für {period}",
 	"relations_title": "Bezüge",
 	"relations_hint": "zu anderen Dokumenten; das neuere bezieht sich auf das ältere",

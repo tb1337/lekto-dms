@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { components } from '#lib/api/schema.ts';
+import { formatDate } from '#lib/i18n.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
 import { calls, fakeApi } from '#lib/testing/documents.ts';
@@ -52,7 +53,10 @@ describe('Erwartet', () => {
 		vi.stubGlobal('fetch', api);
 		render(Page);
 		const overdue = await screen.findByRole('region', { name: new RegExp(m.expected_overdue()) });
-		expect(within(overdue).getByText('V-1')).toBeTruthy();
+		expect(within(overdue).getByText(/V-1$/)).toBeTruthy(); // with its kind
+		expect(
+			within(overdue).getByText(m.expected_next({ date: formatDate('2026-10-15') }))
+		).toBeTruthy();
 		expect(
 			within(overdue).getByText(
 				`${m.expected_monthly()} · ${m.expected_spread({ count: '2' })} · ${m.expected_documents({ count: '3' })}`
@@ -65,7 +69,9 @@ describe('Erwartet', () => {
 			within(later).getByText(new RegExp(m.expected_every_days({ count: '14' })))
 		).toBeTruthy();
 		expect(screen.queryByRole('region', { name: new RegExp(m.expected_ended()) })).toBeNull();
-		expect(calls(api)).toContain('GET /api/v1/expected');
+		// Overdue as the day is in the browser's time zone.
+		const zone = encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone);
+		expect(calls(api)).toContain(`GET /api/v1/expected?tz=${zone}`);
 	});
 
 	it('says so when there is no series', async () => {

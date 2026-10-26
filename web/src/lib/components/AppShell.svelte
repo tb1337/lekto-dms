@@ -70,7 +70,7 @@
 		aria-current={current ? 'page' : undefined}
 		onclick={() => (menuOpen = false)}
 		class={cn(
-			'flex h-9 items-center gap-2 rounded-full px-3.5 text-sm whitespace-nowrap transition-colors hover:text-foreground',
+			'flex h-9 items-center gap-2 rounded-full px-3 text-sm whitespace-nowrap transition-colors hover:text-foreground 2xl:px-3.5',
 			current ? 'bg-secondary font-medium text-foreground' : 'text-muted-foreground',
 			vertical && 'h-11 rounded-xl px-4 text-base'
 		)}
@@ -110,10 +110,7 @@
 		<div class="flex h-16 items-center gap-2 px-4 max-[380px]:px-3 sm:gap-4 sm:px-8 lg:gap-7">
 			<Sheet.Root bind:open={menuOpen}>
 				<Sheet.Trigger
-					class={cn(
-						buttonVariants({ variant: 'ghost', size: 'icon' }),
-						adminSections.length ? 'xl:hidden' : 'lg:hidden'
-					)}
+					class={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'xl:hidden')}
 					aria-label={m.nav_open()}
 				>
 					<Menu aria-hidden="true" />
@@ -138,14 +135,8 @@
 
 			<a href={home()} class="rounded-md text-lg"><Logo /></a>
 
-			<!-- The menu in the header where it fits: from lg, from xl with the admin's entries. -->
-			<nav
-				aria-label={m.nav_main()}
-				class={cn(
-					'hidden min-w-0 flex-1 items-center gap-1',
-					adminSections.length ? 'xl:flex' : 'lg:flex'
-				)}
-			>
+			<!-- The menu in the header where it fits: from xl (German names are long). -->
+			<nav aria-label={m.nav_main()} class="hidden min-w-0 flex-1 items-center gap-1 xl:flex">
 				{#each userSections as section (section.path)}
 					{@render pill(section, false)}
 				{/each}

@@ -9,6 +9,7 @@
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
+	import { labelOfKind } from '#lib/identifiers.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
 
@@ -21,12 +22,16 @@
 	let found = $state<Expected[] | null>(null);
 	let problem = $state<string | null>(null);
 	let attempt = $state(0);
+	// Overdue as the day is here.
+	const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 	$effect(() => {
 		const allUsers = scope.query;
 		void attempt;
 		let current = true;
-		void unwrap(api.GET('/api/v1/expected', { params: { query: { all_users: allUsers } } })).then(
+		void unwrap(
+			api.GET('/api/v1/expected', { params: { query: { all_users: allUsers, tz: zone } } })
+		).then(
 			(items) => {
 				if (!current) return;
 				found = items;
@@ -94,7 +99,7 @@
 					<span class="font-normal text-muted-foreground">{section.items.length}</span>
 				</h2>
 				<ul class="flex flex-col gap-2">
-					{#each section.items as item (`${item.contact.id}:${item.document_type.id}:${item.number?.value ?? ''}`)}
+					{#each section.items as item (item.last.id)}
 						<li class="flex flex-wrap items-center gap-3 rounded-2xl border bg-card p-4">
 							<CalendarClock class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
 							<div class="flex min-w-0 flex-1 flex-col gap-1">
@@ -103,7 +108,11 @@
 										>{item.contact.name} · {item.document_type.name}</span
 									>
 									{#if item.number}
-										<Badge variant="outline" class="font-mono">{item.number.value}</Badge>
+										<Badge variant="outline" class="max-w-full min-w-0">
+											<span class="truncate"
+												>{labelOfKind(item.number.kind)} {item.number.value}</span
+											>
+										</Badge>
 									{/if}
 								</span>
 								<span class="text-sm text-muted-foreground">
@@ -121,7 +130,9 @@
 							<div class="flex flex-col items-end gap-0.5 text-right">
 								<span
 									class="text-sm font-semibold {item.state === 'overdue' ? 'text-destructive' : ''}"
-									>{formatDate(item.next_date)}</span
+									>{item.state === 'ended'
+										? m.expected_was({ date: formatDate(item.next_date) })
+										: m.expected_next({ date: formatDate(item.next_date) })}</span
 								>
 								{#if item.next_period}
 									<span class="text-xs text-muted-foreground"

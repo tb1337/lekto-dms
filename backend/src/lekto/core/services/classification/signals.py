@@ -32,9 +32,6 @@ from lekto.core.domain.codes import (
 from lekto.core.domain.document_facts import (
     DocumentFact,
     ReadFact,
-    checked_read,
-    found_facts,
-    with_read,
 )
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import (
@@ -45,7 +42,7 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.facts import NAME, Strength, facts_in
-from lekto.core.domain.identifiers import IdentifierKind, identifiers_in, places_in, referred_in
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId, UserId
 from lekto.core.domain.json_value import (
     JsonObject,
@@ -79,6 +76,7 @@ from lekto.core.ports.search_index import SearchIndex, SimilarQuery
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._spaces import SpaceCandidates, space_candidates
 from lekto.core.services.classification.answers import StoredProposal, read_fact_from_json
+from lekto.core.services.classification.kept_facts import READ_FACTS, TextFacts, keep_facts
 from lekto.core.services.classifier import ClassifierService
 from lekto.core.services.indexing import split_sections
 from lekto.core.services.nodes import ARCHIVE_FILE, work_directory
@@ -100,9 +98,6 @@ FACTS_ERROR = "facts_error"
 """Why the language model read no facts, in the output of `signal_llm`."""
 FACTS_INPUT = "facts_prompt"
 """The version of the facts prompt, in the input of `signal_llm`."""
-READ_FACTS = "read_facts"
-"""Key of what became of the language model's facts in the output of `signal_facts`: how many
-it took, and those it refused with why."""
 FACTS = "facts"
 _RANKED = 5  # classes of contact and type the classifier's signal keeps
 _CANDIDATES_MASS = 0.5  # the candidate spaces hold this much of the classifier's: renormalised
@@ -139,8 +134,8 @@ class FactsSignal:
     the document (`codes_key`); the OCR node drops them with a new archive. A code that cannot
     be read never fails the signal. The identifiers found are the document's facts, with
     where they come from (the text's patterns, a code) and the role of their kind
-    (`domain.document_facts`), kept with the result (`DocumentFactRepository.replace_found`: a
-    person's decisions stay)."""
+    (`domain.document_facts`), kept with the result together with the facts the language model
+    read as the log has them then (`kept_facts`; a person's decisions stay)."""
 
     def __init__(
         self, uow: UnitOfWorkFactory, store: ObjectStore, codes: CodeReader | None = None
@@ -161,30 +156,12 @@ class FactsSignal:
         output = await asyncio.to_thread(facts_of, text, contacts, codes or (), persons)
         if codes is not None:
             output["codes"] = len(codes)
-        in_text = await asyncio.to_thread(identifiers_in, text)
         in_codes: set[tuple[IdentifierKind, str]] = set()
         for code in codes or ():
             in_codes |= code_identifiers(code)
-        places = await asyncio.to_thread(places_in, text)
-        referred = await asyncio.to_thread(referred_in, text)
-        found = await asyncio.to_thread(found_facts, text, in_text, in_codes, places, referred)
-        async with self._uow() as uow:
-            log = await uow.processing_log.list_for(document.id)
-        read = model_facts(ProcessingHistory(log).signals())
-        if read is not None:
-            checked = [(fact, checked_read(text, fact)) for fact in read]
-            taken = [item for _, item in checked if isinstance(item, DocumentFact)]
-            found = tuple(with_read(found, taken))
-            output[READ_FACTS] = {
-                "taken": len(taken),
-                "refused": [
-                    {"kind": fact.kind, "value": fact.value, "reason": item.to_json()}
-                    for fact, item in checked
-                    if isinstance(item, Reason)
-                ],
-            }
+        read = await TextFacts.read(text)
         result = NodeResult(outcome=Outcome.OK, model_version=FACTS, output=output)
-        return FactsResult(result, found)
+        return FactsResult(result, read.found(in_codes), read, frozenset(in_codes))
 
     async def codes(self, document: Document) -> tuple[Code, ...] | None:
         """The codes on the archive's pages, read before or now; None without a reader, an
@@ -220,19 +197,26 @@ class FactsSignal:
 
 @dataclass(frozen=True)
 class FactsResult:
-    """The signal's result, and the facts the document shows: kept for it when the result is
-    recorded."""
+    """The signal's result, and the facts the document shows (`facts`: of its patterns and
+    codes): kept for it when the result is recorded, with the facts the language model read as
+    the log has them then (`kept_facts`)."""
 
     result: NodeResult
     facts: tuple[DocumentFact, ...]
+    text: TextFacts
+    in_codes: frozenset[tuple[IdentifierKind, str]] = frozenset()
 
     @property
     def output(self) -> JsonObject:
         return self.result.output
 
     async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
-        await uow.document_facts.replace_found(document.id, self.facts)
-        return self.result
+        log = await uow.processing_log.list_for(document.id)
+        read = model_facts(ProcessingHistory(log).signals())
+        report = await keep_facts(uow, document.id, self.text, read, in_codes=self.in_codes)
+        if report is None:
+            return self.result
+        return replace(self.result, output=self.result.output | {READ_FACTS: report})
 
 
 def facts_of(

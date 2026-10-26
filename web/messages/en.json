@@ -1550,6 +1550,8 @@
 	"reason_not_of_kind": "{kind}: “{value}” is not valid",
 	"reason_fact_kind_unknown": "“{kind}” is no kind of fact Lekto knows",
 	"reason_fact_not_in_text": "“{value}” does not appear in the text",
+	"reason_fact_not_asked": "a fact “{kind}” in the role “{role}” was not asked for",
+	"reason_fact_of_a_person": "the value is one of a person’s numbers",
 	"identifier_user": "Belongs to",
 	"identifier_user_none": "Nobody",
 	"identifier_learned": "learned",

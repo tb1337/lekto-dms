@@ -45,6 +45,7 @@ from lekto.core.services.classification.nodes import (
     FieldsNode,
     JudgeNode,
     LlmSignal,
+    ModelFactsResult,
 )
 from lekto.core.services.classification.prompts import FACTS_SCHEMA, SYSTEM
 from lekto.core.services.classification.signals import (
@@ -221,10 +222,12 @@ def thresholds_for(policy: ClassificationPolicy) -> Thresholds:
 
 class ModelSignal(LlmSignal):
     """The language model's signal without a webhook to hand its request to: a result at
-    once."""
+    once (the facts it read are kept when the pipeline stores it)."""
 
     async def run(self, document: Document) -> NodeResult:
         result = await super().run(document)
+        if isinstance(result, ModelFactsResult):
+            return result.result
         assert isinstance(result, NodeResult)
         return result
 
@@ -303,7 +306,7 @@ def output(result: NodeResult) -> Any:
 # --- the language model's signal -------------------------------------------------------------
 
 
-async def test_the_signal_asks_once_and_keeps_the_proposal(world: World) -> None:
+async def test_the_signal_asks_for_the_proposal_and_the_facts(world: World) -> None:
     seeded = await seed(world)
     fake = model(proposal())
     document = await document_with(world)
@@ -1828,10 +1831,10 @@ def responder(
     return respond
 
 
-async def run(world: World, fake: FakeLanguageModel) -> tuple[Any, Document]:
+async def run(world: World, fake: FakeLanguageModel, text: str = INVOICE) -> tuple[Any, Document]:
     owner = await world.user()
     executors: dict[Node, NodeExecutor] = {
-        Node.SIGNAL_LLM: signal_step(world, fake),
+        Node.SIGNAL_LLM: LlmSignal(world.uow, world.object_store, fake, world.clock, policy_with()),
         Node.SIGNAL_FACTS: FactsSignal(world.uow, world.object_store),
         Node.SIGNAL_CLASSIFIER: ClassifierSignal(world.object_store, None),
         Node.SIGNAL_NEIGHBOURS: NeighboursSignal(
@@ -1849,7 +1852,7 @@ async def run(world: World, fake: FakeLanguageModel) -> tuple[Any, Document]:
     pipeline = world.pipeline(executors | {Node.APPLY_RULES: rules_step(world)})
     document = await pipeline.receive(owner.id, incoming(b"%PDF-1.7\n%%EOF\n"), filename="a.pdf")
     await world.object_store.put(
-        text_key(document.id), INVOICE.encode(), content_type="text/markdown; charset=utf-8"
+        text_key(document.id), text.encode(), content_type="text/markdown; charset=utf-8"
     )
     await world.drain(pipeline)
     return owner, await world.documents.get(owner.id, document.id)
@@ -2009,7 +2012,8 @@ async def test_the_facts_the_model_read_are_the_document_s_with_their_role(world
     )
     assert all(fact.kind is not IdentifierKind.METER_NUMBER for fact in kept)
     log = await world.documents.processing_log(owner.id, document.id)
-    facts = next(entry for entry in log if entry.node is Node.SIGNAL_FACTS)
+    # The facts signal ran first (the model's waits for the pages): the model's kept them.
+    facts = next(entry for entry in log if entry.node is Node.SIGNAL_LLM)
     assert facts.result.output["read_facts"] == {
         "taken": 1,
         "refused": [
@@ -2031,3 +2035,72 @@ async def test_facts_the_model_cannot_read_leave_its_proposal(world: World) -> N
     assert output(result)["facts_error"].startswith("the answer is not JSON")
     assert output(result)["proposal"]["title"] == "Stromrechnung März 2026"
     assert len(fake.requests) == 3  # the facts once more after the first unfit answer
+
+
+REMINDER = INVOICE.replace(
+    "## Rechnung Nr. R-2026-0815", "## Mahnung\n\nRechnungsnummer: VB-889911"
+)
+REFERS: JsonObject = {
+    "facts": [
+        {
+            "kind": "invoice_number",
+            "value": "VB-889911",
+            "role": "refers",
+            "evidence": "Rechnungsnummer: VB-889911",
+            "label": "Rechnungsnummer",
+        }
+    ]
+}
+
+
+async def kept_roles(
+    world: World, document: Document
+) -> dict[str, tuple[FactRole, frozenset[FactOrigin]]]:
+    async with world.uow() as uow:
+        return {
+            fact.value: (fact.role, fact.origins)
+            for fact in await uow.document_facts.of_document(document.id)
+        }
+
+
+async def stored_result(world: World, document: Document, result: Any) -> NodeResult:
+    async with world.uow() as uow:
+        applied: NodeResult = await result.apply(uow, document, NOW)
+        await uow.commit()
+    return applied
+
+
+@pytest.mark.parametrize("model_first", [False, True])
+async def test_the_model_s_facts_join_the_patterns_whichever_signal_stores_first(
+    world: World, model_first: bool
+) -> None:
+    """The reminder names the invoice as its "Rechnungsnummer": the patterns take it for its
+    own, the model for the invoice it refers to; the model decides, in either order."""
+    await seed(world)
+    document = await document_with(world, REMINDER)
+    signal = LlmSignal(
+        world.uow, world.object_store, model(proposal(), facts=REFERS), world.clock, policy_with()
+    )
+    facts = FactsSignal(world.uow, world.object_store)
+    steps: list[tuple[Node, Any]] = [(Node.SIGNAL_LLM, signal), (Node.SIGNAL_FACTS, facts)]
+    for node, step in steps if model_first else reversed(steps):
+        result = await stored_result(world, document, await step.run(document))
+        await record(world, document, node, result)
+    pattern_and_model = frozenset({FactOrigin.PATTERN, FactOrigin.MODEL})
+    assert (await kept_roles(world, document))["VB889911"] == (FactRole.REFERS, pattern_and_model)
+    log = {
+        entry.node: entry
+        for entry in await world.documents.processing_log(
+            (await world.user(role=Role.ADMIN)).id, document.id
+        )
+    }
+    stored_last = Node.SIGNAL_FACTS if model_first else Node.SIGNAL_LLM
+    report = log[stored_last].result.output["read_facts"]
+    assert isinstance(report, dict) and report["taken"] == 1
+
+
+def test_the_facts_signal_does_not_wait_for_the_model() -> None:
+    """Its facts are there although the model's signal fails (#145: whichever stores last
+    joins both)."""
+    assert Node.SIGNAL_FACTS.waits_for == {Node.PARSE}
+    assert Node.SIGNAL_FACTS not in Node.SIGNAL_LLM.descendants

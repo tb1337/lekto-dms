@@ -35,10 +35,11 @@ class LetterDate(IdentifierType):
 
     def normalise(self, raw: str) -> str:
         """The day as `YYYY-MM-DD`, from how it is written."""
-        try:
-            return date.fromisoformat(raw.strip()).isoformat()
-        except ValueError:
-            pass
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw.strip()):
+            try:
+                return date.fromisoformat(raw.strip()).isoformat()
+            except ValueError:
+                pass
         day = read_date(raw)
         if day is None or not re.search(r"\d{4}", raw):
             raise ValidationError(because(ReasonCode.NOT_OF_KIND, kind=self.kind.value, value=raw))

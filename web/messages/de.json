@@ -1550,6 +1550,8 @@
 	"reason_not_of_kind": "{kind}: „{value}“ ist nicht gültig",
 	"reason_fact_kind_unknown": "„{kind}“ ist keine Art von Fakt, die Lekto kennt",
 	"reason_fact_not_in_text": "„{value}“ steht nicht im Text",
+	"reason_fact_not_asked": "ein Fakt „{kind}“ in der Rolle „{role}“ war nicht gefragt",
+	"reason_fact_of_a_person": "der Wert ist eine Nummer einer Person",
 	"identifier_user": "Gehört zu",
 	"identifier_user_none": "Niemandem",
 	"identifier_learned": "gelernt",

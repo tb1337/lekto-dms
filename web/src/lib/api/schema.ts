@@ -6757,6 +6757,8 @@ export interface components {
 			| 'not_of_kind'
 			| 'fact_kind_unknown'
 			| 'fact_not_in_text'
+			| 'fact_not_asked'
+			| 'fact_of_a_person'
 			| 'not_personnel_number'
 			| 'not_domain'
 			| 'free_mail_domain'

@@ -15,7 +15,7 @@ import json
 import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from types import MappingProxyType
 from typing import Any
@@ -30,6 +30,7 @@ from lekto.core.domain.classification import (
     field_key,
     node_reasons,
 )
+from lekto.core.domain.document_facts import ReadFact
 from lekto.core.domain.documents import UNSET, Document, DocumentChanges, Unset
 from lekto.core.domain.errors import (
     LanguageModelError,
@@ -103,7 +104,7 @@ from lekto.core.ports.clock import Clock
 from lekto.core.ports.llm import LanguageModel, StructuredAnswer, StructuredRequest
 from lekto.core.ports.locator import TextLocator
 from lekto.core.ports.object_store import ObjectStore
-from lekto.core.ports.unit_of_work import UnitOfWorkFactory
+from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._spaces import SpaceCandidates, space_candidates
 from lekto.core.services.classification.answers import (
     AnswerError,
@@ -129,6 +130,7 @@ from lekto.core.services.classification.external import (
     propose_context,
     values_of,
 )
+from lekto.core.services.classification.kept_facts import READ_FACTS, TextFacts, keep_facts
 from lekto.core.services.classification.prompts import (
     EXTRACT_PROMPT,
     EXTRACT_SCHEMA,
@@ -380,7 +382,7 @@ class LlmSignal(_ModelStep):
         super().__init__(uow, store, model, clock, policy)
         self._desk = desk
 
-    async def run(self, document: Document) -> NodeResult | ExternalCall:
+    async def run(self, document: Document) -> "NodeResult | ExternalCall | ModelFactsResult":
         outside = await model_call_state(self._uow, self._desk, document, TaskKind.PROPOSE)
         if outside is None and self._model is None:
             return abstained(because(ReasonCode.NO_LANGUAGE_MODEL))
@@ -491,26 +493,28 @@ class LlmSignal(_ModelStep):
         except _UnfitAnswerError as error:
             return self._unfit(error, input)
         chosen = {key: space.id for key, space in spaces.items()}
-        read, asked = await self._facts(document, sent, calls)
+        read, asked, model_read = await self._facts(document, sent, calls)
         output = _answered(answers, answer.raw) | read
         output["tokens"] = [
             *tokens_of(item.usage for item in answers),
             *tokens_of((item.usage for item in asked), request=FACTS_SCHEMA),
         ]
-        return NodeResult(
+        result = NodeResult(
             outcome=Outcome.OK,
             model_version=_model_version(answers[-1]),
             input=input | {FACTS_INPUT: FACTS_PROMPT},
             output=output | {PROPOSAL: StoredProposal.of(answer, key_ids(keys), chosen).to_json()},
         )
+        return ModelFactsResult(result, await TextFacts.read(text), model_read)
 
     async def _facts(
         self, document: Document, sent: Shortened, calls: list[ModelCall]
-    ) -> tuple[JsonObject, list[StructuredAnswer]]:
+    ) -> tuple[JsonObject, list[StructuredAnswer], list[ReadFact] | None]:
         """The facts with their role the model reads (`facts-1`), a second request on the
-        beginning the first shared (system prompt and document: prompt caching), and its
-        answers. What goes wrong is in the output and never fails the signal: the proposal
-        stands without facts."""
+        beginning the first shared (system prompt and document: prompt caching): the output's
+        part, the answers and the facts (None: it read none). What goes wrong is in the output
+        and never fails the signal, also an error that would pass with time (the proposal
+        stands without facts; asking the model again reads them)."""
         try:
             read, answers = await self._ask(
                 document,
@@ -524,15 +528,15 @@ class LlmSignal(_ModelStep):
                 request=FACTS_SCHEMA,
             )
         except _UnfitAnswerError as error:
-            return {FACTS_ERROR: str(error)}, error.answers
+            return {FACTS_ERROR: str(error)}, error.answers, None
         except LanguageModelError as error:
             log.warning(
                 "the language model read no facts: %s",
                 error,
                 extra={"document_id": str(document.id)},
             )
-            return {FACTS_ERROR: str(error)}, []
-        return {MODEL_FACTS: [read_fact_to_json(fact) for fact in read]}, answers
+            return {FACTS_ERROR: str(error)}, [], None
+        return {MODEL_FACTS: [read_fact_to_json(fact) for fact in read]}, answers, read
 
     async def _answered(self, document: Document, text: str, outside: ModelCallState) -> NodeResult:
         """What the webhook's task brought: its proposal, as the model's, or why none."""
@@ -590,6 +594,23 @@ def _listed_spaces(candidates: SpaceCandidates | None) -> dict[str, ListedSpace]
     labels += [ListedSpace(space.id, space.name, space.description or None) for space in shared]
     labels += [ListedSpace(space.id, candidates.label(space.id)) for space in others]
     return {f"s{number}": item for number, item in enumerate(labels, start=1)}
+
+
+@dataclass(frozen=True)
+class ModelFactsResult:
+    """The language model's proposal, and the facts it read: kept with the facts of the
+    patterns and codes when the result is recorded (`kept_facts`; None: it read none, the facts
+    of an earlier answer go)."""
+
+    result: NodeResult
+    text: TextFacts
+    read: list[ReadFact] | None
+
+    async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
+        report = await keep_facts(uow, document.id, self.text, self.read)
+        if report is None:
+            return self.result
+        return replace(self.result, output=self.result.output | {READ_FACTS: report})
 
 
 class JudgeNode:

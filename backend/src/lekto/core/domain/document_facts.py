@@ -5,12 +5,12 @@ marks something or points to something, numbers and references, each with its ki
 A fact stands in the document and is not configured: it holds for every type, and Lekto
 compares it across documents. The kinds are the identifiers' (`IdentifierKind`), fixed in the
 code. Its role says what it is to the document (`FactRole`): the same number is the invoice's
-own on the invoice and a reference on the reminder. Until the language model reads facts, the
-role follows the kind (`role_of`).
+own on the invoice and a reference on the reminder. The role follows the kind (`role_of`)
+unless the language model read the fact (`with_read`).
 
-A document keeps one fact per kind and value. The facts a source finds (patterns in the text,
-codes on the pages, later the language model) are replaced with each run of the facts signal;
-a person's correction (`FactState`, later) outlasts it.
+A document keeps one fact per kind and value. The facts the sources find (patterns in the text,
+codes on the pages, the language model) are replaced when either signal stores them again; a
+person's decision (`FactState`) outlasts it.
 """
 
 import re
@@ -21,7 +21,14 @@ from enum import StrEnum
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.evidence import contains, normalise
 from lekto.core.domain.facts import identifier_spans
-from lekto.core.domain.identifiers import TYPES, IdentifierKind, Key, normalise_identifier, type_of
+from lekto.core.domain.identifiers import (
+    TYPES,
+    IdentifierKind,
+    Key,
+    normalise_identifier,
+    of_person,
+    type_of,
+)
 from lekto.core.domain.reasons import Reason, ReasonCode, because
 
 
@@ -243,21 +250,35 @@ class ReadFact:
     label: str | None = None
 
 
-def checked_read(text: str, read: ReadFact) -> DocumentFact | Reason:
-    """The fact `read` gives, checked as a field's value is: a kind Lekto knows (one of a
-    person's is no reader's to give), a value of it, standing in the text, and a passage of the
-    text that shows it (`QUOTE_*`); its role as given. Why not, otherwise."""
+def checked_read(
+    text: str,
+    read: ReadFact,
+    *,
+    kinds: Collection[IdentifierKind],
+    roles: Collection[FactRole],
+    personal: Collection[Key] = (),
+) -> DocumentFact | Reason:
+    """The fact `read` gives, checked as a field's value is: one of the `kinds` in one of the
+    `roles` the reader was asked for, a value of the kind, standing in the text, and a passage
+    of the text that shows it (`QUOTE_*`); for the day of a letter, the passage names the letter
+    ("Ihr Schreiben vom"). A value that is one of a person's (`personal`: their numbers in the
+    text and in the users' profiles, `of_person`), under whatever kind, is none. Its role as
+    given. Why not, otherwise."""
     try:
         kind = IdentifierKind(read.kind)
         role = FactRole(read.role)
     except ValueError:
         return because(ReasonCode.FACT_KIND_UNKNOWN, kind=read.kind)
-    if TYPES[kind].for_persons:
-        return because(ReasonCode.FACT_KIND_UNKNOWN, kind=read.kind)
+    if kind not in kinds or role not in roles:
+        return because(ReasonCode.FACT_NOT_ASKED, kind=read.kind, role=read.role)
     try:
         value = normalise_identifier(kind, read.value)
     except ValidationError as error:
         return error.reason
+    if of_person((kind, value), personal) or any(
+        theirs[1] == value for theirs in personal if TYPES[theirs[0]].for_persons
+    ):
+        return because(ReasonCode.FACT_OF_A_PERSON)
     where = _first(text, "", kind, value, None)
     if where is None:
         return because(ReasonCode.FACT_NOT_IN_TEXT, value=read.value)
@@ -267,6 +288,8 @@ def checked_read(text: str, read: ReadFact) -> DocumentFact | Reason:
     if not contains(normalise(text), evidence):
         return because(ReasonCode.QUOTE_NOT_IN_TEXT)
     if re.search(type_of(kind).written(value), evidence, re.IGNORECASE) is None:
+        return because(ReasonCode.QUOTE_WITHOUT_VALUE)
+    if kind is IdentifierKind.LETTER_DATE and not any(type_of(kind).find(normalise(evidence))):
         return because(ReasonCode.QUOTE_WITHOUT_VALUE)
     return DocumentFact(
         kind=kind,

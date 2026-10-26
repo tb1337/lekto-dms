@@ -1,6 +1,7 @@
 import type { Component } from 'svelte';
 import Activity from '@lucide/svelte/icons/activity';
 import Archive from '@lucide/svelte/icons/archive';
+import CalendarClock from '@lucide/svelte/icons/calendar-clock';
 import FileText from '@lucide/svelte/icons/file-text';
 import Inbox from '@lucide/svelte/icons/inbox';
 import Settings from '@lucide/svelte/icons/settings';
@@ -24,6 +25,8 @@ export interface Section {
 export const SECTIONS: readonly Section[] = [
 	{ path: '/inbox', label: m.nav_inbox, icon: Inbox, admin: false },
 	{ path: '/documents', label: m.nav_documents, icon: FileText, admin: false },
+	// The documents expected next by their series (#145).
+	{ path: '/expected', label: m.nav_expected, icon: CalendarClock, admin: false },
 	{ path: '/spaces', label: m.nav_spaces, icon: Archive, admin: false },
 	{ path: '/rules', label: m.nav_rules, icon: Workflow, admin: false },
 	{ path: '/webhooks', label: m.nav_webhooks, icon: Webhook, admin: false },

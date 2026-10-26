@@ -84,6 +84,7 @@ describe('AppShell', () => {
 		expect(links.map((link) => link.getAttribute('href'))).toEqual([
 			'/ui/inbox',
 			'/ui/documents',
+			'/ui/expected',
 			'/ui/spaces',
 			'/ui/rules',
 			'/ui/webhooks',

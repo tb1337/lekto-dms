@@ -23,8 +23,8 @@
 	import { below, pathLabel } from '#lib/tags.ts';
 
 	// Contacts (with their logo or initials, groups, aliases, identifiers, topics) or document
-	// types (with their icon, description, groups, title pattern, fields), found by the search of
-	// the page. A link from the Tags tab lists the contacts of a group or topic, the types of a
+	// types (with their icon, description, groups, title pattern, fields, whether a relation
+	// target), found by the search of the page. A link from the Tags tab lists the contacts of a group or topic, the types of a
 	// group (`?group=`, `?topic=`, with the ones below it). A row opens the editor.
 	let { kind, query = '' }: { kind: 'contacts' | 'document-types'; query?: string } = $props();
 	const ops = $derived(KINDS[kind]);

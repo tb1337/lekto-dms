@@ -1198,6 +1198,8 @@ async def test_a_document_type_is_a_relation_target(api: Api) -> None:
     assert changed.json()["relation_target"] is True
     renamed = await api.client.patch(path, json={"name": "Rechnungen"}, headers=a)
     assert renamed.json()["relation_target"] is True  # left out: it stays
+    nulled = await api.client.patch(path, json={"relation_target": None}, headers=a)
+    assert nulled.json()["relation_target"] is True  # null too
     user = auth(await api.user())
     denied = await api.client.patch(path, json={"relation_target": False}, headers=user)
     assert denied.status_code == 403

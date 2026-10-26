@@ -2,6 +2,7 @@
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
 	import { Button } from '#lib/components/ui/button/index.ts';
+	import { factFilterLabel } from '#lib/facts.ts';
 	import { NO_FILTERS, isFiltered, type Filters } from '#lib/filters.ts';
 	import TagChip from '#lib/components/TagChip.svelte';
 	import { spaceLabel, type Lookup, type Tag } from '#lib/masterdata.svelte.ts';
@@ -125,6 +126,16 @@
 				label: m.filter_remove({ name }),
 				shape: 'round',
 				without: { field: null }
+			});
+		}
+		for (const fact of filters.facts) {
+			const name = `${m.filter_fact()}: ${factFilterLabel(fact)}`;
+			result.push({
+				key: `fact:${fact}`,
+				name,
+				label: m.filter_remove({ name }),
+				shape: 'round',
+				without: { facts: filters.facts.filter((entry) => entry !== fact) }
 			});
 		}
 		return result;

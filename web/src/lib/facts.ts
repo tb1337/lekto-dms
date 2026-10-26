@@ -301,3 +301,34 @@ export function factsSummary({ evidence, unknown, codes }: ReturnType<typeof fac
 		...count(codes, m.facts_chip_codes_one, m.facts_chip_codes)
 	].join(' · ');
 }
+
+/** A fact of the documents filter (`fact` of `GET /documents`): `kind:value:role`, a part empty
+ * for any. */
+export function factFilter(
+	kind: IdentifierKind | null,
+	value: string | null,
+	role: FactRole | null
+): string {
+	return [kind ?? '', value?.trim() ?? '', role ?? ''].join(':');
+}
+
+/** The parts of a fact of the filter; what is empty is null. */
+export function parseFactFilter(fact: string): {
+	kind: IdentifierKind | null;
+	value: string | null;
+	role: FactRole | null;
+} {
+	const [kind = '', value = '', role = ''] = fact.split(':');
+	return {
+		kind: (kind || null) as IdentifierKind | null,
+		value: value || null,
+		role: (role || null) as FactRole | null
+	};
+}
+
+/** A fact of the filter in words: "Rechnungsnummer 4711 · verweist auf ein Dokument". */
+export function factFilterLabel(fact: string): string {
+	const { kind, value, role } = parseFactFilter(fact);
+	const what = [kind ? kindLabel(kind) : m.filter_fact_any_kind(), value].filter(Boolean);
+	return [what.join(' '), role ? roleLabel(role) : null].filter(Boolean).join(' · ');
+}

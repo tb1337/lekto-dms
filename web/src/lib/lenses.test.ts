@@ -80,6 +80,22 @@ describe('a lens in the URL', () => {
 	});
 });
 
+describe('the facts of a lens', () => {
+	it('go to the URL and come back as the lens keeps them', () => {
+		const kept = lens({
+			filter: {
+				facts: [
+					{ kind: 'invoice_number', value: 'R1001', role: null },
+					{ kind: null, value: null, role: 'refers' }
+				]
+			}
+		});
+		const opened = lensParams(kept, TODAY);
+		expect(opened.getAll('fact')).toEqual(['invoice_number:R1001:', '::refers']);
+		expect(lensFilter(lensFilters(kept, TODAY), TODAY).facts).toEqual(kept.filter.facts);
+	});
+});
+
 describe('a page and its lens', () => {
 	it('differ in filters, words or sort, not in the order of repeated values', () => {
 		const open = lens({ filter: { tag_ids: ['t1', 't2'] }, sort: 'title' });

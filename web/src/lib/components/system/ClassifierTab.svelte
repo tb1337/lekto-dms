@@ -8,6 +8,7 @@
 	import { ApiError } from '#lib/api/problem.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { fieldLabel } from '#lib/describe.ts';
+	import InfoTip from '#lib/components/InfoTip.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import * as Chart from '#lib/components/ui/chart/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -159,6 +160,15 @@
 	const anySignal = $derived((signals?.signals ?? []).some((item) => item.hits + item.misses > 0));
 </script>
 
+{#snippet heading(text: string, about: string)}
+	<div class="flex items-center gap-1">
+		<h2 class="font-semibold">{text}</h2>
+		<InfoTip label={m.hint_about({ name: text })} size="sm" class="w-80">
+			<p>{about}</p>
+		</InfoTip>
+	</div>
+{/snippet}
+
 <div class="flex flex-col gap-6">
 	{#if unavailable}
 		<p class="text-muted-foreground">{m.classifier_not_configured()}</p>
@@ -175,7 +185,10 @@
 					<div class="flex flex-col gap-0.5">
 						{#if status.model}
 							{@const model = status.model}
-							<h2 class="font-semibold">{m.classifier_model_title({ number: model.number })}</h2>
+							{@render heading(
+								m.classifier_model_title({ number: model.number }),
+								m.classifier_model_info()
+							)}
 							<span class="text-[0.8125rem] text-muted-foreground">
 								{model.examples_until
 									? m.classifier_model_trained_until({
@@ -194,7 +207,7 @@
 										})}
 							</span>
 						{:else}
-							<h2 class="font-semibold">{m.classifier_no_model()}</h2>
+							{@render heading(m.classifier_no_model(), m.classifier_model_info())}
 						{/if}
 					</div>
 					{#if session.isAdmin}
@@ -255,7 +268,7 @@
 			<section
 				class="flex min-w-0 flex-[1_1_280px] flex-col gap-3 rounded-2xl border bg-card px-5 py-4 sm:px-6"
 			>
-				<h2 class="font-semibold">{m.classifier_next_title()}</h2>
+				{@render heading(m.classifier_next_title(), m.classifier_next_info())}
 				<div class="flex items-baseline gap-2">
 					<span class="text-[1.875rem] font-semibold tracking-tight tabular-nums">
 						{formatNumber(done)}
@@ -293,8 +306,8 @@
 		</div>
 
 		<section class="rounded-2xl border bg-card px-5 py-4 sm:px-6">
-			<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<h2 class="font-semibold">{m.classifier_history_title()}</h2>
+			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+				{@render heading(m.classifier_history_title(), m.classifier_history_info())}
 				<span class="text-[0.8125rem] text-muted-foreground">{m.classifier_history_hint()}</span>
 			</div>
 			{#if measured.length < 2}
@@ -372,13 +385,10 @@
 		</section>
 
 		<section class="rounded-2xl border bg-card px-5 py-4 sm:px-6">
-			<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<h2 class="font-semibold">{m.classifier_signals_title()}</h2>
+			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+				{@render heading(m.classifier_signals_title(), m.classifier_signals_info())}
 				<span class="text-[0.8125rem] text-muted-foreground">{m.classifier_signals_hint()}</span>
 			</div>
-			<p class="mt-2 max-w-3xl text-[0.8125rem] text-muted-foreground">
-				{m.classifier_signals_text()}
-			</p>
 			{#if !anySignal}
 				<p class="mt-3 text-muted-foreground">{m.classifier_signals_none()}</p>
 			{:else}

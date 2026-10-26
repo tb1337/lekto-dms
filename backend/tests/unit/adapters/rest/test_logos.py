@@ -178,3 +178,20 @@ async def test_without_fetching_the_button_is_unavailable(api: Api) -> None:
     assert pipeline.json()["logo_fetch"] is False
     response = await api.client.post(f"{PREFIX}/contacts/{contact}/logo/fetch", headers=auth(admin))
     assert response.status_code == 503, response.text
+
+
+async def test_only_admins_have_the_missing_logos_fetched(fetching: Api, api: Api) -> None:
+    url = f"{PREFIX}/contacts/logos/fetch"
+    admin, user = await fetching.admin(), await fetching.user()
+    body = {"name": "Nord", "identifiers": [{"kind": "email_domain", "value": "nord.example"}]}
+    created = await fetching.client.post(f"{PREFIX}/contacts", json=body, headers=auth(admin))
+    assert created.status_code == 201, created.text
+    assert (await fetching.client.post(url)).status_code == 401
+    assert (await fetching.client.post(url, headers=auth(user))).status_code == 403
+    queued = await fetching.client.post(url, headers=auth(admin))
+    assert (queued.status_code, queued.json()) == (202, {"queued": 0})  # queued with the domain
+    assert await fetching.services.logos.run_next_job()
+    assert (await fetching.client.post(url, headers=auth(admin))).json() == {"queued": 0}  # has one
+    # Without fetching the button is unavailable.
+    off = await api.client.post(url, headers=auth(await api.admin()))
+    assert off.status_code == 503, off.text

@@ -113,6 +113,10 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
     assert {(path, method) for path, item in paths.items() for method in item} == {
         (f"{PREFIX}/pipeline", "get"),
         (f"{PREFIX}/pipeline/reparse", "post"),
+        (f"{PREFIX}/pipeline/relate", "post"),
+        (f"{PREFIX}/pipeline/render-pages", "post"),
+        (f"{PREFIX}/pipeline/read-codes", "post"),
+        (f"{PREFIX}/contacts/logos/fetch", "post"),
         (f"{PREFIX}/external/tasks/{{id}}/result", "post"),
         (f"{PREFIX}/external/tasks/{{id}}/files/{{name}}", "get"),
         (f"{PREFIX}/contacts/{{id}}/identifiers", "post"),

@@ -744,6 +744,24 @@ class PipelineService:
             await require_admin(uow, actor, Action.REPARSE_ALL)
         return await self.reparse()
 
+    async def request_render_pages(self, actor: UserId) -> int:
+        """Admins only: `catch_up(Node.PAGES)` (the command `render-pages`)."""
+        async with self._uow() as uow:
+            await require_admin(uow, actor, Action.RENDER_PAGES_ALL)
+        return await self.catch_up(Node.PAGES)
+
+    async def request_read_codes(self, actor: UserId) -> int:
+        """Admins only: `request_facts` (the command `read-codes`)."""
+        async with self._uow() as uow:
+            await require_admin(uow, actor, Action.READ_CODES_ALL)
+        return await self.request_facts()
+
+    async def request_relate(self, actor: UserId) -> int:
+        """Admins only: `request_relations` (the command `relate`)."""
+        async with self._uow() as uow:
+            await require_admin(uow, actor, Action.RELATE_ALL)
+        return await self.request_relations()
+
     async def reparse(self) -> int:
         """Read the text of every document again (after an update of the parser): a job for
         each document whose text was read in its current run and that is not being processed.

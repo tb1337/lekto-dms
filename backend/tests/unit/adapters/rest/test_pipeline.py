@@ -6,6 +6,7 @@ from tests.unit.adapters.rest.support import Api
 
 PIPELINE = f"{PREFIX}/pipeline"
 REPARSE = f"{PIPELINE}/reparse"
+MAINTENANCE = [f"{PIPELINE}/{name}" for name in ("relate", "render-pages", "read-codes")]
 
 
 async def test_the_graph_lists_every_node_with_its_needs(api: Api) -> None:
@@ -59,3 +60,13 @@ async def test_the_graph_tells_whether_the_search_takes_the_meaning_into_account
     user = await api.user()
     response = await api.client.get(PIPELINE, headers=auth(user))
     assert response.json()["meaning_search"] is False  # the memory container has no embeddings
+
+
+async def test_only_admins_queue_the_maintenance_over_every_document(api: Api) -> None:
+    user, admin = await api.user(), await api.admin()
+    for url in MAINTENANCE:
+        assert (await api.client.post(url)).status_code == 401
+        assert (await api.client.post(url, headers=auth(user))).status_code == 403
+        response = await api.client.post(url, headers=auth(admin))
+        assert response.status_code == 202, response.text
+        assert response.json() == {"queued": 0}

@@ -146,10 +146,11 @@ class Decision(StrEnum):
 
 
 JUDGED_FIELDS: tuple[str, ...] = (CONTACT, DOCUMENT_TYPE, TOPIC, DOCUMENT_DATE, SPACE, TAGS)
+"""The fields every document has that get verdicts; custom fields (`field:<id>`) as well."""
 FACTS = "facts"
 """The facts of a document, judged as one field (#145): taken when a person confirms it in the
-inbox with facts found, corrected when they correct or reject one, added when they add one."""
-"""The fields every document has that get verdicts; custom fields (`field:<id>`) as well."""
+inbox with facts found, corrected when they correct or reject one, added when they add one,
+early before the first run stopped."""
 NAMED_FIELDS = frozenset({CONTACT, DOCUMENT_TYPE, TOPIC, SPACE})
 """The fields whose candidates the signals name (`FieldCheck.candidates`)."""
 JUDGED_SIGNALS: tuple[Node, ...] = (

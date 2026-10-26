@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from lekto.core.domain.classifier import KEPT_MODELS, OWN_SPACE, ClassifierModel
+from lekto.core.domain.document_facts import FactState
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import (
     ClassifierError,
@@ -102,6 +103,10 @@ class _Example:
     document: Document
     example: TrainingExample
     personal_of: UserId | None = None  # the user whose personal space it lies in
+    # A person's decisions about its facts (#145): what they rejected is none of its
+    # identifiers, what they added or corrected is.
+    rejected: frozenset[tuple[IdentifierKind, str]] = frozenset()
+    decided: frozenset[tuple[IdentifierKind, str]] = frozenset()
 
 
 class ClassifierService:
@@ -327,6 +332,11 @@ class ClassifierService:
             for document in page
         ]
         examples = []
+        async with self._uow() as uow:
+            kept = {
+                document.id: await uow.document_facts.of_document(document.id)
+                for document in documents
+            }
         for document in documents:
             try:
                 raw = await load_text(self._store, document.id)
@@ -344,7 +354,22 @@ class ClassifierService:
             )
             space = spaces.get(document.space_id)
             owner = None if space is None else space.personal_of
-            examples.append(_Example(document, example, owner))
+            facts = kept.get(document.id, [])
+            examples.append(
+                _Example(
+                    document,
+                    example,
+                    owner,
+                    rejected=frozenset(
+                        fact.key for fact in facts if fact.state is FactState.REJECTED
+                    ),
+                    decided=frozenset(
+                        fact.key
+                        for fact in facts
+                        if fact.state in (FactState.ADDED, FactState.CORRECTED)
+                    ),
+                )
+            )
         return examples
 
     async def _accuracy(self, examples: Sequence[_Example]) -> JsonObject | None:
@@ -439,13 +464,14 @@ class ClassifierService:
 def _identifiers_of(
     examples: Sequence[_Example], persons: Sequence[Person], numbers: Sequence[Identifier]
 ) -> list[Confirmed]:
-    """The identifiers in each example's text, with its contact, topic and space, and whose it
+    """The identifiers in each example's text (with the facts a person added or corrected,
+    without those they rejected), with its contact, topic and space, and whose it
     surely is: the user of the personal space it lies in, and the `persons` it names by more
     than their name (one of their numbers, a contact's number that names them, their birth
     date)."""
     confirmed = []
     for item in examples:
-        found = identifiers_in(item.example.text)
+        found = (identifiers_in(item.example.text) | item.decided) - item.rejected
         named = persons_in(item.example.text, found, persons, numbers)
         whose = {person.user_id for person in named if person.strength is not Strength.WEAK}
         if item.personal_of is not None:

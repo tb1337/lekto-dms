@@ -279,6 +279,7 @@ describe('the document tab', () => {
 				role: 'contact',
 				origins: ['pattern'],
 				state: 'found',
+				kept: true,
 				spans: [{ start: 13, end: 20, locations: [] }],
 				other_contacts: null
 			}

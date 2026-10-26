@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import Select from '#lib/components/Select.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
@@ -36,10 +37,16 @@
 	let value = $state('');
 	let role = $state<FactRole>('contact');
 	let atContact = $state(false);
+	// Anew for another fact only: the facts reload with every event of the document, and what
+	// the person typed stays.
+	const key = $derived(`${fact.kind}:${fact.value}`);
 	$effect.pre(() => {
-		value = shownValue(fact);
-		role = fact.role;
-		atContact = false;
+		void key;
+		untrack(() => {
+			value = shownValue(fact);
+			role = fact.role;
+			atContact = false;
+		});
 	});
 
 	const rejected = $derived(fact.state === 'rejected');

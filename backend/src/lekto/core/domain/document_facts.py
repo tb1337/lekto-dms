@@ -360,7 +360,7 @@ def corrected(
     change."""
     if new is not None and new.key != fact.key:
         return [
-            replace(fact, state=FactState.REJECTED),
+            rejected(fact),
             replace(new, role=role or fact.role, state=FactState.CORRECTED),
         ]
     if role is None or role is fact.role:
@@ -373,8 +373,8 @@ def corrected(
 
 
 def rejected(fact: DocumentFact) -> DocumentFact:
-    """A person rejects `fact`: it is no fact of the document."""
-    return replace(fact, state=FactState.REJECTED)
+    """A person rejects `fact`: it is no fact of the document (a person decided it)."""
+    return replace(fact, origins=fact.origins | {FactOrigin.PERSON}, state=FactState.REJECTED)
 
 
 def withdrawn(fact: DocumentFact) -> DocumentFact | None:

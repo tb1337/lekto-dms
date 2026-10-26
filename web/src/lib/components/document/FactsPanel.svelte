@@ -388,7 +388,7 @@
 					</span>
 				{/if}
 			</button>
-			{#if identifier && facts.editable}
+			{#if identifier && facts.editable && identifier.kept}
 				{@render decideButton(id, identifier)}
 			{/if}
 			{#if identifier && !identifier.contact_id && admin && identifier.state !== 'rejected'}

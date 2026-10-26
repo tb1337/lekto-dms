@@ -1559,7 +1559,7 @@
 	"facts_decide_remove": "Entfernen",
 	"facts_decide_undo": "Korrektur zurücknehmen",
 	"facts_decide_rejected_hint": "Verworfen: kein Fakt des Dokuments. Wiederhergestellt zählt er wieder.",
-	"facts_decided": "Von einer Person entschieden",
+	"facts_decided": "Weitere Fakten",
 	"facts_decided_done": "{kind} gespeichert",
 	"facts_add": "Fakt ergänzen",
 	"facts_add_kind": "Art",

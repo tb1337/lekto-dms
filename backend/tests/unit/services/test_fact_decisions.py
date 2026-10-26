@@ -15,11 +15,13 @@ from lekto.core.domain.errors import (
 )
 from lekto.core.domain.first_runs import FACTS, Verdict
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
+from lekto.core.domain.identifiers.visibility import seen_by
 from lekto.core.domain.master_data import Contact
 from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.services.classification.signals import FactsSignal
 from lekto.core.services.fact_decisions import FactAction, FactDecision
+from lekto.core.services.master_data import replace_learned_identifiers
 from lekto.core.services.objects import text_key
 from tests import builders
 from tests.unit.services.support import World
@@ -82,10 +84,14 @@ async def test_a_person_adds_corrects_rejects_and_withdraws(world: World) -> Non
         owner.id, document.id, decide(FactAction.REJECT, K.CUSTOMER_NUMBER, "20047718")
     )
     assert await kept(world, document) == {
-        (K.INVOICE_NUMBER, "M77"): (FactRole.OWN, FactState.REJECTED, pattern),
+        (K.INVOICE_NUMBER, "M77"): (FactRole.OWN, FactState.REJECTED, pattern | person),
         (K.INVOICE_NUMBER, "M78"): (FactRole.OWN, FactState.CORRECTED, person),
         (K.INVOICE_NUMBER, "4711"): (FactRole.THREAD, FactState.CORRECTED, pattern | person),
-        (K.CUSTOMER_NUMBER, "20047718"): (FactRole.CONTACT, FactState.REJECTED, pattern),
+        (K.CUSTOMER_NUMBER, "20047718"): (
+            FactRole.CONTACT,
+            FactState.REJECTED,
+            pattern | person,
+        ),
         (K.ORDER_NUMBER, "A77881"): (FactRole.OWN, FactState.ADDED, person),
     }
 
@@ -94,11 +100,17 @@ async def test_a_person_adds_corrects_rejects_and_withdraws(world: World) -> Non
     await run_facts(world, document)
     assert await kept(world, document) == before
 
-    # Withdrawn: a fact a source found is as found again, one only a person gave goes.
-    for key in ((K.CUSTOMER_NUMBER, "20047718"), (K.ORDER_NUMBER, "A77881")):
+    # Withdrawn: a fact is as the sources find it now (its role too), one only a person gave
+    # goes.
+    for key in (
+        (K.CUSTOMER_NUMBER, "20047718"),
+        (K.ORDER_NUMBER, "A77881"),
+        (K.INVOICE_NUMBER, "4711"),
+    ):
         await service.decide_fact(owner.id, document.id, decide(FactAction.WITHDRAW, *key))
     after = await kept(world, document)
     assert after[(K.CUSTOMER_NUMBER, "20047718")] == (FactRole.CONTACT, FactState.FOUND, pattern)
+    assert after[(K.INVOICE_NUMBER, "4711")] == (FactRole.REFERS, FactState.FOUND, pattern)
     assert (K.ORDER_NUMBER, "A77881") not in after
 
     # The report shows the rejected number and that the owner decides.
@@ -176,8 +188,9 @@ async def test_a_rejected_fact_is_no_evidence_of_a_contact(world: World) -> None
 
 
 async def test_an_admin_corrects_a_number_at_the_contact_too(world: World) -> None:
-    learned = Identifier(K.CUSTOMER_NUMBER, "20047718", IdentifierSource.LEARNED)
-    bank = Contact.create(name="Bank", now=builders.NOW, identifiers=[learned])
+    """The old value is rejected there; one entered by hand gives way to one entered by hand."""
+    entered = Identifier(K.CUSTOMER_NUMBER, "20047718")
+    bank = Contact.create(name="Bank", now=builders.NOW, identifiers=[entered])
     await contacts(world, bank)
     admin = await world.user(role=Role.ADMIN)
     document = await with_facts(world, await world.user(), bank)
@@ -194,8 +207,9 @@ async def test_an_admin_corrects_a_number_at_the_contact_too(world: World) -> No
     )
     async with world.uow() as uow:
         identifiers = (await uow.contacts.get(bank.id)).identifiers
-    assert [(item.value, item.source) for item in identifiers] == [
-        ("20047719", IdentifierSource.MANUAL)
+    assert sorted((item.value, item.source) for item in identifiers) == [
+        ("20047718", IdentifierSource.REJECTED),
+        ("20047719", IdentifierSource.MANUAL),
     ]
     # Only on a document with a contact and for a contact's kind.
     with pytest.raises(ValidationError):
@@ -204,3 +218,83 @@ async def test_an_admin_corrects_a_number_at_the_contact_too(world: World) -> No
             document.id,
             decide(FactAction.CORRECT, K.INVOICE_NUMBER, "M77", new_value="M-1", at_contact=True),
         )
+
+
+async def test_a_learned_number_corrected_at_the_contact_stays_learned_where_it_was(
+    world: World,
+) -> None:
+    """Who saw the old value sees the new one (#82): learned in the owner's space only, the
+    corrected one too; the wrong one is rejected, so training does not learn it again."""
+    bank = Contact.create(name="Bank", now=builders.NOW)
+    await contacts(world, bank)
+    admin, owner, other = (
+        await world.user(role=Role.ADMIN),
+        await world.user(),
+        await world.user(),
+    )
+    space = await world.personal_space(owner)
+    learned = Identifier(
+        K.CUSTOMER_NUMBER,
+        "20047718",
+        IdentifierSource.LEARNED,
+        learned_in=frozenset({space.id}),
+    )
+    async with world.uow() as uow:
+        await replace_learned_identifiers(uow, {bank.id: [learned]})
+        await uow.commit()
+    document = await with_facts(world, owner, bank)
+    await world.documents.decide_fact(
+        admin.id,
+        document.id,
+        decide(
+            FactAction.CORRECT,
+            K.CUSTOMER_NUMBER,
+            "20047718",
+            new_value="20047719",
+            at_contact=True,
+        ),
+    )
+    async with world.uow() as uow:
+        identifiers = {item.value: item for item in (await uow.contacts.get(bank.id)).identifiers}
+    assert identifiers["20047718"].source is IdentifierSource.REJECTED
+    corrected = identifiers["20047719"]
+    assert (corrected.source, corrected.learned_in) == (
+        IdentifierSource.LEARNED,
+        frozenset({space.id}),
+    )
+    assert seen_by(corrected, owner.id, {space.id})
+    assert not seen_by(corrected, other.id, set())
+
+
+async def test_a_decision_before_the_first_run_stopped_is_early(world: World) -> None:
+    owner = await world.user()
+    document = await stored(world, owner, TEXT)
+    await run_facts(world, document)
+    async with world.uow() as uow:
+        current = await uow.documents.get(document.id)
+        # Still in its first run: the first stop is not recorded yet.
+        current.processing.run = 1
+        current.first_lane = None
+        await uow.documents.update(current)
+        await uow.commit()
+    await world.documents.decide_fact(
+        owner.id, document.id, decide(FactAction.REJECT, K.INVOICE_NUMBER, "M77")
+    )
+    async with world.uow() as uow:
+        verdicts = await uow.processing_facts.verdicts(document.id)
+    assert [(item.field, item.verdict) for item in verdicts] == [(FACTS, Verdict.EARLY)]
+
+
+async def test_admins_see_and_decide_the_found_facts_of_a_person(world: World) -> None:
+    """A tax ID the patterns found is in no list of identifiers: admins see it among the
+    further facts and decide it; others never see a person's."""
+    owner, admin = await world.user(), await world.user(role=Role.ADMIN)
+    document = await stored(world, owner, "Steuer-ID 86 095 742 001\nRechnungsnummer: M-77")
+    await run_facts(world, document)
+    tax = (K.TAX_ID, "86095742001")
+    seen = await world.documents.facts(admin.id, document.id)
+    assert tax in {item.fact.key for item in seen.decided}
+    assert tax not in {
+        item.fact.key for item in (await world.documents.facts(owner.id, document.id)).decided
+    }
+    await world.documents.decide_fact(admin.id, document.id, decide(FactAction.REJECT, *tax))

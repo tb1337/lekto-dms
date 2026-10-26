@@ -71,6 +71,11 @@ class FoundIdentifierOut(BaseModel):
             "`rejected` (it is no fact of the document)."
         ),
     )
+    kept: bool = Field(
+        default=False,
+        description="Whether the document keeps it as a fact (a person decides about it); "
+        "not before the facts signal ran.",
+    )
     other_contacts: int | None = Field(
         description=(
             "For admins: on the confirmed documents of how many contacts other than the "
@@ -258,9 +263,10 @@ class FactsOut(BaseModel):
     decided: list[DocumentNumberOut] = Field(
         default_factory=list,
         description=(
-            "The facts of the other kinds a person decided that `identifiers` does not show: "
-            "one added, a corrected value, one rejected the text does not show; a person's "
-            "kinds only for admins."
+            "The kept facts of the other kinds that `identifiers` does not show: for admins "
+            "all of them (a person's numbers, those only the language model read), for others "
+            "those a person decided (one added, a corrected value, one rejected the text does "
+            "not show), none of a person's."
         ),
     )
     editable: bool = Field(
@@ -307,6 +313,7 @@ class FactsOut(BaseModel):
                     role=_role(report, item),
                     origins=_origins(report, item),
                     state=_state(report, item),
+                    kept=item.key in report.stored,
                     other_contacts=None if others is None else len(others.get(item.key, ())),
                     other_contact_ids=(
                         None if others is None else sorted(others.get(item.key, frozenset()))

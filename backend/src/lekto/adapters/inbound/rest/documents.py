@@ -610,8 +610,10 @@ async def document_facts(id: UUID, user: CurrentUser, context: Context) -> Facts
         "reject it or withdraw a decision; a person's kinds of facts only admins. A decision "
         "outlasts a new processing. The first decision about a document's facts counts as a "
         "verdict on them. Answers the facts as `GET /documents/{id}/facts`. 404 for a fact the "
-        "document does not have, 409 for adding one it has and while it has no text, 422 for "
-        "a value that is none of its kind."
+        "document does not have; 409 for adding one it has, while it has no text, and with "
+        "`at_contact` for a value another contact entered by hand or that is a person's; 422 "
+        "for a value that is none of its kind, adding without a role, and `at_contact` on a "
+        "document without a contact or for a kind a contact does not keep."
     ),
     response_model=FactsOut,
     responses=problem_responses(401, 403, 404, 409, 422),

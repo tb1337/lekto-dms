@@ -8,15 +8,17 @@ A decision outlasts the runs of the facts signal (`DocumentFactRepository.replac
 The person's first decision about the facts of a document is a verdict on them
 (`first_runs.FACTS`): a correction or a rejection says the sources were wrong, an addition that
 they missed one. An admin who corrects a contact's kind of fact may correct it at the document's
-contact too (`at_contact`): the old value goes from the contact's identifiers, the new one is
-entered by hand, as a person's choice it takes the value from another contact that only learned
-or rejected it."""
+contact too (`at_contact`): the old value is rejected there (training does not learn it again),
+the new one takes its place: entered by hand, or, where the old one was learned, learned with
+the same spaces and user (who saw the old one sees the new one, #82); as a person's choice it
+takes the value from another contact that only learned or rejected it."""
 
 from dataclasses import dataclass
 from enum import StrEnum
 
 from lekto.core.domain.document_facts import (
     DocumentFact,
+    FactOrigin,
     FactRole,
     FactState,
     added,
@@ -41,6 +43,7 @@ from lekto.core.domain.identifiers import (
     Key,
 )
 from lekto.core.domain.ids import DocumentId, UserId
+from lekto.core.domain.pipeline import ProcessingHistory
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
@@ -48,7 +51,8 @@ from lekto.core.ports.object_store import ObjectStore
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import load_actor, writable_document
 from lekto.core.services._identifiers import claim_identifiers
-from lekto.core.services.classification.kept_facts import facts_lock
+from lekto.core.services.classification.kept_facts import TextFacts, facts_lock, refresh_facts
+from lekto.core.services.classification.signals import model_facts
 from lekto.core.services.objects import load_text
 
 
@@ -145,7 +149,20 @@ async def decide_fact(
             case FactAction.WITHDRAW:
                 _fact(facts, key)
                 await uow.document_facts.withdraw(id, key)
+                # As the sources find it now: its role and origins, or nothing.
+                log = await uow.processing_log.list_for(id)
+                await refresh_facts(
+                    uow,
+                    id,
+                    await TextFacts.read(text),
+                    model_facts(ProcessingHistory(log).signals()),
+                    in_codes={
+                        fact.key for fact in facts.values() if FactOrigin.CODE in fact.origins
+                    },
+                )
         if verdict is not None:
+            if document.processing.run == 1 and document.first_lane is None:
+                verdict = Verdict.EARLY  # before the first run stopped: nothing to judge
             await uow.processing_facts.add_verdicts(
                 [
                     FieldVerdict(
@@ -193,23 +210,49 @@ async def _at_contact(
         return  # only the role changed: a contact keeps no roles
     contact = await uow.contacts.get(document.contact_id)
     before = next((item for item in contact.identifiers if item.key == old.key), None)
-    entered = Identifier(
-        new.kind,
-        new.value,
-        IdentifierSource.MANUAL,
-        None if before is None else before.topic_id,
-        None if before is None else before.user_id,
-    )
+    keep_private = before is not None and before.source is IdentifierSource.LEARNED
     manual = [
         item
         for item in contact.identifiers
         if item.source is IdentifierSource.MANUAL and item.key not in (old.key, new.key)
     ]
+    if not keep_private:
+        manual.append(
+            Identifier(
+                new.kind,
+                new.value,
+                IdentifierSource.MANUAL,
+                None if before is None else before.topic_id,
+                None if before is None else before.user_id,
+            )
+        )
+    # The old value is rejected: training does not learn it again (`mine_identifiers`).
     rejected_ = [
         item
         for item in contact.identifiers
-        if item.source is IdentifierSource.REJECTED and item.key != new.key
+        if item.source is IdentifierSource.REJECTED and item.key not in (old.key, new.key)
     ]
-    contact.set_identifiers([*manual, entered], rejected_)
+    rejected_.append(Identifier(old.kind, old.value, IdentifierSource.REJECTED))
+    contact.set_identifiers(manual, rejected_)
+    if keep_private and before is not None:
+        # One learned keeps who sees it (#82: the spaces it was learned in, its user).
+        learned = [
+            item
+            for item in contact.identifiers
+            if item.source is IdentifierSource.LEARNED and item.key != new.key
+        ]
+        contact.set_learned(
+            [
+                *learned,
+                Identifier(
+                    new.kind,
+                    new.value,
+                    IdentifierSource.LEARNED,
+                    before.topic_id,
+                    before.user_id,
+                    before.learned_in,
+                ),
+            ]
+        )
     await claim_identifiers(uow, [contact])
     await uow.contacts.update(contact)

@@ -1528,7 +1528,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Decide about a fact of a document
-		 * @description Editors of the document's space and admins add a fact, correct its value or role, reject it or withdraw a decision; a person's kinds of facts only admins. A decision outlasts a new processing. The first decision about a document's facts counts as a verdict on them. Answers the facts as `GET /documents/{id}/facts`. 404 for a fact the document does not have, 409 for adding one it has and while it has no text, 422 for a value that is none of its kind.
+		 * @description Editors of the document's space and admins add a fact, correct its value or role, reject it or withdraw a decision; a person's kinds of facts only admins. A decision outlasts a new processing. The first decision about a document's facts counts as a verdict on them. Answers the facts as `GET /documents/{id}/facts`. 404 for a fact the document does not have; 409 for adding one it has, while it has no text, and with `at_contact` for a value another contact entered by hand or that is a person's; 422 for a value that is none of its kind, adding without a role, and `at_contact` on a document without a contact or for a kind a contact does not keep.
 		 */
 		post: operations['decide_document_fact_api_v1_documents__id__facts_decisions_post'];
 		delete?: never;
@@ -4182,7 +4182,7 @@ export interface components {
 			numbers?: components['schemas']['DocumentNumberOut'][];
 			/**
 			 * Decided
-			 * @description The facts of the other kinds a person decided that `identifiers` does not show: one added, a corrected value, one rejected the text does not show; a person's kinds only for admins.
+			 * @description The kept facts of the other kinds that `identifiers` does not show: for admins all of them (a person's numbers, those only the language model read), for others those a person decided (one added, a corrected value, one rejected the text does not show), none of a person's.
 			 */
 			decided?: components['schemas']['DocumentNumberOut'][];
 			/**
@@ -4590,6 +4590,12 @@ export interface components {
 			 * @default found
 			 */
 			state: components['schemas']['FactState'];
+			/**
+			 * Kept
+			 * @description Whether the document keeps it as a fact (a person decides about it); not before the facts signal ran.
+			 * @default false
+			 */
+			kept: boolean;
 			/**
 			 * Other Contacts
 			 * @description For admins: on the confirmed documents of how many contacts other than the document's it stands (the IBAN of one's own account stands on many); null for others.

@@ -42,6 +42,7 @@ const FACTS: Facts = {
 			role: 'contact',
 			origins: ['pattern', 'code'],
 			state: 'found',
+			kept: true,
 			spans: [{ start: 20, end: 47, locations: [] }],
 			other_contacts: null
 		},
@@ -54,6 +55,7 @@ const FACTS: Facts = {
 			role: 'contact',
 			origins: ['pattern'],
 			state: 'found',
+			kept: true,
 			spans: [],
 			other_contacts: null
 		},
@@ -66,6 +68,7 @@ const FACTS: Facts = {
 			role: 'contact',
 			origins: ['pattern'],
 			state: 'found',
+			kept: true,
 			spans: [{ start: 60, end: 69, locations: [] }],
 			other_contacts: 0
 		}

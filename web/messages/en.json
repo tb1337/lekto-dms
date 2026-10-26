@@ -1559,7 +1559,7 @@
 	"facts_decide_remove": "Remove",
 	"facts_decide_undo": "Undo the correction",
 	"facts_decide_rejected_hint": "Rejected: it is no fact of the document. Restored, it counts again.",
-	"facts_decided": "Decided by a person",
+	"facts_decided": "More facts",
 	"facts_decided_done": "{kind} saved",
 	"facts_add": "Add a fact",
 	"facts_add_kind": "Kind",

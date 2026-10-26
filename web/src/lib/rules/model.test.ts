@@ -196,7 +196,8 @@ describe('the rule model', () => {
 			channel: ['is', 'in'],
 			text: ['contains', 'matches'],
 			document_date: ['is', 'gt', 'lt', 'present', 'missing'],
-			step: ['is', 'in', 'contains', 'gt', 'lt', 'present', 'missing']
+			step: ['is', 'in', 'contains', 'gt', 'lt', 'present', 'missing'],
+			fact: ['present', 'missing', 'is', 'in', 'matches']
 		});
 		expect(FIELD_TYPE_OPERATORS.boolean).toEqual(['is', 'present', 'missing']);
 		expect(FIELD_TYPE_OPERATORS.choice).toEqual(['is', 'in', 'present', 'missing']);
@@ -210,6 +211,22 @@ describe('the rule model', () => {
 			'present',
 			'missing'
 		]);
+	});
+});
+
+describe('a condition on facts', () => {
+	it('goes to the API with its kind and role and comes back', () => {
+		const model = newModel();
+		const condition = model.conditions.items[0] as ConditionNode;
+		changeConditionField(condition, 'fact', []);
+		expect([condition.factKind, condition.op]).toEqual(['invoice_number', 'present']);
+		condition.factRole = 'refers';
+		const api = toApi(model);
+		expect(api.conditions).toMatchObject({
+			all: [{ field: 'fact', op: 'present', fact_kind: 'invoice_number', fact_role: 'refers' }]
+		});
+		const again = fromApi(api).conditions.items[0] as ConditionNode;
+		expect([again.factKind, again.factRole]).toEqual(['invoice_number', 'refers']);
 	});
 });
 

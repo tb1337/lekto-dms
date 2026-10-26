@@ -16,6 +16,7 @@ Who may do what:
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 
+from lekto.core.domain.codes import Code
 from lekto.core.domain.errors import (
     ConflictError,
     MissingValueError,
@@ -66,11 +67,13 @@ from lekto.core.domain.templates import uses_field as field_used
 from lekto.core.domain.users import User
 from lekto.core.domain.webhooks import MAX_BODY_TEMPLATE, TEST_EVENT, rendered_body
 from lekto.core.ports.clock import Clock
+from lekto.core.ports.object_store import ObjectStore
 from lekto.core.ports.patterns import PatternMatcher
 from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import (
     admin_only,
+    check_rule_facts,
     field_definitions,
     load_actor,
     load_lister,
@@ -78,6 +81,7 @@ from lekto.core.services._access import (
 )
 from lekto.core.services._tags import tag_tree
 from lekto.core.services._templates import document_values, event_values, webhook_values
+from lekto.core.services.objects import load_codes
 
 
 @dataclass(frozen=True)
@@ -108,13 +112,16 @@ class RuleService:
         patterns: PatternMatcher,
         *,
         link_base: str | None = None,
+        store: ObjectStore | None = None,
     ) -> None:
-        """`link_base` (`LEKTO_PUBLIC_URL`): the link to a document a webhook's template sees."""
+        """`link_base` (`LEKTO_PUBLIC_URL`): the link to a document a webhook's template sees;
+        `store`: where the codes on its pages are (`facts.girocode` in a preview)."""
         self._uow = uow
         self._clock = clock
         self._templates = templates
         self._patterns = patterns
         self._link_base = link_base
+        self._store = store
 
     async def list_rules(
         self,
@@ -191,6 +198,7 @@ class RuleService:
             if not enabled:
                 rule.disable(self._clock.now())
             await check_references(uow, rule.definition, author=user)
+            check_rule_facts(user, rule.definition)
             check_patterns(self._patterns, rule.definition)
             await check_templates(uow, self._templates, rule.definition)
             self._check_asks(rule.definition)
@@ -230,12 +238,15 @@ class RuleService:
             fields = await uow.fields.list_all()
             applying = [item for item in fields if kind is None or item.applies_to(kind)]
             target = None if field is None or webhook else await uow.fields.get(field)
+            codes: tuple[Code, ...] = ()
+            if found is not None and self._store is not None and "fact" in template:
+                codes = await load_codes(self._store, found.id) or ()
             if found is None:
                 values = None
             elif webhook:
-                values = await webhook_values(uow, found, self._link_base)
+                values = await webhook_values(uow, found, self._link_base, codes)
             else:
-                values = await document_values(uow, found, kind, applying)
+                values = await document_values(uow, found, kind, applying, codes)
         written = None if values is None else self._written(values)
         try:
             used = self._templates.check(template)
@@ -314,6 +325,7 @@ class RuleService:
                 place = await _place(uow, user, scope, space)
                 rule.change(definition, user.id, self._clock.now(), scope=scope, space_id=place)
             await check_references(uow, definition, author=user)
+            check_rule_facts(user, definition)
             check_patterns(self._patterns, definition)
             await check_templates(uow, self._templates, definition)
             self._check_asks(definition)

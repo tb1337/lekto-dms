@@ -10,6 +10,9 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
+	import { FACT_ROLES, roleLabel } from '#lib/facts.ts';
+	import { session } from '#lib/session.svelte.ts';
+	import { IDENTIFIER_KINDS, NUMBER_KINDS, PERSON_KINDS, labelOfKind } from '#lib/identifiers.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { CHANNEL_LABELS, fieldLabel, operatorLabel } from '#lib/rules/describe.ts';
@@ -54,6 +57,24 @@
 	} = $props();
 
 	const field = $derived(lookup.fields.find((entry) => entry.id === condition.fieldId) ?? null);
+	// A person's numbers (by kind or role) only for admins, as only they find documents by
+	// them; a kind saved otherwise (over the API) is shown all the same.
+	const factKindOptions = $derived(
+		[
+			...new Set<string>([
+				...NUMBER_KINDS,
+				...IDENTIFIER_KINDS,
+				...(session.isAdmin ? PERSON_KINDS : []),
+				...(condition.factKind ? [condition.factKind] : [])
+			])
+		].map((kind) => ({ value: kind, label: labelOfKind(kind) }))
+	);
+	const factRoleOptions = $derived([
+		{ value: '', label: m.filter_fact_any_role() },
+		...FACT_ROLES.filter(
+			(role) => role !== 'person' || session.isAdmin || condition.factRole === 'person'
+		).map((role) => ({ value: role, label: roleLabel(role) }))
+	]);
 	const operators = $derived(operatorsFor(condition, lookup.fields));
 	const conditionFieldOptions = $derived(
 		(steps === null ? CONDITION_FIELDS : STEP_CONDITION_FIELDS).map((field) => ({
@@ -151,6 +172,23 @@
 				value={condition.path ?? ''}
 				oninput={(event) => (condition.path = event.currentTarget.value.trim())}
 				class="h-10 w-full font-mono sm:w-44"
+			/>
+		{/if}
+		{#if condition.field === 'fact'}
+			<!-- Its kind and its role, any role unless one is chosen; a person's for admins. -->
+			<Select
+				aria-label={m.facts_add_kind()}
+				value={condition.factKind ?? ''}
+				options={factKindOptions}
+				onchange={(kind) => (condition.factKind = kind)}
+				class="h-10 w-full sm:w-44"
+			/>
+			<Select
+				aria-label={m.facts_decide_role()}
+				value={condition.factRole ?? ''}
+				options={factRoleOptions}
+				onchange={(role) => (condition.factRole = role || null)}
+				class="h-10 w-full sm:w-44"
 			/>
 		{/if}
 		{#if condition.field === 'field'}

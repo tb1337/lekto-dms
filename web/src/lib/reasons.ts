@@ -342,6 +342,7 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	fact_not_in_text: entry(m.reason_fact_not_in_text),
 	fact_criterion_empty: entry(m.reason_fact_criterion_empty),
 	fact_filter_of_person: entry(m.reason_fact_filter_of_person),
+	rule_fact_of_person: entry(m.reason_rule_fact_of_person),
 	fact_not_asked: entry(m.reason_fact_not_asked),
 	fact_of_a_person: entry(m.reason_fact_of_a_person),
 	fact_not_found: entry(m.reason_fact_not_found, { kind: 'identifier_kind' }),

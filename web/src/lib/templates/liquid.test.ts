@@ -79,6 +79,13 @@ describe('what fits at the cursor', () => {
 		expect(at('{{ contact | up')).toEqual({ kind: 'filter', from: 13, value: true });
 		expect(at('{% ')).toEqual({ kind: 'tag', from: 3, value: false });
 		expect(at('{% if do')).toEqual({ kind: 'value', from: 6, value: false });
+		expect(at('{{ facts.inv')).toEqual({ kind: 'path', from: 9, value: true, path: 'facts.' });
+		expect(at('{{ facts.refers.')).toEqual({
+			kind: 'path',
+			from: 16,
+			value: true,
+			path: 'facts.refers.'
+		});
 	});
 
 	it('offers nothing outside an expression or after a value', () => {

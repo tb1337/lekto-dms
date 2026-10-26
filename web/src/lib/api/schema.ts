@@ -2967,7 +2967,8 @@ export interface components {
 			| 'channel'
 			| 'text'
 			| 'field'
-			| 'document_date';
+			| 'document_date'
+			| 'fact';
 		/**
 		 * ConditionSchema
 		 * @description `field` `op` `value`. Operators by field: contact, document_type: `is`, `in`, `present`,
@@ -2984,7 +2985,10 @@ export interface components {
 		 *     before the date), `present`, `missing`; step (in a condition step only: what a step that
 		 *     asks brought, at `path`): `is`, `in` (texts without case, numbers as numbers, true or
 		 *     false), `contains` (a text in a text, an item of a list), `gt`, `lt` (a number or a date),
-		 *     `present`, `missing`.
+		 *     `present`, `missing`; fact (`fact_kind`, `fact_role` if given; facts a person rejected do
+		 *     not count): `is`, `in` (the values as written, compared as Lekto compares them), `matches`
+		 *     (against each value as the text writes it; `^` and `$` mark its ends), `present`,
+		 *     `missing`.
 		 * @example {
 		 *       "field": "contact",
 		 *       "op": "is",
@@ -2995,6 +2999,12 @@ export interface components {
 		 *       "field": "text",
 		 *       "op": "matches",
 		 *       "value": "Rechnung\\s+Nr"
+		 *     }
+		 * @example {
+		 *       "fact_kind": "invoice_number",
+		 *       "fact_role": "refers",
+		 *       "field": "fact",
+		 *       "op": "present"
 		 *     }
 		 */
 		ConditionSchema: {
@@ -3030,6 +3040,10 @@ export interface components {
 			 * @default false
 			 */
 			case_sensitive: boolean;
+			/** @description Only when `field` is `fact`: the kind of the facts. */
+			fact_kind?: components['schemas']['IdentifierKind'] | null;
+			/** @description Only when `field` is `fact`: their role; none for any. */
+			fact_role?: components['schemas']['FactRole'] | null;
 		};
 		/** ConditionStepAction */
 		'ConditionStepAction-Input': {
@@ -6880,6 +6894,7 @@ export interface components {
 			| 'fact_not_in_text'
 			| 'fact_not_asked'
 			| 'fact_criterion_empty'
+			| 'rule_fact_of_person'
 			| 'fact_filter_of_person'
 			| 'fact_of_a_person'
 			| 'fact_not_found'
@@ -7884,7 +7899,7 @@ export interface components {
 			type: 'set_title';
 			/**
 			 * Template
-			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like), and the facts: `facts.<kind>` (the document's own value of the kind, as written), `facts.refers.<kind>` (one it refers to), `facts.girocode` (`name`, `iban`, `bic`, `amount`, `purpose`) and `fact_list` (each with `kind`, `value`, `written`, `role`, `origin`); none a person rejected, none of a person's. Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md
 			 * @example {{ contact }} {{ document_type }} {{ document_date | date: '%Y-%m' }}
 			 */
 			template: string;
@@ -8299,7 +8314,7 @@ export interface components {
 		TemplatePreviewIn: {
 			/**
 			 * Template
-			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md At most 500 characters, a webhook's body 10000.
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like), and the facts: `facts.<kind>` (the document's own value of the kind, as written), `facts.refers.<kind>` (one it refers to), `facts.girocode` (`name`, `iban`, `bic`, `amount`, `purpose`) and `fact_list` (each with `kind`, `value`, `written`, `role`, `origin`); none a person rejected, none of a person's. Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md At most 500 characters, a webhook's body 10000.
 			 */
 			template: string;
 			/**

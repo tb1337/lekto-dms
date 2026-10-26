@@ -45,6 +45,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
+from lekto.core.domain.codes import Code
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import (
     ConcurrencyError,
@@ -76,12 +77,14 @@ from lekto.core.domain.webhooks import (
 )
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.identity import DecryptionError, SecretCipher
+from lekto.core.ports.object_store import ObjectStore
 from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.ports.webhook_sender import WebhookRequest, WebhookResponse, WebhookSender
 from lekto.core.services._access import load_actor
 from lekto.core.services._jobs import JobRunner, lost
 from lekto.core.services._templates import document_json, event_values, webhook_values
+from lekto.core.services.objects import load_codes
 from lekto.core.services.tasks.settling import end_task
 from lekto.core.services.webhooks.management import (
     headers_context,
@@ -120,9 +123,11 @@ class WebhookDeliveryService:
         templates: TemplateRenderer,
         *,
         link_base: str | None = None,
+        store: ObjectStore | None = None,
     ) -> None:
         """`templates` renders the bodies of webhooks with a template; `link_base`
-        (`LEKTO_PUBLIC_URL`) makes the link to a document in the web UI."""
+        (`LEKTO_PUBLIC_URL`) makes the link to a document in the web UI; `store`: where the
+        codes on its pages are (`facts.girocode`)."""
         self._uow = uow
         self._clock = clock
         self._cipher = cipher
@@ -130,6 +135,7 @@ class WebhookDeliveryService:
         self._policy = policy
         self._templates = templates
         self._link_base = link_base
+        self._store = store
         self._retry = RetryPolicy(
             max_attempts=self._policy.max_attempts,
             delay=self._policy.retry_delay,
@@ -466,7 +472,10 @@ class WebhookDeliveryService:
         assert webhook.body_template is not None
         values = event_values(event_id, event_type, occurred_at)
         if document is not None:
-            values |= await webhook_values(uow, document, self._link_base)
+            codes: tuple[Code, ...] = ()
+            if self._store is not None and "fact" in webhook.body_template:
+                codes = await load_codes(self._store, document.id) or ()
+            values |= await webhook_values(uow, document, self._link_base, codes)
         elif document_id is not None:
             values["document_id"] = str(document_id)
         if rule is not None:

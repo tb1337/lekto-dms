@@ -195,7 +195,12 @@ class RuleWorld:
     @property
     def rules(self) -> RuleService:
         return RuleService(
-            self.world.uow, self.world.clock, TEMPLATES, self.matcher, link_base=LINK_BASE
+            self.world.uow,
+            self.world.clock,
+            TEMPLATES,
+            self.matcher,
+            link_base=LINK_BASE,
+            store=self.world.object_store,
         )
 
     @property
@@ -235,7 +240,10 @@ class RuleWorld:
         )
 
     def pipeline(
-        self, classify: NodeExecutor | None = None, fields: NodeExecutor | None = None
+        self,
+        classify: NodeExecutor | None = None,
+        fields: NodeExecutor | None = None,
+        facts: NodeExecutor | None = None,
     ) -> PipelineService:
         executors: dict[Node, NodeExecutor] = {
             Node.APPLY_RULES: ApplyRulesNode(
@@ -253,6 +261,8 @@ class RuleWorld:
             executors[Node.JUDGE] = classify
         if fields is not None:
             executors[Node.FIELDS] = fields
+        if facts is not None:
+            executors[Node.SIGNAL_FACTS] = facts
         return self.world.pipeline(executors)
 
     # --- seeding ---------------------------------------------------------------------------------
@@ -282,10 +292,11 @@ class RuleWorld:
         classify: NodeExecutor | None = None,
         fields: NodeExecutor | None = None,
         filename: str = "scan.pdf",
+        facts: NodeExecutor | None = None,
     ) -> Document:
         """Upload a document, give it `text` as its parsed Markdown, process it; the stored
         document."""
-        pipeline = self.pipeline(classify, fields)
+        pipeline = self.pipeline(classify, fields, facts)
         received = await pipeline.receive(owner.id, incoming_pdf(), filename=filename, space=space)
         if text is not None:
             await self.world.object_store.put(

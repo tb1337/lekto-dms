@@ -1028,6 +1028,7 @@ where it is and edits where it goes (global: admins); every version names its sp
   | `text` | `contains` (normalised like the classification checks), `matches` (regular expression) |
   | `document_date` | `is`, `gt`, `lt`, `present`, `missing` |
   | `field` (with `field_id`) | by data type: text and link `is`, `in`, `contains`, `matches`; number, amount, date `is`, `gt`, `lt`; yes/no `is`; choice `is`, `in`; period `is`, `overlaps` (shares a day with a period), `gt` (starts after a date), `lt` (ends before a date); all `present`, `missing` |
+  | `fact` (with `fact_kind`, `fact_role` or any role; issue #145) | `present`, `missing`, `is`, `in` (the values as written, kept and compared normalised), `matches` (against each value as the text writes it, `^` and `$` at its ends); facts a person rejected do not count, and a fact condition is never unknown |
 
   `matches` takes `case_sensitive` (default false). Patterns run with the `regex` package
   (`adapters/outbound/regex`) in a thread with a time limit (`LEKTO_RULES_PATTERN_TIMEOUT`); a
@@ -1073,8 +1074,10 @@ where it is and edits where it goes (global: admins); every version names its sp
   (a personal space by its user's name), `uploaded_by` (who uploaded it, by display name, else username),
   `channel`, `pages` and
   `field.<key>` (`FieldOut.key`, from the name: `LA_Brutto` is `la_brutto`; an amount has
-  `.amount` and `.currency`, a period `.start` and `.end`), as the rules leave the document. A
-  period writes itself in ISO 8601 by what it is (`Period.notation`): `2026-09`, `2026-W38`,
+  `.amount` and `.currency`, a period `.start` and `.end`), as the rules leave the document,
+  and its facts (`facts.<kind>` as written on one line, `facts.refers.<kind>`,
+  `facts.girocode.*`, `fact_list`; none a person rejected, none of a person's; see
+  docs/templates.md). A period writes itself in ISO 8601 by what it is (`Period.notation`): `2026-09`, `2026-W38`,
   `2026-Q3` (ISO has no short form for a quarter), `2026`, a day as `2026-09-15`, else its
   ends, `2026-09-01/2026-09-14`; `{{ field.x.start | datetime: format: 'MMMM yyyy' }}` writes
   it in words. `datetime`, `currency` and

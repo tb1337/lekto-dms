@@ -49,6 +49,8 @@ from lekto.core.domain.classification import (
     field_id_of,
     field_key,
 )
+from lekto.core.domain.codes import Code
+from lekto.core.domain.document_facts import DocumentFact
 from lekto.core.domain.documents import Document, DocumentChanges, Unset
 from lekto.core.domain.errors import MissingValueError, ValidationError
 from lekto.core.domain.fields import (
@@ -152,6 +154,8 @@ class Situation:
       asks without an answer), the actions before that; others act with all of theirs.
     - `steps`: what a rule's steps that ask brought, by step name; its templates see them as
       `steps.<name>`.
+    - `kept_facts`, `codes`: the document's facts and the codes on its pages; templates see
+      them as `facts` and `fact_list` (`templates.template_values`).
     """
 
     mode: Mode
@@ -176,6 +180,8 @@ class Situation:
     applier: UserId | None = None
     actions: Mapping[RuleId, Sequence[object]] = field(default_factory=dict)
     steps: Mapping[RuleId, Mapping[str, TemplateValue]] = field(default_factory=dict)
+    kept_facts: tuple[DocumentFact, ...] = ()
+    codes: tuple[Code, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -788,6 +794,8 @@ class _Planner:
                 for definition in s.definitions.values()
                 if definition.applies_to(type_after)
             ],
+            kept_facts=s.kept_facts,
+            codes=s.codes,
         )
 
     def _reason(

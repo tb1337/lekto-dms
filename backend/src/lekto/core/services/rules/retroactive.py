@@ -60,7 +60,7 @@ from lekto.core.ports.patterns import PatternMatcher
 from lekto.core.ports.repository import PAGE_SIZE, DocumentFilter, DocumentPosition
 from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
-from lekto.core.services._access import field_definitions, load_actor
+from lekto.core.services._access import check_rule_facts, field_definitions, load_actor
 from lekto.core.services._jobs import LEASE, JobRunner, lost
 from lekto.core.services.rules.changes import ArrivalStep, ChangeRules
 from lekto.core.services.rules.management import visible_rule
@@ -525,6 +525,7 @@ async def _applicable_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
     if rule.deleted_at is not None:
         raise NotFoundError("rule", id)
     _not_asking(rule.definition)
+    check_rule_facts(user, rule.definition)
     if rule.space_id is not None:
         space = await uow.spaces.find(rule.space_id)
         role = None if space is None else space_role(user, space)

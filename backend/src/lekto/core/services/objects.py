@@ -5,8 +5,9 @@ import json
 import logging
 from collections.abc import Mapping
 
+from lekto.core.domain.codes import Code, codes_from_json
 from lekto.core.domain.documents import Sha256
-from lekto.core.domain.errors import NotFoundError
+from lekto.core.domain.errors import NotFoundError, ValidationError
 from lekto.core.domain.ids import ContactId, DocumentId
 from lekto.core.domain.labels import LaidWord, layout_words
 from lekto.core.domain.pipeline import Node
@@ -136,3 +137,15 @@ def derivative_keys(document: DocumentId, page_count: int | None = None) -> list
         *(key for key in legacy if key is not None),
         *(page_key(document, number) for number in range(1, (page_count or 0) + 1)),
     ]
+
+
+async def load_codes(store: ObjectStore, document: DocumentId) -> tuple[Code, ...] | None:
+    """The codes read from the archive's pages (`codes_key`), None while they are not (or of an
+    earlier version) or cannot be read."""
+    try:
+        return codes_from_json(json.loads(await store.get(codes_key(document))))
+    except NotFoundError:
+        return None
+    except (ValueError, ValidationError):
+        log.warning("an unreadable file of codes", extra={"document_id": str(document)})
+        return None

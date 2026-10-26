@@ -7,7 +7,9 @@ form (see `rules`).
 from collections.abc import Mapping
 from enum import StrEnum
 
+from lekto.core.domain.document_facts import FactRole
 from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId, WebhookId
 from lekto.core.domain.json_value import JsonObject, JsonValue, require_object, require_uuid
 from lekto.core.domain.rules import (
@@ -68,6 +70,10 @@ def condition_to_json(condition: Condition) -> JsonObject:
         data["value"] = condition.value
     if condition.case_sensitive:
         data["case_sensitive"] = True
+    if condition.fact_kind is not None:
+        data["fact_kind"] = condition.fact_kind.value
+    if condition.fact_role is not None:
+        data["fact_role"] = condition.fact_role.value
     return data
 
 
@@ -158,7 +164,12 @@ def group_from_json(data: JsonValue, where: str = "conditions") -> Group:
 
 def condition_from_json(data: JsonValue, where: str = "condition") -> Condition:
     object_ = require_object(data, where)
-    _only(object_, {"field", "op", "value", "field_id", "case_sensitive", "path"}, where)
+    _only(
+        object_,
+        {"field", "op", "value", "field_id", "case_sensitive", "path", "fact_kind", "fact_role"},
+        where,
+    )
+    fact_kind, fact_role = object_.get("fact_kind"), object_.get("fact_role")
     field_id = object_.get("field_id")
     path = object_.get("path")
     if path is not None and not isinstance(path, str):
@@ -174,6 +185,12 @@ def condition_from_json(data: JsonValue, where: str = "condition") -> Condition:
             field_id=None if field_id is None else FieldId(require_uuid(field_id, "field_id")),
             case_sensitive=case_sensitive,
             path=path,
+            fact_kind=None
+            if fact_kind is None
+            else _enum(IdentifierKind, fact_kind, f"{where}.fact_kind"),
+            fact_role=None
+            if fact_role is None
+            else _enum(FactRole, fact_role, f"{where}.fact_role"),
         )
     except ValidationError as error:
         raise ValidationError(f"{where}: {error}") from None

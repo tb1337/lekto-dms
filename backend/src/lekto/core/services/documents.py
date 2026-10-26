@@ -12,7 +12,7 @@ from uuid import UUID
 
 from lekto.core.domain import media_types
 from lekto.core.domain.classification import CONFIRMING, SPACE
-from lekto.core.domain.codes import Code, GiroCode, code_identifiers, codes_from_json, giro_code
+from lekto.core.domain.codes import Code, GiroCode, code_identifiers, giro_code
 from lekto.core.domain.document_facts import NUMBER_KINDS, DocumentFact, FactRole, person_only
 from lekto.core.domain.documents import Channel, Document, DocumentChanges, confirms
 from lekto.core.domain.errors import (
@@ -91,9 +91,9 @@ from lekto.core.services.maintenance import REMOVE_FILES_JOB, RemoveFiles
 from lekto.core.services.objects import (
     EXCHANGE_NODES,
     archive_key,
-    codes_key,
     exchanges_key,
     legacy_exchanges_key,
+    load_codes,
     load_layout,
     load_text,
     original_key,
@@ -475,19 +475,45 @@ class DocumentService:
         )
 
     async def decide_fact(self, actor: UserId, id: DocumentId, decision: FactDecision) -> None:
-        """Keep a person's decision about a fact of the document (`fact_decisions`)."""
-        await decide_fact(self._uow, self._object_store, self._clock, actor, id, decision)
+        """Keep a person's decision about a fact of the document (`fact_decisions`); the change
+        rules of its space and the global ones run on the facts before and after it, the
+        document's values as they are (a field a rule fills from a fact follows it)."""
+        rules = self._rules
+        if rules is None:
+            await decide_fact(self._uow, self._object_store, self._clock, actor, id, decision)
+            return
+        async with self._uow() as uow:
+            document, _ = await writable_document(uow, await load_actor(uow, actor), id)
+            candidates = await rules.rules(uow, document)
+            candidates += await rules.followers(uow, candidates)
+        prepared = await rules.prepare(candidates, document) if candidates else Prepared()
+
+        async def run_rules(
+            uow: UnitOfWork, user: User, document: Document, kept_before: Sequence[DocumentFact]
+        ) -> None:
+            if not await rules.rules(uow, document):
+                return
+            await rules.after_change(
+                uow,
+                actor=user,
+                before=copy.deepcopy(document),
+                document=document,
+                changes=DocumentChanges(),
+                prepared=prepared,
+                definitions=await field_definitions(uow),
+                now=self._clock.now(),
+                kept_before=kept_before,
+            )
+            await _save(uow, document)
+
+        await decide_fact(
+            self._uow, self._object_store, self._clock, actor, id, decision, after=run_rules
+        )
 
     async def _codes(self, id: DocumentId) -> tuple[Code, ...] | None:
         """The codes read from the archive's pages, None while they are not (or of an earlier
         version)."""
-        try:
-            return codes_from_json(json.loads(await self._object_store.get(codes_key(id))))
-        except NotFoundError:
-            return None
-        except (ValueError, ValidationError):
-            log.warning("an unreadable file of codes", extra={"document_id": str(id)})
-            return None
+        return await load_codes(self._object_store, id)
 
     async def read_structure(self, actor: UserId, id: DocumentId) -> bytes:
         """The structure of the text as JSON: its pages, lines and words with their boxes

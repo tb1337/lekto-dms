@@ -122,7 +122,8 @@ def person_only(kind: IdentifierKind) -> bool:
 @dataclass(frozen=True, kw_only=True)
 class DocumentFact:
     """A fact of a document. `value`: normalised, as Lekto compares it (`normalise_identifier`);
-    `written`: as the text writes it where it stands first (None where only a code holds it);
+    `written`: as the text writes it where it stands first (a person's value the text does not
+    show: as they wrote it; None where only a code holds it);
     `position`: the first character there, which orders the facts as the text reads (None:
     only in a code)."""
 
@@ -147,6 +148,12 @@ class DocumentFact:
     @property
     def key(self) -> Key:
         return self.kind, self.value
+
+    @property
+    def shown(self) -> str:
+        """As the text writes it, on one line: a soft hyphen gone, line breaks and other space
+        one blank (`RE-2026/⏎0042` → `RE-2026/ 0042`); the value where only a code holds it."""
+        return " ".join((self.written or self.value).replace("\u00ad", "").split()) or self.value
 
 
 def found_facts(
@@ -330,7 +337,7 @@ def person_fact(
 ) -> DocumentFact:
     """The fact a person gives: of `kind`, the value `raw` as they wrote it (ValidationError,
     with the kind's reason, if it is none of the kind), in `role`; where it stands in `text`,
-    if it does."""
+    if it does, else written as they wrote it (a template gives `R-4711`, not `R4711`)."""
     value = normalise_identifier(kind, raw)
     where = _first(text, "", kind, value, None)
     return DocumentFact(
@@ -338,7 +345,7 @@ def person_fact(
         value=value,
         role=role,
         origins=frozenset({FactOrigin.PERSON}),
-        written=None if where is None else text[where[0] : where[1]],
+        written=raw.strip() if where is None else text[where[0] : where[1]],
         position=None if where is None else where[0],
         state=state,
     )

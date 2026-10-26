@@ -70,6 +70,29 @@ is `faellig_am`. The field management and the template editor show each field's 
 Renaming a field rewrites the templates that use it. A field that a template uses cannot be
 deleted.
 
+## Facts
+
+The numbers and references a document shows (its facts: invoice number, customer number, the
+invoice a reminder refers to, ...) are no fields, but a template sees them, so a rule can put
+one into a field:
+
+| Value | Writes |
+| --- | --- |
+| `facts.<kind>` | the document's own value of the kind, the first as the text reads, as the text writes it: `{{ facts.invoice_number }}` |
+| `facts.refers.<kind>` | the first value of the kind that refers to another document: `Mahnung zu Rechnung {{ facts.refers.invoice_number }}` |
+| `facts.girocode.<part>` | the first GiroCode on the pages: `amount` (an amount), `iban`, `name`, `bic`, `purpose` |
+| `fact_list` | every fact, each with `kind`, `value` (normalised, as Lekto compares it), `written` (as the text writes it), `role` and `origin` (`person`, `model`, `pattern` or `code`): `{{ fact_list \| where: "kind", "iban" \| map: "value" \| join: ", " }}` |
+
+The kinds are fixed in the code and English (`invoice_number`, `customer_number`,
+`contract_number`, `letter_date`, ...); the template editor offers them with their names. A
+fact a person rejected is missing, one they corrected gives their value as they wrote it; a
+person's decision runs the change rules, so a field a rule fills from a fact follows it. A
+person's numbers (tax ID, social security number, ..., and any a person marked as a person's)
+are not among them. A value stands on one line, as written: a line break in it is a blank, a
+soft hyphen is gone. Without the fact, writing it is a missing value: the action sets nothing
+(noted, not yellow). Saving checks the paths: `facts.invoice_numbr` or `facts.tax_id` is an
+unknown value.
+
 ## Filters
 
 All of [Liquid's standard filters](https://shopify.github.io/liquid/filters/) work, among them:

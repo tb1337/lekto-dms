@@ -700,6 +700,7 @@
 	"save": "Save",
 	"profile_title": "Profile",
 	"profile_hint": "Only the user and admins see the profile; others see the display name. When any of it stands in a document, Lekto knows whose it is. The language model gets only the display name.",
+	"profile_own_hint": "Only you and admins see your profile; others see your display name. When any of it stands in a document, Lekto knows it is yours. The language model gets only your display name.",
 	"profile_display_name": "Display name",
 	"profile_display_name_hint": "How others see the user; empty: the username.",
 	"profile_aliases": "Other names",

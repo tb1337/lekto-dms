@@ -107,7 +107,7 @@
 			<Card.Header>
 				<Card.Title class="flex items-center gap-1">
 					{m.profile_title()}
-					<InfoHint text={m.profile_hint()} about={m.profile_title()} />
+					<InfoHint text={m.profile_own_hint()} about={m.profile_title()} />
 				</Card.Title>
 			</Card.Header>
 			<Card.Content>

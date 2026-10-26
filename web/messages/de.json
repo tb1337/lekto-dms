@@ -700,6 +700,7 @@
 	"save": "Speichern",
 	"profile_title": "Profil",
 	"profile_hint": "Nur der Nutzer selbst und Admins sehen das Profil; andere sehen den Anzeigenamen. Steht etwas davon in einem Dokument, weiß Lekto, wessen es ist. Das Sprachmodell bekommt nur den Anzeigenamen.",
+	"profile_own_hint": "Nur Du und Admins sehen Dein Profil; andere sehen Deinen Anzeigenamen. Steht etwas davon in einem Dokument, weiß Lekto, dass es Deins ist. Das Sprachmodell bekommt nur Deinen Anzeigenamen.",
 	"profile_display_name": "Anzeigename",
 	"profile_display_name_hint": "So sehen andere den Nutzer; leer: der Benutzername.",
 	"profile_aliases": "Weitere Namen",

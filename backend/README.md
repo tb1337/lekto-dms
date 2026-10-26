@@ -617,7 +617,11 @@ and the space, the fields node reads the fields of the decided type and the titl
   added, accepted or corrected, early before the first run stopped. No events go out for
   relations yet. MCP's `get_document` lists the relations the caller sees; MCP sets none (an
   assistant reads text from outside, an instruction there could relate documents unnoticed).
-  Revision 0048 adds the table `document_relations`.
+  Revision 0048 adds the table `document_relations`. An admin marks a document type as a
+  relation target (`relation_target` at `/document-types`, revision 0049; the switch
+  "Bezugsziel" in its dialog): a contract or customer number a document shares connects it only
+  with documents of such a type (a contract, a policy); without it, such a number connects no
+  documents, as it would connect every invoice with every other.
 - **The kinds of facts** (`IdentifierKind`, issue #145 PR 4; one module per kind in
   `domain/identifiers`): besides IBAN, VAT ID, customer and personnel number, e-mail domain and
   a person's numbers, those that point to the contact (creditor ID with its check digits,

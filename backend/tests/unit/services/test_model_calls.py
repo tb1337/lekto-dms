@@ -40,6 +40,7 @@ from lekto.core.services.classification.external import (
     model_call_state,
 )
 from lekto.core.services.classification.nodes import FieldsNode, LlmSignal
+from lekto.core.services.classification.prompts import PROPOSE_RULES
 from lekto.core.services.nodes import PagesResult
 from lekto.core.services.objects import exchanges_key, page_key, structure_key, text_key
 from lekto.core.services.pipeline import MetadataResult, PipelineService
@@ -228,6 +229,10 @@ async def test_a_webhook_proposes_and_extracts_and_the_lanes_come_as_with_the_mo
         "character by character"
         in (schema["properties"]["fields"]["items"]["properties"]["evidence"]["description"])
     )
+    # The rules of the prompt, word for word: the prompt's form (`propose-6`) is not the contract.
+    named = ("sender", "recipient", "document_type", "topic", "tags", "title", "language", "fields")
+    for name in named:
+        assert schema["properties"][name]["description"] == PROPOSE_RULES[name], name
 
     # The proposal names another type than the judge decides: the fields are read anew.
     answer = proposal(document_type="Vertrag", fields=FIELDS)

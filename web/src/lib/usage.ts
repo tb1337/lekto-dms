@@ -6,6 +6,8 @@
 
 export interface Usage {
 	input: number | null;
+	/** Of the input, the tokens the endpoint took from its cache, where it said. */
+	cached: number | null;
 	output: number | null;
 	total: number | null;
 	/** Seconds, summed over the attempts; null if the endpoint did not say. */
@@ -20,6 +22,8 @@ export interface Usage {
 
 const KNOWN = new Set([
 	'prompt_tokens',
+	// Shown as `cached` (the log reads them from either report).
+	'cache_read_input_tokens',
 	'completion_tokens',
 	'total_tokens',
 	'prompt_eval_count',
@@ -33,7 +37,7 @@ const KNOWN = new Set([
 	'approximate_total'
 ]);
 
-type Attempt = { prompt?: unknown; completion?: unknown; usage?: unknown };
+type Attempt = { prompt?: unknown; completion?: unknown; cached?: unknown; usage?: unknown };
 
 function number(value: unknown): number | null {
 	return typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -59,6 +63,7 @@ export function usageOf(output: Record<string, unknown>): Usage | null {
 			reports.map((report) => (number(report[key]) === null ? null : (report[key] as number) / 1e9))
 		);
 	const input = sum(attempts.map((attempt) => number(attempt.prompt)));
+	const cached = sum(attempts.map((attempt) => number(attempt.cached)));
 	const output_ = sum(attempts.map((attempt) => number(attempt.completion)));
 	const reported = sum(reports.map((report) => number(report.total_tokens)));
 	// Other figures, one per name: numbers summed over the attempts, texts the last one.
@@ -76,6 +81,7 @@ export function usageOf(output: Record<string, unknown>): Usage | null {
 	const extra: [string, string][] = [...others].map(([key, value]) => [key, String(value)]);
 	const usage: Usage = {
 		input,
+		cached,
 		output: output_,
 		total: reported ?? (input !== null || output_ !== null ? (input ?? 0) + (output_ ?? 0) : null),
 		load: seconds('load_duration'),
@@ -97,12 +103,18 @@ export function speed(tokens: number | null, seconds: number | null): number | n
 }
 
 /**
- * The input tokens of system and user message: the endpoint counts them together, so they are
- * split by characters, an estimate.
+ * The input tokens of the messages of a call (system, document, task, …): the endpoint counts
+ * them together, so they are split by characters, an estimate. Without characters the last
+ * part has them all; the shares add up to `input`.
  */
-export function splitInput(input: number, system: string, user: string): [number, number] {
-	const characters = system.length + user.length;
-	if (characters === 0) return [0, input];
-	const share = Math.round((input * system.length) / characters);
-	return [share, input - share];
+export function splitInput(input: number, parts: readonly string[]): number[] {
+	const characters = parts.reduce((total, part) => total + part.length, 0);
+	if (characters === 0) return parts.map((_, index) => (index === parts.length - 1 ? input : 0));
+	let left = input;
+	return parts.map((part, index) => {
+		if (index === parts.length - 1) return left;
+		const share = Math.round((input * part.length) / characters);
+		left -= share;
+		return share;
+	});
 }

@@ -128,14 +128,15 @@ from lekto.core.services.classification.external import (
 from lekto.core.services.classification.prompts import (
     EXTRACT_PROMPT,
     EXTRACT_SCHEMA,
-    EXTRACT_SYSTEM,
     PROPOSE_PROMPT,
     PROPOSE_SCHEMA,
-    PROPOSE_SYSTEM,
+    SYSTEM,
     Listed,
-    extract_message,
-    propose_message,
-    retry_message,
+    document_marker,
+    document_message,
+    extract_task,
+    propose_task,
+    retry_note,
 )
 from lekto.core.services.classification.signals import (
     ABSTAINED,
@@ -259,29 +260,40 @@ class _ModelStep:
         self,
         document: Document,
         node: Node,
-        system: str,
-        message: str,
+        sent: Shortened,
+        task: str,
         schema: JsonObject,
         name: str,
         parse: Callable[[str], T],
     ) -> tuple[T, list[StructuredAnswer]]:
-        """The parsed answer and all answers; once more after an unfit one. What was sent and
-        received is kept beside the document (`exchanges_key`), also when the node fails."""
+        """The parsed answer and all answers; once more after an unfit one, with the note what
+        was wrong after the task (the call begins as the first did). What was sent and received
+        is kept beside the document (`exchanges_key`), also when the node fails."""
         assert self._model is not None
         answers: list[StructuredAnswer] = []
         calls: list[ModelCall] = []
         errors: list[str] = []
-        user = message
+        text = document_message(sent)
+        retry: str | None = None
         try:
             for _ in range(2):
                 answer = await self._model.complete(
-                    StructuredRequest(system=system, user=user, schema=schema, schema_name=name)
+                    StructuredRequest(
+                        system=SYSTEM,
+                        document=text,
+                        task=task,
+                        schema=schema,
+                        schema_name=name,
+                        retry=retry,
+                    )
                 )
                 answers.append(answer)
                 calls.append(
                     ModelCall(
-                        system=system,
-                        user=user,
+                        system=SYSTEM,
+                        document=text,
+                        task=task,
+                        retry=retry,
                         answer=answer.content,
                         model=answer.model,
                         usage=answer.usage,
@@ -291,7 +303,7 @@ class _ModelStep:
                     return parse(answer.content), answers
                 except AnswerError as error:
                     errors.append(str(error))
-                    user = retry_message(message, str(error))
+                    retry = retry_note(str(error))
             raise _UnfitAnswerError(errors, answers)
         finally:
             if calls:
@@ -443,14 +455,14 @@ class LlmSignal(_ModelStep):
             answer, answers = await self._ask(
                 document,
                 Node.SIGNAL_LLM,
-                PROPOSE_SYSTEM,
-                propose_message(
+                sent,
+                propose_task(
                     listed_contacts,
                     typed,
                     general,
                     tag_names,
-                    sent,
                     [(key, space.prompt_label) for key, space in spaces.items()],
+                    marker=document_marker(sent),
                 ),
                 schema,
                 PROPOSE_SCHEMA,
@@ -831,9 +843,11 @@ class FieldsNode(_ModelStep):
                 proposals, answers = await self._ask(
                     document,
                     Node.FIELDS,
-                    EXTRACT_SYSTEM,
-                    extract_message(
-                        None if document_type is None else document_type.name, keys, sent
+                    sent,
+                    extract_task(
+                        None if document_type is None else document_type.name,
+                        keys,
+                        marker=document_marker(sent),
                     ),
                     extract_schema(keys),
                     EXTRACT_SCHEMA,

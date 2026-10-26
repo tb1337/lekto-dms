@@ -6,14 +6,23 @@ base URL includes the version path; `/chat/completions` and `/embeddings` are ap
 
 - One client per adapter keeps its connections; the composition closes it (`aclose`).
 - `timeout` limits a whole request, from sending to the last byte of the answer.
+- Messages in a fixed form (the port): `messages[0]` the system prompt, `messages[1]` the
+  document, `messages[2]` the task, as the person's (`user`); after an answer that did not fit,
+  the note to answer again last. No cache marks: a proxy sets them (LiteLLM's
+  `cache_control_injection_points` by role or index), Ollama and Groq cache a shared beginning
+  themselves.
 - Structured output: `response_format` `json_schema` (strict) by default; `json_object` for
-  providers that only promise JSON. The answer is not checked here (see the port).
+  providers that only promise JSON, with the schema as a message after the task (the answer
+  must have its form; some providers put a `json_schema` before the system prompt, so a schema
+  that differs from call to call shares no beginning). The answer is not checked here (see the
+  port).
 - No retries of its own: failures raise, and the pipeline's retry policy repeats the node.
 - Neither the API key nor document content is logged; errors carry the HTTP status and a short
   excerpt of the provider's message.
 """
 
 import asyncio
+import json
 import logging
 from collections.abc import Sequence
 from typing import Any, Literal
@@ -36,6 +45,9 @@ from lekto.core.ports.llm import StructuredAnswer, StructuredRequest
 log = logging.getLogger(__name__)
 
 type ResponseFormat = Literal["json_schema", "json_object"]
+
+SCHEMA_MESSAGE = "The answer is one JSON object with this JSON Schema:\n"
+"""Before the schema, in a message of its own, where the endpoint only promises JSON."""
 
 
 class OpenAiCompatLanguageModel:
@@ -75,10 +87,7 @@ class OpenAiCompatLanguageModel:
     async def complete(self, request: StructuredRequest) -> StructuredAnswer:
         body: dict[str, Any] = {
             "model": self._model,
-            "messages": [
-                {"role": "system", "content": request.system},
-                {"role": "user", "content": request.user},
-            ],
+            "messages": self._messages(request),
             "stream": False,
             "response_format": self._response_format(request),
         }
@@ -99,6 +108,19 @@ class OpenAiCompatLanguageModel:
             fingerprint=_optional_text(data.get("system_fingerprint")),
             usage=usage,
         )
+
+    def _messages(self, request: StructuredRequest) -> list[dict[str, str]]:
+        messages = [
+            {"role": "system", "content": request.system},
+            {"role": "user", "content": request.document},
+            {"role": "user", "content": request.task},
+        ]
+        if self._format == "json_object":
+            schema = json.dumps(request.schema, ensure_ascii=False, separators=(",", ":"))
+            messages.append({"role": "user", "content": SCHEMA_MESSAGE + schema})
+        if request.retry is not None:
+            messages.append({"role": "user", "content": request.retry})
+        return messages
 
     def _response_format(self, request: StructuredRequest) -> dict[str, Any]:
         if self._format == "json_object":

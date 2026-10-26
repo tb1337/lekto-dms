@@ -172,8 +172,8 @@ def propose_context(
     spaces: Mapping[str, ListedSpace],
     schema: JsonObject,
 ) -> ModelCallContext:
-    """The context of `propose` (`PROPOSE_CONTRACT`): what the prompt `propose-5` lists, as
-    JSON, with the schema of the answer."""
+    """The context of `propose` (`PROPOSE_CONTRACT`): what the task of the prompt lists
+    (`prompts.propose_task`), as JSON, with the schema of the answer."""
     fields: dict[str, FieldDefinition] = {}
     for _, typed in document_types:
         fields.update(typed)

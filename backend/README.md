@@ -1074,8 +1074,10 @@ where it is and edits where it goes (global: admins); every version names its sp
   (a personal space by its user's name), `uploaded_by` (who uploaded it, by display name, else username),
   `channel`, `pages` and
   `field.<key>` (`FieldOut.key`, from the name: `LA_Brutto` is `la_brutto`; an amount has
-  `.amount` and `.currency`, a period `.start` and `.end`), as the rules leave the document. A
-  period writes itself in ISO 8601 by what it is (`Period.notation`): `2026-09`, `2026-W38`,
+  `.amount` and `.currency`, a period `.start` and `.end`), as the rules leave the document,
+  and its facts (`facts.<kind>` as written on one line, `facts.refers.<kind>`,
+  `facts.girocode.*`, `fact_list`; none a person rejected, none of a person's; see
+  docs/templates.md). A period writes itself in ISO 8601 by what it is (`Period.notation`): `2026-09`, `2026-W38`,
   `2026-Q3` (ISO has no short form for a quarter), `2026`, a day as `2026-09-15`, else its
   ends, `2026-09-01/2026-09-14`; `{{ field.x.start | datetime: format: 'MMMM yyyy' }}` writes
   it in words. `datetime`, `currency` and

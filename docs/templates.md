@@ -85,9 +85,13 @@ one into a field:
 
 The kinds are fixed in the code and English (`invoice_number`, `customer_number`,
 `contract_number`, `letter_date`, ...); the template editor offers them with their names. A
-fact a person rejected is missing, one they corrected gives their value. A person's numbers
-alone (tax ID, social security number, ...) are not among them. Without the fact, writing it
-is a missing value: the action sets nothing (noted, not yellow).
+fact a person rejected is missing, one they corrected gives their value as they wrote it; a
+person's decision runs the change rules, so a field a rule fills from a fact follows it. A
+person's numbers (tax ID, social security number, ..., and any a person marked as a person's)
+are not among them. A value stands on one line, as written: a line break in it is a blank, a
+soft hyphen is gone. Without the fact, writing it is a missing value: the action sets nothing
+(noted, not yellow). Saving checks the paths: `facts.invoice_numbr` or `facts.tax_id` is an
+unknown value.
 
 ## Filters
 

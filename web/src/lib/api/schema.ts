@@ -1134,7 +1134,7 @@ export interface paths {
 		};
 		/**
 		 * The documents in a stream
-		 * @description The documents the filters of `GET /documents` find among those the caller reads (with `all_users`, an admin's, every user's), in lanes: a series (one contact and type, and one contract or customer number, at a steady interval) with the relation target its documents refer to at its start and the document it expects next; branches (documents that refer to one of a series, with the chain of theirs); chains of documents related only among themselves; and the rest in one lane. At most the 500 newest documents and 24 lanes of series and chains (`truncated`).
+		 * @description The documents the filters of `GET /documents` find among those the caller reads (with `all_users`, an admin's, every user's), in lanes: a series (one contact and type, and one contract or customer number, at a steady interval) with the relation target its documents refer to at its start and the document it expects next; branches (documents that refer to one of a series or to its target, with the chain of theirs); chains of documents related only among themselves; and the rest in one lane. At most the 500 newest documents (`truncated`); beyond 24 lanes of series and chains the rest come folded.
 		 */
 		get: operations['stream_api_v1_documents_stream_get'];
 		put?: never;
@@ -8507,7 +8507,7 @@ export interface components {
 		};
 		/** StreamLaneOut */
 		StreamLaneOut: {
-			/** @description `series`; `branch` (documents that refer to one of a series, with the chain of theirs); `chain` (documents related only among themselves); `single` (documents without series and relation). */
+			/** @description `series`; `branch` (documents that refer to one of a series or to its target, with the chain of theirs); `chain` (documents related only among themselves); `single` (documents without series and relation). */
 			kind: components['schemas']['LaneKind'];
 			/**
 			 * Documents
@@ -8529,7 +8529,7 @@ export interface components {
 			 * @description The contract or customer number a series follows.
 			 */
 			number: string | null;
-			/** @description The relation target at the start of a series (the contract). */
+			/** @description The relation target at the start of a series (the contract); one may stand at the start of several. */
 			target: components['schemas']['StreamDocumentOut'] | null;
 			/** @description Of a series that has not ended: the document it expects next. */
 			expected: components['schemas']['ExpectedNextOut'] | null;
@@ -8540,37 +8540,24 @@ export interface components {
 			parent: number | null;
 			/**
 			 * Joins
-			 * @description Of a branch: the document of the series it refers to.
+			 * @description Of a branch: the document of the series (or its target) it refers to.
 			 */
 			joins: string | null;
+			/**
+			 * Folded
+			 * @description Beyond 24 lanes of series and chains, the rest (with their branches): shown on demand.
+			 */
+			folded: boolean;
 		};
 		/** StreamOut */
 		StreamOut: {
 			/** Lanes */
 			lanes: components['schemas']['StreamLaneOut'][];
 			/**
-			 * Relations
-			 * @description The set relations among its documents; the direction as stored.
-			 */
-			relations: components['schemas']['StreamRelationOut'][];
-			/**
 			 * Truncated
-			 * @description More documents (500) or lanes (24) than a stream shows: a narrower filter shows it whole.
+			 * @description More documents than a stream shows (500, the newest): a narrower filter shows it whole.
 			 */
 			truncated: boolean;
-		};
-		/** StreamRelationOut */
-		StreamRelationOut: {
-			/**
-			 * Newer
-			 * Format: uuid
-			 */
-			newer: string;
-			/**
-			 * Older
-			 * Format: uuid
-			 */
-			older: string;
 		};
 		/**
 		 * Strength

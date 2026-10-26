@@ -13,6 +13,6 @@ async def test_the_stream_of_the_caller_s_documents(api: Api) -> None:
     body = found.json()
     (lane,) = body["lanes"]
     assert (lane["kind"], [item["id"] for item in lane["documents"]]) == ("single", [first])
-    assert (body["relations"], body["truncated"]) == ([], False)
+    assert (lane["folded"], body["truncated"]) == (False, False)
     others = await api.client.get(f"{PREFIX}/documents/stream?all_users=true", headers=auth(owner))
     assert others.status_code == 403

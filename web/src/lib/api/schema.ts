@@ -2011,6 +2011,50 @@ export interface paths {
 		patch: operations['update_lens_api_v1_lenses__id__patch'];
 		trace?: never;
 	};
+	'/api/v1/documents/{id}/relations': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The relations of a document
+		 * @description Needs read access. The relations whose other end the caller reads. A relation points from the newer document to the older one (by their document dates, else when they came in). Only who reads both documents sees it; who edits the newer and reads the older sets, accepts or removes it (403 otherwise).
+		 */
+		get: operations['relations_api_v1_documents__id__relations_get'];
+		put?: never;
+		/**
+		 * Relate a document with another
+		 * @description Sets the relation between the two documents, or accepts Lekto's suggestion of it. A relation points from the newer document to the older one (by their document dates, else when they came in). Only who reads both documents sees it; who edits the newer and reads the older sets, accepts or removes it (403 otherwise). 409 if it is set already or both are the same document.
+		 */
+		post: operations['relate_api_v1_documents__id__relations_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/documents/{id}/relations/{other_id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/**
+		 * Remove a relation
+		 * @description Removes the relation between the two documents, or rejects Lekto's suggestion of it: one Lekto made is kept as rejected, so it is not suggested again. A relation points from the newer document to the older one (by their document dates, else when they came in). Only who reads both documents sees it; who edits the newer and reads the older sets, accepts or removes it (403 otherwise). 404 if they are not related.
+		 */
+		delete: operations['unrelate_api_v1_documents__id__relations__other_id__delete'];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/jobs/summary': {
 		parameters: {
 			query?: never;
@@ -6895,6 +6939,9 @@ export interface components {
 			| 'fact_not_asked'
 			| 'fact_criterion_empty'
 			| 'rule_fact_of_person'
+			| 'relation_exists'
+			| 'relation_not_found'
+			| 'relation_to_itself'
 			| 'fact_filter_of_person'
 			| 'fact_of_a_person'
 			| 'fact_not_found'
@@ -7024,6 +7071,106 @@ export interface components {
 			 *     ]
 			 */
 			recovery_codes: string[];
+		};
+		/**
+		 * RelateIn
+		 * @description The document to relate the document with; Lekto points the relation from the newer to the
+		 *     older.
+		 * @example {
+		 *       "document_id": "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b"
+		 *     }
+		 */
+		RelateIn: {
+			/**
+			 * Document Id
+			 * Format: uuid
+			 */
+			document_id: string;
+		};
+		/**
+		 * RelatedDocumentOut
+		 * @description The document at the other end of a relation, as a list shows it.
+		 */
+		RelatedDocumentOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Title */
+			title: string;
+			/** Document Type Id */
+			document_type_id: string | null;
+			/** Contact Id */
+			contact_id: string | null;
+			/** Document Date */
+			document_date: string | null;
+		};
+		/** RelatedOut */
+		RelatedOut: {
+			document: components['schemas']['RelatedDocumentOut'];
+			/** @description `person` set it, `lekto` recognised it. */
+			origin: components['schemas']['RelationOrigin'];
+			/** @description `set`, or `suggested` (a person decides). */
+			state: components['schemas']['RelationState'];
+			/**
+			 * Evidence
+			 * @description What Lekto had: `kind` of the source (`fact`, `period`, ...) and its values; empty for a person's.
+			 */
+			evidence: {
+				[key: string]: unknown;
+			};
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/**
+			 * Decided At
+			 * @description When a person last decided it.
+			 */
+			decided_at: string | null;
+			/**
+			 * Changeable
+			 * @description Whether the caller edits the newer of the two: then they accept, reject or remove it.
+			 */
+			changeable: boolean;
+		};
+		/**
+		 * RelationOrigin
+		 * @enum {string}
+		 */
+		RelationOrigin: 'person' | 'lekto';
+		/**
+		 * RelationState
+		 * @enum {string}
+		 */
+		RelationState: 'set' | 'suggested' | 'rejected';
+		/**
+		 * RelationsOut
+		 * @description The relations of a document whose other end the caller reads.
+		 */
+		RelationsOut: {
+			/**
+			 * Refers To
+			 * @description The older documents it refers to (bezieht sich auf), the newest first.
+			 */
+			refers_to: components['schemas']['RelatedOut'][];
+			/**
+			 * Referred By
+			 * @description The newer documents that refer to it (darauf beziehen sich).
+			 */
+			referred_by: components['schemas']['RelatedOut'][];
+			/**
+			 * Suggested
+			 * @description Relations Lekto suggests in either direction: a person accepts or rejects them.
+			 */
+			suggested: components['schemas']['RelatedOut'][];
+			/**
+			 * Editable
+			 * @description Whether the caller edits the document: then they relate it with another (the newer of the two must be one they edit, 403 otherwise).
+			 */
+			editable: boolean;
 		};
 		/**
 		 * RelativePeriod
@@ -23800,6 +23947,366 @@ export interface operations {
 					 *       "title": "Content Too Large",
 					 *       "status": 413,
 					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	relations_api_v1_documents__id__relations_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['RelationsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	relate_api_v1_documents__id__relations_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['RelateIn'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['RelationsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	unrelate_api_v1_documents__id__relations__other_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+				other_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['RelationsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

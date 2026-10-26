@@ -84,6 +84,7 @@ def api_context(container: Container, settings: Settings, services: Services) ->
         webhook_delivery=services.webhook_delivery,
         tasks=services.tasks,
         lenses=services.lenses,
+        relations=services.relations,
         jobs=services.jobs,
         automation=services.automation,
         event_bus=container.event_bus,

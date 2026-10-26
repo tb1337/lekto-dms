@@ -18,7 +18,7 @@ from typing import Any
 
 from lekto.core.domain.classification import DOCUMENT_DATE, field_id_of
 from lekto.core.domain.documents import Channel
-from lekto.core.domain.first_runs import FACTS, JUDGED_FIELDS, Verdict
+from lekto.core.domain.first_runs import FACTS, JUDGED_FIELDS, RELATIONS, Verdict
 from lekto.core.domain.ids import UserId
 from lekto.core.domain.pipeline import NODES, Lane, Node
 from lekto.core.domain.statistics import percentiles
@@ -311,7 +311,7 @@ def _fields(
     fields = []
     for field, found in counts.items():
         id = field_id_of(field)
-        if (id is None and field not in (*JUDGED_FIELDS, FACTS)) or (
+        if (id is None and field not in (*JUDGED_FIELDS, FACTS, RELATIONS)) or (
             id is not None and id not in names
         ):
             continue

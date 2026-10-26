@@ -320,6 +320,9 @@ class ReasonCode(StrEnum):
     FACT_NOT_ASKED = "fact_not_asked"
     FACT_CRITERION_EMPTY = "fact_criterion_empty"
     RULE_FACT_OF_PERSON = "rule_fact_of_person"
+    RELATION_EXISTS = "relation_exists"
+    RELATION_NOT_FOUND = "relation_not_found"
+    RELATION_TO_ITSELF = "relation_to_itself"
     FACT_FILTER_OF_PERSON = "fact_filter_of_person"
     FACT_OF_A_PERSON = "fact_of_a_person"
     FACT_NOT_FOUND = "fact_not_found"
@@ -780,6 +783,9 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ),
     ReasonCode.FACT_FILTER_OF_PERSON: "only admins find documents by a person's numbers",
     ReasonCode.RULE_FACT_OF_PERSON: "only admins write rules on a person's numbers",
+    ReasonCode.RELATION_EXISTS: "the documents are related already",
+    ReasonCode.RELATION_NOT_FOUND: "the documents are not related",
+    ReasonCode.RELATION_TO_ITSELF: "a document does not refer to itself",
     ReasonCode.FACT_OF_A_PERSON: "the value is one of a person's numbers",
     ReasonCode.FACT_NOT_FOUND: "the document has no fact {kind:identifier_kind} '{value}'",
     ReasonCode.FACT_EXISTS: "the document has the fact {kind:identifier_kind} '{value}' already",

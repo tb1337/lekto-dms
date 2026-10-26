@@ -5,7 +5,7 @@ import type { components } from '#lib/api/schema.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { choose, selectedValue } from '#lib/testing/select.ts';
 import { session } from '#lib/session.svelte.ts';
-import WebhookDialog from './WebhookDialog.svelte';
+import WebhookForm from './WebhookForm.svelte';
 
 type Webhook = components['schemas']['WebhookOut'];
 
@@ -64,10 +64,10 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-describe('WebhookDialog', () => {
+describe('WebhookForm', () => {
 	it('creates an unsigned webhook with a header of its own', async () => {
-		const oncreated = vi.fn();
-		render(WebhookDialog, { open: true, onsaved: () => {}, oncreated });
+		const ondone = vi.fn();
+		render(WebhookForm, { cancelHref: '/ui/webhooks', ondone });
 		await userEvent.type(screen.getByLabelText(m.field_name()), 'HA');
 		await userEvent.type(screen.getByLabelText(m.webhook_url()), stored.url);
 		await userEvent.click(screen.getByRole('button', { name: m.webhook_header_add() }));
@@ -95,11 +95,28 @@ describe('WebhookDialog', () => {
 				}
 			}
 		]);
-		expect(oncreated).toHaveBeenCalledOnce();
+		expect(ondone).toHaveBeenCalledWith('hook');
+	});
+
+	it('shows the secret of a signed webhook once, then goes on to its page', async () => {
+		fetchMock.mockImplementation(async (request) => {
+			const path = new URL(request.url).pathname;
+			sent.push({ method: request.method, path, body: await request.json().catch(() => null) });
+			return json({ ...stored, secret: 'whsec_once' }, 201);
+		});
+		const ondone = vi.fn();
+		render(WebhookForm, { cancelHref: '/ui/webhooks', ondone });
+		await userEvent.type(screen.getByLabelText(m.field_name()), 'HA');
+		await userEvent.type(screen.getByLabelText(m.webhook_url()), stored.url);
+		await userEvent.click(screen.getByRole('button', { name: m.create() }));
+		expect((await screen.findByTestId('secret')).textContent).toBe('whsec_once');
+		expect(ondone).not.toHaveBeenCalled();
+		await userEvent.click(screen.getByRole('button', { name: m.secret_done() }));
+		expect(ondone).toHaveBeenCalledWith('hook');
 	});
 
 	it('keeps untouched headers out of a change and stops signing', async () => {
-		render(WebhookDialog, { open: true, webhook: stored, onsaved: () => {}, oncreated: () => {} });
+		render(WebhookForm, { webhook: stored, cancelHref: '/ui/webhooks/hook', ondone: () => {} });
 		const value = await screen.findByLabelText(m.webhook_header_value());
 		expect((value as HTMLInputElement).placeholder).toBe(m.webhook_header_kept());
 		await userEvent.click(screen.getByLabelText(m.webhook_signed()));
@@ -112,7 +129,7 @@ describe('WebhookDialog', () => {
 	});
 
 	it('sends all headers when one changes, an empty value keeping the stored one', async () => {
-		render(WebhookDialog, { open: true, webhook: stored, onsaved: () => {}, oncreated: () => {} });
+		render(WebhookForm, { webhook: stored, cancelHref: '/ui/webhooks/hook', ondone: () => {} });
 		await screen.findByLabelText(m.webhook_header_value());
 		await userEvent.click(screen.getByRole('button', { name: m.webhook_header_add() }));
 		const names = screen.getAllByLabelText(m.webhook_header_name());
@@ -127,7 +144,7 @@ describe('WebhookDialog', () => {
 	});
 
 	it('sends a template body', async () => {
-		render(WebhookDialog, { open: true, webhook: stored, onsaved: () => {}, oncreated: () => {} });
+		render(WebhookForm, { webhook: stored, cancelHref: '/ui/webhooks/hook', ondone: () => {} });
 		await screen.findByLabelText(m.webhook_header_value());
 		await userEvent.click(screen.getByRole('button', { name: m.webhook_body_template() }));
 		expect(screen.getByText(m.webhook_body_template_hint())).toBeTruthy();
@@ -136,7 +153,7 @@ describe('WebhookDialog', () => {
 	});
 
 	it('changes how many tasks the webhook takes at a time', async () => {
-		render(WebhookDialog, { open: true, webhook: stored, onsaved: () => {}, oncreated: () => {} });
+		render(WebhookForm, { webhook: stored, cancelHref: '/ui/webhooks/hook', ondone: () => {} });
 		const field = await screen.findByLabelText(m.webhook_open_tasks());
 		await userEvent.clear(field);
 		await userEvent.type(field, '65');
@@ -149,7 +166,7 @@ describe('WebhookDialog', () => {
 	});
 
 	it('shows users no model call', async () => {
-		render(WebhookDialog, { open: true, onsaved: () => {}, oncreated: () => {} });
+		render(WebhookForm, { cancelHref: '/ui/webhooks', ondone: () => {} });
 		await screen.findByLabelText(m.field_name());
 		expect(screen.queryByLabelText(m.webhook_model_call())).toBeNull();
 	});
@@ -161,7 +178,7 @@ describe('WebhookDialog', () => {
 			expires_at: '2026-10-26T12:00:00Z',
 			csrf_token: 'token'
 		});
-		render(WebhookDialog, { open: true, webhook: stored, onsaved: () => {}, oncreated: () => {} });
+		render(WebhookForm, { webhook: stored, cancelHref: '/ui/webhooks/hook', ondone: () => {} });
 		const user = userEvent.setup();
 		await choose(
 			user,
@@ -186,7 +203,7 @@ describe('WebhookDialog', () => {
 			csrf_token: 'token'
 		});
 		const serving = { ...stored, model_call: { kind: 'extract' as const, timeout_seconds: 300 } };
-		render(WebhookDialog, { open: true, webhook: serving, onsaved: () => {}, oncreated: () => {} });
+		render(WebhookForm, { webhook: serving, cancelHref: '/ui/webhooks/hook', ondone: () => {} });
 		const user = userEvent.setup();
 		const field = await screen.findByRole('combobox', { name: m.webhook_model_call() });
 		expect(selectedValue(field)).toBe('extract');

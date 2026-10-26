@@ -68,6 +68,14 @@ describe('stepSummary', () => {
 		expect(summary('parse', { characters: 14236 })).toBe(m.summary_characters({ count: '14,236' }));
 	});
 
+	it('tells how many relations were set and suggested', () => {
+		expect(summary('relate', { relations: [] })).toBe(m.summary_relations_none());
+		const relations = [{ state: 'set' }, { state: 'suggested' }, { state: 'set' }];
+		expect(summary('relate', { relations })).toBe(
+			m.summary_relations({ set: '2', suggested: '1' })
+		);
+	});
+
 	it('tells what the signals proposed', () => {
 		const proposal = {
 			sender: { value: 'Schwälmer Brotladen' },

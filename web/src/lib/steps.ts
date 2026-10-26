@@ -26,6 +26,7 @@ const PHASE_OF: Record<Node, Phase> = {
 	signal_facts: 'recognise',
 	judge: 'decide',
 	fields: 'decide',
+	relate: 'decide',
 	apply_rules: 'file',
 	file: 'file'
 };

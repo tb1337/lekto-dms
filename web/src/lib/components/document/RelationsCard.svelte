@@ -103,8 +103,17 @@
 				value: String(found.value ?? '')
 			});
 		}
+		if (found.kind === 'target' && typeof found.fact_kind === 'string') {
+			return m.relations_evidence_target({
+				kind: labelOfKind(found.fact_kind),
+				value: String(found.value ?? '')
+			});
+		}
 		if (found.kind === 'period' && typeof found.period === 'string') {
 			return m.relations_evidence_period({ period: found.period });
+		}
+		if (found.kind === 'letter_date' && typeof found.date === 'string') {
+			return m.relations_evidence_letter({ date: formatDate(found.date) });
 		}
 		return m.relations_by_lekto();
 	}

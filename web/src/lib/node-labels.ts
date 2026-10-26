@@ -15,6 +15,7 @@ export const NODE_LABELS: Record<Node, () => string> = {
 	signal_facts: m.node_signal_facts,
 	judge: m.node_judge,
 	fields: m.node_fields,
+	relate: m.node_relate,
 	apply_rules: m.node_apply_rules,
 	file: m.node_file
 };

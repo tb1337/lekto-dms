@@ -99,6 +99,7 @@ from lekto.core.services.classification.signals import (
 )
 from lekto.core.services.classifier import ClassifierPolicy, ClassifierService
 from lekto.core.services.documents import DocumentService
+from lekto.core.services.expected import ExpectedService
 from lekto.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
 from lekto.core.services.inbox import InboxService
 from lekto.core.services.indexing import IndexingPolicy, IndexingService
@@ -494,6 +495,7 @@ class Services:
     tasks: TaskService
     lenses: LensService
     relations: RelationService
+    expected: ExpectedService
     documents: DocumentService
     inbox: InboxService
     pipeline: PipelineService
@@ -772,6 +774,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         ),
         lenses=LensService(uow, clock),
         relations=RelationService(uow, clock),
+        expected=ExpectedService(uow, clock),
         tasks=TaskService(uow, clock, container.cipher, store),
         jobs=JobsService(uow, clock, retention=settings.retention),
         automation=AutomationService(uow, clock),

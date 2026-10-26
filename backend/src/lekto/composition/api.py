@@ -85,6 +85,7 @@ def api_context(container: Container, settings: Settings, services: Services) ->
         tasks=services.tasks,
         lenses=services.lenses,
         relations=services.relations,
+        expected=services.expected,
         jobs=services.jobs,
         automation=services.automation,
         event_bus=container.event_bus,

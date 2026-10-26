@@ -203,6 +203,16 @@
 	"search_reindex_confirm_title": "Rebuild the search index?",
 	"search_reindex_confirm_text": "While it rebuilds, Lekto searches by words only, not by meaning. With many documents it takes hours; the search keeps working meanwhile.",
 	"search_reindex_queued": "Rebuild queued",
+	"automation_first_info": "Every document counts by the lane its first run stopped in: green means Lekto filed it without asking; yellow, a person had to review; red, a step failed. The documents of the chosen channels in the chosen period count.",
+	"automation_duration_info": "Turnaround: from receipt until the first run stopped (filed or a review). Work: only the time a worker spent on the document, without waiting for a worker. Median and P90 over the counted documents.",
+	"automation_flow_info": "From the lane after the first run to today’s: what people made of yellow and red documents and whether green documents became yellow again later.",
+	"automation_months_info": "The documents per month of their receipt by the lane of their first run, in your time zone. It shows whether more gets through without a review over time.",
+	"automation_hits_info": "Per field: how often the value of the first run stood at a person’s first decision (taken over or the suggestion accepted). Green documents nobody touched do not count: they were not contradicted, but not confirmed either.",
+	"automation_steps_info": "How long each step of the first run took per document, median and P90. The longest bar shows where the time goes.",
+	"classifier_model_info": "The model learns contact, type, topic, tags and space from confirmed documents and suggests them for new ones. The accuracy comes from examples held back at training.",
+	"classifier_next_info": "Lekto trains by itself once enough new confirmed documents came in since the last model; the bar shows the way there. “Train now” does not wait for that.",
+	"classifier_history_info": "The accuracy of every model, tested at training on examples it has not seen. When it stops rising, more and more varied confirmed documents help.",
+	"classifier_signals_info": "How often a signal’s best suggestion was the value the person confirmed at the first decision; below, how often the signal suggested anything at all. In operation over web and API, the last twelve months. Only the language model reads the date.",
 	"job_kind_pipeline_node": "Processing step",
 	"job_kind_pipeline_catch_up": "Catching up a step",
 	"job_kind_pipeline_reparse": "Reading the text again",
@@ -2383,6 +2393,5 @@
 	"action_move_document": "move this document",
 	"action_delete_document": "delete this document",
 	"action_reset_own_password": "reset their own password here",
-	"action_turn_off_own_totp": "turn off their own two-factor sign-in here",
-	"classifier_signals_text": "How often a signal's best suggestion was the value the person confirmed at their first decision. Below: how often the signal suggested anything at all."
+	"action_turn_off_own_totp": "turn off their own two-factor sign-in here"
 }

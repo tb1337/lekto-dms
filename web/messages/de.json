@@ -203,6 +203,16 @@
 	"search_reindex_confirm_title": "Suchindex neu aufbauen?",
 	"search_reindex_confirm_text": "Während des Neuaufbaus sucht Lekto nur nach Wörtern, nicht nach Bedeutung. Bei vielen Dokumenten dauert es Stunden; die Suche bleibt dabei nutzbar.",
 	"search_reindex_queued": "Neuaufbau eingereiht",
+	"automation_first_info": "Jedes Dokument zählt nach der Lane, in der sein erster Lauf hielt: Grün heißt, Lekto hat ohne Rückfrage abgelegt; Gelb, eine Person musste prüfen; Rot, ein Schritt schlug fehl. Gezählt werden die Dokumente der gewählten Kanäle im gewählten Zeitraum.",
+	"automation_duration_info": "Durchlaufzeit: vom Eingang, bis der erste Lauf hielt (abgelegt oder Rückfrage). Arbeitszeit: nur die Zeit, in der ein Worker am Dokument arbeitete, ohne das Warten auf einen Worker. Median und P90 über die gezählten Dokumente.",
+	"automation_flow_info": "Von der Lane nach dem ersten Lauf zur heutigen: was Personen aus gelben und roten Dokumenten machten und ob grüne Dokumente später noch einmal gelb wurden.",
+	"automation_months_info": "Die Dokumente je Monat ihres Eingangs nach der Lane ihres ersten Laufs, in Ihrer Zeitzone. So sieht man, ob mit der Zeit mehr ohne Rückfrage durchkommt.",
+	"automation_hits_info": "Je Feld: wie oft der Wert des ersten Laufs beim ersten Entscheid einer Person stand (übernommen oder der Vorschlag angenommen). Grüne Dokumente, die niemand anfasste, zählen nicht: ihnen wurde nicht widersprochen, sie wurden aber auch nicht bestätigt.",
+	"automation_steps_info": "Wie lange jeder Schritt des ersten Laufs je Dokument brauchte, Median und P90. Der längste Balken zeigt, wo die Zeit bleibt.",
+	"classifier_model_info": "Das Modell lernt aus bestätigten Dokumenten Kontakt, Typ, Thema, Tags und Space und schlägt sie für neue vor. Die Genauigkeit stammt aus Beispielen, die beim Training zurückgehalten wurden.",
+	"classifier_next_info": "Lekto trainiert von selbst, sobald seit dem letzten Modell genug neue bestätigte Dokumente da sind; der Balken zeigt den Weg dorthin. „Jetzt trainieren“ wartet nicht darauf.",
+	"classifier_history_info": "Die Genauigkeit jedes Modells, getestet beim Training auf Beispielen, die es nicht gesehen hat. Steigt sie nicht mehr, helfen mehr und vielfältigere bestätigte Dokumente.",
+	"classifier_signals_info": "Wie oft der beste Vorschlag eines Signals der Wert war, den die Person beim ersten Entscheid bestätigt hat; darunter, wie oft das Signal überhaupt etwas vorgeschlagen hat. Im Betrieb über Web und API, die letzten zwölf Monate. Das Datum liest nur das Sprachmodell.",
 	"job_kind_pipeline_node": "Verarbeitungsschritt",
 	"job_kind_pipeline_catch_up": "Schritt nachholen",
 	"job_kind_pipeline_reparse": "Text neu lesen",
@@ -2383,6 +2393,5 @@
 	"action_move_document": "dieses Dokument verschieben",
 	"action_delete_document": "dieses Dokument löschen",
 	"action_reset_own_password": "ihr eigenes Passwort zurücksetzen",
-	"action_turn_off_own_totp": "ihre eigene Zwei-Faktor-Anmeldung ausschalten",
-	"classifier_signals_text": "Wie oft der beste Vorschlag eines Signals der Wert war, den die Person beim ersten Entscheid bestätigt hat. Darunter: wie oft das Signal überhaupt etwas vorgeschlagen hat."
+	"action_turn_off_own_totp": "ihre eigene Zwei-Faktor-Anmeldung ausschalten"
 }

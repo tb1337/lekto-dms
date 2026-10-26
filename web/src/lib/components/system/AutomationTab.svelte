@@ -8,6 +8,7 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { fieldLabel } from '#lib/describe.ts';
+	import InfoTip from '#lib/components/InfoTip.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import * as Chart from '#lib/components/ui/chart/index.ts';
 	import { formatDuration } from '#lib/duration.ts';
@@ -238,6 +239,15 @@
 		`${Math.max(least, (100 * (ms ?? 0)) / longest).toFixed(1)}%`;
 </script>
 
+{#snippet heading(text: string, about: string)}
+	<div class="flex items-center gap-1">
+		<h2 class="font-semibold">{text}</h2>
+		<InfoTip label={m.hint_about({ name: text })} size="sm" class="w-80">
+			<p>{about}</p>
+		</InfoTip>
+	</div>
+{/snippet}
+
 {#snippet verdictBar(field: Field, height: string)}
 	<div
 		role="img"
@@ -315,8 +325,8 @@
 			<section
 				class="flex min-w-0 flex-[2_1_520px] flex-col gap-4 rounded-2xl border bg-card px-5 py-4 sm:px-6"
 			>
-				<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-					<h2 class="font-semibold">{m.automation_first_title()}</h2>
+				<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+					{@render heading(m.automation_first_title(), m.automation_first_info())}
 					<span class="text-[0.8125rem] text-muted-foreground">{scope}</span>
 				</div>
 				{#if total === 0}
@@ -367,7 +377,7 @@
 			<section
 				class="flex min-w-0 flex-[1_1_260px] flex-col rounded-2xl border bg-card px-5 py-4 sm:px-6"
 			>
-				<h2 class="font-semibold">{m.automation_duration_title()}</h2>
+				{@render heading(m.automation_duration_title(), m.automation_duration_info())}
 				<span class="text-[0.8125rem] text-muted-foreground">{m.automation_duration_hint()}</span>
 				<div class="mt-4 flex items-baseline gap-2">
 					<span class="text-[1.875rem] font-semibold tracking-tight tabular-nums">
@@ -391,8 +401,8 @@
 
 		{#if flows.length}
 			<section class="rounded-2xl border bg-card px-5 py-4 sm:px-6">
-				<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-					<h2 class="font-semibold">{m.automation_flow_title()}</h2>
+				<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+					{@render heading(m.automation_flow_title(), m.automation_flow_info())}
 					<span class="text-[0.8125rem] text-muted-foreground">{m.automation_flow_hint()}</span>
 				</div>
 				<div class="mt-4 flex flex-col gap-4">
@@ -430,8 +440,8 @@
 		{/if}
 
 		<section class="rounded-2xl border bg-card px-5 py-4 sm:px-6">
-			<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<h2 class="font-semibold">{m.automation_months_title()}</h2>
+			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+				{@render heading(m.automation_months_title(), m.automation_months_info())}
 				<span class="text-[0.8125rem] text-muted-foreground">
 					{#if shares.length > 1}
 						{m.automation_months_share({
@@ -475,8 +485,8 @@
 		</section>
 
 		<section class="rounded-2xl border bg-card px-5 py-4 sm:px-6">
-			<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<h2 class="font-semibold">{m.automation_hits_title()}</h2>
+			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+				{@render heading(m.automation_hits_title(), m.automation_hits_info())}
 				<span class="text-[0.8125rem] text-muted-foreground">{m.automation_hits_hint()}</span>
 			</div>
 			<p class="mt-2 max-w-3xl text-[0.8125rem] text-muted-foreground">
@@ -510,7 +520,7 @@
 				>
 					{#each fixed as field (field.field)}
 						<div class="flex min-w-0 flex-col gap-1.5">
-							<div class="flex items-baseline justify-between gap-3">
+							<div class="flex items-center justify-between gap-3">
 								<span class="font-medium">
 									{fieldLabel(field.field, null)}
 									<span class="text-xs font-normal text-muted-foreground">
@@ -566,7 +576,7 @@
 							>
 								{#each allCustom ? custom : custom.slice(0, SHOWN_CUSTOM) as field (field.field)}
 									<div class="flex min-w-0 flex-col gap-[5px]">
-										<div class="flex items-baseline justify-between gap-3 text-[0.8125rem]">
+										<div class="flex items-center justify-between gap-3 text-[0.8125rem]">
 											<span class="min-w-0 truncate">
 												{field.name}
 												<span class="text-xs text-muted-foreground">
@@ -602,8 +612,8 @@
 
 		{#if report.steps.length}
 			<section class="rounded-2xl border bg-card px-5 py-4 sm:px-6">
-				<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-					<h2 class="font-semibold">{m.automation_steps_title()}</h2>
+				<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+					{@render heading(m.automation_steps_title(), m.automation_steps_info())}
 					<span class="text-[0.8125rem] text-muted-foreground">{m.automation_steps_hint()}</span>
 				</div>
 				<div

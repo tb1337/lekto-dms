@@ -29,7 +29,10 @@ from lekto.core.domain.codes import (
     codes_from_json,
     codes_to_json,
 )
-from lekto.core.domain.document_facts import DocumentFact, found_facts
+from lekto.core.domain.document_facts import (
+    DocumentFact,
+    ReadFact,
+)
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import (
     ClassifierError,
@@ -39,7 +42,7 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.facts import NAME, Strength, facts_in
-from lekto.core.domain.identifiers import IdentifierKind, identifiers_in, places_in, referred_in
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId, UserId
 from lekto.core.domain.json_value import (
     JsonObject,
@@ -52,7 +55,7 @@ from lekto.core.domain.json_value import (
 )
 from lekto.core.domain.master_data import Contact
 from lekto.core.domain.permissions import Reach, reach_access
-from lekto.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
+from lekto.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome, ProcessingHistory
 from lekto.core.domain.profiles import Person
 from lekto.core.domain.reasons import Reason, ReasonCode, because, written
 from lekto.core.domain.search import Visibility
@@ -72,7 +75,8 @@ from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.search_index import SearchIndex, SimilarQuery
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._spaces import SpaceCandidates, space_candidates
-from lekto.core.services.classification.answers import StoredProposal
+from lekto.core.services.classification.answers import StoredProposal, read_fact_from_json
+from lekto.core.services.classification.kept_facts import READ_FACTS, TextFacts, keep_facts
 from lekto.core.services.classifier import ClassifierService
 from lekto.core.services.indexing import split_sections
 from lekto.core.services.nodes import ARCHIVE_FILE, work_directory
@@ -87,6 +91,13 @@ ABSTAINED_REASON = "abstained_reason"
 """Key of the same with its code (`Reason.to_json`)."""
 PROPOSAL = "proposal"
 """Key of the language model's proposal (`StoredProposal`) in the output of `signal_llm`."""
+MODEL_FACTS = "facts"
+"""Key of the facts with their role the language model read, in the output of `signal_llm`
+(`facts-1`; `document_facts.ReadFact` as JSON, unchecked)."""
+FACTS_ERROR = "facts_error"
+"""Why the language model read no facts, in the output of `signal_llm`."""
+FACTS_INPUT = "facts_prompt"
+"""The version of the facts prompt, in the input of `signal_llm`."""
 FACTS = "facts"
 _RANKED = 5  # classes of contact and type the classifier's signal keeps
 _CANDIDATES_MASS = 0.5  # the candidate spaces hold this much of the classifier's: renormalised
@@ -123,8 +134,8 @@ class FactsSignal:
     the document (`codes_key`); the OCR node drops them with a new archive. A code that cannot
     be read never fails the signal. The identifiers found are the document's facts, with
     where they come from (the text's patterns, a code) and the role of their kind
-    (`domain.document_facts`), kept with the result (`DocumentFactRepository.replace_found`: a
-    person's decisions stay)."""
+    (`domain.document_facts`), kept with the result together with the facts the language model
+    read as the log has them then (`kept_facts`; a person's decisions stay)."""
 
     def __init__(
         self, uow: UnitOfWorkFactory, store: ObjectStore, codes: CodeReader | None = None
@@ -145,15 +156,12 @@ class FactsSignal:
         output = await asyncio.to_thread(facts_of, text, contacts, codes or (), persons)
         if codes is not None:
             output["codes"] = len(codes)
-        in_text = await asyncio.to_thread(identifiers_in, text)
         in_codes: set[tuple[IdentifierKind, str]] = set()
         for code in codes or ():
             in_codes |= code_identifiers(code)
-        places = await asyncio.to_thread(places_in, text)
-        referred = await asyncio.to_thread(referred_in, text)
-        found = await asyncio.to_thread(found_facts, text, in_text, in_codes, places, referred)
+        read = await TextFacts.read(text)
         result = NodeResult(outcome=Outcome.OK, model_version=FACTS, output=output)
-        return FactsResult(result, found)
+        return FactsResult(result, read.found(in_codes), read, frozenset(in_codes))
 
     async def codes(self, document: Document) -> tuple[Code, ...] | None:
         """The codes on the archive's pages, read before or now; None without a reader, an
@@ -189,19 +197,26 @@ class FactsSignal:
 
 @dataclass(frozen=True)
 class FactsResult:
-    """The signal's result, and the facts the document shows: kept for it when the result is
-    recorded."""
+    """The signal's result, and the facts the document shows (`facts`: of its patterns and
+    codes): kept for it when the result is recorded, with the facts the language model read as
+    the log has them then (`kept_facts`)."""
 
     result: NodeResult
     facts: tuple[DocumentFact, ...]
+    text: TextFacts
+    in_codes: frozenset[tuple[IdentifierKind, str]] = frozenset()
 
     @property
     def output(self) -> JsonObject:
         return self.result.output
 
     async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
-        await uow.document_facts.replace_found(document.id, self.facts)
-        return self.result
+        log = await uow.processing_log.list_for(document.id)
+        read = model_facts(ProcessingHistory(log).signals())
+        report = await keep_facts(uow, document.id, self.text, read, in_codes=self.in_codes)
+        if report is None:
+            return self.result
+        return replace(self.result, output=self.result.output | {READ_FACTS: report})
 
 
 def facts_of(
@@ -475,6 +490,18 @@ def signals_of(entries: Mapping[Node, NodeRun]) -> Signals:
         facts=_facts_view(output(Node.SIGNAL_FACTS)),
         neighbours_know=_known_view(neighbours),
     )
+
+
+def model_facts(entries: Mapping[Node, NodeRun]) -> list[ReadFact] | None:
+    """The facts with their role the language model read (`facts-1`), unchecked; None if it
+    read none (no model, a webhook, an answer from before #145, or the call went wrong)."""
+    entry = entries.get(Node.SIGNAL_LLM)
+    if entry is None:
+        return None
+    items = entry.result.output.get(MODEL_FACTS)
+    if not isinstance(items, list):
+        return None
+    return [fact for fact in map(read_fact_from_json, items) if fact is not None]
 
 
 def model_proposal(entries: Mapping[Node, NodeRun]) -> StoredProposal | None:

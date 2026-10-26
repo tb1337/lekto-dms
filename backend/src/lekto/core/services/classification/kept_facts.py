@@ -1,0 +1,126 @@
+"""Keeping a document's facts (`domain.document_facts`) from both readers: the patterns and
+codes of `signal_facts`, and the facts with their role the language model read in `signal_llm`
+(`facts-1`). The two signals run side by side, so whichever stores its result merges both: the
+facts signal the model's latest facts from the log, the model's signal the codes already kept.
+One lock per document keeps two stores from overwriting each other's half; a person's decisions
+stay either way (`DocumentFactRepository.replace_found`)."""
+
+import asyncio
+from collections.abc import Collection, Iterable
+from dataclasses import dataclass
+
+from lekto.core.domain.document_facts import (
+    DocumentFact,
+    FactOrigin,
+    FactRole,
+    ReadFact,
+    checked_read,
+    found_facts,
+    with_read,
+)
+from lekto.core.domain.identifiers import (
+    TYPES,
+    IdentifierKind,
+    Key,
+    identifiers_in,
+    places_in,
+    referred_in,
+)
+from lekto.core.domain.ids import DocumentId
+from lekto.core.domain.json_value import JsonObject
+from lekto.core.domain.reasons import Reason
+from lekto.core.ports.unit_of_work import UnitOfWork
+from lekto.core.services._identifiers import person_identifiers
+from lekto.core.services.classification.prompts import FACT_KINDS, FACT_ROLES
+
+READ_FACTS = "read_facts"
+"""Key of what became of the language model's facts in the output of the signal that kept them:
+how many were taken, and those refused with why."""
+
+_KINDS: frozenset[IdentifierKind] = frozenset(FACT_KINDS)
+_ROLES: frozenset[FactRole] = frozenset(FACT_ROLES)
+
+
+def facts_lock(document: DocumentId) -> str:
+    return f"document-facts:{document}"
+
+
+@dataclass(frozen=True)
+class TextFacts:
+    """What the patterns read in a document's text (`identifiers_in`, `places_in`,
+    `referred_in`), read outside the transaction that keeps the facts."""
+
+    text: str
+    in_text: frozenset[Key]
+    places: dict[Key, int]
+    referred: frozenset[Key]
+
+    @classmethod
+    async def read(cls, text: str) -> "TextFacts":
+        def reading() -> "TextFacts":
+            return cls(
+                text,
+                frozenset(identifiers_in(text)),
+                places_in(text),
+                frozenset(referred_in(text)),
+            )
+
+        # Every kind's patterns over a long text take a while: not in the loop.
+        return await asyncio.to_thread(reading)
+
+    def found(self, in_codes: Iterable[Key] = ()) -> tuple[DocumentFact, ...]:
+        """The facts of the patterns and of the codes on the pages (`in_codes`)."""
+        return found_facts(self.text, self.in_text, in_codes, self.places, self.referred)
+
+
+def merged_facts(
+    text: TextFacts,
+    in_codes: Collection[Key],
+    read: Iterable[ReadFact] | None,
+    personal: Collection[Key],
+) -> tuple[list[DocumentFact], JsonObject | None]:
+    """The facts of the patterns and codes, with those the model read that pass their check
+    (`checked_read`: of the kinds and roles it was asked for, none of a person's), and the
+    report of the model's facts (None without them)."""
+    found = text.found(in_codes)
+    if read is None:
+        return list(found), None
+    checked = [
+        (
+            fact,
+            checked_read(text.text, fact, kinds=_KINDS, roles=_ROLES, personal=personal),
+        )
+        for fact in read
+    ]
+    taken = [item for _, item in checked if isinstance(item, DocumentFact)]
+    report: JsonObject = {
+        "taken": len(taken),
+        "refused": [
+            {"kind": fact.kind, "value": fact.value, "reason": item.to_json()}
+            for fact, item in checked
+            if isinstance(item, Reason)
+        ],
+    }
+    return with_read(found, taken), report
+
+
+async def keep_facts(
+    uow: UnitOfWork,
+    document: DocumentId,
+    text: TextFacts,
+    read: Iterable[ReadFact] | None,
+    *,
+    in_codes: Collection[Key] | None = None,
+) -> JsonObject | None:
+    """Keep the document's facts in `uow` (`merged_facts`): `in_codes` the identifiers of its
+    codes (None: those kept already, the model's signal reads no codes). The users' numbers
+    and the person's kinds in the text are a person's. Returns the report of the model's facts."""
+    await uow.lock(facts_lock(document))
+    if in_codes is None:
+        kept = await uow.document_facts.of_document(document)
+        in_codes = {fact.key for fact in kept if FactOrigin.CODE in fact.origins}
+    personal = {key for key in text.in_text if TYPES[key[0]].for_persons}
+    personal |= await person_identifiers(uow)
+    facts, report = merged_facts(text, in_codes, read, personal)
+    await uow.document_facts.replace_found(document, facts)
+    return report

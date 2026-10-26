@@ -493,7 +493,19 @@ and the space, the fields node reads the fields of the decided type and the titl
   JSON schema (`response_format` `json_schema`, or `json_object` for providers without schema
   support); an answer that does not fit is asked for once more, then the signal fails (red).
   Without a configured model (`LEKTO_LLM_BASE_URL` and `LEKTO_LLM_MODEL`) it abstains with "no language
-  model is configured", and a person classifies.
+  model is configured", and a person classifies. After the proposal it asks a second time on the
+  same beginning (system prompt and document; prompt `facts-1`, issue #145 PR 5): the facts of
+  the document with their role, each of a listed kind (no person's number, nothing the patterns
+  read surely such as IBAN or VAT ID), the value as written, the quoted passage and its label. A
+  provider's prompt cache serves the second request where the schema of the answer does not
+  stand before the system prompt (`LEKTO_LLM_RESPONSE_FORMAT=json_object`, or a local server
+  that turns the schema into a grammar); with `json_schema` at OpenAI or a Claude model the
+  schemas differ and the document is paid twice. What goes wrong with this request (an unfit
+  answer twice, an error, also one that would pass with time such as a rate limit) is in the
+  output (`facts_error`) and never fails the signal: the document keeps the facts of the
+  patterns, and asking the model again reads them. A webhook that answers `propose` reads no
+  facts: there is no model call `facts` for webhooks (yet). The job of a node is held for four
+  model requests in a row (`LEKTO_LLM_TIMEOUT` each).
 - **The form of a request** (`StructuredRequest`, issue #145): every call to the model sends
   `messages[0]` the system prompt, the same for every call (`prompts.SYSTEM`: data, not
   instructions; one JSON object; no invented values; quotes and labels); `messages[1]` the
@@ -551,10 +563,20 @@ and the space, the fields node reads the fields of the decided type and the titl
   text, which proposes nothing alone. Reading the codes may fail; the signal warns and goes on
   without them. The identifiers the document shows are its facts (`document_facts`, issue
   #145, `domain.document_facts`): kind and normalised value, the role (`contact`, `target`,
-  `own`, `thread`, `refers`, `person`; until the language model reads facts, the role of the
-  kind), where it comes from (`pattern`, `code`, later `model`, `person`), as written and
+  `own`, `thread`, `refers`, `person`; the role of the kind unless the language model read the
+  fact), where it comes from (`pattern`, `code`, `model`, `person`), as written and
   where it stands first in the text (reading order), and whether a person decided it. A run of
-  the signal replaces the facts found before; a person's decision stays. The facts tell on the
+  the signal replaces the facts found before; a person's decision stays. The facts the language
+  model read are checked as a field's value is: of a kind and in a role it was asked for, a
+  value of the kind standing in the text, a quoted passage of the text that shows it (for the
+  day of a letter, one that names the letter), and none of a person's numbers under whatever
+  kind (the person's kinds in the text, the users' profiles); a fact of the same kind and value
+  as a pattern's is one fact with both origins, in the model's role (a reminder's
+  "Rechnungsnummer" of the invoice it reminds of is `refers`). The two signals run side by side:
+  whichever stores its result last keeps both readers' facts (`kept_facts`: the facts signal
+  takes the model's from the log, the model's signal the codes already kept; one lock per
+  document), and names how many of the model's it took and those it refused with why
+  (`read_facts`). The facts tell on the
   confirmed documents of how many contacts an identifier stands; `GET /documents/{id}/facts`
   names each identifier's `role` and `origins`. Revision 0047 takes over the rows of
   `document_identifiers` (role of their kind, origin `pattern`).
@@ -565,7 +587,8 @@ and the space, the fields node reads the fields of the decided type and the titl
   refers to (contract, policy, membership, meter, loan number, mandate reference, licence plate;
   a contact's, which may name a user), mark the document (invoice, credit note, order number),
   join a strand (file reference, "Unser Zeichen", claim, ticket number), refer to a document
-  ("Ihr Zeichen"), point to a person (child benefit number). Each is found after its labels
+  ("Ihr Zeichen", the day of the addressee's letter "Ihr Schreiben vom 18.06.2026" as
+  `letter_date`), point to a person (child benefit number). Each is found after its labels
   (German and English); a number written after "Ihr", "Ihre" or "your" ("Ihre Rechnung Nr.
   4711") refers to another's document (role `refers`). The customer number lost the labels of
   contracts, policies and memberships; a contact's customer number still matches those kinds

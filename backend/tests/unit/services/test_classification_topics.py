@@ -88,7 +88,7 @@ async def test_the_model_is_asked_for_a_topic_of_the_contacts_it_sees(world: Wor
     assert result.input["prompt"] == "propose-6"
     assert result.input["topics_listed"] == 2
     assert output(result)["proposal"]["topic"] == "Arbeit"
-    (request,) = fake.requests
+    request, _facts = fake.requests
     # Only the listed contact's topics the classification sets, not one set by hand.
     assert "- Nord Versicherungsgruppe AG — topics: Arbeit; Krankenversicherung\n" in request.task
     assert "Girokonto" not in request.task and "Privat" not in request.task

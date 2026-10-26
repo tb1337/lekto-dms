@@ -396,6 +396,7 @@ async def test_the_model_exchanges_are_listed_per_run(api: Api) -> None:
                     "document": "",
                     "task": "",
                     "retry": None,
+                    "request": "",
                     "answer": "{}",
                     "model": "m",
                     "usage": {"total_tokens": 9},

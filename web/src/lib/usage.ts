@@ -17,7 +17,10 @@ export interface Usage {
 	duration: number | null;
 	/** Other figures of the report, as it named them. */
 	extra: [string, string][];
+	/** The attempts of the node's first request (once more after an unfit answer). */
 	attempts: number;
+	/** The requests about the document: the first, and further ones (`request`: the facts). */
+	requests: number;
 }
 
 const KNOWN = new Set([
@@ -37,7 +40,13 @@ const KNOWN = new Set([
 	'approximate_total'
 ]);
 
-type Attempt = { prompt?: unknown; completion?: unknown; cached?: unknown; usage?: unknown };
+type Attempt = {
+	prompt?: unknown;
+	completion?: unknown;
+	cached?: unknown;
+	usage?: unknown;
+	request?: unknown;
+};
 
 function number(value: unknown): number | null {
 	return typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -89,7 +98,8 @@ export function usageOf(output: Record<string, unknown>): Usage | null {
 		generation: seconds('eval_duration'),
 		duration: seconds('total_duration'),
 		extra,
-		attempts: attempts.length
+		attempts: attempts.filter((attempt) => attempt.request === undefined).length,
+		requests: new Set(attempts.map((attempt) => String(attempt.request ?? ''))).size
 	};
 	const empty = [usage.input, usage.output, usage.total, usage.duration].every(
 		(value) => value === null

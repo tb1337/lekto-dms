@@ -18,6 +18,7 @@ from lekto.core.domain.identifiers.file_reference import FileReference
 from lekto.core.domain.identifiers.health_insurance_number import HealthInsuranceNumber
 from lekto.core.domain.identifiers.iban import Iban
 from lekto.core.domain.identifiers.invoice_number import InvoiceNumber
+from lekto.core.domain.identifiers.letter_date import LetterDate
 from lekto.core.domain.identifiers.license_plate import LicensePlate
 from lekto.core.domain.identifiers.loan_number import LoanNumber
 from lekto.core.domain.identifiers.mandate_reference import MandateReference
@@ -64,6 +65,7 @@ TYPES: Mapping[IdentifierKind, IdentifierType] = {
         ClaimNumber(),
         TicketNumber(),
         YourReference(),
+        LetterDate(),
         ChildBenefitNumber(),
     )
 }

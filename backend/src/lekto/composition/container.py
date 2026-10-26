@@ -506,10 +506,17 @@ VISION_REQUEST_TIMEOUT = timedelta(minutes=5)
 """How long the vision language model may take for one page."""
 
 
+MODEL_CALLS_PER_NODE = 4
+"""The most requests to the language model one node makes in a row: the proposal and the facts
+of `signal_llm` (#145), each once more after an unfit answer."""
+
+
 def node_lease(settings: Settings) -> timedelta:
     """How long a worker holds the job of a node: longer than any node may take, except the
     OCR of a document the vision model reads (`vision_lease`)."""
-    return max(settings.ocr_timeout, 2 * settings.llm_timeout) + WORK_LEASE_MARGIN
+    return (
+        max(settings.ocr_timeout, MODEL_CALLS_PER_NODE * settings.llm_timeout) + WORK_LEASE_MARGIN
+    )
 
 
 def vision_lease(settings: Settings) -> timedelta | None:
@@ -798,7 +805,8 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             suggest_contact=settings.contact_suggest_threshold,
             retry=retry_policy_of(settings),
             # Longer than any node may take, so a running node never loses its claim.
-            # A classification node may ask the model twice (once more after an invalid answer).
+            # The model's signal asks the model up to four times (proposal and facts, each once
+            # more after an invalid answer).
             # The OCR node that reads a document with the vision model extends its claim.
             lease=node_lease(settings),
             vision=container.ocr.vision,

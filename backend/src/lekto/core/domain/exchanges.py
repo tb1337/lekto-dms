@@ -20,7 +20,8 @@ class ModelCall:
     (since `propose-6`, `extract-6`) sent the system prompt, the `document`, the `task` and,
     once more after an unfit answer, the note to answer again (`retry`); a call of one message
     has it as `user`: a page the VLM read, the context a webhook got for a model call, a call
-    before `propose-6`."""
+    before `propose-6`. `request`: a node's further request about the document (`facts`), so
+    a reader tells it from another attempt of the first; empty for the first."""
 
     system: str
     answer: str
@@ -30,6 +31,7 @@ class ModelCall:
     document: str = ""
     task: str = ""
     retry: str | None = None
+    request: str = ""
 
     def to_json(self) -> JsonObject:
         sent: JsonObject = {
@@ -39,6 +41,7 @@ class ModelCall:
                 ("document", self.document),
                 ("task", self.task),
                 ("retry", self.retry),
+                ("request", self.request),
             )
             if value
         }
@@ -61,6 +64,7 @@ class ModelCall:
             document=str(data.get("document", "")),
             task=str(data.get("task", "")),
             retry=retry if isinstance(retry, str) and retry else None,
+            request=str(data.get("request", "")),
             answer=str(data.get("answer", "")),
             model=str(data.get("model", "")),
             usage=as_object(data.get("usage")) or {},
@@ -69,7 +73,8 @@ class ModelCall:
 
 @dataclass(frozen=True, kw_only=True)
 class RunExchange:
-    """The calls of one node in processing run `run`: one, or two after an unfit answer."""
+    """The calls of one node in processing run `run`: one, or two after an unfit answer, and
+    those of a further request (`ModelCall.request`)."""
 
     run: int
     calls: tuple[ModelCall, ...]
@@ -110,10 +115,11 @@ def with_run(runs: Sequence[RunExchange], exchange: RunExchange) -> list[RunExch
     return sorted([*kept, exchange], key=lambda run: run.run)
 
 
-def tokens_of(usages: Iterable[JsonObject]) -> list[JsonValue]:
+def tokens_of(usages: Iterable[JsonObject], *, request: str | None = None) -> list[JsonValue]:
     """Per model call (a page, or once more after an answer that did not fit) its tokens and
     the endpoint's usage report as it came, as the log keeps them. `cached`, where the endpoint
-    says: of the prompt's tokens, those it took from its cache (`cached_tokens`)."""
+    says: of the prompt's tokens, those it took from its cache (`cached_tokens`); `request`: a
+    node's further request about the document (`facts`), not another attempt of its first."""
     tokens: list[JsonValue] = []
     for usage in usages:
         entry: JsonObject = {
@@ -122,6 +128,8 @@ def tokens_of(usages: Iterable[JsonObject]) -> list[JsonValue]:
         }
         if (cached := cached_tokens(usage)) is not None:
             entry["cached"] = cached
+        if request is not None:
+            entry["request"] = request
         tokens.append(entry | {"usage": usage})
     return tokens
 

@@ -9,12 +9,15 @@
 	// and keeps inside the window, turning to the side with room: never cut off by a column or the
 	// window (Tobi, 20.10.2026). It opens while the mouse is over the button or the box (so links in
 	// it can be followed) and on a click, a tap or Enter; Escape or a click elsewhere closes it.
-	// Opened by hand, the focus goes into the box; on hover it stays where it is.
+	// Opened by hand, the focus goes into the box; on hover it stays where it is. The button is
+	// the info icon, or with `trigger` what stands there (the "Beta" pill), styled by `buttonClass`.
 	let {
 		label,
 		id,
 		size = 'md',
 		class: className = '',
+		trigger,
+		buttonClass = '',
 		children
 	}: {
 		/** The button's name ("About groups"). */
@@ -23,6 +26,10 @@
 		size?: 'sm' | 'md';
 		/** The width of the box. */
 		class?: string;
+		/** The button's content instead of the info icon. */
+		trigger?: Snippet;
+		/** The button's look with `trigger`; `data-open` marks it while the box is open. */
+		buttonClass?: string;
 		children: Snippet;
 	} = $props();
 
@@ -68,13 +75,23 @@
 	onpointerenter={enter}
 	onpointerleave={leave}
 	onclick={click}
+	data-open={open || undefined}
 	class={cn(
-		'grid shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:text-foreground',
-		size === 'sm' ? 'size-6' : 'size-7',
-		open && 'bg-secondary text-foreground'
+		'shrink-0 rounded-full transition-colors',
+		trigger
+			? buttonClass
+			: cn(
+					'grid place-items-center text-muted-foreground hover:text-foreground',
+					size === 'sm' ? 'size-6' : 'size-7',
+					open && 'bg-secondary text-foreground'
+				)
 	)}
 >
-	<Info class={size === 'sm' ? 'size-3.5' : 'size-4'} aria-hidden="true" />
+	{#if trigger}
+		{@render trigger()}
+	{:else}
+		<Info class={size === 'sm' ? 'size-3.5' : 'size-4'} aria-hidden="true" />
+	{/if}
 </button>
 <Popover.Root bind:open onOpenChange={(next) => next || (byHand = false)}>
 	<Popover.Portal>

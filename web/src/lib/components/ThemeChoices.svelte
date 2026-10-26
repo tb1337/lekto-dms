@@ -6,9 +6,9 @@
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
-	// Light, dark or as the system, as a group of a menu: the theme menu's own, and the account
-	// menu's on a phone. Follows the system until chosen; mode-watcher keeps the choice in this
-	// browser.
+	// Light, dark or as the system, as a group of the theme menu. (On a phone the navigation sheet
+	// holds them as pills instead; `AppShell`.) Follows the system until chosen; mode-watcher
+	// keeps the choice in this browser.
 	const choices = [
 		{ value: 'light', label: m.theme_light, icon: Sun },
 		{ value: 'dark', label: m.theme_dark, icon: Moon },

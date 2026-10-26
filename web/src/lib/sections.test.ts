@@ -22,6 +22,22 @@ describe('SECTIONS', () => {
 		expect(paths).not.toContain('/search');
 		expect(paths.slice(-3)).toEqual(['/system', '/admin/master-data', '/admin/users']);
 	});
+
+	it('groups the work before setting up and running, for everyone', () => {
+		const groups = SECTIONS.map((section) => section.group);
+		expect(groups).toEqual([
+			'work',
+			'work',
+			'work',
+			'work',
+			'setup',
+			'setup',
+			'setup',
+			'setup',
+			'setup'
+		]);
+		expect(visibleSections(false).map((section) => section.group)).toContain('setup');
+	});
 });
 
 describe('isCurrent', () => {

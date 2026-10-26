@@ -72,6 +72,17 @@ CUSTOMER_KINDS = frozenset(
 matches a number of these kinds with its value."""
 
 
+def related_keys(key: Key) -> frozenset[Key]:
+    """`key` and the values it is the same number as across the split of #145: a customer
+    number and the contract, policy and membership numbers of its value (`CUSTOMER_KINDS`)."""
+    kind, value = key
+    if kind is IdentifierKind.CUSTOMER_NUMBER:
+        return frozenset({key, *((other, value) for other in CUSTOMER_KINDS)})
+    if kind in CUSTOMER_KINDS:
+        return frozenset({key, (IdentifierKind.CUSTOMER_NUMBER, value)})
+    return frozenset({key})
+
+
 def matches(identifier: Identifier, found: Key) -> bool:
     """Whether a found value is the identifier (`IdentifierType.matches`: a domain also stands
     for its subdomains); a contact's customer number is also the contract, policy or

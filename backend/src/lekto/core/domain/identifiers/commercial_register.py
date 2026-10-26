@@ -10,7 +10,9 @@ from lekto.core.domain.identifiers.base import Candidate, IdentifierKind, Identi
 from lekto.core.domain.reasons import ReasonCode, because
 
 _FORM = re.compile(r"HR[AB]\d{1,6}[A-Z]{0,2}")
-_ANYWHERE = re.compile(r"(?<![a-z0-9])hr ?[ab] ?\d{1,6}(?: ?[a-z]{1,2}(?![a-z]))?(?![a-z0-9])")
+# A court's letters after the number stand close to it (`HRB 12345B`), or Berlin's `B` after a
+# space (`HRB 12345 B`); a word after it ("AG Mannheim", "DE 123456789") is none.
+_ANYWHERE = re.compile(r"(?<![a-z0-9])hr ?[ab] ?\d{1,6}(?:[a-z]{1,2}| b)?(?![a-z0-9])")
 
 
 class CommercialRegister(IdentifierType):

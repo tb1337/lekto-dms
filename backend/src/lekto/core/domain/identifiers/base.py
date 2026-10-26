@@ -123,20 +123,34 @@ def after_label(kind: IdentifierKind, label: re.Pattern[str], text: str) -> Iter
 
 YOUR = r"(?P<your>(?:ihr(?:e[mnrs]?)?|your)\s+)?"
 """Before a label: the number belongs to the addressee's document ("Ihre Rechnung Nr.")."""
+_JOINING = r"(?:vom|von|und|bis|am|an|zum|zur|datum|date|dated|from|of|and|to|per)"
+"""Words that end a reference: what follows them is another value (a date, a second one)."""
+_DATE_PART = r"\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})(?![a-z0-9])"
 REFERENCE_VALUE = (
-    r"\.?\s*[:.]?\s*(?P<value>[a-z0-9][a-z0-9./-]*"
-    r"(?: (?:[a-z]{1,3} (?=[a-z./-]*\d))?(?=[a-z./-]*\d)[a-z0-9./-]+)*)"
+    rf"\.?\s*[:.]?\s*(?P<value>(?!{_JOINING}(?![a-z0-9]))[a-z0-9][a-z0-9./-]*"
+    rf"(?:(?: [-/])? (?!{_JOINING}(?![a-z0-9]))(?!{_DATE_PART})"
+    r"(?:[a-z]{1,3} (?=[a-z./-]*\d))?(?=[a-z./-]*\d)[a-z0-9./-]+)*)"
 )
 """A value after its label, as `VALUE`, where a short group of letters may stand between
-parts with digits (an Aktenzeichen `4 C 123/26`)."""
+parts with digits (an Aktenzeichen `4 C 123/26`), and parts may be joined by a dash or a slash
+between spaces (`II 3 - 1234/26`); a joining word ("vom", "und", "Datum") or a date ends it."""
 NUMBER_VALUE = VALUE.replace("(", "(?P<value>", 1)
 """`VALUE` with its group named."""
+COMPOUND = r"[a-zäöüß]+"
+"""Any word a label may end (`labelled`): "Bausparvertragsnummer", "Stromzählernummer"."""
 
 
-def labelled(labels: str, value: str = NUMBER_VALUE) -> re.Pattern[str]:
+def labelled(labels: str, value: str = NUMBER_VALUE, *, compounds: str = "") -> re.Pattern[str]:
     """A pattern of a value after one of `labels` (alternatives, in lower case), with "Ihr"
-    or "your" before them or not."""
-    return re.compile(rf"(?<![a-z]){YOUR}(?:{labels}){value}")
+    or "your" before them or not; a label is a whole word ("Invoice November" is none), or
+    the end of a compound word where `compounds` (a pattern of the words before it the kind
+    allows: "Bauspar" before "vertragsnummer") says so."""
+    before = (
+        rf"(?:(?<![a-zäöüß]){YOUR}|(?<![a-zäöüß])(?:{compounds})-?)"
+        if compounds
+        else (rf"(?<![a-zäöüß]){YOUR}")
+    )
+    return re.compile(rf"{before}(?:{labels})(?![a-zäöüß]){value}")
 
 
 def after_labels(kind: IdentifierKind, label: re.Pattern[str], text: str) -> Iterator[Candidate]:
@@ -150,12 +164,13 @@ class LabelledNumber(IdentifierType):
     `shortest` to `longest` letters and digits, one a digit."""
 
     labels: ClassVar[str]
+    compounds: ClassVar[str] = ""  # words a label may end (`labelled`)
     value: ClassVar[str] = NUMBER_VALUE
     shortest: ClassVar[int] = 3
     longest: ClassVar[int] = 30
 
     def __init__(self) -> None:
-        self._label = labelled(self.labels, self.value)
+        self._label = labelled(self.labels, self.value, compounds=self.compounds)
         self._form = re.compile(rf"(?=[A-Z0-9]*\d)[A-Z0-9]{{{self.shortest},{self.longest}}}")
 
     def normalise(self, raw: str) -> str:

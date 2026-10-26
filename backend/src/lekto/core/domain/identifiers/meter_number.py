@@ -2,6 +2,7 @@
 to; points to the meter a utility's bills refer to."""
 
 from lekto.core.domain.identifiers.base import (
+    COMPOUND,
     IdentifierKind,
     LabelledNumber,
 )
@@ -12,6 +13,7 @@ class MeterNumber(LabelledNumber):
     for_contacts = True
     names_user = True
     longest = 40
+    compounds = COMPOUND
     labels = (
         r"zähler[-\s]*(?:nummer|nr)|zählpunkt(?:[-\s]*(?:nummer|bezeichnung))?"
         r"|meter[-\s]*(?:no|number)"

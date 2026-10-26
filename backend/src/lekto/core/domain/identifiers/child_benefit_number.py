@@ -8,11 +8,13 @@ from lekto.core.domain.identifiers.base import SEPARATORS, IdentifierKind, Label
 from lekto.core.domain.reasons import ReasonCode, because
 
 _FORM = re.compile(r"\d{3}FK\d{6}")
+_VALUE = r"\.?\s*[:.]?\s*(?P<value>\d{3}[-\s]?fk[-\s]?\d{6})(?![a-z0-9])"
 
 
 class ChildBenefitNumber(LabelledNumber):
     kind = IdentifierKind.CHILD_BENEFIT_NUMBER
     for_persons = True
+    value = _VALUE
     labels = r"kindergeld[-\s]*(?:nummer|nr)|child[-\s]*benefit[-\s]*(?:no|number)"
 
     def normalise(self, raw: str) -> str:

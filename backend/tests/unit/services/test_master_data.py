@@ -148,6 +148,30 @@ async def test_contact_identifiers(world: World) -> None:
         assert (await uow.contacts.get(utility.id)).identifiers == []
 
 
+async def test_a_customer_number_from_before_145_is_the_same_as_a_contract_number(
+    world: World,
+) -> None:
+    """Until #145 a contract number was a customer number: one entered by hand on another
+    contact is a conflict, a learned one moves."""
+    admin = await world.user(role=Role.ADMIN)
+    service = world.master_data
+    customer = Identifier.parse(IdentifierKind.CUSTOMER_NUMBER, "12345")
+    contract = Identifier.parse(IdentifierKind.CONTRACT_NUMBER, "12345")
+    insurer = await service.create_contact(admin.id, "Versicherer", identifiers=[customer])
+    with pytest.raises(ConflictError):
+        await service.create_contact(admin.id, "Other", identifiers=[contract])
+    learned = Identifier(contract.kind, contract.value, LEARNED)
+    bank = await service.create_contact(admin.id, "Bank")
+    async with world.uow() as uow:
+        await replace_learned_identifiers(uow, {bank.id: [learned]})
+        await uow.commit()
+    async with world.uow() as uow:
+        assert (await uow.contacts.get(bank.id)).identifiers == [learned]
+    await service.change_contact(admin.id, insurer.id, identifiers=[customer])
+    async with world.uow() as uow:
+        assert (await uow.contacts.get(bank.id)).identifiers == []
+
+
 async def test_training_replaces_the_learned_identifiers(world: World) -> None:
     admin = await world.user(role=Role.ADMIN)
     service = world.master_data

@@ -143,8 +143,9 @@ def found_facts(
 ) -> tuple[DocumentFact, ...]:
     """The facts a document shows: the identifiers in its text (`identifiers_in`) and in the
     codes on its pages (`code_identifiers`), each once, as the text reads (those only in a code
-    last), with the role of its kind; one the text shows only as another's (`referred_in`:
-    "Ihre Rechnung Nr. 4711") refers to that document. Where one stands first is where its
+    last), with the role of its kind; a document's own number the text shows only as another's
+    (`referred_in`: "Ihre Rechnung Nr. 4711") refers to that document ("Ihre Vertragsnummer" is
+    still the contract's). Where one stands first is where its
     reader took it (`places`: in the normalised text, `places_in`), else where its value stands
     first."""
     texts, codes = set(in_text), set(in_codes)
@@ -160,13 +161,18 @@ def found_facts(
             DocumentFact(
                 kind=kind,
                 value=value,
-                role=FactRole.REFERS if (kind, value) in referred else role_of(kind),
+                role=_role(kind, (kind, value) in referred),
                 origins=frozenset(origins),
                 written=None if where is None else text[where[0] : where[1]],
                 position=None if where is None else where[0],
             )
         )
     return tuple(sorted(facts, key=reading_order))
+
+
+def _role(kind: IdentifierKind, referred: bool) -> FactRole:
+    role = role_of(kind)
+    return FactRole.REFERS if referred and role is FactRole.OWN else role
 
 
 def reading_order(fact: DocumentFact) -> tuple[int, int, str, str]:

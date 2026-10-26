@@ -301,7 +301,8 @@ def test_every_kind_has_its_type_and_says_whose_it_is() -> None:
     }
     assert {IBAN, VAT, CUSTOMER, PERSONNEL, DOMAIN} | contracts | companies == CONTACT_KINDS
     assert {IBAN, TAX, SOCIAL, HEALTH, ADDRESS, IdentifierKind.CHILD_BENEFIT_NUMBER} == PERSON_KINDS
-    assert {CUSTOMER, PERSONNEL} | contracts == NAMING_KINDS
+    # A tax number may be the one the tax office gave a user.
+    assert {CUSTOMER, PERSONNEL, IdentifierKind.TAX_NUMBER} | contracts == NAMING_KINDS
     assert catalog()["customer_number"] == {"contact": True, "person": False, "names_user": True}
 
 

@@ -32630,7 +32630,7 @@
     "tax_number": {
       "contact": true,
       "person": false,
-      "names_user": false
+      "names_user": true
     },
     "contract_number": {
       "contact": true,

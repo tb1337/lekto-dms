@@ -1872,6 +1872,14 @@ Stand: Vorschlag Creamy, 25.10.2026, zur Freigabe durch Tobi. Release offen. Sam
 - Nicht behoben: Kein Job nach dem rückwirkenden Anwenden von Regeln oder Änderungsregeln, die Typ oder Felder setzen; Verweise über Kontakte hinweg (Inkasso) ergeben keinen Vorschlag; die Bewertung nennt alle Dokumente des Trainingskorpus „corpus“.
 - Offen für Tobi: die sieben Vorgaben im PR (Form der Bedingung, gleicher Kontakt, über Spaces hinweg, Personen, Job statt neuem Lauf, Entfernen von Bezügen, Aktenzeichen).
 
+**PR 12 – Umsetzung und Review (26.10.2026, `feature/expected`, PR #159, gestapelt auf #158):**
+
+- Serien (`domain/series.py`) aus Kontakt, Typ und Nummer, abgeleitet bei jedem Aufruf; `GET /expected` (Admins mit `all_users`, `tz`), MCP `list_expected`, Ansicht „Erwartet“ mit Überfällig, Nächste 30 Tage, Später, Beendet; `of_documents` liest die Fakten vieler Dokumente auf einmal (SQL in Stapeln, Vertragstest).
+- Geprüft: 4590 Unit- und Integrationstests, 1216 Vitest (Exit 0); Browser hell, dunkel, Handybreite; Kopfzeile in Deutsch bei 1024, 1280, 1536, 1720, 1920 px als Admin und Nutzer vermessen.
+- Review durch einen separaten Agenten, behoben: Drei zufällige Daten ergaben in einem Drittel der Fälle eine Serie (jetzt rund 3 %: Tagesrhythmen nur bis 60 Tage mit vier Dokumenten und genau, drei Dokumente mit engerer Streuung); ein fehlender Monat, ein Einzelstück oder ein verspätetes Dokument beendete eine echte Serie (jetzt verpasste Schritte und Einzelstücke in Grenzen, Streuung gegen den Rhythmus, in langer Geschichte ohne den schlechtesten Schritt); doppelte Schlüssel ließen die Seite abstürzen; das neue Menü sprengte die deutsche Kopfzeile (Menü jetzt für alle ab `xl`, Suchfeld ab `2xl`, für Admins ab 1720 px); lange Nummern überlappten auf dem Handy; „heute“ war UTC; eine Kundennummer mit Rolle „Person“ nannte eine Serie. Dazu: Nummern nach dem Wert, ein Dokument ohne gelesene Nummer in der einzigen nummerierten Serie, beendete Serien neueste zuerst, in MCP nur auf Wunsch.
+- Nicht behoben: Zweimonatliche Serien fallen in den Tagesrhythmus (über 60 Tage: keine Serie); bei zwei Zeitraumfeldern eines Typs zählt das erste nach Feld-ID; der Mock von „Erwartet“ ließ sich aus der Sitzung nicht öffnen.
+- Offen für Tobi: die Schwellen (3 Dokumente, 2 Tage, ein Drittel, 30 Tage, 60 Tage), „Erwartet“ als eigener Menüpunkt und dafür das Menü erst ab `xl`.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

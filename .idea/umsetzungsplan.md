@@ -1864,6 +1864,14 @@ Stand: Vorschlag Creamy, 25.10.2026, zur Freigabe durch Tobi. Release offen. Sam
 - Geprüft: 4557 Unit- und Integrationstests, 1211 Vitest (Exit 0 nach dem Rebase auf die Korrektur von PR 9), Browser hell, dunkel, Handybreite.
 - Review durch einen separaten Agenten: kein Fehler im eigenen Diff (Migration auf SQLite und Postgres samt Downgrade, Hin- und Rückweg, REST mit null und ohne Feld, alle Stellen, die Typen kopieren); der rote Testlauf kam aus PR 9. Übernommen: Test für `PATCH` mit null, Kommentar der Liste.
 
+**PR 11 – Umsetzung und Review (26.10.2026, `feature/relate`, PR #158, gestapelt auf #157):**
+
+- Knoten `relate` nach `fields` und vor den Regeln (Revision 0050), nie gelb; Quellen in beiden Richtungen: Verweis gegen die eigene Nummer eines anderen, Vertrags- oder Kundennummer gegen ein Bezugsziel, gleicher Kontakt, Typ und Zeitraum bei anderem Datum, `letter_date` gegen das Datum eines Dokuments desselben Kontakts. Job `pipeline.relate` nach Entscheidungen einer Person und für den Bestand (`lekto relate`, VS-Code-Task). Bedingung „Bezug“ in Regeln, Urteil `taken` beim Bestätigen, Bewertung um erwartete Bezüge erweitert (Fall 48 → 01, 43 ↔ 34). Web: Schritt „Bezüge erkennen“, Bedingung im Baukasten, Belege aller Quellen.
+- Geprüft: 4575 Unit- und Integrationstests (Revision 0050 auf SQLite und Postgres), 1213 Vitest (Exit 0), `lekto evaluate --fake` 95 Fälle, 0 falsche Grüne, Bezüge 2 von 2; Browser hell, dunkel, Handybreite.
+- Review durch einen separaten Agenten, behoben: Das Protokoll von `relate` nannte Dokumente, die der Leser nicht lesen darf; die Grenze von 200 griff vor dem Filter nach Kontakt, Typ und Zeitraum (ältere Verträge fielen heraus); die Entscheidung einer Person nahm die Sperre nicht und konnte von Lekto überschrieben werden; das Bestätigen zählte unberührte Vorschläge als übernommen; zwei Bezugsziele mit gleicher Kundennummer wurden fest verbunden; Revision 0050 war quadratisch in den laufenden Dokumenten; eine Änderung während eines laufenden Jobs ging verloren (jetzt `coalesce_key`); Steuer-ID und andere Nummern einer Person trennten zwei Personen nicht. Dazu: Bezüge von Lekto, die keine Person entschieden hat, gehen, wenn keine Quelle sie mehr findet; eine Regel sieht nur Bezüge auf Dokumente, die ihr Autor lesen darf.
+- Nicht behoben: Kein Job nach dem rückwirkenden Anwenden von Regeln oder Änderungsregeln, die Typ oder Felder setzen; Verweise über Kontakte hinweg (Inkasso) ergeben keinen Vorschlag; die Bewertung nennt alle Dokumente des Trainingskorpus „corpus“.
+- Offen für Tobi: die sieben Vorgaben im PR (Form der Bedingung, gleicher Kontakt, über Spaces hinweg, Personen, Job statt neuem Lauf, Entfernen von Bezügen, Aktenzeichen).
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

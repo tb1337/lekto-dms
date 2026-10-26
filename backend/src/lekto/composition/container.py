@@ -120,6 +120,7 @@ from lekto.core.services.rules.nodes import ApplyRulesNode, FileNode
 from lekto.core.services.rules.retroactive import RuleApplicationService
 from lekto.core.services.search import SearchPolicy, SearchService
 from lekto.core.services.spaces import SpaceService
+from lekto.core.services.stream import StreamService
 from lekto.core.services.tasks.desk import TaskDesk
 from lekto.core.services.tasks.service import TaskService
 from lekto.core.services.users import UserService
@@ -496,6 +497,7 @@ class Services:
     lenses: LensService
     relations: RelationService
     expected: ExpectedService
+    stream: StreamService
     documents: DocumentService
     inbox: InboxService
     pipeline: PipelineService
@@ -775,6 +777,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         lenses=LensService(uow, clock),
         relations=RelationService(uow, clock),
         expected=ExpectedService(uow, clock),
+        stream=StreamService(uow, clock),
         tasks=TaskService(uow, clock, container.cipher, store),
         jobs=JobsService(uow, clock, retention=settings.retention),
         automation=AutomationService(uow, clock),

@@ -30,6 +30,7 @@ from lekto.adapters.inbound.rest import (
     rules,
     search,
     spaces,
+    stream,
     streams,
     users,
     webhooks,
@@ -166,6 +167,7 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
         rules.applications,
         rules.templates,
         search.router,  # before documents: `/documents/search` is no document id
+        stream.router,  # likewise `/documents/stream`
         classifier.router,
         documents.router,
         documents.inbox,

@@ -10,10 +10,17 @@ its output. First adapter: `python-liquid`.
 from collections.abc import Mapping
 from typing import Protocol
 
+from lekto.core.domain.fields import Writing
 from lekto.core.domain.templates import TemplateValue
 
 
 class TemplateRenderer(Protocol):
+    @property
+    def writing(self) -> Writing:
+        """How it writes values (the language of its locale, its currency), so that what a
+        template rendered for a field can be read back (`fields.read_written`)."""
+        ...
+
     def check(self, template: str) -> frozenset[str]:
         """The values the template uses, as paths (`contact`, `field.la_brutto.amount`), not
         those it sets itself. ValidationError, naming line and column, if it is not a valid

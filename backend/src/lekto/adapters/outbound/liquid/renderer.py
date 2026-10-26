@@ -28,7 +28,7 @@ from liquid.extra import Currency, DateTime, Number
 from liquid.filter import liquid_filter
 
 from lekto.core.domain.errors import MissingValueError, ValidationError
-from lekto.core.domain.fields import Money
+from lekto.core.domain.fields import Money, Writing
 from lekto.core.domain.periods import Period
 from lekto.core.domain.templates import TemplateValue
 
@@ -120,6 +120,11 @@ class LiquidTemplateRenderer:
         environment.filters["json"] = _Json()
         self._environment = environment
         self._parse = lru_cache(maxsize=512)(self._parsed)
+        self._writing = Writing(Locale.parse(self._locale).language, currency)
+
+    @property
+    def writing(self) -> Writing:
+        return self._writing
 
     def check(self, template: str) -> frozenset[str]:
         parsed = self._parse(template)

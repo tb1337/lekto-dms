@@ -5,6 +5,9 @@ import {
 	FIELD_TYPE_OPERATORS,
 	CONDITION_FIELD_OPERATORS,
 	LIMITS,
+	asFixed,
+	asTemplate,
+	isTemplated,
 	canAddGroup,
 	changeField,
 	changeConditionField,
@@ -369,6 +372,35 @@ describe('checking a rule', () => {
 		});
 	});
 
+	it('checks a field value as a template or as a fixed value', () => {
+		const model = newModel();
+		model.name = 'x';
+		model.conditions.items = [{ ...newCondition('channel'), value: 'web' }];
+		const cases: [string, unknown, boolean | undefined, string | undefined][] = [
+			// A fixed value by its type; text another type cannot hold as JSON is a template.
+			[ID(104), { amount: '1', currency: 'eur' }, undefined, 'amount'],
+			[ID(104), '{{ steps.erp.total }} EUR', undefined, undefined],
+			[ID(104), '  ', undefined, 'value'],
+			[ID(103), '12,50', undefined, undefined],
+			[ID(103), '12,50', false, 'number'],
+			[ID(105), '15.03.2026', undefined, undefined],
+			[ID(105), '15.03.2026', false, 'date'],
+			[ID(107), '{{ steps.erp.state }}', undefined, undefined],
+			[ID(107), 'x'.repeat(501), true, 'text_long'],
+			[ID(106), 'ja', true, undefined]
+		];
+		for (const [field_id, value, templated, code] of cases) {
+			const action = {
+				...newAction('set_field'),
+				field_id,
+				value,
+				...(templated === undefined ? {} : { templated })
+			} as never as RuleModel['actions'][number];
+			model.actions = [action];
+			expect(problems(model)[action.key], JSON.stringify([field_id, value])).toBe(code);
+		}
+	});
+
 	it('takes a topic like a contact: one value', () => {
 		const model = newModel();
 		model.name = 'x';
@@ -557,5 +589,47 @@ describe('steps of a rule', () => {
 			condition.conditions.items = [{ ...newCondition('contact'), value: ID(5) }];
 		}
 		expect(referencedIds(condition)).toEqual([ID(5)]);
+	});
+});
+
+describe('a field value as a template', () => {
+	const field = (id: number) => FIELDS.find((entry) => entry.id === ID(id))!;
+
+	it('tells a template from a fixed value by the field type', () => {
+		expect(isTemplated(field(101), 'plain')).toBe(true);
+		expect(isTemplated(field(103), '12.50')).toBe(false);
+		expect(isTemplated(field(103), '12,50 €')).toBe(true);
+		expect(isTemplated(field(104), { amount: '1', currency: 'EUR' })).toBe(false);
+		expect(isTemplated(field(104), '12.50 EUR')).toBe(true);
+		expect(isTemplated(field(105), '2026-03-15')).toBe(false);
+		expect(isTemplated(field(106), false)).toBe(false);
+		expect(isTemplated(field(107), 'yearly')).toBe(false);
+		expect(isTemplated(field(107), '{% if x %}yearly{% endif %}')).toBe(true);
+		expect(isTemplated(field(102), 'https://example.org/{{ filename }}')).toBe(true);
+	});
+
+	it('turns a fixed value into the text of a template and back', () => {
+		expect(asTemplate({ amount: '12.50', currency: 'EUR' })).toBe('12.50 EUR');
+		expect(asTemplate({ amount: '', currency: 'EUR' })).toBe('');
+		expect(asTemplate({ start: '2026-07-01', end: '2026-09-30' })).toBe('2026-Q3');
+		expect(asTemplate(false)).toBe('false');
+		expect(asFixed(field(104), '12.50 EUR')).toEqual({ amount: '12.50', currency: 'EUR' });
+		expect(asFixed(field(104), '{{ x }}')).toEqual({ amount: '', currency: 'EUR' });
+		expect(asFixed(field(108), '2026-Q3')).toEqual({ start: '2026-07-01', end: '2026-09-30' });
+		expect(asFixed(field(106), 'false')).toBe(false);
+		expect(asFixed(field(106), '{{ x }}')).toBe(true);
+		expect(asFixed(field(103), '7')).toBe('7');
+		expect(asFixed(field(103), '7 Stück')).toBe('');
+	});
+
+	it('sends the value, not how the builder edits it', () => {
+		const model = newModel();
+		model.name = 'x';
+		model.actions = [
+			{ ...newAction('set_field'), field_id: ID(103), value: '{{ x }}', templated: true } as never
+		];
+		expect(toApi(model).actions).toEqual([
+			{ type: 'set_field', field_id: ID(103), value: '{{ x }}' }
+		]);
 	});
 });

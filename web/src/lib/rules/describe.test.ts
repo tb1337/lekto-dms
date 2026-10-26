@@ -40,10 +40,17 @@ describe('the template of an action', () => {
 		).toEqual({ lead: `${m.rule_action_set_field()}: Notiz = `, template: '{{ title }}' });
 	});
 
-	it('is absent from other actions and other fields', () => {
+	it('is absent from other actions and fixed values', () => {
 		const amount = { amount: '1.00', currency: 'EUR' };
 		expect(actionTemplate({ type: 'set_field', field_id: 'f2', value: amount }, lookup)).toBeNull();
 		expect(actionTemplate({ type: 'add_tags', tag_ids: [] }, lookup)).toBeNull();
+	});
+
+	it('is the value of a field of any type given as a template', () => {
+		const value = '{{ steps.erp.total }} EUR';
+		expect(actionTemplate({ type: 'set_field', field_id: 'f2', value }, lookup)?.template).toBe(
+			value
+		);
 	});
 });
 

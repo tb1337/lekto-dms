@@ -16,7 +16,10 @@
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import {
 		MISSING,
+		asFixed,
+		asTemplate,
 		defaultValue,
+		isTemplated,
 		type ActionNode,
 		type Missing,
 		type RuleModel
@@ -80,6 +83,26 @@
 			? (lookup.fields.find((entry) => entry.id === action.field_id) ?? null)
 			: null
 	);
+
+	// A field's value as a template or a fixed value: decided once by the value when the action
+	// is shown or gets another field, then as the person switches (not anew with every key).
+	$effect(() => {
+		if (action.type === 'set_field' && action.templated === undefined && field) {
+			action.templated = isTemplated(field, action.value);
+		}
+	});
+	const templated = $derived(
+		action.type === 'set_field' && (action.templated ?? isTemplated(field, action.value))
+	);
+
+	function switchTemplated(next: boolean) {
+		if (action.type !== 'set_field' || !field) return;
+		action.value = (
+			next ? asTemplate(action.value) : asFixed(field, action.value)
+		) as typeof action.value;
+		action.templated = next;
+		if (!next) onunreadable?.(false);
+	}
 
 	const MISSING_LABELS: Record<Missing, () => string> = {
 		red: m.rule_missing_red,
@@ -158,6 +181,7 @@
 						const chosen = lookup.fields.find((entry) => entry.id === id) ?? null;
 						action.field_id = id;
 						action.value = (defaultValue('field', 'is', chosen) ?? '') as typeof action.value;
+						action.templated = undefined;
 					}}
 					class="h-10"
 				/>
@@ -166,6 +190,8 @@
 						{field}
 						{invalid}
 						template
+						{templated}
+						ontemplated={switchTemplated}
 						fields={lookup.fields}
 						{steps}
 						id="value-{action.key}"

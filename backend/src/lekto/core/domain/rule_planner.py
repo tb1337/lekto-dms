@@ -53,13 +53,14 @@ from lekto.core.domain.documents import Document, DocumentChanges, Unset
 from lekto.core.domain.errors import MissingValueError, ValidationError
 from lekto.core.domain.fields import (
     FieldDefinition,
-    FieldType,
     FieldValue,
     Money,
     Url,
+    Writing,
     decimal_text,
     field_from_json,
     field_to_json,
+    read_written,
 )
 from lekto.core.domain.ids import (
     ContactId,
@@ -90,6 +91,7 @@ from lekto.core.domain.rules import (
     SetTitle,
     SetTopic,
     StepCondition,
+    is_template,
 )
 from lekto.core.domain.templates import STEPS, Render, TemplateValue, template_values
 
@@ -131,8 +133,8 @@ class Situation:
       of who uploaded the document.
     - `in_personal_space`: the document lies in a personal space; for applying to existing
       documents its space counts as empty there.
-    - `render`: renders the templates of titles, text fields and review reasons (the port
-      `TemplateRenderer`).
+    - `render`: renders the templates of titles, fields and review reasons (the port
+      `TemplateRenderer`); `writing` how it writes values, to read a field's back.
     - `model_values`: single fields that hold the value the model set, unconfirmed, as JSON;
       `chained` those of them a rule of an earlier space in the chain set on unconfirmed
       grounds (`running.Chain`).
@@ -156,6 +158,7 @@ class Situation:
     document: Document
     definitions: Mapping[FieldId, FieldDefinition]
     render: Render
+    writing: Writing = field(default_factory=Writing)
     in_personal_space: bool = False
     uploader_name: str | None = None
     spaces: Mapping[SpaceId, SpaceTarget] = field(default_factory=dict)
@@ -328,7 +331,7 @@ class _Planner:
         self._adds: dict[TagId, list[RuleReport]] = {}
         self._removes: dict[TagId, list[RuleReport]] = {}
         self._titles: list[tuple[RuleReport, SetTitle, Match]] = []
-        self._texts: list[tuple[RuleReport, SetField, Match]] = []
+        self._templated: list[tuple[SetField, _Candidate]] = []
         self._review_reasons: list[tuple[RuleReport, str]] = []
 
     def run(self) -> RulePlan:
@@ -341,7 +344,7 @@ class _Planner:
             self._single(single, result)
         self._topic(result)
         type_after = self._type_after(result)
-        self._text_fields(result, type_after)
+        self._field_templates(result, type_after)
         fields: dict[FieldId, object] = {}
         for field_name, field_id in [
             (name, id) for name in self._candidates if (id := field_id_of(name)) is not None
@@ -440,8 +443,12 @@ class _Planner:
                         Note(name, NoteKind.SKIPPED, because(ReasonCode.FIELD_GONE))
                     )
                     return
-                if definition.data_type is FieldType.TEXT and isinstance(value, str):
-                    self._texts.append((report, action, match))
+                if is_template(definition, value):
+                    # Rendered once the single fields are known; it keeps its place among the
+                    # rules that set the field (`_field_templates` fills it in or drops it).
+                    slot = _Candidate(report, None, match)
+                    self._templated.append((action, slot))
+                    self._candidates.setdefault(name, []).append(slot)
                     return
                 try:
                     field_from_json(definition, value)
@@ -529,7 +536,8 @@ class _Planner:
             return
         s = self._s
         current = self._current(field_name)
-        values = list(dict.fromkeys(_key(candidate.value) for candidate in candidates))
+        key = self._key
+        values = list(dict.fromkeys(key(field_name, candidate.value) for candidate in candidates))
         if len(values) > 1:
             listed: list[JsonValue] = [
                 {"rule": candidate.report.name, "value": self._shown(field_name, candidate.value)}
@@ -542,7 +550,7 @@ class _Planner:
                 self._uncertain(field_name, disagree, suggestion=candidates[0].value)
             return
         value = candidates[0].value
-        if _key(value) == _key(current):
+        if key(field_name, value) == key(field_name, current):
             return
         reason: Reason | None = None
         kind = NoteKind.CONFLICT
@@ -553,7 +561,9 @@ class _Planner:
                 )
         elif field_name in s.locked:
             kind, reason = NoteKind.OVERRULED, because(ReasonCode.PERSON_DECIDED_FIELD)
-        elif field_name in s.model_values and _key(s.model_values[field_name]) == _key(current):
+        elif field_name in s.model_values and key(field_name, s.model_values[field_name]) == key(
+            field_name, current
+        ):
             shown = self._shown(field_name, current)
             chained = field_name in s.chained
             reason = because(
@@ -705,30 +715,38 @@ class _Planner:
             self._candidates[TITLE] = patterns
         self._single(TITLE, result)
 
-    def _text_fields(
+    def _field_templates(
         self, result: Mapping[str, JsonValue], type_after: DocumentTypeId | None
     ) -> None:
-        """The templates of text fields, with the contact, type and space the rules set (the
-        fields as they were: rules do not see each other's fields)."""
-        if not self._texts:
+        """The templates of fields, with the contact, type and space the rules set (the fields
+        as they were: rules do not see each other's fields). What one renders is read as the
+        field's type has it (`fields.read_written`); what cannot be read sets nothing."""
+        if not self._templated:
             return
         values = self._values(result, type_after, {}, None)
-        for report, action, match in self._texts:
+        received = self._document.created_at.date()
+        for action, slot in self._templated:
+            report = slot.report
             name = field_key(action.field_id)
+            definition = self._s.definitions[action.field_id]
             rendered = self._render(report, name, str(action.value), values)
-            if rendered is None:
-                continue
-            if not rendered.strip():
+            read = None
+            if rendered is not None and not rendered.strip():
                 empty = because(ReasonCode.VALUE_EMPTY)
                 report.notes.append(Note(name, NoteKind.SKIPPED, empty))
-                continue
-            value = rendered.strip()
-            try:
-                field_from_json(self._s.definitions[action.field_id], value)
-            except ValidationError as error:
-                report.notes.append(Note(name, NoteKind.SKIPPED, _error(error)))
-                continue
-            self._candidates.setdefault(name, []).append(_Candidate(report, value, match))
+            elif rendered is not None:
+                read = read_written(definition, rendered, self._s.writing, received=received)
+                if read is None:
+                    unreadable = because(
+                        ReasonCode.TEMPLATE_UNREADABLE,
+                        value=_shortened(rendered),
+                        type=definition.data_type.value,
+                    )
+                    report.notes.append(Note(name, NoteKind.SKIPPED, unreadable))
+            if read is None:
+                self._candidates[name].remove(slot)
+            else:
+                slot.value = field_to_json(read)
 
     def _values(
         self,
@@ -830,6 +848,24 @@ class _Planner:
         definition = None if field is None else s.definitions.get(field)
         return str(value) if definition is None else _value_text(definition, value)
 
+    def _key(self, field_name: str, value: JsonValue) -> str:
+        """Comparable form of a value of `field_name`: a field's value by what it is (`84.2` and
+        `84.20` are one amount), anything else as it is written."""
+        field = field_id_of(field_name)
+        definition = None if field is None else self._s.definitions.get(field)
+        if definition is None or value is None:
+            return _key(value)
+        try:
+            parsed = field_from_json(definition, value)
+        except ValidationError:
+            return _key(value)
+        match parsed:
+            case Money():
+                return repr((parsed.amount.normalize(), parsed.currency))
+            case Decimal():
+                return repr(parsed.normalize())
+        return repr(parsed)
+
     def _tag(self, tag: TagId) -> str:
         """A tag (of any scope) as a reason names it: its name; its id if it is gone."""
         name = self._tag_name(tag)
@@ -900,6 +936,16 @@ _GONE: dict[str, ReasonCode] = {
 def _error(error: Exception) -> Reason:
     """The message of an error without a code of its own."""
     return because(ReasonCode.ERROR, detail=str(error))
+
+
+_SHOWN = 100  # characters of a rendered value a reason repeats
+
+
+def _shortened(text: str) -> str:
+    """What a template rendered, as a reason repeats it: on one line, at most `_SHOWN`
+    characters."""
+    line = " ".join(text.split())
+    return line if len(line) <= _SHOWN else line[: _SHOWN - 1] + "…"
 
 
 def _key(value: JsonValue) -> str:

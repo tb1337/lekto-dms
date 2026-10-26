@@ -10,6 +10,8 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Sheet from '#lib/components/ui/sheet/index.ts';
 	import { latest } from '#lib/latest.ts';
+	import { fieldText } from '#lib/card-fields.ts';
+	import { fieldTypeLabel } from '#lib/fields.ts';
 	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import type { EditorHandle } from '#lib/templates/codemirror.ts';
@@ -40,6 +42,7 @@
 		maxlength = 500,
 		purpose = 'rule',
 		steps = [],
+		target = null,
 		onapply
 	}: {
 		open?: boolean;
@@ -52,6 +55,8 @@
 		purpose?: TemplatePurpose;
 		/** A rule's step: the names of the steps before it that ask (`steps.<name>`). */
 		steps?: readonly string[];
+		/** The field the template sets (a rule's action): the result is read as its type has it. */
+		target?: FieldDefinition | null;
 		onapply: (value: string) => void;
 	} = $props();
 
@@ -73,11 +78,18 @@
 		const template = draft;
 		const document = reference?.id ?? null;
 		const kind = documentType ?? null;
+		const field = target?.id ?? null;
 		const current = previewed();
 		const timer = setTimeout(() => {
 			void unwrap(
 				api.POST('/api/v1/templates/preview', {
-					body: { template, document_id: document, document_type_id: kind, purpose }
+					body: {
+						template,
+						document_id: document,
+						document_type_id: kind,
+						purpose,
+						...(field ? { field_id: field } : {})
+					}
 				})
 			).then(
 				(found) => {
@@ -212,6 +224,19 @@
 							class="mt-1 max-h-48 overflow-auto rounded-lg border bg-secondary p-2 font-mono text-xs whitespace-pre-wrap">{preview.rendered}</pre>
 					{:else}
 						<span class="font-medium">{preview.rendered}</span>
+					{/if}
+					{#if target && target.data_type !== 'text' && preview.rendered !== ''}
+						<!-- What the field gets: the rendered text read as its type has it. -->
+						{#if preview.unreadable}
+							<span class="block text-destructive">
+								{m.template_unreadable({ type: fieldTypeLabel(target.data_type) })}
+							</span>
+						{:else if preview.read !== null && preview.read !== undefined}
+							<span class="block text-muted-foreground">
+								{m.template_read({ type: fieldTypeLabel(target.data_type) })}
+								<span class="font-medium text-foreground">{fieldText(preview.read, target)}</span>
+							</span>
+						{/if}
 					{/if}
 				{/if}
 			</div>

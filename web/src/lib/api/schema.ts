@@ -6478,6 +6478,7 @@ export interface components {
 			| 'title_yields'
 			| 'value_empty'
 			| 'template_missing_value'
+			| 'template_unreadable'
 			| 'node_attempts_exhausted'
 			| 'node_crashed'
 			| 'file_not_pdf_or_image'
@@ -7618,7 +7619,7 @@ export interface components {
 			field_id: string;
 			/**
 			 * Value
-			 * @description As the field's type has it; for a text field a template, as a title's.
+			 * @description Text is a template for every type, as a title's: what it renders is read as the field's type has it, first in the forms templates write (`1234.5`, `2026-03-12`, `2026-Q3`, `true`), else as a person writes it (`2.111,68 €`, `12. März 2026`, `KW 38/2026`, `ja`; an ambiguous number as `LEKTO_TEMPLATE_LOCALE` means it, an amount without currency in `LEKTO_DEFAULT_CURRENCY`); text that cannot be read sets nothing (noted, the document does not wait for it). An amount, a period or yes/no as JSON is a fixed value.
 			 */
 			value:
 				| string
@@ -8084,6 +8085,11 @@ export interface components {
 			 * @description The type whose fields the template may use (a title pattern's); else the document's type, else every field.
 			 */
 			document_type_id?: string | null;
+			/**
+			 * Field Id
+			 * @description The field a rule's action sets with the template: what it renders is read as the field's type has it (`read`, `unreadable`); also without a document if the template uses no value.
+			 */
+			field_id?: string | null;
 		};
 		/** TemplatePreviewOut */
 		TemplatePreviewOut: {
@@ -8118,6 +8124,24 @@ export interface components {
 			values: {
 				[key: string]: string;
 			} | null;
+			/**
+			 * Read
+			 * @description With `field_id`: the value the rendered text gives the field, in its JSON form; None if nothing was rendered or it cannot be read.
+			 */
+			read?:
+				| (
+						| string
+						| boolean
+						| components['schemas']['MoneyValue']
+						| components['schemas']['PeriodValue']
+				  )
+				| null;
+			/**
+			 * Unreadable
+			 * @description With `field_id`: the rendered text cannot be read as the field's type has it, so the action would set nothing.
+			 * @default false
+			 */
+			unreadable: boolean;
 		};
 		/** TimesOut */
 		TimesOut: {

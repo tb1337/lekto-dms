@@ -562,6 +562,7 @@ async def situation(
         document=document,
         definitions=definitions,
         render=templates.render,
+        writing=templates.writing,
         in_personal_space=current.is_personal,
         uploader_name=None if uploader is None else uploader.label,
         spaces=spaces,

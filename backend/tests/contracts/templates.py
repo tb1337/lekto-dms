@@ -1,13 +1,20 @@
 """Contract suite for the `TemplateRenderer` port: templates of rules, title patterns and webhook
 bodies, from users, in Liquid."""
 
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
 
 from lekto.core.domain.errors import MissingValueError, ValidationError
-from lekto.core.domain.fields import Money
+from lekto.core.domain.fields import (
+    FieldDefinition,
+    FieldType,
+    FieldValue,
+    Money,
+    Url,
+    read_written,
+)
 from lekto.core.domain.periods import Period
 from lekto.core.domain.templates import TemplateValue
 from lekto.core.ports.templates import TemplateRenderer
@@ -30,6 +37,35 @@ VALUES: dict[str, TemplateValue] = {
 class TemplateRendererContract:
     """Needs the fixture `template_renderer`, set to the locale `de` (the expected texts are
     German)."""
+
+    @pytest.mark.parametrize(
+        ("data_type", "value"),
+        [
+            (FieldType.TEXT, "R-2026-0815"),
+            (FieldType.NUMBER, Decimal("1.234")),
+            (FieldType.NUMBER, Decimal("-1234567.5")),
+            (FieldType.AMOUNT, Money(Decimal("3650.00"), "EUR")),
+            (FieldType.AMOUNT, Money(Decimal("-0.99"), "USD")),
+            (FieldType.DATE, date(2026, 3, 31)),
+            (FieldType.BOOLEAN, True),
+            (FieldType.BOOLEAN, False),
+            (FieldType.LINK, "https://example.org/a?b=1"),
+            (FieldType.PERIOD, Period.quarter(2026, 3)),
+            (FieldType.PERIOD, Period.week(2026, 1)),
+            (FieldType.PERIOD, Period(date(2026, 9, 1), date(2026, 9, 14))),
+        ],
+    )
+    def test_reads_back_what_it_writes(
+        self, template_renderer: TemplateRenderer, data_type: FieldType, value: TemplateValue
+    ) -> None:
+        """A field set from another field's value gets that value (`fields.read_written` with
+        the renderer's `writing`)."""
+        definition = FieldDefinition.create(
+            name="F", data_type=data_type, now=datetime(2026, 10, 1, tzinfo=UTC)
+        )
+        written = template_renderer.render("{{ value }}", {"value": value})
+        read: FieldValue | None = read_written(definition, written, template_renderer.writing)
+        assert read == (Url(str(value)) if data_type is FieldType.LINK else value)
 
     def test_writes_the_values(self, template_renderer: TemplateRenderer) -> None:
         render = template_renderer.render

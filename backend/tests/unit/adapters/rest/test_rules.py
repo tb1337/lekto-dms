@@ -1,6 +1,7 @@
 """`/rules`: managing rules over the API."""
 
 from typing import Any
+from uuid import uuid4
 
 from lekto.adapters.inbound.rest import PREFIX
 from tests import builders
@@ -523,6 +524,45 @@ async def test_a_template_is_previewed_with_a_document(api: Api) -> None:
     assert response.status_code == 200  # an admin reads every document
     other = await api.user()
     response = await api.client.post(f"{PREFIX}/templates/preview", json=title, headers=auth(other))
+    assert response.status_code == 404
+
+
+async def test_a_field_s_template_is_previewed_as_the_field_reads_it(api: Api) -> None:
+    admin, user = await api.admin(), await api.user()
+    a, u = auth(admin), auth(user)
+    amount = await post(api, "/fields", {"name": "Betrag", "data_type": "amount"}, a)
+    due = await post(api, "/fields", {"name": "Fällig", "data_type": "date"}, a)
+    id = await upload(api, u)
+
+    async def preview(template: str, field: dict[str, Any], **body: Any) -> dict[str, Any]:
+        json = {"template": template, "field_id": field["id"], **body}
+        response = await api.client.post(f"{PREFIX}/templates/preview", json=json, headers=u)
+        assert response.status_code == 200, response.text
+        result: dict[str, Any] = response.json()
+        return result
+
+    # A template that uses no value is read without a document.
+    constant = await preview("12,50 €", amount)
+    assert (constant["rendered"], constant["read"], constant["unreadable"]) == (
+        "12,50 €",
+        {"amount": "12.50", "currency": "EUR"},
+        False,
+    )
+    unreadable = await preview("{{ filename }}", due, document_id=id)
+    assert (unreadable["rendered"], unreadable["read"], unreadable["unreadable"]) == (
+        "Bill 2026",
+        None,
+        True,
+    )
+    added = await preview("{{ added }}", due, document_id=id)
+    assert added["read"] == added["rendered"] and not added["unreadable"]
+    # Using a value, without a document there is nothing to read.
+    assert (await preview("{{ added }}", due))["read"] is None
+    response = await api.client.post(
+        f"{PREFIX}/templates/preview",
+        json={"template": "x", "field_id": str(uuid4())},
+        headers=u,
+    )
     assert response.status_code == 404
 
 

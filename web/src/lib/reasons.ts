@@ -6,6 +6,7 @@
  */
 import type { components } from '#lib/api/schema.ts';
 import { fieldLabel } from '#lib/describe.ts';
+import { fieldTypeLabel, isFieldType } from '#lib/fields.ts';
 import { formatDate, formatNumber, formatPercent, getLocale, regionalLocale } from '#lib/i18n.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { NODE_LABELS } from '#lib/node-labels.ts';
@@ -29,7 +30,8 @@ export type ReasonKind =
 	| 'list'
 	| 'nodes'
 	| 'thing'
-	| 'action';
+	| 'action'
+	| 'field_type';
 
 /** A message of `#lib/paraglide/messages.js`, whatever it takes. */
 type Message = (inputs: never) => string;
@@ -154,6 +156,7 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	title_yields: entry(m.reason_title_yields),
 	value_empty: entry(m.reason_value_empty),
 	template_missing_value: entry(m.reason_template_missing_value),
+	template_unreadable: entry(m.reason_template_unreadable, { type: 'field_type' }),
 	node_attempts_exhausted: entry(m.reason_node_attempts_exhausted, { attempts: 'number' }),
 	node_crashed: entry(m.reason_node_crashed),
 	file_not_pdf_or_image: entry(m.reason_file_not_pdf_or_image),
@@ -550,6 +553,8 @@ function write(value: unknown, kind: ReasonKind | undefined, options: ReasonOpti
 			return own(THINGS, String(value))?.() ?? String(value);
 		case 'action':
 			return own(ACTIONS, String(value))?.() ?? String(value);
+		case 'field_type':
+			return isFieldType(value) ? fieldTypeLabel(value) : String(value);
 		case 'nodes':
 			return new Intl.ListFormat(listLocale(), { type: 'conjunction' }).format(
 				items(value).map((node) => {

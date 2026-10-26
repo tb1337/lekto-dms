@@ -815,11 +815,10 @@ class MasterDataService:
     async def _rules_using(self, uow: UnitOfWork, key: str) -> list[Rule]:
         """The rules whose templates use the field `key`, but those of title patterns (they
         follow their type)."""
-        fields = await uow.fields.list_all()
         return [
             rule
             for rule in await uow.rules.list_for(spaces=None, include_global=True)
-            if rule.managed_by is None and uses_field(self._templates, rule.definition, fields, key)
+            if rule.managed_by is None and uses_field(self._templates, rule.definition, key)
         ]
 
     async def _patterns_using(self, uow: UnitOfWork, key: str) -> list[DocumentType]:
@@ -884,9 +883,8 @@ class MasterDataService:
 
     async def _rename_in_rules(self, uow: UnitOfWork, actor: UserId, old: str, new: str) -> None:
         """The templates of rules that use `field.<old>` take the new key (a new version)."""
-        fields = await uow.fields.list_all()
         for rule in await self._rules_using(uow, old):
-            rule.change(renamed_field(rule.definition, fields, old, new), actor, self._now())
+            rule.change(renamed_field(rule.definition, old, new), actor, self._now())
             await uow.rules.update(rule)
 
     async def _list[K, E: MasterData](self, actor: UserId, repository: Repo[K, E]) -> list[E]:

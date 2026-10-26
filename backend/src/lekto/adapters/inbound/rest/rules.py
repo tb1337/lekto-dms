@@ -24,8 +24,15 @@ from lekto.adapters.inbound.rest.schemas.rules import (
     TemplatePreviewIn,
     TemplatePreviewOut,
 )
-from lekto.adapters.inbound.schemas import ReasonOut, RuleEffectOut, RuleNoteOut
-from lekto.core.domain.ids import DocumentId, DocumentTypeId, RuleApplicationId, RuleId, SpaceId
+from lekto.adapters.inbound.schemas import ReasonOut, RuleEffectOut, RuleNoteOut, field_json
+from lekto.core.domain.ids import (
+    DocumentId,
+    DocumentTypeId,
+    FieldId,
+    RuleApplicationId,
+    RuleId,
+    SpaceId,
+)
 from lekto.core.domain.rules import RuleScope
 from lekto.core.domain.rules_json import definition_from_json
 
@@ -297,6 +304,7 @@ async def preview_template(
             None if body.document_type_id is None else DocumentTypeId(body.document_type_id)
         ),
         webhook=body.purpose == "webhook",
+        field=None if body.field_id is None else FieldId(body.field_id),
     )
     return TemplatePreviewOut(
         used=list(preview.used),
@@ -304,4 +312,6 @@ async def preview_template(
         missing=preview.missing,
         error=preview.error,
         values=None if preview.values is None else dict(preview.values),
+        read=None if preview.read is None else field_json(preview.read),
+        unreadable=preview.unreadable,
     )

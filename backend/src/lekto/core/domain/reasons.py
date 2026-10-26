@@ -134,6 +134,7 @@ class ReasonCode(StrEnum):
     TITLE_YIELDS = "title_yields"
     VALUE_EMPTY = "value_empty"
     TEMPLATE_MISSING_VALUE = "template_missing_value"
+    TEMPLATE_UNREADABLE = "template_unreadable"
     # nodes: failures, notes, abstaining signals
     NODE_ATTEMPTS_EXHAUSTED = "node_attempts_exhausted"
     NODE_CRASHED = "node_crashed"
@@ -527,6 +528,7 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.TITLE_YIELDS: "another rule sets the title",
     ReasonCode.VALUE_EMPTY: "the value would be empty",
     ReasonCode.TEMPLATE_MISSING_VALUE: "{path} has no value",
+    ReasonCode.TEMPLATE_UNREADABLE: "'{value}' cannot be read as {type:field_type}",
     ReasonCode.NODE_ATTEMPTS_EXHAUSTED: (
         "node did not finish in {attempts:number} attempts (the worker died or ran out of time "
         "each time)"
@@ -951,6 +953,7 @@ KINDS: Mapping[str, str] = {
     "nodes": "nodes",
     "thing": "thing",
     "action": "action",
+    "field_type": "field_type",
 }
 """The kinds a template may give a parameter (after its colon; none: text), by the name the
 catalog gives them: `number` a number, `percent` a fraction from 0 to 1, `date` a day in ISO
@@ -960,7 +963,8 @@ for none), `names` a list of names, `fields` a list of check fields (`contact`, 
 a list of names one after the other (spaces a document went through), `reason` another reason
 (`Reason.to_json`), `list` a list of names, quoted and joined by commas, `nodes` a list of
 nodes of the pipeline (`ocr`, ...), `thing` what something is, as an English noun (`document
-type`, `title`), `action` one of `Action` (what only some may do)."""
+type`, `title`), `action` one of `Action` (what only some may do), `field_type` a field's data
+type (`amount`)."""
 
 
 class _Formatter(string.Formatter):
@@ -991,12 +995,28 @@ class _Formatter(string.Formatter):
                     return ACTIONS[Action(str(value))]
                 except ValueError:
                     return str(value)
+            case "field_type":
+                return _FIELD_TYPES.get(str(value), str(value))
             case "reason":
                 try:
                     return Reason.from_json(value).text  # type: ignore[arg-type]
                 except ValidationError:
                     return str(value)
         return str(value)
+
+
+_FIELD_TYPES = {
+    "text": "text",
+    "number": "a number",
+    "amount": "an amount",
+    "date": "a date",
+    "boolean": "yes or no",
+    "choice": "one of the choices",
+    "link": "a link",
+    "period": "a period",
+}
+"""A field's data type as a reason writes it (`FieldType`; the domain of the reasons does not
+import the fields)."""
 
 
 def _items(value: object) -> list[object]:

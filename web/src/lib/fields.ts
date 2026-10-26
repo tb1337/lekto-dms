@@ -43,6 +43,10 @@ const TYPE_LABELS: Record<FieldType, () => string> = {
 	period: m.field_def_type_period
 };
 
+export function isFieldType(value: unknown): value is FieldType {
+	return typeof value === 'string' && (FIELD_TYPES as readonly string[]).includes(value);
+}
+
 export function fieldTypeLabel(type: FieldType): string {
 	return TYPE_LABELS[type]();
 }

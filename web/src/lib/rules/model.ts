@@ -7,6 +7,7 @@
  */
 import type { components } from '#lib/api/schema.ts';
 import { isMoney, isPeriod } from '#lib/fields.ts';
+import { readPeriod, writePeriod } from '#lib/periods.ts';
 
 type Schemas = components['schemas'];
 
@@ -58,7 +59,15 @@ export interface ConditionStepNode {
 	conditions: GroupNode;
 }
 export type ActionNode =
-	(Exclude<ApiAction, { type: 'condition' }> & { key: string }) | ConditionStepNode;
+	| (Exclude<ApiAction, { type: 'condition' | 'set_field' }> & { key: string })
+	| SetFieldNode
+	| ConditionStepNode;
+/** Setting a field: `templated` says whether the value is edited as a template or as a fixed
+ * value (the builder's own, not sent; unset: `isTemplated` decides from the value). */
+export type SetFieldNode = Extract<ApiAction, { type: 'set_field' }> & {
+	key: string;
+	templated?: boolean;
+};
 
 export interface RuleModel {
 	name: string;
@@ -261,8 +270,9 @@ function conditionToApi(condition: ConditionNode): ApiCondition {
 function actionToApi(node: ActionNode): ApiAction {
 	if (node.type === 'condition')
 		return { type: 'condition', conditions: groupToApi(node.conditions) };
-	const action = clone(node) as Partial<ActionNode>;
+	const action = clone(node) as Partial<ActionNode> & { templated?: boolean };
 	delete action.key;
+	delete action.templated;
 	const plain = action as ApiAction;
 	if (plain.type === 'add_tags' || plain.type === 'remove_tags') {
 		return { ...plain, tag_ids: [...plain.tag_ids].sort() };
@@ -752,6 +762,71 @@ function checkFieldValue(field: FieldInfo, value: Value): Problem | null {
 	}
 }
 
+// --- a field's value as a template ---------------------------------------------------------
+
+/** Where Liquid begins an output or a tag. */
+const MARKUP = /\{[{%]/;
+
+/**
+ * Whether an action's value for `field` is shown as a template: always for a text field; for
+ * the other types, text that is not a fixed value in the field's JSON form (an amount, a
+ * period and yes or no are fixed as JSON, a number and a date as their text, a choice as one of
+ * its options or text without markup, a link as text without markup). An empty value is a
+ * fixed one not given yet. The API takes text as a template for every type (a choice's option
+ * as it is) and reads what it writes; the builder decides once, when it shows the action
+ * (`SetFieldNode.templated`).
+ */
+export function isTemplated(field: FieldInfo | null, value: Value): boolean {
+	if (typeof value !== 'string') return false;
+	if (field?.data_type === 'text') return true;
+	if (value === '') return false;
+	switch (field?.data_type) {
+		case 'boolean':
+		case 'amount':
+		case 'period':
+			return true;
+		case 'number':
+			return !isNumber(value);
+		case 'date':
+			return !isDate(value);
+		case 'choice':
+			return !field.choices.includes(value) && MARKUP.test(value);
+		default:
+			return MARKUP.test(value);
+	}
+}
+
+/** A fixed value as the text a template starts from: an amount with its currency, a period in
+ * ISO 8601, yes or no as `true` or `false`. */
+export function asTemplate(value: Value): string {
+	if (typeof value === 'string') return value;
+	if (typeof value === 'boolean' || typeof value === 'number') return String(value);
+	if (isMoney(value)) return value.amount === '' ? '' : `${value.amount} ${value.currency}`;
+	if (isPeriod(value)) return writePeriod(value.start, value.end);
+	return '';
+}
+
+/** A template's text as a fixed value of `field`, where it is one (`12.50 EUR` an amount, a
+ * date as `YYYY-MM-DD`); otherwise the field's empty value. */
+export function asFixed(field: FieldInfo, value: Value): Value {
+	const text = typeof value === 'string' ? value.trim() : '';
+	const empty = defaultValue('field', 'is', field);
+	switch (field.data_type) {
+		case 'amount': {
+			const found = /^(-?\d+(?:\.\d+)?) ?([A-Z]{3})$/.exec(text);
+			return found ? { amount: found[1], currency: found[2] } : empty;
+		}
+		case 'boolean':
+			return text === 'false' ? false : empty;
+		case 'period':
+			return readPeriod(text) ?? empty;
+		case 'text':
+			return text;
+		default:
+			return isTemplated(field, text) ? empty : text;
+	}
+}
+
 /** What the API reads as a finite decimal (Python's `Decimal`: exponent, `_` between digits). */
 function isNumber(value: Value): boolean {
 	if (typeof value === 'number') return Number.isFinite(value);
@@ -787,7 +862,10 @@ function checkAction(action: ActionNode, fields: readonly FieldInfo[]): Problem 
 		case 'set_field': {
 			if (!action.field_id) return { code: 'field' };
 			const field = fields.find((entry) => entry.id === action.field_id);
-			return field ? checkFieldValue(field, action.value) : null;
+			if (!field) return null;
+			return (action.templated ?? isTemplated(field, action.value))
+				? checkText(action.value, LIMITS.text)
+				: checkFieldValue(field, action.value);
 		}
 		case 'force_review':
 			return checkText(action.reason, LIMITS.text);

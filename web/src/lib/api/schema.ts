@@ -2967,7 +2967,8 @@ export interface components {
 			| 'channel'
 			| 'text'
 			| 'field'
-			| 'document_date';
+			| 'document_date'
+			| 'fact';
 		/**
 		 * ConditionSchema
 		 * @description `field` `op` `value`. Operators by field: contact, document_type: `is`, `in`, `present`,
@@ -2984,7 +2985,10 @@ export interface components {
 		 *     before the date), `present`, `missing`; step (in a condition step only: what a step that
 		 *     asks brought, at `path`): `is`, `in` (texts without case, numbers as numbers, true or
 		 *     false), `contains` (a text in a text, an item of a list), `gt`, `lt` (a number or a date),
-		 *     `present`, `missing`.
+		 *     `present`, `missing`; fact (`fact_kind`, `fact_role` if given; facts a person rejected do
+		 *     not count): `is`, `in` (the values as written, compared as Lekto compares them), `matches`
+		 *     (against each value as the text writes it; `^` and `$` mark its ends), `present`,
+		 *     `missing`.
 		 * @example {
 		 *       "field": "contact",
 		 *       "op": "is",
@@ -2995,6 +2999,12 @@ export interface components {
 		 *       "field": "text",
 		 *       "op": "matches",
 		 *       "value": "Rechnung\\s+Nr"
+		 *     }
+		 * @example {
+		 *       "fact_kind": "invoice_number",
+		 *       "fact_role": "refers",
+		 *       "field": "fact",
+		 *       "op": "present"
 		 *     }
 		 */
 		ConditionSchema: {
@@ -3030,6 +3040,10 @@ export interface components {
 			 * @default false
 			 */
 			case_sensitive: boolean;
+			/** @description Only when `field` is `fact`: the kind of the facts. */
+			fact_kind?: components['schemas']['IdentifierKind'] | null;
+			/** @description Only when `field` is `fact`: their role; none for any. */
+			fact_role?: components['schemas']['FactRole'] | null;
 		};
 		/** ConditionStepAction */
 		'ConditionStepAction-Input': {

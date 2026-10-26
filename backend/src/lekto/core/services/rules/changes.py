@@ -291,7 +291,9 @@ class ChangeRules:
                 tags_removed=(origin.tags_removed - document.tag_ids)
                 | (before.tag_ids - document.tag_ids),
             )
-            before_patterns, _ = await field_patterns(self._matcher, rules, before)
+            # The facts stay as they are: their patterns too.
+            kept = await uow.document_facts.of_document(document.id)
+            before_patterns, _ = await field_patterns(self._matcher, rules, before, kept)
             run = await run_rules(
                 uow,
                 self._matcher,

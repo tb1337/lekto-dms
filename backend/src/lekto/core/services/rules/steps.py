@@ -353,9 +353,10 @@ class Walker:
         return state
 
     async def _facts(self, rule: Rule, state: Document, steps: Mapping[str, JsonValue]) -> Facts:
-        patterns, _ = await field_patterns(self.matcher, [rule], state)
+        patterns, _ = await field_patterns(self.matcher, [rule], state, self.context.kept_facts)
         return Facts.of(
             state,
+            kept_facts=self.context.kept_facts,
             text=self.prepared.text,
             patterns={**self.prepared.patterns, **patterns},
             unverified=self.origin.unverified,
@@ -417,12 +418,13 @@ async def run_rules(
     pattern results; only rules that become true with the change act. `applier`: who applies
     the rules to existing documents. `book`: what the tasks of the node's run brought, on
     arrival; without it, no step asks (`link_base`: where consumers answer)."""
-    patterns, problems = await field_patterns(matcher, rules, document)
+    kept = tuple(await uow.document_facts.of_document(document.id))
+    patterns, problems = await field_patterns(matcher, rules, document, kept)
     loaded = await taxonomy(uow, [document, *([] if before is None else [before[0]])], rules)
-    now_facts = facts(document, prepared, patterns, origin, loaded.taxonomy)
+    now_facts = facts(document, prepared, patterns, origin, loaded.taxonomy, kept)
     before_facts = None
     if before is not None:
-        before_facts = facts(before[0], prepared, before[1], origin, loaded.taxonomy)
+        before_facts = facts(before[0], prepared, before[1], origin, loaded.taxonomy, kept)
     matched = matches(rules, now_facts, definitions, before=before_facts)
     context = await situation(
         uow,
@@ -438,6 +440,8 @@ async def run_rules(
         accept_conflicts=accept_conflicts,
         loaded=loaded,
         applier=applier,
+        kept_facts=kept,
+        codes=prepared.codes,
     )
     walker = Walker(
         uow,

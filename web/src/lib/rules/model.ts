@@ -41,6 +41,10 @@ export interface ConditionNode {
 	caseSensitive: boolean;
 	/** A condition on what a step brought: `<step>.<key>…`; null for other fields. */
 	path: string | null;
+	/** A condition on the document's facts (#145): their kind, and their role (null: any);
+	 * null for other fields. */
+	factKind: string | null;
+	factRole: string | null;
 }
 
 export interface GroupNode {
@@ -110,7 +114,8 @@ export const CONDITION_FIELDS: readonly ConditionField[] = [
 	'channel',
 	'text',
 	'document_date',
-	'field'
+	'field',
+	'fact'
 ];
 export const STEP_CONDITION_FIELDS: readonly ConditionField[] = ['step', ...CONDITION_FIELDS];
 
@@ -153,7 +158,8 @@ export const CONDITION_FIELD_OPERATORS: Record<
 	channel: ['is', 'in'],
 	text: ['contains', 'matches'],
 	document_date: ORDERED,
-	step: ['is', 'in', 'contains', 'gt', 'lt', 'present', 'missing']
+	step: ['is', 'in', 'contains', 'gt', 'lt', 'present', 'missing'],
+	fact: ['present', 'missing', 'is', 'in', 'matches']
 };
 
 export const FIELD_TYPE_OPERATORS: Record<FieldType, readonly Operator[]> = {
@@ -232,7 +238,9 @@ function conditionFromApi(condition: ApiCondition): ConditionNode {
 		value: clone(condition.value ?? null),
 		fieldId: condition.field_id ?? null,
 		caseSensitive: condition.case_sensitive ?? false,
-		path: condition.path ?? null
+		path: condition.path ?? null,
+		factKind: condition.fact_kind ?? null,
+		factRole: condition.fact_role ?? null
 	};
 }
 
@@ -263,7 +271,13 @@ function conditionToApi(condition: ConditionNode): ApiCondition {
 		value: clone(condition.value),
 		field_id: condition.fieldId,
 		case_sensitive: condition.caseSensitive,
-		...(condition.path === null ? {} : { path: condition.path })
+		...(condition.path === null ? {} : { path: condition.path }),
+		...(condition.field === 'fact'
+			? {
+					fact_kind: condition.factKind as ApiCondition['fact_kind'],
+					fact_role: (condition.factRole ?? null) as ApiCondition['fact_role']
+				}
+			: {})
 	};
 }
 
@@ -312,7 +326,9 @@ export function newCondition(field: ConditionField = 'contact'): ConditionNode {
 		value: defaultValue(field, op, null),
 		fieldId: null,
 		caseSensitive: false,
-		path: field === 'step' ? '' : null
+		path: field === 'step' ? '' : null,
+		factKind: field === 'fact' ? 'invoice_number' : null,
+		factRole: null
 	};
 }
 
@@ -396,6 +412,8 @@ export function changeConditionField(
 	condition.fieldId = null;
 	condition.caseSensitive = false;
 	condition.path = field === 'step' ? '' : null;
+	condition.factKind = field === 'fact' ? 'invoice_number' : null;
+	condition.factRole = null;
 	condition.op = operatorsFor(condition, fields)[0];
 	condition.value = defaultValue(field, condition.op, null);
 }
@@ -675,6 +693,7 @@ function checkCondition(
 		if (!steps.includes(path.split('.')[0])) return { code: 'step_unknown' };
 	}
 	if (condition.field === 'field' && !condition.fieldId) return { code: 'field' };
+	if (condition.field === 'fact' && !condition.factKind) return { code: 'choose' };
 	const field = fields.find((entry) => entry.id === condition.fieldId) ?? null;
 	if (field && !FIELD_TYPE_OPERATORS[field.data_type].includes(condition.op)) {
 		return { code: 'operator' };
@@ -698,7 +717,11 @@ function checkValue(
 ): Problem | null {
 	const textual = condition.op === 'contains' || condition.op === 'matches';
 	if (condition.field === 'step') return checkStepValue(condition.op, value);
-	if (condition.field === 'text' || (condition.field === 'field' && textual)) {
+	if (
+		condition.field === 'text' ||
+		(condition.field === 'field' && textual) ||
+		condition.field === 'fact'
+	) {
 		return checkText(value, condition.op === 'matches' ? LIMITS.pattern : LIMITS.text);
 	}
 	switch (condition.field) {

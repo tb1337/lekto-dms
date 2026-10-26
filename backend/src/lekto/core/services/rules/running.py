@@ -6,6 +6,7 @@ stores the result (`prepare`), so no transaction waits for a slow pattern. Patte
 values (short) run inside it, on the state that is stored.
 """
 
+import json
 import logging
 import time
 from collections.abc import Collection, Iterable, Mapping, Sequence
@@ -24,6 +25,8 @@ from lekto.core.domain.classification import (
     TOPIC,
     field_key,
 )
+from lekto.core.domain.codes import Code, codes_from_json
+from lekto.core.domain.document_facts import DocumentFact
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import NotFoundError, PatternTimeoutError, ValidationError
 from lekto.core.domain.evidence import DocumentText
@@ -83,7 +86,7 @@ from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services._access import space_label
 from lekto.core.services._tags import tag_tree
 from lekto.core.services.inbox import MODEL_NODES, arrived, field_checks, latest_entries
-from lekto.core.services.objects import load_text
+from lekto.core.services.objects import codes_key, load_text
 from lekto.core.services.tasks.desk import Ask
 from lekto.core.services.titles import machine_title
 from lekto.core.services.webhooks.delivery import queue_rule_send
@@ -188,6 +191,7 @@ class Prepared:
     text: DocumentText | None = None
     patterns: Mapping[PatternKey, bool] = field(default_factory=dict)
     problems: tuple[str, ...] = ()
+    codes: tuple[Code, ...] = ()  # the codes on its pages, for templates (`facts.girocode`)
 
 
 async def prepare(
@@ -199,26 +203,43 @@ async def prepare(
     max_text: int,
     budget: PatternBudget | None = None,
 ) -> Prepared:
-    """Load the text if a rule looks at it and run the rules' patterns on it."""
+    """Load the text if a rule looks at it and run the rules' patterns on it; the codes on the
+    pages if they were read (`facts.girocode` of templates)."""
+    codes = await _codes(store, document)
     if not any(rule.definition.uses_text for rule in rules):
-        return Prepared()
+        return Prepared(codes=codes)
     if document.processing.outcome(Node.PARSE) not in (Outcome.OK, Outcome.UNCERTAIN):
-        return Prepared()
+        return Prepared(codes=codes)
     try:
         markdown = (await load_text(store, document.id)).decode("utf-8")
     except NotFoundError:
-        return Prepared()
+        return Prepared(codes=codes)
     text = pattern_text(markdown, max_text)
     keys = {key for rule in rules for key in rule.definition.patterns() if key[0] == TEXT_TARGET}
     results, problems = await _search(matcher, {key: text for key in keys}, budget)
-    return Prepared(DocumentText(text), results, problems)
+    return Prepared(DocumentText(text), results, problems, codes)
+
+
+async def _codes(store: ObjectStore, document: Document) -> tuple[Code, ...]:
+    """The codes read from the document's pages (`codes_key`); none if they were not, or
+    cannot be read."""
+    try:
+        return codes_from_json(json.loads(await store.get(codes_key(document.id)))) or ()
+    except NotFoundError:
+        return ()
+    except (ValueError, ValidationError):
+        log.warning("an unreadable file of codes", extra={"document_id": str(document.id)})
+        return ()
 
 
 async def field_patterns(
-    matcher: PatternMatcher, rules: Sequence[Rule], document: Document
+    matcher: PatternMatcher,
+    rules: Sequence[Rule],
+    document: Document,
+    kept_facts: Sequence[DocumentFact] = (),
 ) -> tuple[dict[PatternKey, bool], tuple[str, ...]]:
-    """The rules' patterns on the document's field values."""
-    return await _search(matcher, pattern_subjects(rules, document, None), None)
+    """The rules' patterns on the document's field values and its facts."""
+    return await _search(matcher, pattern_subjects(rules, document, None, kept_facts), None)
 
 
 async def _search(
@@ -228,7 +249,10 @@ async def _search(
     results: dict[PatternKey, bool] = {}
     problems: list[str] = []
     for key, subject in subjects.items():
-        _, pattern, case_sensitive = key
+        target, pattern, case_sensitive = key
+        if target.startswith("fact:"):
+            # The facts' values stand one per line: `^` and `$` mark the ends of each.
+            pattern = f"(?m){pattern}"
         if budget.exhausted:
             problems.append(f"pattern {pattern!r} skipped: the time for patterns is used up")
             log.warning("rule pattern skipped", extra={"pattern": pattern, "error": "no time"})
@@ -440,9 +464,11 @@ def facts(
     patterns: Mapping[PatternKey, bool],
     origin: Provenance,
     taxonomy: Taxonomy | None = None,
+    kept_facts: Sequence[DocumentFact] = (),
 ) -> Facts:
     return Facts.of(
         document,
+        kept_facts=kept_facts,
         text=prepared.text,
         patterns={**prepared.patterns, **patterns},
         unverified=origin.unverified,
@@ -509,6 +535,8 @@ async def situation(
     accept_conflicts: bool = False,
     loaded: Loaded,
     applier: UserId | None = None,
+    kept_facts: Sequence[DocumentFact] = (),
+    codes: Sequence[Code] = (),
 ) -> Situation:
     """Everything `plan` needs to know besides the matching rules. `loaded`: the master data
     of the run (`taxonomy`, for the document and at least `rules`); beyond it, only the
@@ -578,6 +606,8 @@ async def situation(
         accept_conflicts=accept_conflicts,
         taxonomy=loaded.taxonomy,
         applier=applier,
+        kept_facts=tuple(kept_facts),
+        codes=tuple(codes),
     )
 
 

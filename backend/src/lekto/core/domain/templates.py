@@ -8,6 +8,15 @@ from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from datetime import date
 from decimal import Decimal
 
+from lekto.core.domain.codes import Code, giro_code
+from lekto.core.domain.document_facts import (
+    DocumentFact,
+    FactOrigin,
+    FactRole,
+    FactState,
+    person_only,
+    reading_order,
+)
 from lekto.core.domain.documents import Document
 from lekto.core.domain.fields import FieldDefinition, FieldValue, Money, Url
 from lekto.core.domain.json_value import JsonValue
@@ -51,10 +60,14 @@ class _Given:
     channel: TemplateValue | None
     pages: TemplateValue | None
     field: TemplateValue | None
+    facts: TemplateValue | None
+    fact_list: TemplateValue | None
 
 
 NAMES = tuple(item.name for item in dataclasses.fields(_Given))
 FIELD = "field"
+FACTS = "facts"
+FACT_LIST = "fact_list"
 EVENT = "event"
 RULE = "rule"
 TASK = "task"
@@ -80,11 +93,14 @@ def template_values(
     contact_groups: Iterable[str] = (),
     document_type_groups: Iterable[str] = (),
     topic: str | None = None,
+    kept_facts: Iterable[DocumentFact] = (),
+    codes: Iterable[Code] = (),
 ) -> dict[str, TemplateValue]:
     """The values of `document` as a template sees them, the names already resolved (as rules
     leave them); what the document does not have is left out. `tags`: those set (not their
     ancestors); `topic`: its name (not its path); `contact_groups`, `document_type_groups`: the
-    groups the contact and the type are in (not their ancestors). Lists are sorted by name."""
+    groups the contact and the type are in (not their ancestors). Lists are sorted by name.
+    The facts (`kept_facts`, `codes`) as `facts` and `fact_list` (`facts_values`)."""
 
     def ordered(items: Iterable[str]) -> list[TemplateValue]:
         return [*sorted(items, key=sort_key)]
@@ -106,8 +122,64 @@ def template_values(
         channel=document.channel.value,
         pages=document.page_count,
         field={definition.key: _field(value) for definition, value in fields if value is not None},
+        **facts_values(kept_facts, codes),
     )
     return {name: value for name in NAMES if (value := getattr(given, name)) is not None}
+
+
+_ORIGINS = (FactOrigin.PERSON, FactOrigin.MODEL, FactOrigin.PATTERN, FactOrigin.CODE)
+
+
+def facts_values(
+    kept_facts: Iterable[DocumentFact], codes: Iterable[Code] = ()
+) -> dict[str, TemplateValue | None]:
+    """What templates see of the document's facts (`fakten.md`, decision 13), none a person
+    rejected and none of a kind a person's alone (a rule's template writes into what others
+    read):
+
+    - `facts.<kind>`: the document's own value of the kind (no reference), the first as the
+      text reads, as the text writes it (`{{ facts.invoice_number }}`);
+    - `facts.refers.<kind>`: the first value of the kind that refers to another document;
+    - `facts.girocode`: the first GiroCode on the pages, `name`, `iban`, `bic`, `amount`,
+      `purpose` (`{{ facts.girocode.amount }}`);
+    - `fact_list`: every fact with `kind`, `value` (normalised), `written`, `role` and
+      `origin` (a person, the model, the patterns or a code, the first of these it has).
+
+    None where there is nothing."""
+    shown = sorted(
+        (
+            fact
+            for fact in kept_facts
+            if fact.state is not FactState.REJECTED and not person_only(fact.kind)
+        ),
+        key=reading_order,
+    )
+    own: dict[str, TemplateValue] = {}
+    refers: dict[str, TemplateValue] = {}
+    for fact in shown:
+        target = refers if fact.role is FactRole.REFERS else own
+        target.setdefault(fact.kind.value, fact.written or fact.value)
+    facts: dict[str, TemplateValue] = dict(own)
+    if refers:
+        facts["refers"] = refers
+    giro = next((found for code in codes if (found := giro_code(code.text)) is not None), None)
+    if giro is not None:
+        payment: dict[str, TemplateValue] = {"name": giro.name, "iban": giro.iban}
+        for name, value in (("bic", giro.bic), ("amount", giro.amount), ("purpose", giro.purpose)):
+            if value is not None:
+                payment[name] = value
+        facts["girocode"] = payment
+    listed: list[TemplateValue] = [
+        {
+            "kind": fact.kind.value,
+            "value": fact.value,
+            "written": fact.written or fact.value,
+            "role": fact.role.value,
+            "origin": next(origin for origin in _ORIGINS if origin in fact.origins).value,
+        }
+        for fact in shown
+    ]
+    return {"facts": facts or None, "fact_list": listed or None}
 
 
 def _field(value: FieldValue) -> TemplateValue:
@@ -121,6 +193,10 @@ def writing_templates(values: Mapping[str, TemplateValue]) -> dict[str, str]:
     for name, value in values.items():
         if name == FIELD and isinstance(value, Mapping):
             paths.extend((f"{FIELD}.{key}", item) for key, item in value.items())
+        elif name == FACTS and isinstance(value, Mapping):
+            paths.extend(_flat(FACTS, value))
+        elif name == FACT_LIST:
+            continue  # a list of facts: the template filters it (`where`, `map`)
         else:
             paths.append((name, value))
     return {
@@ -131,6 +207,17 @@ def writing_templates(values: Mapping[str, TemplateValue]) -> dict[str, str]:
         )
         for path, value in paths
     }
+
+
+def _flat(prefix: str, values: Mapping[str, TemplateValue]) -> list[tuple[str, TemplateValue]]:
+    """The paths to the values of nested mappings (`facts.refers.invoice_number`)."""
+    paths: list[tuple[str, TemplateValue]] = []
+    for key, value in values.items():
+        if isinstance(value, Mapping):
+            paths.extend(_flat(f"{prefix}.{key}", value))
+        else:
+            paths.append((f"{prefix}.{key}", value))
+    return paths
 
 
 def unknown_values(

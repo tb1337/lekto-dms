@@ -38,6 +38,7 @@ from typing import Literal, Self
 from uuid import UUID
 
 from lekto.core.domain.classification import field_key
+from lekto.core.domain.document_facts import FactRole
 from lekto.core.domain.documents import Channel
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.fields import (
@@ -48,6 +49,7 @@ from lekto.core.domain.fields import (
     field_from_json,
     read_written,
 )
+from lekto.core.domain.identifiers import IdentifierKind, normalise_identifier
 from lekto.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -100,6 +102,7 @@ class ConditionField(StrEnum):
     TEXT = "text"
     FIELD = "field"
     DOCUMENT_DATE = "document_date"
+    FACT = "fact"  # a fact of the document (#145): of `fact_kind`, in `fact_role` if given
 
 
 class Operator(StrEnum):
@@ -140,6 +143,9 @@ _FIELD_OPERATORS: dict[ConditionField, frozenset[Operator]] = {
     ConditionField.TEXT: frozenset({Operator.CONTAINS, Operator.MATCHES}),
     ConditionField.DOCUMENT_DATE: frozenset(
         {Operator.IS, Operator.GT, Operator.LT, Operator.PRESENT, Operator.MISSING}
+    ),
+    ConditionField.FACT: frozenset(
+        {Operator.IS, Operator.IN, Operator.MATCHES, Operator.PRESENT, Operator.MISSING}
     ),
 }
 TAG_FIELDS: dict[ConditionField, TagScope] = {
@@ -198,7 +204,10 @@ class Condition:
     """Field, operator and value. `value` is None for `present` and `missing`, a list for
     `in`, otherwise one value. `field_id` names the field of a `field` condition, `path` what
     a `step` condition looks at (`accounting.paid`: the answer of the step `accounting`, its
-    key `paid`); `case_sensitive` applies to `matches` only."""
+    key `paid`); `case_sensitive` applies to `matches` only. A `fact` condition looks at the
+    document's facts of `fact_kind` (none a person rejected), in `fact_role` if given; `is`
+    and `in` compare their values as Lekto compares them (written as they stand in a text,
+    kept normalised), `matches` runs against each value as the text writes it."""
 
     field: ConditionField
     op: Operator
@@ -206,8 +215,14 @@ class Condition:
     field_id: FieldId | None = None
     case_sensitive: bool = False
     path: str | None = None
+    fact_kind: IdentifierKind | None = None
+    fact_role: FactRole | None = None
 
     def __post_init__(self) -> None:
+        if (self.field is ConditionField.FACT) != (self.fact_kind is not None):
+            raise ValidationError("fact_kind is given exactly for fact conditions")
+        if self.fact_role is not None and self.field is not ConditionField.FACT:
+            raise ValidationError("fact_role is given for fact conditions only")
         if (self.field is ConditionField.FIELD) != (self.field_id is not None):
             raise ValidationError("field_id is given exactly for field conditions")
         if (self.field is ConditionField.STEP) != (self.path is not None):
@@ -238,6 +253,12 @@ class Condition:
             # One spelling of every id, so conditions compare ids as text.
             ids = [str(require_uuid(item, self.field.value)) for item in items]
             object.__setattr__(self, "value", ids if self.op is Operator.IN else ids[0])
+        if self.field is ConditionField.FACT and self.op in (Operator.IS, Operator.IN):
+            # As Lekto compares the values of their kind.
+            assert self.fact_kind is not None
+            kind = self.fact_kind
+            values = [normalise_identifier(kind, str(item)) for item in items]
+            object.__setattr__(self, "value", values if self.op is Operator.IN else values[0])
 
     def _check_value(self, value: JsonValue) -> None:
         match self.field:
@@ -261,6 +282,18 @@ class Condition:
                     _text(value, MAX_TEXT)
             case ConditionField.STEP:
                 _step_value(self.op, value)
+            case ConditionField.FACT:
+                _text(value, MAX_PATTERN if self.op is Operator.MATCHES else MAX_TEXT)
+
+    @property
+    def target(self) -> str:
+        """What a `matches` condition runs against: `text`, a field's id, or the facts
+        (`fact:<kind>:<role>`)."""
+        if self.field is ConditionField.FACT:
+            assert self.fact_kind is not None
+            role = "" if self.fact_role is None else self.fact_role.value
+            return f"fact:{self.fact_kind.value}:{role}"
+        return "text" if self.field_id is None else str(self.field_id)
 
     @property
     def values(self) -> list[JsonValue]:
@@ -661,14 +694,10 @@ class RuleDefinition:
         return any(condition.field is ConditionField.TEXT for condition in self.all_conditions())
 
     def patterns(self) -> set[tuple[str, str, bool]]:
-        """The regular expressions of the conditions: target (`text` or a field id),
-        pattern and case setting."""
+        """The regular expressions of the conditions: target (`Condition.target`), pattern
+        and case setting."""
         return {
-            (
-                "text" if condition.field_id is None else str(condition.field_id),
-                str(condition.value),
-                condition.case_sensitive,
-            )
+            (condition.target, str(condition.value), condition.case_sensitive)
             for condition in self.all_conditions()
             if condition.op is Operator.MATCHES
         }

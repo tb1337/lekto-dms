@@ -1,5 +1,7 @@
 /** Texts of the rule builder: fields, operators, actions, problems; a rule as sentences. */
 import { describeValue } from '#lib/describe.ts';
+import { roleLabel, type FactRole } from '#lib/facts.ts';
+import { kindLabel, type IdentifierKind } from '#lib/identifiers.ts';
 import { byId, holderOf, spaceLabel, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import type {
@@ -28,7 +30,8 @@ const CONDITION_FIELDS: Record<Exclude<ConditionField, 'field'>, () => string> =
 	channel: m.rule_field_channel,
 	text: m.rule_field_text,
 	document_date: m.field_date,
-	step: m.rule_field_step
+	step: m.rule_field_step,
+	fact: m.rule_field_fact
 };
 
 export function fieldLabel(field: ConditionField): string {
@@ -155,7 +158,9 @@ export function describeCondition(condition: ConditionNode, lookup: Lookup | nul
 			? (field?.name ?? m.rule_unknown())
 			: condition.field === 'step'
 				? `steps.${condition.path ?? ''}`
-				: fieldLabel(condition.field);
+				: condition.field === 'fact'
+					? factSubject(condition)
+					: fieldLabel(condition.field);
 	const op = operatorLabel(condition.field, condition.op, field?.data_type ?? null);
 	if (condition.value === null) return `${subject} ${op}`;
 	const values = Array.isArray(condition.value) ? condition.value : [condition.value];
@@ -165,6 +170,13 @@ export function describeCondition(condition: ConditionNode, lookup: Lookup | nul
 	const shown = quoted && !isTagField(condition.field) ? m.rule_quoted({ text }) : text;
 	const caseNote = condition.caseSensitive ? ` (${m.rule_case_sensitive()})` : '';
 	return `${subject} ${op} ${shown}${caseNote}`;
+}
+
+/** A fact condition's subject: "Fact Invoice number (refers to a document)". */
+function factSubject(condition: ConditionNode): string {
+	const kind = condition.factKind ? kindLabel(condition.factKind as IdentifierKind) : '';
+	const role = condition.factRole ? ` (${roleLabel(condition.factRole as FactRole)})` : '';
+	return `${m.rule_field_fact()} ${kind}${role}`;
 }
 
 function describeConditionValue(
@@ -177,7 +189,7 @@ function describeConditionValue(
 		if (condition.field === 'document_type') return nameOf(value, lookup?.documentTypes ?? []);
 		if (isTagField(condition.field) || condition.field === 'topic') return tagName(value, lookup);
 		if (condition.field === 'channel') return CHANNEL_LABELS[value as Channel]?.() ?? value;
-		if (condition.field === 'text') return value;
+		if (condition.field === 'text' || condition.field === 'fact') return value;
 		if (condition.op === 'contains' || condition.op === 'matches') return value;
 	}
 	return describeValue(value, null);

@@ -19,6 +19,8 @@ from lekto.adapters.inbound.schemas import (
     RuleNoteOut,
     RuleReportOut,
 )
+from lekto.core.domain.document_facts import FactRole
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.rules import (
     DEFAULT_PRIORITY,
@@ -64,7 +66,10 @@ class ConditionSchema(BaseModel):
     before the date), `present`, `missing`; step (in a condition step only: what a step that
     asks brought, at `path`): `is`, `in` (texts without case, numbers as numbers, true or
     false), `contains` (a text in a text, an item of a list), `gt`, `lt` (a number or a date),
-    `present`, `missing`."""
+    `present`, `missing`; fact (`fact_kind`, `fact_role` if given; facts a person rejected do
+    not count): `is`, `in` (the values as written, compared as Lekto compares them), `matches`
+    (against each value as the text writes it; `^` and `$` mark its ends), `present`,
+    `missing`."""
 
     model_config = ConfigDict(
         extra="forbid",
@@ -76,6 +81,12 @@ class ConditionSchema(BaseModel):
                     "op": "matches",
                     "value": "Rechnung\\s+Nr",
                     "case_sensitive": True,
+                },
+                {
+                    "field": "fact",
+                    "op": "present",
+                    "fact_kind": "invoice_number",
+                    "fact_role": "refers",
                 },
             ]
         },
@@ -114,6 +125,13 @@ class ConditionSchema(BaseModel):
     )
     case_sensitive: bool = Field(
         default=False, description="For `matches` only; other comparisons ignore case."
+    )
+    fact_kind: IdentifierKind | None = Field(
+        default=None, description="Only when `field` is `fact`: the kind of the facts."
+    )
+    fact_role: FactRole | None = Field(
+        default=None,
+        description="Only when `field` is `fact`: their role; none for any.",
     )
 
 

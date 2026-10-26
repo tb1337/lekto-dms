@@ -17,6 +17,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from lekto.core.domain.classification import CONTACT, DOCUMENT_TYPE, TAGS, TOPIC
+from lekto.core.domain.document_facts import DocumentFact, FactState
 from lekto.core.domain.documents import Channel, Document
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.evidence import DocumentText, contains, normalise, without_markup
@@ -70,7 +71,7 @@ class Facts:
     likewise.
     `taxonomy`: the tag trees; `contact_groups` and `document_type_groups` the groups of the
     contact and the type. `steps`: what a rule's steps brought so far, by step name (for its
-    condition steps)."""
+    condition steps). `kept_facts`: the document's facts (`domain.document_facts`)."""
 
     contact_id: ContactId | None
     document_type_id: DocumentTypeId | None
@@ -87,12 +88,14 @@ class Facts:
     contact_groups: frozenset[TagId] = frozenset()
     document_type_groups: frozenset[TagId] = frozenset()
     steps: Mapping[str, JsonValue] = field(default_factory=dict)
+    kept_facts: tuple[DocumentFact, ...] = ()
 
     @classmethod
     def of(
         cls,
         document: Document,
         *,
+        kept_facts: Sequence[DocumentFact] = (),
         text: DocumentText | None = None,
         patterns: Mapping[tuple[str, str, bool], bool] | None = None,
         unverified: frozenset[str] = frozenset(),
@@ -117,7 +120,20 @@ class Facts:
             contact_groups=taxonomy.groups_of(document.contact_id),
             document_type_groups=taxonomy.groups_of(document.document_type_id),
             steps=steps or {},
+            kept_facts=tuple(kept_facts),
         )
+
+
+def fact_values(condition: Condition, kept: Sequence[DocumentFact]) -> list[DocumentFact]:
+    """The facts a `fact` condition looks at: of its kind, in its role if it names one, none a
+    person rejected."""
+    return [
+        fact
+        for fact in kept
+        if fact.state is not FactState.REJECTED
+        and fact.kind is condition.fact_kind
+        and (condition.fact_role is None or fact.role is condition.fact_role)
+    ]
 
 
 def evaluate(
@@ -215,6 +231,18 @@ def _condition(
         case ConditionField.STEP:
             assert condition.path is not None
             return _step(op, step_value(facts.steps, condition.path), values)
+        case ConditionField.FACT:
+            # Read from the text (or decided by a person): never unknown.
+            held = [fact.value for fact in fact_values(condition, facts.kept_facts)]
+            match op:
+                case Operator.PRESENT:
+                    return bool(held)
+                case Operator.MISSING:
+                    return not held
+                case Operator.MATCHES:
+                    key = (condition.target, str(condition.value), condition.case_sensitive)
+                    return facts.patterns.get(key, False)
+            return any(value in values for value in held)
 
 
 _MISSING = object()
@@ -399,16 +427,29 @@ def _text_of(value: FieldValue) -> str:
 
 
 def pattern_subjects(
-    rules: Sequence[Rule], document: Document, text: str | None
+    rules: Sequence[Rule],
+    document: Document,
+    text: str | None,
+    kept_facts: Sequence[DocumentFact] = (),
 ) -> dict[tuple[str, str, bool], str]:
-    """What each regular expression of `rules` runs against: the text or a field value
-    (as text). Patterns without a subject (no text, no value) are left out."""
+    """What each regular expression of `rules` runs against: the text, a field value (as
+    text), or the values of the facts a condition looks at, each as the text writes it on a
+    line of its own. Patterns without a subject (no text, no value, no fact) are left out."""
     subjects: dict[tuple[str, str, bool], str] = {}
+    conditions = {
+        condition.target: condition
+        for rule in rules
+        for condition in rule.definition.all_conditions()
+        if condition.field is ConditionField.FACT
+    }
     for rule in rules:
         for target, pattern, case_sensitive in rule.definition.patterns():
             subject: str | None
             if target == TEXT_TARGET:
                 subject = text
+            elif target in conditions:
+                held = fact_values(conditions[target], kept_facts)
+                subject = "\n".join(fact.written or fact.value for fact in held) or None
             else:
                 value = document.fields.get(FieldId(UUID(target)))
                 subject = None if value is None else _text_of(value)

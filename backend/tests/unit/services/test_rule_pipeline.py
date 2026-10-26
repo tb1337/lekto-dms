@@ -7,15 +7,27 @@ from typing import Any
 
 import pytest
 
+from lekto.core.domain.document_facts import FactRole
 from lekto.core.domain.documents import DocumentChanges
 from lekto.core.domain.errors import OpenFieldsError
 from lekto.core.domain.events import DocumentFiled
 from lekto.core.domain.fields import FieldType
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.master_data import Assignment
-from lekto.core.domain.pipeline import PERSON, RULES, Lane, Node, Outcome, ProcessingStatus
+from lekto.core.domain.pipeline import (
+    PERSON,
+    RULES,
+    Lane,
+    Node,
+    Outcome,
+    ProcessingStatus,
+)
 from lekto.core.domain.rule_planner import Mode
 from lekto.core.domain.rules import (
+    Condition,
+    ConditionField,
     ForceReview,
+    Operator,
     SetContact,
     SetDocumentType,
     SetField,
@@ -24,6 +36,7 @@ from lekto.core.domain.rules import (
     Trigger,
 )
 from lekto.core.domain.spaces import SpaceRole
+from lekto.core.services.classification.signals import FactsSignal
 from lekto.core.services.rules.running import (
     PatternBudget,
     Prepared,
@@ -512,3 +525,31 @@ async def test_a_rule_run_loads_contacts_types_and_tags_once(
     assert counted["contacts"].calls == {"find": 1}
     assert counted["document_types"].calls == {"find": 1}
     assert counted["tags"].calls == {"list_all": 1}
+
+
+async def test_a_rule_reads_the_facts_into_a_field(world: World) -> None:
+    """A reminder: the rule looks for an invoice it refers to and writes its number into a
+    field; a document without one the rule leaves alone."""
+    r = await rule_world(world)
+    owner = await world.user()
+    note = await world.master_data.create_field(r.admin.id, "Bezug", FieldType.TEXT)
+    refers = Condition(
+        field=ConditionField.FACT,
+        op=Operator.PRESENT,
+        fact_kind=IdentifierKind.INVOICE_NUMBER,
+        fact_role=FactRole.REFERS,
+    )
+    await r.personal_rule(
+        owner,
+        definition(
+            "Mahnung",
+            refers,
+            SetField(note.id, "Rechnung {{ facts.refers.invoice_number }}"),
+        ),
+    )
+    facts = FactsSignal(world.uow, world.object_store)
+    text = "Ihre Rechnung Nr. R-4711 ist noch offen."
+    reminder = await r.arrive(owner, text=text, facts=facts)
+    assert reminder.fields[note.id] == "Rechnung R-4711"
+    invoice = await r.arrive(owner, text="Rechnungsnummer: R-4711", facts=facts)
+    assert note.id not in invoice.fields

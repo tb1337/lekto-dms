@@ -493,7 +493,13 @@ and the space, the fields node reads the fields of the decided type and the titl
   JSON schema (`response_format` `json_schema`, or `json_object` for providers without schema
   support); an answer that does not fit is asked for once more, then the signal fails (red).
   Without a configured model (`LEKTO_LLM_BASE_URL` and `LEKTO_LLM_MODEL`) it abstains with "no language
-  model is configured", and a person classifies.
+  model is configured", and a person classifies. After the proposal it asks a second time on the
+  same beginning (system prompt and document, so the provider's prompt cache serves it; prompt
+  `facts-1`, issue #145 PR 5): the facts of the document with their role, each of a listed kind
+  (no person's number, nothing the patterns read surely such as IBAN or VAT ID), the value as
+  written, the quoted passage and its label. What goes wrong with this request (an unfit answer
+  twice, an error) is in the output (`facts_error`) and never fails the signal. A webhook that
+  answers `propose` reads no facts: there is no model call `facts` for webhooks (yet).
 - **The form of a request** (`StructuredRequest`, issue #145): every call to the model sends
   `messages[0]` the system prompt, the same for every call (`prompts.SYSTEM`: data, not
   instructions; one JSON object; no invented values; quotes and labels); `messages[1]` the
@@ -554,7 +560,14 @@ and the space, the fields node reads the fields of the decided type and the titl
   `own`, `thread`, `refers`, `person`; until the language model reads facts, the role of the
   kind), where it comes from (`pattern`, `code`, later `model`, `person`), as written and
   where it stands first in the text (reading order), and whether a person decided it. A run of
-  the signal replaces the facts found before; a person's decision stays. The facts tell on the
+  the signal replaces the facts found before; a person's decision stays. The facts the language
+  model read (`signal_llm`'s output) it checks as a field's value is checked: a kind Lekto
+  knows, a value of it standing in the text, a quoted passage of the text that shows it; a fact
+  of the same kind and value as a pattern's is one fact with both origins, in the model's role
+  (an invoice that calls its own number "Ihre Rechnung Nr." is `own`, not `refers`); its output
+  names how many it took and those it refused with why (`read_facts`). So the signal needs
+  `signal_llm`'s result and runs after it (asking the model again reads the facts again). The
+  facts tell on the
   confirmed documents of how many contacts an identifier stands; `GET /documents/{id}/facts`
   names each identifier's `role` and `origins`. Revision 0047 takes over the rows of
   `document_identifiers` (role of their kind, origin `pattern`).
@@ -565,7 +578,8 @@ and the space, the fields node reads the fields of the decided type and the titl
   refers to (contract, policy, membership, meter, loan number, mandate reference, licence plate;
   a contact's, which may name a user), mark the document (invoice, credit note, order number),
   join a strand (file reference, "Unser Zeichen", claim, ticket number), refer to a document
-  ("Ihr Zeichen"), point to a person (child benefit number). Each is found after its labels
+  ("Ihr Zeichen", the day of the addressee's letter "Ihr Schreiben vom 18.06.2026" as
+  `letter_date`), point to a person (child benefit number). Each is found after its labels
   (German and English); a number written after "Ihr", "Ihre" or "your" ("Ihre Rechnung Nr.
   4711") refers to another's document (role `refers`). The customer number lost the labels of
   contracts, policies and memberships; a contact's customer number still matches those kinds

@@ -48,6 +48,7 @@ from lekto.adapters.inbound.rest.paths import HEALTH_PATH, MCP_PATH, PREFIX
 from lekto.adapters.inbound.rest.schemas.events import EventMessage
 from lekto.adapters.inbound.rest.schemas.external import TaskAnswer
 from lekto.adapters.inbound.rest.ui import ui_routes
+from lekto.core.domain.document_facts import ROLES as FACT_ROLES
 from lekto.core.domain.identifiers import catalog as identifier_kinds
 from lekto.core.domain.reasons import catalog as reasons_catalog
 from lekto.core.services.tasks.desk import CALLBACK_PATH
@@ -212,6 +213,8 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
         schema["x-reasons"] = reasons_catalog()
         # The kinds of identifiers and whose they are (clients offer them by these).
         schema["x-identifier-kinds"] = identifier_kinds()
+        # The role of a fact of each kind until a source tells (`document_facts.ROLES`).
+        schema["x-fact-roles"] = {kind.value: role.value for kind, role in FACT_ROLES.items()}
         for route_context in iter_route_contexts(app.routes):
             route = route_context.original_route
             if isinstance(route, APIRoute) and route.include_in_schema:

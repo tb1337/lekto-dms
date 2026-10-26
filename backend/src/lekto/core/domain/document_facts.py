@@ -314,3 +314,73 @@ def with_read(found: Iterable[DocumentFact], read: Iterable[DocumentFact]) -> li
             else replace(known, role=fact.role, origins=known.origins | fact.origins)
         )
     return sorted(facts.values(), key=reading_order)
+
+
+# --- a person's decisions (PR 6) --------------------------------------------------------------
+
+
+def person_fact(
+    text: str, kind: IdentifierKind, raw: str, role: FactRole, state: FactState
+) -> DocumentFact:
+    """The fact a person gives: of `kind`, the value `raw` as they wrote it (ValidationError,
+    with the kind's reason, if it is none of the kind), in `role`; where it stands in `text`,
+    if it does."""
+    value = normalise_identifier(kind, raw)
+    where = _first(text, "", kind, value, None)
+    return DocumentFact(
+        kind=kind,
+        value=value,
+        role=role,
+        origins=frozenset({FactOrigin.PERSON}),
+        written=None if where is None else text[where[0] : where[1]],
+        position=None if where is None else where[0],
+        state=state,
+    )
+
+
+def added(given: DocumentFact, known: DocumentFact | None) -> DocumentFact:
+    """A person adds `given` (`person_fact`); one of its kind and value a source found (or a
+    person rejected) is that fact, in the role given, added."""
+    if known is None:
+        return replace(given, state=FactState.ADDED)
+    return replace(
+        known,
+        role=given.role,
+        origins=known.origins | {FactOrigin.PERSON},
+        state=FactState.ADDED,
+    )
+
+
+def corrected(
+    fact: DocumentFact, *, role: FactRole | None = None, new: DocumentFact | None = None
+) -> list[DocumentFact]:
+    """A person corrects `fact`: another role, the fact in it; another value (`new`, as
+    `person_fact` gives it, in its role or the fact's), the fact rejected and the new one
+    corrected, so a run that finds the old value again does not bring it back. Nothing for no
+    change."""
+    if new is not None and new.key != fact.key:
+        return [
+            rejected(fact),
+            replace(new, role=role or fact.role, state=FactState.CORRECTED),
+        ]
+    if role is None or role is fact.role:
+        return []
+    return [
+        replace(
+            fact, role=role, origins=fact.origins | {FactOrigin.PERSON}, state=FactState.CORRECTED
+        )
+    ]
+
+
+def rejected(fact: DocumentFact) -> DocumentFact:
+    """A person rejects `fact`: it is no fact of the document (a person decided it)."""
+    return replace(fact, origins=fact.origins | {FactOrigin.PERSON}, state=FactState.REJECTED)
+
+
+def withdrawn(fact: DocumentFact) -> DocumentFact | None:
+    """A person's decision about `fact` no longer stands: a fact some source found is as found
+    again (without the person's origin), one only a person gave goes (None)."""
+    sources = fact.origins - {FactOrigin.PERSON}
+    if not sources:
+        return None
+    return replace(fact, origins=sources, state=FactState.FOUND)

@@ -31,6 +31,7 @@ from lekto.core.domain.codes import (
 )
 from lekto.core.domain.document_facts import (
     DocumentFact,
+    FactState,
     ReadFact,
 )
 from lekto.core.domain.documents import Document
@@ -159,6 +160,17 @@ class FactsSignal:
         in_codes: set[tuple[IdentifierKind, str]] = set()
         for code in codes or ():
             in_codes |= code_identifiers(code)
+        async with self._uow() as uow:
+            kept = await uow.document_facts.of_document(document.id)
+        # What a person rejected is no fact of the document: no evidence of a contact either.
+        refused = {fact.key for fact in kept if fact.state is FactState.REJECTED}
+        if refused:
+            for name in ("identifiers", "unknown_identifiers"):
+                output[name] = [
+                    item
+                    for item in as_list(output.get(name))
+                    if _identifier_key(item) not in refused
+                ]
         read = await TextFacts.read(text)
         result = NodeResult(outcome=Outcome.OK, model_version=FACTS, output=output)
         return FactsResult(result, read.found(in_codes), read, frozenset(in_codes))
@@ -490,6 +502,14 @@ def signals_of(entries: Mapping[Node, NodeRun]) -> Signals:
         facts=_facts_view(output(Node.SIGNAL_FACTS)),
         neighbours_know=_known_view(neighbours),
     )
+
+
+def _identifier_key(item: JsonValue) -> tuple[IdentifierKind, str] | None:
+    entry = as_object(item) or {}
+    kind, value = as_text(entry.get("kind")), as_text(entry.get("value"))
+    if kind is None or value is None or kind not in IdentifierKind:
+        return None
+    return IdentifierKind(kind), value
 
 
 def model_facts(entries: Mapping[Node, NodeRun]) -> list[ReadFact] | None:

@@ -5,6 +5,7 @@ import {
 	factCounts,
 	grouped,
 	inUnits,
+	KIND_ROLES,
 	pageRanges,
 	quoteStretches,
 	segmentsOf,
@@ -13,12 +14,14 @@ import {
 	strengthLabel,
 	type Facts
 } from './facts.ts';
+import openapi from '../../openapi.json';
 import { m } from '#lib/paraglide/messages.js';
 
 const CONTACT = 'contact-1';
 
 const FACTS: Facts = {
 	contact_id: CONTACT,
+	editable: false,
 	named: [
 		{
 			contact_id: CONTACT,
@@ -38,6 +41,8 @@ const FACTS: Facts = {
 			in_code: true,
 			role: 'contact',
 			origins: ['pattern', 'code'],
+			state: 'found',
+			kept: true,
 			spans: [{ start: 20, end: 47, locations: [] }],
 			other_contacts: null
 		},
@@ -49,6 +54,8 @@ const FACTS: Facts = {
 			in_code: false,
 			role: 'contact',
 			origins: ['pattern'],
+			state: 'found',
+			kept: true,
 			spans: [],
 			other_contacts: null
 		},
@@ -60,6 +67,8 @@ const FACTS: Facts = {
 			in_code: false,
 			role: 'contact',
 			origins: ['pattern'],
+			state: 'found',
+			kept: true,
 			spans: [{ start: 60, end: 69, locations: [] }],
 			other_contacts: 0
 		}
@@ -188,5 +197,26 @@ describe('the persons a document names', () => {
 			m.facts_person_alias(),
 			m.facts_person_name()
 		]);
+	});
+});
+
+describe('the role of a fact of each kind', () => {
+	it('is the one the API names', () => {
+		const roles = (openapi as unknown as { 'x-fact-roles': Record<string, string> })[
+			'x-fact-roles'
+		];
+		expect(KIND_ROLES).toEqual(roles);
+	});
+});
+
+describe('the counts of the facts', () => {
+	it('leave out what a person rejected', () => {
+		const rejected = {
+			...FACTS,
+			identifiers: FACTS.identifiers.map((item) => ({ ...item, state: 'rejected' as const }))
+		};
+		// The names of the contact stay.
+		const names = grouped(FACTS).own.filter((entry) => !('kind' in entry)).length;
+		expect(factCounts(rejected)).toMatchObject({ evidence: names, unknown: 0 });
 	});
 });

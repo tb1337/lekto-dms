@@ -10,6 +10,7 @@ import pytest
 
 from lekto.adapters.outbound.memory import FakeClassifier
 from lekto.core.domain.classifier import KEPT_MODELS
+from lekto.core.domain.document_facts import DocumentFact, FactOrigin, FactRole, FactState
 from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
 from lekto.core.domain.events import ClassifierTrained
@@ -19,6 +20,7 @@ from lekto.core.domain.master_data import Assignment, Contact, Tag, TagScope
 from lekto.core.domain.profiles import Profile
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import Role, User
+from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services.classifier import (
     CHECK_JOB,
@@ -117,6 +119,43 @@ async def test_a_persons_own_number_is_never_a_contacts(world: World) -> None:
     assert model.summary["learned_identifiers"] == 0
     async with world.uow() as uow:
         assert (await uow.contacts.get(utility.id)).identifiers == []
+
+
+async def test_training_follows_a_person_s_decisions_about_facts(world: World) -> None:
+    """The utility's IBAN rejected on its documents is not learned; a customer number a person
+    added (the text writes it so no pattern reads it) is."""
+    _, utility, _ = await corpus(world)
+    their = (IdentifierKind.IBAN, THEIR_IBAN.replace(" ", ""))
+    async with world.uow() as uow:
+        documents = await uow.documents.query(
+            DocumentFilter(contacts=frozenset({utility.id})), limit=9
+        )
+        for document in documents:
+            await uow.document_facts.decide(
+                document.id,
+                DocumentFact(
+                    kind=their[0],
+                    value=their[1],
+                    role=FactRole.CONTACT,
+                    origins=frozenset({FactOrigin.PATTERN, FactOrigin.PERSON}),
+                    state=FactState.REJECTED,
+                ),
+            )
+            await uow.document_facts.decide(
+                document.id,
+                DocumentFact(
+                    kind=IdentifierKind.CUSTOMER_NUMBER,
+                    value="4711",
+                    role=FactRole.CONTACT,
+                    origins=frozenset({FactOrigin.PERSON}),
+                    state=FactState.ADDED,
+                ),
+            )
+        await uow.commit()
+    await service(world).train()
+    async with world.uow() as uow:
+        learned = [item.key for item in (await uow.contacts.get(utility.id)).identifiers]
+    assert learned == [(IdentifierKind.CUSTOMER_NUMBER, "4711")]
 
 
 async def test_a_learned_number_knows_whose_it_is_and_where_it_was_learned(world: World) -> None:

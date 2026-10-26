@@ -18,6 +18,7 @@ from lekto.core.domain.document_facts import (
     check_found,
     merged,
     reading_order,
+    withdrawn,
 )
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import ContactId, DocumentId
@@ -60,6 +61,23 @@ class SqlDocumentFactRepository:
             )
         )
         await self._tx.write(insert(table), [_row(document, fact)])
+
+    async def withdraw(self, document: DocumentId, key: Key) -> None:
+        table = t.document_facts
+        kind, value = key
+        where = and_(
+            table.c.document_id == document,
+            table.c.kind == kind.value,
+            table.c.value == value,
+            table.c.state != FactState.FOUND.value,
+        )
+        rows = list(await self._tx.read(select(table).where(where)))
+        if not rows:
+            return
+        await self._tx.write(delete(table).where(where))
+        found = withdrawn(_fact(rows[0]))
+        if found is not None:
+            await self._tx.write(insert(table), [_row(document, found)])
 
     async def contacts_of(self, identifiers: Collection[Key]) -> dict[Key, frozenset[ContactId]]:
         table, documents = t.document_facts, t.documents

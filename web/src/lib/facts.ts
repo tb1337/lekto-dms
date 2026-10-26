@@ -19,6 +19,86 @@ export type FoundPerson = components['schemas']['FoundPersonOut'];
 export type DocumentNumber = components['schemas']['DocumentNumberOut'];
 export type Strength = FoundPerson['strength'];
 export type FactRole = components['schemas']['FactRole'];
+export type FactState = components['schemas']['FactState'];
+export type FactOrigin = components['schemas']['FactOrigin'];
+type FactDecisionIn = components['schemas']['FactDecisionIn'];
+/** A person's decision about a fact (`POST /documents/{id}/facts/decisions`), with what the
+ * action needs only. */
+export type FactDecision = Pick<FactDecisionIn, 'action' | 'kind' | 'value'> &
+	Partial<Pick<FactDecisionIn, 'role' | 'new_value' | 'at_contact'>>;
+
+/** A fact kept for the document, as the pane shows and decides about it. */
+export interface KeptFact {
+	kind: IdentifierKind;
+	value: string;
+	written?: string | null;
+	role: FactRole;
+	origins: readonly FactOrigin[];
+	state?: FactState;
+}
+
+/** The roles a person gives a fact, in the order the forms offer them. */
+export const FACT_ROLES: readonly FactRole[] = [
+	'contact',
+	'target',
+	'own',
+	'thread',
+	'refers',
+	'person'
+];
+
+/** The role of a fact of each kind until a source tells (`x-fact-roles`): a fact added gets it
+ * unless the person chooses another. */
+export const KIND_ROLES: Record<IdentifierKind, FactRole> = {
+	iban: 'contact',
+	vat_id: 'contact',
+	customer_number: 'contact',
+	personnel_number: 'contact',
+	email_domain: 'contact',
+	tax_id: 'person',
+	social_security_number: 'person',
+	health_insurance_number: 'person',
+	email_address: 'person',
+	creditor_id: 'contact',
+	commercial_register: 'contact',
+	tax_number: 'contact',
+	contract_number: 'target',
+	policy_number: 'target',
+	membership_number: 'target',
+	meter_number: 'target',
+	loan_number: 'target',
+	mandate_reference: 'target',
+	license_plate: 'target',
+	invoice_number: 'own',
+	credit_note_number: 'own',
+	order_number: 'own',
+	file_reference: 'thread',
+	our_reference: 'thread',
+	claim_number: 'thread',
+	ticket_number: 'thread',
+	your_reference: 'refers',
+	letter_date: 'refers',
+	child_benefit_number: 'person'
+};
+
+/** Whether only a person gave the fact: withdrawing the decision removes it. */
+export function onlyByPerson(fact: KeptFact): boolean {
+	return fact.origins.every((origin) => origin === 'person');
+}
+
+/** A person's decision about a fact, in words ("rejected"); nothing for one as found. */
+export function stateLabel(state: FactState | undefined): string | null {
+	switch (state) {
+		case 'added':
+			return m.facts_state_added();
+		case 'corrected':
+			return m.facts_state_corrected();
+		case 'rejected':
+			return m.facts_state_rejected();
+		default:
+			return null;
+	}
+}
 
 const ROLE_LABELS: Record<FactRole, () => string> = {
 	contact: m.fact_role_contact,
@@ -201,9 +281,12 @@ export function grouped(facts: Facts): {
 /** What the chip at the contact field counts. */
 export function factCounts(facts: Facts): { evidence: number; unknown: number; codes: number } {
 	const groups = grouped(facts);
+	// A fact a person rejected is none of the document's.
+	const kept = (entries: readonly (NamedContact | FoundIdentifier)[]) =>
+		entries.filter((entry) => !('state' in entry) || entry.state !== 'rejected').length;
 	return {
-		evidence: groups.own.length,
-		unknown: groups.unknown.length,
+		evidence: kept(groups.own),
+		unknown: kept(groups.unknown),
 		codes: facts.codes?.length ?? 0
 	};
 }

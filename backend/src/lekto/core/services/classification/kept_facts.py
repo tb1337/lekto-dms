@@ -116,6 +116,18 @@ async def keep_facts(
     codes (None: those kept already, the model's signal reads no codes). The users' numbers
     and the person's kinds in the text are a person's. Returns the report of the model's facts."""
     await uow.lock(facts_lock(document))
+    return await refresh_facts(uow, document, text, read, in_codes=in_codes)
+
+
+async def refresh_facts(
+    uow: UnitOfWork,
+    document: DocumentId,
+    text: TextFacts,
+    read: Iterable[ReadFact] | None,
+    *,
+    in_codes: Collection[Key] | None = None,
+) -> JsonObject | None:
+    """`keep_facts` in a unit that holds the document's lock (`facts_lock`) already."""
     if in_codes is None:
         kept = await uow.document_facts.of_document(document)
         in_codes = {fact.key for fact in kept if FactOrigin.CODE in fact.origins}

@@ -1066,6 +1066,35 @@ class UnitOfWorkContract:
         async with uow_factory() as uow:
             assert await uow.document_facts.of_document(document.id) == []
 
+    async def test_a_person_s_decision_about_a_fact_is_withdrawn(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """A fact a source found is as found again, one only a person gave goes; a fact as
+        found stays as it is."""
+        owner, space = await owner_with_space(uow_factory)
+        document = builders.processed(owner, space)
+        vat = found(IdentifierKind.VAT_ID, "DE312456789", position=40)
+        iban = found(IdentifierKind.IBAN, "DE02120300000000202051", position=10)
+        given = DocumentFact(
+            kind=IdentifierKind.INVOICE_NUMBER,
+            value="4711",
+            role=FactRole.OWN,
+            origins=frozenset({FactOrigin.PERSON}),
+            state=FactState.ADDED,
+        )
+        async with uow_factory() as uow:
+            await uow.documents.add(document)
+            await uow.document_facts.replace_found(document.id, [vat, iban])
+            await uow.document_facts.decide(document.id, replace(vat, state=FactState.REJECTED))
+            await uow.document_facts.decide(document.id, given)
+            await uow.commit()
+        async with uow_factory() as uow:
+            for key in (vat.key, given.key, iban.key, (IdentifierKind.IBAN, "DE00")):
+                await uow.document_facts.withdraw(document.id, key)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.document_facts.of_document(document.id) == [iban, vat]
+
     async def test_remove_document(self, uow_factory: UnitOfWorkFactory) -> None:
         owner, space = await owner_with_space(uow_factory)
         document = builders.document(owner, space)

@@ -13653,6 +13653,170 @@
         ]
       }
     },
+    "/api/v1/documents/{id}/facts/decisions": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Decide about a fact of a document",
+        "description": "Editors of the document's space and admins add a fact, correct its value or role, reject it or withdraw a decision; a person's kinds of facts only admins. A decision outlasts a new processing. The first decision about a document's facts counts as a verdict on them. Answers the facts as `GET /documents/{id}/facts`. 404 for a fact the document does not have; 409 for adding one it has, while it has no text, and with `at_contact` for a value another contact entered by hand or that is a person's; 422 for a value that is none of its kind, adding without a role, and `at_contact` on a document without a contact or for a kind a contact does not keep.",
+        "operationId": "decide_document_fact_api_v1_documents__id__facts_decisions_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactDecisionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "the request body is larger than 1048576 bytes"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/documents/{id}/files": {
       "get": {
         "tags": [
@@ -21307,6 +21471,11 @@
             "type": "array",
             "title": "Origins"
           },
+          "state": {
+            "$ref": "#/components/schemas/FactState",
+            "description": "As `FoundIdentifierOut.state`.",
+            "default": "found"
+          },
           "spans": {
             "items": {
               "$ref": "#/components/schemas/SpanOut"
@@ -21326,7 +21495,7 @@
           "spans"
         ],
         "title": "DocumentNumberOut",
-        "description": "A number of the document that is no contact's or person's identifier: its own (invoice,\ncredit note, order number), a strand's (file reference, \"Unser Zeichen\", claim, ticket) or\nanother document's it refers to (\"Ihre Rechnung Nr.\", \"Ihr Zeichen\")."
+        "description": "A fact kept for the document: a number that is no contact's or person's identifier, its\nown (invoice, credit note, order number), a strand's (file reference, \"Unser Zeichen\",\nclaim, ticket) or another document's it refers to (\"Ihre Rechnung Nr.\", \"Ihr Zeichen\"); or\none of another kind a person decided."
       },
       "DocumentOutOfReach": {
         "properties": {
@@ -22029,6 +22198,94 @@
         "title": "ExtractContext",
         "description": "`fields`' request (`external.extract`) for the fields the proposal did not give (the\njudge decided another type, or there is no proposal). Lekto checks the answer as a\nlanguage model's."
       },
+      "FactAction": {
+        "type": "string",
+        "enum": [
+          "add",
+          "correct",
+          "reject",
+          "withdraw"
+        ],
+        "title": "FactAction"
+      },
+      "FactDecisionIn": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/FactAction",
+            "description": "`add` a fact the sources did not find (`value` as written, `role` required); `correct` the fact of `kind` and `value` (its role, and with `new_value` its value: the old one is then rejected); `reject` it (it is no fact of the document); `withdraw` a decision (a fact a source found is as found again, one only a person gave goes)."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Value",
+            "description": "`add`: as written; otherwise the fact's value, normalised."
+          },
+          "role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FactRole"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`add`: its role; `correct`: the role it has instead."
+          },
+          "new_value": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Value",
+            "description": "`correct`: the value, as written."
+          },
+          "at_contact": {
+            "type": "boolean",
+            "title": "At Contact",
+            "description": "`correct`, for admins: correct the value at the document's contact too (the old one goes from its identifiers, the new one is entered by hand); only for the kinds a contact keeps.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "kind",
+          "value"
+        ],
+        "title": "FactDecisionIn",
+        "description": "A person's decision about a fact of the document.",
+        "examples": [
+          {
+            "action": "correct",
+            "kind": "invoice_number",
+            "role": "refers",
+            "value": "4711"
+          },
+          {
+            "action": "correct",
+            "at_contact": true,
+            "kind": "customer_number",
+            "new_value": "2004 7719",
+            "value": "20047718"
+          },
+          {
+            "action": "add",
+            "kind": "contract_number",
+            "role": "target",
+            "value": "V-123"
+          }
+        ]
+      },
       "FactOrigin": {
         "type": "string",
         "enum": [
@@ -22052,6 +22309,17 @@
         ],
         "title": "FactRole",
         "description": "What a fact is to the document that shows it (`fakten.md`, Rollen)."
+      },
+      "FactState": {
+        "type": "string",
+        "enum": [
+          "found",
+          "added",
+          "corrected",
+          "rejected"
+        ],
+        "title": "FactState",
+        "description": "Whether a source found the fact as it is, or a person decided it."
       },
       "FactsOut": {
         "properties": {
@@ -22104,7 +22372,21 @@
             },
             "type": "array",
             "title": "Numbers",
-            "description": "The document's numbers that are no contact's or person's identifier, as the text reads: as the facts signal kept them (empty until it ran again after 0.7)."
+            "description": "The document's numbers that are no contact's or person's identifier, as the text reads: as the facts signal kept them (empty until it ran again after 0.7), with a person's decisions, those rejected too."
+          },
+          "decided": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentNumberOut"
+            },
+            "type": "array",
+            "title": "Decided",
+            "description": "The kept facts of the other kinds that `identifiers` does not show: for admins all of them (a person's numbers, those only the language model read), for others those a person decided (one added, a corrected value, one rejected the text does not show), none of a person's."
+          },
+          "editable": {
+            "type": "boolean",
+            "title": "Editable",
+            "description": "Whether the caller decides about the facts: an editor of the space or an admin (`POST /documents/{id}/facts/decisions`).",
+            "default": false
           },
           "persons": {
             "anyOf": [
@@ -22989,6 +23271,17 @@
             "type": "array",
             "title": "Origins",
             "description": "Where it comes from: `pattern` (the text), `code`, `model`, `person`."
+          },
+          "state": {
+            "$ref": "#/components/schemas/FactState",
+            "description": "`found` as the sources found it, or a person's decision: `added`, `corrected`, `rejected` (it is no fact of the document).",
+            "default": "found"
+          },
+          "kept": {
+            "type": "boolean",
+            "title": "Kept",
+            "description": "Whether the document keeps it as a fact (a person decides about it); not before the facts signal ran.",
+            "default": false
           },
           "other_contacts": {
             "anyOf": [
@@ -27221,6 +27514,12 @@
           "fact_not_in_text",
           "fact_not_asked",
           "fact_of_a_person",
+          "fact_not_found",
+          "fact_exists",
+          "fact_role_missing",
+          "fact_of_person",
+          "fact_at_contact_admin",
+          "fact_not_at_contact",
           "not_personnel_number",
           "not_domain",
           "free_mail_domain",
@@ -32421,6 +32720,20 @@
       "role": "text"
     },
     "fact_of_a_person": {},
+    "fact_not_found": {
+      "kind": "identifier_kind",
+      "value": "text"
+    },
+    "fact_exists": {
+      "kind": "identifier_kind",
+      "value": "text"
+    },
+    "fact_role_missing": {},
+    "fact_of_person": {},
+    "fact_at_contact_admin": {},
+    "fact_not_at_contact": {
+      "kind": "identifier_kind"
+    },
     "not_personnel_number": {
       "value": "text"
     },
@@ -32743,5 +33056,36 @@
       "person": true,
       "names_user": false
     }
+  },
+  "x-fact-roles": {
+    "iban": "contact",
+    "vat_id": "contact",
+    "customer_number": "contact",
+    "personnel_number": "contact",
+    "email_domain": "contact",
+    "tax_id": "person",
+    "social_security_number": "person",
+    "health_insurance_number": "person",
+    "email_address": "person",
+    "creditor_id": "contact",
+    "commercial_register": "contact",
+    "tax_number": "contact",
+    "contract_number": "target",
+    "policy_number": "target",
+    "membership_number": "target",
+    "meter_number": "target",
+    "loan_number": "target",
+    "mandate_reference": "target",
+    "license_plate": "target",
+    "invoice_number": "own",
+    "credit_note_number": "own",
+    "order_number": "own",
+    "file_reference": "thread",
+    "our_reference": "thread",
+    "claim_number": "thread",
+    "ticket_number": "thread",
+    "your_reference": "refers",
+    "letter_date": "refers",
+    "child_benefit_number": "person"
   }
 }

@@ -209,7 +209,7 @@
 		{:else}
 			<div class="overflow-x-auto rounded-2xl border bg-card" bind:this={scroller}>
 				<div
-					class="grid min-w-max"
+					class="grid"
 					style:grid-template-columns={columns}
 					role="table"
 					aria-label={m.stream_lanes()}

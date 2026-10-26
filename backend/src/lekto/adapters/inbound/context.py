@@ -17,6 +17,7 @@ from lekto.core.services.auth import AuthService
 from lekto.core.services.automation import AutomationService
 from lekto.core.services.classifier import ClassifierService
 from lekto.core.services.documents import DocumentService
+from lekto.core.services.expected import ExpectedService
 from lekto.core.services.inbox import InboxService
 from lekto.core.services.indexing import IndexingService
 from lekto.core.services.jobs import JobsService
@@ -59,6 +60,7 @@ class ApiContext:
     tasks: TaskService
     lenses: LensService
     relations: RelationService
+    expected: ExpectedService
     jobs: JobsService
     automation: AutomationService
     event_bus: EventBus

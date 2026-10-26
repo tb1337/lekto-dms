@@ -108,11 +108,18 @@ async def scene(api: Api) -> Scene:
 # --- the endpoint -------------------------------------------------------------------------------
 
 
-async def test_the_server_offers_five_tools(api: Api, scene: Scene) -> None:
+async def test_the_server_offers_six_tools(api: Api, scene: Scene) -> None:
     async with connected(api, scene.headers["owner"]) as client:
         tools = (await client.list_tools()).tools
     by_name = {tool.name: tool for tool in tools}
-    assert set(by_name) == {"search", "get_document", "get_text", "update_metadata", "list_tags"}
+    assert set(by_name) == {
+        "search",
+        "get_document",
+        "get_text",
+        "update_metadata",
+        "list_tags",
+        "list_expected",
+    }
     read_only = {
         name: tool.annotations is not None and tool.annotations.read_only_hint
         for name, tool in by_name.items()
@@ -122,6 +129,7 @@ async def test_the_server_offers_five_tools(api: Api, scene: Scene) -> None:
         "get_document": True,
         "get_text": True,
         "list_tags": True,
+        "list_expected": True,
         "update_metadata": False,
     }
     assert "follow" in (by_name["get_text"].description or "")  # the warning about the text
@@ -611,3 +619,9 @@ async def test_an_editor_whose_change_files_the_document_away_learns_nothing_mor
     owners = data(await call(api, o, "update_metadata", id=id, title="Seen by the owner"))
     assert owners["document"]["space_id"] == private["id"]
     assert [rule["name"] for rule in owners["rules"] or []] == []  # no change that triggers it
+
+
+async def test_list_expected_names_the_series_one_may_read(api: Api, scene: Scene) -> None:
+    """Read only (#145): the scene's documents make no series."""
+    found = data(await call(api, scene.headers["owner"], "list_expected"))
+    assert found == {"series": []}

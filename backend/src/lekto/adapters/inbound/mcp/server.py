@@ -32,6 +32,7 @@ from lekto.core.domain.fields import FieldDefinition, field_from_json
 from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
 from lekto.core.domain.master_data import TagScope
 from lekto.core.domain.relations import RelationState
+from lekto.core.domain.series import SeriesState
 from lekto.core.domain.sorting import sort_key
 from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.tag_tree import TagTree
@@ -73,6 +74,27 @@ class RelationRef(BaseModel):
         "document)."
     )
     suggested: bool = Field(description="Lekto suggests it; a person has not decided it.")
+
+
+class ExpectedRef(BaseModel):
+    """A series of documents and the one it expects next (#145)."""
+
+    contact: str
+    document_type: str
+    number: str | None = Field(description="The contract or customer number it follows, if any.")
+    cadence: str = Field(description="weekly, monthly, quarterly, half_yearly, yearly or days.")
+    interval_days: int
+    spread_days: int
+    documents: int
+    last_document: UUID = Field(description="Its newest document (`get_document`).")
+    last_date: date
+    next_date: date
+    next_period: str | None = Field(description="The period the next one is for (`2026-11`).")
+    state: str = Field(description="overdue, soon (next 30 days), later or ended.")
+
+
+class ExpectedOut(BaseModel):
+    series: list[ExpectedRef]
 
 
 class DocumentOut(BaseModel):
@@ -531,6 +553,55 @@ def build_server(context: ApiContext) -> MCPServer:
                 for tag in tree.of_scope(wanted)
             ]
         )
+
+    @server.tool(
+        name="list_expected",
+        description=(
+            "The documents expected next: series of documents you may read (one contact and "
+            "type, and one contract or customer number where they show one, at least three at "
+            "a steady interval), each with its next date and whether it is overdue; the overdue "
+            "first, the ended ones only on request. Read only; nothing is stored."
+        ),
+        annotations=READ_ONLY,
+    )
+    @guarded
+    async def list_expected(
+        ctx: Context,
+        include_ended: Annotated[
+            bool, Field(description="Also the series that ended (two dates missed).")
+        ] = False,
+    ) -> ExpectedOut:
+        user = principal_of(ctx).id
+        found = [
+            item
+            for item in await context.expected.expected(user)
+            if include_ended or item.state is not SeriesState.ENDED
+        ]
+        series = []
+        for item in found:
+            key, last = item.series.key, item.last
+            assert last.document_date is not None
+            series.append(
+                ExpectedRef(
+                    contact=item.contact,
+                    document_type=item.document_type,
+                    number=None if key.number is None else key.number[1],
+                    cadence=item.series.cadence.value,
+                    interval_days=item.series.interval,
+                    spread_days=item.series.spread,
+                    documents=len(item.series.documents),
+                    last_document=last.id,
+                    last_date=last.document_date,
+                    next_date=item.series.next_date,
+                    next_period=(
+                        None
+                        if item.series.next_period is None
+                        else item.series.next_period.notation
+                    ),
+                    state=item.state.value,
+                )
+            )
+        return ExpectedOut(series=series)
 
     return server
 

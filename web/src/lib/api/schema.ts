@@ -2055,6 +2055,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/expected': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The documents expected next
+		 * @description The series among the documents the caller may read (with `all_users`, an admin's, every user's; others 403): documents of one contact and type, and of one contract or customer number where they show one, at least three at a steady interval. Each with its next date and where that stands today; the overdue first, then by date. Derived on each call, nothing stored; today as it is in `tz`.
+		 */
+		get: operations['expected_api_v1_expected_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/jobs/summary': {
 		parameters: {
 			query?: never;
@@ -2743,6 +2763,11 @@ export interface components {
 			/** Height */
 			height: number;
 		};
+		/**
+		 * Cadence
+		 * @enum {string}
+		 */
+		Cadence: 'weekly' | 'monthly' | 'quarterly' | 'half_yearly' | 'yearly' | 'days';
 		/**
 		 * CandidateOut
 		 * @description A value the signals proposed for a field.
@@ -4096,6 +4121,46 @@ export interface components {
 		 */
 		ExchangeNode: 'ocr' | 'signal_llm' | 'fields';
 		/**
+		 * ExpectedOut
+		 * @description A series and the document it expects next.
+		 */
+		ExpectedOut: {
+			contact: components['schemas']['NamedOut'];
+			document_type: components['schemas']['NamedOut'];
+			/** @description The contract or customer number the series follows, if its documents show one. */
+			number: components['schemas']['SeriesNumberOut'] | null;
+			/** @description A calendar step (`weekly` to `yearly`) or `days` (see `interval_days`). */
+			cadence: components['schemas']['Cadence'];
+			/**
+			 * Interval Days
+			 * @description The median gap between its documents.
+			 */
+			interval_days: number;
+			/**
+			 * Spread Days
+			 * @description How far a document may come off its step (± days).
+			 */
+			spread_days: number;
+			/**
+			 * Documents
+			 * @description How many documents the series has (one per period).
+			 */
+			documents: number;
+			last: components['schemas']['LastDocumentOut'];
+			/**
+			 * Next Date
+			 * Format: date
+			 */
+			next_date: string;
+			/**
+			 * Next Period
+			 * @description The period the next document is for, in ISO notation (`2026-11`), where the series carries one.
+			 */
+			next_period: string | null;
+			/** @description `overdue` (its date and spread are over), `soon` (in the next 30 days), `later`, or `ended` (two dates missed). */
+			state: components['schemas']['SeriesState'];
+		};
+		/**
 		 * ExtractContext
 		 * @description `fields`' request (`external.extract`) for the fields the proposal did not give (the
 		 *     judge decided another type, or there is no proposal). Lekto checks the answer as a
@@ -5305,6 +5370,21 @@ export interface components {
 			 */
 			red: number;
 		};
+		/** LastDocumentOut */
+		LastDocumentOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Title */
+			title: string;
+			/**
+			 * Document Date
+			 * Format: date
+			 */
+			document_date: string;
+		};
 		/**
 		 * Layout
 		 * @enum {string}
@@ -6184,6 +6264,16 @@ export interface components {
 			 * @description Where it stands in the text.
 			 */
 			spans: components['schemas']['SpanOut'][];
+		};
+		/** NamedOut */
+		NamedOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Name */
+			name: string;
 		};
 		/**
 		 * Node
@@ -7976,6 +8066,20 @@ export interface components {
 			 */
 			deadline: string;
 		};
+		/** SeriesNumberOut */
+		SeriesNumberOut: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @description Normalised, as Lekto compares it.
+			 */
+			value: string;
+		};
+		/**
+		 * SeriesState
+		 * @enum {string}
+		 */
+		SeriesState: 'overdue' | 'soon' | 'later' | 'ended';
 		/**
 		 * SessionOut
 		 * @description A new session; its token is in the cookie only.
@@ -24332,6 +24436,99 @@ export interface operations {
 					 *       "title": "Conflict",
 					 *       "status": 409,
 					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	expected_api_v1_expected_get: {
+		parameters: {
+			query?: {
+				/** @description Every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+				/** @description The IANA time zone the months begin in. */
+				tz?: string;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ExpectedOut'][];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

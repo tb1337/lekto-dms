@@ -18012,6 +18012,134 @@
         ]
       }
     },
+    "/api/v1/expected": {
+      "get": {
+        "tags": [
+          "expected"
+        ],
+        "summary": "The documents expected next",
+        "description": "The series among the documents the caller may read (with `all_users`, an admin's, every user's; others 403): documents of one contact and type, and of one contract or customer number where they show one, at least three at a steady interval. Each with its next date and where that stands today; the overdue first, then by date. Derived on each call, nothing stored; today as it is in `tz`.",
+        "operationId": "expected_api_v1_expected_get",
+        "parameters": [
+          {
+            "name": "all_users",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Every user's documents instead of the caller's reach (admins).",
+              "default": false,
+              "title": "All Users"
+            },
+            "description": "Every user's documents instead of the caller's reach (admins)."
+          },
+          {
+            "name": "tz",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "The IANA time zone the months begin in.",
+              "examples": [
+                "Europe/Berlin"
+              ],
+              "default": "UTC",
+              "title": "Tz"
+            },
+            "description": "The IANA time zone the months begin in."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpectedOut"
+                  },
+                  "title": "Response Expected Api V1 Expected Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/jobs/summary": {
       "get": {
         "tags": [
@@ -19933,6 +20061,18 @@
         ],
         "title": "BoxOut",
         "description": "A rectangle on the page as shown (rotation applied), in fractions of its width and\nheight from the top left corner."
+      },
+      "Cadence": {
+        "type": "string",
+        "enum": [
+          "weekly",
+          "monthly",
+          "quarterly",
+          "half_yearly",
+          "yearly",
+          "days"
+        ],
+        "title": "Cadence"
       },
       "CandidateOut": {
         "properties": {
@@ -22688,6 +22828,86 @@
         ],
         "title": "ExchangeNode"
       },
+      "ExpectedOut": {
+        "properties": {
+          "contact": {
+            "$ref": "#/components/schemas/NamedOut"
+          },
+          "document_type": {
+            "$ref": "#/components/schemas/NamedOut"
+          },
+          "number": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeriesNumberOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The contract or customer number the series follows, if its documents show one."
+          },
+          "cadence": {
+            "$ref": "#/components/schemas/Cadence",
+            "description": "A calendar step (`weekly` to `yearly`) or `days` (see `interval_days`)."
+          },
+          "interval_days": {
+            "type": "integer",
+            "title": "Interval Days",
+            "description": "The median gap between its documents."
+          },
+          "spread_days": {
+            "type": "integer",
+            "title": "Spread Days",
+            "description": "How far a document may come off its step (± days)."
+          },
+          "documents": {
+            "type": "integer",
+            "title": "Documents",
+            "description": "How many documents the series has (one per period)."
+          },
+          "last": {
+            "$ref": "#/components/schemas/LastDocumentOut"
+          },
+          "next_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Next Date"
+          },
+          "next_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Period",
+            "description": "The period the next document is for, in ISO notation (`2026-11`), where the series carries one."
+          },
+          "state": {
+            "$ref": "#/components/schemas/SeriesState",
+            "description": "`overdue` (its date and spread are over), `soon` (in the next 30 days), `later`, or `ended` (two dates missed)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "contact",
+          "document_type",
+          "number",
+          "cadence",
+          "interval_days",
+          "spread_days",
+          "documents",
+          "last",
+          "next_date",
+          "next_period",
+          "state"
+        ],
+        "title": "ExpectedOut",
+        "description": "A series and the document it expects next."
+      },
       "ExtractContext": {
         "properties": {
           "contract": {
@@ -25062,6 +25282,31 @@
         ],
         "title": "LanesOut"
       },
+      "LastDocumentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "document_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Document Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "document_date"
+        ],
+        "title": "LastDocumentOut"
+      },
       "Layout": {
         "type": "string",
         "enum": [
@@ -26890,6 +27135,25 @@
           "spans"
         ],
         "title": "NamedContactOut"
+      },
+      "NamedOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "NamedOut"
       },
       "Node": {
         "type": "string",
@@ -30127,6 +30391,34 @@
         ],
         "title": "SentTask",
         "description": "A task: answer it at `callback` with `token` as `Authorization: Bearer` by `deadline`\n(`POST /api/v1/external/tasks/{id}/result`)."
+      },
+      "SeriesNumberOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "Normalised, as Lekto compares it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value"
+        ],
+        "title": "SeriesNumberOut"
+      },
+      "SeriesState": {
+        "type": "string",
+        "enum": [
+          "overdue",
+          "soon",
+          "later",
+          "ended"
+        ],
+        "title": "SeriesState"
       },
       "SessionOut": {
         "properties": {

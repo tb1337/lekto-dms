@@ -25,6 +25,9 @@ from lekto.core.domain.ids import ContactId, DocumentId
 
 type Key = tuple[IdentifierKind, str]
 
+_BATCH = 500
+"""Documents per query of `of_documents` (the parameters of an `IN`)."""
+
 
 class SqlDocumentFactRepository:
     def __init__(self, transaction: Transaction) -> None:
@@ -34,6 +37,18 @@ class SqlDocumentFactRepository:
         table = t.document_facts
         rows = await self._tx.read(select(table).where(table.c.document_id == document))
         return sorted((_fact(row) for row in rows), key=reading_order)
+
+    async def of_documents(
+        self, documents: Collection[DocumentId]
+    ) -> dict[DocumentId, list[DocumentFact]]:
+        table = t.document_facts
+        found: dict[DocumentId, list[DocumentFact]] = {}
+        ids = list(documents)
+        for start in range(0, len(ids), _BATCH):
+            chunk = ids[start : start + _BATCH]
+            for row in await self._tx.read(select(table).where(table.c.document_id.in_(chunk))):
+                found.setdefault(DocumentId(row.document_id), []).append(_fact(row))
+        return {id: sorted(facts, key=reading_order) for id, facts in found.items()}
 
     async def replace_found(self, document: DocumentId, found: Collection[DocumentFact]) -> None:
         check_found(found)

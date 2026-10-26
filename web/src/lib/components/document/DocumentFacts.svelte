@@ -2,6 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import FactsPanel from '#lib/components/document/FactsPanel.svelte';
 	import PaneHead from '#lib/components/document/PaneHead.svelte';
+	import RelationsCard from '#lib/components/document/RelationsCard.svelte';
 	import {
 		factCounts,
 		factsSummary,
@@ -66,6 +67,7 @@
 				{onshowcode}
 				{onchanged}
 			/>
+			<div class="mt-3.5"><RelationsCard {documentId} {lookup} /></div>
 		{:else}
 			<p class="p-2 text-sm text-muted-foreground">{m.facts_pending()}</p>
 		{/if}

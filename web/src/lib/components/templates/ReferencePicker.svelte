@@ -23,8 +23,17 @@
 	// search index: the titles of the newest).
 	let {
 		value = $bindable(null),
-		documentType = undefined
-	}: { value?: Reference | null; documentType?: string | null } = $props();
+		documentType = undefined,
+		preselect = true,
+		label = undefined
+	}: {
+		value?: Reference | null;
+		documentType?: string | null;
+		/** Whether the newest document is chosen at first (a template's example). */
+		preselect?: boolean;
+		/** What the trigger says while nothing is chosen. */
+		label?: string;
+	} = $props();
 
 	let open = $state(false);
 	let query = $state('');
@@ -54,7 +63,7 @@
 				if (items.length === 0) items = await newest(null);
 				if (!current) return;
 				recent = items;
-				if (untrack(() => value) === null) value = items[0] ?? null;
+				if (preselect && untrack(() => value) === null) value = items[0] ?? null;
 			} catch {
 				if (current) recent = [];
 			}
@@ -108,7 +117,7 @@
 		class={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-between font-normal')}
 		aria-label={m.template_reference_choose()}
 	>
-		<span class="truncate">{value?.title ?? m.template_reference_none()}</span>
+		<span class="truncate">{value?.title ?? label ?? m.template_reference_none()}</span>
 		<ChevronsUpDown class="opacity-50" aria-hidden="true" />
 	</Popover.Trigger>
 	<Popover.Content class="w-(--bits-popover-anchor-width) min-w-64 p-0" align="start">

@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from lekto.core.domain.document_facts import FactCriterion, FactRole
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import (
     ContactId,
     DocumentTypeId,
@@ -15,6 +17,7 @@ from lekto.core.domain.ids import (
 )
 from lekto.core.domain.lenses import (
     MAX_CARD_FIELDS,
+    MAX_FILTER_FACTS,
     MAX_FILTER_VALUES,
     MAX_NAME_LENGTH,
     MAX_QUERY_LENGTH,
@@ -30,6 +33,24 @@ from lekto.core.domain.lenses import (
 def _ids() -> Any:
     """A list of ids of one kind, empty by default."""
     return Field(default_factory=list, max_length=MAX_FILTER_VALUES)
+
+
+class FactFilterBody(BaseModel):
+    """A fact the documents have: of `kind`, with `value` (as written; it needs its kind), in
+    `role`; what is null is any."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: IdentifierKind | None = None
+    value: str | None = Field(default=None, max_length=200)
+    role: FactRole | None = None
+
+    def domain(self) -> FactCriterion:
+        return FactCriterion.written(self.kind, self.value, self.role)
+
+    @classmethod
+    def of(cls, criterion: FactCriterion) -> "FactFilterBody":
+        return cls(kind=criterion.kind, value=criterion.value, role=criterion.role)
 
 
 class LensFilterBody(BaseModel):
@@ -54,6 +75,11 @@ class LensFilterBody(BaseModel):
             "`document_date_from` or `_to`."
         ),
     )
+    facts: list[FactFilterBody] = Field(
+        default_factory=list,
+        max_length=MAX_FILTER_FACTS,
+        description="Facts the documents have, each (`fact` of `GET /documents`).",
+    )
 
     def domain(self) -> LensFilter:
         return LensFilter(
@@ -68,6 +94,7 @@ class LensFilterBody(BaseModel):
             date_from=self.document_date_from,
             date_to=self.document_date_to,
             relative_period=self.document_period,
+            facts=tuple(item.domain() for item in self.facts),
         )
 
     @classmethod
@@ -84,6 +111,7 @@ class LensFilterBody(BaseModel):
             document_date_from=filter.date_from,
             document_date_to=filter.date_to,
             document_period=filter.relative_period,
+            facts=[FactFilterBody.of(item) for item in filter.facts],
         )
 
 

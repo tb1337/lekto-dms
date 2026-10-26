@@ -29,7 +29,7 @@ _WORD = re.compile(r"\w+")
 _SNIPPET_BEFORE = 60
 _SNIPPET_LENGTH = 160
 # Weight of a match by field: the title counts most, the text least.
-_FIELD_WEIGHTS = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4)
+_FIELD_WEIGHTS = (1.0, 0.9, 0.8, 0.7, 0.6, 0.55, 0.5, 0.4)
 
 
 class MemorySearchIndex:
@@ -204,6 +204,7 @@ def _fields(document: IndexDocument) -> list[str]:
             ]
         ),
         " ".join(document.fields),
+        " ".join(document.fact_values),
         document.filename,
         document.text,
     ]
@@ -255,6 +256,7 @@ def _matches_filter(document: IndexDocument, criteria: DocumentFilter) -> bool:
             confirmed=document.confirmed,
             fields=frozenset(document.field_ids),
             document_date=document.document_date,
+            facts=frozenset(document.facts),
         )
     )
 

@@ -340,6 +340,8 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	not_of_kind: entry(m.reason_not_of_kind, { kind: 'identifier_kind' }),
 	fact_kind_unknown: entry(m.reason_fact_kind_unknown),
 	fact_not_in_text: entry(m.reason_fact_not_in_text),
+	fact_criterion_empty: entry(m.reason_fact_criterion_empty),
+	fact_filter_of_person: entry(m.reason_fact_filter_of_person),
 	fact_not_asked: entry(m.reason_fact_not_asked),
 	fact_of_a_person: entry(m.reason_fact_of_a_person),
 	fact_not_found: entry(m.reason_fact_not_found, { kind: 'identifier_kind' }),

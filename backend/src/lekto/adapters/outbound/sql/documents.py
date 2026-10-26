@@ -29,6 +29,7 @@ from lekto.adapters.outbound.sql import tables as t
 from lekto.adapters.outbound.sql.repositories import KEYS_PER_QUERY, SqlRepository, Values
 from lekto.adapters.outbound.sql.spaces import visible_to
 from lekto.adapters.outbound.sql.transaction import Transaction
+from lekto.core.domain.document_facts import FactState
 from lekto.core.domain.documents import Channel, Document, Sha256
 from lekto.core.domain.fields import FieldType, FieldValue, Money, Url
 from lekto.core.domain.ids import (
@@ -616,6 +617,16 @@ def _matching(filter: DocumentFilter) -> list[ColumnElement[bool]]:
         criteria.append(
             documents.c.id.in_(select(tags.c.document_id).where(tags.c.tag_id.in_(sorted(tag_set))))
         )
+    for criterion in filter.facts:
+        facts = t.document_facts
+        wanted = [facts.c.state != FactState.REJECTED.value]
+        if criterion.kind is not None:
+            wanted.append(facts.c.kind == criterion.kind.value)
+        if criterion.value is not None:
+            wanted.append(facts.c.value == criterion.value)
+        if criterion.role is not None:
+            wanted.append(facts.c.role == criterion.role.value)
+        criteria.append(documents.c.id.in_(select(facts.c.document_id).where(*wanted)))
     for column, groups, owner in (
         (documents.c.contact_id, filter.contact_groups, t.contact_groups.c.contact_id),
         (

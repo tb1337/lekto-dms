@@ -10,7 +10,7 @@ import copy
 import dataclasses
 from collections import Counter
 from collections.abc import Callable, Collection, Hashable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from types import TracebackType
 from typing import Any, Self, cast
@@ -66,6 +66,7 @@ from lekto.core.domain.document_facts import (
     FactState,
     check_decided,
     check_found,
+    fact_tokens,
     merged,
     reading_order,
     withdrawn,
@@ -501,6 +502,7 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
         return _Groups(
             {row.id: row.group_ids for row in self._uow._rows(CONTACTS)},
             {row.id: row.group_ids for row in self._uow._rows(DOCUMENT_TYPES)},
+            {row.id: fact_tokens(row.facts) for row in self._uow._rows(DOCUMENT_FACTS)},
         )
 
     async def count_tagged(
@@ -944,6 +946,7 @@ class _Groups:
 
     contacts: Mapping[UUID, frozenset[TagId]]
     document_types: Mapping[UUID, frozenset[TagId]]
+    facts: Mapping[UUID, frozenset[str]] = field(default_factory=dict)  # `fact_tokens`
 
     def view(self, document: Document) -> FilterView:
         return FilterView.of(
@@ -952,6 +955,7 @@ class _Groups:
             document_type_groups=self.document_types.get(
                 document.document_type_id or UUID(int=0), frozenset()
             ),
+            facts=self.facts.get(document.id, frozenset()),
         )
 
 

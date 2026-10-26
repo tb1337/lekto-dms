@@ -8,7 +8,15 @@ from typing import Any
 
 import pytest
 
+from lekto.core.domain.document_facts import (
+    DocumentFact,
+    FactCriterion,
+    FactOrigin,
+    FactRole,
+    fact_tokens,
+)
 from lekto.core.domain.errors import SearchIndexError
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -319,6 +327,37 @@ class SearchIndexContract:
         assert await found(
             search_index, "Rechnung", visibility(owner), filter=DocumentFilter(field=field)
         ) == {with_value.id}
+
+    async def test_by_facts_and_their_values(self, search_index: SearchIndex) -> None:
+        """A fact by kind, value and role, or a part of it; its value as a word, normalised."""
+        owner = SpaceId(new_id())
+        invoice = DocumentFact(
+            kind=IdentifierKind.INVOICE_NUMBER,
+            value="R20260815",
+            role=FactRole.REFERS,
+            origins=frozenset({FactOrigin.MODEL}),
+        )
+        reminder = index_document(
+            space_id=owner,
+            text="Mahnung",
+            facts=tuple(sorted(fact_tokens([invoice]))),
+            fact_values=(invoice.value,),
+        )
+        other = index_document(space_id=owner, text="Mahnung")
+        await search_index.upsert([reminder, other])
+        who = visibility(owner)
+
+        async def having(*criteria: FactCriterion) -> set[DocumentId]:
+            filter = DocumentFilter(facts=criteria)
+            return await found(search_index, "Mahnung", who, filter=filter)
+
+        kind = IdentifierKind.INVOICE_NUMBER
+        assert await having(FactCriterion(kind, "R20260815", FactRole.REFERS)) == {reminder.id}
+        assert await having(FactCriterion(kind)) == {reminder.id}
+        assert await having(FactCriterion(role=FactRole.REFERS)) == {reminder.id}
+        assert await having(FactCriterion(kind, "R20260815", FactRole.OWN)) == set()
+        assert await having(FactCriterion(kind), FactCriterion(role=FactRole.OWN)) == set()
+        assert await found(search_index, "R20260815", who) == {reminder.id}
 
     async def test_dated_within_a_period(self, search_index: SearchIndex) -> None:
         owner = SpaceId(new_id())

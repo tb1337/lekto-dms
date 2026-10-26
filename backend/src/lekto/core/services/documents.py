@@ -13,7 +13,7 @@ from uuid import UUID
 from lekto.core.domain import media_types
 from lekto.core.domain.classification import CONFIRMING, SPACE
 from lekto.core.domain.codes import Code, GiroCode, code_identifiers, codes_from_json, giro_code
-from lekto.core.domain.document_facts import NUMBER_KINDS, DocumentFact, FactRole
+from lekto.core.domain.document_facts import NUMBER_KINDS, DocumentFact, FactRole, person_only
 from lekto.core.domain.documents import Channel, Document, DocumentChanges, confirms
 from lekto.core.domain.errors import (
     ConflictError,
@@ -72,6 +72,7 @@ from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import (
     access_to,
     admin_only,
+    check_fact_filter,
     checked_changes,
     controllable_document,
     field_definitions,
@@ -84,7 +85,7 @@ from lekto.core.services._access import (
 from lekto.core.services._first_runs import keep_verdicts
 from lekto.core.services._moves import move_by_person
 from lekto.core.services._tags import expand, expanded, tag_counts, tag_tree
-from lekto.core.services.fact_decisions import FactDecision, decide_fact, person_only
+from lekto.core.services.fact_decisions import FactDecision, decide_fact
 from lekto.core.services.inbox import Review, in_inbox, node_reviews, open_nodes
 from lekto.core.services.maintenance import REMOVE_FILES_JOB, RemoveFiles
 from lekto.core.services.objects import (
@@ -520,6 +521,7 @@ class DocumentService:
         limit = max(1, min(limit, PAGE_LIMIT))
         async with self._uow() as uow:
             user = await load_lister(uow, actor, all_users, Action.LIST_ALL_DOCUMENTS)
+            check_fact_filter(user, filter)
             await _check_sortable(uow, order)
             position = await _position(uow, user, order, after, everyone=all_users)
             filter = await expanded(uow, filter)
@@ -634,7 +636,9 @@ class DocumentService:
         tag, topic or group counts the documents with it or one below it, each once, as its
         filter finds them."""
         async with self._uow() as uow:
-            await load_lister(uow, actor, all_users, Action.COUNT_ALL_DOCUMENTS)
+            check_fact_filter(
+                await load_lister(uow, actor, all_users, Action.COUNT_ALL_DOCUMENTS), filter
+            )
             user = None if all_users else actor
             tree = await tag_tree(uow)
             found: dict[DocumentFilter, list[FacetRow]] = {}

@@ -10,6 +10,9 @@ from uuid import UUID
 from fastapi import Depends, Query
 from fastapi.exceptions import RequestValidationError
 
+from lekto.core.domain.document_facts import FactCriterion, FactRole
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId
 from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane
@@ -21,6 +24,8 @@ SESSION_ONLY_NOTE = " Needs a session; API tokens are refused (403)."
 
 MAX_IDS = 50
 """Ids of one kind a filter names at most."""
+MAX_FACTS = 5
+"""Facts a filter names at most."""
 
 
 class LaneFilter(StrEnum):
@@ -52,6 +57,18 @@ def document_filter(
     topic_id: Ids = None,
     document_date_from: date | None = None,
     document_date_to: date | None = None,
+    fact: Annotated[
+        list[str] | None,
+        Query(
+            max_length=MAX_FACTS,
+            description=(
+                "A fact the document has (none a person rejected), as `kind:value:role`: the "
+                "value as written (it needs its kind), any part empty for any "
+                "(`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of "
+                "them. The kinds that are a person's alone only for admins (403)."
+            ),
+        ),
+    ] = None,
 ) -> DocumentFilter:
     """The query parameters of the document list as a filter (the search takes the same).
     Several contacts, types, spaces, contact groups, type groups or topics: one of them (each
@@ -78,7 +95,26 @@ def document_filter(
         lanes=None if not lane else frozenset(_LANES[item] for item in lane),
         field=None if field_id is None else FieldId(field_id),
         document_dates=_dates(document_date_from, document_date_to),
+        facts=tuple(_fact(item) for item in dict.fromkeys(fact or ())),
     )
+
+
+def _fact(written: str) -> FactCriterion:
+    """A fact of the filter as `kind:value:role`; 422 for one that is none."""
+    parts = written.split(":")
+    try:
+        if len(parts) != 3:
+            raise ValueError("expected kind:value:role")
+        kind, value, role = (part.strip() for part in parts)
+        return FactCriterion.written(
+            IdentifierKind(kind) if kind else None,
+            value or None,
+            FactRole(role) if role else None,
+        )
+    except (ValueError, ValidationError) as error:
+        raise RequestValidationError(
+            [{"type": "value_error", "loc": ("query", "fact"), "msg": str(error), "input": written}]
+        ) from None
 
 
 def _dates(start: date | None, end: date | None) -> Period | None:

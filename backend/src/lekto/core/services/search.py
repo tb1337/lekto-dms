@@ -42,7 +42,7 @@ from lekto.core.ports.search_index import (
     check_search,
 )
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
-from lekto.core.services._access import load_actor, load_lister
+from lekto.core.services._access import check_fact_filter, load_actor, load_lister
 from lekto.core.services._tags import expanded, group_lookup, matches
 from lekto.core.services.inbox import in_inbox
 
@@ -197,6 +197,7 @@ class SearchService:
             raise ValidationError("sort: the search cannot sort by a field")
         async with self._uow() as uow:
             user = await load_lister(uow, actor, all_users, Action.SEARCH_ALL_DOCUMENTS)
+            check_fact_filter(user, filter)
             spaces = await uow.spaces.list_accessible(actor)
             filter = await expanded(uow, filter)
         if offset >= MAX_HITS:

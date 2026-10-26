@@ -45,6 +45,7 @@ from decimal import Decimal
 from enum import StrEnum
 from uuid import UUID
 
+from lekto.core.domain.document_facts import DocumentFact, FactState, fact_tokens
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import (
     ConcurrencyError,
@@ -265,6 +266,7 @@ class _Snapshot:
     document_type_groups: _Named = ()
     topics: _Named = ()
     topic: str | None = None
+    facts: tuple[DocumentFact, ...] = ()
 
     @property
     def key(self) -> tuple[object, ...]:
@@ -277,6 +279,7 @@ class _Snapshot:
             self.contact_groups,
             self.document_type_groups,
             self.topics,
+            self.facts,
             self.topic,
         )
 
@@ -502,6 +505,12 @@ class IndexingService:
             topics=tuple(name for _, name in snapshot.topics),
             fields=_field_texts(document),
             field_ids=tuple(document.fields),
+            facts=tuple(sorted(fact_tokens(snapshot.facts))),
+            fact_values=tuple(
+                sorted(
+                    {fact.value for fact in snapshot.facts if fact.state is not FactState.REJECTED}
+                )
+            ),
             document_date=document.document_date,
             created_at=document.created_at,
             confirmed=document.confirmed_at is not None,
@@ -768,6 +777,7 @@ async def _snapshot_of(uow: UnitOfWork, document: Document) -> _Snapshot:
         document_type_groups=named(tree.with_ancestors(type_groups)),
         topics=named(tree.with_ancestors([topic] if topic else [])),
         topic=None if topic is None else tree.label(topic),
+        facts=tuple(await uow.document_facts.of_document(document.id)),
     )
 
 

@@ -19,9 +19,10 @@ router = APIRouter(prefix="/documents", tags=["documents"], dependencies=PROTECT
         "(with `all_users`, an admin's, every user's), in lanes: a series (one contact and "
         "type, and one contract or customer number, at a steady interval) with the relation "
         "target its documents refer to at its start and the document it expects next; branches "
-        "(documents that refer to one of a series, with the chain of theirs); chains of "
-        "documents related only among themselves; and the rest in one lane. At most the 500 "
-        "newest documents and 24 lanes of series and chains (`truncated`)."
+        "(documents that refer to one of a series or to its target, with the chain of theirs); "
+        "chains of documents related only among themselves; and the rest in one lane. At most "
+        "the 500 newest documents (`truncated`); beyond 24 lanes of series and chains the rest "
+        "come folded."
     ),
     response_model=StreamOut,
     responses=problem_responses(401, 403, 422),

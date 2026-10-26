@@ -47,22 +47,29 @@ class ExpectedNextOut(BaseModel):
 
 class StreamLaneOut(BaseModel):
     kind: LaneKind = Field(
-        description="`series`; `branch` (documents that refer to one of a series, with the "
-        "chain of theirs); `chain` (documents related only among themselves); `single` "
-        "(documents without series and relation)."
+        description="`series`; `branch` (documents that refer to one of a series or to its "
+        "target, with the chain of theirs); `chain` (documents related only among themselves); "
+        "`single` (documents without series and relation)."
     )
     documents: list[StreamDocumentOut] = Field(description="Oldest first.")
     contact_id: UUID | None = Field(description="Of a series.")
     document_type_id: UUID | None = Field(description="Of a series.")
     number: str | None = Field(description="The contract or customer number a series follows.")
     target: StreamDocumentOut | None = Field(
-        description="The relation target at the start of a series (the contract)."
+        description="The relation target at the start of a series (the contract); one may stand "
+        "at the start of several."
     )
     expected: ExpectedNextOut | None = Field(
         description="Of a series that has not ended: the document it expects next."
     )
     parent: int | None = Field(description="Of a branch: the index of its series lane.")
-    joins: UUID | None = Field(description="Of a branch: the document of the series it refers to.")
+    joins: UUID | None = Field(
+        description="Of a branch: the document of the series (or its target) it refers to."
+    )
+    folded: bool = Field(
+        description="Beyond 24 lanes of series and chains, the rest (with their branches): shown "
+        "on demand."
+    )
 
     @classmethod
     def of(cls, lane: Lane) -> "StreamLaneOut":
@@ -88,21 +95,14 @@ class StreamLaneOut(BaseModel):
             expected=expected,
             parent=lane.parent,
             joins=lane.joins,
+            folded=lane.folded,
         )
-
-
-class StreamRelationOut(BaseModel):
-    newer: UUID
-    older: UUID
 
 
 class StreamOut(BaseModel):
     lanes: list[StreamLaneOut]
-    relations: list[StreamRelationOut] = Field(
-        description="The set relations among its documents; the direction as stored."
-    )
     truncated: bool = Field(
-        description="More documents (500) or lanes (24) than a stream shows: a narrower filter "
+        description="More documents than a stream shows (500, the newest): a narrower filter "
         "shows it whole."
     )
 
@@ -110,8 +110,5 @@ class StreamOut(BaseModel):
     def of(cls, stream: Stream) -> "StreamOut":
         return cls(
             lanes=[StreamLaneOut.of(lane) for lane in stream.lanes],
-            relations=[
-                StreamRelationOut(newer=item.newer, older=item.older) for item in stream.relations
-            ],
             truncated=stream.truncated,
         )

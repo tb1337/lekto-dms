@@ -195,7 +195,12 @@ class RuleWorld:
     @property
     def rules(self) -> RuleService:
         return RuleService(
-            self.world.uow, self.world.clock, TEMPLATES, self.matcher, link_base=LINK_BASE
+            self.world.uow,
+            self.world.clock,
+            TEMPLATES,
+            self.matcher,
+            link_base=LINK_BASE,
+            store=self.world.object_store,
         )
 
     @property

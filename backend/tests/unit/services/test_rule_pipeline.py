@@ -1,5 +1,6 @@
 """The rules on arrival: the nodes `apply_rules` and `file`, and confirming in the inbox."""
 
+import json
 import logging
 from collections import Counter
 from decimal import Decimal
@@ -7,12 +8,14 @@ from typing import Any
 
 import pytest
 
+from lekto.core.domain.codes import Code, codes_to_json
 from lekto.core.domain.document_facts import FactRole
 from lekto.core.domain.documents import DocumentChanges
-from lekto.core.domain.errors import OpenFieldsError
+from lekto.core.domain.errors import OpenFieldsError, PermissionDeniedError
 from lekto.core.domain.events import DocumentFiled
 from lekto.core.domain.fields import FieldType
 from lekto.core.domain.identifiers import IdentifierKind
+from lekto.core.domain.locations import Box
 from lekto.core.domain.master_data import Assignment
 from lekto.core.domain.pipeline import (
     PERSON,
@@ -24,6 +27,7 @@ from lekto.core.domain.pipeline import (
 )
 from lekto.core.domain.rule_planner import Mode
 from lekto.core.domain.rules import (
+    AddTags,
     Condition,
     ConditionField,
     ForceReview,
@@ -37,6 +41,8 @@ from lekto.core.domain.rules import (
 )
 from lekto.core.domain.spaces import SpaceRole
 from lekto.core.services.classification.signals import FactsSignal
+from lekto.core.services.fact_decisions import FactAction, FactDecision
+from lekto.core.services.objects import codes_key
 from lekto.core.services.rules.running import (
     PatternBudget,
     Prepared,
@@ -553,3 +559,100 @@ async def test_a_rule_reads_the_facts_into_a_field(world: World) -> None:
     assert reminder.fields[note.id] == "Rechnung R-4711"
     invoice = await r.arrive(owner, text="Rechnungsnummer: R-4711", facts=facts)
     assert note.id not in invoice.fields
+
+
+async def test_a_persons_fact_decision_runs_the_change_rules(world: World) -> None:
+    """Corrected facts give the person's value (`fakten.md`, decision 13): the change rules run
+    on the facts before and after the decision, so a field a rule fills follows it."""
+    r = await rule_world(world)
+    owner = await world.user()
+    note = await world.master_data.create_field(r.admin.id, "Bezug", FieldType.TEXT)
+    refers = Condition(
+        field=ConditionField.FACT,
+        op=Operator.MATCHES,
+        value="^R",
+        fact_kind=IdentifierKind.INVOICE_NUMBER,
+        fact_role=FactRole.REFERS,
+    )
+    await r.personal_rule(
+        owner,
+        definition(
+            "Mahnung",
+            refers,
+            SetField(note.id, "Rechnung {{ facts.refers.invoice_number }}"),
+            triggers=(Trigger.CHANGE,),
+        ),
+    )
+    facts = FactsSignal(world.uow, world.object_store)
+    reminder = await r.arrive(owner, text="Ihre Rechnung Nr. 4711 ist noch offen.", facts=facts)
+    assert note.id not in reminder.fields  # on arrival the change rule does not run
+    await r.documents.decide_fact(
+        owner.id,
+        reminder.id,
+        FactDecision(
+            action=FactAction.CORRECT,
+            kind=IdentifierKind.INVOICE_NUMBER,
+            value="4711",
+            new_value="R-4711",
+        ),
+    )
+    assert (await r.stored(reminder)).fields[note.id] == "Rechnung R-4711"
+
+
+async def test_only_admins_write_and_apply_rules_on_a_persons_facts(world: World) -> None:
+    """As only admins find documents by them (`_access.check_fact_filter`)."""
+    r = await rule_world(world)
+    editor = await world.user()
+    shared = await world.spaces.create(r.admin.id, "Haushalt")
+    await world.spaces.set_member(r.admin.id, shared.id, editor.id, SpaceRole.EDIT)
+    tax_id = Condition(
+        field=ConditionField.FACT,
+        op=Operator.IS,
+        value="86095742001",
+        fact_kind=IdentifierKind.TAX_ID,
+    )
+    of_a_person = Condition(
+        field=ConditionField.FACT,
+        op=Operator.PRESENT,
+        fact_kind=IdentifierKind.IBAN,
+        fact_role=FactRole.PERSON,
+    )
+    paid = await r.tag("bezahlt")
+    for condition in (tax_id, of_a_person):
+        with pytest.raises(PermissionDeniedError):
+            await r.space_rule(
+                editor, shared.id, definition("Steuer", condition, AddTags(frozenset({paid.id})))
+            )
+    rule = await r.space_rule(
+        r.admin, shared.id, definition("Steuer", tax_id, AddTags(frozenset({paid.id})))
+    )
+    with pytest.raises(PermissionDeniedError):
+        await r.applications.preview(editor.id, rule.id)
+    await r.applications.preview(r.admin.id, rule.id)
+
+
+async def test_the_preview_sees_the_girocode(world: World) -> None:
+    """`facts.girocode` in the preview of a rule's and of a webhook's template, as in a run."""
+    r = await rule_world(world)
+    owner = await world.user()
+    invoice = await r.arrive(owner, text="Rechnung")
+    giro = Code(
+        page=1,
+        format="QR Code",
+        text="BCD\n002\n1\nSCT\n\nStadtwerke\nDE89370400440532013000\nEUR84.20\n\n\nStrom",
+        box=Box(0.1, 0.1, 0.1, 0.1),
+    )
+    await world.object_store.put(
+        codes_key(invoice.id),
+        json.dumps(codes_to_json([giro])).encode(),
+        content_type="application/json",
+    )
+    for webhook, template, shown in (
+        (False, "{{ facts.girocode.name }}", "Stadtwerke"),
+        (True, '{"iban": "{{ facts.girocode.iban }}"}', "DE89370400440532013000"),
+    ):
+        preview = await r.rules.preview_template(
+            owner.id, template, document=invoice.id, webhook=webhook
+        )
+        assert preview.missing is None and preview.error is None, preview
+        assert shown in (preview.rendered or "")

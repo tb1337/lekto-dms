@@ -25,6 +25,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 
 from lekto.core.domain.classification import SPACE, TAGS, TITLE
+from lekto.core.domain.document_facts import DocumentFact
 from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.fields import FieldDefinition
 from lekto.core.domain.ids import FieldId, SpaceId
@@ -254,11 +255,14 @@ class ChangeRules:
         definitions: Mapping[FieldId, FieldDefinition],
         now: datetime,
         log: bool = True,
+        kept_before: Sequence[DocumentFact] | None = None,
     ) -> RuleRun | None:
         """After the person's change is applied to `document`: run the rules, apply their
         change and (with `log`) write the log entry. Returns the run, if rules were
         evaluated. `changes`: the person's change as given, before `checked_changes` (a topic
-        it clears because the new contact does not enable it is no decision of theirs)."""
+        it clears because the new contact does not enable it is no decision of theirs).
+        `kept_before`: the facts before a person's decision about one (`fact_decisions`); the
+        change is then to the facts, the document's values stay."""
         changed = changed_fields(changes)
         record = person_record(
             changed=changed,
@@ -291,9 +295,10 @@ class ChangeRules:
                 tags_removed=(origin.tags_removed - document.tag_ids)
                 | (before.tag_ids - document.tag_ids),
             )
-            # The facts stay as they are: their patterns too.
+            # The facts stay as they are, unless the person decided one.
             kept = await uow.document_facts.of_document(document.id)
-            before_patterns, _ = await field_patterns(self._matcher, rules, before, kept)
+            earlier = kept if kept_before is None else kept_before
+            before_patterns, _ = await field_patterns(self._matcher, rules, before, earlier)
             run = await run_rules(
                 uow,
                 self._matcher,
@@ -305,6 +310,7 @@ class ChangeRules:
                 origin=origin,
                 definitions=definitions,
                 before=(before, before_patterns),
+                kept_before=kept_before,
                 locked=origin.person,
             )
             input["rules"] = checked_rules(rules)

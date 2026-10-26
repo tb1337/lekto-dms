@@ -426,16 +426,22 @@ def _text_of(value: FieldValue) -> str:
     return value.value if isinstance(value, Url) else str(value)
 
 
+PatternSubject = str | tuple[str, ...]
+"""What a regular expression runs against: one text, or several, each on its own (it matches
+if it matches one of them)."""
+
+
 def pattern_subjects(
     rules: Sequence[Rule],
     document: Document,
     text: str | None,
     kept_facts: Sequence[DocumentFact] = (),
-) -> dict[tuple[str, str, bool], str]:
+) -> dict[tuple[str, str, bool], PatternSubject]:
     """What each regular expression of `rules` runs against: the text, a field value (as
-    text), or the values of the facts a condition looks at, each as the text writes it on a
-    line of its own. Patterns without a subject (no text, no value, no fact) are left out."""
-    subjects: dict[tuple[str, str, bool], str] = {}
+    text), or the values of the facts a condition looks at, each on its own as the text writes
+    it on one line (`DocumentFact.shown`). Patterns without a subject (no text, no value, no
+    fact) are left out."""
+    subjects: dict[tuple[str, str, bool], PatternSubject] = {}
     conditions = {
         condition.target: condition
         for rule in rules
@@ -444,12 +450,12 @@ def pattern_subjects(
     }
     for rule in rules:
         for target, pattern, case_sensitive in rule.definition.patterns():
-            subject: str | None
+            subject: PatternSubject | None
             if target == TEXT_TARGET:
                 subject = text
             elif target in conditions:
                 held = fact_values(conditions[target], kept_facts)
-                subject = "\n".join(fact.written or fact.value for fact in held) or None
+                subject = tuple(fact.shown for fact in held) or None
             else:
                 value = document.fields.get(FieldId(UUID(target)))
                 subject = None if value is None else _text_of(value)

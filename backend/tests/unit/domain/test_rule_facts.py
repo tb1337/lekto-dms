@@ -14,9 +14,9 @@ from lekto.core.domain.fields import Money
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.locations import Box
 from lekto.core.domain.rule_conditions import Facts, evaluate, pattern_subjects
-from lekto.core.domain.rules import AddTags, Condition, ConditionField, Operator
+from lekto.core.domain.rules import AddTags, Condition, ConditionField, Operator, SetTitle
 from lekto.core.domain.rules_json import condition_from_json, condition_to_json
-from lekto.core.domain.templates import facts_values
+from lekto.core.domain.templates import facts_values, unknown_values
 from tests.unit.domain.rules_support import PAID, all_, doc, rule
 
 K = IdentifierKind
@@ -110,7 +110,13 @@ def test_a_fact_pattern_runs_against_each_value_as_written() -> None:
     subjects = pattern_subjects(
         [rule(AddTags(frozenset({PAID})), when=all_(matches))], doc(), None, REMINDER
     )
-    assert subjects == {("fact:invoice_number:refers", "^47", False): "4711\n4712"}
+    # Each on its own: a pattern does not run across two values.
+    assert subjects == {("fact:invoice_number:refers", "^47", False): ("4711", "4712")}
+    wrapped = fact(K.INVOICE_NUMBER, "RE20260042", FactRole.OWN, written="RE-2026/\n00\u00ad42")
+    across = fact_cond(Operator.MATCHES, "^RE")
+    assert pattern_subjects(
+        [rule(AddTags(frozenset({PAID})), when=all_(across))], doc(), None, (wrapped,)
+    ) == {("fact:invoice_number:", "^RE", False): ("RE-2026/ 0042",)}
     facts = Facts.of(
         doc(),
         kept_facts=REMINDER,
@@ -148,7 +154,38 @@ def test_templates_see_the_facts() -> None:
         "role": "own",
         "origin": "pattern",
     }
+    # On one line, a soft hyphen gone; a number a person marked as a person's is left out.
+    wrapped = fact(K.INVOICE_NUMBER, "RE20260042", FactRole.OWN, written="RE-2026/\n00\u00ad42")
+    private = fact(K.IBAN, "DE89370400440532013000", FactRole.PERSON, written="DE89 3704")
+    assert facts_values([wrapped, private])["facts"] == {"invoice_number": "RE-2026/ 0042"}
     corrected = replace(REMINDER[0], origins=frozenset({FactOrigin.PATTERN, FactOrigin.PERSON}))
     origins: Any = facts_values([corrected])["fact_list"]
     assert origins[0]["origin"] == "person"
     assert facts_values([]) == {"facts": None, "fact_list": None}
+
+
+def test_a_template_names_facts_a_document_can_have() -> None:
+    paths = [
+        "facts.invoice_number",
+        "facts.refers.invoice_number",
+        "facts.girocode.amount.currency",
+        "facts.girocode.iban",
+        "facts",
+        "facts.invoice_numbr",
+        "facts.tax_id",  # a person's alone: templates never see it
+        "facts.girocode.amout",
+        "facts.invoice_number.x",
+    ]
+    assert unknown_values(paths, set()) == [
+        "facts.girocode.amout",
+        "facts.invoice_number.x",
+        "facts.invoice_numbr",
+        "facts.tax_id",
+    ]
+
+
+def test_only_a_template_on_facts_or_an_ask_needs_the_codes() -> None:
+    present = fact_cond(Operator.PRESENT)
+    assert not rule(AddTags(frozenset({PAID})), when=all_(present)).definition.uses_codes
+    giro = SetTitle(template="Zahlung {{ facts.girocode.amount }}")
+    assert rule(giro).definition.uses_codes

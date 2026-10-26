@@ -690,6 +690,22 @@ class RuleDefinition:
         ]
 
     @property
+    def uses_codes(self) -> bool:
+        """Whether the rule may need the codes on the document's pages: a template that names
+        the facts (`facts.girocode`), or a step that asks a webhook (its body sees them)."""
+        for action in self.actions:
+            match action:
+                case (
+                    SetTitle(template=text)
+                    | ForceReview(reason=text)
+                    | SetField(value=str() as text)
+                ) if "fact" in text:
+                    return True
+                case AskWebhook():
+                    return True
+        return False
+
+    @property
     def uses_text(self) -> bool:
         return any(condition.field is ConditionField.TEXT for condition in self.all_conditions())
 

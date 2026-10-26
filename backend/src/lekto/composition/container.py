@@ -761,6 +761,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             container.templates,
             container.patterns,
             link_base=None if settings.public_url is None else str(settings.public_url),
+            store=store,
         ),
         webhooks=WebhookService(
             uow, clock, container.cipher, webhook_policy_of(settings), container.templates
@@ -777,6 +778,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             webhook_policy_of(settings),
             container.templates,
             link_base=None if settings.public_url is None else str(settings.public_url),
+            store=store,
         ),
         rule_applications=RuleApplicationService(
             uow,

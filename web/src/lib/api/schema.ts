@@ -6894,6 +6894,7 @@ export interface components {
 			| 'fact_not_in_text'
 			| 'fact_not_asked'
 			| 'fact_criterion_empty'
+			| 'rule_fact_of_person'
 			| 'fact_filter_of_person'
 			| 'fact_of_a_person'
 			| 'fact_not_found'
@@ -7898,7 +7899,7 @@ export interface components {
 			type: 'set_title';
 			/**
 			 * Template
-			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like), and the facts: `facts.<kind>` (the document's own value of the kind, as written), `facts.refers.<kind>` (one it refers to), `facts.girocode` (`name`, `iban`, `bic`, `amount`, `purpose`) and `fact_list` (each with `kind`, `value`, `written`, `role`, `origin`); none a person rejected, none of a person's. Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md
 			 * @example {{ contact }} {{ document_type }} {{ document_date | date: '%Y-%m' }}
 			 */
 			template: string;
@@ -8313,7 +8314,7 @@ export interface components {
 		TemplatePreviewIn: {
 			/**
 			 * Template
-			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md At most 500 characters, a webhook's body 10000.
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like), and the facts: `facts.<kind>` (the document's own value of the kind, as written), `facts.refers.<kind>` (one it refers to), `facts.girocode` (`name`, `iban`, `bic`, `amount`, `purpose`) and `fact_list` (each with `kind`, `value`, `written`, `role`, `origin`); none a person rejected, none of a person's. Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md At most 500 characters, a webhook's body 10000.
 			 */
 			template: string;
 			/**

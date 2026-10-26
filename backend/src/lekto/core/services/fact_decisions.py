@@ -14,6 +14,7 @@ the new one takes its place: entered by hand, or, where the old one was learned,
 the same spaces and user (who saw the old one sees the new one, #82); as a person's choice it
 takes the value from another contact that only learned or rejected it."""
 
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -80,6 +81,11 @@ class FactDecision:
     at_contact: bool = False
 
 
+AfterFacts = Callable[[UnitOfWork, User, Document, Sequence[DocumentFact]], Awaitable[None]]
+"""What follows a person's decision about the facts, in its unit of work: the document's change
+rules, given the facts before it (`DocumentService.decide_fact`)."""
+
+
 async def decide_fact(
     uow_factory: UnitOfWorkFactory,
     store: ObjectStore,
@@ -87,10 +93,13 @@ async def decide_fact(
     actor: UserId,
     id: DocumentId,
     decision: FactDecision,
+    *,
+    after: AfterFacts | None = None,
 ) -> None:
-    """Keep `decision` about a fact of the document. NotFoundError if the caller may not read
-    it, or it has no fact of that kind and value; PermissionDeniedError if they only read it,
-    for a person's kind if they are no admin, and for `at_contact` if they are no admin;
+    """Keep `decision` about a fact of the document; if it changed the facts, `after` runs.
+    NotFoundError if the caller may not read it, or it has no fact of that kind and value;
+    PermissionDeniedError if they only read it, for a person's kind if they are no admin, and
+    for `at_contact` if they are no admin;
     ConflictError for adding a fact it has, and while it has no text; ValidationError for a
     value that is none of the kind, a decision without what it needs, and `at_contact` without
     a contact or for a kind that is no contact's."""
@@ -162,11 +171,14 @@ async def decide_fact(
                         fact.key for fact in facts.values() if FactOrigin.CODE in fact.origins
                     },
                 )
-        # The document's facts changed: the search index and those who follow it learn of it.
+        # The document's facts changed: the search index and those who follow it learn of it,
+        # and the change rules run (a field a rule fills from a fact gets the person's value).
         if decision.action is not FactAction.CORRECT or verdict is not None:
             await uow.outbox.add(
                 [DocumentUpdated(document_id=id, occurred_at=now, fields=(FACTS,))]
             )
+            if after is not None:
+                await after(uow, user, document, tuple(facts.values()))
         if verdict is not None:
             if document.processing.run == 1 and document.first_lane is None:
                 verdict = Verdict.EARLY  # before the first run stopped: nothing to judge

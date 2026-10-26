@@ -6,7 +6,6 @@ stores the result (`prepare`), so no transaction waits for a slow pattern. Patte
 values (short) run inside it, on the state that is stored.
 """
 
-import json
 import logging
 import time
 from collections.abc import Collection, Iterable, Mapping, Sequence
@@ -25,7 +24,7 @@ from lekto.core.domain.classification import (
     TOPIC,
     field_key,
 )
-from lekto.core.domain.codes import Code, codes_from_json
+from lekto.core.domain.codes import Code
 from lekto.core.domain.document_facts import DocumentFact
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import NotFoundError, PatternTimeoutError, ValidationError
@@ -67,6 +66,7 @@ from lekto.core.domain.reasons import Reason, ReasonCode, because, reasons_to_js
 from lekto.core.domain.rule_conditions import (
     TEXT_TARGET,
     Facts,
+    PatternSubject,
     Taxonomy,
     pattern_subjects,
     pattern_text,
@@ -86,7 +86,7 @@ from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services._access import space_label
 from lekto.core.services._tags import tag_tree
 from lekto.core.services.inbox import MODEL_NODES, arrived, field_checks, latest_entries
-from lekto.core.services.objects import codes_key, load_text
+from lekto.core.services.objects import load_codes, load_text
 from lekto.core.services.tasks.desk import Ask
 from lekto.core.services.titles import machine_title
 from lekto.core.services.webhooks.delivery import queue_rule_send
@@ -204,8 +204,10 @@ async def prepare(
     budget: PatternBudget | None = None,
 ) -> Prepared:
     """Load the text if a rule looks at it and run the rules' patterns on it; the codes on the
-    pages if they were read (`facts.girocode` of templates)."""
-    codes = await _codes(store, document)
+    pages if a rule may need them (`facts.girocode` of templates, `RuleDefinition.uses_codes`)."""
+    codes: tuple[Code, ...] = ()
+    if any(rule.definition.uses_codes for rule in rules):
+        codes = await load_codes(store, document.id) or ()
     if not any(rule.definition.uses_text for rule in rules):
         return Prepared(codes=codes)
     if document.processing.outcome(Node.PARSE) not in (Outcome.OK, Outcome.UNCERTAIN):
@@ -220,18 +222,6 @@ async def prepare(
     return Prepared(DocumentText(text), results, problems, codes)
 
 
-async def _codes(store: ObjectStore, document: Document) -> tuple[Code, ...]:
-    """The codes read from the document's pages (`codes_key`); none if they were not, or
-    cannot be read."""
-    try:
-        return codes_from_json(json.loads(await store.get(codes_key(document.id)))) or ()
-    except NotFoundError:
-        return ()
-    except (ValueError, ValidationError):
-        log.warning("an unreadable file of codes", extra={"document_id": str(document.id)})
-        return ()
-
-
 async def field_patterns(
     matcher: PatternMatcher,
     rules: Sequence[Rule],
@@ -243,22 +233,27 @@ async def field_patterns(
 
 
 async def _search(
-    matcher: PatternMatcher, subjects: Mapping[PatternKey, str], budget: PatternBudget | None
+    matcher: PatternMatcher,
+    subjects: Mapping[PatternKey, PatternSubject],
+    budget: PatternBudget | None,
 ) -> tuple[dict[PatternKey, bool], tuple[str, ...]]:
     budget = budget or PatternBudget()
     results: dict[PatternKey, bool] = {}
     problems: list[str] = []
     for key, subject in subjects.items():
-        target, pattern, case_sensitive = key
-        if target.startswith("fact:"):
-            # The facts' values stand one per line: `^` and `$` mark the ends of each.
-            pattern = f"(?m){pattern}"
+        _, pattern, case_sensitive = key
         if budget.exhausted:
             problems.append(f"pattern {pattern!r} skipped: the time for patterns is used up")
             log.warning("rule pattern skipped", extra={"pattern": pattern, "error": "no time"})
             continue
         try:
-            results[key] = await matcher.search(pattern, subject, case_sensitive=case_sensitive)
+            # Several values (the facts of a kind): it matches if it matches one of them.
+            found = False
+            for item in (subject,) if isinstance(subject, str) else subject:
+                if await matcher.search(pattern, item, case_sensitive=case_sensitive):
+                    found = True
+                    break
+            results[key] = found
         except (PatternTimeoutError, ValidationError) as error:
             problems.append(str(error))
             log.warning("rule pattern skipped", extra={"pattern": pattern, "error": str(error)})

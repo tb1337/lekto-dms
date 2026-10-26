@@ -24,6 +24,7 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 
+from lekto.core.domain.document_facts import DocumentFact
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.fields import FieldDefinition
@@ -276,7 +277,7 @@ class Walker:
         state = await self._after(match, actions, steps)
         request = TaskRequest(
             document=await document_json(self.uow, state, self.link_base),
-            values=await webhook_values(self.uow, state, self.link_base),
+            values=await webhook_values(self.uow, state, self.link_base, self.prepared.codes),
             rule={"id": str(rule.id), "name": rule.definition.name},
             steps=dict(steps),
         )
@@ -406,6 +407,7 @@ async def run_rules(
     origin: Provenance,
     definitions: Mapping[FieldId, FieldDefinition],
     before: tuple[Document, Mapping[PatternKey, bool]] | None = None,
+    kept_before: Sequence[DocumentFact] | None = None,
     locked: Collection[str] = (),
     accept_conflicts: bool = False,
     applier: UserId | None = None,
@@ -415,7 +417,8 @@ async def run_rules(
 ) -> RuleRun:
     """Evaluate `rules` on the document, walk the steps of those that match and plan their
     change (nothing is applied). `before`: for a change, the state before it and its field
-    pattern results; only rules that become true with the change act. `applier`: who applies
+    pattern results (`kept_before`: the facts before it, where a person decided one; else the
+    facts are as now); only rules that become true with the change act. `applier`: who applies
     the rules to existing documents. `book`: what the tasks of the node's run brought, on
     arrival; without it, no step asks (`link_base`: where consumers answer)."""
     kept = tuple(await uow.document_facts.of_document(document.id))
@@ -424,7 +427,8 @@ async def run_rules(
     now_facts = facts(document, prepared, patterns, origin, loaded.taxonomy, kept)
     before_facts = None
     if before is not None:
-        before_facts = facts(before[0], prepared, before[1], origin, loaded.taxonomy, kept)
+        earlier = kept if kept_before is None else tuple(kept_before)
+        before_facts = facts(before[0], prepared, before[1], origin, loaded.taxonomy, earlier)
     matched = matches(rules, now_facts, definitions, before=before_facts)
     context = await situation(
         uow,

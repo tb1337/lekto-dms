@@ -66,14 +66,14 @@ def event_values(event_id: EventId, type: str, occurred_at: datetime) -> dict[st
 
 
 async def webhook_values(
-    uow: UnitOfWork, document: Document, link_base: str | None
+    uow: UnitOfWork, document: Document, link_base: str | None, codes: Iterable[Code] = ()
 ) -> dict[str, TemplateValue]:
     """The values a webhook's template sees of `document`: those of a rule's template (the fields
-    of its type), its id, lane and link."""
+    of its type, `codes` for `facts.girocode`), its id, lane and link."""
     fields = [
         item for item in await uow.fields.list_all() if item.applies_to(document.document_type_id)
     ]
-    values = await document_values(uow, document, document.document_type_id, fields)
+    values = await document_values(uow, document, document.document_type_id, fields, codes)
     values["document_id"] = str(document.id)
     if document.lane is not None:
         values["lane"] = document.lane.value

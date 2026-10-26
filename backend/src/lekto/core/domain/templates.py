@@ -19,6 +19,7 @@ from lekto.core.domain.document_facts import (
 )
 from lekto.core.domain.documents import Document
 from lekto.core.domain.fields import FieldDefinition, FieldValue, Money, Url
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.periods import Period
 from lekto.core.domain.sorting import sort_key
@@ -134,11 +135,12 @@ def facts_values(
     kept_facts: Iterable[DocumentFact], codes: Iterable[Code] = ()
 ) -> dict[str, TemplateValue | None]:
     """What templates see of the document's facts (`fakten.md`, decision 13), none a person
-    rejected and none of a kind a person's alone (a rule's template writes into what others
+    rejected and none of a person's, by kind or role (a rule's template writes into what others
     read):
 
     - `facts.<kind>`: the document's own value of the kind (no reference), the first as the
-      text reads, as the text writes it (`{{ facts.invoice_number }}`);
+      text reads, as the text writes it on one line (`DocumentFact.shown`,
+      `{{ facts.invoice_number }}`);
     - `facts.refers.<kind>`: the first value of the kind that refers to another document;
     - `facts.girocode`: the first GiroCode on the pages, `name`, `iban`, `bic`, `amount`,
       `purpose` (`{{ facts.girocode.amount }}`);
@@ -150,7 +152,9 @@ def facts_values(
         (
             fact
             for fact in kept_facts
-            if fact.state is not FactState.REJECTED and not person_only(fact.kind)
+            if fact.state is not FactState.REJECTED
+            and fact.role is not FactRole.PERSON
+            and not person_only(fact.kind)
         ),
         key=reading_order,
     )
@@ -158,7 +162,7 @@ def facts_values(
     refers: dict[str, TemplateValue] = {}
     for fact in shown:
         target = refers if fact.role is FactRole.REFERS else own
-        target.setdefault(fact.kind.value, fact.written or fact.value)
+        target.setdefault(fact.kind.value, fact.shown)
     facts: dict[str, TemplateValue] = dict(own)
     if refers:
         facts["refers"] = refers
@@ -173,7 +177,7 @@ def facts_values(
         {
             "kind": fact.kind.value,
             "value": fact.value,
-            "written": fact.written or fact.value,
+            "written": fact.shown,
             "role": fact.role.value,
             "origin": next(origin for origin in _ORIGINS if origin in fact.origins).value,
         }
@@ -224,14 +228,42 @@ def unknown_values(
     paths: Iterable[str], field_keys: Collection[str], names: Collection[str] = NAMES
 ) -> list[str]:
     """The paths of a template (`TemplateRenderer.check`) that name nothing a template can
-    use: an unknown name (not among `names`), or a field that is not among `field_keys`."""
+    use: an unknown name (not among `names`), a field that is not among `field_keys`, or a
+    fact no document has (`facts.invoice_numbr`, `facts.tax_id`)."""
     unknown: list[str] = []
     for path in sorted(paths):
         name, _, rest = path.partition(".")
-        known_field = name != FIELD or rest.partition(".")[0] in field_keys
-        if name not in names or not known_field:
+        known = name in names
+        if known and name == FIELD:
+            known = rest.partition(".")[0] in field_keys
+        elif known and name == FACTS and rest:
+            known = known_fact_path(rest)
+        if not known:
             unknown.append(path)
     return unknown
+
+
+GIROCODE_NAMES = ("name", "iban", "bic", "amount", "purpose")
+"""What `facts.girocode` holds (`facts_values`)."""
+
+
+def known_fact_path(path: str) -> bool:
+    """Whether `facts.<path>` can hold a value: a kind (not a person's), `refers.<kind>`,
+    `girocode` or one of its parts (the amount's `amount` and `currency` too)."""
+    head, _, rest = path.partition(".")
+    if head == "girocode":
+        part, _, deeper = rest.partition(".")
+        if not rest:
+            return True
+        if part == "amount":
+            return deeper in ("", "amount", "currency")
+        return part in GIROCODE_NAMES and not deeper
+    if head == "refers":
+        if not rest:
+            return True
+        head, _, rest = rest.partition(".")
+    kind = next((kind for kind in IdentifierKind if kind.value == head), None)
+    return kind is not None and not person_only(kind) and not rest
 
 
 def rename_field_key(template: str, old: str, new: str) -> str:

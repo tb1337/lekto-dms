@@ -174,10 +174,16 @@ class LogoService:
             await _enqueue(uow, contact.id, None, self._clock.now())
             await uow.commit()
 
+    async def request_fetch_all(self, actor: UserId) -> int:
+        """Admins only: `request_all`."""
+        async with self._uow() as uow:
+            await require_admin(uow, actor, Action.FETCH_LOGOS_ALL)
+        return await self.request_all()
+
     async def request_all(self) -> int:
         """`fetch-logos`: queue a fetch for every contact without a logo that has a domain
-        whose fetch has not failed. Returns how many. LogoFetchDisabledError without
-        fetching."""
+        whose fetch has not failed. Returns how many were queued now (one waiting already is
+        not counted). LogoFetchDisabledError without fetching."""
         if self._fetcher is None:
             raise LogoFetchDisabledError("Lekto does not fetch logos")
         queued = 0
@@ -283,24 +289,26 @@ async def queue_logo_fetch(
     """Queue fetching the logo of `contact`, in `uow`, if it has no logo or a fetched one and a
     domain beyond `known` (those it had before the change) whose fetch has not failed and that
     the fetched logo did not come from: the first of them. An uploaded logo is never replaced.
-    Callers ask only with fetching on. Whether a fetch was queued."""
+    Callers ask only with fetching on. Whether a fetch was queued now (not while one for that
+    domain waits already)."""
     if _uploaded(contact):
         return False
     for domain in contact.domains:
         if domain not in known and _new(contact, domain):
-            await _enqueue(uow, contact.id, domain, now)
-            return True
+            return await _enqueue(uow, contact.id, domain, now)
     return False
 
 
-async def _enqueue(uow: UnitOfWork, contact: ContactId, domain: str | None, now: datetime) -> None:
-    """A fetch for `domain`, or one an admin asked for (None); each once while it waits."""
-    await uow.jobs.enqueue(
+async def _enqueue(uow: UnitOfWork, contact: ContactId, domain: str | None, now: datetime) -> bool:
+    """A fetch for `domain`, or one an admin asked for (None); each once while it waits.
+    Whether it was queued now."""
+    queued = await uow.jobs.enqueue(
         LOGO_JOB,
         {"contact_id": str(contact), "domain": domain, "asked": domain is None},
         run_at=now,
         dedup_key=f"{LOGO_JOB}:{contact}:{domain or 'asked'}",
     )
+    return queued is not None
 
 
 def _uploaded(contact: Contact) -> bool:

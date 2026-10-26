@@ -49,6 +49,7 @@ from lekto.core.services.pipeline import (
     MetadataResult,
     PipelineService,
 )
+from lekto.core.services.relating import RELATE_JOB
 from tests import builders
 from tests.builders import FAILED, NOW, SAMPLES, UNCERTAIN, PlaceholderNode, Returns, incoming
 from tests.unit.services.support import Raises, World
@@ -401,6 +402,35 @@ async def test_only_admins_have_every_text_read_again(world: World) -> None:
         await world.pipeline().request_reparse(owner.id)
     admin = await world.user(role=Role.ADMIN)
     assert await world.pipeline().request_reparse(admin.id) == 1
+
+
+async def test_only_admins_queue_the_maintenance_over_every_document(world: World) -> None:
+    """The page "System", tab "Maintenance": relate, render-pages and read-codes as an
+    admin asks; a user may not."""
+    owner, document = await receive(world)
+    await world.drain()
+    async with world.uow() as uow:  # a document from before the pages node
+        stored = await uow.documents.get(document.id)
+        stored.processing.nodes[Node.PAGES] = NodeState(status=NodeStatus.SKIPPED)
+        await uow.documents.update(stored)
+        await uow.commit()
+    admin = await world.user(role=Role.ADMIN)
+    pipeline = world.pipeline()
+    for request in (
+        pipeline.request_relate,
+        pipeline.request_render_pages,
+        pipeline.request_read_codes,
+    ):
+        with pytest.raises(PermissionDeniedError):
+            await request(owner.id)
+    assert await pipeline.request_relate(admin.id) == 1
+    assert await pipeline.request_relate(admin.id) == 0  # queued already
+    assert await pipeline.request_render_pages(admin.id) == 1
+    assert await pipeline.request_read_codes(admin.id) == 0  # no code reader in this world
+    kinds = sorted(
+        job.kind for job in world.database.jobs.values() if job.status is JobStatus.QUEUED
+    )
+    assert kinds == [CATCH_UP_JOB, RELATE_JOB]
 
 
 async def test_reprocess_from_a_step(world: World) -> None:

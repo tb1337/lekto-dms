@@ -386,7 +386,7 @@ async def test_fetch_logos_queues_the_contacts_without_one(world: World) -> None
     assert await queued(world) == [
         {"contact_id": str(with_domain.id), "domain": "nord.example", "asked": False}
     ]
-    assert await logos.request_all() == 1  # queued once while it waits
+    assert await logos.request_all() == 0  # queued once while it waits
     assert len(await queued(world)) == 1
     await run_all(logos)
     assert fetcher.calls == ["nord.example"]
@@ -514,3 +514,19 @@ async def test_the_row_is_written_before_the_file(world: World) -> None:
     logos = LogoService(recording, world.clock, world.object_store, world.images)
     await logos.upload(admin.id, contact.id, PNG)
     assert order == ["update", "put"]
+
+
+async def test_only_admins_have_the_missing_logos_fetched(world: World) -> None:
+    """The page "System", tab "Maintenance": fetch-logos as an admin asks; a user may not,
+    and without fetching nobody can."""
+    admin, user = await world.user(role=Role.ADMIN), await world.user()
+    contact = await world.master_data.create_contact(admin.id, "Nord", identifiers=[DOMAIN])
+    with pytest.raises(LogoFetchDisabledError):
+        await world.logos.request_fetch_all(admin.id)
+    _, logos = world.fetching(FakeLogoFetcher({"nord.example": PNG}))
+    with pytest.raises(PermissionDeniedError):
+        await logos.request_fetch_all(user.id)
+    assert await logos.request_fetch_all(admin.id) == 1
+    assert await logos.request_fetch_all(admin.id) == 0  # queued already
+    await run_all(logos)
+    assert (await stored(world, contact.id)).logo is not None

@@ -21,7 +21,9 @@ export type ListSort =
 	| '-title'
 	| FieldSort;
 export type Sort = ListSort | 'relevance';
-export type Layout = 'grid' | 'list';
+export type Layout = 'grid' | 'list' | 'stream';
+
+export const LAYOUTS: readonly Layout[] = ['grid', 'list', 'stream'];
 
 export const FIELD_SORTS: readonly FieldSort[] = ['field', '-field'];
 export const LIST_SORTS: readonly ListSort[] = [
@@ -177,7 +179,8 @@ export function byMonth<T>(
 }
 
 export function rememberedLayout(): Layout {
-	return stored(KEYS.layout) === 'list' ? 'list' : 'grid';
+	const found = stored(KEYS.layout);
+	return LAYOUTS.find((layout) => layout === found) ?? 'grid';
 }
 
 export function rememberLayout(layout: Layout): void {

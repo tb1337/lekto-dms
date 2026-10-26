@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Waypoints from '@lucide/svelte/icons/waypoints';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
@@ -311,6 +312,17 @@
 		<!-- On a phone the actions are icons, so that they stand in one row; their names are read
 		     out and shown on hover. -->
 		<div class="flex flex-wrap gap-2">
+			{#if document.contact_id}
+				<!-- The stream of its contact (#145). -->
+				<a
+					href="{BASE}/documents?contact={document.contact_id}&layout=stream"
+					class={cn(buttonVariants({ variant: 'outline' }), 'max-sm:px-3')}
+					title={m.doc_show_stream()}
+				>
+					<Waypoints aria-hidden="true" />
+					<span class="max-sm:sr-only">{m.doc_show_stream()}</span>
+				</a>
+			{/if}
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger
 					class={cn(buttonVariants({ variant: 'outline' }), 'max-sm:px-3')}

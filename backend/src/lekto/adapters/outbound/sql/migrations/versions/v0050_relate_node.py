@@ -77,8 +77,8 @@ def upgrade() -> None:
         else:
             nodes[_RELATE] = _state("skipped")
         _store(connection, row["id"], nodes)
+    _drop_jobs(connection, {str(document) for document, _, _ in waiting}, _RULES)
     for document, run, nodes in waiting:
-        _drop_jobs(connection, document, _RULES)
         if _satisfied(nodes.get("fields", {})):
             _queue(connection, document, run, _RELATE)
 
@@ -86,6 +86,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     connection = op.get_bind()
     connection.execute(sa.delete(_log).where(_log.c.node == _RELATE))
+    # Finding relations outside processing is unknown before.
+    connection.execute(sa.delete(_jobs).where(_jobs.c.kind == "pipeline.relate"))
     for row in connection.execute(
         sa.select(_jobs.c.id, _jobs.c.payload).where(_jobs.c.kind.in_(_NODE_JOBS))
     ).mappings():
@@ -130,21 +132,22 @@ def _node_of(payload: Any) -> str | None:
     return node if isinstance(node, str) else None
 
 
-def _drop_jobs(connection: sa.Connection, document: Any, node: str) -> None:
-    """Queued and running node jobs of the document for `node`."""
+def _drop_jobs(connection: sa.Connection, documents: set[str], node: str) -> None:
+    """Queued and running node jobs of `documents` for `node`, in one pass over the jobs."""
     rows = connection.execute(
         sa.select(_jobs.c.id, _jobs.c.payload).where(
             _jobs.c.kind == "pipeline.node", _jobs.c.status.in_(_ACTIVE)
         )
     ).mappings()
-    for row in rows:
-        payload = row["payload"]
-        if (
-            isinstance(payload, dict)
-            and payload.get("document_id") == str(document)
-            and payload.get("node") == node
-        ):
-            connection.execute(sa.delete(_jobs).where(_jobs.c.id == row["id"]))
+    dropped = [
+        row["id"]
+        for row in rows
+        if isinstance(row["payload"], dict)
+        and row["payload"].get("document_id") in documents
+        and row["payload"].get("node") == node
+    ]
+    for start in range(0, len(dropped), 500):
+        connection.execute(sa.delete(_jobs).where(_jobs.c.id.in_(dropped[start : start + 500])))
 
 
 def _has_job(connection: sa.Connection, document: Any, run: int, node: str) -> bool:

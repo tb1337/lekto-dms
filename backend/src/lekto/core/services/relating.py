@@ -20,7 +20,7 @@ to the older document, whichever of the two came in first."""
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from lekto.core.domain.classification import (
     CHANGE_FIELDS,
@@ -46,7 +46,7 @@ from lekto.core.domain.relations import Relation, RelationOrigin, RelationState,
 from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services._jobs import document_payload
-from lekto.core.services.relations import find_pair
+from lekto.core.services.relations import RELATIONS_LOCK, find_pair
 
 RELATE = "relate-1"
 """The version of the recognition, in the log entries of the node."""
@@ -56,8 +56,10 @@ RELATE_JOB = "pipeline.relate"
 contact, type, date, fields or facts, and for every document (`lekto relate`); payload: the
 document id. Processing and log stay as they are."""
 
-RELATIONS_LOCK = "relations"
-"""One recognition at a time: two documents that find each other store one relation."""
+PERIOD_BEFORE = 31
+PERIOD_AFTER = 400
+"""Days before a period's start and after its end in which a document of that period is
+looked for (`_periods`)."""
 
 LIMIT = 200
 """The most documents a source looks at for one value: a contract number every invoice of a
@@ -106,11 +108,32 @@ async def recognise(uow: UnitOfWork, document: Document) -> list[Found]:
     return list(found.values())
 
 
-async def relate(uow: UnitOfWork, document: Document, now: datetime) -> list[Relation]:
+@dataclass(frozen=True)
+class Relating:
+    """What `relate` changed: the relations made or made sure, and those of Lekto's no person
+    decided that no source finds any more (a contact corrected since, a fact rejected)."""
+
+    made: tuple[Relation, ...]
+    dropped: tuple[Relation, ...]
+
+
+async def relate(uow: UnitOfWork, document: Document, now: datetime) -> Relating:
     """Store what the sources find for `document` (`recognise`) in the unit, which holds
-    `RELATIONS_LOCK`; returns the relations made or made sure."""
+    `RELATIONS_LOCK`, and drop Lekto's undecided relations of it they no longer find."""
+    found = await recognise(uow, document)
+    seen = {item.other.id for item in found}
+    dropped = []
+    for relation in await uow.document_relations.of_document(document.id):
+        if (
+            relation.origin is RelationOrigin.LEKTO
+            and relation.decided_by is None
+            and relation.state is not RelationState.REJECTED
+            and relation.other(document.id) not in seen
+        ):
+            await uow.document_relations.remove(relation.newer, relation.older)
+            dropped.append(relation)
     made: list[Relation] = []
-    for item in await recognise(uow, document):
+    for item in found:
         known = await find_pair(uow, document.id, item.other.id)
         if known is not None:
             if (
@@ -136,7 +159,7 @@ async def relate(uow: UnitOfWork, document: Document, now: datetime) -> list[Rel
         )
         await uow.document_relations.put(relation)
         made.append(relation)
-    return made
+    return Relating(tuple(made), tuple(dropped))
 
 
 def relates_by(changed: Iterable[str]) -> bool:
@@ -147,9 +170,10 @@ def relates_by(changed: Iterable[str]) -> bool:
 
 
 async def queue_relate(uow: UnitOfWork, document: DocumentId, now: datetime) -> None:
-    """A `RELATE_JOB` for the document, once while one waits."""
+    """A `RELATE_JOB` for the document, once while one waits; one that runs already finds
+    what it found before the change, so another one is queued."""
     await uow.jobs.enqueue(
-        RELATE_JOB, document_payload(document), run_at=now, dedup_key=f"{document}:relate"
+        RELATE_JOB, document_payload(document), run_at=now, coalesce_key=f"{document}:relate"
     )
 
 
@@ -165,12 +189,13 @@ class RelateNode:
 class RelateResult:
     async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
         await uow.lock(RELATIONS_LOCK)
-        made = await relate(uow, document, now)
-        return NodeResult(
-            outcome=Outcome.OK,
-            model_version=RELATE,
-            output={"relations": [relation_json(item, document.id) for item in made]},
-        )
+        related = await relate(uow, document, now)
+        output: JsonObject = {
+            "relations": [relation_json(item, document.id) for item in related.made]
+        }
+        if related.dropped:
+            output["dropped"] = [relation_json(item, document.id) for item in related.dropped]
+        return NodeResult(outcome=Outcome.OK, model_version=RELATE, output=output)
 
 
 def relation_json(relation: Relation, document: DocumentId) -> JsonObject:
@@ -209,15 +234,19 @@ def _sure(fit: bool | None, alone: bool) -> RelationState:
 
 async def _with_fact(
     uow: UnitOfWork,
+    document: Document,
     kind: IdentifierKind,
     value: str,
     role: FactRole | None = None,
     *,
     document_types: frozenset[DocumentTypeId] | None = None,
 ) -> list[Document]:
+    """The documents with the fact, of `document`'s contact where it has one (before the limit:
+    the oldest of a long series count too), of `document_types` if given."""
     return await uow.documents.query(
         DocumentFilter(
             facts=(FactCriterion(kind=kind, value=value, role=role),),
+            contacts=None if document.contact_id is None else frozenset({document.contact_id}),
             document_types=document_types or None,
         ),
         limit=LIMIT,
@@ -246,15 +275,15 @@ async def _numbers(
         if fact.role is FactRole.REFERS:
             owners = [
                 item
-                for item in await _with_fact(uow, fact.kind, fact.value, FactRole.OWN)
+                for item in await _with_fact(uow, document, fact.kind, fact.value, FactRole.OWN)
                 if item.id != document.id and _fits(document, item) is not False
             ]
             alone = len(_of_contact(owners, document)) == 1
             found += [Found(item, _sure(_fits(document, item), alone), evidence) for item in owners]
         elif fact.role is FactRole.OWN:
-            owners = await _with_fact(uow, fact.kind, fact.value, FactRole.OWN)
+            owners = await _with_fact(uow, document, fact.kind, fact.value, FactRole.OWN)
             alone = len(_of_contact(owners, document)) == 1
-            for item in await _with_fact(uow, fact.kind, fact.value, FactRole.REFERS):
+            for item in await _with_fact(uow, document, fact.kind, fact.value, FactRole.REFERS):
                 fit = _fits(document, item)
                 if item.id != document.id and fit is not False:
                     found.append(Found(item, _sure(fit, alone), evidence))
@@ -282,29 +311,41 @@ async def _targets(
             "fact_kind": fact.kind.value,
             "value": fact.shown,
         }
-        sharing = [
+        aimed = [
             item
-            for item in await _with_fact(uow, fact.kind, fact.value)
+            for item in await _with_fact(
+                uow, document, fact.kind, fact.value, document_types=targets
+            )
             if item.id != document.id and _fits(document, item) is not False
         ]
-        aimed = [item for item in sharing if item.document_type_id in targets]
         alone = len(_of_contact(aimed, document)) == 1
-        found += [Found(item, _sure(_fits(document, item), alone), evidence) for item in aimed]
-        if document.document_type_id in targets:
-            # The target came: those that share its number refer to it, sure while it is the
-            # only target that has it.
-            alone = not _of_contact(aimed, document)
-            found += [
-                Found(item, _sure(_fits(document, item), alone), evidence)
-                for item in sharing
-                if item.document_type_id not in targets
-            ]
+        if document.document_type_id not in targets:
+            found += [Found(item, _sure(_fits(document, item), alone), evidence) for item in aimed]
+            continue
+        # Two relation targets (a car and a house policy) share a customer number of their
+        # contact, which tells nothing; a contract number of both only suggests a relation.
+        if fact.kind is not IdentifierKind.CUSTOMER_NUMBER:
+            found += [Found(item, RelationState.SUGGESTED, evidence) for item in aimed]
+        # The target came: those that share its number refer to it, sure while it is the only
+        # target that has it.
+        alone = not _of_contact(aimed, document)
+        found += [
+            Found(item, _sure(_fits(document, item), alone), evidence)
+            for item in await _with_fact(uow, document, fact.kind, fact.value)
+            if item.id != document.id
+            and item.document_type_id not in targets
+            and _fits(document, item) is not False
+        ]
     return found
 
 
-IDENTITY_KINDS: frozenset[IdentifierKind] = TARGET_KINDS | {IdentifierKind.PERSONNEL_NUMBER}
+IDENTITY_KINDS: frozenset[IdentifierKind] = (
+    TARGET_KINDS
+    | {IdentifierKind.PERSONNEL_NUMBER}
+    | {kind for kind in IdentifierKind if role_of(kind) is FactRole.PERSON}
+)
 """Numbers that tell whose a document is: two payslips of one month with different personnel
-numbers are two people's, not a correction of the other."""
+numbers, or tax IDs, are two people's, not a correction of the other."""
 
 
 def _apart(mine: Sequence[DocumentFact], theirs: Sequence[DocumentFact]) -> bool:
@@ -330,15 +371,21 @@ async def _periods(
         or document.document_date is None
     ):
         return []
-    others = await uow.documents.query(
-        DocumentFilter(
-            contacts=frozenset({document.contact_id}),
-            document_types=frozenset({document.document_type_id}),
-        ),
-        limit=LIMIT,
-    )
     found: list[Found] = []
     for field, period in periods:
+        # The original lies near its period; corrections up to a year later.
+        others = await uow.documents.query(
+            DocumentFilter(
+                contacts=frozenset({document.contact_id}),
+                document_types=frozenset({document.document_type_id}),
+                field=field,
+                document_dates=Period(
+                    period.start - timedelta(days=PERIOD_BEFORE),
+                    period.end + timedelta(days=PERIOD_AFTER),
+                ),
+            ),
+            limit=LIMIT,
+        )
         same = [
             item
             for item in others

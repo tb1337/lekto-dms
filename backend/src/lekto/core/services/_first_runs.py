@@ -111,11 +111,12 @@ async def keep_verdicts(
         )
     if decision is Decision.INBOX and any(
         relation.origin is RelationOrigin.LEKTO
-        and relation.state is not RelationState.REJECTED
+        and relation.state is RelationState.SET
         and relation.newer == after.id
         for relation in await uow.document_relations.of_document(after.id)
     ):
-        # Confirmed with the relations Lekto found for it: taken likewise.
+        # Confirmed with the relations Lekto set for it: taken likewise. A suggestion stays the
+        # person's to decide (accepted or rejected, a verdict of its own).
         verdicts.append(
             FieldVerdict(
                 document_id=after.id,

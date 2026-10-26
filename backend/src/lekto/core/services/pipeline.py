@@ -108,7 +108,8 @@ from lekto.core.services.inbox import (
 )
 from lekto.core.services.master_data import learn_alias
 from lekto.core.services.objects import original_key
-from lekto.core.services.relating import RELATE_JOB, RELATIONS_LOCK, queue_relate, relate
+from lekto.core.services.relating import RELATE_JOB, queue_relate, relate
+from lekto.core.services.relations import RELATIONS_LOCK
 from lekto.core.services.rules.running import corrected_fields, person_record, space_choice
 from lekto.core.services.tasks.settling import Delegation, cancel_tasks
 
@@ -680,8 +681,10 @@ class PipelineService:
             result = replace(result, output={**result.output, **person, **chosen})
             await self._log(uow, id, Node.APPLY_RULES, run, result, now, now)
             access = document_access(user, document, source if target is None else target)
-            # The person decided what its relations rest on: they are found again.
-            await queue_relate(uow, document.id, now)
+            # The person decided what its relations rest on: they are found again (from the
+            # fields on, the node `relate` runs again anyway).
+            if resume_at is Node.APPLY_RULES:
+                await queue_relate(uow, document.id, now)
             await self._restart(uow, document)
         return None if access is None else DocumentView(document, access)
 
@@ -962,8 +965,13 @@ class PipelineService:
                 await uow.lock(RELATIONS_LOCK)
                 document = await uow.documents.find(document_id)
                 now = self._clock.now()
-                made = [] if document is None else await relate(uow, document, now)
-                await uow.jobs.complete(job, now=now, result={"relations": len(made)})
+                related = None if document is None else await relate(uow, document, now)
+                result: JsonObject = (
+                    {}
+                    if related is None
+                    else {"relations": len(related.made), "dropped": len(related.dropped)}
+                )
+                await uow.jobs.complete(job, now=now, result=result)
                 await uow.commit()
         except ConcurrencyError:
             lost(job)

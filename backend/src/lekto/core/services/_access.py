@@ -224,7 +224,8 @@ async def readable_log(uow: UnitOfWork, user: User, log: Sequence[NodeRun]) -> l
     persons the facts and the judge found (`persons`, and the space check's `unseen_by`) they
     see themselves, and another user only as far as the text names them by their display name
     (`_persons_seen`): what is private about a person found them for admins and that person
-    alone. Admins see everything; the stored log keeps everything for reprocessing."""
+    alone. The relations `relate` made name only documents they may read. Admins see
+    everything; the stored log keeps everything for reprocessing."""
     if user.is_active_admin:
         return list(log)
     readable: dict[str, bool] = {}
@@ -249,6 +250,18 @@ async def readable_log(uow: UnitOfWork, user: User, log: Sequence[NodeRun]) -> l
         assert isinstance(output, dict)
         if run.node in (Node.SIGNAL_FACTS, Node.JUDGE) and "persons" in output:
             output = _persons_seen(output, str(user.id))
+        if run.node is Node.RELATE and isinstance(output.get("relations"), list):
+            # A relation to a document the reader may not read is none of theirs (#145).
+            relations = output["relations"]
+            assert isinstance(relations, list)
+            output = {
+                **output,
+                "relations": [
+                    item
+                    for item in relations
+                    if isinstance(item, dict) and await may_read(item.get("document_id"))
+                ],
+            }
         result.append(replace(run, result=replace(run.result, output=output)))
     return result
 

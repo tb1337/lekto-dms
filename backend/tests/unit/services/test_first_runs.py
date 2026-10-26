@@ -191,7 +191,8 @@ async def test_confirming_a_document_with_facts_takes_them(world: World) -> None
 
 
 async def test_confirming_a_document_with_relations_takes_them(world: World) -> None:
-    """Confirmed in the inbox, the relations Lekto found for it count as taken (#145)."""
+    """Confirmed in the inbox, the relations Lekto set for it count as taken (#145); a
+    suggestion does not (the person still decides it)."""
     s = await scene(world, sure_date=False)
     document = await received(s)
     await world.drain(s.pipeline)
@@ -204,7 +205,7 @@ async def test_confirming_a_document_with_relations_takes_them(world: World) -> 
                 newer=document.id,
                 older=other.id,
                 origin=RelationOrigin.LEKTO,
-                state=RelationState.SUGGESTED,
+                state=RelationState.SET,
                 created_at=NOW,
             )
         )

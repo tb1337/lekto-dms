@@ -3,6 +3,8 @@ directions, and what a person decided stays."""
 
 from datetime import date
 
+import pytest
+
 from lekto.core.domain.document_facts import DocumentFact, FactOrigin, FactRole
 from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.fields import FieldDefinition, FieldType
@@ -15,9 +17,10 @@ from lekto.core.domain.relations import Relation, RelationOrigin, RelationState
 from lekto.core.domain.rules import AddTags, Condition, ConditionField, Operator
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import User
+from lekto.core.services import relating
 from lekto.core.services.classification.signals import FactsSignal
-from lekto.core.services.relating import RELATE, RELATIONS_LOCK, relate
-from lekto.core.services.relations import RelationService
+from lekto.core.services.relating import RELATE, relate
+from lekto.core.services.relations import RELATIONS_LOCK, RelationService
 from tests import builders
 from tests.unit.services.rules_support import Classifies, definition, rule_world
 from tests.unit.services.support import World
@@ -94,9 +97,9 @@ class Scene:
     async def relate(self, document: Document) -> list[Relation]:
         async with self.world.uow() as uow:
             await uow.lock(RELATIONS_LOCK)
-            made = await relate(uow, document, NOW)
+            related = await relate(uow, document, NOW)
             await uow.commit()
-        return made
+        return list(related.made)
 
     async def relations(self, document: Document) -> list[Relation]:
         async with self.world.uow() as uow:
@@ -312,3 +315,120 @@ async def test_the_rules_of_the_run_see_the_relation(world: World) -> None:
         classify=Classifies(contact=shop.id),
     )
     assert reminder_tag.id in reminder.tag_ids
+
+
+async def test_a_relation_lekto_made_goes_when_no_source_finds_it_any_more(world: World) -> None:
+    """Undecided relations of Lekto's follow the evidence: the reminder's contact corrected,
+    the invoice of another contact is no relation of it any more."""
+    s = await Scene.of(world)
+    shop, other = await s.contact("Versandhaus"), await s.contact("Stadtwerke")
+    await s.document(
+        contact=shop, dated=date(2026, 5, 12), facts=((K.INVOICE_NUMBER, "VB1", FactRole.OWN),)
+    )
+    reminder = await s.document(
+        contact=shop, dated=date(2026, 6, 10), facts=((K.INVOICE_NUMBER, "VB1", FactRole.REFERS),)
+    )
+    assert len(await s.relate(reminder)) == 1
+    reminder.apply_changes(DocumentChanges(contact_id=other), {}, NOW)
+    async with world.uow() as uow:
+        await uow.documents.update(reminder)
+        await uow.lock(RELATIONS_LOCK)
+        related = await relate(uow, reminder, NOW)
+        await uow.commit()
+    assert (related.made, len(related.dropped)) == ((), 1)
+    assert await s.relations(reminder) == []
+
+
+async def test_two_relation_targets_are_not_related_by_a_customer_number(world: World) -> None:
+    s = await Scene.of(world)
+    insurer = await s.contact("Nord Versicherung")
+    policy = await s.document_type("Police", target=True)
+    customer = (K.CUSTOMER_NUMBER, "KD7", FactRole.CONTACT)
+    await s.document(
+        contact=insurer,
+        kind=policy,
+        dated=date(2025, 1, 1),
+        facts=(customer, (K.POLICY_NUMBER, "KFZ1", FactRole.TARGET)),
+    )
+    house = await s.document(
+        contact=insurer,
+        kind=policy,
+        dated=date(2025, 6, 1),
+        facts=(customer, (K.POLICY_NUMBER, "HAUS1", FactRole.TARGET)),
+    )
+    assert await s.relate(house) == []
+
+
+async def test_a_number_of_the_contact_is_found_beyond_the_limit(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The documents of other contacts do not push the contract out of the limit."""
+    monkeypatch.setattr(relating, "LIMIT", 2)
+    s = await Scene.of(world)
+    insurer, other = await s.contact("Nord Versicherung"), await s.contact("Andere")
+    contract_type = await s.document_type("Vertrag", target=True)
+    number = ((K.CUSTOMER_NUMBER, "K1", FactRole.CONTACT),)
+    contract = await s.document(
+        contact=insurer, kind=contract_type, dated=date(2025, 1, 1), facts=number
+    )
+    for month in (1, 2, 3):
+        await s.document(contact=other, dated=date(2026, month, 1), facts=number)
+    bill = await s.document(contact=insurer, dated=date(2026, 4, 1), facts=number)
+    assert pairs(await s.relate(bill)) == {(bill.id, contract.id, RelationState.SET)}
+
+
+async def test_two_people_s_payslips_by_their_tax_ids(world: World) -> None:
+    s = await Scene.of(world)
+    employer = await s.contact("Arbeitgeber")
+    payslip = await s.document_type("Lohnabrechnung")
+    period = FieldDefinition.create(name="Bezugszeitraum", data_type=FieldType.PERIOD, now=NOW)
+    async with world.uow() as uow:
+        await uow.fields.add(period)
+        await uow.commit()
+    may = Period(date(2026, 5, 1), date(2026, 5, 31))
+    await s.document(
+        contact=employer,
+        kind=payslip,
+        dated=date(2026, 5, 29),
+        fields=((period, may),),
+        facts=((K.TAX_ID, "86095742001", FactRole.PERSON),),
+    )
+    partner = await s.document(
+        contact=employer,
+        kind=payslip,
+        dated=date(2026, 5, 31),
+        fields=((period, may),),
+        facts=((K.TAX_ID, "47036892816", FactRole.PERSON),),
+    )
+    assert await s.relate(partner) == []
+
+
+async def test_a_rule_sees_only_relations_its_author_may_read(world: World) -> None:
+    """A personal rule tells nothing of another user's document (#145 review)."""
+    r = await rule_world(world)
+    owner, other = await world.user(), await world.user()
+    invoice_type = await world.master_data.create_document_type(r.admin.id, "Rechnung")
+    tag = await r.tag("Mahnung")
+    refers = Condition(field=ConditionField.RELATION, op=Operator.IS, value=str(invoice_type.id))
+    await r.personal_rule(owner, definition("Mahnungen", refers, AddTags(frozenset({tag.id}))))
+    shop = await r.contact("Versandhaus")
+    facts = FactsSignal(world.uow, world.object_store)
+    await r.arrive(
+        other,
+        text="Rechnungsnummer: VB-889911",
+        facts=facts,
+        classify=Classifies(contact=shop.id, document_type=invoice_type.id),
+    )
+    reminder = await r.arrive(
+        owner,
+        text="Ihre Rechnung Nr. VB-889911 ist offen.",
+        facts=facts,
+        classify=Classifies(contact=shop.id),
+    )
+    async with world.uow() as uow:
+        assert len(await uow.document_relations.of_document(reminder.id)) == 1
+    assert tag.id not in reminder.tag_ids
+    # Nor does the log of `relate` name the other user's invoice.
+    log = await world.documents.processing_log(owner.id, reminder.id)
+    (entry,) = [item for item in log if item.node is Node.RELATE]
+    assert entry.result.output["relations"] == []

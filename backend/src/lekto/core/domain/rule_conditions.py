@@ -11,7 +11,7 @@ text can name a wrong contact and make it green; see `rule_planner`).
 """
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
@@ -22,7 +22,7 @@ from lekto.core.domain.documents import Channel, Document
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.evidence import DocumentText, contains, normalise, without_markup
 from lekto.core.domain.fields import FieldDefinition, FieldType, FieldValue, Money, Url
-from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId
+from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId, UserId
 from lekto.core.domain.json_value import JsonValue, require_date
 from lekto.core.domain.periods import Period
 from lekto.core.domain.rules import (
@@ -501,11 +501,18 @@ def matches(
     definitions: Mapping[FieldId, FieldDefinition],
     *,
     before: Facts | None = None,
+    referred: Mapping[UserId | None, tuple[DocumentTypeId | None, ...]] | None = None,
 ) -> list[Match]:
     """The rules whose conditions hold, in rule order. With `before` (a change): only those
-    that did not hold before the change (they become true with it)."""
+    that did not hold before the change (they become true with it). `referred`: the types of
+    the documents it refers to, by reader (`Facts.referred_types` of each rule, as its author
+    may read them)."""
     found: list[Match] = []
     for rule in sorted(rules, key=lambda item: item.order):
+        if referred is not None:
+            seen = referred.get(rule.current.created_by, ())
+            facts = replace(facts, referred_types=seen)
+            before = None if before is None else replace(before, referred_types=seen)
         conditions = rule.definition.conditions
         if not evaluate(conditions, facts, definitions):
             continue

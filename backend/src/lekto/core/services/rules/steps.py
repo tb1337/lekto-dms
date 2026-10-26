@@ -359,7 +359,7 @@ class Walker:
         return Facts.of(
             state,
             kept_facts=self.context.kept_facts,
-            referred_types=self.context.referred_types,
+            referred_types=self.context.referred_types.get(rule.current.created_by, ()),
             text=self.prepared.text,
             patterns={**self.prepared.patterns, **patterns},
             unverified=self.origin.unverified,
@@ -426,15 +426,13 @@ async def run_rules(
     kept = tuple(await uow.document_facts.of_document(document.id))
     patterns, problems = await field_patterns(matcher, rules, document, kept)
     loaded = await taxonomy(uow, [document, *([] if before is None else [before[0]])], rules)
-    referred = await referred_types(uow, document)
-    now_facts = facts(document, prepared, patterns, origin, loaded.taxonomy, kept, referred)
+    referred = await referred_types(uow, document, {rule.current.created_by for rule in rules})
+    now_facts = facts(document, prepared, patterns, origin, loaded.taxonomy, kept)
     before_facts = None
     if before is not None:
         earlier = kept if kept_before is None else tuple(kept_before)
-        before_facts = facts(
-            before[0], prepared, before[1], origin, loaded.taxonomy, earlier, referred
-        )
-    matched = matches(rules, now_facts, definitions, before=before_facts)
+        before_facts = facts(before[0], prepared, before[1], origin, loaded.taxonomy, earlier)
+    matched = matches(rules, now_facts, definitions, before=before_facts, referred=referred)
     context = await situation(
         uow,
         mode=mode,

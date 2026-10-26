@@ -4,10 +4,13 @@
  * a search by relevance, a list by document date, newest first. Grid or list is remembered
  * too. Remembering is a convenience: without storage the defaults hold. A list (not a search)
  * sorts by the value of a field with `field` or `-field` and the field in `sort_field`, as a
- * lens may; that is not remembered.
+ * lens may; that is not remembered. The filters and whether the panel of filters beside the
+ * list is collapsed are remembered too (Tobi, 26.10.2026): the filters as their query string,
+ * for opening the documents without any (the page decides when they apply).
  */
 
 import { isoDayLocal } from '#lib/dates.ts';
+import { isFiltered, parseFilters, writeFilters, type Filters } from '#lib/filters.ts';
 import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 
@@ -40,7 +43,9 @@ const DEFAULT: Record<'list' | 'search', Sort> = { list: '-document_date', searc
 const KEYS = {
 	list: 'lekto.documents.sort.list',
 	search: 'lekto.documents.sort.search',
-	layout: 'lekto.documents.layout'
+	layout: 'lekto.documents.layout',
+	filters: 'lekto.documents.filters',
+	collapsed: 'lekto.documents.filters-collapsed'
 };
 
 function stored(key: string): string | null {
@@ -51,9 +56,10 @@ function stored(key: string): string | null {
 	}
 }
 
-function store(key: string, value: string): void {
+function store(key: string, value: string | null): void {
 	try {
-		globalThis.localStorage?.setItem(key, value);
+		if (value === null) globalThis.localStorage?.removeItem(key);
+		else globalThis.localStorage?.setItem(key, value);
 	} catch {
 		// Not remembered: the defaults hold next time.
 	}
@@ -185,4 +191,29 @@ export function rememberedLayout(): Layout {
 
 export function rememberLayout(layout: Layout): void {
 	store(KEYS.layout, layout);
+}
+
+/** Remember `filters` for the next opening of the documents; none forgets them. */
+export function rememberFilters(filters: Filters): void {
+	store(
+		KEYS.filters,
+		isFiltered(filters) ? writeFilters(new URLSearchParams(), filters).toString() : null
+	);
+}
+
+/** The filters this browser last set, or null without any (or any that still count). */
+export function rememberedFilters(): Filters | null {
+	const found = stored(KEYS.filters);
+	if (found === null) return null;
+	const filters = parseFilters(new URLSearchParams(found));
+	return isFiltered(filters) ? filters : null;
+}
+
+/** Whether the panel of filters beside the list stands collapsed; open at first. */
+export function filtersCollapsed(): boolean {
+	return stored(KEYS.collapsed) === '1';
+}
+
+export function rememberFiltersCollapsed(collapsed: boolean): void {
+	store(KEYS.collapsed, collapsed ? '1' : null);
 }

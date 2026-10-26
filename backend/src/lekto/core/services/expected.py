@@ -2,13 +2,14 @@
 series among the documents a person may read, each with its next date. Derived on each call,
 nothing stored, no events."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, tzinfo
 
 from lekto.core.domain.document_facts import DocumentFact, FactRole, FactState, role_of
 from lekto.core.domain.documents import Document
 from lekto.core.domain.identifiers import IdentifierKind
-from lekto.core.domain.ids import UserId
+from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, UserId
 from lekto.core.domain.periods import Period
 from lekto.core.domain.reasons import Action
 from lekto.core.domain.series import Dated, Series, SeriesKey, SeriesState, series_of
@@ -37,27 +38,21 @@ class ExpectedService:
         self._uow = uow
         self._clock = clock
 
-    async def expected(self, actor: UserId, *, all_users: bool = False) -> list[Expected]:
+    async def expected(
+        self, actor: UserId, *, all_users: bool = False, zone: tzinfo = UTC
+    ) -> list[Expected]:
         """The series among the documents the caller may read (with `all_users`, an admin's,
-        of every user), the overdue first, then by their next date."""
+        of every user), the overdue first, then by their next date (the ended newest first);
+        today as it is in `zone`."""
         async with self._uow() as uow:
             await load_lister(uow, actor, all_users, Action.LIST_ALL_DOCUMENTS)
             documents = await _dated(uow, None if all_users else actor)
             facts = await uow.document_facts.of_documents([item.id for item in documents])
             contacts = {item.id: item.name for item in await uow.contacts.list_all()}
             types = {item.id: item.name for item in await uow.document_types.list_all()}
-        groups: dict[SeriesKey, list[Dated]] = {}
         by_id = {item.id: item for item in documents}
-        for document in documents:
-            assert document.contact_id is not None and document.document_type_id is not None
-            assert document.document_date is not None
-            key = SeriesKey(
-                document.contact_id, document.document_type_id, number(facts.get(document.id, []))
-            )
-            groups.setdefault(key, []).append(
-                Dated(document.id, document.document_date, _period(document))
-            )
-        today = self._clock.now().date()
+        groups = series_groups(documents, facts)
+        today = self._clock.now().astimezone(zone).date()
         found = []
         for key, items in groups.items():
             series = series_of(key, items)
@@ -73,13 +68,66 @@ class ExpectedService:
                 )
             )
         order = list(SeriesState)
-        return sorted(found, key=lambda item: (order.index(item.state), item.series.next_date))
+        return sorted(
+            found,
+            key=lambda item: (
+                order.index(item.state),
+                -item.series.next_date.toordinal()
+                if item.state is SeriesState.ENDED
+                else item.series.next_date.toordinal(),
+            ),
+        )
+
+
+def series_groups(
+    documents: Sequence[Document], facts: Mapping[DocumentId, Sequence[DocumentFact]]
+) -> dict[SeriesKey, list[Dated]]:
+    """The documents with contact, type and date by what their series share: contact, type and
+    number, compared by value whatever its kind (one contract number written as a customer
+    number on some). A document without a number belongs to the only numbered group of its
+    contact and type, if there is one (its number was not read)."""
+    numbers: dict[tuple[ContactId, DocumentTypeId], dict[str, IdentifierKind]] = {}
+    keyed: list[tuple[Document, tuple[IdentifierKind, str] | None]] = []
+    for document in documents:
+        if (
+            document.contact_id is None
+            or document.document_type_id is None
+            or document.document_date is None
+        ):
+            continue
+        found = number(facts.get(document.id, []))
+        keyed.append((document, found))
+        if found is not None:
+            kinds = numbers.setdefault((document.contact_id, document.document_type_id), {})
+            # A contract number names the series before a customer number of the same value.
+            if found[1] not in kinds or role_of(found[0]) is FactRole.TARGET:
+                kinds[found[1]] = found[0]
+    groups: dict[SeriesKey, list[Dated]] = {}
+    for document, found in keyed:
+        assert document.contact_id is not None and document.document_type_id is not None
+        assert document.document_date is not None
+        kinds = numbers.get((document.contact_id, document.document_type_id), {})
+        if found is None and len(kinds) == 1:
+            (value,) = kinds
+            found = (kinds[value], value)
+        elif found is not None:
+            found = (kinds[found[1]], found[1])
+        key = SeriesKey(document.contact_id, document.document_type_id, found)
+        groups.setdefault(key, []).append(
+            Dated(document.id, document.document_date, period_of(document))
+        )
+    return groups
 
 
 def number(facts: Sequence[DocumentFact]) -> tuple[IdentifierKind, str] | None:
     """The number a document's series follows: the first contract, policy or like number it
     shows (role `target`), else its customer number; none a person rejected."""
-    kept = [fact for fact in facts if fact.state is not FactState.REJECTED]
+    # A person's number (by kind or role) is no series' name others may read.
+    kept = [
+        fact
+        for fact in facts
+        if fact.state is not FactState.REJECTED and fact.role is not FactRole.PERSON
+    ]
     found = next(
         (
             fact
@@ -116,7 +164,7 @@ async def _dated(uow: UnitOfWork, user: UserId | None) -> list[Document]:
         after = DocumentPosition.after(page[-1].id)
 
 
-def _period(document: Document) -> Period | None:
+def period_of(document: Document) -> Period | None:
     """The first period among its fields, by field id."""
     return next(
         (

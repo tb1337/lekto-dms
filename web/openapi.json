@@ -18018,7 +18018,7 @@
           "expected"
         ],
         "summary": "The documents expected next",
-        "description": "The series among the documents the caller may read (with `all_users`, an admin's, every user's; others 403): documents of one contact and type, and of one contract or customer number where they show one, at least three at a steady interval. Each with its next date and where that stands today; the overdue first, then by date. Derived on each call, nothing stored.",
+        "description": "The series among the documents the caller may read (with `all_users`, an admin's, every user's; others 403): documents of one contact and type, and of one contract or customer number where they show one, at least three at a steady interval. Each with its next date and where that stands today; the overdue first, then by date. Derived on each call, nothing stored; today as it is in `tz`.",
         "operationId": "expected_api_v1_expected_get",
         "parameters": [
           {
@@ -18032,6 +18032,22 @@
               "title": "All Users"
             },
             "description": "Every user's documents instead of the caller's reach (admins)."
+          },
+          {
+            "name": "tz",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "The IANA time zone the months begin in.",
+              "examples": [
+                "Europe/Berlin"
+              ],
+              "default": "UTC",
+              "title": "Tz"
+            },
+            "description": "The IANA time zone the months begin in."
           }
         ],
         "responses": {

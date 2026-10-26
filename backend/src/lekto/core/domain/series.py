@@ -2,10 +2,14 @@
 PR 12): documents of one contact and type, and of one contract or customer number where they
 show one, that come at a steady interval. Derived, never stored.
 
-A series has at least three documents with a document date. The interval is the median of the
-gaps between them, as a calendar step where it is one (a week, a month, a quarter, half a year,
-a year), else in days; the spread is how far a document came off the step from the one before
-(at least `MIN_SPREAD` days). Gaps scattered wider than a third of the interval are no series.
+A series has at least three documents with a document date. The interval is the median of
+the gaps between them, as a calendar step where it is one (a week, a month, a quarter, half a
+year, a year), else in days: such a rhythm needs four documents, is at most `MAX_DAYS` long and
+is kept exactly. Each document is so many steps after the one before (a gap of two steps is one
+missed document, no deviation); one within the same step (a one-off of the contact) is set
+aside. The spread is how far a document came off its step (at least `MIN_SPREAD` days; in a
+longer history the worst step aside); a spread over a third of the step (a fifth for three
+documents or a rhythm of days) is no series, and neither are many missed steps or one-offs.
 The next document is expected one step after the last; it is overdue once the spread is over,
 and the series ended after two missed dates. Two documents of one day or of one period (a
 correction and its original) count once."""
@@ -22,6 +26,14 @@ from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId
 from lekto.core.domain.periods import Period, PeriodKind
 
 MIN_DOCUMENTS = 3
+MIN_DAYS_DOCUMENTS = 4
+"""A rhythm of days that is no calendar step needs a fourth document: three random dates often
+look steady."""
+MAX_DAYS = 60
+"""The longest rhythm of days that is no calendar step (every four or six weeks): a longer one
+is a calendar step or chance."""
+LONG = 5
+"""From this many steps on, the worst step does not set the spread (one late document)."""
 MIN_SPREAD = 2
 """Days a document may come off its step without being late: payslips of the last working day
 move over a weekend."""
@@ -46,6 +58,14 @@ _RANGES = (
     (Cadence.HALF_YEARLY, 170, 195),
     (Cadence.YEARLY, 350, 380),
 )
+_STEP_DAYS = {
+    Cadence.WEEKLY: 7.0,
+    Cadence.MONTHLY: 30.44,
+    Cadence.QUARTERLY: 91.31,
+    Cadence.HALF_YEARLY: 182.62,
+    Cadence.YEARLY: 365.25,
+}
+"""The mean length of a calendar step, to count how many steps lie between two documents."""
 _PERIOD_STEP = {
     PeriodKind.MONTH: Cadence.MONTHLY,
     PeriodKind.QUARTER: Cadence.QUARTERLY,
@@ -89,7 +109,7 @@ class Series:
     spread: int  # days
     next_date: date
     next_period: Period | None  # the period the next document is for, where they carry one
-    month_end: bool = False  # every document on the last day of its month: so the next
+    month_end: bool = False  # (nearly) every document on the last day of its month: the next too
 
     @property
     def last(self) -> Dated:
@@ -108,7 +128,7 @@ class Series:
 
 
 def series_of(key: SeriesKey, documents: Sequence[Dated]) -> Series | None:
-    """The series the documents make, or None: fewer than three, or no steady interval."""
+    """The series the documents make, or None: too few, or no steady interval."""
     kept = _once(documents)
     if len(kept) < MIN_DOCUMENTS:
         return None
@@ -117,18 +137,45 @@ def series_of(key: SeriesKey, documents: Sequence[Dated]) -> Series | None:
     if interval <= 0:
         return None
     cadence = next((name for name, low, high in _RANGES if low <= interval <= high), Cadence.DAYS)
-    month_end = cadence in _MONTHS and all(_last_of_month(item.document_date) for item in kept)
-    deviations = [
-        abs((b.document_date - step(a.document_date, cadence, interval, month_end)).days)
-        for a, b in pairwise(kept)
-    ]
-    spread = max(MIN_SPREAD, max(deviations))
-    if spread * 3 > interval:
+    if cadence is Cadence.DAYS and (len(kept) < MIN_DAYS_DOCUMENTS or interval > MAX_DAYS):
         return None
-    last = kept[-1]
+    ends = sum(_last_of_month(item.document_date) for item in kept)
+    month_end = cadence in _MONTHS and ends * 5 >= len(kept) * 4
+    length = _STEP_DAYS.get(cadence, interval)
+    members: list[Dated] = [kept[0]]
+    deviations: list[tuple[int, int]] = []
+    aside = missed = 0
+    plan = kept[0].document_date  # where the rhythm puts the last member
+    for item in kept[1:]:
+        steps = round((item.document_date - members[-1].document_date).days / length)
+        if steps == 0:
+            aside += 1  # a one-off within the step
+            continue
+        missed += steps - 1
+        # Off its step from the one before, or from the rhythm: one late document is one
+        # deviation, not two.
+        actual = _advance(members[-1].document_date, steps, cadence, interval, month_end)
+        planned = _advance(plan, steps, cadence, interval, month_end)
+        off_actual = abs((item.document_date - actual).days)
+        off_plan = abs((item.document_date - planned).days)
+        deviations.append((min(off_actual, off_plan), max(off_actual, off_plan)))
+        plan = planned if off_plan <= off_actual else actual
+        members.append(item)
+    if len(members) < MIN_DOCUMENTS or aside * 5 > len(kept) or missed * 4 > len(members):
+        return None
+    if cadence is Cadence.DAYS and (aside or missed):
+        return None  # a rhythm of days that is no calendar step has to be kept exactly
+    # A short history has to be steady by both measures; a long one by the kinder.
+    long = len(members) >= LONG
+    worst = sorted(kind if long else strict for kind, strict in deviations)
+    spread = max(MIN_SPREAD, worst[-2] if long else worst[-1])
+    strict = cadence is Cadence.DAYS or len(members) == MIN_DOCUMENTS
+    if spread * (5 if strict else 3) > length:
+        return None
+    last = members[-1]
     return Series(
         key=key,
-        documents=tuple(kept),
+        documents=tuple(members),
         cadence=cadence,
         interval=interval,
         spread=spread,
@@ -146,6 +193,12 @@ def step(day: date, cadence: Cadence, interval: int, month_end: bool = False) ->
         return day + timedelta(days=7 if cadence is Cadence.WEEKLY else interval)
     later = _plus_months(day, months)
     return _plus_months(later.replace(day=1), 1) - timedelta(days=1) if month_end else later
+
+
+def _advance(day: date, steps: int, cadence: Cadence, interval: int, month_end: bool) -> date:
+    for _ in range(steps):
+        day = step(day, cadence, interval, month_end)
+    return day
 
 
 def _last_of_month(day: date) -> bool:

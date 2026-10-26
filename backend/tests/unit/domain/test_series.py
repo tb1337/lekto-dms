@@ -52,9 +52,11 @@ def test_a_yearly_series_and_one_in_days() -> None:
     yearly = series_of(KEY, dated(date(2024, 3, 1), date(2025, 3, 3), date(2026, 3, 2)))
     assert yearly is not None
     assert (yearly.cadence, yearly.next_date) == (Cadence.YEARLY, date(2027, 3, 2))
-    days = series_of(KEY, dated(date(2026, 1, 1), date(2026, 1, 15), date(2026, 1, 29)))
+    fortnights = (date(2026, 1, 1), date(2026, 1, 15), date(2026, 1, 29))
+    assert series_of(KEY, dated(*fortnights)) is None  # three dates in days: not yet
+    days = series_of(KEY, dated(*fortnights, date(2026, 2, 12)))
     assert days is not None
-    assert (days.cadence, days.interval, days.next_date) == (Cadence.DAYS, 14, date(2026, 2, 12))
+    assert (days.cadence, days.interval, days.next_date) == (Cadence.DAYS, 14, date(2026, 2, 26))
 
 
 def test_a_correction_counts_once_and_the_next_period_follows() -> None:
@@ -67,3 +69,30 @@ def test_a_correction_counts_once_and_the_next_period_follows() -> None:
     assert series is not None
     assert len(series.documents) == 3  # the correction of August of 10 September aside
     assert series.next_period == Period.month(2026, 10)
+
+
+def months(*pairs: tuple[int, int], day: int = 15) -> list[date]:
+    return [date(year, month, day) for year, month in pairs]
+
+
+def test_a_missed_month_a_one_off_or_a_late_one_keep_the_series() -> None:
+    """From the review of #159: one irregular document does not end a long series."""
+    regular = [(2025, month) for month in range(1, 13)] + [(2026, month) for month in range(1, 10)]
+    missed = [pair for pair in regular if pair != (2025, 7)]
+    series = series_of(KEY, dated(*months(*missed)))
+    assert series is not None and series.next_date == date(2026, 10, 15)
+    one_off = [*months(*regular), date(2025, 7, 22)]
+    series = series_of(KEY, dated(*one_off))
+    assert series is not None and len(series.documents) == len(regular)
+    late = months(*regular)
+    late[5] = date(2025, 6, 26)
+    series = series_of(KEY, dated(*late))
+    assert series is not None and series.spread == 2
+    yearly = series_of(KEY, dated(*(date(year, 3, 1) for year in (2019, 2020, 2021, 2023, 2024))))
+    assert yearly is not None and yearly.next_date == date(2025, 3, 1)
+
+
+def test_three_scattered_dates_are_no_series() -> None:
+    """Three random dates in days, or a long and a short gap, make none."""
+    assert series_of(KEY, dated(date(2025, 11, 2), date(2026, 3, 1), date(2026, 8, 20))) is None
+    assert series_of(KEY, dated(date(2026, 1, 15), date(2026, 2, 10), date(2026, 3, 18))) is None

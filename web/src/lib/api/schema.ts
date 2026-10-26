@@ -2064,7 +2064,7 @@ export interface paths {
 		};
 		/**
 		 * The documents expected next
-		 * @description The series among the documents the caller may read (with `all_users`, an admin's, every user's; others 403): documents of one contact and type, and of one contract or customer number where they show one, at least three at a steady interval. Each with its next date and where that stands today; the overdue first, then by date. Derived on each call, nothing stored.
+		 * @description The series among the documents the caller may read (with `all_users`, an admin's, every user's; others 403): documents of one contact and type, and of one contract or customer number where they show one, at least three at a steady interval. Each with its next date and where that stands today; the overdue first, then by date. Derived on each call, nothing stored; today as it is in `tz`.
 		 */
 		get: operations['expected_api_v1_expected_get'];
 		put?: never;
@@ -24482,6 +24482,8 @@ export interface operations {
 			query?: {
 				/** @description Every user's documents instead of the caller's reach (admins). */
 				all_users?: boolean;
+				/** @description The IANA time zone the months begin in. */
+				tz?: string;
 			};
 			header?: never;
 			path?: never;

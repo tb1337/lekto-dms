@@ -32,6 +32,7 @@ from lekto.core.domain.fields import FieldDefinition, field_from_json
 from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
 from lekto.core.domain.master_data import TagScope
 from lekto.core.domain.relations import RelationState
+from lekto.core.domain.series import SeriesState
 from lekto.core.domain.sorting import sort_key
 from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.tag_tree import TagTree
@@ -559,14 +560,23 @@ def build_server(context: ApiContext) -> MCPServer:
             "The documents expected next: series of documents you may read (one contact and "
             "type, and one contract or customer number where they show one, at least three at "
             "a steady interval), each with its next date and whether it is overdue; the overdue "
-            "first. Read only; nothing is stored."
+            "first, the ended ones only on request. Read only; nothing is stored."
         ),
         annotations=READ_ONLY,
     )
     @guarded
-    async def list_expected(ctx: Context) -> ExpectedOut:
+    async def list_expected(
+        ctx: Context,
+        include_ended: Annotated[
+            bool, Field(description="Also the series that ended (two dates missed).")
+        ] = False,
+    ) -> ExpectedOut:
         user = principal_of(ctx).id
-        found = await context.expected.expected(user)
+        found = [
+            item
+            for item in await context.expected.expected(user)
+            if include_ended or item.state is not SeriesState.ENDED
+        ]
         series = []
         for item in found:
             key, last = item.series.key, item.last

@@ -68,7 +68,7 @@
 		class="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
 	/>
 	<kbd
-		class="rounded-md border bg-card px-1.5 font-mono text-[11px] leading-5 text-muted-foreground"
+		class="rounded-md border bg-card px-1.5 font-mono text-micro leading-5 text-muted-foreground"
 		aria-hidden="true">/</kbd
 	>
 </form>

@@ -13,6 +13,7 @@
 	} from '#lib/facts.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import * as Card from '#lib/components/ui/card/index.ts';
 
 	// The facts of the document as a pane of the document tab: what it shows of its contact
 	// and its codes, counted in the head, on the inner surface below.
@@ -45,9 +46,11 @@
 	const summary = $derived(facts ? factsSummary(factCounts(facts)) : '');
 </script>
 
-<aside
+<Card.Root
+	as="aside"
+	size="flush"
 	aria-label={m.facts_title()}
-	class="flex min-h-[32rem] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-card lg:min-h-0"
+	class="flex min-h-[32rem] min-w-0 flex-1 flex-col overflow-hidden lg:min-h-0"
 >
 	<!-- The head only where it holds something: on a phone the pane has no switch. -->
 	{#if end || summary}
@@ -72,4 +75,4 @@
 			<p class="p-2 text-sm text-muted-foreground">{m.facts_pending()}</p>
 		{/if}
 	</div>
-</aside>
+</Card.Root>

@@ -150,7 +150,7 @@
 				<div class="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
 					<span id="field-def-key-label">{m.field_def_key()}:</span>
 					<code
-						class="rounded-md bg-secondary px-1.5 py-0.5 font-mono text-[0.8125rem] break-all text-foreground"
+						class="rounded-md bg-secondary px-1.5 py-0.5 font-mono text-meta break-all text-foreground"
 						aria-labelledby="field-def-key-label">{`field.${initial.key}`}</code
 					>
 					<InfoHint text={m.field_def_key_hint()} about={m.field_def_key()} />

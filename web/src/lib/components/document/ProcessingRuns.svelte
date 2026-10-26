@@ -7,6 +7,8 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { glanceSeconds, type Glance } from '#lib/runs.ts';
 	import { cn } from '#lib/utils.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 
 	type Status = components['schemas']['ProcessingStatus'];
 
@@ -52,12 +54,9 @@
 	};
 </script>
 
-<section
-	aria-labelledby="runs-heading"
-	class="flex min-w-0 flex-col gap-4 rounded-2xl border bg-card p-5"
->
+<Card.Root as="section" aria-labelledby="runs-heading" class="flex min-w-0 flex-col gap-4">
 	{#if runs.length > 1}
-		<h2 id="runs-heading" class="font-semibold">{m.log_runs()}</h2>
+		<SectionTitle size="card" id="runs-heading">{m.log_runs()}</SectionTitle>
 		<ul class="-mx-2 -mt-2 flex max-h-80 flex-col gap-0.5 overflow-y-auto">
 			{#each runs as run (run)}
 				{@const glance = run === shown ? current : glanceOf(run)}
@@ -88,7 +87,7 @@
 			{/each}
 		</ul>
 	{:else}
-		<h2 id="runs-heading" class="font-semibold">{m.log_run({ run: shown })}</h2>
+		<SectionTitle size="card" id="runs-heading">{m.log_run({ run: shown })}</SectionTitle>
 	{/if}
 	<dl
 		class={cn(
@@ -126,4 +125,4 @@
 			</Button>
 		</div>
 	{/if}
-</section>
+</Card.Root>

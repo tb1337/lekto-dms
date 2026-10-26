@@ -27,6 +27,8 @@
 		type StreamLane,
 		type StreamOut
 	} from '#lib/stream.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import { cardVariants } from '#lib/components/ui/card/index.ts';
 
 	// The documents of the filters in lanes (#145): a series with its relation target at the
 	// start and its expected document at the end, branches off it, chains, and the rest. On the
@@ -188,7 +190,7 @@
 						<li>{@render toggle()}</li>
 					{/if}
 					{#if shown(lane)}
-						<li class={['rounded-2xl border bg-card p-3', lane.kind === 'branch' && 'ml-4']}>
+						<li class={[cardVariants({ size: 'flush' }), 'p-3', lane.kind === 'branch' && 'ml-4']}>
 							<p class="flex items-center gap-1 text-sm font-semibold">
 								{#if lane.kind === 'branch'}
 									<CornerDownRight class="size-4 text-muted-foreground" aria-hidden="true" />
@@ -212,7 +214,7 @@
 				{/each}
 			</ul>
 		{:else}
-			<div class="overflow-x-auto rounded-2xl border bg-card" bind:this={scroller}>
+			<Card.Root size="flush" class="overflow-x-auto" bind:ref={scroller}>
 				<div
 					class="grid"
 					style:grid-template-columns={columns}
@@ -308,7 +310,7 @@
 						{/if}
 					{/each}
 				</div>
-			</div>
+			</Card.Root>
 		{/if}
 	</div>
 {/if}

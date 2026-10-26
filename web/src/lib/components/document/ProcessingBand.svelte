@@ -202,7 +202,7 @@
 		aria-label={[title(step), reading(step.node)].filter(Boolean).join(' · ')}
 		aria-expanded={step.node === expanded}
 		class={cn(
-			'relative flex min-w-0 items-center overflow-hidden rounded-[3px] outline-none motion-safe:transition-opacity motion-safe:duration-150',
+			'relative flex min-w-0 items-center overflow-hidden rounded-xs outline-none motion-safe:transition-opacity motion-safe:duration-150',
 			'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
 			stripe
 				? ['h-[3px] shrink-0', stripes[step.tone]]
@@ -221,7 +221,7 @@
 		{#if text}
 			<span
 				class={cn(
-					'px-2 text-[11px] whitespace-nowrap',
+					'px-2 text-micro whitespace-nowrap',
 					on ? 'font-bold' : 'font-semibold',
 					label(step.tone)
 				)}
@@ -283,7 +283,7 @@
 	</div>
 	<p
 		data-band-reading
-		class="flex h-6 min-w-0 items-center gap-2 overflow-hidden text-[13px] whitespace-nowrap text-muted-foreground"
+		class="flex h-6 min-w-0 items-center gap-2 overflow-hidden text-meta whitespace-nowrap text-muted-foreground"
 		aria-hidden="true"
 	>
 		{#if lit}
@@ -301,7 +301,7 @@
 	</p>
 	{#if wide}
 		<div
-			class="mt-1.5 grid gap-1 text-[11px] text-muted-foreground"
+			class="mt-1.5 grid gap-1 text-micro text-muted-foreground"
 			style:grid-template-columns={columns}
 			aria-hidden="true"
 		>

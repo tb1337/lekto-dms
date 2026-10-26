@@ -14,7 +14,7 @@
 <dt class="text-muted-foreground">{m.signal_named()}</dt>
 <dd class="flex min-w-0 flex-wrap gap-1.5 py-0.5">
 	{#each facts.named as name, index (index)}
-		<span class="rounded-full border bg-card px-2.5 py-0.5 text-[13px]">{name}</span>
+		<span class="rounded-full border bg-card px-2.5 py-0.5 text-meta">{name}</span>
 	{:else}
 		<span class="text-muted-foreground">{m.signal_none()}</span>
 	{/each}

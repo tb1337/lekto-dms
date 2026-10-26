@@ -2426,5 +2426,10 @@
 	"action_move_document": "dieses Dokument verschieben",
 	"action_delete_document": "dieses Dokument löschen",
 	"action_reset_own_password": "ihr eigenes Passwort zurücksetzen",
-	"action_turn_off_own_totp": "ihre eigene Zwei-Faktor-Anmeldung ausschalten"
+	"action_turn_off_own_totp": "ihre eigene Zwei-Faktor-Anmeldung ausschalten",
+	"rule_edit_generic": "Regel bearbeiten",
+	"rule_apply_generic": "Regel anwenden",
+	"rule_generic": "Regel",
+	"webhook_generic": "Webhook",
+	"webhook_edit_generic": "Webhook bearbeiten"
 }

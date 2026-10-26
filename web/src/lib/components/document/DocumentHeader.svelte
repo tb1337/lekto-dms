@@ -1,6 +1,5 @@
 <script lang="ts">
 	import Waypoints from '@lucide/svelte/icons/waypoints';
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
@@ -40,6 +39,10 @@
 	import { cn } from '#lib/utils.ts';
 	import { adviceText, visionAvailable, type Reading, type Vision } from '#lib/vision.ts';
 	import { Choice } from '#lib/components/ui/choice/index.ts';
+	import BackLink from '#lib/components/BackLink.svelte';
+	import IconButton from '#lib/components/IconButton.svelte';
+	import PageTitle from '#lib/components/page/PageTitle.svelte';
+	import { returnTo } from '#lib/return-to.svelte.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
 	type ReprocessNode = components['schemas']['ReprocessNode'];
@@ -212,7 +215,7 @@
 				);
 				toast.success(receiver ? m.move_handed_over({ name: userLabel(receiver) }) : m.move_done());
 				moveOpen = false;
-				await goto(inbox ? `${BASE}/inbox` : `${BASE}/documents`);
+				await goto(inbox ? `${BASE}/inbox` : returnTo.documents);
 			} catch (error) {
 				reportError(error);
 			} finally {
@@ -236,41 +239,30 @@
 	async function remove() {
 		await unwrap(api.DELETE('/api/v1/documents/{id}', { params: { path: { id: document.id } } }));
 		toast.success(m.delete_done());
-		await goto(inbox ? `${BASE}/inbox` : `${BASE}/documents`);
+		await goto(inbox ? `${BASE}/inbox` : returnTo.documents);
 	}
 </script>
 
 <div class="flex flex-col gap-3.5">
 	<div class="flex min-h-9 flex-wrap items-center gap-3">
-		<a
-			href={inbox ? `${BASE}/inbox` : `${BASE}/documents`}
-			class="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-		>
-			<ArrowLeft class="size-4" aria-hidden="true" />
-			{inbox ? m.nav_inbox() : m.nav_documents()}
-		</a>
+		<BackLink
+			href={inbox ? `${BASE}/inbox` : returnTo.documents}
+			label={inbox ? m.nav_inbox() : m.nav_documents()}
+		/>
 		{#if inbox && inbox.position !== null}
 			<nav aria-label={m.doc_inbox_nav()} class="ml-auto flex items-center gap-1">
 				<span class="mr-1.5 text-sm text-muted-foreground">
 					{m.doc_inbox_position({ position: inbox.position, total: inbox.total })}
 				</span>
 				{#if inbox.previous}
-					<a
-						href={inboxHref(inbox.previous)}
-						class={cn(buttonVariants({ variant: 'outline', size: 'icon' }), 'size-9')}
-						aria-label={m.doc_previous()}
-					>
+					<IconButton href={inboxHref(inbox.previous)} variant="outline" label={m.doc_previous()}>
 						<ChevronLeft aria-hidden="true" />
-					</a>
+					</IconButton>
 				{/if}
 				{#if inbox.next}
-					<a
-						href={inboxHref(inbox.next)}
-						class={cn(buttonVariants({ variant: 'outline', size: 'icon' }), 'size-9')}
-						aria-label={m.doc_next()}
-					>
+					<IconButton href={inboxHref(inbox.next)} variant="outline" label={m.doc_next()}>
 						<ChevronRight aria-hidden="true" />
-					</a>
+					</IconButton>
 				{/if}
 			</nav>
 		{/if}
@@ -279,9 +271,7 @@
 	<header class="flex flex-wrap items-start justify-between gap-4">
 		<div class="flex min-w-0 flex-col gap-1.5">
 			<div class="flex flex-wrap items-center gap-3">
-				<h1 class="text-[1.75rem] leading-tight font-semibold tracking-tight break-words">
-					{document.title}
-				</h1>
+				<PageTitle>{document.title}</PageTitle>
 				<LaneBadge lane={document.lane} />
 			</div>
 			<p class="text-sm text-muted-foreground">

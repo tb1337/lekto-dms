@@ -6,6 +6,8 @@
 	import { DOT, stepLook, type Tone } from '#lib/step-look.ts';
 	import { PHASE_LABELS, type Phase, type Step } from '#lib/steps.ts';
 	import { cn } from '#lib/utils.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
 
 	// The steps of a run on a narrower screen (mock A's timeline, Tobi 23.10.2026): the phases one
 	// below the other on a line that tells how the run went (green, yellow where something is
@@ -97,9 +99,9 @@
 {/snippet}
 
 <section aria-labelledby="steps-heading" class="flex min-w-0 flex-col">
-	<h2 id="steps-heading" class="mb-3 font-semibold">
+	<SectionTitle size="card" id="steps-heading" class="mb-3">
 		{m.processing_steps()} · {m.log_run({ run })}
-	</h2>
+	</SectionTitle>
 	{#each groups as group, index (group.phase)}
 		{@const line = lines[index]}
 		{@const last = index === groups.length - 1}
@@ -117,13 +119,11 @@
 				{/if}
 			</div>
 			<div class={cn('flex min-w-0 flex-col gap-2', !last && 'pb-5')}>
-				<h3
-					class="text-xs font-semibold tracking-wider whitespace-nowrap text-muted-foreground uppercase"
-				>
+				<Eyebrow as="h3" class="tracking-wider whitespace-nowrap">
 					{PHASE_LABELS[group.phase]()}{#if phaseDuration(group.steps)}<span
 							class="tracking-normal normal-case">{` · ${phaseDuration(group.steps)}`}</span
 						>{/if}
-				</h3>
+				</Eyebrow>
 				<div class={grid ? 'grid grid-cols-2 gap-2' : 'flex flex-col gap-2'}>
 					{#each group.steps as step (step.node)}
 						<StepCard

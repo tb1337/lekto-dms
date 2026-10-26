@@ -112,7 +112,7 @@
 			onpointerenter={enter}
 			onpointerleave={leave}
 			class={cn(
-				'z-50 max-w-[calc(100vw-1rem)] rounded-xl bg-foreground px-3.5 py-3 text-[12.5px] leading-normal text-background shadow-lg outline-none',
+				'z-50 max-w-[calc(100vw-1rem)] rounded-xl bg-foreground px-3.5 py-3 text-meta leading-normal text-background shadow-lg outline-none',
 				className
 			)}
 		>

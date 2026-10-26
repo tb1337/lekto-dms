@@ -21,6 +21,7 @@
 	import { phone } from '#lib/phone.svelte.ts';
 	import { scope } from '#lib/scope.svelte.ts';
 	import { below, pathLabel } from '#lib/tags.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
 
 	// Contacts (with their logo or initials, groups, aliases, identifiers, topics) or document
 	// types (with their icon, description, groups, title pattern, fields, whether a relation
@@ -196,7 +197,7 @@
 				: m.assignment_none_found()}
 		onretry={load}
 	>
-		<ul class="divide-y overflow-hidden rounded-2xl border bg-card" aria-label={ops.title()}>
+		<Card.Root as="ul" size="flush" class="divide-y overflow-hidden" aria-label={ops.title()}>
 			{#each listed as item (item.id)}
 				{@const groups = groupsOf(item)}
 				<MasterRow
@@ -233,6 +234,6 @@
 					{/if}
 				</MasterRow>
 			{/each}
-		</ul>
+		</Card.Root>
 	</PanelState>
 </div>

@@ -53,11 +53,7 @@
 		<Dialog.Header>
 			<Dialog.Title>{title}</Dialog.Title>
 		</Dialog.Header>
-		<SearchField
-			bind:value={query}
-			label={searchLabel}
-			class="h-10 rounded-lg border border-input bg-background px-3 focus-within:border-ring"
-		/>
+		<SearchField bind:value={query} label={searchLabel} />
 		<div class="-mx-2 min-h-0 flex-1 overflow-y-auto px-2">
 			{#each sections as section (section.letter)}
 				<div class="px-2 pt-2 pb-0.5 text-xs font-semibold text-muted-foreground">

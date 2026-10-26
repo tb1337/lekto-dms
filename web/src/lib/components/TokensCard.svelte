@@ -112,7 +112,7 @@
 									: m.token_no_expiry()}
 							</p>
 						</div>
-						<Badge variant="outline">
+						<Badge variant="note">
 							{token.scope === 'read' ? m.token_scope_read() : m.token_scope_read_write()}
 						</Badge>
 						<Button

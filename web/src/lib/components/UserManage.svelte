@@ -17,6 +17,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 	import { Choice } from '#lib/components/ui/choice/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 
 	type Account = components['schemas']['AccountOut'];
 	type Role = components['schemas']['Role'];
@@ -188,7 +189,7 @@
 
 				<section class="flex flex-col gap-3 border-t pt-4" aria-labelledby="user-profile">
 					<div class="flex items-center gap-1">
-						<h3 id="user-profile" class="text-sm font-semibold">{m.profile_title()}</h3>
+						<SectionTitle size="card" level={3} id="user-profile">{m.profile_title()}</SectionTitle>
 						<InfoHint text={m.profile_hint()} about={m.profile_title()} />
 					</div>
 					<ProfileForm userId={account.id} onsaved={onchanged} />

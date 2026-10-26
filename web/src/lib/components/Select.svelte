@@ -11,6 +11,7 @@
 	import { Select as SelectPrimitive } from 'bits-ui';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import { FIELD as FIELD_LOOK, FIELD_HEIGHT } from '#lib/components/ui/field-look.ts';
 
 	// A choice from a short, fixed list, styled like the inputs. On a phone the system's own
 	// picker (the most comfortable with a thumb, Tobi 20.10.2026); wider, a list in the look of
@@ -36,8 +37,7 @@
 		onchange?: (value: string) => void;
 	} = $props();
 
-	const FIELD =
-		'h-11 w-full min-w-0 rounded-xl border border-input bg-card px-3 text-base transition-colors focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive md:text-sm dark:bg-input/30';
+	const FIELD = cn(FIELD_LOOK, FIELD_HEIGHT);
 	const shown = $derived(options.find((option) => option.value === value)?.label ?? '');
 </script>
 

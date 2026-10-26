@@ -9,7 +9,6 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
-	import BackLink from '#lib/components/BackLink.svelte';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import RuleEffects from '#lib/components/rules/RuleEffects.svelte';
@@ -32,6 +31,9 @@
 	import { RuleLoader } from '#lib/rules/page.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { Choice, ChoiceBox } from '#lib/components/ui/choice/index.ts';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 
 	type Rule = components['schemas']['RuleOut'];
 	const PAGE = 50;
@@ -192,22 +194,24 @@
 </script>
 
 <svelte:head
-	><title>{m.rule_apply_title({ name: rule?.name ?? '' })} · {m.app_name()}</title></svelte:head
+	><title
+		>{rule ? m.rule_apply_title({ name: rule.name }) : m.rule_apply_generic()} · {m.app_name()}</title
+	></svelte:head
 >
 
 <div class="flex flex-col gap-6">
-	<BackLink href="{BASE}/rules/{id}" label={rule?.name ?? m.nav_rules()} />
-	<h1 class="text-[1.75rem] font-semibold tracking-tight break-words">
-		{m.rule_apply_title({ name: rule?.name ?? '' })}
-	</h1>
+	<PageHeader
+		title={rule ? m.rule_apply_title({ name: rule.name }) : m.rule_apply_generic()}
+		back={{ href: `${BASE}/rules/${id}`, label: rule?.name ?? m.nav_rules() }}
+	/>
 
 	{#if problem}
-		<p class="text-destructive" role="alert">{problem}</p>
+		<LoadProblem {problem} onretry={() => loader.retry()} />
 	{:else if !rule}
 		<p class="text-muted-foreground">{m.loading()}</p>
 	{:else if application}
 		{@const finished = application.status === 'done' || application.status === 'failed'}
-		<section class="flex flex-col gap-4 rounded-2xl border bg-card p-5" aria-live="polite">
+		<Card.Root as="section" class="flex flex-col gap-4" aria-live="polite">
 			{#if !finished}
 				<p>{m.rule_apply_running({ done: application.done, total: application.total })}</p>
 				<Progress value={application.done} max={Math.max(application.total, 1)} />
@@ -226,7 +230,7 @@
 			{/if}
 			{#if application.skipped.length > 0}
 				<div class="flex flex-col gap-1">
-					<h2 class="font-medium">{m.rule_apply_skipped()}</h2>
+					<SectionTitle size="card">{m.rule_apply_skipped()}</SectionTitle>
 					<ul class="flex flex-col gap-1 text-sm">
 						{#each application.skipped as skip (skip.document_id)}
 							<li>
@@ -244,7 +248,7 @@
 			{#if finished}
 				<a href="{BASE}/rules/{id}" class="w-fit text-sm hover:underline">{rule.name}</a>
 			{/if}
-		</section>
+		</Card.Root>
 	{:else}
 		<p class="text-muted-foreground">{saved ? m.rule_saved_hint() : m.rule_apply_hint()}</p>
 
@@ -276,7 +280,7 @@
 			<ul class="flex flex-col gap-2">
 				{#each items as item (item.document_id)}
 					{@const conflict = hasConflict(item)}
-					<li class="flex gap-3 rounded-2xl border bg-card p-4" class:border-lane-yellow={conflict}>
+					<Card.Root as="li" size="row" class={['flex gap-3', conflict && 'border-lane-yellow']}>
 						{#if !conflict}
 							<ChoiceBox
 								class="mt-1"
@@ -293,7 +297,7 @@
 									href="{BASE}/documents/{item.document_id}"
 									class="truncate text-base font-medium hover:underline">{item.title}</a
 								>
-								{#if conflict}<Badge variant="outline">{m.rule_conflict()}</Badge>{/if}
+								{#if conflict}<Badge variant="yellow">{m.rule_conflict()}</Badge>{/if}
 							</span>
 							<RuleEffects
 								effects={item.changes}
@@ -328,7 +332,7 @@
 								</Choice>
 							{/if}
 						</div>
-					</li>
+					</Card.Root>
 				{/each}
 			</ul>
 		{:else if complete}

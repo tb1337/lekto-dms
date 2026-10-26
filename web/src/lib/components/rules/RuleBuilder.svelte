@@ -19,6 +19,7 @@
 		type ActionType,
 		type RuleModel
 	} from '#lib/rules/model.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 
 	// The form of a rule: name, priority, when it runs, its conditions and actions. The page
 	// saves it; `errors` are by key (see `validate` and `saveErrors`). It does not save while a
@@ -145,12 +146,12 @@
 	</fieldset>
 
 	<section class="flex flex-col gap-3" aria-labelledby="rule-conditions">
-		<h2 id="rule-conditions" class="text-lg font-semibold">{m.rule_conditions()}</h2>
+		<SectionTitle id="rule-conditions">{m.rule_conditions()}</SectionTitle>
 		<ConditionGroup group={model.conditions} {model} {lookup} {errors} onunreadable={mark} />
 	</section>
 
 	<section class="flex flex-col gap-3" aria-labelledby="rule-actions">
-		<h2 id="rule-actions" class="text-lg font-semibold">{m.rule_actions()}</h2>
+		<SectionTitle id="rule-actions">{m.rule_actions()}</SectionTitle>
 		{#each model.actions as action, index (action.key)}
 			<ActionRow
 				{action}

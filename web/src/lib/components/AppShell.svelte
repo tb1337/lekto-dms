@@ -185,7 +185,7 @@
 						<DropdownMenu.Trigger
 							class={cn(
 								buttonVariants({ size: 'icon' }),
-								'relative font-semibold uppercase [&]:text-[0.95rem]'
+								'relative font-semibold uppercase [&]:text-md'
 							)}
 							aria-label={scope.allUsers
 								? m.account_menu_all_users({ username })
@@ -324,7 +324,7 @@
 								<button
 									type="button"
 									onclick={() => open(SETTINGS)}
-									class="flex h-10 items-center gap-2.5 rounded-xl px-4 text-[0.9375rem] transition-colors hover:bg-muted"
+									class="flex h-10 items-center gap-2.5 rounded-xl px-4 text-md transition-colors hover:bg-muted"
 								>
 									<SETTINGS.icon class="size-4 text-muted-foreground" aria-hidden="true" />
 									{SETTINGS.label()}
@@ -333,7 +333,7 @@
 									href={API_DOCS}
 									target="_blank"
 									rel="noopener noreferrer"
-									class="flex h-10 items-center gap-2.5 rounded-xl px-4 text-[0.9375rem] transition-colors hover:bg-muted"
+									class="flex h-10 items-center gap-2.5 rounded-xl px-4 text-md transition-colors hover:bg-muted"
 								>
 									<BookOpen class="size-4 text-muted-foreground" aria-hidden="true" />
 									{m.api_docs()}
@@ -343,7 +343,7 @@
 								<button
 									type="button"
 									onclick={signOut}
-									class="flex h-10 items-center gap-2.5 rounded-xl px-4 text-[0.9375rem] transition-colors hover:bg-muted"
+									class="flex h-10 items-center gap-2.5 rounded-xl px-4 text-md transition-colors hover:bg-muted"
 								>
 									<LogOut class="size-4 text-muted-foreground" aria-hidden="true" />
 									{m.sign_out()}
@@ -362,7 +362,7 @@
 		class="flex flex-1 justify-center px-4 py-8 outline-none sm:px-8 lg:has-[[data-wide]]:min-h-0 lg:has-[[data-wide]]:py-6"
 	>
 		<div
-			class="w-full max-w-[1040px] has-[[data-roomy]]:max-w-[1600px] has-[[data-wide]]:max-w-[1600px] lg:has-[[data-wide]]:min-h-0"
+			class="w-full max-w-page has-[[data-roomy]]:max-w-wide has-[[data-wide]]:max-w-wide lg:has-[[data-wide]]:min-h-0"
 		>
 			{@render children()}
 		</div>

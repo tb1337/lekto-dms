@@ -33,6 +33,9 @@
 	import { Pager } from '#lib/paging.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import { cardVariants } from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 
 	// The tab "Jobs" of the page "System" (Tobi, 24.10.2026; a table with pages since
 	// 26.10.2026): whether a worker takes jobs, how many stand where, and the jobs as a table,
@@ -189,7 +192,7 @@
 	const CHIP =
 		'inline-flex h-[22px] items-center rounded-full px-2 text-xs font-medium whitespace-nowrap';
 	const TONES: Record<JobState, string> = {
-		running: 'bg-primary/10 text-primary ring-1 ring-primary/30 ring-inset',
+		running: 'bg-primary/10 text-brand ring-1 ring-primary/30 ring-inset',
 		due: 'bg-muted text-muted-foreground',
 		planned: 'bg-note text-note-foreground ring-1 ring-note-foreground/30 ring-inset',
 		failed: 'bg-lane-red text-lane-red-foreground ring-1 ring-lane-red-foreground/35 ring-inset',
@@ -200,7 +203,7 @@
 
 {#snippet heading(text: string, about: string)}
 	<div class="flex items-center gap-1">
-		<h2 class="font-semibold">{text}</h2>
+		<SectionTitle size="card">{text}</SectionTitle>
 		<InfoTip label={m.hint_about({ name: text })} size="sm" class="w-80">
 			<p>{about}</p>
 		</InfoTip>
@@ -229,24 +232,25 @@
 					<span class="text-muted-foreground">· {lastStarted}</span>
 				</span>
 			</p>
-			<span class="text-[0.8125rem] text-muted-foreground">{m.jobs_refreshing()}</span>
+			<span class="text-meta text-muted-foreground">{m.jobs_refreshing()}</span>
 		</div>
 
 		<div class="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
 			{#each [['running', m.jobs_hint_running()], ['due', m.jobs_hint_due()], ['planned', m.jobs_hint_planned()], ['failed', m.jobs_hint_kept( { date: keptSince } )], ['done', m.jobs_hint_kept( { date: keptSince } )]] as const as [state, hint] (state)}
 				<div
 					class={cn(
-						'flex flex-col gap-0.5 rounded-2xl border bg-card px-4 py-3.5',
+						cardVariants({ size: 'flush' }),
+						'flex flex-col gap-0.5 px-4 py-3.5',
 						state === 'failed' &&
 							all.failed > 0 &&
 							'border-lane-red-foreground/35 bg-lane-red text-lane-red-foreground',
 						state === 'done' && 'bg-surface'
 					)}
 				>
-					<span class="text-[1.625rem] font-semibold tracking-tight tabular-nums">
+					<span class="text-figure tabular-nums">
 						{formatNumber(all[state])}
 					</span>
-					<span class="text-[0.8125rem] font-medium">{STATE_LABELS[state]()}</span>
+					<span class="text-meta font-medium">{STATE_LABELS[state]()}</span>
 					<span class="text-xs text-muted-foreground">{hint}</span>
 				</div>
 			{/each}
@@ -276,13 +280,13 @@
 			/>
 		</div>
 
-		<section class="rounded-2xl border bg-card px-5 py-4 sm:px-6">
+		<Card.Root as="section" size="lg">
 			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
 				{@render heading(title, info)}
 				{#if view === 'open'}
-					<span class="text-[0.8125rem] text-muted-foreground">{m.jobs_order_note()}</span>
+					<span class="text-meta text-muted-foreground">{m.jobs_order_note()}</span>
 				{:else}
-					<span class="text-[0.8125rem] text-muted-foreground">
+					<span class="text-meta text-muted-foreground">
 						{m.jobs_kept_since({ date: keptSince })}
 					</span>
 				{/if}
@@ -295,7 +299,7 @@
 				<p class="mt-3 text-muted-foreground">{none}</p>
 			{:else if jobs.items.length}
 				<div class="mt-3">
-					<Table.Root class="min-w-[760px] text-[0.8125rem]">
+					<Table.Root class="min-w-[760px] text-meta">
 						<Table.Header>
 							<Table.Row class="text-xs text-muted-foreground">
 								<Table.Head class="pl-0">{m.jobs_col_kind()}</Table.Head>
@@ -325,7 +329,7 @@
 									</Table.Cell>
 									<Table.Cell class="max-w-[22rem] truncate">
 										{#if job.document}
-											<a href={documentHref(job.document.id)} class="text-primary hover:underline">
+											<a href={documentHref(job.document.id)} class="text-brand hover:underline">
 												{job.document.title}
 											</a>
 										{:else if job.document_hidden}
@@ -385,13 +389,13 @@
 			{:else}
 				<p class="mt-3 text-muted-foreground">{m.loading()}</p>
 			{/if}
-		</section>
+		</Card.Root>
 
 		{#if view === 'done'}
-			<section class="rounded-2xl border bg-card px-5 py-4 sm:px-6">
+			<Card.Root as="section" size="lg">
 				<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
 					{@render heading(m.jobs_durations_title(), m.jobs_durations_info())}
-					<span class="text-[0.8125rem] text-muted-foreground">
+					<span class="text-meta text-muted-foreground">
 						{m.jobs_kept_since({ date: keptSince })}
 					</span>
 				</div>
@@ -399,7 +403,7 @@
 					<p class="mt-3 text-muted-foreground">{m.jobs_none_done({ date: keptSince })}</p>
 				{:else}
 					<div class="mt-3">
-						<Table.Root class="min-w-[560px] text-[0.8125rem]">
+						<Table.Root class="min-w-[560px] text-meta">
 							<Table.Header>
 								<Table.Row class="text-xs text-muted-foreground">
 									<Table.Head class="pl-0">{m.jobs_col_kind()}</Table.Head>
@@ -429,7 +433,7 @@
 						</Table.Root>
 					</div>
 				{/if}
-			</section>
+			</Card.Root>
 		{/if}
 	{/if}
 </div>

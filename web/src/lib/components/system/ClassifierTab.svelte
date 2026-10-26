@@ -19,6 +19,8 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 
 	// The tab "Classifier" of the page "System" (Tobi, 24.10.2026): what the latest model
 	// learned and how well, how far the next training is, how the models got better, and how
@@ -162,7 +164,7 @@
 
 {#snippet heading(text: string, about: string)}
 	<div class="flex items-center gap-1">
-		<h2 class="font-semibold">{text}</h2>
+		<SectionTitle size="card">{text}</SectionTitle>
 		<InfoTip label={m.hint_about({ name: text })} size="sm" class="w-80">
 			<p>{about}</p>
 		</InfoTip>
@@ -178,9 +180,7 @@
 		<p class="text-muted-foreground">{m.loading()}</p>
 	{:else}
 		<div class="flex flex-wrap gap-6">
-			<section
-				class="flex min-w-0 flex-[2_1_560px] flex-col gap-[18px] rounded-2xl border bg-card px-5 py-4 sm:px-6"
-			>
+			<Card.Root as="section" size="lg" class="flex min-w-0 flex-[2_1_560px] flex-col gap-[18px]">
 				<div class="flex flex-wrap items-start justify-between gap-3">
 					<div class="flex flex-col gap-0.5">
 						{#if status.model}
@@ -189,7 +189,7 @@
 								m.classifier_model_title({ number: model.number }),
 								m.classifier_model_info()
 							)}
-							<span class="text-[0.8125rem] text-muted-foreground">
+							<span class="text-meta text-muted-foreground">
 								{model.examples_until
 									? m.classifier_model_trained_until({
 											date: when(model.trained_at),
@@ -224,19 +224,19 @@
 								<span class="text-2xl font-semibold tracking-tight tabular-nums">
 									{formatNumber(count)}
 								</span>
-								<span class="text-[0.8125rem] text-muted-foreground">{label}</span>
+								<span class="text-meta text-muted-foreground">{label}</span>
 							</div>
 						{/each}
 					</div>
 					{#if model.accuracy}
 						{@const accuracy = model.accuracy}
 						<div class="flex flex-col gap-2.5">
-							<span class="text-[0.8125rem] text-muted-foreground">
+							<span class="text-meta text-muted-foreground">
 								{m.classifier_tested({ tested: formatNumber(accuracy.tested) })}
 							</span>
 							{#each [[m.field_contact(), accuracy.contact], [m.field_document_type(), accuracy.document_type]] as const as [label, value] (label)}
 								<div class="grid grid-cols-[120px_1fr_48px] items-center gap-3">
-									<span class="text-[0.8125rem]">{label}</span>
+									<span class="text-meta">{label}</span>
 									<div
 										role="progressbar"
 										aria-label={label}
@@ -255,7 +255,7 @@
 							{/each}
 						</div>
 					{:else}
-						<span class="text-[0.8125rem] text-muted-foreground">
+						<span class="text-meta text-muted-foreground">
 							{m.classifier_accuracy_none()}
 						</span>
 					{/if}
@@ -263,14 +263,12 @@
 						<span class="font-mono text-xs text-muted-foreground">{model.method}</span>
 					{/if}
 				{/if}
-			</section>
+			</Card.Root>
 
-			<section
-				class="flex min-w-0 flex-[1_1_280px] flex-col gap-3 rounded-2xl border bg-card px-5 py-4 sm:px-6"
-			>
+			<Card.Root as="section" size="lg" class="flex min-w-0 flex-[1_1_280px] flex-col gap-3">
 				{@render heading(m.classifier_next_title(), m.classifier_next_info())}
 				<div class="flex items-baseline gap-2">
-					<span class="text-[1.875rem] font-semibold tracking-tight tabular-nums">
+					<span class="text-figure tabular-nums">
 						{formatNumber(done)}
 					</span>
 					<span class="text-muted-foreground">
@@ -290,37 +288,35 @@
 						style:width="{Math.min(100, (100 * done) / Math.max(1, needed))}%"
 					></div>
 				</div>
-				<span class="text-[0.8125rem] text-muted-foreground">
+				<span class="text-meta text-muted-foreground">
 					{status.model
 						? m.classifier_next_text({ number: status.model.number })
 						: m.classifier_first_text()}
 				</span>
 				<div aria-hidden="true" class="my-1 h-px bg-border"></div>
-				<span class="text-[0.8125rem] text-muted-foreground">
+				<span class="text-meta text-muted-foreground">
 					{m.classifier_confirmed_total({ count: formatNumber(status.confirmed) })}
 				</span>
-				<span class="text-[0.8125rem] text-muted-foreground">
+				<span class="text-meta text-muted-foreground">
 					{m.classifier_threshold({ threshold: percent(status.threshold) })}
 				</span>
-			</section>
+			</Card.Root>
 		</div>
 
-		<section class="rounded-2xl border bg-card px-5 py-4 sm:px-6">
+		<Card.Root as="section" size="lg">
 			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
 				{@render heading(m.classifier_history_title(), m.classifier_history_info())}
-				<span class="text-[0.8125rem] text-muted-foreground">{m.classifier_history_hint()}</span>
+				<span class="text-meta text-muted-foreground">{m.classifier_history_hint()}</span>
 			</div>
 			{#if measured.length < 2}
 				<p class="mt-3 text-muted-foreground">{m.classifier_history_none()}</p>
 			{:else}
-				<div
-					class="mt-3 flex flex-wrap gap-x-[18px] gap-y-2 text-[0.8125rem] text-muted-foreground"
-				>
+				<div class="mt-3 flex flex-wrap gap-x-[18px] gap-y-2 text-meta text-muted-foreground">
 					<span class="inline-flex items-center gap-1.5">
 						<span aria-hidden="true" class="w-[18px] border-t-[2.5px] border-primary"></span>
 						{m.field_contact()}
 						{#if latestMeasured}
-							<span class="font-semibold text-primary">{percent(latestMeasured.contact)}</span>
+							<span class="font-semibold text-brand">{percent(latestMeasured.contact)}</span>
 						{/if}
 					</span>
 					<span class="inline-flex items-center gap-1.5">
@@ -382,12 +378,12 @@
 					</Chart.Container>
 				</div>
 			{/if}
-		</section>
+		</Card.Root>
 
-		<section class="rounded-2xl border bg-card px-5 py-4 sm:px-6">
+		<Card.Root as="section" size="lg">
 			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
 				{@render heading(m.classifier_signals_title(), m.classifier_signals_info())}
-				<span class="text-[0.8125rem] text-muted-foreground">{m.classifier_signals_hint()}</span>
+				<span class="text-meta text-muted-foreground">{m.classifier_signals_hint()}</span>
 			</div>
 			{#if !anySignal}
 				<p class="mt-3 text-muted-foreground">{m.classifier_signals_none()}</p>
@@ -425,11 +421,11 @@
 										<td class="border-b px-3 py-3.5 align-top">
 											{#if cell.rate}
 												<div class="flex min-w-[110px] flex-col gap-[5px]">
-													<span class={cn('text-lg font-semibold', cell.best && 'text-primary')}>
+													<span class={cn('text-lg font-semibold', cell.best && 'text-brand')}>
 														{percent(cell.rate.share)}
 														{#if cell.best}
 															<span
-																class="ml-1.5 inline-flex h-[18px] items-center rounded-full bg-panel px-[7px] align-[2px] text-[0.6875rem] font-medium text-primary"
+																class="ml-1.5 inline-flex h-[18px] items-center rounded-full bg-panel px-[7px] align-[2px] text-micro font-medium text-brand"
 															>
 																{m.classifier_signal_best()}
 															</span>
@@ -461,6 +457,6 @@
 					</table>
 				</div>
 			{/if}
-		</section>
+		</Card.Root>
 	{/if}
 </div>

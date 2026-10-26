@@ -69,12 +69,7 @@
 	<div class="flex flex-col gap-1" role="group" aria-labelledby="{id}-heading">
 		<span id="{id}-heading" class="text-xs text-muted-foreground">{heading}</span>
 		{#if items.length > limit}
-			<SearchField
-				bind:value={query}
-				label={searchLabel}
-				size="sm"
-				class="h-8 rounded-lg border border-input bg-background px-2.5 focus-within:border-ring"
-			/>
+			<SearchField bind:value={query} label={searchLabel} size="sm" />
 		{/if}
 		<ul class="flex flex-col">
 			{#each shown as item (item.id)}

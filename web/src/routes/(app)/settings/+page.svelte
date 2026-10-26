@@ -20,6 +20,7 @@
 	import { oidcErrorMessage } from '#lib/oidc-errors.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
 
 	type Me = components['schemas']['Me'];
 	type Oidc = components['schemas']['OidcInfo'];
@@ -78,8 +79,8 @@
 
 <svelte:head><title>{m.nav_settings()} · {m.app_name()}</title></svelte:head>
 
-<div class="mx-auto flex w-full max-w-3xl flex-col gap-6">
-	<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_settings()}</h1>
+<div class="flex flex-col gap-6">
+	<PageHeader title={m.nav_settings()} />
 
 	{#if linkError}
 		<Alert.Root variant="caution"><Alert.Description>{linkError}</Alert.Description></Alert.Root>

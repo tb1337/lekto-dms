@@ -6,7 +6,6 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
-	import BackLink from '#lib/components/BackLink.svelte';
 	import RuleBuilder from '#lib/components/rules/RuleBuilder.svelte';
 	import { spaceOptions } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -16,6 +15,8 @@
 	import { placeOf, rulePlaces } from '#lib/rules/places.ts';
 	import { changeSwitchedOff } from '#lib/rules/save.ts';
 	import { session } from '#lib/session.svelte.ts';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 
 	type Rule = components['schemas']['RuleOut'];
 
@@ -74,17 +75,19 @@
 </script>
 
 <svelte:head
-	><title>{m.rule_edit_title({ name: rule?.name ?? '' })} · {m.app_name()}</title></svelte:head
+	><title
+		>{rule ? m.rule_edit_title({ name: rule.name }) : m.rule_edit_generic()} · {m.app_name()}</title
+	></svelte:head
 >
 
 <div class="flex flex-col gap-6">
-	<BackLink href="{BASE}/rules/{id}" label={rule?.name ?? m.nav_rules()} />
-	<h1 class="text-[1.75rem] font-semibold tracking-tight">
-		{m.rule_edit_title({ name: rule?.name ?? '' })}
-	</h1>
+	<PageHeader
+		title={rule ? m.rule_edit_title({ name: rule.name }) : m.rule_edit_generic()}
+		back={{ href: `${BASE}/rules/${id}`, label: rule?.name ?? m.nav_rules() }}
+	/>
 
 	{#if problem}
-		<p class="text-destructive" role="alert">{problem}</p>
+		<LoadProblem {problem} onretry={() => loader.retry()} />
 	{:else if !rule || !model || !lookup}
 		<p class="text-muted-foreground">{m.loading()}</p>
 	{:else}

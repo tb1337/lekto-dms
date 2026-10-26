@@ -12,6 +12,7 @@
 	import { DOT, YELLOW_ACTION } from '#lib/step-look.ts';
 	import type { Counts } from '#lib/steps.ts';
 	import { cn } from '#lib/utils.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
 
 	// The head of the processing view (Tobi, 23.10.2026): how the run went at a glance. One
 	// sentence where and why it stands, what helps next, the band of the run, how many steps
@@ -82,10 +83,7 @@
 	);
 </script>
 
-<section
-	aria-labelledby="run-headline"
-	class="flex min-w-0 flex-col gap-4 rounded-2xl border bg-card p-5"
->
+<Card.Root as="section" aria-labelledby="run-headline" class="flex min-w-0 flex-col gap-4">
 	<div class="flex flex-wrap items-start gap-x-3.5 gap-y-3">
 		<span class={cn('grid size-10 shrink-0 place-items-center rounded-xl', tiles[headline.tone])}>
 			<Icon
@@ -145,4 +143,4 @@
 			{/if}
 		</div>
 	{/if}
-</section>
+</Card.Root>

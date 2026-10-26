@@ -46,6 +46,8 @@
 	} from '#lib/tag-kinds.ts';
 	import { below, ofScope, visibleRows } from '#lib/tags.ts';
 	import { cn } from '#lib/utils.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 
 	// Every kind of tag in one place: a filter by kind (in the URL), one section per kind with
 	// its tree (sections collapse, remembered in this browser), the search of the page over all
@@ -224,9 +226,11 @@
 		{#each shown as { kind, rows, open } (kind)}
 			{@const Icon = SECTIONS[kind].icon}
 			{@const title = KINDS[kind].title()}
-			<section
+			<Card.Root
+				as="section"
+				size="flush"
 				aria-labelledby="tags-{kind}"
-				class="overflow-hidden rounded-2xl border bg-card"
+				class="overflow-hidden"
 				data-kind={kind}
 			>
 				<div
@@ -250,7 +254,8 @@
 						</Button>
 					{/if}
 					{#if !phone.current}<Icon class="size-4 shrink-0 text-brand" aria-hidden="true" />{/if}
-					<h2 id="tags-{kind}" class="text-sm font-semibold whitespace-nowrap">{title}</h2>
+					<SectionTitle size="card" id="tags-{kind}" class="whitespace-nowrap">{title}</SectionTitle
+					>
 					<span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">
 						{#if !phone.current}{SECTIONS[kind].about()}{/if}
 					</span>
@@ -340,7 +345,7 @@
 						</ul>
 					{/if}
 				{/if}
-			</section>
+			</Card.Root>
 		{/each}
 	</PanelState>
 </div>

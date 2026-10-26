@@ -116,10 +116,10 @@
 				<li class="flex items-center gap-2">
 					<span class="min-w-0 flex-1 truncate">{userLabel(member)}</span>
 					{#if fixed(member)}
-						<Badge variant="secondary">{m.space_role_edit()}</Badge>
+						<Badge variant="note">{m.space_role_edit()}</Badge>
 					{:else if !member.active}
 						<!-- A deactivated member takes no new role; an editor removes them. -->
-						<Badge variant="outline">{m.user_inactive()}</Badge>
+						<Badge variant="muted">{m.user_inactive()}</Badge>
 						<Button
 							variant="ghost"
 							size="icon"

@@ -28,6 +28,9 @@
 	} from '#lib/permissions.ts';
 	import { scope } from '#lib/scope.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 
 	let spaces = $state<Space[] | null>(null);
 	let users = $state<UserName[]>([]);
@@ -122,13 +125,14 @@
 <svelte:head><title>{m.nav_spaces()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-center justify-between gap-3">
-		<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_spaces()}</h1>
-		<Button onclick={() => (creating = true)}>
-			<Plus aria-hidden="true" />
-			{m.space_new()}
-		</Button>
-	</div>
+	<PageHeader title={m.nav_spaces()}>
+		{#snippet actions()}
+			<Button onclick={() => (creating = true)}>
+				<Plus aria-hidden="true" />
+				{m.space_new()}
+			</Button>
+		{/snippet}
+	</PageHeader>
 
 	{#if problem}
 		<LoadProblem {problem} onretry={load} />
@@ -136,7 +140,7 @@
 		<p class="text-muted-foreground">{m.loading()}</p>
 	{:else}
 		<section class="flex flex-col gap-3" aria-labelledby="own-spaces">
-			<h2 id="own-spaces" class="text-lg font-semibold">{m.spaces_own()}</h2>
+			<SectionTitle id="own-spaces">{m.spaces_own()}</SectionTitle>
 			<ul class="flex flex-col gap-2">
 				{#each mine as space (space.id)}
 					{@render row(space)}
@@ -146,7 +150,7 @@
 
 		{#if others.length > 0}
 			<section class="flex flex-col gap-3" aria-labelledby="other-spaces">
-				<h2 id="other-spaces" class="text-lg font-semibold">{m.spaces_others()}</h2>
+				<SectionTitle id="other-spaces">{m.spaces_others()}</SectionTitle>
 				<ul class="flex flex-col gap-2">
 					{#each others as space (space.id)}
 						{@render row(space)}
@@ -160,16 +164,16 @@
 {#snippet row(space: Space)}
 	{@const Icon = space.personal_of === null ? Archive : UserRound}
 	{@const members = memberLine(space)}
-	<li class="flex flex-wrap items-center gap-3 rounded-2xl border bg-card p-4">
+	<Card.Root as="li" size="row" class="flex flex-wrap items-center gap-3">
 		<Icon class="size-5 text-muted-foreground" aria-hidden="true" />
 		<div class="flex min-w-0 flex-1 flex-col gap-1">
 			<span class="flex flex-wrap items-center gap-2 font-medium">
 				<span class="truncate">{label(space)}</span>
 				{#if space.personal_of !== null && space.personal_of !== me}
-					<Badge variant="secondary">{m.space_personal()}</Badge>
+					<Badge variant="note">{m.space_personal()}</Badge>
 				{/if}
 				{#if isMember(space) && space.role === 'read'}
-					<Badge variant="outline">{m.space_role_read()}</Badge>
+					<Badge variant="muted">{m.space_role_read()}</Badge>
 				{/if}
 			</span>
 			{#if space.description}
@@ -214,7 +218,7 @@
 		{#if canDescribeSpace(space, session.user)}
 			<EditButton label={m.space_edit({ name: label(space) })} onclick={() => (editing = space)} />
 		{/if}
-	</li>
+	</Card.Root>
 {/snippet}
 
 <SpaceDialog

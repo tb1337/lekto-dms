@@ -16,6 +16,7 @@
 	import { reasonsText } from '#lib/reasons.ts';
 	import TypeIcon from '#lib/components/TypeIcon.svelte';
 	import { cn } from '#lib/utils.ts';
+	import { cardVariants } from '#lib/components/ui/card/index.ts';
 
 	// One field of the document with what backs it. A field that waits for a decision is a
 	// card with the confidence, reason and quote, and what the signals proposed (a click takes
@@ -142,7 +143,7 @@
 			type="button"
 			onclick={() => (expandedFor = placesKey)}
 			aria-label={m.source_more({ count: hiddenPlaces })}
-			class="shrink-0 rounded-full bg-panel px-2 font-mono text-[11px] leading-5 text-brand hover:underline"
+			class="shrink-0 rounded-full bg-panel px-2 font-mono text-micro leading-5 text-brand hover:underline"
 		>
 			+{hiddenPlaces}
 		</button>
@@ -162,7 +163,7 @@
 		card
 			? 'my-1 flex flex-col gap-2.5 rounded-2xl border border-lane-yellow-foreground/25 bg-lane-yellow/25 p-3.5 transition-shadow'
 			: calm
-				? 'my-1 flex flex-col gap-2.5 rounded-2xl border bg-card p-3.5 transition-shadow'
+				? cn(cardVariants({ size: 'sm' }), 'my-1 flex flex-col gap-2.5 transition-shadow')
 				: '-mx-2.5 flex flex-col gap-1.5 rounded-xl px-2.5 py-2 transition-colors',
 		active && (card || calm ? 'ring-2 ring-primary' : 'bg-panel')
 	)}

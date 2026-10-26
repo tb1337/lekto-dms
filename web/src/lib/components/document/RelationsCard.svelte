@@ -17,6 +17,9 @@
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { reportError } from '#lib/errors.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
 
 	type Relations = components['schemas']['RelationsOut'];
 	type Related = components['schemas']['RelatedOut'];
@@ -133,16 +136,16 @@
 	);
 </script>
 
-<section aria-labelledby="relations-title" class="rounded-2xl border bg-card p-3.5">
+<Card.Root as="section" size="sm" aria-labelledby="relations-title">
 	<div class="flex items-baseline gap-2 px-1 pb-1">
-		<h2 id="relations-title" class="text-[15px] font-semibold">{m.relations_title()}</h2>
+		<SectionTitle size="card" id="relations-title">{m.relations_title()}</SectionTitle>
 		<span class="text-xs text-muted-foreground">{m.relations_hint()}</span>
 	</div>
 	{#if relations && groups.length === 0}
 		<p class="px-1 py-2 text-sm text-muted-foreground">{m.relations_none()}</p>
 	{/if}
 	{#each groups as group (group.key)}
-		<h3 class="mt-2 px-1 text-xs font-semibold text-muted-foreground">{group.title}</h3>
+		<Eyebrow as="h3" class="mt-2 px-1">{group.title}</Eyebrow>
 		{#each group.items as item (item.document.id)}
 			<div class="flex items-center gap-2 rounded-xl px-2.5 py-2">
 				<Link2 class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -209,4 +212,4 @@
 			/>
 		</div>
 	{/if}
-</section>
+</Card.Root>

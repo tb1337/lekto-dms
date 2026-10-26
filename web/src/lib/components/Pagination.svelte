@@ -33,7 +33,7 @@
 
 <nav
 	aria-label={m.pagination_label()}
-	class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[0.8125rem] text-muted-foreground"
+	class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-meta text-muted-foreground"
 >
 	<span class="tabular-nums">
 		{m.pagination_range({

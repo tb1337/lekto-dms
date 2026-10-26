@@ -1,6 +1,5 @@
 <script lang="ts">
 	import Plus from '@lucide/svelte/icons/plus';
-	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
@@ -9,12 +8,11 @@
 	import { BASE } from '#lib/base.ts';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
-	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import EditButton from '#lib/components/EditButton.svelte';
 	import TitlePatternBadge from '#lib/components/rules/TitlePatternBadge.svelte';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
-	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
+	import { buttonVariants } from '#lib/components/ui/button/index.ts';
 	import { Switch } from '#lib/components/ui/switch/index.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
 	import type { Space, UserName } from '#lib/masterdata.svelte.ts';
@@ -26,6 +24,8 @@
 	import { placeLabel, placeOf } from '#lib/rules/places.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import * as Card from '#lib/components/ui/card/index.ts';
 
 	type Rule = components['schemas']['RuleOut'];
 
@@ -33,7 +33,6 @@
 	let users = $state<UserName[]>([]);
 	let spaces = $state<Space[]>([]);
 	let problem = $state<string | null>(null);
-	let removing = $state<Rule | null>(null);
 	let busy = $state<string | null>(null);
 
 	const placeName = (rule: Rule) =>
@@ -83,25 +82,19 @@
 			busy = null;
 		}
 	}
-
-	async function remove() {
-		if (!removing) return;
-		await unwrap(api.DELETE('/api/v1/rules/{id}', { params: { path: { id: removing.id } } }));
-		toast.success(m.rule_deleted());
-		await load();
-	}
 </script>
 
 <svelte:head><title>{m.nav_rules()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-center justify-between gap-3">
-		<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_rules()}</h1>
-		<a href="{BASE}/rules/new" class={cn(buttonVariants())}>
-			<Plus aria-hidden="true" />
-			{m.rules_new()}
-		</a>
-	</div>
+	<PageHeader title={m.nav_rules()}>
+		{#snippet actions()}
+			<a href="{BASE}/rules/new" class={cn(buttonVariants())}>
+				<Plus aria-hidden="true" />
+				{m.rules_new()}
+			</a>
+		{/snippet}
+	</PageHeader>
 
 	{#if problem}
 		<LoadProblem {problem} onretry={load} />
@@ -112,7 +105,7 @@
 	{:else}
 		<ul class="flex flex-col gap-2">
 			{#each rules as rule (rule.id)}
-				<li class="flex flex-wrap items-center gap-3 rounded-2xl border bg-card p-4">
+				<Card.Root as="li" size="row" class="flex flex-wrap items-center gap-3">
 					<div class="flex min-w-0 flex-1 flex-col gap-1">
 						<span class="flex flex-wrap items-center gap-2">
 							<a
@@ -120,7 +113,7 @@
 								class="truncate font-medium hover:underline"
 								aria-label={m.rule_open({ name: rule.name })}>{rule.name}</a
 							>
-							<Badge variant={rule.scope === 'global' ? 'secondary' : 'outline'}>
+							<Badge variant="note">
 								{placeName(rule)}
 							</Badge>
 							{#if rule.managed_by_document_type_id}
@@ -130,7 +123,6 @@
 									ruleId={rule.id}
 								/>
 							{/if}
-							{#if !rule.enabled}<Badge variant="outline">{m.rule_off()}</Badge>{/if}
 						</span>
 						<span class="text-sm text-muted-foreground">
 							{m.rule_priority_short({ priority: rule.priority })} ·
@@ -145,42 +137,24 @@
 						{/if}
 					</div>
 					{#if canChangeRule(rule, session.user, spaces)}
-						<div class="flex items-center gap-2">
-							<Switch
-								bind:checked={() => rule.enabled, (enabled) => switchRule(rule, enabled)}
-								disabled={busy === rule.id}
-								aria-label={rule.enabled
-									? m.rule_switch_off({ name: rule.name })
-									: m.rule_switch_on({ name: rule.name })}
-							/>
-							<Button
-								variant="ghost"
-								size="icon"
-								aria-label={m.rule_delete({ name: rule.name })}
-								onclick={() => (removing = rule)}
-							>
-								<Trash2 aria-hidden="true" />
-							</Button>
-						</div>
+						<Switch
+							bind:checked={() => rule.enabled, (enabled) => switchRule(rule, enabled)}
+							disabled={busy === rule.id}
+							aria-label={rule.enabled
+								? m.rule_switch_off({ name: rule.name })
+								: m.rule_switch_on({ name: rule.name })}
+						/>
 						<EditButton
 							label={m.rule_edit_title({ name: rule.name })}
 							href="{BASE}/rules/{rule.id}/edit"
 						/>
 					{:else}
-						<Badge variant={rule.enabled ? 'secondary' : 'outline'}>
+						<Badge variant={rule.enabled ? 'green' : 'muted'}>
 							{rule.enabled ? m.rule_on() : m.rule_off()}
 						</Badge>
 					{/if}
-				</li>
+				</Card.Root>
 			{/each}
 		</ul>
 	{/if}
 </div>
-
-<ConfirmDialog
-	bind:open={() => removing !== null, (open) => !open && (removing = null)}
-	title={m.rule_delete({ name: removing?.name ?? '' })}
-	description={m.rule_delete_confirm()}
-	confirmLabel={m.delete_title()}
-	onconfirm={remove}
-/>

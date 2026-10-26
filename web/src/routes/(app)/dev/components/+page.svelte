@@ -10,6 +10,8 @@
 	import * as Table from '#lib/components/ui/table/index.ts';
 	import { formatDate, formatMoney, formatNumber } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import * as Card from '#lib/components/ui/card/index.ts';
 
 	// Sample data, not translated: it stands for user content.
 	const rows = [
@@ -23,10 +25,7 @@
 <svelte:head><title>{m.dev_components_title()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-10">
-	<div class="flex flex-col gap-1">
-		<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.dev_components_title()}</h1>
-		<p class="text-muted-foreground">{m.dev_components_hint()}</p>
-	</div>
+	<PageHeader title={m.dev_components_title()} subtitle={m.dev_components_hint()} />
 
 	<section class="flex flex-wrap items-center gap-3">
 		<Button>{m.dev_sample_button()}</Button>
@@ -90,7 +89,7 @@
 		<span>{formatMoney('1234.50', 'EUR')}</span>
 	</section>
 
-	<section class="rounded-2xl border bg-card">
+	<Card.Root as="section" size="flush">
 		<Table.Root>
 			<Table.Header>
 				<Table.Row>
@@ -109,5 +108,5 @@
 				{/each}
 			</Table.Body>
 		</Table.Root>
-	</section>
+	</Card.Root>
 </div>

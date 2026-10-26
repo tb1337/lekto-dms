@@ -16,6 +16,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
 
 	// One document as a card of the grid, "sender on top": its contact (logo or initials) in a
 	// head of one line, so that the first pages of a row stand level; the first page, cut to 4:3
@@ -54,8 +55,9 @@
 
 <!-- The badge stands over the card's corner: outside the card, which cuts off what overflows. -->
 <div class="relative h-full min-w-0">
-	<div
-		class="relative flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border bg-card transition-colors has-[>a:hover]:border-primary"
+	<Card.Root
+		size="flush"
+		class="relative flex h-full min-w-0 flex-col overflow-hidden transition-colors has-[>a:hover]:border-primary"
 	>
 		<a {href} class="group flex min-w-0 flex-1 flex-col text-sm">
 			<div
@@ -86,7 +88,7 @@
 				</span>
 				{#if document.page_count}
 					<span
-						class="mark-glass absolute right-2 bottom-2 rounded-full bg-card/80 px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium tabular-nums"
+						class="mark-glass absolute right-2 bottom-2 rounded-full bg-card/80 px-1.5 text-micro leading-[1.125rem] font-medium tabular-nums"
 					>
 						{m.doc_pages_short({ count: document.page_count })}
 					</span>
@@ -114,7 +116,7 @@
 				<div class="mx-3 border-t py-2.5"><CardFields lines={fields} /></div>
 			{/if}
 		</a>
-	</div>
+	</Card.Root>
 	{#if document.in_inbox}
 		<InboxMark id={document.id} badge class="absolute -top-[7px] -right-[7px] z-10" />
 	{/if}

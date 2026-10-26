@@ -20,6 +20,7 @@
 	import { userLabel } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
 
 	type User = components['schemas']['UserOut'];
 	type Role = components['schemas']['Role'];
@@ -86,15 +87,16 @@
 <svelte:head><title>{m.nav_users()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-center justify-between gap-3">
-		<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_users()}</h1>
-		{#if session.isAdmin}
-			<Button onclick={openCreate}>
-				<Plus aria-hidden="true" />
-				{m.user_new()}
-			</Button>
-		{/if}
-	</div>
+	<PageHeader title={m.nav_users()}>
+		{#snippet actions()}
+			{#if session.isAdmin}
+				<Button onclick={openCreate}>
+					<Plus aria-hidden="true" />
+					{m.user_new()}
+				</Button>
+			{/if}
+		{/snippet}
+	</PageHeader>
 
 	{#if !session.isAdmin}
 		<p class="text-muted-foreground">{m.admin_only()}</p>
@@ -124,7 +126,7 @@
 						</Table.Cell>
 						<Table.Cell>{user.role === 'admin' ? m.role_admin() : m.role_user()}</Table.Cell>
 						<Table.Cell>
-							<Badge variant={user.active ? 'secondary' : 'outline'}>
+							<Badge variant={user.active ? 'green' : 'muted'}>
 								{user.active ? m.user_active() : m.user_inactive()}
 							</Badge>
 						</Table.Cell>

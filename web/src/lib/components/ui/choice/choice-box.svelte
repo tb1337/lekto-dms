@@ -57,7 +57,7 @@
 	data-slot="choice-box"
 	class={cn(
 		'size-4 shrink-0 accent-primary outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50',
-		type === 'radio' ? 'rounded-full' : 'rounded-[4px]',
+		type === 'radio' ? 'rounded-full' : 'rounded-xs',
 		className
 	)}
 	{...restProps}

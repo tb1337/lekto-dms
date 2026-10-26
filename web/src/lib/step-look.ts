@@ -11,6 +11,7 @@ import OctagonX from '@lucide/svelte/icons/octagon-x';
 import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 import { m } from '#lib/paraglide/messages.js';
 import type { NodeState } from '#lib/pipeline.ts';
+import type { Lane } from '#lib/tones.ts';
 
 export type Tone = 'green' | 'yellow' | 'red' | 'running' | 'muted';
 
@@ -47,16 +48,8 @@ export function delegatedLabel(state: NodeState, now: Date = new Date()): string
 	return m.node_status_delegated_left({ minutes: String(Math.max(1, Math.ceil(left))) });
 }
 
-/** Text colour of a tone. */
-export const TONE_TEXT: Record<Tone, string> = {
-	green: 'text-lane-green-foreground',
-	yellow: 'text-lane-yellow-foreground',
-	red: 'text-lane-red-foreground',
-	running: 'text-lane-running-foreground',
-	muted: 'text-muted-foreground'
-};
-
-type Lane = 'green' | 'yellow' | 'red';
+/** Text colour of a tone: the tones of the UI. */
+export { TONE_TEXT } from '#lib/tones.ts';
 
 /** A lane as a mark (the band, the rail of the timeline), drawn like the lane's chip (Tobi,
  * 23.10.2026): its ground, and an edge in its text colour that sets the pale ground of the
@@ -102,12 +95,3 @@ export const LIT_RING: Record<Tone, string> = {
 /** An action in the yellow lane (to the filing question), drawn like the chip. */
 export const YELLOW_ACTION =
 	'bg-lane-yellow text-lane-yellow-foreground ring-1 ring-inset ring-lane-yellow-foreground/35 hover:bg-lane-yellow/70';
-
-/** A chip in a tone: its ground and text. */
-export const TONE_CHIP: Record<Tone, string> = {
-	green: 'bg-lane-green text-lane-green-foreground',
-	yellow: 'bg-lane-yellow text-lane-yellow-foreground',
-	red: 'bg-lane-red text-lane-red-foreground',
-	running: 'bg-lane-running text-lane-running-foreground',
-	muted: 'bg-muted text-muted-foreground'
-};

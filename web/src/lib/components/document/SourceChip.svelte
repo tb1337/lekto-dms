@@ -10,7 +10,7 @@
 	type="button"
 	onclick={() => onjump(place)}
 	aria-label={m.source_jump({ page: place.page })}
-	class="shrink-0 rounded-full bg-panel px-2 font-mono text-[11px] leading-5 text-brand hover:underline"
+	class="shrink-0 rounded-full bg-panel px-2 font-mono text-micro leading-5 text-brand hover:underline"
 >
 	{m.source_page({ page: place.page })}
 </button>

@@ -70,6 +70,8 @@
 	import { cn } from '#lib/utils.ts';
 	import { above, normalise, ofScope } from '#lib/tags.ts';
 	import { Choice } from '#lib/components/ui/choice/index.ts';
+	import { cardVariants } from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 
 	type Document = components['schemas']['DocumentDetails'];
 	type Patch = components['schemas']['DocumentPatch'];
@@ -621,7 +623,7 @@
 </script>
 
 <form
-	class="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border bg-card"
+	class={cn(cardVariants({ size: 'flush' }), 'flex h-full min-h-0 flex-col overflow-hidden')}
 	onsubmit={submit}
 	novalidate
 	aria-label={m.edit_title()}
@@ -1022,7 +1024,7 @@
 		{#if preview}
 			<div class="flex max-h-[60vh] flex-col gap-4 overflow-auto text-sm">
 				<section>
-					<h3 class="mb-1 font-medium">{m.dryrun_changes()}</h3>
+					<SectionTitle size="card" level={3} class="mb-1">{m.dryrun_changes()}</SectionTitle>
 					<ul class="flex flex-col gap-1">
 						{#each preview.changed as field (field)}
 							<li><span class="text-muted-foreground">{fieldLabel(field, lookup)}</span></li>
@@ -1031,7 +1033,7 @@
 				</section>
 				{#if preview.rules && preview.rules.length > 0}
 					<section>
-						<h3 class="mb-1 font-medium">{m.dryrun_rules()}</h3>
+						<SectionTitle size="card" level={3} class="mb-1">{m.dryrun_rules()}</SectionTitle>
 						<ul class="flex flex-col gap-2">
 							{#each preview.rules as rule (rule.rule_id)}
 								<li class="rounded-xl border p-3">
@@ -1051,7 +1053,7 @@
 				{/if}
 				{#if preview.visibility}
 					<section>
-						<h3 class="mb-1 font-medium">{m.dryrun_visible()}</h3>
+						<SectionTitle size="card" level={3} class="mb-1">{m.dryrun_visible()}</SectionTitle>
 						<p>
 							{m.dryrun_space({ space: describeValue(preview.visibility.space_id, lookup) })}
 						</p>

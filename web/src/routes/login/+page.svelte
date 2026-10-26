@@ -16,6 +16,7 @@
 	import { oidcErrorMessage } from '#lib/oidc-errors.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
+	import PageTitle from '#lib/components/page/PageTitle.svelte';
 
 	let { data } = $props();
 
@@ -109,9 +110,9 @@
 		<main class="flex flex-1 items-center justify-center px-6 pb-20">
 			<div class="flex w-full max-w-[400px] flex-col gap-7">
 				<div class="flex flex-col gap-2">
-					<h1 class="text-[1.875rem] font-semibold tracking-tight">
+					<PageTitle>
 						{step === 'password' ? m.login_title() : m.login_second_title()}
-					</h1>
+					</PageTitle>
 					<p class="text-muted-foreground">
 						{#if step === 'password'}{m.login_subtitle()}{:else if step === 'totp'}{m.login_totp_hint()}{:else}{m.login_recovery_hint()}{/if}
 					</p>

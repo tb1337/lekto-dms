@@ -82,6 +82,9 @@
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 	import { onChange } from '#lib/watch.svelte.ts';
+	import { returnTo } from '#lib/return-to.svelte.ts';
+	import PageTitle from '#lib/components/page/PageTitle.svelte';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 
 	// The documents (the archive): listed (newest document date first) or, with words in `q`,
 	// searched (by relevance), with the same filters; sorted as chosen, as a grid or a list, by
@@ -106,6 +109,9 @@
 	let layout = $state<Layout>(rememberedLayout());
 	// A link may ask for a layout (`layout=stream`: the stream of a contact, #145).
 	const asked = $derived(LAYOUTS.find((value) => value === params.get('layout')) ?? null);
+	// "Back" from a document returns to the list as it is now (`returnTo`).
+	$effect(() => returnTo.rememberDocuments(page.url));
+
 	$effect(() => {
 		if (asked) layout = asked;
 	});
@@ -577,9 +583,7 @@ row of filters, on a desktop narrow by the title. -->
 					<PanelLeftClose aria-hidden="true" />
 				{/if}
 			</Button>
-			<h1 class="text-[1.75rem] font-semibold tracking-tight">
-				{lens?.name ?? m.nav_documents()}
-			</h1>
+			<PageTitle>{lens?.name ?? m.nav_documents()}</PageTitle>
 			{#if searching && list.total !== null && list.loaded}
 				<p class="text-sm text-muted-foreground" aria-live="polite">
 					{m.search_total({ count: formatNumber(list.total) })}
@@ -796,9 +800,10 @@ row of filters, on a desktop narrow by the title. -->
 					{#each groups as group (group.key)}
 						<section class="flex flex-col gap-3" aria-label={group.label ?? undefined}>
 							{#if group.label !== null}
-								<h2
+								<SectionTitle
+									size="card"
 									class={[
-										'flex items-center gap-3 text-[0.95rem] font-semibold',
+										'flex items-center gap-3',
 										group.tone === 'overdue' && 'text-lane-red-foreground',
 										group.tone === 'soon' && 'text-lane-yellow-foreground'
 									]}
@@ -810,7 +815,7 @@ row of filters, on a desktop narrow by the title. -->
 										</span>
 									{/if}
 									<span aria-hidden="true" class="h-px flex-1 bg-border"></span>
-								</h2>
+								</SectionTitle>
 							{/if}
 							{#if layout === 'grid'}
 								<ul

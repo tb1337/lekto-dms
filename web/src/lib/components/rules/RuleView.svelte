@@ -52,7 +52,7 @@
 					{#if template}
 						{template.lead}<TemplateText
 							text={template.template}
-							class="rounded bg-muted px-1 py-0.5 text-[0.8125rem]"
+							class="rounded bg-muted px-1 py-0.5 text-meta"
 						/>
 					{:else if action.type === 'condition'}
 						{describeAction(action, lookup)}

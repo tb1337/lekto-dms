@@ -9,6 +9,7 @@
 	import type { SkipReason } from '#lib/intake.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { uploads } from '#lib/upload.svelte.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
 
 	// What came of the uploads, until dismissed (in this browser only): "12 uploaded,
 	// 1 duplicate, 3 skipped", the progress while files are on their way, and each duplicate
@@ -39,7 +40,7 @@
 </script>
 
 {#if uploads.items.length > 0}
-	<section aria-label={m.upload_summary_label()} class="rounded-2xl border bg-card p-4">
+	<Card.Root as="section" size="row" aria-label={m.upload_summary_label()}>
 		<div class="flex items-start gap-3">
 			<Upload class="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
 			<div class="flex min-w-0 flex-1 flex-col gap-2">
@@ -77,7 +78,7 @@
 							{#if item.documentId}
 								<a
 									href="{BASE}/documents/{item.documentId}"
-									class="text-primary underline-offset-4 hover:underline"
+									class="text-brand underline-offset-4 hover:underline"
 								>
 									{m.upload_existing()}
 								</a>
@@ -96,5 +97,5 @@
 				{/each}
 			</ul>
 		{/if}
-	</section>
+	</Card.Root>
 {/if}

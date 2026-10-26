@@ -27,6 +27,7 @@
 		stepNames,
 		type TemplatePurpose
 	} from '#lib/templates/values.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 
 	type Preview = components['schemas']['TemplatePreviewOut'];
 
@@ -170,7 +171,7 @@
 						href={TEMPLATES_GUIDE}
 						target="_blank"
 						rel="noopener noreferrer"
-						class="ml-auto text-xs text-primary underline-offset-2 hover:underline"
+						class="ml-auto text-xs text-brand underline-offset-2 hover:underline"
 					>
 						{m.template_guide()}
 					</a>
@@ -183,7 +184,7 @@
 			</div>
 
 			<section class="flex flex-col gap-1.5" aria-labelledby="{id}-values">
-				<h3 id="{id}-values" class="text-sm font-medium">{m.template_values()}</h3>
+				<SectionTitle size="card" level={3} id="{id}-values">{m.template_values()}</SectionTitle>
 				<ul class="divide-y rounded-lg border">
 					{#each TEMPLATE_NAMES as name (name)}
 						{@render row(name, TEMPLATE_NAME_LABELS[name]())}
@@ -205,7 +206,7 @@
 				</ul>
 			</section>
 			<section class="flex flex-col gap-1.5" aria-labelledby="{id}-facts">
-				<h3 id="{id}-facts" class="text-sm font-medium">{m.template_facts()}</h3>
+				<SectionTitle size="card" level={3} id="{id}-facts">{m.template_facts()}</SectionTitle>
 				<!-- Those the document shows; all of them by typing `facts.` in the editor. -->
 				<ul class="divide-y rounded-lg border">
 					{#each shownFacts as fact (fact.name)}
@@ -217,7 +218,7 @@
 			</section>
 			{#if fields.length > 0}
 				<section class="flex flex-col gap-1.5" aria-labelledby="{id}-fields">
-					<h3 id="{id}-fields" class="text-sm font-medium">{m.template_fields()}</h3>
+					<SectionTitle size="card" level={3} id="{id}-fields">{m.template_fields()}</SectionTitle>
 					<ul class="divide-y rounded-lg border">
 						{#each fields as field (field.id)}
 							{@render row(`field.${field.key}`, field.name)}

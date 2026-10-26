@@ -13,6 +13,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { scope } from '#lib/scope.svelte.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
 
 	// The field definitions, found by the search of the page: name, data type, set by hand only,
 	// the types they apply to and whether they are required there, what belongs in them. The
@@ -82,7 +83,7 @@
 			: m.assignment_none_found()}
 	onretry={load}
 >
-	<ul class="divide-y overflow-hidden rounded-2xl border bg-card" aria-label={m.master_fields()}>
+	<Card.Root as="ul" size="flush" class="divide-y overflow-hidden" aria-label={m.master_fields()}>
 		{#each listed as field (field.id)}
 			<MasterRow
 				onopen={() => masterDataDialogs.open('fields', field)}
@@ -115,5 +116,5 @@
 				{/if}
 			</MasterRow>
 		{/each}
-	</ul>
+	</Card.Root>
 </PanelState>

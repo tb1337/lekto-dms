@@ -386,12 +386,11 @@
 						{#each mark.boxes as box, boxIndex (boxIndex)}
 							<div
 								class={cn(
-									'pointer-events-none absolute rounded-[3px] transition-shadow',
+									'pointer-events-none absolute rounded-xs transition-shadow',
 									mark.derived
 										? 'bg-primary/10 outline-2 outline-offset-1 outline-primary outline-dashed'
 										: 'bg-primary/20 ring-2 ring-primary',
-									mark.pinned &&
-										'shadow-[0_0_0_7px_color-mix(in_oklab,var(--primary)_22%,transparent)]'
+									mark.pinned && 'shadow-pinned'
 								)}
 								style:left={`${box.x * 100}%`}
 								style:top={`${box.y * 100}%`}
@@ -401,7 +400,7 @@
 							>
 								{#if boxIndex === 0}
 									<span
-										class="absolute bottom-full left-0 mb-1 rounded-md bg-primary px-1.5 text-[10px] leading-4 font-semibold whitespace-nowrap text-primary-foreground"
+										class="absolute bottom-full left-0 mb-1 rounded-md bg-primary px-1.5 text-nano leading-4 font-semibold whitespace-nowrap text-primary-foreground"
 									>
 										{mark.label}
 									</span>

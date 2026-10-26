@@ -19,6 +19,8 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 
 	// The tab "Search index" of the page "System" (Tobi, 24.10.2026): how much of the documents
 	// the index holds, with vectors, what is still to do and how long an indexing takes; admins
@@ -89,7 +91,7 @@
 
 {#snippet heading(text: string, about: string)}
 	<div class="flex items-center gap-1">
-		<h2 class="font-semibold">{text}</h2>
+		<SectionTitle size="card">{text}</SectionTitle>
 		<InfoTip label={m.hint_about({ name: text })} size="sm" class="w-80">
 			<p>{about}</p>
 		</InfoTip>
@@ -119,7 +121,7 @@
 		>
 			{value}
 		</span>
-		<span class="text-[0.8125rem] text-muted-foreground">{label}</span>
+		<span class="text-meta text-muted-foreground">{label}</span>
 	</div>
 {/snippet}
 
@@ -132,9 +134,7 @@
 		<p class="text-muted-foreground">{m.loading()}</p>
 	{:else}
 		<div class="flex flex-wrap gap-6">
-			<section
-				class="flex min-w-0 flex-[2_1_520px] flex-col gap-5 rounded-2xl border bg-card px-5 py-4 sm:px-6"
-			>
+			<Card.Root as="section" size="lg" class="flex min-w-0 flex-[2_1_520px] flex-col gap-5">
 				<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 					{@render heading(m.search_state_title(), m.search_state_info())}
 					{#if status.index.indexing}
@@ -160,7 +160,7 @@
 								})}
 							</span>
 						</span>
-						<span class="text-[1.375rem] font-semibold tabular-nums">{percent(inIndex)}</span>
+						<span class="text-2xl font-semibold tabular-nums">{percent(inIndex)}</span>
 					</div>
 					{@render bar(inIndex, m.search_in_index())}
 				</div>
@@ -176,7 +176,7 @@
 									})}
 								</span>
 							</span>
-							<span class="text-[1.375rem] font-semibold tabular-nums">{percent(embedded)}</span>
+							<span class="text-2xl font-semibold tabular-nums">{percent(embedded)}</span>
 						</div>
 						{@render bar(embedded, m.search_meaning())}
 					</div>
@@ -204,14 +204,12 @@
 						{@render tile(fileSize(status.index.size_bytes), m.search_size_label())}
 					{/if}
 				</div>
-			</section>
+			</Card.Root>
 
-			<section
-				class="flex min-w-0 flex-[1_1_280px] flex-col gap-2.5 rounded-2xl border bg-card px-5 py-4 sm:px-6"
-			>
+			<Card.Root as="section" size="lg" class="flex min-w-0 flex-[1_1_280px] flex-col gap-2.5">
 				{@render heading(m.search_open_title(), m.search_open_info())}
 				<div class="flex items-baseline gap-2">
-					<span class="text-[1.875rem] font-semibold tracking-tight tabular-nums">
+					<span class="text-figure tabular-nums">
 						{formatNumber(status.queued + status.running)}
 					</span>
 					<span class="text-muted-foreground">{m.search_open_jobs()}</span>
@@ -226,7 +224,7 @@
 					{/if}
 				</span>
 				<div aria-hidden="true" class="my-1.5 h-px bg-border"></div>
-				<span class="text-[0.8125rem] text-muted-foreground">
+				<span class="text-meta text-muted-foreground">
 					{m.search_open_split({
 						running: formatNumber(status.running),
 						queued: formatNumber(status.queued)
@@ -234,17 +232,17 @@
 				</span>
 				<a
 					href="?tab=jobs"
-					class="inline-flex items-center gap-1.5 text-[0.8125rem] text-primary hover:underline"
+					class="inline-flex items-center gap-1.5 text-meta text-brand hover:underline"
 				>
 					{m.search_open_link()}<ArrowRight class="size-3.5" aria-hidden="true" />
 				</a>
-			</section>
+			</Card.Root>
 		</div>
 
-		<section class="rounded-2xl border bg-card px-5 py-4 sm:px-6">
+		<Card.Root as="section" size="lg">
 			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
 				{@render heading(m.search_durations_title(), m.search_durations_info())}
-				<span class="text-[0.8125rem] text-muted-foreground">
+				<span class="text-meta text-muted-foreground">
 					{m.search_durations_since({ date: since })}
 				</span>
 			</div>
@@ -255,14 +253,14 @@
 					{#each [[m.search_with_embedding(), status.embedded_jobs, true], [m.search_without_embedding(), status.plain_jobs, false]] as const as [label, times, embedding] (label)}
 						{#if times && (meaning || !embedding)}
 							<div class="flex flex-col gap-1 rounded-xl border p-4">
-								<span class="text-[0.8125rem] text-muted-foreground">{label}</span>
+								<span class="text-meta text-muted-foreground">{label}</span>
 								<div class="flex items-baseline gap-2">
-									<span class="text-[1.75rem] font-semibold tracking-tight tabular-nums">
+									<span class="text-figure tabular-nums">
 										{seconds(times.median_ms)}
 									</span>
-									<span class="text-[0.8125rem] text-muted-foreground">{m.search_median()}</span>
+									<span class="text-meta text-muted-foreground">{m.search_median()}</span>
 								</div>
-								<span class="text-[0.8125rem] text-muted-foreground">
+								<span class="text-meta text-muted-foreground">
 									{m.search_jobs_line({
 										p90: seconds(times.p90_ms),
 										count: formatNumber(times.count)
@@ -276,10 +274,10 @@
 					{/each}
 				</div>
 			{/if}
-		</section>
+		</Card.Root>
 
 		{#if session.isAdmin}
-			<section class="flex flex-col gap-4 rounded-2xl border bg-card px-5 py-4 sm:px-6">
+			<Card.Root as="section" size="lg" class="flex flex-col gap-4">
 				<div class="flex flex-wrap items-center justify-between gap-3">
 					{@render heading(m.search_check_title(), m.search_check_info())}
 					<Button variant="outline" disabled={checking} onclick={runCheck}>
@@ -287,7 +285,7 @@
 					</Button>
 				</div>
 				{#if check}
-					<span class="text-[0.8125rem] text-muted-foreground">
+					<span class="text-meta text-muted-foreground">
 						{m.search_check_took({ duration: seconds(check.took_ms) })}
 					</span>
 					<div class="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
@@ -303,18 +301,16 @@
 												: 'bg-surface'
 									)}
 								>
-									<span class="text-[1.375rem] font-semibold tabular-nums"
-										>{formatNumber(count)}</span
-									>
-									<span class="text-[0.8125rem]">{label}</span>
+									<span class="text-2xl font-semibold tabular-nums">{formatNumber(count)}</span>
+									<span class="text-meta">{label}</span>
 								</div>
 							{/if}
 						{/each}
 					</div>
 				{/if}
-			</section>
+			</Card.Root>
 
-			<section class="flex flex-col gap-4 rounded-2xl border bg-card px-5 py-4 sm:px-6">
+			<Card.Root as="section" size="lg" class="flex flex-col gap-4">
 				<div class="flex flex-wrap items-center justify-between gap-3">
 					{@render heading(m.search_reindex_title(), m.search_reindex_info())}
 					<Button
@@ -325,7 +321,7 @@
 						<RefreshCw aria-hidden="true" />{m.search_reindex_button()}
 					</Button>
 				</div>
-			</section>
+			</Card.Root>
 		{/if}
 	{/if}
 </div>

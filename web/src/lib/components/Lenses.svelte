@@ -4,6 +4,8 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import type { Lens } from '#lib/lenses.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
 
 	// The user's lenses as links: all documents first, then each lens; `onadd` offers a new one
 	// from the filters. Beside the list a card (`list`), on a phone a row of chips (`chips`).
@@ -35,14 +37,11 @@
 </script>
 
 {#if variant === 'list'}
-	<section class="rounded-2xl border bg-card px-2 pb-2" aria-labelledby="{id}-title">
+	<Card.Root as="section" size="flush" class="px-2 pb-2" aria-labelledby="{id}-title">
 		<div class="flex h-10 items-center gap-2 px-1">
-			<h3
-				id="{id}-title"
-				class="m-0 flex-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase"
-			>
+			<Eyebrow as="h3" id="{id}-title" class="m-0 flex-1 tracking-wider">
 				{m.lens_title()}
-			</h3>
+			</Eyebrow>
 			{#if onadd}
 				<button
 					type="button"
@@ -90,7 +89,7 @@
 				</li>
 			{/each}
 		</ul>
-	</section>
+	</Card.Root>
 {:else}
 	<nav class="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1" aria-label={m.lens_title()}>
 		{#each entries as entry (entry.id)}

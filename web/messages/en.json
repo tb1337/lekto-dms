@@ -2426,5 +2426,10 @@
 	"action_move_document": "move this document",
 	"action_delete_document": "delete this document",
 	"action_reset_own_password": "reset their own password here",
-	"action_turn_off_own_totp": "turn off their own two-factor sign-in here"
+	"action_turn_off_own_totp": "turn off their own two-factor sign-in here",
+	"rule_edit_generic": "Edit rule",
+	"rule_apply_generic": "Apply rule",
+	"rule_generic": "Rule",
+	"webhook_generic": "Webhook",
+	"webhook_edit_generic": "Edit webhook"
 }

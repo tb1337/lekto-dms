@@ -13,6 +13,7 @@
 	import { unseenText } from '#lib/space-suggestion.ts';
 	import { cn } from '#lib/utils.ts';
 	import { Choice, ChoiceBox } from '#lib/components/ui/choice/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 
 	type Document = components['schemas']['DocumentDetails'];
 
@@ -92,9 +93,9 @@
 				aria-hidden="true"
 				strokeWidth={2.2}
 			/>
-			<h3 id="filing-title" class="text-[0.95rem] leading-tight font-semibold">
+			<SectionTitle size="card" level={3} id="filing-title">
 				{m.filing_title()}
-			</h3>
+			</SectionTitle>
 			<span
 				class="ml-auto rounded-full bg-lane-yellow px-2.5 py-0.5 text-xs font-medium text-lane-yellow-foreground"
 			>
@@ -127,8 +128,7 @@
 						<span class="flex flex-wrap items-center gap-2">
 							<span class="font-semibold">{option.title}</span>
 							{#if option.suggested}
-								<span
-									class="rounded-full bg-panel px-2 text-[11px] leading-5 font-medium text-brand"
+								<span class="rounded-full bg-panel px-2 text-micro leading-5 font-medium text-brand"
 									>{m.filing_suggested()}</span
 								>
 							{/if}

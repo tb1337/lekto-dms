@@ -10,7 +10,7 @@
 		$props();
 </script>
 
-<Badge variant="secondary">
+<Badge variant="note">
 	{#if session.isAdmin}
 		<button
 			type="button"

@@ -5,12 +5,14 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
-	import BackLink from '#lib/components/BackLink.svelte';
 	import RuleView from '#lib/components/rules/RuleView.svelte';
 	import { formatDate } from '#lib/i18n.ts';
 	import { userName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { RuleLoader } from '#lib/rules/page.svelte.ts';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
+	import * as Card from '#lib/components/ui/card/index.ts';
 
 	// One saved version of a rule, to read (decision E4: no restoring).
 	const id = $derived(page.params.id ?? '');
@@ -44,27 +46,31 @@
 </svelte:head>
 
 <div class="flex flex-col gap-6">
-	<BackLink href="{BASE}/rules/{id}" label={m.rule_versions()} />
-
+	<PageHeader
+		title={version
+			? m.rule_version_title({ name: version.name, number: version.version })
+			: m.rule_version_n({ number })}
+		back={{ href: `${BASE}/rules/${id}`, label: version?.name ?? m.nav_rules() }}
+	>
+		{#snippet below()}
+			{#if version}
+				<span class="text-sm text-muted-foreground">
+					{m.rule_version_meta({
+						date: formatDate(version.created_at, { dateStyle: 'medium', timeStyle: 'short' }),
+						user: author
+					})} · {m.rule_priority_short({ priority: version.priority })}
+				</span>
+			{/if}
+		{/snippet}
+	</PageHeader>
 	{#if problem}
-		<p class="text-destructive" role="alert">{problem}</p>
+		<LoadProblem {problem} onretry={() => loader.retry()} />
 	{:else if !version}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<p class="text-muted-foreground" role="status">{m.loading()}</p>
 	{:else}
-		<div class="flex flex-col gap-1">
-			<h1 class="text-[1.75rem] font-semibold tracking-tight break-words">
-				{m.rule_version_title({ name: version.name, number: version.version })}
-			</h1>
-			<span class="text-sm text-muted-foreground">
-				{m.rule_version_meta({
-					date: formatDate(version.created_at, { dateStyle: 'medium', timeStyle: 'short' }),
-					user: author
-				})} · {m.rule_priority_short({ priority: version.priority })}
-			</span>
-		</div>
 		<p class="text-sm text-muted-foreground">{m.rule_version_hint()}</p>
-		<section class="rounded-2xl border bg-card p-5">
+		<Card.Root as="section">
 			<RuleView definition={version} {lookup} />
-		</section>
+		</Card.Root>
 	{/if}
 </div>

@@ -134,7 +134,7 @@
 			<span class="text-sm text-muted-foreground">{size}</span>
 		</div>
 		<pre
-			class="h-[min(28rem,55vh)] overflow-auto rounded-xl border bg-surface px-4 py-3.5 font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap">{body}</pre>
+			class="h-[min(28rem,55vh)] overflow-auto rounded-xl border bg-surface px-4 py-3.5 font-mono text-meta leading-relaxed whitespace-pre-wrap">{body}</pre>
 		<Dialog.Footer class="items-center sm:justify-between">
 			<p class="text-sm text-muted-foreground">
 				{call?.document ? m.prompt_parts_note() : m.prompt_document_note()}

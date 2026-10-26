@@ -65,7 +65,7 @@
 			</span>
 		</span>
 	{:else if item.tab === 'new'}
-		<span class="flex items-center gap-1.5 text-sm font-medium text-primary">
+		<span class="flex items-center gap-1.5 text-sm font-medium text-brand">
 			<span class="size-2 rounded-full bg-primary" aria-hidden="true"></span>
 			{m.inbox_new()}
 		</span>

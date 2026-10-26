@@ -15,6 +15,7 @@ export class RuleLoader {
 	/** Why the last load failed, as text; null after a load that worked. */
 	problem = $state<string | null>(null);
 	#begin = latest();
+	#last: (() => Promise<void>) | null = null;
 
 	/**
 	 * Load `data` beside the master data and hand both to `then`, unless a later load overtook
@@ -26,6 +27,7 @@ export class RuleLoader {
 		then: (found: T, lookup: Lookup) => void,
 		options: { fresh?: boolean } = {}
 	): Promise<void> {
+		this.#last = () => this.load(data, then, options);
 		const current = this.#begin();
 		const kept = options.fresh ? null : untrack(() => this.lookup);
 		try {
@@ -37,5 +39,10 @@ export class RuleLoader {
 		} catch (error) {
 			if (current()) this.problem = describeError(error);
 		}
+	}
+
+	/** Load again what the last load asked for, after it failed. */
+	retry(): void {
+		void this.#last?.();
 	}
 }

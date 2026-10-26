@@ -6,6 +6,7 @@
 	import { AREA_LABELS, iconLabel } from '#lib/icons/labels.ts';
 	import { searchIcons } from '#lib/icons/search.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
 
 	// The open part of the icon picker: the icons offered first by areas of life, and a search
 	// over every Lucide icon (their names, and the words of the ones offered first in either
@@ -90,9 +91,9 @@
 		{:else}
 			{#each CURATED as group (group.area)}
 				<section class="flex flex-col gap-1.5" aria-label={AREA_LABELS[group.area]()}>
-					<h4 class="text-xs font-medium text-muted-foreground">
+					<Eyebrow as="h4">
 						{AREA_LABELS[group.area]()}
-					</h4>
+					</Eyebrow>
 					<div class="grid grid-cols-[repeat(auto-fill,minmax(2.75rem,1fr))] gap-1">
 						{#each group.icons as name (name)}{@render tile(name)}{/each}
 					</div>

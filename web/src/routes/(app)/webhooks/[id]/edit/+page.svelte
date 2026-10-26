@@ -5,10 +5,11 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
-	import BackLink from '#lib/components/BackLink.svelte';
 	import WebhookForm from '#lib/components/WebhookForm.svelte';
 	import { describeError } from '#lib/errors.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 
 	type Webhook = components['schemas']['WebhookOut'];
 
@@ -16,8 +17,12 @@
 	let webhook = $state<Webhook | null>(null);
 	let problem = $state<string | null>(null);
 
+	// Bumped by "Try again" to load anew.
+	let attempt = $state(0);
+
 	$effect(() => {
 		const wanted = id;
+		void attempt;
 		webhook = null;
 		problem = null;
 		unwrap(api.GET('/api/v1/webhooks/{id}', { params: { path: { id: wanted } } })).then(
@@ -32,19 +37,21 @@
 </script>
 
 <svelte:head>
-	<title>{m.webhook_edit_named({ name: webhook?.name ?? '' })} · {m.app_name()}</title>
+	<title
+		>{webhook ? m.webhook_edit_named({ name: webhook.name }) : m.webhook_edit_generic()} · {m.app_name()}</title
+	>
 </svelte:head>
 
 <div class="flex flex-col gap-6">
-	<BackLink href="{BASE}/webhooks/{id}" label={webhook?.name ?? m.nav_webhooks()} />
-	<h1 class="text-[1.75rem] font-semibold tracking-tight break-words">
-		{m.webhook_edit_named({ name: webhook?.name ?? '' })}
-	</h1>
+	<PageHeader
+		title={webhook ? m.webhook_edit_named({ name: webhook.name }) : m.webhook_edit_generic()}
+		back={{ href: `${BASE}/webhooks/${id}`, label: webhook?.name ?? m.nav_webhooks() }}
+	/>
 
 	{#if problem}
-		<p class="text-destructive" role="alert">{problem}</p>
+		<LoadProblem {problem} onretry={() => attempt++} />
 	{:else if !webhook}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<p class="text-muted-foreground" role="status">{m.loading()}</p>
 	{:else}
 		{#key webhook.id}
 			<WebhookForm

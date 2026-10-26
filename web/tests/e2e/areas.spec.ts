@@ -59,14 +59,15 @@ test('every area opens, and the dialogs create things', async ({ page }) => {
 	await page.getByRole('button', { name: 'Create' }).click();
 	await expect(page.getByText(NAME).first()).toBeVisible();
 
-	// Webhooks: create (secret shown once), delete.
-	await page.goto('/ui/webhooks');
-	await page.getByRole('button', { name: 'New webhook' }).first().click();
+	// Webhooks: create on its page (secret shown once), delete from the list.
+	await page.goto('/ui/webhooks/new');
 	await page.getByRole('textbox', { name: 'Name' }).fill(NAME);
-	await page.getByLabel('Target URL').fill('http://127.0.0.1:9/hook');
+	await page.getByRole('textbox', { name: 'Target URL' }).fill('http://127.0.0.1:9/hook');
 	await page.getByRole('button', { name: 'Create', exact: true }).click();
 	await expect(page.getByTestId('secret')).toContainText('whsec_');
 	await page.getByRole('button', { name: 'I have stored it' }).click();
+	await page.waitForURL(/\/ui\/webhooks\/(?!new$)[^/]+$/);
+	await page.goto('/ui/webhooks');
 	await page.getByRole('button', { name: `Delete ${NAME}` }).click();
 	await page.getByRole('alertdialog').getByRole('button', { name: `Delete` }).click();
 	await expect(page.getByText(NAME)).toHaveCount(0);
@@ -74,7 +75,7 @@ test('every area opens, and the dialogs create things', async ({ page }) => {
 	// Settings: an API token (shown once), then revoked.
 	await page.goto('/ui/settings');
 	await page.getByRole('button', { name: 'New token' }).click();
-	await page.getByRole('textbox', { name: 'Name' }).fill(NAME);
+	await page.getByRole('textbox', { name: 'Name', exact: true }).fill(NAME);
 	await page.getByRole('button', { name: 'Create token' }).click();
 	await expect(page.getByTestId('secret')).toContainText('lekto_');
 	await page.getByRole('button', { name: 'I have stored it' }).click();

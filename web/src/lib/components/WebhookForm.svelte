@@ -21,6 +21,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	type Webhook = components['schemas']['WebhookOut'];
 	type Body = components['schemas']['BodyFormat'];
@@ -266,15 +267,13 @@
 						bind:value={header.value}
 						maxlength={4096}
 					/>
-					<Button
+					<IconButton
 						type="button"
-						variant="ghost"
-						size="icon"
-						aria-label={m.webhook_header_remove({ name: header.name })}
+						label={m.webhook_header_remove({ name: header.name })}
 						onclick={() => headers.splice(index, 1)}
 					>
 						<Trash2 aria-hidden="true" />
-					</Button>
+					</IconButton>
 				</div>
 			{/each}
 			<div>

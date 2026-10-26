@@ -36,6 +36,7 @@
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import Chip from '#lib/components/Chip.svelte';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	type Listed = components['schemas']['ListedDocument'];
 
@@ -304,32 +305,29 @@
 									{fieldTypeLabel(field.data_type)}
 								</span>
 							{/if}
-							<button
-								type="button"
-								class="grid size-7 place-items-center rounded-full hover:bg-secondary disabled:opacity-30"
-								aria-label={m.lens_field_up({ name: field?.name ?? id })}
+							<IconButton
+								size="sm"
+								label={m.lens_field_up({ name: field?.name ?? id })}
 								disabled={index === 0}
 								onclick={() => move(index, index - 1)}
 							>
-								<ArrowUp class="size-3.5" aria-hidden="true" />
-							</button>
-							<button
-								type="button"
-								class="grid size-7 place-items-center rounded-full hover:bg-secondary disabled:opacity-30"
-								aria-label={m.lens_field_down({ name: field?.name ?? id })}
+								<ArrowUp aria-hidden="true" />
+							</IconButton>
+							<IconButton
+								size="sm"
+								label={m.lens_field_down({ name: field?.name ?? id })}
 								disabled={index === cardIds.length - 1}
 								onclick={() => move(index, index + 1)}
 							>
-								<ArrowDown class="size-3.5" aria-hidden="true" />
-							</button>
-							<button
-								type="button"
-								class="grid size-7 place-items-center rounded-full hover:bg-secondary"
-								aria-label={m.lens_field_remove({ name: field?.name ?? id })}
+								<ArrowDown aria-hidden="true" />
+							</IconButton>
+							<IconButton
+								size="sm"
+								label={m.lens_field_remove({ name: field?.name ?? id })}
 								onclick={() => (cardIds = cardIds.filter((entry) => entry !== id))}
 							>
-								<X class="size-3.5" aria-hidden="true" />
-							</button>
+								<X aria-hidden="true" />
+							</IconButton>
 						</li>
 					{/each}
 				</ol>

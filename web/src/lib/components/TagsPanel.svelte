@@ -28,7 +28,6 @@
 	import MasterRow, { type Usage } from '#lib/components/MasterRow.svelte';
 	import PanelState from '#lib/components/PanelState.svelte';
 	import TagChip from '#lib/components/TagChip.svelte';
-	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { latest } from '#lib/latest.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
@@ -231,19 +230,18 @@
 					{#if forcedOpen}
 						<span class="size-11 shrink-0 sm:size-8" aria-hidden="true"></span>
 					{:else}
-						<Button
-							variant="ghost"
-							size="icon"
-							class="size-11 shrink-0 aria-expanded:bg-transparent sm:size-8"
+						<IconButton
+							size="sm"
+							class="shrink-0 aria-expanded:bg-transparent"
 							aria-expanded={open}
 							aria-controls={open ? `tags-${kind}-list` : undefined}
-							aria-label={open ? m.tree_collapse({ name: title }) : m.tree_expand({ name: title })}
+							label={open ? m.tree_collapse({ name: title }) : m.tree_expand({ name: title })}
 							onclick={() => toggleKind(kind)}
 						>
 							{#if open}<ChevronDown aria-hidden="true" />{:else}<ChevronRight
 									aria-hidden="true"
 								/>{/if}
-						</Button>
+						</IconButton>
 					{/if}
 					{#if !phone.current}<Icon class="size-4 shrink-0 text-brand" aria-hidden="true" />{/if}
 					<SectionTitle size="card" id="tags-{kind}" class="whitespace-nowrap">{title}</SectionTitle
@@ -284,12 +282,11 @@
 											aria-hidden="true"
 										></span>
 										{#if hasChildren && !searching}
-											<Button
-												variant="ghost"
-												size="icon"
-												class="size-11 shrink-0 aria-expanded:bg-transparent sm:size-8"
+											<IconButton
+												size="sm"
+												class="shrink-0 aria-expanded:bg-transparent"
 												aria-expanded={!collapsedTags.has(tag.id)}
-												aria-label={collapsedTags.has(tag.id)
+												label={collapsedTags.has(tag.id)
 													? m.tree_expand({ name: tag.name })
 													: m.tree_collapse({ name: tag.name })}
 												onclick={() => toggleTag(tag.id)}
@@ -299,7 +296,7 @@
 												{:else}
 													<ChevronDown aria-hidden="true" />
 												{/if}
-											</Button>
+											</IconButton>
 										{:else}
 											<span class="size-11 shrink-0 sm:size-8" aria-hidden="true"></span>
 										{/if}

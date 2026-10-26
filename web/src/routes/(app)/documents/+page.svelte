@@ -86,6 +86,7 @@
 	import PageTitle from '#lib/components/page/PageTitle.svelte';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import { FIELD_FRAME } from '#lib/components/ui/field-look.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// The documents (the archive): listed (newest document date first) or, with words in `q`,
 	// searched (by relevance), with the same filters; sorted as chosen, as a grid or a list, by
@@ -504,19 +505,17 @@ row of filters, on a desktop narrow by the title. -->
 			class="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
 		/>
 		{#if query}
-			<Button
+			<IconButton
 				type="button"
-				variant="ghost"
-				size="icon"
-				class="size-7"
-				aria-label={m.documents_search_clear()}
+				size="sm"
+				label={m.documents_search_clear()}
 				onclick={() => {
 					text = '';
 					search('');
 				}}
 			>
 				<X aria-hidden="true" />
-			</Button>
+			</IconButton>
 		{/if}
 	</form>
 {/snippet}
@@ -556,11 +555,10 @@ row of filters, on a desktop narrow by the title. -->
 	<div class="flex flex-col gap-3">
 		<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
 			<!-- Collapses the filters beside the list; collapsed, it counts the active ones. -->
-			<Button
+			<IconButton
 				variant="outline"
-				size="icon"
 				class="relative hidden lg:inline-flex"
-				aria-label={collapsed
+				label={collapsed
 					? activeFilters > 0
 						? m.filters_expand_active({ count: formatNumber(activeFilters) })
 						: m.filters_expand()
@@ -583,7 +581,7 @@ row of filters, on a desktop narrow by the title. -->
 				{:else}
 					<PanelLeftClose aria-hidden="true" />
 				{/if}
-			</Button>
+			</IconButton>
 			<PageTitle>{lens?.name ?? m.nav_documents()}</PageTitle>
 			{#if searching && list.total !== null && list.loaded}
 				<p class="text-sm text-muted-foreground" aria-live="polite">
@@ -615,7 +613,6 @@ row of filters, on a desktop narrow by the title. -->
 						variant="outline"
 						class="max-lg:size-10 max-lg:px-0"
 						aria-label={m.lens_edit()}
-						title={m.lens_edit()}
 						onclick={() => edit(lens)}
 					>
 						<Pencil aria-hidden="true" />
@@ -679,9 +676,9 @@ row of filters, on a desktop narrow by the title. -->
 								<Sheet.Title>{m.filters_title()}</Sheet.Title>
 								<Sheet.Close>
 									{#snippet child({ props })}
-										<Button variant="ghost" size="icon" {...props} aria-label={m.close()}>
+										<IconButton {...props} label={m.close()}>
 											<X aria-hidden="true" />
-										</Button>
+										</IconButton>
 									{/snippet}
 								</Sheet.Close>
 							</Sheet.Header>

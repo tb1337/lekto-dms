@@ -31,6 +31,7 @@
 	import { pathLabel } from '#lib/tags.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// A contact's identifiers, one line each under their kind (Tobi, 20.10.2026): the value, a
 	// mark if learned or rejected, the topic it points to. A line opens with its arrow, one at a
@@ -159,15 +160,9 @@
 		<SearchField bind:value={query} label={m.identifier_search()} class="flex-1" />
 		{#if hint}<InfoHint text={hint} about={m.master_identifiers()} />{/if}
 		{#if phone.current}
-			<Button
-				type="button"
-				size="icon"
-				class="size-11 shrink-0"
-				aria-label={m.identifier_add()}
-				onclick={add}
-			>
+			<IconButton type="button" class="shrink-0" label={m.identifier_add()} onclick={add}>
 				<Plus class="size-5" aria-hidden="true" />
-			</Button>
+			</IconButton>
 		{:else}
 			<Button type="button" variant="outline" class="h-10 shrink-0" onclick={add}>
 				<Plus aria-hidden="true" />
@@ -239,16 +234,14 @@
 							{/if}
 						</button>
 						{#if item.source === 'manual'}
-							<Button
+							<IconButton
 								type="button"
-								variant="ghost"
-								size="icon"
-								class="size-9 shrink-0"
-								aria-label={m.identifier_remove_named({ value: item.value || m.identifier_new() })}
+								class="shrink-0"
+								label={m.identifier_remove_named({ value: item.value || m.identifier_new() })}
 								onclick={() => drop(item)}
 							>
 								<X aria-hidden="true" />
-							</Button>
+							</IconButton>
 						{:else}
 							<span class="size-9 shrink-0" aria-hidden="true"></span>
 						{/if}

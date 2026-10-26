@@ -54,6 +54,7 @@
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// The facts beside the text: what supports the document's contact, what speaks of other
 	// contacts, the identifiers of no contact (admins attach them, with a topic of the contact,
@@ -263,7 +264,6 @@
 		<button
 			type="button"
 			class="inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1.5 font-medium text-foreground underline-offset-2 hover:underline"
-			title={m.facts_contact_open()}
 			onclick={() => masterDataDialogs.open('contacts', id)}
 		>
 			<ContactAvatar contact={contact ?? { name: '…' }} size="xs" />
@@ -278,12 +278,11 @@
 {/snippet}
 
 {#snippet decideButton(id: string, fact: KeptFact)}
-	<Button
-		variant="ghost"
-		size="icon"
-		class="size-8 shrink-0"
-		aria-label={m.facts_decide_value_label({ value: fact.written ?? shown(fact) })}
-		title={m.facts_decide()}
+	<IconButton
+		size="sm"
+		class="shrink-0"
+		label={m.facts_decide_value_label({ value: fact.written ?? shown(fact) })}
+		hint={m.facts_decide()}
 		aria-expanded={deciding === id}
 		onclick={() => {
 			deciding = deciding === id ? null : id;
@@ -291,7 +290,7 @@
 		}}
 	>
 		<Pencil aria-hidden="true" />
-	</Button>
+	</IconButton>
 {/snippet}
 
 {#snippet keptRow(id: string, fact: KeptFact, spans: Span[])}
@@ -398,17 +397,17 @@
 			{/if}
 			{#if identifier && !identifier.contact_id && admin && identifier.state !== 'rejected'}
 				<!-- Only the pin: the label would repeat on every line. -->
-				<Button
+				<IconButton
 					variant="outline"
-					size="icon"
-					class="size-8 shrink-0"
-					aria-label={m.facts_attach_value({ value: shown(identifier) })}
-					title={m.facts_attach()}
+					size="sm"
+					class="shrink-0"
+					label={m.facts_attach_value({ value: shown(identifier) })}
+					hint={m.facts_attach()}
 					aria-expanded={attaching === id}
 					onclick={() => startAttach(identifier)}
 				>
 					<Pin aria-hidden="true" />
-				</Button>
+				</IconButton>
 			{/if}
 		</div>
 		{#if contactId}
@@ -704,15 +703,14 @@
 									class="max-h-24 min-w-0 flex-1 overflow-auto font-mono text-xs break-all whitespace-pre-wrap"
 									>{code.text}</code
 								>
-								<Button
-									variant="ghost"
-									size="icon"
-									class="size-7 shrink-0"
-									aria-label={m.codes_copy()}
+								<IconButton
+									size="sm"
+									class="shrink-0"
+									label={m.codes_copy()}
 									onclick={() => copy(code.text)}
 								>
 									<Copy aria-hidden="true" />
-								</Button>
+								</IconButton>
 							</div>
 						{/if}
 					</div>

@@ -17,6 +17,7 @@
 	import { describeError, reportError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	type Token = components['schemas']['TokenOut'];
 	type Scope = components['schemas']['TokenScope'];
@@ -115,14 +116,12 @@
 						<Badge variant="note">
 							{token.scope === 'read' ? m.token_scope_read() : m.token_scope_read_write()}
 						</Badge>
-						<Button
-							variant="ghost"
-							size="icon"
-							aria-label={m.token_revoke_named({ name: token.name })}
+						<IconButton
+							label={m.token_revoke_named({ name: token.name })}
 							onclick={() => (revoking = token)}
 						>
 							<Trash aria-hidden="true" />
-						</Button>
+						</IconButton>
 					</li>
 				{/each}
 			</ul>

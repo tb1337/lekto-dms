@@ -5,7 +5,6 @@
 	import Minus from '@lucide/svelte/icons/minus';
 	import Plus from '@lucide/svelte/icons/plus';
 	import { onMount, tick, type Snippet } from 'svelte';
-	import { Button } from '#lib/components/ui/button/index.ts';
 	import Segmented from '#lib/components/Segmented.svelte';
 	import type { Mark, Place } from '#lib/document-view.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -25,6 +24,7 @@
 		type Room
 	} from '#lib/viewer/zoom.ts';
 	import { Separator } from '#lib/components/ui/separator/index.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// The pages of a document side by side, wrapping into rows: the zoom decides how many stand
 	// in a row (`viewer/zoom.ts`). Ctrl or ⌘ with the wheel, a pinch, the buttons and the keys
@@ -311,14 +311,9 @@
 		aria-label={m.pdf_toolbar()}
 		class="@container flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-card px-3 py-2"
 	>
-		<Button
-			variant="ghost"
-			size="icon"
-			onclick={() => zoomTo(zoom / 1.25, center())}
-			aria-label={m.pdf_zoom_out()}
-		>
+		<IconButton onclick={() => zoomTo(zoom / 1.25, center())} label={m.pdf_zoom_out()}>
 			<Minus aria-hidden="true" />
-		</Button>
+		</IconButton>
 		<button
 			type="button"
 			class="min-w-14 rounded-full px-2 py-1.5 text-center text-sm tabular-nums hover:bg-accent"
@@ -328,14 +323,9 @@
 		>
 			{Math.round(zoom * 100)} %
 		</button>
-		<Button
-			variant="ghost"
-			size="icon"
-			onclick={() => zoomTo(zoom * 1.25, center())}
-			aria-label={m.pdf_zoom_in()}
-		>
+		<IconButton onclick={() => zoomTo(zoom * 1.25, center())} label={m.pdf_zoom_in()}>
 			<Plus aria-hidden="true" />
-		</Button>
+		</IconButton>
 		<Separator orientation="vertical" class="mx-1 h-5 self-center" />
 		<Segmented
 			size="sm"

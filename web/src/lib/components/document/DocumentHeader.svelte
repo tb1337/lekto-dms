@@ -306,17 +306,13 @@
 				<a
 					href="{BASE}/documents?contact={document.contact_id}&layout=stream"
 					class={cn(buttonVariants({ variant: 'outline' }), 'max-sm:px-3')}
-					title={m.doc_show_stream()}
 				>
 					<Waypoints aria-hidden="true" />
 					<span class="max-sm:sr-only">{m.doc_show_stream()}</span>
 				</a>
 			{/if}
 			<DropdownMenu.Root>
-				<DropdownMenu.Trigger
-					class={cn(buttonVariants({ variant: 'outline' }), 'max-sm:px-3')}
-					title={m.doc_download()}
-				>
+				<DropdownMenu.Trigger class={cn(buttonVariants({ variant: 'outline' }), 'max-sm:px-3')}>
 					<Download aria-hidden="true" />
 					<span class="max-sm:sr-only">{m.doc_download()}</span>
 					<ChevronDown aria-hidden="true" />
@@ -336,7 +332,6 @@
 				<Button
 					variant="outline"
 					class="max-sm:px-3"
-					title={m.move_title()}
 					onclick={startMove}
 					disabled={targets.length === 0}
 				>

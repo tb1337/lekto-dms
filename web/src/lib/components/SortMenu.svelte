@@ -37,7 +37,6 @@
 			className
 		)}
 		aria-label={m.sort_current({ label: current })}
-		title={current}
 	>
 		{#if compact}
 			<ArrowUpDown class="size-4" aria-hidden="true" />

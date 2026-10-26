@@ -17,6 +17,8 @@
 <script lang="ts">
 	import { slidingPill } from '#lib/sliding-pill.ts';
 	import { cn } from '#lib/utils.ts';
+	import * as Tooltip from '#lib/components/ui/tooltip/index.ts';
+	import { mergeProps } from 'bits-ui';
 
 	// One of a few ways to show something (one or two pages, grid or list, a part of a prompt):
 	// buttons in a pill, the chosen one on a light pill that moves over (`sliding-pill.ts`), as
@@ -63,6 +65,42 @@
 	}
 </script>
 
+{#snippet entry(option: Segment, props: Record<string, unknown>)}
+	{@const chosen = option.value === value}
+	<button
+		{...mergeProps(props, { onclick: () => choose(option.value) })}
+		type="button"
+		aria-pressed={chosen}
+		aria-label={names === 'hidden' ? option.label : undefined}
+		class={cn(
+			'relative inline-flex items-center justify-center rounded-full whitespace-nowrap transition-colors',
+			size === 'sm' ? 'h-7 gap-1.5 px-2.5 text-xs' : 'h-8 gap-2 px-3 text-sm',
+			names === 'hidden' && (size === 'sm' ? 'w-7 px-0 max-sm:w-10' : 'w-8 px-0 max-sm:w-11'),
+			// A finger's tap on a phone: 44 pixels high, the bar keeps its look.
+			size === 'sm'
+				? 'max-sm:after:absolute max-sm:after:inset-x-0 max-sm:after:-inset-y-2'
+				: 'max-sm:after:absolute max-sm:after:inset-x-0 max-sm:after:-inset-y-1.5',
+			chosen ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'
+		)}
+	>
+		{#if option.icon}
+			<option.icon class={size === 'sm' ? 'size-3.5' : 'size-4'} aria-hidden="true" />
+		{/if}
+		{#if names !== 'hidden'}
+			<span class={cn(roomy && option.icon && ROOM[names as keyof typeof ROOM])}>
+				{option.label}
+			</span>
+		{/if}
+		{#if option.count !== undefined}
+			<span class="text-xs font-normal text-muted-foreground tabular-nums">{option.count}</span>
+		{/if}
+		{#if option.alert}
+			<span class="size-[7px] rounded-full bg-destructive" aria-hidden="true"></span>
+			<span class="sr-only">{option.alert}</span>
+		{/if}
+	</button>
+{/snippet}
+
 <div
 	role="group"
 	aria-label={labelledby ? undefined : label}
@@ -82,36 +120,17 @@
 		class="pointer-events-none absolute top-0 left-0 rounded-full bg-card shadow-sm data-moving:motion-safe:transition-[transform,width,height] data-moving:motion-safe:duration-300 data-moving:motion-safe:ease-out"
 	></span>
 	{#each options as option (option.value)}
-		{@const chosen = option.value === value}
-		<button
-			type="button"
-			aria-pressed={chosen}
-			aria-label={names === 'hidden' ? option.label : undefined}
-			title={option.hint ??
-				(names === 'hidden' || names.startsWith('@') ? option.label : undefined)}
-			onclick={() => choose(option.value)}
-			class={cn(
-				'relative inline-flex items-center justify-center rounded-full whitespace-nowrap transition-colors',
-				size === 'sm' ? 'h-7 gap-1.5 px-2.5 text-xs' : 'h-8 gap-2 px-3 text-sm',
-				names === 'hidden' && (size === 'sm' ? 'w-7 px-0' : 'w-8 px-0'),
-				chosen ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'
-			)}
-		>
-			{#if option.icon}
-				<option.icon class={size === 'sm' ? 'size-3.5' : 'size-4'} aria-hidden="true" />
-			{/if}
-			{#if names !== 'hidden'}
-				<span class={cn(roomy && option.icon && ROOM[names as keyof typeof ROOM])}>
-					{option.label}
-				</span>
-			{/if}
-			{#if option.count !== undefined}
-				<span class="text-xs font-normal text-muted-foreground tabular-nums">{option.count}</span>
-			{/if}
-			{#if option.alert}
-				<span class="size-[7px] rounded-full bg-destructive" aria-hidden="true"></span>
-				<span class="sr-only">{option.alert}</span>
-			{/if}
-		</button>
+		{@const tip =
+			option.hint ?? (names === 'hidden' || names.startsWith('@') ? option.label : undefined)}
+		{#if tip}
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					{#snippet child({ props })}{@render entry(option, props)}{/snippet}
+				</Tooltip.Trigger>
+				<Tooltip.Content>{tip}</Tooltip.Content>
+			</Tooltip.Root>
+		{:else}
+			{@render entry(option, {})}
+		{/if}
 	{/each}
 </div>

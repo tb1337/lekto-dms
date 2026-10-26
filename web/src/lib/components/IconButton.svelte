@@ -12,6 +12,7 @@
 	// trigger's props on it (a menu's "…") to open something; they are merged with the tooltip's.
 	let {
 		label,
+		hint,
 		variant = 'ghost',
 		size = 'default',
 		tooltip = true,
@@ -23,6 +24,8 @@
 	}: HTMLButtonAttributes &
 		HTMLAnchorAttributes & {
 			label: string;
+			/** A shorter tooltip than the name, where the name says more for a screen reader. */
+			hint?: string;
 			variant?: ButtonVariant;
 			size?: 'default' | 'sm';
 			/** Off where the label already stands next to it. */
@@ -56,7 +59,7 @@
 				</Button>
 			{/snippet}
 		</Tooltip.Trigger>
-		<Tooltip.Content {side}>{label}</Tooltip.Content>
+		<Tooltip.Content {side}>{hint ?? label}</Tooltip.Content>
 	</Tooltip.Root>
 {:else}
 	<Button

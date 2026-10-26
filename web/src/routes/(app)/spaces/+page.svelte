@@ -31,6 +31,7 @@
 	import PageHeader from '#lib/components/page/PageHeader.svelte';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	let spaces = $state<Space[] | null>(null);
 	let users = $state<UserName[]>([]);
@@ -185,34 +186,22 @@
 		</div>
 		<div class="flex gap-1">
 			{#if canChooseMembers(space, session.user)}
-				<Button
-					variant="ghost"
-					size="icon"
-					aria-label={m.space_members({ name: label(space) })}
+				<IconButton
+					label={m.space_members({ name: label(space) })}
 					onclick={() => (choosing = space.id)}
 				>
 					<Users aria-hidden="true" />
-				</Button>
+				</IconButton>
 			{/if}
 			{#if canLeaveSpace(space, session.user)}
-				<Button
-					variant="ghost"
-					size="icon"
-					aria-label={m.space_leave({ name: label(space) })}
-					onclick={() => (leaving = space)}
-				>
+				<IconButton label={m.space_leave({ name: label(space) })} onclick={() => (leaving = space)}>
 					<LogOut aria-hidden="true" />
-				</Button>
+				</IconButton>
 			{/if}
 			{#if canManageSpace(space, session.user)}
-				<Button
-					variant="ghost"
-					size="icon"
-					aria-label={m.space_delete({ name: space.name })}
-					onclick={() => (removing = space)}
-				>
+				<IconButton label={m.space_delete({ name: space.name })} onclick={() => (removing = space)}>
 					<Trash2 aria-hidden="true" />
-				</Button>
+				</IconButton>
 			{/if}
 		</div>
 		{#if canDescribeSpace(space, session.user)}

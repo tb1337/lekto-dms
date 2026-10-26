@@ -11,7 +11,6 @@
 	import ReferencePicker, {
 		type Reference
 	} from '#lib/components/templates/ReferencePicker.svelte';
-	import { Button } from '#lib/components/ui/button/index.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import { labelOfKind } from '#lib/identifiers.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
@@ -20,6 +19,7 @@
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	type Relations = components['schemas']['RelationsOut'];
 	type Related = components['schemas']['RelatedOut'];
@@ -166,28 +166,27 @@
 					<span class="text-xs text-muted-foreground">{evidence(item)}</span>
 				</div>
 				{#if item.changeable && group.key === 'suggested'}
-					<Button
+					<IconButton
 						variant="outline"
-						size="icon"
-						class="size-8 shrink-0"
+						size="sm"
+						class="shrink-0"
 						disabled={busy}
-						aria-label={m.relations_accept({ title: item.document.title })}
-						title={m.relations_accept_short()}
+						label={m.relations_accept({ title: item.document.title })}
+						hint={m.relations_accept_short()}
 						onclick={() => relate(item.document.id, m.relations_accepted())}
 					>
 						<Check aria-hidden="true" />
-					</Button>
+					</IconButton>
 				{/if}
 				{#if item.changeable}
-					<Button
-						variant="ghost"
-						size="icon"
-						class="size-8 shrink-0"
+					<IconButton
+						size="sm"
+						class="shrink-0"
 						disabled={busy}
-						aria-label={group.key === 'suggested'
+						label={group.key === 'suggested'
 							? m.relations_reject({ title: item.document.title })
 							: m.relations_remove({ title: item.document.title })}
-						title={group.key === 'suggested'
+						hint={group.key === 'suggested'
 							? m.relations_reject_short()
 							: m.relations_remove_short()}
 						onclick={() =>
@@ -197,7 +196,7 @@
 							)}
 					>
 						<X aria-hidden="true" />
-					</Button>
+					</IconButton>
 				{/if}
 			</div>
 		{/each}

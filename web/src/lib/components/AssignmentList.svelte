@@ -15,13 +15,14 @@
 <script lang="ts">
 	import Plus from '@lucide/svelte/icons/plus';
 	import X from '@lucide/svelte/icons/x';
-	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
+	import { buttonVariants } from '#lib/components/ui/button/index.ts';
 	import * as Command from '#lib/components/ui/command/index.ts';
 	import * as Popover from '#lib/components/ui/popover/index.ts';
 	import { Switch } from '#lib/components/ui/switch/index.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { matchesWords, searchWords } from '#lib/picking.ts';
 	import { cn } from '#lib/utils.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// What belongs to an item of master data, out of many: the assigned ones as rows (name,
 	// required, remove), more added through a search, so that the list stays short however
@@ -84,16 +85,15 @@
 							aria-label={m.assignment_required_for({ name })}
 						/>
 					</label>
-					<Button
+					<IconButton
 						type="button"
-						variant="ghost"
-						size="icon"
-						class="size-8 shrink-0"
-						aria-label={m.assignment_remove({ name })}
+						size="sm"
+						class="shrink-0"
+						label={m.assignment_remove({ name })}
 						onclick={() => onchange(assigned.filter((entry) => entry.id !== item.id))}
 					>
 						<X aria-hidden="true" />
-					</Button>
+					</IconButton>
 				</li>
 			{/each}
 		</ul>

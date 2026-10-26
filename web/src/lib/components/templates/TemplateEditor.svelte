@@ -28,6 +28,8 @@
 		type TemplatePurpose
 	} from '#lib/templates/values.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import * as Tooltip from '#lib/components/ui/tooltip/index.ts';
+	import { mergeProps } from 'bits-ui';
 
 	type Preview = components['schemas']['TemplatePreviewOut'];
 
@@ -157,15 +159,22 @@
 				<div class="flex flex-wrap items-center gap-1">
 					<span class="mr-1 text-xs text-muted-foreground">{m.template_filters()}</span>
 					{#each chips as chip (chip.name)}
-						<Button
-							variant="outline"
-							size="xs"
-							class="font-mono"
-							title={chip.insert}
-							onclick={() => filter(chip.insert)}
-						>
-							{chip.name}
-						</Button>
+						<!-- What it inserts, on hover. -->
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...mergeProps(props, { onclick: () => filter(chip.insert) })}
+										variant="outline"
+										size="xs"
+										class="font-mono"
+									>
+										{chip.name}
+									</Button>
+								{/snippet}
+							</Tooltip.Trigger>
+							<Tooltip.Content class="font-mono">{chip.insert}</Tooltip.Content>
+						</Tooltip.Root>
 					{/each}
 					<a
 						href={TEMPLATES_GUIDE}

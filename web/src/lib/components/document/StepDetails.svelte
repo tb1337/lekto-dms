@@ -208,7 +208,6 @@
 							<a
 								href={context.pageHref(number)}
 								class="group flex flex-col items-center gap-1 rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-								title={m.details_page_open({ page: String(number) })}
 								aria-label={m.details_page_open({ page: String(number) })}
 							>
 								<img

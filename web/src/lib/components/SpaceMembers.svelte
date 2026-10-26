@@ -20,6 +20,7 @@
 	} from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	type Role = components['schemas']['SpaceRole'];
 
@@ -120,15 +121,13 @@
 					{:else if !member.active}
 						<!-- A deactivated member takes no new role; an editor removes them. -->
 						<Badge variant="muted">{m.user_inactive()}</Badge>
-						<Button
-							variant="ghost"
-							size="icon"
+						<IconButton
 							disabled={busy}
-							aria-label={m.members_remove({ name: userLabel(member) })}
+							label={m.members_remove({ name: userLabel(member) })}
 							onclick={() => remove(member.user_id)}
 						>
 							<X aria-hidden="true" />
-						</Button>
+						</IconButton>
 					{:else}
 						<Select
 							aria-label={m.members_role_of({ name: name(member.user_id) })}
@@ -138,15 +137,13 @@
 							onchange={(value) => set(member.user_id, value as Role)}
 							class="h-10 w-40"
 						/>
-						<Button
-							variant="ghost"
-							size="icon"
+						<IconButton
 							disabled={busy}
-							aria-label={m.members_remove({ name: name(member.user_id) })}
+							label={m.members_remove({ name: name(member.user_id) })}
 							onclick={() => remove(member.user_id)}
 						>
 							<X aria-hidden="true" />
-						</Button>
+						</IconButton>
 					{/if}
 				</li>
 			{/each}

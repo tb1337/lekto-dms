@@ -12,6 +12,7 @@
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// The steps of a run on a desktop (mock A, Tobi 23.10.2026): the four phases as columns, one
 	// after another, their steps as the cards of the log before. A card opens its details in a
@@ -147,14 +148,14 @@
 				/>
 				<SectionTitle size="card" level={3}>{NODE_LABELS[open.node]()}</SectionTitle>
 				<span class={cn('text-sm', TONE_TEXT[look.tone])}>{look.label}</span>
-				<button
-					type="button"
-					class="ml-auto grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-secondary"
-					aria-label={m.run_close_details()}
+				<IconButton
+					size="sm"
+					class="ml-auto text-muted-foreground"
+					label={m.run_close_details()}
 					onclick={() => close(open.node)}
 				>
-					<ChevronUp class="size-4" aria-hidden="true" />
-				</button>
+					<ChevronUp aria-hidden="true" />
+				</IconButton>
 			</div>
 			{@render details(open)}
 		</div>

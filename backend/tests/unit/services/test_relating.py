@@ -12,13 +12,14 @@ from lekto.core.domain.master_data import Contact, DocumentType
 from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Node
 from lekto.core.domain.relations import Relation, RelationOrigin, RelationState
+from lekto.core.domain.rules import AddTags, Condition, ConditionField, Operator
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import User
 from lekto.core.services.classification.signals import FactsSignal
 from lekto.core.services.relating import RELATE, RELATIONS_LOCK, relate
 from lekto.core.services.relations import RelationService
 from tests import builders
-from tests.unit.services.rules_support import rule_world
+from tests.unit.services.rules_support import Classifies, definition, rule_world
 from tests.unit.services.support import World
 
 K = IdentifierKind
@@ -284,3 +285,30 @@ async def test_the_node_relates_a_reminder_on_arrival(world: World) -> None:
     pipeline = r.pipeline(facts=facts)
     assert await pipeline.request_relations() == 2
     assert await world.drain(pipeline) == 2
+
+
+async def test_the_rules_of_the_run_see_the_relation(world: World) -> None:
+    """`relate` runs before the rules: a rule on a relation to an invoice tags the reminder."""
+    r = await rule_world(world)
+    owner = await world.user()
+    shop = await r.contact("Versandhaus")
+    invoice_type = await world.master_data.create_document_type(r.admin.id, "Rechnung")
+    reminder_tag = await r.tag("Mahnung")
+    refers = Condition(field=ConditionField.RELATION, op=Operator.IS, value=str(invoice_type.id))
+    await r.personal_rule(
+        owner, definition("Mahnungen", refers, AddTags(frozenset({reminder_tag.id})))
+    )
+    facts = FactsSignal(world.uow, world.object_store)
+    await r.arrive(
+        owner,
+        text="Rechnungsnummer: VB-889911",
+        facts=facts,
+        classify=Classifies(contact=shop.id, document_type=invoice_type.id),
+    )
+    reminder = await r.arrive(
+        owner,
+        text="Ihre Rechnung Nr. VB-889911 ist offen.",
+        facts=facts,
+        classify=Classifies(contact=shop.id),
+    )
+    assert reminder_tag.id in reminder.tag_ids

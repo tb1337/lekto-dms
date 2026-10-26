@@ -69,7 +69,8 @@ class ConditionSchema(BaseModel):
     `present`, `missing`; fact (`fact_kind`, `fact_role` if given; facts a person rejected do
     not count): `is`, `in` (the values as written, compared as Lekto compares them), `matches`
     (against each value as the text writes it; `^` and `$` mark its ends), `present`,
-    `missing`."""
+    `missing`; relation (the documents it refers to by a set relation; suggestions do not
+    count): `present` (any), `missing` (none), `is`, `in` (one of the document type ids)."""
 
     model_config = ConfigDict(
         extra="forbid",
@@ -87,6 +88,11 @@ class ConditionSchema(BaseModel):
                     "op": "present",
                     "fact_kind": "invoice_number",
                     "fact_role": "refers",
+                },
+                {
+                    "field": "relation",
+                    "op": "in",
+                    "value": ["01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b"],
                 },
             ]
         },

@@ -71,7 +71,8 @@ class Facts:
     likewise.
     `taxonomy`: the tag trees; `contact_groups` and `document_type_groups` the groups of the
     contact and the type. `steps`: what a rule's steps brought so far, by step name (for its
-    condition steps). `kept_facts`: the document's facts (`domain.document_facts`)."""
+    condition steps). `kept_facts`: the document's facts (`domain.document_facts`).
+    `referred_types`: the types of the documents it refers to (None: one without a type)."""
 
     contact_id: ContactId | None
     document_type_id: DocumentTypeId | None
@@ -89,6 +90,7 @@ class Facts:
     document_type_groups: frozenset[TagId] = frozenset()
     steps: Mapping[str, JsonValue] = field(default_factory=dict)
     kept_facts: tuple[DocumentFact, ...] = ()
+    referred_types: tuple[DocumentTypeId | None, ...] = ()
 
     @classmethod
     def of(
@@ -102,6 +104,7 @@ class Facts:
         unverified_tags: frozenset[TagId] = frozenset(),
         taxonomy: Taxonomy | None = None,
         steps: Mapping[str, JsonValue] | None = None,
+        referred_types: Sequence[DocumentTypeId | None] = (),
     ) -> "Facts":
         taxonomy = taxonomy or Taxonomy()
         return cls(
@@ -121,6 +124,7 @@ class Facts:
             document_type_groups=taxonomy.groups_of(document.document_type_id),
             steps=steps or {},
             kept_facts=tuple(kept_facts),
+            referred_types=tuple(referred_types),
         )
 
 
@@ -231,6 +235,14 @@ def _condition(
         case ConditionField.STEP:
             assert condition.path is not None
             return _step(op, step_value(facts.steps, condition.path), values)
+        case ConditionField.RELATION:
+            # Found by Lekto or set by a person: never unknown.
+            match op:
+                case Operator.PRESENT:
+                    return bool(facts.referred_types)
+                case Operator.MISSING:
+                    return not facts.referred_types
+            return any(str(kind) in values for kind in facts.referred_types if kind is not None)
         case ConditionField.FACT:
             # Read from the text (or decided by a person): never unknown.
             held = [fact.value for fact in fact_values(condition, facts.kept_facts)]

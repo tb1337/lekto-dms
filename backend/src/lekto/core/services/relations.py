@@ -14,7 +14,7 @@ from enum import StrEnum
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import ConflictError, NotFoundError
 from lekto.core.domain.first_runs import RELATIONS, Decision, FieldVerdict, Verdict
-from lekto.core.domain.ids import DocumentId, UserId
+from lekto.core.domain.ids import DocumentId, DocumentTypeId, UserId
 from lekto.core.domain.permissions import can_edit_document, can_read_document
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.relations import Relation, RelationOrigin, RelationState, ordered
@@ -131,6 +131,20 @@ class RelationService:
             else:
                 await uow.document_relations.remove(known.newer, known.older)
             await uow.commit()
+
+
+async def referred_types(uow: UnitOfWork, document: Document) -> tuple[DocumentTypeId | None, ...]:
+    """The types of the documents `document` refers to by a set relation (the direction as
+    the dates are now; a suggestion does not count): what the rules' condition `relation`
+    sees. Whether the rule's author reads them does not matter, as for the facts."""
+    found: list[DocumentTypeId | None] = []
+    for relation in await uow.document_relations.of_document(document.id):
+        if relation.state is not RelationState.SET:
+            continue
+        other = await uow.documents.find(relation.other(document.id))
+        if other is not None and _newer(document, other) == document.id:
+            found.append(other.document_type_id)
+    return tuple(found)
 
 
 async def find_pair(uow: UnitOfWork, first: DocumentId, second: DocumentId) -> Relation | None:

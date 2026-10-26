@@ -156,6 +156,8 @@ class Situation:
       `steps.<name>`.
     - `kept_facts`, `codes`: the document's facts and the codes on its pages; templates see
       them as `facts` and `fact_list` (`templates.template_values`).
+    - `referred_types`: the types of the documents it refers to (the condition `relation` of
+      condition steps).
     """
 
     mode: Mode
@@ -181,6 +183,7 @@ class Situation:
     actions: Mapping[RuleId, Sequence[object]] = field(default_factory=dict)
     steps: Mapping[RuleId, Mapping[str, TemplateValue]] = field(default_factory=dict)
     kept_facts: tuple[DocumentFact, ...] = ()
+    referred_types: tuple[DocumentTypeId | None, ...] = ()
     codes: tuple[Code, ...] = ()
 
 

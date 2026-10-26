@@ -20385,7 +20385,8 @@
           "text",
           "field",
           "document_date",
-          "fact"
+          "fact",
+          "relation"
         ],
         "title": "ConditionField"
       },
@@ -20514,7 +20515,7 @@
           "op"
         ],
         "title": "ConditionSchema",
-        "description": "`field` `op` `value`. Operators by field: contact, document_type: `is`, `in`, `present`,\n`missing`; topic: the same, where a topic matches the ones below it too (unknown while the\nmodel set it and nobody confirmed it); tags (document tags), contact_group (the groups of\nthe document's contact),\ndocument_type_group (those of its type): `contains` (this one), `in` (one of), `present`\n(any), `missing` (none), where a tag or group matches the ones below it too; channel:\n`is`, `in`; text: `contains`, `matches` (regular expression); document_date and\nnumber, amount, date fields: `is`, `gt`, `lt`, `present`, `missing`; text and link\nfields: `is`, `in`, `contains`, `matches`, `present`, `missing`; choice: `is`, `in`,\n`present`, `missing`; boolean: `is`, `present`, `missing`; period fields: `is`,\n`overlaps` (shares a day with the given period), `gt` (starts after the date), `lt` (ends\nbefore the date), `present`, `missing`; step (in a condition step only: what a step that\nasks brought, at `path`): `is`, `in` (texts without case, numbers as numbers, true or\nfalse), `contains` (a text in a text, an item of a list), `gt`, `lt` (a number or a date),\n`present`, `missing`; fact (`fact_kind`, `fact_role` if given; facts a person rejected do\nnot count): `is`, `in` (the values as written, compared as Lekto compares them), `matches`\n(against each value as the text writes it; `^` and `$` mark its ends), `present`,\n`missing`.",
+        "description": "`field` `op` `value`. Operators by field: contact, document_type: `is`, `in`, `present`,\n`missing`; topic: the same, where a topic matches the ones below it too (unknown while the\nmodel set it and nobody confirmed it); tags (document tags), contact_group (the groups of\nthe document's contact),\ndocument_type_group (those of its type): `contains` (this one), `in` (one of), `present`\n(any), `missing` (none), where a tag or group matches the ones below it too; channel:\n`is`, `in`; text: `contains`, `matches` (regular expression); document_date and\nnumber, amount, date fields: `is`, `gt`, `lt`, `present`, `missing`; text and link\nfields: `is`, `in`, `contains`, `matches`, `present`, `missing`; choice: `is`, `in`,\n`present`, `missing`; boolean: `is`, `present`, `missing`; period fields: `is`,\n`overlaps` (shares a day with the given period), `gt` (starts after the date), `lt` (ends\nbefore the date), `present`, `missing`; step (in a condition step only: what a step that\nasks brought, at `path`): `is`, `in` (texts without case, numbers as numbers, true or\nfalse), `contains` (a text in a text, an item of a list), `gt`, `lt` (a number or a date),\n`present`, `missing`; fact (`fact_kind`, `fact_role` if given; facts a person rejected do\nnot count): `is`, `in` (the values as written, compared as Lekto compares them), `matches`\n(against each value as the text writes it; `^` and `$` mark its ends), `present`,\n`missing`; relation (the documents it refers to by a set relation; suggestions do not\ncount): `present` (any), `missing` (none), `is`, `in` (one of the document type ids).",
         "examples": [
           {
             "field": "contact",
@@ -20532,6 +20533,13 @@
             "fact_role": "refers",
             "field": "fact",
             "op": "present"
+          },
+          {
+            "field": "relation",
+            "op": "in",
+            "value": [
+              "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b"
+            ]
           }
         ]
       },
@@ -26896,11 +26904,12 @@
           "signal_facts",
           "judge",
           "fields",
+          "relate",
           "apply_rules",
           "file"
         ],
         "title": "Node",
-        "description": "The nodes of the ingest graph, in a topological order: every node comes after the nodes\nit needs (`GRAPH`). Nodes that do not need each other run side by side.\n\nThe signals each propose metadata from one source: the language model, the trained\nclassifier, similar confirmed documents, facts in the text (names, identifiers). `judge`\ndecides from all of them, `fields` reads the fields of the decided type."
+        "description": "The nodes of the ingest graph, in a topological order: every node comes after the nodes\nit needs (`GRAPH`). Nodes that do not need each other run side by side.\n\nThe signals each propose metadata from one source: the language model, the trained\nclassifier, similar confirmed documents, facts in the text (names, identifiers). `judge`\ndecides from all of them, `fields` reads the fields of the decided type, `relate` finds the\ndocuments it refers to and those that refer to it (issue #145), before the rules see them."
       },
       "NodeReviewOut": {
         "properties": {
@@ -28538,6 +28547,7 @@
           "signal_facts",
           "judge",
           "fields",
+          "relate",
           "apply_rules",
           "file"
         ],

@@ -50,6 +50,7 @@ from lekto.core.ports.patterns import PatternMatcher
 from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services._templates import document_json, webhook_values
+from lekto.core.services.relations import referred_types
 from lekto.core.services.rules.running import (
     PatternKey,
     Prepared,
@@ -358,6 +359,7 @@ class Walker:
         return Facts.of(
             state,
             kept_facts=self.context.kept_facts,
+            referred_types=self.context.referred_types,
             text=self.prepared.text,
             patterns={**self.prepared.patterns, **patterns},
             unverified=self.origin.unverified,
@@ -424,11 +426,14 @@ async def run_rules(
     kept = tuple(await uow.document_facts.of_document(document.id))
     patterns, problems = await field_patterns(matcher, rules, document, kept)
     loaded = await taxonomy(uow, [document, *([] if before is None else [before[0]])], rules)
-    now_facts = facts(document, prepared, patterns, origin, loaded.taxonomy, kept)
+    referred = await referred_types(uow, document)
+    now_facts = facts(document, prepared, patterns, origin, loaded.taxonomy, kept, referred)
     before_facts = None
     if before is not None:
         earlier = kept if kept_before is None else tuple(kept_before)
-        before_facts = facts(before[0], prepared, before[1], origin, loaded.taxonomy, earlier)
+        before_facts = facts(
+            before[0], prepared, before[1], origin, loaded.taxonomy, earlier, referred
+        )
     matched = matches(rules, now_facts, definitions, before=before_facts)
     context = await situation(
         uow,
@@ -446,6 +451,7 @@ async def run_rules(
         applier=applier,
         kept_facts=kept,
         codes=prepared.codes,
+        referred_types=referred,
     )
     walker = Walker(
         uow,

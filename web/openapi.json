@@ -4110,6 +4110,100 @@
         ]
       }
     },
+    "/api/v1/contacts/logos/fetch": {
+      "post": {
+        "tags": [
+          "master data"
+        ],
+        "summary": "Fetch the missing logos",
+        "description": "Admins only. Only with `LEKTO_LOGO_FETCH` (503 otherwise; `GET /pipeline` tells, `logo_fetch`). The worker fetches the logo of every contact without one that has a domain among its identifiers whose fetch has not failed (one that failed is tried again at the contact, `POST /contacts/{id}/logo/fetch`). A contact queued already is not queued twice.",
+        "operationId": "fetch_logos_api_v1_contacts_logos_fetch_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuedOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "database: unreachable"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/contacts/{id}/identifiers": {
       "post": {
         "tags": [
@@ -15595,6 +15689,240 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ReparseOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pipeline/relate": {
+      "post": {
+        "tags": [
+          "pipeline"
+        ],
+        "summary": "Find the relations of every document again",
+        "description": "Admins only. The worker relates every document that is not being processed with the documents it refers to and those that refer to it: for documents from before the node `relate`, and after a document type became a relation target. Relations a person set or rejected stay. A document queued already is not queued twice.",
+        "operationId": "relate_api_v1_pipeline_relate_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuedOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pipeline/render-pages": {
+      "post": {
+        "tags": [
+          "pipeline"
+        ],
+        "summary": "Render the missing page images",
+        "description": "Admins only. The worker renders the page images of every document from before the node `pages` existed (its `pages` node is skipped in its current run). A document queued already is not queued twice.",
+        "operationId": "render_pages_api_v1_pipeline_render_pages_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuedOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pipeline/read-codes": {
+      "post": {
+        "tags": [
+          "pipeline"
+        ],
+        "summary": "Read the codes of every document",
+        "description": "Admins only. The worker reads the codes on the pages of every document whose text was read and that is not being processed, and keeps the identifiers it shows: for documents from before codes were read. A document queued already is not queued twice.",
+        "operationId": "read_codes_api_v1_pipeline_read_codes_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuedOut"
                 }
               }
             }
@@ -28434,6 +28762,20 @@
         ],
         "title": "ProposeContext",
         "description": "`signal_llm`'s request (`external.propose`): the context to propose the document's\nmetadata from. No prompt: the consumer makes its own. Lekto checks the answer as a\nlanguage model's: its structure at once (422), its values against the text and the other\nsignals; a contact turns green only with a second signal or hard evidence."
+      },
+      "QueuedOut": {
+        "properties": {
+          "queued": {
+            "type": "integer",
+            "title": "Queued",
+            "description": "How many were queued now (not those queued already)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "queued"
+        ],
+        "title": "QueuedOut"
       },
       "ReadingOut": {
         "properties": {

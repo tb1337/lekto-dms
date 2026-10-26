@@ -33,6 +33,7 @@ from lekto.adapters.inbound.rest.schemas.master_data import (
     TagOut,
     TagPatch,
 )
+from lekto.adapters.inbound.rest.schemas.pipeline import QueuedOut
 from lekto.adapters.inbound.rest.upload import read_upload, upload_body
 from lekto.core.domain.documents import UNSET, Unset
 from lekto.core.domain.identifiers import Identifier
@@ -239,6 +240,24 @@ contacts = _simple(
         arguments=_contact_arguments,
     )
 )
+
+
+@contacts.post(
+    "/logos/fetch",
+    status_code=202,
+    summary="Fetch the missing logos",
+    description=(
+        ADMINS_ONLY + " Only with `LEKTO_LOGO_FETCH` (503 otherwise; `GET /pipeline` tells, "
+        "`logo_fetch`). The worker fetches the logo of every contact without one that has a "
+        "domain among its identifiers whose fetch has not failed (one that failed is tried "
+        "again at the contact, `POST /contacts/{id}/logo/fetch`). A contact queued already is "
+        "not queued twice."
+    ),
+    response_model=QueuedOut,
+    responses=problem_responses(401, 403, 503),
+)
+async def fetch_logos(user: CurrentUser, context: Context) -> QueuedOut:
+    return QueuedOut(queued=await context.logos.request_fetch_all(user))
 
 
 @contacts.post(

@@ -648,14 +648,19 @@ and the space, the fields node reads the fields of the decided type and the titl
 - **Series and the documents expected next** (issue #145 PR 12, `domain/series.py`,
   `services/expected.py`, `GET /expected`, MCP `list_expected`; `.idea/bezuege.md` decisions
   10–12): documents of one contact and type, and of one contract or customer number where they
-  show one, at least three with a document date at a steady interval. The interval is the
-  median gap, as a calendar step where it is one (weekly to yearly; month ends stay month ends),
-  else in days; the spread is how far a document came off its step (at least 2 days); gaps
-  scattered wider than a third of the interval make no series. Two documents of one day or one
-  period (a correction) count once. The next document is expected one step after the last
+  show one (by value, whatever its kind; a document whose number was not read joins the only
+  numbered series of its contact and type; a person's number names none), at least three with
+  a document date at a steady interval. The interval is the median gap, as a calendar step where
+  it is one (weekly to yearly; month ends stay month ends), else in days (at most 60, four
+  documents, kept exactly). A gap of several steps is missed documents, a one-off within a step
+  is set aside (both only a few); the spread is how far a document came off its step, against
+  the one before or the rhythm (at least 2 days; in a longer history the worst step aside); a
+  spread over a third of the step (a fifth for three documents) makes no series. Two documents
+  of one day or one period (a correction) count once. The next document is expected one step after the last
   (with the next period where the series carries one), overdue once its spread is over, and the
-  series has ended after two missed dates. Derived on each call over the documents the caller
-  reads (`all_users`: an admin's, every user's), nothing stored, no events. The web UI shows
+  series has ended after two missed dates, today as it is in `tz`. Derived on each call over the
+  documents the caller reads (`all_users`: an admin's, every user's), nothing stored, no events;
+  MCP lists the ended ones only with `include_ended`. The web UI shows
   them under "Erwartet": overdue, next 30 days, later, ended.
 - **The kinds of facts** (`IdentifierKind`, issue #145 PR 4; one module per kind in
   `domain/identifiers`): besides IBAN, VAT ID, customer and personnel number, e-mail domain and

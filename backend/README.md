@@ -580,6 +580,22 @@ and the space, the fields node reads the fields of the decided type and the titl
   confirmed documents of how many contacts an identifier stands; `GET /documents/{id}/facts`
   names each identifier's `role` and `origins`. Revision 0047 takes over the rows of
   `document_identifiers` (role of their kind, origin `pattern`).
+- **A person's decisions about facts** (issue #145 PR 6, `services/fact_decisions.py`,
+  `POST /documents/{id}/facts/decisions`): editors of the document's space and admins add a
+  fact the sources did not find, correct its value or role, reject it (it is no fact of the
+  document) or withdraw a decision; the kinds that are a person's alone (tax ID, social
+  security and health insurance number, e-mail address, child benefit number) only admins. A
+  corrected value is two decisions: the old value rejected, the new one corrected, so a run
+  that finds the old one again does not bring it back. Decisions outlast new runs of the facts
+  signal; a rejected fact is no evidence of a contact for it either. Withdrawn, a fact a source
+  found is as found again, one only a person gave goes. An admin who corrects a contact's kind
+  may correct it at the document's contact too (`at_contact`: the old value goes from its
+  identifiers, the new one is entered by hand). The first decision about a document's facts is
+  a verdict on them (`field_verdicts`, field `facts`): corrected or added; confirming a
+  document with facts in the inbox takes them. The facts report says whether the caller
+  decides (`editable`), lists the rejected numbers too and the decided facts the identifiers do
+  not show (`decided`); each fact names its `state`. The API document names each kind's role
+  until a source tells (`x-fact-roles`).
 - **The kinds of facts** (`IdentifierKind`, issue #145 PR 4; one module per kind in
   `domain/identifiers`): besides IBAN, VAT ID, customer and personnel number, e-mail domain and
   a person's numbers, those that point to the contact (creditor ID with its check digits,

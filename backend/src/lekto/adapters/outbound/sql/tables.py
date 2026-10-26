@@ -406,6 +406,26 @@ document_facts = Table(
     Index(None, "kind", "value"),
 )
 
+# A document refers to an older one (`domain.relations`); a relation goes with either document.
+document_relations = Table(
+    "document_relations",
+    metadata,
+    Column("newer_id", Uuid, ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "older_id",
+        Uuid,
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    ),
+    Column("origin", Text, nullable=False),
+    Column("state", Text, nullable=False),
+    Column("evidence", json_type(), nullable=False, server_default="{}"),
+    Column("created_at", UtcDateTime, nullable=False),
+    Column("decided_by", Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
+    Column("decided_at", UtcDateTime, nullable=True),
+)
+
 processing_log = Table(
     "processing_log",
     metadata,

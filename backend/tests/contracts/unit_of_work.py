@@ -49,6 +49,7 @@ from lekto.core.domain.pipeline import (
 )
 from lekto.core.domain.profiles import Profile
 from lekto.core.domain.reasons import ReasonCode, because, written
+from lekto.core.domain.relations import Relation, RelationOrigin, RelationState
 from lekto.core.domain.rules import (
     AddTags,
     Condition,
@@ -1095,6 +1096,60 @@ class UnitOfWorkContract:
             await uow.commit()
         async with uow_factory() as uow:
             assert await uow.document_facts.of_document(document.id) == [iban, vat]
+
+    async def test_relations_between_documents(self, uow_factory: UnitOfWorkFactory) -> None:
+        """A relation from the newer to the older document: found from either end, replaced in
+        place, removed, and gone with either document."""
+        owner, space = await owner_with_space(uow_factory)
+        invoice, reminder, other = (builders.processed(owner, space) for _ in range(3))
+        relation = Relation(
+            newer=reminder.id,
+            older=invoice.id,
+            origin=RelationOrigin.LEKTO,
+            state=RelationState.SUGGESTED,
+            evidence={"kind": "fact", "fact_kind": "invoice_number", "value": "4711"},
+            created_at=NOW,
+        )
+        async with uow_factory() as uow:
+            for document in (invoice, reminder, other):
+                await uow.documents.add(document)
+            await uow.document_relations.put(relation)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.document_relations.of_document(invoice.id) == [relation]
+            assert await uow.document_relations.of_document(reminder.id) == [relation]
+            assert await uow.document_relations.of_document(other.id) == []
+            assert await uow.document_relations.find(reminder.id, invoice.id) == relation
+            assert await uow.document_relations.find(invoice.id, reminder.id) is None
+        accepted = replace(
+            relation,
+            state=RelationState.SET,
+            decided_by=owner.id,
+            decided_at=NOW + timedelta(minutes=1),
+        )
+        later = Relation(
+            newer=other.id,
+            older=invoice.id,
+            origin=RelationOrigin.PERSON,
+            state=RelationState.SET,
+            created_at=NOW + timedelta(minutes=2),
+        )
+        async with uow_factory() as uow:
+            await uow.document_relations.put(accepted)
+            await uow.document_relations.put(later)
+            await uow.commit()
+        async with uow_factory() as uow:
+            # Newest first.
+            assert await uow.document_relations.of_documents([invoice.id]) == [later, accepted]
+            await uow.document_relations.remove(other.id, invoice.id)
+            await uow.document_relations.remove(other.id, reminder.id)  # none: nothing
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.document_relations.of_document(invoice.id) == [accepted]
+            await uow.documents.remove(reminder.id)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.document_relations.of_document(invoice.id) == []
 
     async def test_remove_document(self, uow_factory: UnitOfWorkFactory) -> None:
         owner, space = await owner_with_space(uow_factory)

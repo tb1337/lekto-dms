@@ -41,6 +41,7 @@ from lekto.adapters.outbound.sql.master_data import (
     SqlTagRepository,
 )
 from lekto.adapters.outbound.sql.processing_facts import SqlProcessingFacts
+from lekto.adapters.outbound.sql.relations import SqlDocumentRelationRepository
 from lekto.adapters.outbound.sql.rules import SqlRuleApplicationRepository, SqlRuleRepository
 from lekto.adapters.outbound.sql.spaces import SqlSpaceRepository
 from lekto.adapters.outbound.sql.tasks import SqlTaskRepository
@@ -103,6 +104,7 @@ class SqlUnitOfWork:
         self.processing_log = SqlProcessingLog(self._tx)
         self.processing_facts = SqlProcessingFacts(self._tx)
         self.document_facts = SqlDocumentFactRepository(self._tx)
+        self.document_relations = SqlDocumentRelationRepository(self._tx)
         self.inbox = SqlInboxRepository(self._tx, self.documents)
         self.rules = SqlRuleRepository(self._tx)
         self.rule_applications = SqlRuleApplicationRepository(self._tx)

@@ -76,6 +76,28 @@ export function axisOf(stream: StreamOut): AxisColumn[] {
 	return columns;
 }
 
+/** The month the grid shows at its right edge when it opens: that of the newest document (or
+ * target), or today's when that is later; never an expected date far ahead. The last month
+ * column of the axis up to it, where that month is no column (in a gap); null for an empty
+ * stream. */
+export function openingMonth(stream: StreamOut, axis: AxisColumn[], today: string): string | null {
+	let newest = '';
+	for (const lane of stream.lanes) {
+		for (const document of lane.documents) {
+			newest = newest > monthOf(dayOf(document)) ? newest : monthOf(dayOf(document));
+		}
+		if (lane.target) {
+			newest = newest > monthOf(dayOf(lane.target)) ? newest : monthOf(dayOf(lane.target));
+		}
+	}
+	const wanted = today.slice(0, 7) > newest ? today.slice(0, 7) : newest;
+	let found: string | null = null;
+	for (const column of axis) {
+		if (column.kind === 'month' && column.month <= wanted) found = column.month;
+	}
+	return found;
+}
+
 /** What a lane is called: a series by its contact and type (its first document or number
  * while the names are not at hand), a branch or chain by the type and month of its first
  * document ("Reklamation · Aug. 26"; its title without a type), the rest "Einzeln". */

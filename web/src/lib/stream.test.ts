@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { formatDate } from '#lib/i18n.ts';
 import { m } from '#lib/paraglide/messages.js';
-import { axisOf, inMonth, laneTitle, type StreamLane, type StreamOut } from './stream.ts';
+import {
+	axisOf,
+	inMonth,
+	laneTitle,
+	openingMonth,
+	type StreamLane,
+	type StreamOut
+} from './stream.ts';
 
 const doc = (id: string, date: string, type: string | null = 't1') => ({
 	id,
@@ -95,5 +102,26 @@ describe('the stream', () => {
 	it('names a series by its first document or number while the names are not at hand', () => {
 		expect(laneTitle(lane({ number: 'V-1', documents: [doc('a', '2026-07-15')] }), null)).toBe('a');
 		expect(laneTitle(lane({ number: 'V-1' }), null)).toBe('V-1');
+	});
+
+	it('opens at the newest document or today, not at an expected date far ahead', () => {
+		const found = stream([
+			lane({
+				documents: [doc('a', '2025-01-15'), doc('b', '2026-01-15')],
+				expected: {
+					next_date: '2027-01-15',
+					next_period: null,
+					state: 'later',
+					cadence: 'yearly',
+					spread_days: 2
+				}
+			})
+		]);
+		const axis = axisOf(found); // 2025-01, gap, 2026-01, gap, 2027-01
+		expect(openingMonth(found, axis, '2026-01-20')).toBe('2026-01');
+		// Today lies in the gap before the expected month: the last month column before it.
+		expect(openingMonth(found, axis, '2026-10-26')).toBe('2026-01');
+		expect(openingMonth(found, axis, '2025-06-01')).toBe('2026-01');
+		expect(openingMonth(stream([]), [], '2026-10-26')).toBeNull();
 	});
 });

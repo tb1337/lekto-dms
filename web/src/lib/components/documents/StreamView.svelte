@@ -14,6 +14,7 @@
 	import { formatDate, formatNumber } from '#lib/i18n.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { isoDayLocal } from '#lib/dates.ts';
 	import { phone } from '#lib/phone.svelte.ts';
 	import {
 		axisOf,
@@ -21,6 +22,7 @@
 		inMonth,
 		laneTitle,
 		monthOf,
+		openingMonth,
 		type StreamDocument,
 		type StreamLane,
 		type StreamOut
@@ -63,16 +65,23 @@
 		};
 	});
 
-	// A new stream opens at its newest end, folded lanes closed.
+	const axis = $derived(stream ? axisOf(stream) : []);
+
+	// A new stream opens with the newest document's month (or today's) at the right edge, not
+	// an expected date far ahead; folded lanes closed.
 	$effect(() => {
-		void stream;
+		const month = stream ? openingMonth(stream, axis, isoDayLocal(new Date())) : null;
 		expanded = false;
 		void tick().then(() => {
-			if (scroller) scroller.scrollLeft = scroller.scrollWidth;
+			if (!scroller) return;
+			const column = month ? scroller.querySelector<HTMLElement>(`[data-month="${month}"]`) : null;
+			scroller.scrollLeft = column
+				? column.getBoundingClientRect().right -
+					scroller.getBoundingClientRect().left -
+					scroller.clientWidth
+				: scroller.scrollWidth;
 		});
 	});
-
-	const axis = $derived(stream ? axisOf(stream) : []);
 	// The lane names, then one column per month (a narrow one per gap).
 	const columns = $derived(
 		`13rem ${axis.map((column) => (column.kind === 'gap' ? '3rem' : 'minmax(7.5rem, 1fr)')).join(' ')}`
@@ -226,6 +235,7 @@
 								<div
 									role="columnheader"
 									class="border-b border-l px-2 py-2 text-xs font-semibold text-muted-foreground"
+									data-month={column.month}
 								>
 									{monthLabel(column.month)}
 								</div>

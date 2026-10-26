@@ -73,7 +73,7 @@ async function signIn(page: Page) {
 	await page.getByLabel('Username').fill(ADMIN);
 	await page.getByLabel('Password').fill(ADMIN_PASSWORD);
 	await page.getByRole('button', { name: 'Sign in' }).click();
-	await page.waitForURL('**/ui/documents');
+	await page.waitForURL('**/ui/inbox');
 }
 
 test('a rule is built, dry-run, applied, changed and deleted', async ({ page }) => {
@@ -97,15 +97,15 @@ test('a rule is built, dry-run, applied, changed and deleted', async ({ page }) 
 	await page.getByRole('textbox', { name: 'Name' }).fill(NAME);
 	const root = page.getByRole('group', { name: 'Conditions' });
 	// All of: channel is one of web, and a group (any): contact is ours, or text contains NAME.
-	await root.getByLabel('Field').first().selectOption('channel');
+	await root.getByLabel('Subject').first().selectOption('channel');
 	await root.getByLabel('Comparison').first().selectOption('in');
 	await root.getByRole('group', { name: 'Value' }).getByLabel('Web UI').check();
 	await root.getByRole('button', { name: 'Add group' }).last().click();
 	const group = root.getByRole('group', { name: 'Group' });
-	await group.getByLabel('Field').selectOption('contact');
+	await group.getByLabel('Subject').selectOption('contact');
 	await group.getByLabel('Value').selectOption({ label: `${NAME} contact` });
 	await group.getByRole('button', { name: 'Add condition' }).click();
-	await group.getByLabel('Field').last().selectOption('text');
+	await group.getByLabel('Subject').last().selectOption('text');
 	await group.getByLabel('Value').last().fill(NAME);
 	await page.getByLabel('Add action').selectOption('add_tags');
 	await page.getByRole('group', { name: 'Add tags' }).getByLabel(`${NAME} tag`).check();

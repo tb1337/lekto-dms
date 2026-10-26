@@ -15,22 +15,21 @@
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import EditButton from '#lib/components/EditButton.svelte';
 	import SecretDialog from '#lib/components/SecretDialog.svelte';
-	import WebhookDialog from '#lib/components/WebhookDialog.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
-	import { describeError, reportError } from '#lib/errors.ts';
+	import { describeError } from '#lib/errors.ts';
 	import { userName, type UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { canManageWebhook } from '#lib/permissions.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import { sendTest } from '#lib/webhooks.ts';
 
 	type Webhook = components['schemas']['WebhookOut'];
 
 	let hooks = $state<Webhook[] | null>(null);
 	let users = $state<UserName[]>([]);
 	let problem = $state<string | null>(null);
-	let editing = $state<Webhook | 'new' | null>(null);
 	let removing = $state<Webhook | null>(null);
 	let renewing = $state<Webhook | null>(null);
 	let secret = $state<{ webhook: string; value: string } | null>(null);
@@ -70,17 +69,7 @@
 	async function test(hook: Webhook) {
 		busy = true;
 		try {
-			const delivery = await unwrap(
-				api.POST('/api/v1/webhooks/{id}/test', { params: { path: { id: hook.id } } })
-			);
-			if (delivery.outcome === 'delivered')
-				toast.success(m.webhook_test_ok({ status: delivery.status_code ?? 0 }));
-			else
-				toast.error(
-					m.webhook_test_failed({ reason: delivery.error ?? String(delivery.status_code ?? '') })
-				);
-		} catch (error) {
-			reportError(error);
+			await sendTest(hook.id);
 		} finally {
 			busy = false;
 		}
@@ -92,10 +81,10 @@
 <div class="flex flex-col gap-6">
 	<div class="flex flex-wrap items-center justify-between gap-3">
 		<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_webhooks()}</h1>
-		<Button onclick={() => (editing = 'new')}>
+		<a href="{BASE}/webhooks/new" class={cn(buttonVariants())}>
 			<Plus aria-hidden="true" />
 			{m.webhook_new()}
-		</Button>
+		</a>
 	</div>
 
 	{#if problem}
@@ -175,7 +164,7 @@
 					</div>
 					<EditButton
 						label={m.webhook_edit_named({ name: hook.name })}
-						onclick={() => (editing = hook)}
+						href="{BASE}/webhooks/{hook.id}/edit"
 					/>
 				</li>
 			{/each}
@@ -183,14 +172,6 @@
 	{/if}
 </div>
 
-<WebhookDialog
-	bind:open={() => editing !== null, (open) => !open && (editing = null)}
-	webhook={editing === 'new' ? null : editing}
-	onsaved={load}
-	oncreated={(created) => {
-		if (created.secret) secret = { webhook: created.name, value: created.secret };
-	}}
-/>
 <ConfirmDialog
 	bind:open={() => removing !== null, (open) => !open && (removing = null)}
 	title={m.webhook_delete({ name: removing?.name ?? '' })}

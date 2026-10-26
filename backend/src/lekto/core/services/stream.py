@@ -19,13 +19,13 @@ from lekto.core.domain.documents import Document
 from lekto.core.domain.ids import DocumentId, DocumentTypeId, UserId
 from lekto.core.domain.reasons import Action
 from lekto.core.domain.relations import Relation, RelationState
-from lekto.core.domain.series import Dated, Series, SeriesKey, SeriesState, series_of
+from lekto.core.domain.series import Dated, Series, SeriesState, series_of
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from lekto.core.services._access import check_fact_filter, load_lister
 from lekto.core.services._tags import expanded
-from lekto.core.services.expected import number, period_of
+from lekto.core.services.expected import period_of, series_groups
 
 LIMIT = 500
 """The most documents a stream shows: the newest."""
@@ -114,18 +114,11 @@ def _lanes(
         linked[relation.newer].add(relation.older)
         linked[relation.older].add(relation.newer)
     # Series.
-    groups: dict[SeriesKey, list[Document]] = {}
-    for document in documents:
-        if (
-            document.contact_id is None
-            or document.document_type_id is None
-            or document.document_date is None
-        ):
-            continue
-        key = SeriesKey(
-            document.contact_id, document.document_type_id, number(facts.get(document.id, []))
-        )
-        groups.setdefault(key, []).append(document)
+    # The series as "Erwartet" sees them (`expected.series_groups`).
+    groups = {
+        key: [by_id[item.id] for item in dated]
+        for key, dated in series_groups(documents, facts).items()
+    }
     used: set[DocumentId] = set()
     series_lanes: list[Lane] = []
     for key, members in groups.items():

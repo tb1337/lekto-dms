@@ -57,6 +57,7 @@ from lekto.core.services._identifiers import claim_identifiers
 from lekto.core.services.classification.kept_facts import TextFacts, facts_lock, refresh_facts
 from lekto.core.services.classification.signals import model_facts
 from lekto.core.services.objects import load_text
+from lekto.core.services.relating import queue_relate
 
 
 class FactAction(StrEnum):
@@ -177,6 +178,7 @@ async def decide_fact(
             await uow.outbox.add(
                 [DocumentUpdated(document_id=id, occurred_at=now, fields=(FACTS,))]
             )
+            await queue_relate(uow, id, now)  # the numbers its relations rest on changed
             if after is not None:
                 await after(uow, user, document, tuple(facts.values()))
         if verdict is not None:

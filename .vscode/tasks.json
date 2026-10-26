@@ -130,6 +130,13 @@
 			"problemMatcher": []
 		},
 		{
+			"label": "Lekto: Relate",
+			"detail": "Queue finding the relations of every document, e.g. after marking a relation target (relate)",
+			"type": "shell",
+			"command": "cd backend && uv run lekto --env-file ../.devcontainer/dev.local.env relate",
+			"problemMatcher": []
+		},
+		{
 			"label": "Lekto: Fetch logos",
 			"detail": "Queue fetching the logos of contacts without one from their websites (fetch-logos; needs LEKTO_LOGO_FETCH=true)",
 			"type": "shell",

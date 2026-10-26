@@ -111,6 +111,7 @@ from lekto.core.services.nodes import OcrNode, PagesNode, ParseNode
 from lekto.core.services.oidc import OidcService
 from lekto.core.services.pipeline import NodeExecutor, PipelineService
 from lekto.core.services.profiles import ProfileService
+from lekto.core.services.relating import RelateNode
 from lekto.core.services.relations import RelationService
 from lekto.core.services.rules import RuleService
 from lekto.core.services.rules.changes import ChangeRules
@@ -704,6 +705,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             locator=container.locator,
             desk=desk,
         ),
+        Node.RELATE: RelateNode(),
         Node.APPLY_RULES: ApplyRulesNode(
             uow,
             store,

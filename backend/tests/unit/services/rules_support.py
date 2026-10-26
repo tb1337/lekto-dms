@@ -35,6 +35,7 @@ from lekto.core.services.pipeline import (
     NodeExecutor,
     PipelineService,
 )
+from lekto.core.services.relating import RelateNode
 from lekto.core.services.rules import RuleService
 from lekto.core.services.rules.changes import ChangeRules
 from lekto.core.services.rules.nodes import ApplyRulesNode, FileNode
@@ -246,6 +247,7 @@ class RuleWorld:
         facts: NodeExecutor | None = None,
     ) -> PipelineService:
         executors: dict[Node, NodeExecutor] = {
+            Node.RELATE: RelateNode(),
             Node.APPLY_RULES: ApplyRulesNode(
                 self.world.uow,
                 self.world.object_store,

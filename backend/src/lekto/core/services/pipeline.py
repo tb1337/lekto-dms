@@ -22,6 +22,7 @@ from lekto.core.domain.documents import (
     received_at,
 )
 from lekto.core.domain.errors import (
+    ConcurrencyError,
     ConflictError,
     InvalidTransitionError,
     NotFoundError,
@@ -90,6 +91,7 @@ from lekto.core.services._jobs import (
     NodeJob,
     document_payload,
     enqueue_nodes,
+    lost,
     payload_document,
     retrying,
 )
@@ -106,6 +108,7 @@ from lekto.core.services.inbox import (
 )
 from lekto.core.services.master_data import learn_alias
 from lekto.core.services.objects import original_key
+from lekto.core.services.relating import RELATE_JOB, RELATIONS_LOCK, queue_relate, relate
 from lekto.core.services.rules.running import corrected_fields, person_record, space_choice
 from lekto.core.services.tasks.settling import Delegation, cancel_tasks
 
@@ -677,6 +680,8 @@ class PipelineService:
             result = replace(result, output={**result.output, **person, **chosen})
             await self._log(uow, id, Node.APPLY_RULES, run, result, now, now)
             access = document_access(user, document, source if target is None else target)
+            # The person decided what its relations rest on: they are found again.
+            await queue_relate(uow, document.id, now)
             await self._restart(uow, document)
         return None if access is None else DocumentView(document, access)
 
@@ -823,12 +828,17 @@ class PipelineService:
         running and its result changes neither the status nor the lane.
         """
         return await self._jobs.run_next(
-            [NODE_JOB, CATCH_UP_JOB, REPARSE_JOB, FACTS_JOB], self._lease, self._run_claimed
+            [NODE_JOB, CATCH_UP_JOB, REPARSE_JOB, FACTS_JOB, RELATE_JOB],
+            self._lease,
+            self._run_claimed,
         )
 
     async def _run_claimed(self, job: Job) -> None:
         if job.kind == FACTS_JOB:
             await self._read_facts(job)
+            return
+        if job.kind == RELATE_JOB:
+            await self._relate_aside(job)
             return
         try:
             target = NodeJob.from_json(job.payload)
@@ -938,6 +948,40 @@ class PipelineService:
                 await uow.outbox.add([updated])
 
         await self._jobs.end(job, also=apply)
+
+    async def _relate_aside(self, job: Job) -> None:
+        """Find a document's relations outside processing (`relating.RELATE_JOB`); nothing is
+        recorded in its log. An attempt that raises runs again later, like a node."""
+        try:
+            document_id = payload_document(job.payload)
+        except (KeyError, ValueError) as error:
+            await self._jobs.invalid(job, error)
+            return
+        try:
+            async with self._uow() as uow:
+                await uow.lock(RELATIONS_LOCK)
+                document = await uow.documents.find(document_id)
+                now = self._clock.now()
+                made = [] if document is None else await relate(uow, document, now)
+                await uow.jobs.complete(job, now=now, result={"relations": len(made)})
+                await uow.commit()
+        except ConcurrencyError:
+            lost(job)
+        except Exception as error:
+            await self._failed_aside(job, "finding the relations failed", document_id, error)
+
+    async def request_relations(self) -> int:
+        """Queue finding the relations of every document that is not being processed (the
+        command `relate`): for documents from before the node `relate`, and after a relation
+        target was marked. Returns how many were queued; one queued already is not queued
+        twice."""
+
+        def relations(document: Document) -> tuple[JsonObject, str] | None:
+            if document.processing.status is ProcessingStatus.PROCESSING:
+                return None
+            return document_payload(document.id), f"{document.id}:relate"
+
+        return await self._queue_each(RELATE_JOB, relations)
 
     async def _reparse(self, job: Job, document_id: DocumentId, run: int) -> None:
         """Read a document's text again (`reparse`) and record the reading beside processing.

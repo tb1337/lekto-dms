@@ -23,6 +23,7 @@ from lekto.adapters.outbound.memory.database import (
     CONTACTS,
     CREDENTIALS,
     DOCUMENT_FACTS,
+    DOCUMENT_RELATIONS,
     DOCUMENT_TYPES,
     DOCUMENTS,
     EXTERNAL_IDENTITIES,
@@ -40,8 +41,10 @@ from lekto.adapters.outbound.memory.database import (
     WEBHOOKS,
     FactsRow,
     MemoryDatabase,
+    RelationRow,
     SeenMark,
     Table,
+    relation_row_id,
 )
 from lekto.adapters.outbound.memory.identity import (
     MemoryApiTokenRepository,
@@ -97,6 +100,7 @@ from lekto.core.domain.permissions import Reach
 from lekto.core.domain.pipeline import NodeRun
 from lekto.core.domain.profiles import Profile
 from lekto.core.domain.reasons import ReasonCode, because
+from lekto.core.domain.relations import Relation
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import User
 from lekto.core.domain.validation import name_key, require_utc
@@ -145,6 +149,7 @@ class MemoryUnitOfWork:
         self.processing_log = MemoryProcessingLog(self)
         self.processing_facts = MemoryProcessingFacts(self)
         self.document_facts = MemoryDocumentFactRepository(self)
+        self.document_relations = MemoryDocumentRelationRepository(self)
         self.inbox = MemoryInboxRepository(self)
         self.rules = MemoryRuleRepository(self, RULES)
         self.rule_applications = MemoryRuleApplicationRepository(self, RULE_APPLICATIONS)
@@ -617,6 +622,46 @@ class MemoryProcessingLog:
             return []
         entries = [*self._uow._db.processing_log, *self._uow._log]
         return [entry for entry in entries if entry.document_id == document]
+
+
+class MemoryDocumentRelationRepository:
+    def __init__(self, uow: MemoryUnitOfWork) -> None:
+        self._uow = uow
+
+    def _live(self) -> list[Relation]:
+        """The relations whose documents are both there (the database cascades)."""
+        return [
+            row.relation
+            for row in self._uow._rows(DOCUMENT_RELATIONS)
+            if self._uow._row(DOCUMENTS, row.relation.newer) is not _REMOVED
+            and self._uow._row(DOCUMENTS, row.relation.older) is not _REMOVED
+        ]
+
+    async def of_document(self, document: DocumentId) -> list[Relation]:
+        return await self.of_documents([document])
+
+    async def of_documents(self, documents: Collection[DocumentId]) -> list[Relation]:
+        self._uow._check_open()
+        wanted = set(documents)
+        found = [item for item in self._live() if item.newer in wanted or item.older in wanted]
+        return sorted(found, key=lambda item: (item.created_at, item.key), reverse=True)
+
+    async def find(self, newer: DocumentId, older: DocumentId) -> Relation | None:
+        self._uow._check_open()
+        return next((item for item in self._live() if item.key == (newer, older)), None)
+
+    async def put(self, relation: Relation) -> None:
+        self._uow._check_open()
+        id = relation_row_id(relation.newer, relation.older)
+        current = self._uow._row(DOCUMENT_RELATIONS, id)
+        version = 1 if current is _REMOVED else current.version + 1
+        self._uow._write(DOCUMENT_RELATIONS, id, RelationRow(id, relation, version))
+
+    async def remove(self, newer: DocumentId, older: DocumentId) -> None:
+        self._uow._check_open()
+        id = relation_row_id(newer, older)
+        if self._uow._row(DOCUMENT_RELATIONS, id) is not _REMOVED:
+            self._uow._write(DOCUMENT_RELATIONS, id, _REMOVED)
 
 
 class MemoryDocumentFactRepository:

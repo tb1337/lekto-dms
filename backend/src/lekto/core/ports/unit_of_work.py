@@ -15,6 +15,7 @@ from lekto.core.ports.repository import (
     ClassifierModelRepository,
     ContactRepository,
     DocumentFactRepository,
+    DocumentRelationRepository,
     DocumentRepository,
     DocumentTypeRepository,
     FieldDefinitionRepository,
@@ -73,6 +74,9 @@ class UnitOfWork(Protocol):
     def processing_facts(self) -> ProcessingFacts: ...
     @property
     def document_facts(self) -> DocumentFactRepository: ...
+
+    @property
+    def document_relations(self) -> DocumentRelationRepository: ...
     @property
     def inbox(self) -> InboxRepository: ...
     @property

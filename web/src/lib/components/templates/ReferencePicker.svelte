@@ -23,8 +23,21 @@
 	// search index: the titles of the newest).
 	let {
 		value = $bindable(null),
-		documentType = undefined
-	}: { value?: Reference | null; documentType?: string | null } = $props();
+		documentType = undefined,
+		preselect = true,
+		label = undefined,
+		exclude = undefined
+	}: {
+		value?: Reference | null;
+		documentType?: string | null;
+		/** Whether the newest document is chosen at first (a template's example); without, the
+		 * newest are only fetched once the list opens. */
+		preselect?: boolean;
+		/** What the trigger says (and is named) while nothing is chosen. */
+		label?: string;
+		/** A document not to offer (the one being related). */
+		exclude?: string;
+	} = $props();
 
 	let open = $state(false);
 	let query = $state('');
@@ -39,6 +52,7 @@
 
 	$effect(() => {
 		const kind = documentType ?? null;
+		if (!preselect && !open) return;
 		let current = true;
 		const newest = async (type: string | null) =>
 			(
@@ -54,7 +68,7 @@
 				if (items.length === 0) items = await newest(null);
 				if (!current) return;
 				recent = items;
-				if (untrack(() => value) === null) value = items[0] ?? null;
+				if (preselect && untrack(() => value) === null) value = items[0] ?? null;
 			} catch {
 				if (current) recent = [];
 			}
@@ -94,7 +108,7 @@
 		};
 	});
 
-	const shown = $derived(found ?? recent);
+	const shown = $derived((found ?? recent).filter((item) => item.id !== exclude));
 
 	function choose(item: Reference) {
 		value = item;
@@ -106,9 +120,9 @@
 <Popover.Root bind:open>
 	<Popover.Trigger
 		class={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-between font-normal')}
-		aria-label={m.template_reference_choose()}
+		aria-label={value ? m.template_reference_choose() : (label ?? m.template_reference_choose())}
 	>
-		<span class="truncate">{value?.title ?? m.template_reference_none()}</span>
+		<span class="truncate">{value?.title ?? label ?? m.template_reference_none()}</span>
 		<ChevronsUpDown class="opacity-50" aria-hidden="true" />
 	</Popover.Trigger>
 	<Popover.Content class="w-(--bits-popover-anchor-width) min-w-64 p-0" align="start">

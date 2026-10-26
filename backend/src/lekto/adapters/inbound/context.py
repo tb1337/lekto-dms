@@ -26,6 +26,7 @@ from lekto.core.services.master_data import MasterDataService
 from lekto.core.services.oidc import OidcService
 from lekto.core.services.pipeline import PipelineService
 from lekto.core.services.profiles import ProfileService
+from lekto.core.services.relations import RelationService
 from lekto.core.services.rules import RuleService
 from lekto.core.services.rules.retroactive import RuleApplicationService
 from lekto.core.services.search import SearchService
@@ -57,6 +58,7 @@ class ApiContext:
     webhook_delivery: WebhookDeliveryService
     tasks: TaskService
     lenses: LensService
+    relations: RelationService
     jobs: JobsService
     automation: AutomationService
     event_bus: EventBus

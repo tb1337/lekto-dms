@@ -1850,6 +1850,14 @@ Stand: Vorschlag Creamy, 25.10.2026, zur Freigabe durch Tobi. Release offen. Sam
 - Nicht behoben: `fact_list` ohne Filter schreibt Python-Darstellungen; ein Muster wie `(?V1)x` gibt beim Speichern 500 (`regex`-Adapter fängt nur `regex.error`, älter als dieser PR).
 - Offen für Tobi: Ob die Entscheidung über einen Fakt Änderungsregeln (und damit Webhooks) auslösen soll; ob Regeln auf Fakten einer Person wirklich nur für Admins sind.
 
+**PR 9 – Umsetzung und Review (26.10.2026, `feature/document-relations`, PR #156, gestapelt auf #155):**
+
+- Tabelle `document_relations` (Revision 0048; Paar, Herkunft, Stand, Beleg, wer zuletzt entschied), Port, SQL- und Speicher-Adapter, Vertragstest auf Speicher, SQLite, Postgres. Dienst: sehen nur mit Leserecht an beiden Enden, setzen, annehmen, verwerfen, entfernen mit Schreibrecht am neueren und Leserecht am älteren; ein verworfener Vorschlag bleibt als verworfen stehen; Urteil `relations` in `field_verdicts`. REST `GET`/`POST /documents/{id}/relations`, `DELETE …/relations/{other_id}`; MCP `get_document` und `update_metadata` nennen die sichtbaren Bezüge, setzen keine. Web: Karte „Bezüge“ unter den Fakten mit drei Gruppen, Beleg, Annehmen, Verwerfen, Entfernen und Auswahl eines Dokuments.
+- Geprüft: 4556 Unit- und Integrationstests, 1211 Vitest (Exit 0), Browser hell, dunkel, Handybreite.
+- Review durch einen separaten Agenten, behoben: `pnpm test` endete mit Exit 1 (drei unbehandelte Fehler, die Dokumentansicht im Test kannte die Bezüge nicht; die Zählung „1211 passed“ hatte es verdeckt, Claude prüft seitdem den Exit-Code); nach einem geänderten Dokumentdatum war ein Bezug nicht mehr zu entfernen und ließ sich doppelt setzen (jetzt Paar in beiden Reihenfolgen, Richtung und Rechte nach den Daten von jetzt); verwerfen, von Hand setzen, entfernen vergaß das Verwerfen (ein Bezug von Lekto bleibt Lektos); `update_metadata` lieferte leere Bezüge; der Automatisierungsreiter zeigte „relations“ roh; die Auswahl hieß für Screenreader anders, als sie aussah, bot das Dokument selbst an und lud ungefragt; „Verwerfen“ meldete „entfernt“; nach einem Fehler blieb die Karte veraltet.
+- Nicht behoben: je Bezug eine oder zwei Abfragen (N+1); der Zeitraum im Beleg roh in ISO.
+- Offen für Tobi: Darf eine Person einen von ihr verworfenen Vorschlag von Lekto wieder setzen und bleibt er dann Lektos (so umgesetzt)?
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

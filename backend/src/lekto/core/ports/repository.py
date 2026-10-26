@@ -54,6 +54,7 @@ from lekto.core.domain.master_data import Contact, DocumentType, Tag, TagScope
 from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane, Node, NodeRun
 from lekto.core.domain.profiles import Profile
+from lekto.core.domain.relations import Relation
 from lekto.core.domain.rules import Rule, RuleApplication, RuleVersion
 from lekto.core.domain.sorting import sort_key
 from lekto.core.domain.spaces import Space
@@ -452,6 +453,29 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
     ) -> bool:
         """Whether any document matches all given criteria, regardless of who may read it
         (for checks before deleting what documents refer to). At least one is required."""
+        ...
+
+
+class DocumentRelationRepository(Protocol):
+    """The relations between documents (`domain.relations`)."""
+
+    async def of_document(self, document: DocumentId) -> list[Relation]:
+        """The relations of `document` in both directions, rejected ones included; the newest
+        first by when they were made."""
+        ...
+
+    async def of_documents(self, documents: Collection[DocumentId]) -> list[Relation]:
+        """The relations of any of `documents`, in both directions, rejected ones included."""
+        ...
+
+    async def find(self, newer: DocumentId, older: DocumentId) -> Relation | None: ...
+
+    async def put(self, relation: Relation) -> None:
+        """Keep `relation`, in place of one between the same documents."""
+        ...
+
+    async def remove(self, newer: DocumentId, older: DocumentId) -> None:
+        """Forget the relation; nothing if there is none."""
         ...
 
 

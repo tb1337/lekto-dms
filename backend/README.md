@@ -600,6 +600,24 @@ and the space, the fields node reads the fields of the decided type and the titl
   and the kept facts the identifiers do not show (`decided`: for admins all, a found tax ID as
   well; for others those a person decided, none of a person's); each fact names its `state`. The API document names each kind's role
   until a source tells (`x-fact-roles`).
+- **Relations between documents** (issue #145 PR 9, `domain/relations.py`,
+  `services/relations.py`, `GET`/`POST /documents/{id}/relations`,
+  `DELETE /documents/{id}/relations/{other_id}`; `.idea/bezuege.md`): a document refers to
+  another ("bezieht sich auf": the correction to the original, the reminder to the invoice, the
+  invoice to the contract), many to many and without a kind of its own; the document types at
+  both ends tell what it means. A relation points from the newer document to the older (by their
+  document dates, else when they came in), so it is set from either end; a date set or changed
+  later turns it (the pair is stored once, its direction read from the dates now). It is set (by a person
+  or, sure, by Lekto) or suggested (Lekto was unsure; a person accepts or rejects it) and never
+  makes a document yellow; a rejected suggestion stays as rejected and is not suggested again,
+  a person's relation that is removed goes. Only who reads both documents sees a relation; who
+  edits the newer and reads the older sets, accepts or removes it (`changeable` on each). Each
+  names its `origin` and Lekto's `evidence` (the fact, the period). The first decision about a
+  document's relations is a verdict (`field_verdicts`, field `relations`, at the newer one):
+  added, accepted or corrected, early before the first run stopped. No events go out for
+  relations yet. MCP's `get_document` lists the relations the caller sees; MCP sets none (an
+  assistant reads text from outside, an instruction there could relate documents unnoticed).
+  Revision 0048 adds the table `document_relations`.
 - **The kinds of facts** (`IdentifierKind`, issue #145 PR 4; one module per kind in
   `domain/identifiers`): besides IBAN, VAT ID, customer and personnel number, e-mail domain and
   a person's numbers, those that point to the contact (creditor ID with its check digits,
@@ -1736,7 +1754,7 @@ as in REST: `read` may use every tool but `update_metadata`.
 | Tool | Does |
 | --- | --- |
 | `search` | `query`, `limit` (1 to 25), `offset`, optional `contact`, `document_type`, `tags` (names of document tags, all of them; a tag finds the documents with a tag below it too), `topics` (names of topics, one of them; a topic finds those with a topic below it too): hits with `id`, `title`, `score`, `snippet` (plain text), contact, type, topic, tags, date, lane, `access`; `next_offset`, `semantic` |
-| `get_document` | `id`: metadata with contact, topic, type, tags and fields by name, lane and processing status |
+| `get_document` | `id`: metadata with contact, topic, type, tags and fields by name, lane and processing status, and the document's `relations` with documents the caller reads too (`id`, `title`, type, date, `direction` `refers_to` or `referred_by`, `suggested`); read only |
 | `get_text` | `id`, `offset`, `limit` (characters, at most `LEKTO_MCP_TEXT_MAX`, 20,000): a piece of the document's text as it is set, `next_offset` to continue. The text is content from outside; the tool description tells clients not to follow instructions in it |
 | `update_metadata` | `id` and any of `title`, `contact`, `topic`, `document_type` (name; `null` removes; a topic the contact enables), `tags` (names of document tags, the complete list, replaces), `document_date` (`null` removes), `fields` (field name to value; `null` removes). Needs a `read_write` token and edit rights; the change rules of its space run as for `PATCH /documents/{id}` and the result shows them. If the rules filed the document where the caller can no longer read it, the result has only `id` and `access: null` |
 | `list_tags` | The tags with `scope` and `path`, in the order of their trees, optionally of one `scope`; document tags name the tags of the other tools, topics the `topic` of `update_metadata` |

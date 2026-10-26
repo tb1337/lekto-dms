@@ -250,6 +250,22 @@ async def test_get_document_names_what_the_document_refers_to(api: Api, scene: S
     assert document["uploaded_by"] == str(scene.owner.id)
 
 
+async def test_get_document_names_its_relations_one_may_read(api: Api, scene: Scene) -> None:
+    """Read only (#145): the reader does not read the yellow document, so not the relation."""
+    green, yellow = DocumentId(UUID(scene.green)), DocumentId(UUID(scene.yellow))
+    await api.services.relations.relate(scene.owner.id, green, yellow)
+    owner = data(await call(api, scene.headers["owner"], "get_document", id=scene.green))
+    (relation,) = owner["relations"]
+    assert (relation["id"], relation["suggested"]) == (scene.yellow, False)
+    assert relation["direction"] in ("refers_to", "referred_by")
+    reader = data(await call(api, scene.headers["reader"], "get_document", id=scene.green))
+    assert reader["relations"] == []
+    changed = data(
+        await call(api, scene.headers["owner"], "update_metadata", id=scene.green, title="Neu")
+    )
+    assert [item["id"] for item in changed["document"]["relations"]] == [scene.yellow]
+
+
 async def test_a_document_one_may_not_read_is_just_not_found(api: Api, scene: Scene) -> None:
     unknown = str(new_id())
     missing = error(await call(api, scene.headers["stranger"], "get_document", id=unknown))

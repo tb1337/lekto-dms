@@ -111,6 +111,7 @@ from lekto.core.services.nodes import OcrNode, PagesNode, ParseNode
 from lekto.core.services.oidc import OidcService
 from lekto.core.services.pipeline import NodeExecutor, PipelineService
 from lekto.core.services.profiles import ProfileService
+from lekto.core.services.relations import RelationService
 from lekto.core.services.rules import RuleService
 from lekto.core.services.rules.changes import ChangeRules
 from lekto.core.services.rules.nodes import ApplyRulesNode, FileNode
@@ -491,6 +492,7 @@ class Services:
     webhook_delivery: WebhookDeliveryService
     tasks: TaskService
     lenses: LensService
+    relations: RelationService
     documents: DocumentService
     inbox: InboxService
     pipeline: PipelineService
@@ -767,6 +769,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             uow, clock, container.cipher, webhook_policy_of(settings), container.templates
         ),
         lenses=LensService(uow, clock),
+        relations=RelationService(uow, clock),
         tasks=TaskService(uow, clock, container.cipher, store),
         jobs=JobsService(uow, clock, retention=settings.retention),
         automation=AutomationService(uow, clock),

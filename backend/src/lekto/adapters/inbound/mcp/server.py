@@ -31,6 +31,7 @@ from lekto.core.domain.errors import DomainError, SearchUnavailableError, Valida
 from lekto.core.domain.fields import FieldDefinition, field_from_json
 from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
 from lekto.core.domain.master_data import TagScope
+from lekto.core.domain.relations import RelationState
 from lekto.core.domain.sorting import sort_key
 from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.tag_tree import TagTree
@@ -58,6 +59,20 @@ CHANGES = ToolAnnotations(
 class NameRef(BaseModel):
     id: UUID
     name: str
+
+
+class RelationRef(BaseModel):
+    """A relation of the document with another you may read (`bezieht sich auf`)."""
+
+    id: UUID = Field(description="The other document.")
+    title: str
+    document_type: NameRef | None
+    document_date: date | None
+    direction: str = Field(
+        description="refers_to (this document refers to it) or referred_by (it refers to this "
+        "document)."
+    )
+    suggested: bool = Field(description="Lekto suggests it; a person has not decided it.")
 
 
 class DocumentOut(BaseModel):
@@ -90,6 +105,10 @@ class DocumentOut(BaseModel):
     )
     created_at: datetime
     updated_at: datetime
+    relations: list[RelationRef] = Field(
+        default_factory=list,
+        description="Its relations with documents you may read too; read only (#145).",
+    )
 
 
 class SearchItem(BaseModel):
@@ -251,6 +270,24 @@ def document_out(document: Document, access: SpaceRole, names: Names) -> Documen
     )
 
 
+async def relation_refs(
+    context: ApiContext, user: UserId, id: DocumentId, names: Names
+) -> list[RelationRef]:
+    """The document's relations with documents `user` reads too, as the tools give them."""
+    related = await context.relations.relations(user, id)
+    return [
+        RelationRef(
+            id=item.other.id,
+            title=item.other.title,
+            document_type=names.document_type(item.other.document_type_id),
+            document_date=item.other.document_date,
+            direction=item.direction.value,
+            suggested=item.relation.state is RelationState.SUGGESTED,
+        )
+        for item in (*related.refers_to, *related.referred_by, *related.suggested)
+    ]
+
+
 def principal_of(ctx: Context) -> Principal:
     """The caller, put there by the bearer check in front of the server."""
     request = ctx.request_context.request
@@ -355,14 +392,17 @@ def build_server(context: ApiContext) -> MCPServer:
     @server.tool(
         name="get_document",
         description="The metadata of a document you may read: title, contact, type, topic, "
-        "tags, date, fields and processing state.",
+        "tags, date, fields, processing state, and its relations with documents you may read.",
         annotations=READ_ONLY,
     )
     @guarded
     async def get_document(ctx: Context, id: UUID) -> DocumentOut:
         user = principal_of(ctx).id
         view = await context.documents.view(user, DocumentId(id))
-        return document_out(view.document, view.access, await Names.load(context, user))
+        names = await Names.load(context, user)
+        out = document_out(view.document, view.access, names)
+        out.relations = await relation_refs(context, user, DocumentId(id), names)
+        return out
 
     @server.tool(
         name="get_text",
@@ -454,7 +494,9 @@ def build_server(context: ApiContext) -> MCPServer:
             id=change.document.id,
             access=change.access,
             # A change of a document leaves the master data as it is.
-            document=document_out(change.document, change.access, names),
+            document=document_out(change.document, change.access, names).model_copy(
+                update={"relations": await relation_refs(context, user, change.document.id, names)}
+            ),
             rules=(
                 None
                 if change.rules is None

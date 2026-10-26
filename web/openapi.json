@@ -17596,6 +17596,422 @@
         ]
       }
     },
+    "/api/v1/documents/{id}/relations": {
+      "get": {
+        "tags": [
+          "relations"
+        ],
+        "summary": "The relations of a document",
+        "description": "Needs read access. The relations whose other end the caller reads. A relation points from the newer document to the older one (by their document dates, else when they came in). Only who reads both documents sees it; who edits the newer and reads the older sets, accepts or removes it (403 otherwise).",
+        "operationId": "relations_api_v1_documents__id__relations_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "relations"
+        ],
+        "summary": "Relate a document with another",
+        "description": "Sets the relation between the two documents, or accepts Lekto's suggestion of it. A relation points from the newer document to the older one (by their document dates, else when they came in). Only who reads both documents sees it; who edits the newer and reads the older sets, accepts or removes it (403 otherwise). 409 if it is set already or both are the same document.",
+        "operationId": "relate_api_v1_documents__id__relations_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelateIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "the request body is larger than 1048576 bytes"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/documents/{id}/relations/{other_id}": {
+      "delete": {
+        "tags": [
+          "relations"
+        ],
+        "summary": "Remove a relation",
+        "description": "Removes the relation between the two documents, or rejects Lekto's suggestion of it: one Lekto made is kept as rejected, so it is not suggested again. A relation points from the newer document to the older one (by their document dates, else when they came in). Only who reads both documents sees it; who edits the newer and reads the older sets, accepts or removes it (403 otherwise). 404 if they are not related.",
+        "operationId": "unrelate_api_v1_documents__id__relations__other_id__delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "other_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Other Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/jobs/summary": {
       "get": {
         "tags": [
@@ -27659,6 +28075,9 @@
           "fact_not_asked",
           "fact_criterion_empty",
           "rule_fact_of_person",
+          "relation_exists",
+          "relation_not_found",
+          "relation_to_itself",
           "fact_filter_of_person",
           "fact_of_a_person",
           "fact_not_found",
@@ -27826,6 +28245,200 @@
         ],
         "title": "RecoveryCodes",
         "description": "Shown once; each works once instead of a TOTP code."
+      },
+      "RelateIn": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document_id"
+        ],
+        "title": "RelateIn",
+        "description": "The document to relate the document with; Lekto points the relation from the newer to the\nolder.",
+        "examples": [
+          {
+            "document_id": "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b"
+          }
+        ]
+      },
+      "RelatedDocumentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "document_type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Type Id"
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "document_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "document_type_id",
+          "contact_id",
+          "document_date"
+        ],
+        "title": "RelatedDocumentOut",
+        "description": "The document at the other end of a relation, as a list shows it."
+      },
+      "RelatedOut": {
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/RelatedDocumentOut"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/RelationOrigin",
+            "description": "`person` set it, `lekto` recognised it."
+          },
+          "state": {
+            "$ref": "#/components/schemas/RelationState",
+            "description": "`set`, or `suggested` (a person decides)."
+          },
+          "evidence": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Evidence",
+            "description": "What Lekto had: `kind` of the source (`fact`, `period`, ...) and its values; empty for a person's."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At",
+            "description": "When a person last decided it."
+          },
+          "changeable": {
+            "type": "boolean",
+            "title": "Changeable",
+            "description": "Whether the caller edits the newer of the two: then they accept, reject or remove it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "document",
+          "origin",
+          "state",
+          "evidence",
+          "created_at",
+          "decided_at",
+          "changeable"
+        ],
+        "title": "RelatedOut"
+      },
+      "RelationOrigin": {
+        "type": "string",
+        "enum": [
+          "person",
+          "lekto"
+        ],
+        "title": "RelationOrigin"
+      },
+      "RelationState": {
+        "type": "string",
+        "enum": [
+          "set",
+          "suggested",
+          "rejected"
+        ],
+        "title": "RelationState"
+      },
+      "RelationsOut": {
+        "properties": {
+          "refers_to": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedOut"
+            },
+            "type": "array",
+            "title": "Refers To",
+            "description": "The older documents it refers to (bezieht sich auf), the newest first."
+          },
+          "referred_by": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedOut"
+            },
+            "type": "array",
+            "title": "Referred By",
+            "description": "The newer documents that refer to it (darauf beziehen sich)."
+          },
+          "suggested": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedOut"
+            },
+            "type": "array",
+            "title": "Suggested",
+            "description": "Relations Lekto suggests in either direction: a person accepts or rejects them."
+          },
+          "editable": {
+            "type": "boolean",
+            "title": "Editable",
+            "description": "Whether the caller edits the document: then they relate it with another (the newer of the two must be one they edit, 403 otherwise)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "refers_to",
+          "referred_by",
+          "suggested",
+          "editable"
+        ],
+        "title": "RelationsOut",
+        "description": "The relations of a document whose other end the caller reads."
       },
       "RelativePeriod": {
         "type": "string",
@@ -32868,6 +33481,9 @@
     },
     "fact_criterion_empty": {},
     "rule_fact_of_person": {},
+    "relation_exists": {},
+    "relation_not_found": {},
+    "relation_to_itself": {},
     "fact_filter_of_person": {},
     "fact_of_a_person": {},
     "fact_not_found": {

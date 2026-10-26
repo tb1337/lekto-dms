@@ -4,6 +4,7 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { documentHref } from '#lib/candidates.ts';
+	import BetaPill from '#lib/components/BetaPill.svelte';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
@@ -81,7 +82,13 @@
 
 <div class="flex flex-col gap-6">
 	<div class="flex flex-col gap-1">
-		<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_expected()}</h1>
+		<h1
+			class="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[1.75rem] font-semibold tracking-tight"
+		>
+			{m.nav_expected()}
+			<!-- The area is new (Tobi, 26.10.2026): the pill says so and, opened, what that means. -->
+			<BetaPill tip={m.expected_beta_tip()} />
+		</h1>
 		<p class="text-sm text-muted-foreground">{m.expected_hint()}</p>
 	</div>
 

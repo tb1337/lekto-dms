@@ -1,5 +1,7 @@
 <script lang="ts">
 	import LayoutGrid from '@lucide/svelte/icons/layout-grid';
+	import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
+	import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import List from '@lucide/svelte/icons/list';
 	import Waypoints from '@lucide/svelte/icons/waypoints';
@@ -51,9 +53,13 @@
 		FIELD_SORTS,
 		LIST_SORTS,
 		SEARCH_SORTS,
+		filtersCollapsed,
 		isFieldSort,
+		rememberFilters,
+		rememberFiltersCollapsed,
 		rememberSort,
 		rememberLayout,
+		rememberedFilters,
 		rememberedLayout,
 		LAYOUTS,
 		sortFieldOf,
@@ -81,8 +87,9 @@
 	// searched (by relevance), with the same filters; sorted as chosen, as a grid or a list, by
 	// month under headings while sorted by a date. The
 	// URL holds the words, the filters and the sort; grid or list and the last sort are
-	// remembered. No lanes here: a document that stands open in the inbox says so, with a link.
-	// Documents are uploaded in the inbox.
+	// remembered, and so are the filters (Tobi, 26.10.2026): they apply when the page is opened
+	// without any, see `onMount`. No lanes here: a document that stands open in the inbox says
+	// so, with a link. Documents are uploaded in the inbox.
 	type Document = components['schemas']['ListedDocument'];
 	type Segment = components['schemas']['SnippetSegment'];
 	type Item = { document: Document; snippet: Segment[] };
@@ -119,6 +126,14 @@
 	// How many documents each value of the filters holds; the words of a search aside.
 	let facets = $state<Facets | null>(null);
 	let filtersOpen = $state(false);
+	// On a desktop the filters stand beside the list, unless collapsed (remembered); then the
+	// lenses stand as chips above the list, as on a phone.
+	let collapsed = $state(filtersCollapsed());
+	const asideId = $props.id();
+	function toggleFilters() {
+		collapsed = !collapsed;
+		rememberFiltersCollapsed(collapsed);
+	}
 	// The user's lenses; the open one is in the URL (`lens`).
 	let lenses = $state<Lens[]>([]);
 	const lens = $derived(lenses.find((entry) => entry.id === params.get('lens')) ?? null);
@@ -315,6 +330,14 @@
 	);
 
 	onMount(() => {
+		// Opened without filters, words or a lens: the filters this browser last set apply, in
+		// the URL as if the link had brought them. A link's own filters, its words and a lens go
+		// first; within the page (a chip removed, "All documents" from a lens) nothing applies.
+		const remembered = rememberedFilters();
+		if (remembered && !isFiltered(filters) && !searching && !params.has('lens')) {
+			const next = writeFilters(new URLSearchParams(page.url.search), remembered);
+			void goto(`?${next}`, { replace: true, reset: false });
+		}
 		void pageLookup.load();
 		void loadLenses();
 		void meaningSearch().then((value) => (meaning = value));
@@ -349,7 +372,15 @@
 		void goto(search ? `?${search}` : page.url.pathname, { reset: false });
 	}
 
+	// What the page shows outside a lens is remembered for the next opening, whether a chip or
+	// a link set it; within a lens the filters are the lens's. None (a reset, the last chip
+	// removed) forgets them, in `change`.
+	$effect(() => {
+		if (isFiltered(filters) && !params.has('lens')) rememberFilters(filters);
+	});
+
 	function change(next: Filters) {
+		if (!params.has('lens')) rememberFilters(next);
 		go(writeFilters(new URLSearchParams(page.url.search), next));
 	}
 
@@ -517,6 +548,35 @@ row of filters, on a desktop narrow by the title. -->
 <div class="flex flex-col gap-6" data-roomy>
 	<div class="flex flex-col gap-3">
 		<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+			<!-- Collapses the filters beside the list; collapsed, it counts the active ones. -->
+			<Button
+				variant="outline"
+				size="icon"
+				class="relative hidden lg:inline-flex"
+				aria-label={collapsed
+					? activeFilters > 0
+						? m.filters_expand_active({ count: formatNumber(activeFilters) })
+						: m.filters_expand()
+					: m.filters_collapse()}
+				title={collapsed ? m.filters_expand() : m.filters_collapse()}
+				aria-expanded={!collapsed}
+				aria-controls={collapsed ? undefined : asideId}
+				onclick={toggleFilters}
+			>
+				{#if collapsed}
+					<PanelLeftOpen aria-hidden="true" />
+					{#if activeFilters > 0}
+						<span
+							class="absolute -top-1 -right-1 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-xs font-semibold text-primary-foreground tabular-nums"
+							aria-hidden="true"
+						>
+							{activeFilters}
+						</span>
+					{/if}
+				{:else}
+					<PanelLeftClose aria-hidden="true" />
+				{/if}
+			</Button>
 			<h1 class="text-[1.75rem] font-semibold tracking-tight">
 				{lens?.name ?? m.nav_documents()}
 			</h1>
@@ -559,20 +619,22 @@ row of filters, on a desktop narrow by the title. -->
 				{/if}
 			</div>
 		</div>
-		<div class="lg:hidden">
+		<div class={[!collapsed && 'lg:hidden']}>
 			{@render lensLinks('chips')}
 		</div>
 	</div>
 
 	<div class="flex gap-8">
-		<aside class="hidden w-72 shrink-0 lg:block" aria-label={m.filters_title()}>
-			<div
-				class="sticky top-20 flex max-h-[calc(100dvh-6rem)] flex-col gap-2 overflow-y-auto pr-1 pb-4"
-			>
-				{@render lensLinks('list')}
-				{@render filterPanel()}
-			</div>
-		</aside>
+		{#if !collapsed}
+			<aside id={asideId} class="hidden w-72 shrink-0 lg:block" aria-label={m.filters_title()}>
+				<div
+					class="sticky top-20 flex max-h-[calc(100dvh-6rem)] flex-col gap-2 overflow-y-auto pr-1 pb-4"
+				>
+					{@render lensLinks('list')}
+					{@render filterPanel()}
+				</div>
+			</aside>
+		{/if}
 		<div class="flex min-w-0 flex-1 flex-col gap-6">
 			<!-- Empty on a desktop without filters, words or changes: then it takes no room, and
 			the list stands level with the lenses. -->

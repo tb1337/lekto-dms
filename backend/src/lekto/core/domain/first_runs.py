@@ -146,6 +146,9 @@ class Decision(StrEnum):
 
 
 JUDGED_FIELDS: tuple[str, ...] = (CONTACT, DOCUMENT_TYPE, TOPIC, DOCUMENT_DATE, SPACE, TAGS)
+FACTS = "facts"
+"""The facts of a document, judged as one field (#145): taken when a person confirms it in the
+inbox with facts found, corrected when they correct or reject one, added when they add one."""
 """The fields every document has that get verdicts; custom fields (`field:<id>`) as well."""
 NAMED_FIELDS = frozenset({CONTACT, DOCUMENT_TYPE, TOPIC, SPACE})
 """The fields whose candidates the signals name (`FieldCheck.candidates`)."""
@@ -171,7 +174,7 @@ class FieldVerdict:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "decided_at", require_utc(self.decided_at, "decided_at"))
-        if self.field not in JUDGED_FIELDS and field_id_of(self.field) is None:
+        if self.field not in (*JUDGED_FIELDS, FACTS) and field_id_of(self.field) is None:
             raise ValidationError(f"no verdict on the field {self.field!r}")
         if not set(self.signals) <= set(JUDGED_SIGNALS):
             raise ValidationError("a verdict names the judged signals only")

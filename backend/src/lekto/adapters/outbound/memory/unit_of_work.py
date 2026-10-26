@@ -68,6 +68,7 @@ from lekto.core.domain.document_facts import (
     check_found,
     merged,
     reading_order,
+    withdrawn,
 )
 from lekto.core.domain.documents import Document, Sha256
 from lekto.core.domain.entity import Entity
@@ -641,6 +642,20 @@ class MemoryDocumentFactRepository:
                 [item for item in kept if item.key != fact.key] + [fact], key=reading_order
             ),
         )
+
+    async def withdraw(self, document: DocumentId, key: tuple[IdentifierKind, str]) -> None:
+        self._uow._check_open()
+
+        def change(kept: tuple[DocumentFact, ...]) -> list[DocumentFact]:
+            facts = []
+            for fact in kept:
+                if fact.key != key or not fact.state.by_person:
+                    facts.append(fact)
+                elif (found := withdrawn(fact)) is not None:
+                    facts.append(found)
+            return facts
+
+        self._keep(document, change)
 
     def _keep(
         self,

@@ -319,6 +319,12 @@ class ReasonCode(StrEnum):
     FACT_NOT_IN_TEXT = "fact_not_in_text"
     FACT_NOT_ASKED = "fact_not_asked"
     FACT_OF_A_PERSON = "fact_of_a_person"
+    FACT_NOT_FOUND = "fact_not_found"
+    FACT_EXISTS = "fact_exists"
+    FACT_ROLE_MISSING = "fact_role_missing"
+    FACT_OF_PERSON = "fact_of_person"
+    FACT_AT_CONTACT_ADMIN = "fact_at_contact_admin"
+    FACT_NOT_AT_CONTACT = "fact_not_at_contact"
     NOT_PERSONNEL_NUMBER = "not_personnel_number"
     NOT_DOMAIN = "not_domain"
     FREE_MAIL_DOMAIN = "free_mail_domain"
@@ -767,6 +773,15 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.FACT_NOT_IN_TEXT: "'{value}' does not appear in the text",
     ReasonCode.FACT_NOT_ASKED: "a fact '{kind}' in the role '{role}' was not asked for",
     ReasonCode.FACT_OF_A_PERSON: "the value is one of a person's numbers",
+    ReasonCode.FACT_NOT_FOUND: "the document has no fact {kind:identifier_kind} '{value}'",
+    ReasonCode.FACT_EXISTS: "the document has the fact {kind:identifier_kind} '{value}' already",
+    ReasonCode.FACT_ROLE_MISSING: "a fact added needs its role",
+    ReasonCode.FACT_OF_PERSON: "only admins decide the facts that are a person's alone",
+    ReasonCode.FACT_AT_CONTACT_ADMIN: "only admins correct a fact at the contact too",
+    ReasonCode.FACT_NOT_AT_CONTACT: (
+        "a {kind:identifier_kind} is corrected at the contact only on a document with a "
+        "contact, and only for the kinds a contact keeps"
+    ),
     ReasonCode.NOT_OF_KIND: "'{value}' is no valid {kind:identifier_kind}",
     ReasonCode.NOT_CUSTOMER_NUMBER: (
         "'{value}' is no customer number (4 to 30 letters and digits, one a digit)"

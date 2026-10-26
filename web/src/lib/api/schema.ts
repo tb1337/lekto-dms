@@ -1517,6 +1517,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/documents/{id}/facts/decisions': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Decide about a fact of a document
+		 * @description Editors of the document's space and admins add a fact, correct its value or role, reject it or withdraw a decision; a person's kinds of facts only admins. A decision outlasts a new processing. The first decision about a document's facts counts as a verdict on them. Answers the facts as `GET /documents/{id}/facts`. 404 for a fact the document does not have, 409 for adding one it has and while it has no text, 422 for a value that is none of its kind.
+		 */
+		post: operations['decide_document_fact_api_v1_documents__id__facts_decisions_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/documents/{id}/files': {
 		parameters: {
 			query?: never;
@@ -3702,9 +3722,10 @@ export interface components {
 			| '-field';
 		/**
 		 * DocumentNumberOut
-		 * @description A number of the document that is no contact's or person's identifier: its own (invoice,
-		 *     credit note, order number), a strand's (file reference, "Unser Zeichen", claim, ticket) or
-		 *     another document's it refers to ("Ihre Rechnung Nr.", "Ihr Zeichen").
+		 * @description A fact kept for the document: a number that is no contact's or person's identifier, its
+		 *     own (invoice, credit note, order number), a strand's (file reference, "Unser Zeichen",
+		 *     claim, ticket) or another document's it refers to ("Ihre Rechnung Nr.", "Ihr Zeichen"); or
+		 *     one of another kind a person decided.
 		 */
 		DocumentNumberOut: {
 			kind: components['schemas']['IdentifierKind'];
@@ -3721,6 +3742,11 @@ export interface components {
 			role: components['schemas']['FactRole'];
 			/** Origins */
 			origins: components['schemas']['FactOrigin'][];
+			/**
+			 * @description As `FoundIdentifierOut.state`.
+			 * @default found
+			 */
+			state: components['schemas']['FactState'];
 			/**
 			 * Spans
 			 * @description Where it stands in the text.
@@ -4022,6 +4048,57 @@ export interface components {
 			};
 		};
 		/**
+		 * FactAction
+		 * @enum {string}
+		 */
+		FactAction: 'add' | 'correct' | 'reject' | 'withdraw';
+		/**
+		 * FactDecisionIn
+		 * @description A person's decision about a fact of the document.
+		 * @example {
+		 *       "action": "correct",
+		 *       "kind": "invoice_number",
+		 *       "role": "refers",
+		 *       "value": "4711"
+		 *     }
+		 * @example {
+		 *       "action": "correct",
+		 *       "at_contact": true,
+		 *       "kind": "customer_number",
+		 *       "new_value": "2004 7719",
+		 *       "value": "20047718"
+		 *     }
+		 * @example {
+		 *       "action": "add",
+		 *       "kind": "contract_number",
+		 *       "role": "target",
+		 *       "value": "V-123"
+		 *     }
+		 */
+		FactDecisionIn: {
+			/** @description `add` a fact the sources did not find (`value` as written, `role` required); `correct` the fact of `kind` and `value` (its role, and with `new_value` its value: the old one is then rejected); `reject` it (it is no fact of the document); `withdraw` a decision (a fact a source found is as found again, one only a person gave goes). */
+			action: components['schemas']['FactAction'];
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @description `add`: as written; otherwise the fact's value, normalised.
+			 */
+			value: string;
+			/** @description `add`: its role; `correct`: the role it has instead. */
+			role?: components['schemas']['FactRole'] | null;
+			/**
+			 * New Value
+			 * @description `correct`: the value, as written.
+			 */
+			new_value?: string | null;
+			/**
+			 * At Contact
+			 * @description `correct`, for admins: correct the value at the document's contact too (the old one goes from its identifiers, the new one is entered by hand); only for the kinds a contact keeps.
+			 * @default false
+			 */
+			at_contact: boolean;
+		};
+		/**
 		 * FactOrigin
 		 * @description Where a fact comes from; one fact may come from several sources.
 		 * @enum {string}
@@ -4033,6 +4110,12 @@ export interface components {
 		 * @enum {string}
 		 */
 		FactRole: 'contact' | 'target' | 'own' | 'thread' | 'refers' | 'person';
+		/**
+		 * FactState
+		 * @description Whether a source found the fact as it is, or a person decided it.
+		 * @enum {string}
+		 */
+		FactState: 'found' | 'added' | 'corrected' | 'rejected';
 		/**
 		 * FactsOut
 		 * @example {
@@ -4094,9 +4177,20 @@ export interface components {
 			codes: components['schemas']['CodeOut'][] | null;
 			/**
 			 * Numbers
-			 * @description The document's numbers that are no contact's or person's identifier, as the text reads: as the facts signal kept them (empty until it ran again after 0.7).
+			 * @description The document's numbers that are no contact's or person's identifier, as the text reads: as the facts signal kept them (empty until it ran again after 0.7), with a person's decisions, those rejected too.
 			 */
 			numbers?: components['schemas']['DocumentNumberOut'][];
+			/**
+			 * Decided
+			 * @description The facts of the other kinds a person decided that `identifiers` does not show: one added, a corrected value, one rejected the text does not show; a person's kinds only for admins.
+			 */
+			decided?: components['schemas']['DocumentNumberOut'][];
+			/**
+			 * Editable
+			 * @description Whether the caller decides about the facts: an editor of the space or an admin (`POST /documents/{id}/facts/decisions`).
+			 * @default false
+			 */
+			editable: boolean;
 			/**
 			 * Persons
 			 * @description The users the document names, the surest first: for the editors of its space and admins; null for readers. What is private about a person (aliases, birth date, identifiers, a contact's number that names them) finds them only for admins and that person: anyone else sees another user only where the text has their display name (that a number is Anna's tax ID is Anna's).
@@ -4491,6 +4585,11 @@ export interface components {
 			 * @description Where it comes from: `pattern` (the text), `code`, `model`, `person`.
 			 */
 			origins: components['schemas']['FactOrigin'][];
+			/**
+			 * @description `found` as the sources found it, or a person's decision: `added`, `corrected`, `rejected` (it is no fact of the document).
+			 * @default found
+			 */
+			state: components['schemas']['FactState'];
 			/**
 			 * Other Contacts
 			 * @description For admins: on the confirmed documents of how many contacts other than the document's it stands (the IBAN of one's own account stands on many); null for others.
@@ -6759,6 +6858,12 @@ export interface components {
 			| 'fact_not_in_text'
 			| 'fact_not_asked'
 			| 'fact_of_a_person'
+			| 'fact_not_found'
+			| 'fact_exists'
+			| 'fact_role_missing'
+			| 'fact_of_person'
+			| 'fact_at_contact_admin'
+			| 'fact_not_at_contact'
 			| 'not_personnel_number'
 			| 'not_domain'
 			| 'free_mail_domain'
@@ -20360,6 +20465,151 @@ export interface operations {
 					 *       "title": "Conflict",
 					 *       "status": 409,
 					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	decide_document_fact_api_v1_documents__id__facts_decisions_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['FactDecisionIn'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['FactsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

@@ -49,7 +49,7 @@ from lekto.adapters.inbound.rest.schemas.documents import (
     UploadFields,
     VisibilityOut,
 )
-from lekto.adapters.inbound.rest.schemas.facts import FactsOut
+from lekto.adapters.inbound.rest.schemas.facts import FactDecisionIn, FactsOut
 from lekto.adapters.inbound.rest.schemas.files import DocumentFilesOut
 from lekto.adapters.inbound.rest.schemas.inbox import (
     ConfirmRequest,
@@ -599,6 +599,27 @@ async def read_with_vision(id: UUID, user: CurrentUser, context: Context) -> Doc
     responses=problem_responses(401, 404, 409, 422),
 )
 async def document_facts(id: UUID, user: CurrentUser, context: Context) -> FactsOut:
+    return FactsOut.of(await context.documents.facts(user, DocumentId(id)))
+
+
+@router.post(
+    "/{id}/facts/decisions",
+    summary="Decide about a fact of a document",
+    description=(
+        "Editors of the document's space and admins add a fact, correct its value or role, "
+        "reject it or withdraw a decision; a person's kinds of facts only admins. A decision "
+        "outlasts a new processing. The first decision about a document's facts counts as a "
+        "verdict on them. Answers the facts as `GET /documents/{id}/facts`. 404 for a fact the "
+        "document does not have, 409 for adding one it has and while it has no text, 422 for "
+        "a value that is none of its kind."
+    ),
+    response_model=FactsOut,
+    responses=problem_responses(401, 403, 404, 409, 422),
+)
+async def decide_document_fact(
+    id: UUID, body: FactDecisionIn, user: CurrentUser, context: Context
+) -> FactsOut:
+    await context.documents.decide_fact(user, DocumentId(id), body.decision())
     return FactsOut.of(await context.documents.facts(user, DocumentId(id)))
 
 

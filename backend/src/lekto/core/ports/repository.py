@@ -472,6 +472,12 @@ class DocumentFactRepository(Protocol):
         ValidationError for a fact as found."""
         ...
 
+    async def withdraw(self, document: DocumentId, key: tuple[IdentifierKind, str]) -> None:
+        """A person's decision about the fact of `key` no longer stands (`withdrawn`): a fact a
+        source found is as found again, one only a person gave goes. Nothing where no person
+        decided the fact of `key`."""
+        ...
+
     async def contacts_of(
         self, identifiers: Collection[tuple[IdentifierKind, str]]
     ) -> dict[tuple[IdentifierKind, str], frozenset[ContactId]]:

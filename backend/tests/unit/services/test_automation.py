@@ -12,7 +12,7 @@ from lekto.core.domain.classification import (
 )
 from lekto.core.domain.documents import Channel, Document
 from lekto.core.domain.fields import FieldDefinition, FieldType
-from lekto.core.domain.first_runs import Decision, FieldVerdict, FirstRun, Verdict
+from lekto.core.domain.first_runs import FACTS, Decision, FieldVerdict, FirstRun, Verdict
 from lekto.core.domain.ids import FieldId, new_id
 from lekto.core.domain.pipeline import Lane, Node
 from lekto.core.domain.users import User
@@ -177,12 +177,17 @@ async def test_verdicts_per_field_with_custom_fields_by_name(world: World) -> No
             DOCUMENT_DATE: Verdict.EARLY,
         },
     )
-    await seed(world, owner, verdicts={CONTACT: Verdict.CORRECTED, SPACE: Verdict.TAKEN})
+    await seed(
+        world,
+        owner,
+        verdicts={CONTACT: Verdict.CORRECTED, SPACE: Verdict.TAKEN, FACTS: Verdict.CORRECTED},
+    )
 
     report = await service(world).report(owner.id, zone=UTC)
 
     fields = {item.field: item for item in report.fields}
-    assert list(fields) == [CONTACT, DOCUMENT_DATE, SPACE, field_key(amount.id)]
+    # The facts after the fields every document has, before the custom ones.
+    assert list(fields) == [CONTACT, DOCUMENT_DATE, SPACE, FACTS, field_key(amount.id)]
     assert fields[CONTACT].counts == {Verdict.TAKEN: 1, Verdict.CORRECTED: 1}
     assert fields[CONTACT].decided == 2
     assert (fields[DOCUMENT_DATE].counts, fields[DOCUMENT_DATE].early) == ({}, 1)

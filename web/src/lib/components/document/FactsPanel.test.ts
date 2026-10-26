@@ -25,6 +25,7 @@ const lookup = {
 
 const FACTS: Facts = {
 	contact_id: UTILITY,
+	editable: false,
 	named: [
 		{
 			contact_id: UTILITY,
@@ -44,6 +45,7 @@ const FACTS: Facts = {
 			in_code: true,
 			role: 'contact',
 			origins: ['pattern', 'code'],
+			state: 'found',
 			spans: [{ start: 40, end: 67, locations: [] }],
 			other_contacts: 0
 		},
@@ -55,6 +57,7 @@ const FACTS: Facts = {
 			in_code: false,
 			role: 'contact',
 			origins: ['pattern'],
+			state: 'found',
 			spans: [{ start: 80, end: 89, locations: [] }],
 			other_contacts: 0
 		},
@@ -66,6 +69,7 @@ const FACTS: Facts = {
 			in_code: false,
 			role: 'contact',
 			origins: ['pattern'],
+			state: 'found',
 			spans: [{ start: 100, end: 127, locations: [] }],
 			other_contacts: 6
 		}
@@ -172,6 +176,7 @@ describe('FactsPanel', () => {
 				written: '4711',
 				role: 'refers',
 				origins: ['pattern'],
+				state: 'found',
 				spans
 			}
 		];

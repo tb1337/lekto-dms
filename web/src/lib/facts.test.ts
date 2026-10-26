@@ -19,6 +19,7 @@ const CONTACT = 'contact-1';
 
 const FACTS: Facts = {
 	contact_id: CONTACT,
+	editable: false,
 	named: [
 		{
 			contact_id: CONTACT,
@@ -38,6 +39,7 @@ const FACTS: Facts = {
 			in_code: true,
 			role: 'contact',
 			origins: ['pattern', 'code'],
+			state: 'found',
 			spans: [{ start: 20, end: 47, locations: [] }],
 			other_contacts: null
 		},
@@ -49,6 +51,7 @@ const FACTS: Facts = {
 			in_code: false,
 			role: 'contact',
 			origins: ['pattern'],
+			state: 'found',
 			spans: [],
 			other_contacts: null
 		},
@@ -60,6 +63,7 @@ const FACTS: Facts = {
 			in_code: false,
 			role: 'contact',
 			origins: ['pattern'],
+			state: 'found',
 			spans: [{ start: 60, end: 69, locations: [] }],
 			other_contacts: 0
 		}

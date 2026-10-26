@@ -5,12 +5,16 @@ from collections.abc import Collection, Mapping, Sequence
 from datetime import datetime
 
 from lekto.core.domain.classification import SPACE, FieldCheck, field_key
+from lekto.core.domain.document_facts import FactState
 from lekto.core.domain.documents import Document
 from lekto.core.domain.fields import FieldDefinition
 from lekto.core.domain.first_runs import (
+    FACTS,
     JUDGED_FIELDS,
     Decision,
+    FieldVerdict,
     FirstRun,
+    Verdict,
     decided_fields,
     early_verdicts,
     judge_fields,
@@ -88,6 +92,21 @@ async def keep_verdicts(
         checks=checks,
         decided_at=now,
     )
+    if decision is Decision.INBOX and any(
+        fact.state is not FactState.REJECTED
+        for fact in await uow.document_facts.of_document(after.id)
+    ):
+        # Confirmed with its facts: the person took what the sources found, unless they
+        # decided about them before (the first decision stands).
+        verdicts.append(
+            FieldVerdict(
+                document_id=after.id,
+                field=FACTS,
+                verdict=Verdict.TAKEN,
+                decided_at=now,
+                decision=decision,
+            )
+        )
     await uow.processing_facts.add_verdicts(verdicts)
 
 

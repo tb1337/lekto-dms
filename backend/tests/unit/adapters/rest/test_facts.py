@@ -1,7 +1,7 @@
 """What a document shows of its contact, over HTTP, and attaching an identifier to a contact."""
 
 import dataclasses
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 
 import httpx2
 import pytest
@@ -188,3 +188,31 @@ async def test_an_admin_attaches_an_identifier_from_a_document(facts_api: Api) -
     # Attaching it again changes nothing.
     again = await post(api, path, body, auth(admin))
     assert again.json()["identifiers"] == attached.json()["identifiers"]
+
+
+async def test_a_person_decides_about_a_fact(facts_api: Api) -> None:
+    api = facts_api
+    owner = await api.user()
+    url = f"{DOCUMENTS}/{await upload(api, auth(owner))}"
+    decide = f"{url}/facts/decisions"
+
+    async def numbers(body: Mapping[str, object]) -> list[tuple[str, str, str]]:
+        response = await api.client.post(decide, json=body, headers=auth(owner))
+        assert response.status_code == 200, response.text
+        return [(item["value"], item["role"], item["state"]) for item in response.json()["numbers"]]
+
+    given = {"action": "add", "kind": "invoice_number", "value": "R-1001", "role": "own"}
+    assert await numbers(given) == [("R1001", "own", "added")]
+    reject = {"action": "reject", "kind": "invoice_number", "value": "R1001"}
+    assert await numbers(reject) == [("R1001", "own", "rejected")]
+    assert await numbers({**reject, "action": "withdraw"}) == []
+
+    unknown = await api.client.post(decide, json=reject, headers=auth(owner))
+    assert unknown.status_code == 404
+    assert unknown.json()["reason"]["code"] == "fact_not_found"
+    wrong = await api.client.post(
+        decide, json={**given, "kind": "creditor_id", "value": "DE00"}, headers=auth(owner)
+    )
+    assert wrong.status_code == 422
+    report = await api.client.get(f"{url}/facts", headers=auth(owner))
+    assert report.json()["editable"] is True

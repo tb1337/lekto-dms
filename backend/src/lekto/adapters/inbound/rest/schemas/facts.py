@@ -6,10 +6,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from lekto.adapters.inbound.rest.schemas.inbox import BoxOut, LocationOut
 from lekto.adapters.inbound.schemas import MoneyValue
-from lekto.core.domain.document_facts import FactOrigin, FactRole, role_of
+from lekto.core.domain.document_facts import FactOrigin, FactRole, FactState, role_of
 from lekto.core.domain.facts import FoundIdentifier, Span, Strength
 from lekto.core.domain.identifiers import IdentifierKind
-from lekto.core.services.documents import CodeFacts, DocumentFacts
+from lekto.core.services.documents import CodeFacts, DocumentFacts, DocumentNumber
+from lekto.core.services.fact_decisions import FactAction, FactDecision
 
 
 class SpanOut(BaseModel):
@@ -63,6 +64,13 @@ class FoundIdentifierOut(BaseModel):
     origins: list[FactOrigin] = Field(
         description="Where it comes from: `pattern` (the text), `code`, `model`, `person`."
     )
+    state: FactState = Field(
+        default=FactState.FOUND,
+        description=(
+            "`found` as the sources found it, or a person's decision: `added`, `corrected`, "
+            "`rejected` (it is no fact of the document)."
+        ),
+    )
     other_contacts: int | None = Field(
         description=(
             "For admins: on the confirmed documents of how many contacts other than the "
@@ -80,16 +88,30 @@ class FoundIdentifierOut(BaseModel):
 
 
 class DocumentNumberOut(BaseModel):
-    """A number of the document that is no contact's or person's identifier: its own (invoice,
-    credit note, order number), a strand's (file reference, "Unser Zeichen", claim, ticket) or
-    another document's it refers to ("Ihre Rechnung Nr.", "Ihr Zeichen")."""
+    """A fact kept for the document: a number that is no contact's or person's identifier, its
+    own (invoice, credit note, order number), a strand's (file reference, "Unser Zeichen",
+    claim, ticket) or another document's it refers to ("Ihre Rechnung Nr.", "Ihr Zeichen"); or
+    one of another kind a person decided."""
 
     kind: IdentifierKind
     value: str = Field(description="Normalised, as Lekto compares it.")
     written: str | None = Field(description="As the text writes it where it stands first.")
     role: FactRole
     origins: list[FactOrigin]
+    state: FactState = Field(default=FactState.FOUND, description="As `FoundIdentifierOut.state`.")
     spans: list[SpanOut] = Field(description="Where it stands in the text.")
+
+    @classmethod
+    def of(cls, item: DocumentNumber) -> "DocumentNumberOut":
+        return cls(
+            kind=item.fact.kind,
+            value=item.fact.value,
+            written=item.fact.written,
+            role=item.fact.role,
+            origins=sorted(item.fact.origins),
+            state=item.fact.state,
+            spans=[SpanOut.of(span) for span in item.spans],
+        )
 
 
 class FoundPersonOut(BaseModel):
@@ -229,8 +251,22 @@ class FactsOut(BaseModel):
         default_factory=list,
         description=(
             "The document's numbers that are no contact's or person's identifier, as the text "
-            "reads: as the facts signal kept them (empty until it ran again after 0.7)."
+            "reads: as the facts signal kept them (empty until it ran again after 0.7), with "
+            "a person's decisions, those rejected too."
         ),
+    )
+    decided: list[DocumentNumberOut] = Field(
+        default_factory=list,
+        description=(
+            "The facts of the other kinds a person decided that `identifiers` does not show: "
+            "one added, a corrected value, one rejected the text does not show; a person's "
+            "kinds only for admins."
+        ),
+    )
+    editable: bool = Field(
+        default=False,
+        description="Whether the caller decides about the facts: an editor of the space or an "
+        "admin (`POST /documents/{id}/facts/decisions`).",
     )
     persons: list[FoundPersonOut] | None = Field(
         default=None,
@@ -270,6 +306,7 @@ class FactsOut(BaseModel):
                     spans=[SpanOut.of(span) for span in item.spans],
                     role=_role(report, item),
                     origins=_origins(report, item),
+                    state=_state(report, item),
                     other_contacts=None if others is None else len(others.get(item.key, ())),
                     other_contact_ids=(
                         None if others is None else sorted(others.get(item.key, frozenset()))
@@ -278,17 +315,9 @@ class FactsOut(BaseModel):
                 for item in report.facts.identifiers
             ],
             codes=None if report.codes is None else [CodeOut.of(item) for item in report.codes],
-            numbers=[
-                DocumentNumberOut(
-                    kind=item.fact.kind,
-                    value=item.fact.value,
-                    written=item.fact.written,
-                    role=item.fact.role,
-                    origins=sorted(item.fact.origins),
-                    spans=[SpanOut.of(span) for span in item.spans],
-                )
-                for item in report.numbers
-            ],
+            numbers=[DocumentNumberOut.of(item) for item in report.numbers],
+            decided=[DocumentNumberOut.of(item) for item in report.decided],
+            editable=report.editable,
             persons=(
                 None
                 if report.person_names is None
@@ -311,6 +340,11 @@ def _role(report: DocumentFacts, item: FoundIdentifier) -> FactRole:
     return role_of(item.kind) if kept is None else kept.role
 
 
+def _state(report: DocumentFacts, item: FoundIdentifier) -> FactState:
+    kept = report.stored.get(item.key)
+    return FactState.FOUND if kept is None else kept.state
+
+
 def _origins(report: DocumentFacts, item: FoundIdentifier) -> list[FactOrigin]:
     """The text's patterns and a code as the facts are found now (a row taken over by revision
     0047 does not know whether a code held it), other sources as kept."""
@@ -322,3 +356,68 @@ def _origins(report: DocumentFacts, item: FoundIdentifier) -> list[FactOrigin]:
     if kept is not None:
         found |= kept.origins - {FactOrigin.PATTERN, FactOrigin.CODE}
     return sorted(found)
+
+
+class FactDecisionIn(BaseModel):
+    """A person's decision about a fact of the document."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "action": "correct",
+                    "kind": "invoice_number",
+                    "value": "4711",
+                    "role": "refers",
+                },
+                {
+                    "action": "correct",
+                    "kind": "customer_number",
+                    "value": "20047718",
+                    "new_value": "2004 7719",
+                    "at_contact": True,
+                },
+                {"action": "add", "kind": "contract_number", "value": "V-123", "role": "target"},
+            ]
+        }
+    )
+
+    action: FactAction = Field(
+        description=(
+            "`add` a fact the sources did not find (`value` as written, `role` required); "
+            "`correct` the fact of `kind` and `value` (its role, and with `new_value` its "
+            "value: the old one is then rejected); `reject` it (it is no fact of the "
+            "document); `withdraw` a decision (a fact a source found is as found again, one "
+            "only a person gave goes)."
+        )
+    )
+    kind: IdentifierKind
+    value: str = Field(
+        min_length=1,
+        max_length=200,
+        description="`add`: as written; otherwise the fact's value, normalised.",
+    )
+    role: FactRole | None = Field(
+        default=None, description="`add`: its role; `correct`: the role it has instead."
+    )
+    new_value: str | None = Field(
+        default=None, min_length=1, max_length=200, description="`correct`: the value, as written."
+    )
+    at_contact: bool = Field(
+        default=False,
+        description=(
+            "`correct`, for admins: correct the value at the document's contact too (the old "
+            "one goes from its identifiers, the new one is entered by hand); only for the kinds "
+            "a contact keeps."
+        ),
+    )
+
+    def decision(self) -> FactDecision:
+        return FactDecision(
+            action=self.action,
+            kind=self.kind,
+            value=self.value,
+            role=self.role,
+            new_value=self.new_value,
+            at_contact=self.at_contact,
+        )

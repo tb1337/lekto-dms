@@ -267,6 +267,7 @@ describe('the document tab', () => {
 	const TEXT = 'Kundennummer EBeschV 4711\n\f\nSeite zwei';
 	const FACTS: Facts = {
 		contact_id: null,
+		editable: false,
 		named: [],
 		identifiers: [
 			{
@@ -277,6 +278,7 @@ describe('the document tab', () => {
 				in_code: false,
 				role: 'contact',
 				origins: ['pattern'],
+				state: 'found',
 				spans: [{ start: 13, end: 20, locations: [] }],
 				other_contacts: null
 			}

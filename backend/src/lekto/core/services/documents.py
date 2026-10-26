@@ -13,7 +13,7 @@ from uuid import UUID
 from lekto.core.domain import media_types
 from lekto.core.domain.classification import CONFIRMING, SPACE
 from lekto.core.domain.codes import Code, GiroCode, code_identifiers, codes_from_json, giro_code
-from lekto.core.domain.document_facts import NUMBER_KINDS, DocumentFact, FactState
+from lekto.core.domain.document_facts import NUMBER_KINDS, DocumentFact
 from lekto.core.domain.documents import Channel, Document, DocumentChanges, confirms
 from lekto.core.domain.errors import (
     ConflictError,
@@ -39,6 +39,7 @@ from lekto.core.domain.ids import (
 from lekto.core.domain.locations import Box, Location
 from lekto.core.domain.master_data import Assignment
 from lekto.core.domain.permissions import (
+    can_edit_document,
     can_hand_over,
     can_move_document,
     can_read_document,
@@ -83,6 +84,7 @@ from lekto.core.services._access import (
 from lekto.core.services._first_runs import keep_verdicts
 from lekto.core.services._moves import move_by_person
 from lekto.core.services._tags import expand, expanded, tag_counts, tag_tree
+from lekto.core.services.fact_decisions import FactDecision, decide_fact, person_only
 from lekto.core.services.inbox import Review, in_inbox, node_reviews, open_nodes
 from lekto.core.services.maintenance import REMOVE_FILES_JOB, RemoveFiles
 from lekto.core.services.objects import (
@@ -186,8 +188,15 @@ class DocumentFacts:
     # and where they come from; one the facts signal has not kept yet has none.
     stored: Mapping[tuple[IdentifierKind, str], DocumentFact] = field(default_factory=dict)
     # The document's numbers that are no contact's or person's identifier (its own, a strand's,
-    # another document's it refers to), as the text reads, with where they stand.
+    # another document's it refers to), as the text reads, with where they stand; those a
+    # person rejected too.
     numbers: tuple["DocumentNumber", ...] = ()
+    # The kept facts of the other kinds a person decided that the identifiers found in the text
+    # do not show (one added, a corrected value, one rejected that is not found again); a
+    # person's kinds only for admins.
+    decided: tuple["DocumentNumber", ...] = ()
+    # Whether the caller decides about the facts: an editor of the space or an admin.
+    editable: bool = False
 
 
 @dataclass(frozen=True)
@@ -393,21 +402,31 @@ class DocumentService:
         codes = await self._codes(id)
         pages = await load_layout(store, id)
 
-        def found() -> tuple[Facts, tuple[DocumentNumber, ...]]:
+        def found() -> tuple[Facts, tuple[DocumentNumber, ...], tuple[DocumentNumber, ...]]:
             facts = facts_in(text, contacts, codes or (), persons=persons, places=True)
             numbers = tuple(
                 DocumentNumber(fact, identifier_spans(text, fact.kind, fact.value))
                 for fact in stored.values()
-                if fact.kind in NUMBER_KINDS and fact.state is not FactState.REJECTED
+                if fact.kind in NUMBER_KINDS
+            )
+            shown = {item.key for item in facts.identifiers}
+            decided = tuple(
+                DocumentNumber(fact, identifier_spans(text, fact.kind, fact.value))
+                for fact in stored.values()
+                if fact.kind not in NUMBER_KINDS
+                and fact.state.by_person
+                and fact.key not in shown
+                and (user.is_active_admin or not person_only(fact.kind))
             )
             if pages:
                 places = TextPlaces(text, pages)
                 facts = on_pages(facts, places)
                 numbers = tuple(item.on(places) for item in numbers)
-            return facts, numbers
+                decided = tuple(item.on(places) for item in decided)
+            return facts, numbers, decided
 
         # Matching every contact's names against a long text takes a while: not in the loop.
-        facts, numbers = await asyncio.to_thread(found)
+        facts, numbers, decided = await asyncio.to_thread(found)
         amounts = {
             field: value
             for field, value in document.fields.items()
@@ -438,7 +457,13 @@ class DocumentService:
             ),
             stored=stored,
             numbers=numbers,
+            decided=decided,
+            editable=can_edit_document(user, document, space),
         )
+
+    async def decide_fact(self, actor: UserId, id: DocumentId, decision: FactDecision) -> None:
+        """Keep a person's decision about a fact of the document (`fact_decisions`)."""
+        await decide_fact(self._uow, self._object_store, self._clock, actor, id, decision)
 
     async def _codes(self, id: DocumentId) -> tuple[Code, ...] | None:
         """The codes read from the archive's pages, None while they are not (or of an earlier

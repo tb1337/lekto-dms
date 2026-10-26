@@ -38,6 +38,9 @@
         "value": "1ESY1234567",
         "role": "target"
       }
+    ],
+    "relations": [
+      "01-stromrechnung"
     ]
   },
   "fake": {

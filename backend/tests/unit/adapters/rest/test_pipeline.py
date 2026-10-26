@@ -24,6 +24,7 @@ async def test_the_graph_lists_every_node_with_its_needs(api: Api) -> None:
         "signal_facts",
         "judge",
         "fields",
+        "relate",
         "apply_rules",
         "file",
     ]
@@ -31,6 +32,8 @@ async def test_the_graph_lists_every_node_with_its_needs(api: Api) -> None:
     assert by_name["receive"] == []
     assert by_name["ocr"] == by_name["pages"] == ["receive"]
     assert by_name["file"] == ["apply_rules", "pages"]
+    assert by_name["relate"] == ["fields"]
+    assert by_name["apply_rules"] == ["relate"]
     assert by_name["judge"] == [
         "signal_classifier",
         "signal_facts",

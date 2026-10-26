@@ -460,10 +460,12 @@ def facts(
     origin: Provenance,
     taxonomy: Taxonomy | None = None,
     kept_facts: Sequence[DocumentFact] = (),
+    referred_types: Sequence[DocumentTypeId | None] = (),
 ) -> Facts:
     return Facts.of(
         document,
         kept_facts=kept_facts,
+        referred_types=referred_types,
         text=prepared.text,
         patterns={**prepared.patterns, **patterns},
         unverified=origin.unverified,
@@ -532,6 +534,7 @@ async def situation(
     applier: UserId | None = None,
     kept_facts: Sequence[DocumentFact] = (),
     codes: Sequence[Code] = (),
+    referred_types: Mapping[UserId | None, tuple[DocumentTypeId | None, ...]] | None = None,
 ) -> Situation:
     """Everything `plan` needs to know besides the matching rules. `loaded`: the master data
     of the run (`taxonomy`, for the document and at least `rules`); beyond it, only the
@@ -603,6 +606,7 @@ async def situation(
         applier=applier,
         kept_facts=tuple(kept_facts),
         codes=tuple(codes),
+        referred_types=dict(referred_types or {}),
     )
 
 

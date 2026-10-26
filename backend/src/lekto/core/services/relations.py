@@ -7,6 +7,7 @@ not suggested again), one a person set goes. The first decision about the relati
 (the newer one) is a verdict on them (`first_runs.RELATIONS`): added, accepted, or corrected.
 No event goes out for relations yet (`bezuege.md`, decision 20)."""
 
+from collections.abc import Collection
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
@@ -14,7 +15,7 @@ from enum import StrEnum
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import ConflictError, NotFoundError
 from lekto.core.domain.first_runs import RELATIONS, Decision, FieldVerdict, Verdict
-from lekto.core.domain.ids import DocumentId, UserId
+from lekto.core.domain.ids import DocumentId, DocumentTypeId, UserId
 from lekto.core.domain.permissions import can_edit_document, can_read_document
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.relations import Relation, RelationOrigin, RelationState, ordered
@@ -23,6 +24,10 @@ from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import load_actor, readable_document, writable_document
+
+RELATIONS_LOCK = "relations"
+"""One change of relations at a time, Lekto's (`relating`) or a person's: two documents that
+find each other store one relation, and a person's decision is never overwritten."""
 
 
 class Direction(StrEnum):
@@ -83,6 +88,7 @@ class RelationService:
         the newer; ConflictError if it is set already."""
         now = self._clock.now()
         async with self._uow() as uow:
+            await uow.lock(RELATIONS_LOCK)
             user = await load_actor(uow, actor)
             newer, older = await _pair(uow, user, id, other)
             known = await find_pair(uow, newer.id, older.id)
@@ -115,6 +121,7 @@ class RelationService:
         PermissionDeniedError if they do not edit the newer."""
         now = self._clock.now()
         async with self._uow() as uow:
+            await uow.lock(RELATIONS_LOCK)
             user = await load_actor(uow, actor)
             newer, older = await _pair(uow, user, id, other)
             known = await find_pair(uow, newer.id, older.id)
@@ -131,6 +138,31 @@ class RelationService:
             else:
                 await uow.document_relations.remove(known.newer, known.older)
             await uow.commit()
+
+
+async def referred_types(
+    uow: UnitOfWork, document: Document, readers: Collection[UserId | None]
+) -> dict[UserId | None, tuple[DocumentTypeId | None, ...]]:
+    """For each of `readers` (the authors of rules), the types of the documents `document`
+    refers to by a set relation (the direction as the dates are now; a suggestion does not
+    count) that they may read: what the rules' condition `relation` sees. A rule tells
+    nothing of a document its author may not read (one whose account is gone reads none)."""
+    others: list[tuple[Document, Space]] = []
+    for relation in await uow.document_relations.of_document(document.id):
+        if relation.state is not RelationState.SET:
+            continue
+        other = await uow.documents.find(relation.other(document.id))
+        if other is not None and _newer(document, other) == document.id:
+            others.append((other, await uow.spaces.get(other.space_id)))
+    found: dict[UserId | None, tuple[DocumentTypeId | None, ...]] = {}
+    for reader in readers:
+        user = None if reader is None or not others else await uow.users.find(reader)
+        found[reader] = tuple(
+            other.document_type_id
+            for other, space in others
+            if user is not None and can_read_document(user, other, space)
+        )
+    return found
 
 
 async def find_pair(uow: UnitOfWork, first: DocumentId, second: DocumentId) -> Relation | None:

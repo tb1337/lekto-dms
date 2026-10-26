@@ -3280,6 +3280,96 @@ class MigrationSuite:
             )
         assert kept == [("iban", "DE02120300000000202051")]
 
+    async def test_relate_comes_before_the_rules_with_revision_0050_and_back(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0050: a document whose rules ran has `relate` skipped; one whose rules wait
+        has it waiting, its rules' job dropped and one for `relate` once its fields are read.
+        The downgrade drops the node and gives the waiting rules their job again."""
+        await migrate(empty_database, "0049")
+        ids = {name: new_id() for name in ("user", "space", "done", "waiting")}
+
+        def state(status: str, outcome: str | None = None) -> dict[str, Any]:
+            return {"status": status, "outcome": outcome, "started_at": None, "finished_at": None}
+
+        ok = state("done", "ok")
+        before = ("receive", "ocr", "pages", "parse", *_SIGNALS, "judge", "fields")
+        graphs = {
+            "done": {**dict.fromkeys(before, ok), "apply_rules": ok, "file": ok},
+            "waiting": {
+                **dict.fromkeys(before, ok),
+                "apply_rules": state("waiting"),
+                "file": state("waiting"),
+            },
+        }
+        waiting = str(ids["waiting"])
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
+            (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "user"}),
+            (
+                t.spaces,
+                {
+                    "id": ids["space"],
+                    "name": "A",
+                    "name_key": "a",
+                    "personal_of": ids["user"],
+                    "created_at": NOW,
+                    "version": 1,
+                },
+            ),
+            *(
+                (
+                    t.documents,
+                    {
+                        "id": ids[name],
+                        "space_id": ids["space"],
+                        "sha256": str(number) * 64,
+                        "title": name,
+                        "processing_nodes": graph,
+                    },
+                )
+                for number, (name, graph) in enumerate(graphs.items())
+            ),
+            (
+                t.jobs,
+                {
+                    "id": new_id(),
+                    "kind": "pipeline.node",
+                    "payload": {"document_id": waiting, "node": "apply_rules", "run": 1},
+                    "dedup_key": f"{waiting}:1:apply_rules",
+                    "status": "queued",
+                    "attempts": 0,
+                    "run_at": NOW,
+                },
+            ),
+        ]
+        await _insert(empty_database, rows)
+
+        async def stored() -> tuple[dict[Any, Any], list[Any]]:
+            async with empty_database.reading() as connection:
+                documents = (
+                    await connection.execute(
+                        select(t.documents.c.id, t.documents.c.processing_nodes)
+                    )
+                ).all()
+                jobs = (
+                    await connection.execute(
+                        select(t.jobs.c.dedup_key).where(t.jobs.c.status == "queued")
+                    )
+                ).all()
+            return {id: nodes for id, nodes in documents}, sorted(row[0] for row in jobs)
+
+        await migrate(empty_database)
+        nodes, jobs = await stored()
+        assert nodes[ids["done"]]["relate"]["status"] == "skipped"
+        assert nodes[ids["waiting"]]["relate"]["status"] == "waiting"
+        assert jobs == [f"{waiting}:1:relate"]
+
+        await downgrade(empty_database, "0049")
+        nodes, jobs = await stored()
+        assert nodes[ids["done"]] == graphs["done"]
+        assert nodes[ids["waiting"]] == graphs["waiting"]
+        assert jobs == [f"{waiting}:1:apply_rules"]
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:

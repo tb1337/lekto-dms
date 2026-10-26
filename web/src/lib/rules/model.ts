@@ -115,7 +115,8 @@ export const CONDITION_FIELDS: readonly ConditionField[] = [
 	'text',
 	'document_date',
 	'field',
-	'fact'
+	'fact',
+	'relation'
 ];
 export const STEP_CONDITION_FIELDS: readonly ConditionField[] = ['step', ...CONDITION_FIELDS];
 
@@ -159,7 +160,8 @@ export const CONDITION_FIELD_OPERATORS: Record<
 	text: ['contains', 'matches'],
 	document_date: ORDERED,
 	step: ['is', 'in', 'contains', 'gt', 'lt', 'present', 'missing'],
-	fact: ['present', 'missing', 'is', 'in', 'matches']
+	fact: ['present', 'missing', 'is', 'in', 'matches'],
+	relation: ['present', 'missing', 'is', 'in']
 };
 
 export const FIELD_TYPE_OPERATORS: Record<FieldType, readonly Operator[]> = {
@@ -543,6 +545,7 @@ export function referencedIds(node: ConditionNode | ActionNode): string[] {
 		if (
 			node.field === 'contact' ||
 			node.field === 'document_type' ||
+			node.field === 'relation' ||
 			node.field === 'topic' ||
 			isTagField(node.field)
 		) {
@@ -727,6 +730,7 @@ function checkValue(
 	switch (condition.field) {
 		case 'contact':
 		case 'document_type':
+		case 'relation':
 		case 'topic':
 		case 'tags':
 		case 'contact_group':

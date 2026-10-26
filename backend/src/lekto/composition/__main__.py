@@ -1,6 +1,6 @@
 """`lekto [--env-file FILE] [check | migrate | check-schema | api | worker | evaluate |
-evaluate-search | reindex | render-pages | read-codes | fetch-logos | reparse | train]`, the
-command line of Lekto (`[project.scripts]`; also `python -m lekto.composition`).
+evaluate-search | reindex | render-pages | read-codes | relate | fetch-logos | reparse |
+train]`, the command line of Lekto (`[project.scripts]`; also `python -m lekto.composition`).
 
 The settings come from the `LEKTO_` environment variables, in the image from the container's
 environment. `--env-file FILE` takes them from a file of `KEY=value` lines instead
@@ -38,6 +38,9 @@ meant.
 - `read-codes`: queue reading the facts of every document with a text: the worker reads the
   codes on its pages and keeps the identifiers it shows (for documents from before codes were
   read, and for telling on how many contacts' documents an identifier stands).
+- `relate`: queue finding the relations of every document not being processed: the worker
+  relates it with the documents it refers to and those that refer to it (for documents from
+  before the node `relate`, and after a document type became a relation target).
 - `fetch-logos`: queue fetching the logo of every contact without one that has a domain among
   its identifiers (one whose fetch failed is not tried again); the worker asks the websites.
   Needs `LEKTO_LOGO_FETCH=true`.
@@ -74,6 +77,7 @@ from lekto.composition.logging_setup import configure_logging
 from lekto.composition.logos import run_fetch_logos
 from lekto.composition.pages import run_render_pages
 from lekto.composition.reindex import run_reindex
+from lekto.composition.relate import run_relate
 from lekto.composition.reparse import run_reparse
 from lekto.composition.search_evaluation import (
     DEFAULT_RATIOS,
@@ -161,6 +165,7 @@ HELP: Mapping[str, str] = {
     "reindex": "rebuild the search index, in the foreground",
     "render-pages": "queue the page images of documents from before the pages node",
     "read-codes": "queue reading the codes on the pages of every document",
+    "relate": "queue finding the relations of every document",
     "fetch-logos": "queue fetching the logos of contacts without one",
     "reparse": "queue reading the text of every document again",
     "train": "train the classifier from the confirmed documents now",
@@ -321,6 +326,7 @@ QUEUES: dict[str, Command] = {
         run_render_pages, counted="documents", failed="queueing the page images failed"
     ),
     "read-codes": _queue(run_read_codes, counted="documents", failed="queueing the facts failed"),
+    "relate": _queue(run_relate, counted="documents", failed="queueing the relations failed"),
     "fetch-logos": _queue(run_fetch_logos, counted="contacts", failed="queueing the logos failed"),
     "reparse": _queue(
         run_reparse, counted="documents", failed="queueing the texts to read again failed"

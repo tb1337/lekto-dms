@@ -11,6 +11,7 @@ from lekto.core.domain.fields import FieldDefinition
 from lekto.core.domain.first_runs import (
     FACTS,
     JUDGED_FIELDS,
+    RELATIONS,
     Decision,
     FieldVerdict,
     FirstRun,
@@ -23,6 +24,7 @@ from lekto.core.domain.first_runs import (
 from lekto.core.domain.ids import FieldId, TagId
 from lekto.core.domain.master_data import Assignment
 from lekto.core.domain.pipeline import Lane, NodeRun
+from lekto.core.domain.relations import RelationOrigin, RelationState
 from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services.inbox import field_checks
 
@@ -102,6 +104,23 @@ async def keep_verdicts(
             FieldVerdict(
                 document_id=after.id,
                 field=FACTS,
+                verdict=Verdict.TAKEN,
+                decided_at=now,
+                decision=decision,
+            )
+        )
+    if decision is Decision.INBOX and any(
+        relation.origin is RelationOrigin.LEKTO
+        and relation.state is RelationState.SET
+        and relation.newer == after.id
+        for relation in await uow.document_relations.of_document(after.id)
+    ):
+        # Confirmed with the relations Lekto set for it: taken likewise. A suggestion stays the
+        # person's to decide (accepted or rejected, a verdict of its own).
+        verdicts.append(
+            FieldVerdict(
+                document_id=after.id,
+                field=RELATIONS,
                 verdict=Verdict.TAKEN,
                 decided_at=now,
                 decision=decision,

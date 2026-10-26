@@ -3012,7 +3012,8 @@ export interface components {
 			| 'text'
 			| 'field'
 			| 'document_date'
-			| 'fact';
+			| 'fact'
+			| 'relation';
 		/**
 		 * ConditionSchema
 		 * @description `field` `op` `value`. Operators by field: contact, document_type: `is`, `in`, `present`,
@@ -3032,7 +3033,8 @@ export interface components {
 		 *     `present`, `missing`; fact (`fact_kind`, `fact_role` if given; facts a person rejected do
 		 *     not count): `is`, `in` (the values as written, compared as Lekto compares them), `matches`
 		 *     (against each value as the text writes it; `^` and `$` mark its ends), `present`,
-		 *     `missing`.
+		 *     `missing`; relation (the documents it refers to by a set relation; suggestions do not
+		 *     count): `present` (any), `missing` (none), `is`, `in` (one of the document type ids).
 		 * @example {
 		 *       "field": "contact",
 		 *       "op": "is",
@@ -3049,6 +3051,13 @@ export interface components {
 		 *       "fact_role": "refers",
 		 *       "field": "fact",
 		 *       "op": "present"
+		 *     }
+		 * @example {
+		 *       "field": "relation",
+		 *       "op": "in",
+		 *       "value": [
+		 *         "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b"
+		 *       ]
 		 *     }
 		 */
 		ConditionSchema: {
@@ -6183,7 +6192,8 @@ export interface components {
 		 *
 		 *     The signals each propose metadata from one source: the language model, the trained
 		 *     classifier, similar confirmed documents, facts in the text (names, identifiers). `judge`
-		 *     decides from all of them, `fields` reads the fields of the decided type.
+		 *     decides from all of them, `fields` reads the fields of the decided type, `relate` finds the
+		 *     documents it refers to and those that refer to it (issue #145), before the rules see them.
 		 * @enum {string}
 		 */
 		Node:
@@ -6197,6 +6207,7 @@ export interface components {
 			| 'signal_facts'
 			| 'judge'
 			| 'fields'
+			| 'relate'
 			| 'apply_rules'
 			| 'file';
 		/**
@@ -7228,6 +7239,7 @@ export interface components {
 			| 'signal_facts'
 			| 'judge'
 			| 'fields'
+			| 'relate'
 			| 'apply_rules'
 			| 'file';
 		/**

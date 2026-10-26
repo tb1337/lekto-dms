@@ -21,7 +21,10 @@
         "start": "2026-05-01",
         "end": "2026-05-31"
       }
-    }
+    },
+    "relations": [
+      "34-betraege-ohne-waehrung"
+    ]
   },
   "fake": {
     "classification": {

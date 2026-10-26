@@ -82,6 +82,8 @@ const EVERY_CONDITION: ApiCondition[] = [
 	cond('contact', 'present'),
 	cond('document_type', 'missing'),
 	cond('document_type', 'in', [ID(3)]),
+	cond('relation', 'in', [ID(3)]),
+	cond('relation', 'present'),
 	cond('tags', 'contains', ID(4)),
 	cond('tags', 'in', [ID(5), ID(4)]),
 	cond('tags', 'present'),
@@ -197,7 +199,8 @@ describe('the rule model', () => {
 			text: ['contains', 'matches'],
 			document_date: ['is', 'gt', 'lt', 'present', 'missing'],
 			step: ['is', 'in', 'contains', 'gt', 'lt', 'present', 'missing'],
-			fact: ['present', 'missing', 'is', 'in', 'matches']
+			fact: ['present', 'missing', 'is', 'in', 'matches'],
+			relation: ['present', 'missing', 'is', 'in']
 		});
 		expect(FIELD_TYPE_OPERATORS.boolean).toEqual(['is', 'present', 'missing']);
 		expect(FIELD_TYPE_OPERATORS.choice).toEqual(['is', 'in', 'present', 'missing']);

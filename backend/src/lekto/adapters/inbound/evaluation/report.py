@@ -82,6 +82,11 @@ class Summary:
     # Facts the documents have beyond those expected, of the kinds a case expects (one the model
     # made up, or found where nothing is expected).
     facts_beyond: list[str] = field(default_factory=list)
+    relations_expected: int = 0  # relations the cases expect
+    relations_found: int = 0  # of those, the documents have (set or suggested)
+    relations_set: int = 0  # of those, set
+    relations_missed: list[str] = field(default_factory=list)
+    relations_beyond: list[str] = field(default_factory=list)  # found, not expected
 
     @property
     def tag_precision(self) -> float:
@@ -168,6 +173,17 @@ def summarise(results: Sequence[CaseResult], *, fake: bool) -> Summary:
                 for kind, value, role in sorted(result.facts)
                 if kind in kinds and (kind, value) not in expected_keys
             ]
+        related = {name: state for name, state in result.relations}
+        summary.relations_expected += len(expected.relations)
+        summary.relations_found += len(expected.relations & related.keys())
+        summary.relations_set += sum(1 for name in expected.relations if related.get(name) == "set")
+        summary.relations_missed += [
+            f"{case.name} with {name}" for name in sorted(expected.relations - related.keys())
+        ]
+        summary.relations_beyond += [
+            f"{case.name} with {name} ({related[name]})"
+            for name in sorted(related.keys() - expected.relations)
+        ]
         summary.tags_tp += len(applied & expected.tags)
         summary.tags_fp += len(applied - expected.tags)
         summary.tags_fn += len(expected.tags - applied)
@@ -292,6 +308,22 @@ def render(runs: Mapping[Run, Sequence[CaseResult]], info: RunInfo) -> str:
             lines.append(
                 f"Facts ({_RUN_TITLES[run]}): {item.facts_right} of {item.facts_expected} "
                 f"expected with their role{missed}{beyond}."
+            )
+    for run, item in summaries.items():
+        if item.relations_expected or item.relations_beyond:
+            missed = (
+                f": missing {'; '.join(item.relations_missed)}" if item.relations_missed else ""
+            )
+            beyond = (
+                f"; {len(item.relations_beyond)} beyond those expected: "
+                + "; ".join(item.relations_beyond)
+                if item.relations_beyond
+                else "; none beyond those expected"
+            )
+            lines.append(
+                f"Relations ({_RUN_TITLES[run]}): {item.relations_found} of "
+                f"{item.relations_expected} expected found ({item.relations_set} set)"
+                f"{missed}{beyond}."
             )
     for run, results in runs.items():
         lines += _run_section(run, results, summaries[run], info)

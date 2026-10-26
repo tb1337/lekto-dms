@@ -103,6 +103,7 @@ class ConditionField(StrEnum):
     FIELD = "field"
     DOCUMENT_DATE = "document_date"
     FACT = "fact"  # a fact of the document (#145): of `fact_kind`, in `fact_role` if given
+    RELATION = "relation"  # a document it refers to (#145): any, or of one of the types
 
 
 class Operator(StrEnum):
@@ -147,6 +148,7 @@ _FIELD_OPERATORS: dict[ConditionField, frozenset[Operator]] = {
     ConditionField.FACT: frozenset(
         {Operator.IS, Operator.IN, Operator.MATCHES, Operator.PRESENT, Operator.MISSING}
     ),
+    ConditionField.RELATION: _REFERENCE_OPERATORS,
 }
 TAG_FIELDS: dict[ConditionField, TagScope] = {
     ConditionField.TAGS: TagScope.DOCUMENT,
@@ -155,7 +157,9 @@ TAG_FIELDS: dict[ConditionField, TagScope] = {
     ConditionField.TOPIC: TagScope.TOPIC,
 }
 """The conditions on tags (a topic is one), and the scope of the tags each names."""
-_ID_FIELDS = frozenset({ConditionField.CONTACT, ConditionField.DOCUMENT_TYPE, *TAG_FIELDS})
+_ID_FIELDS = frozenset(
+    {ConditionField.CONTACT, ConditionField.DOCUMENT_TYPE, ConditionField.RELATION, *TAG_FIELDS}
+)
 _ORDERED = frozenset({Operator.IS, Operator.GT, Operator.LT, Operator.PRESENT, Operator.MISSING})
 FIELD_TYPE_OPERATORS: dict[FieldType, frozenset[Operator]] = {
     FieldType.TEXT: frozenset(
@@ -207,7 +211,9 @@ class Condition:
     key `paid`); `case_sensitive` applies to `matches` only. A `fact` condition looks at the
     document's facts of `fact_kind` (none a person rejected), in `fact_role` if given; `is`
     and `in` compare their values as Lekto compares them (written as they stand in a text,
-    kept normalised), `matches` runs against each value as the text writes it."""
+    kept normalised), `matches` runs against each value as the text writes it. A `relation`
+    condition looks at the documents it refers to (set relations, not suggestions): `present`
+    and `missing` at any, `is` and `in` at their document types."""
 
     field: ConditionField
     op: Operator
@@ -626,7 +632,7 @@ class RuleDefinition:
             match condition.field:
                 case ConditionField.CONTACT:
                     contacts.update(ContactId(id) for id in _ids(condition))
-                case ConditionField.DOCUMENT_TYPE:
+                case ConditionField.DOCUMENT_TYPE | ConditionField.RELATION:
                     types.update(DocumentTypeId(id) for id in _ids(condition))
                 case tag_field if tag_field in TAG_FIELDS:
                     named = [TagId(id) for id in _ids(condition)]

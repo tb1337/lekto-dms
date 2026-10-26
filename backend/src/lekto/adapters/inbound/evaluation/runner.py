@@ -71,6 +71,7 @@ from lekto.core.services.master_data import MasterDataService
 from lekto.core.services.objects import structure_key, text_key
 from lekto.core.services.pipeline import IncomingFile, PipelineService
 from lekto.core.services.profiles import ProfileChanges, ProfileService
+from lekto.core.services.relations import RelationService
 from lekto.core.services.users import UserService
 
 ADMIN = "evaluation-admin"  # creates the master data
@@ -99,6 +100,7 @@ class Environment:
     indexing: IndexingService | None = None
     classifier: ClassifierService | None = None
     profiles: ProfileService | None = None  # the household's users of the set get a profile
+    relations: RelationService | None = None  # what `relate` found for a case
 
 
 @dataclass(frozen=True)
@@ -141,6 +143,9 @@ class CaseResult:
     by_hand: frozenset[str] = frozenset()  # fields set by hand only: no model checks, not scored
     topic: str | None = None
     facts: frozenset[ExpectedFact] = frozenset()  # the document's facts (none rejected)
+    # The documents it is related with, either way (by case name; one of the training corpus as
+    # `corpus`), with the relation's state.
+    relations: frozenset[tuple[str, str]] = frozenset()
 
 
 async def evaluate(
@@ -160,14 +165,30 @@ async def evaluate(
     if environment.run is Run.TRAINED:
         await _take_over(environment, evaluation.training, master, admin, owner)
     results = []
+    names: dict[DocumentId, str] = {}
     for case in evaluation.cases_in(environment.run):
         filename = f"{case.name}.pdf" if filename_for is None else filename_for(case)
         result = await _run(case, environment, master, owner, filename)
+        names[result.document_id] = case.name
+        result = replace(result, relations=await _relations(environment, owner, result, names))
         result = await _corrected(result, environment, master, owner)
         if progress is not None:
             progress(result)
         results.append(result)
     return results
+
+
+async def _relations(
+    environment: Environment, owner: User, result: "CaseResult", names: dict[DocumentId, str]
+) -> frozenset[tuple[str, str]]:
+    """The documents `relate` related the case with, by name, and how sure."""
+    if environment.relations is None:
+        return frozenset()
+    found = await environment.relations.relations(owner.id, result.document_id)
+    return frozenset(
+        (names.get(item.other.id, "corpus"), item.relation.state.value)
+        for item in (*found.refers_to, *found.referred_by, *found.suggested)
+    )
 
 
 async def _accounts(environment: Environment) -> tuple[User, User]:

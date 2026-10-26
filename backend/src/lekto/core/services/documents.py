@@ -102,6 +102,7 @@ from lekto.core.services.objects import (
     structure_key,
 )
 from lekto.core.services.profiles import matching_persons
+from lekto.core.services.relating import queue_relate, relates_by
 from lekto.core.services.rules.changes import ChangeRules
 from lekto.core.services.rules.running import Prepared, RuleRun
 from lekto.core.services.tasks.settling import cancel_tasks
@@ -865,6 +866,8 @@ class DocumentService:
             access = document_access(user, document, space)
             if not dry_run:
                 await _save(uow, document)
+                if relates_by(changed):  # what its relations rest on changed
+                    await queue_relate(uow, document.id, now)
                 await uow.commit()
         report = access is not None and access.can_edit
         return MetadataChange(document, access, space, run if report else None, before)

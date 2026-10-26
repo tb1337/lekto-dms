@@ -31,7 +31,8 @@ const CONDITION_FIELDS: Record<Exclude<ConditionField, 'field'>, () => string> =
 	text: m.rule_field_text,
 	document_date: m.field_date,
 	step: m.rule_field_step,
-	fact: m.rule_field_fact
+	fact: m.rule_field_fact,
+	relation: m.rule_field_relation
 };
 
 export function fieldLabel(field: ConditionField): string {
@@ -81,6 +82,13 @@ const TAG_OPERATORS: Partial<Record<Operator, () => string>> = {
 	present: m.rule_op_tags_present,
 	missing: m.rule_op_tags_missing
 };
+// "Bezug | auf ein Dokument vom Typ | Rechnung": the documents it refers to.
+const RELATION_OPERATORS: Partial<Record<Operator, () => string>> = {
+	is: m.rule_op_relation_is,
+	in: m.rule_op_relation_in,
+	present: m.rule_op_relation_present,
+	missing: m.rule_op_relation_missing
+};
 const DATE_OPERATORS: Partial<Record<Operator, () => string>> = {
 	is: m.rule_op_date_is,
 	gt: m.rule_op_date_gt,
@@ -102,6 +110,7 @@ export function operatorLabel(
 ): string {
 	let special: Partial<Record<Operator, () => string>> = {};
 	if (isTagField(field)) special = TAG_OPERATORS;
+	else if (field === 'relation') special = RELATION_OPERATORS;
 	else if (field === 'document_date' || type === 'date') special = DATE_OPERATORS;
 	else if (type === 'number' || type === 'amount') special = NUMBER_OPERATORS;
 	else if (type === 'period') special = PERIOD_OPERATORS;
@@ -186,7 +195,8 @@ function describeConditionValue(
 ): string {
 	if (typeof value === 'string') {
 		if (condition.field === 'contact') return nameOf(value, lookup?.contacts ?? []);
-		if (condition.field === 'document_type') return nameOf(value, lookup?.documentTypes ?? []);
+		if (condition.field === 'document_type' || condition.field === 'relation')
+			return nameOf(value, lookup?.documentTypes ?? []);
 		if (isTagField(condition.field) || condition.field === 'topic') return tagName(value, lookup);
 		if (condition.field === 'channel') return CHANNEL_LABELS[value as Channel]?.() ?? value;
 		if (condition.field === 'text' || condition.field === 'fact') return value;

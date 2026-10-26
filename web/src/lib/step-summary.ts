@@ -109,6 +109,8 @@ export function stepSummary(
 			return judged(output, status === 'review', lookup);
 		case 'fields':
 			return read(output);
+		case 'relate':
+			return related(output);
 		case 'apply_rules':
 			return ruled(entry, lookup);
 		case 'file':
@@ -241,6 +243,17 @@ function read(output: Json): string {
 			: m.summary_fields_read({ count: String(found) });
 	}
 	return m.summary_fields_partly({ read: String(found), count: String(checks.length) });
+}
+
+/** How many relations the step set and suggested (#145). */
+function related(output: Json): string {
+	const found = list(output.relations).map(object);
+	if (found.length === 0) return m.summary_relations_none();
+	const set = found.filter((item) => item.state === 'set').length;
+	return m.summary_relations({
+		set: String(set),
+		suggested: String(found.length - set)
+	});
 }
 
 /** The spaces the document went through or the one whose rules ran when it arrived, and how

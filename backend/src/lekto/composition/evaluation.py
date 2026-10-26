@@ -40,6 +40,7 @@ from lekto.core.ports.llm import LanguageModel
 from lekto.core.services.classification.prompts import EXTRACT_PROMPT, PROPOSE_PROMPT
 from lekto.core.services.classification.signals import FactsSignal
 from lekto.core.services.pipeline import NodeExecutor, PipelineService
+from lekto.core.services.relating import RelateNode
 
 FAKE_MODEL = "fixed answers"
 PIPELINE_VERSION = "evaluation"
@@ -123,6 +124,7 @@ def build_environment(
             facts=FactsSignal(uow, store),
             locator=None,
         )
+        executors[Node.RELATE] = RelateNode()
         return PipelineService(
             uow,
             clock,
@@ -144,6 +146,7 @@ def build_environment(
         indexing=services.indexing if trained else None,
         classifier=classifier,
         profiles=services.profiles,
+        relations=services.relations,
     )
 
 

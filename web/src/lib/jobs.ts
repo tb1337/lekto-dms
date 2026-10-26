@@ -22,6 +22,7 @@ const KINDS: Record<string, () => string> = {
 	'pipeline.catch_up': m.job_kind_pipeline_catch_up,
 	'pipeline.reparse': m.job_kind_pipeline_reparse,
 	'pipeline.facts': m.job_kind_pipeline_facts,
+	'pipeline.relate': m.job_kind_pipeline_relate,
 	'search.index': m.job_kind_search_index,
 	'search.refresh': m.job_kind_search_refresh,
 	'search.reconcile': m.job_kind_search_reconcile,

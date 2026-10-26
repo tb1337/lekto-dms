@@ -19,7 +19,8 @@ class Node(StrEnum):
 
     The signals each propose metadata from one source: the language model, the trained
     classifier, similar confirmed documents, facts in the text (names, identifiers). `judge`
-    decides from all of them, `fields` reads the fields of the decided type."""
+    decides from all of them, `fields` reads the fields of the decided type, `relate` finds the
+    documents it refers to and those that refer to it (issue #145), before the rules see them."""
 
     RECEIVE = "receive"
     OCR = "ocr"
@@ -31,6 +32,7 @@ class Node(StrEnum):
     SIGNAL_FACTS = "signal_facts"
     JUDGE = "judge"
     FIELDS = "fields"
+    RELATE = "relate"
     APPLY_RULES = "apply_rules"
     FILE = "file"
 
@@ -81,7 +83,8 @@ GRAPH: Mapping[Node, frozenset[Node]] = {
     **dict.fromkeys(SIGNALS, frozenset({Node.PARSE})),
     Node.JUDGE: SIGNALS,
     Node.FIELDS: frozenset({Node.JUDGE}),
-    Node.APPLY_RULES: frozenset({Node.FIELDS}),
+    Node.RELATE: frozenset({Node.FIELDS}),
+    Node.APPLY_RULES: frozenset({Node.RELATE}),
     Node.FILE: frozenset({Node.APPLY_RULES, Node.PAGES}),
 }
 """What each node needs. `receive` is the source, `file` the only sink: every other node is

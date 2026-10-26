@@ -12,6 +12,7 @@ from lekto.core.domain.document_facts import DocumentFact, FactOrigin, FactRole,
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.fields import Money
 from lekto.core.domain.identifiers import IdentifierKind
+from lekto.core.domain.ids import DocumentTypeId, new_id
 from lekto.core.domain.locations import Box
 from lekto.core.domain.rule_conditions import Facts, evaluate, pattern_subjects
 from lekto.core.domain.rules import AddTags, Condition, ConditionField, Operator, SetTitle
@@ -189,3 +190,27 @@ def test_only_a_template_on_facts_or_an_ask_needs_the_codes() -> None:
     assert not rule(AddTags(frozenset({PAID})), when=all_(present)).definition.uses_codes
     giro = SetTitle(template="Zahlung {{ facts.girocode.amount }}")
     assert rule(giro).definition.uses_codes
+
+
+def test_a_relation_condition_looks_at_the_types_it_refers_to() -> None:
+    invoice, contract = DocumentTypeId(new_id()), DocumentTypeId(new_id())
+
+    def holds(
+        op: Operator,
+        value: object = None,
+        referred: tuple[DocumentTypeId | None, ...] = (invoice, None),
+    ) -> bool:
+        condition = Condition(field=ConditionField.RELATION, op=op, value=value)  # type: ignore[arg-type]
+        facts = Facts.of(doc(), referred_types=referred)
+        return bool(evaluate(all_(condition), facts, {}))
+
+    assert holds(Operator.PRESENT)
+    assert holds(Operator.MISSING, referred=())
+    assert holds(Operator.IS, str(invoice))
+    assert not holds(Operator.IN, [str(contract)])
+    with pytest.raises(ValidationError):
+        Condition(field=ConditionField.RELATION, op=Operator.IS, value="Rechnung")
+    kept = Condition(field=ConditionField.RELATION, op=Operator.IN, value=[str(invoice)])
+    assert condition_from_json(condition_to_json(kept)) == kept
+    rule_ = rule(AddTags(frozenset({PAID})), when=all_(kept))
+    assert rule_.definition.references().document_types == frozenset({invoice})

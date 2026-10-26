@@ -128,6 +128,7 @@
 			case 'contact':
 				return lookup.contacts.map((entry) => ({ value: entry.id, label: entry.name }));
 			case 'document_type':
+			case 'relation':
 				return lookup.documentTypes.map((entry) => ({ value: entry.id, label: entry.name }));
 			case 'tags':
 			case 'contact_group':

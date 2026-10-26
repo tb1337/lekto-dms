@@ -28,7 +28,9 @@ Layout of a set directory:
   (`value`, `evidence`, `label`), in that answer as text; `lane`: the lane this answer leads
   to, if not the expected one; `facts`: the entries of the answer to the facts request,
   `kind`, `value`, `role`, `evidence`, `label`). `expected.facts` (`kind`, `value` as
-  written, `role`) are the facts the document must have, scored where given. `expected` and
+  written, `role`) are the facts the document must have, scored where given;
+  `expected.relations` the cases of the run it is related with (either way), by name; a case
+  without them expects none. `expected` and
   `fake` may give `lanes` by run where a run differs; `runs` names the runs a case belongs to
   (default: both).
 """
@@ -134,6 +136,7 @@ class Expected:
     topic: str | None = None
     space: str | None = None
     facts: frozenset[ExpectedFact] | None = None  # None: the case's facts are not scored
+    relations: frozenset[str] = frozenset()  # the cases it is related with, by name
 
     def lane_in(self, run: Run) -> Lane:
         return self.lanes.get(run, self.lane)
@@ -447,6 +450,7 @@ def _case(markdown: Path, master: MasterDataSpec) -> Case:
             topic=expected_data.get("topic"),
             space=expected_data.get("space"),
             facts=_facts(expected_data["facts"]) if "facts" in expected_data else None,
+            relations=frozenset(expected_data.get("relations", ())),
         )
         fake = None
         if data.get("fake") is not None:

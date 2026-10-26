@@ -622,6 +622,29 @@ and the space, the fields node reads the fields of the decided type and the titl
   "Bezugsziel" in its dialog): a contract or customer number a document shares connects it only
   with documents of such a type (a contract, a policy); without it, such a number connects no
   documents, as it would connect every invoice with every other.
+- **Recognising relations** (issue #145 PR 11, `services/relating.py`, node `relate` between
+  `fields` and `apply_rules`, revision 0050): in both directions, a number the document refers
+  to ("Ihre Rechnung Nr. 4711", role `refers`) as another document's own (invoice, credit note,
+  order number); a contract, policy or customer number shared with a document of a relation
+  target's type (and, for such a document, the documents that share its number); the same
+  contact, type and period (a field of type period) at another document date, unless their
+  personnel, customer, contract or a person's numbers differ (two people's payslips); the day of a letter it
+  answers (`letter_date`) as the date of a document of the same contact. One document of the
+  same contact sets the relation, several (or one without a contact) are suggestions, another
+  contact's none (a document with a contact looks only among its contact's documents). Two
+  relation targets are never related by a customer number, by a contract number only as a
+  suggestion. A pair a person decided stays; a suggestion of Lekto's becomes set when a source
+  is sure now, and a relation of Lekto's no person decided goes when no source finds it any
+  more (a contact corrected since). The node never makes a document yellow; its log names
+  the relations it made (`relate-1`). Outside processing a job (`pipeline.relate`) finds them
+  again after a person decided the contact, type, date, fields or facts or confirmed the
+  document, and `lekto relate` queues it for every document not being processed (after the
+  update to this version, and after marking a relation target). The rules see the set
+  relations to documents the rule's author may read (condition `relation`), and confirming a
+  document with relations Lekto set takes them (`field_verdicts`; a suggestion stays the
+  person's to decide). Lekto relates across spaces; only who reads both ends sees one, in the
+  relations and in the log of `relate`. Every change of relations, Lekto's or a person's, holds
+  one lock.
 - **The kinds of facts** (`IdentifierKind`, issue #145 PR 4; one module per kind in
   `domain/identifiers`): besides IBAN, VAT ID, customer and personnel number, e-mail domain and
   a person's numbers, those that point to the contact (creditor ID with its check digits,
@@ -872,6 +895,9 @@ what every model learned and how well, oldest first; training on request is for 
    stay as they are. Documents taken over get their codes only this way: the signals abstain
    for them. Run it once `reparse` is through, which changes the text the identifiers are read
    from.
+4. The node `relate` (issue #145) finds the relations of new documents; documents from before
+   have it skipped. `lekto relate` has the worker find theirs; run it after `read-codes`, and
+   again after marking a document type as a relation target.
 
 **After the update to 0.3.** Revisions 0024 to 0029 run at start; then four things:
 
@@ -1051,6 +1077,7 @@ where it is and edits where it goes (global: admins); every version names its sp
   | `document_date` | `is`, `gt`, `lt`, `present`, `missing` |
   | `field` (with `field_id`) | by data type: text and link `is`, `in`, `contains`, `matches`; number, amount, date `is`, `gt`, `lt`; yes/no `is`; choice `is`, `in`; period `is`, `overlaps` (shares a day with a period), `gt` (starts after a date), `lt` (ends before a date); all `present`, `missing` |
   | `fact` (with `fact_kind`, `fact_role` or any role; issue #145) | `present`, `missing`, `is`, `in` (the values as written, kept and compared normalised), `matches` (against each value as the text writes it, `^` and `$` at its ends); facts a person rejected do not count, and a fact condition is never unknown |
+  | `relation` (issue #145) | `present` (refers to any document), `missing` (to none), `is`, `in` (to a document of one of the types); the set relations it refers by (the newer of the pair), not suggestions; never unknown |
 
   `matches` takes `case_sensitive` (default false). Patterns run with the `regex` package
   (`adapters/outbound/regex`) in a thread with a time limit (`LEKTO_RULES_PATTERN_TIMEOUT`); a

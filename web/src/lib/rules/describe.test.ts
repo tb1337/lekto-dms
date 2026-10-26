@@ -63,6 +63,14 @@ describe('operators in the words of a period', () => {
 	});
 });
 
+describe('operators in the words of a relation', () => {
+	it('refers to a document of a type, to any or to none', () => {
+		expect(operatorLabel('relation', 'is')).toBe(m.rule_op_relation_is());
+		expect(operatorLabel('relation', 'present')).toBe(m.rule_op_relation_present());
+		expect(operatorLabel('relation', 'missing')).toBe(m.rule_op_relation_missing());
+	});
+});
+
 describe('conditions on groups', () => {
 	const groups = {
 		...lookup,

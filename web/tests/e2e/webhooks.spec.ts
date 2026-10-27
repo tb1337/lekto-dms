@@ -15,7 +15,7 @@ async function signIn(page: Page) {
 	await page.getByLabel('Username').fill(ADMIN);
 	await page.getByLabel('Password').fill(ADMIN_PASSWORD);
 	await page.getByRole('button', { name: 'Sign in' }).click();
-	await page.waitForURL('**/ui/inbox');
+	await page.waitForURL('**/ui/');
 }
 
 test('a webhook is created, tested, changed and deleted', async ({ page }) => {

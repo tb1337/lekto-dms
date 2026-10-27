@@ -159,13 +159,14 @@ phone the page scrolls.
 
 ## Navigation
 
-- **Menu:** two groups divided by a line. _Work_: Posteingang · Dokumente · Erwartet · Spaces ·
-  Regeln · Webhooks. _Administration and operation_: Stammdaten · Nutzer · System, the system at
+- **Menu:** two groups divided by a line. _Work_: Posteingang · Dokumente · Spaces · Regeln ·
+  Webhooks. _Administration and operation_: Stammdaten · Nutzer · System, the system at
   the outer right. The rights stay (master data and users for admins only).
 - **From `lg` (1024 px):** the menu stands in the header. Below `xl` (1280 px) the second group
   goes behind "Mehr" (a dropdown), from `xl` it stands in the header too.
 - **Below `lg`:** a sheet from the right, 320 px wide. Its button is the rightmost item of the
   header (thumb corner).
+- **Start page:** the overview at `/`, reached by the logo; it has no menu entry.
 - **Header items:** logo (favicon icon before the wordmark "lekto"), menu, search (the field where
   the header has room, `searchPlaces`: from `2xl`, for admins from 1720 px; otherwise the
   magnifier), user menu (avatar).
@@ -415,6 +416,15 @@ The grid card "contact on top":
 
 `DocumentRow` (list) and `InboxRow` (inbox) show the same parts in a row: thumbnail, title, contact
 and type, tags, state.
+
+### Overview tiles
+
+The overview (`/`) shows what waits for someone as tiles in a grid (one column on the phone, two
+from `sm`, three from `lg` when there are three). A tile is a `Card` (`md`): an icon and its
+`Card.Title` (the place's name), the big number (`text-figure`, `tabular-nums`) with what it
+counts, badges in their tones (icon and word for a lane), one `text-meta` line of detail, and at
+its foot the way there, a `brand` link with an arrow ("Zum Posteingang"). Badges on a tile are
+not links. While a tile loads it shows a `Skeleton` in the place of the number.
 
 ## States
 

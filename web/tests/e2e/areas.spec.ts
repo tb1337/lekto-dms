@@ -23,10 +23,11 @@ test('every area opens, and the dialogs create things', async ({ page }) => {
 	await page.getByLabel('Username').fill(ADMIN);
 	await page.getByLabel('Password').fill(ADMIN_PASSWORD);
 	await page.getByRole('button', { name: 'Sign in' }).click();
-	await page.waitForURL('**/ui/inbox'); // the start page
+	await page.waitForURL('**/ui/'); // the start page: the overview
 
 	const headings: [string, string][] = [
 		['/ui/documents', 'Documents'],
+		['/ui/', 'Overview'],
 		['/ui/inbox', 'Inbox'],
 		['/ui/documents?q=invoice', 'Documents'],
 		['/ui/rules', 'Rules'],

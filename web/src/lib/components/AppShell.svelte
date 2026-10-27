@@ -15,7 +15,6 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { API_DOCS, BASE } from '#lib/base.ts';
-	import BetaPill from '#lib/components/BetaPill.svelte';
 	import HeaderSearch from '#lib/components/HeaderSearch.svelte';
 	import Logo from '#lib/components/Logo.svelte';
 	import Segmented from '#lib/components/Segmented.svelte';
@@ -119,10 +118,6 @@
 			>
 				{badgeText(inbox.open)}
 			</span>
-		{/if}
-		{#if section.path === '/expected'}
-			<!-- The area is new (Tobi, 26.10.2026). -->
-			<BetaPill class="-ml-1" />
 		{/if}
 	</a>
 {/snippet}

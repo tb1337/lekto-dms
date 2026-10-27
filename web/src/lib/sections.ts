@@ -1,7 +1,6 @@
 import type { Component } from 'svelte';
 import Activity from '@lucide/svelte/icons/activity';
 import Archive from '@lucide/svelte/icons/archive';
-import CalendarClock from '@lucide/svelte/icons/calendar-clock';
 import FileText from '@lucide/svelte/icons/file-text';
 import Inbox from '@lucide/svelte/icons/inbox';
 import Settings from '@lucide/svelte/icons/settings';
@@ -25,12 +24,11 @@ export interface Section {
 }
 
 // The search is the field in the header and in the document view, not an area of its own
-// (Tobi, 13.10.2026; one view with the documents since 16.10.2026).
+// (Tobi, 13.10.2026; one view with the documents since 16.10.2026). The overview is the start
+// page, reached by the logo; what is expected stands there (Tobi, 27.10.2026).
 export const SECTIONS: readonly Section[] = [
 	{ path: '/inbox', label: m.nav_inbox, icon: Inbox, admin: false, group: 'work' },
 	{ path: '/documents', label: m.nav_documents, icon: FileText, admin: false, group: 'work' },
-	// The documents expected next by their series (#145).
-	{ path: '/expected', label: m.nav_expected, icon: CalendarClock, admin: false, group: 'work' },
 	{ path: '/spaces', label: m.nav_spaces, icon: Archive, admin: false, group: 'work' },
 	{ path: '/rules', label: m.nav_rules, icon: Workflow, admin: false, group: 'work' },
 	{ path: '/webhooks', label: m.nav_webhooks, icon: Webhook, admin: false, group: 'work' },

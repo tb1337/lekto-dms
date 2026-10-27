@@ -85,7 +85,6 @@ describe('AppShell', () => {
 		expect(links.map((link) => link.getAttribute('href'))).toEqual([
 			'/ui/inbox',
 			'/ui/documents',
-			'/ui/expected',
 			'/ui/spaces',
 			'/ui/rules',
 			'/ui/webhooks',
@@ -97,7 +96,7 @@ describe('AppShell', () => {
 		expect(screen.getByRole('searchbox', { name: m.header_search_label() })).toBeTruthy();
 	});
 
-	it('separates the work from running Lekto, also for users, and marks expected as beta', () => {
+	it('separates the work from running Lekto, also for users', () => {
 		signIn('user');
 		render(AppShell, { children });
 		const nav = mainNavigation();
@@ -105,7 +104,6 @@ describe('AppShell', () => {
 		expect(links.map((link) => link.getAttribute('href'))).toEqual([
 			'/ui/inbox',
 			'/ui/documents',
-			'/ui/expected',
 			'/ui/spaces',
 			'/ui/rules',
 			'/ui/webhooks',
@@ -119,7 +117,6 @@ describe('AppShell', () => {
 		expect((next?.matches('a') ? next : next?.querySelector('a'))?.getAttribute('href')).toBe(
 			'/ui/system'
 		);
-		expect(within(nav).getByRole('link', { name: `${m.nav_expected()} ${m.beta()}` })).toBeTruthy();
 	});
 
 	it('shows the logo with its icon', () => {
@@ -223,7 +220,6 @@ describe('AppShell', () => {
 		expect(links.map((link) => link.getAttribute('href'))).toEqual([
 			'/ui/inbox',
 			'/ui/documents',
-			'/ui/expected',
 			'/ui/spaces',
 			'/ui/rules',
 			'/ui/webhooks',
@@ -257,7 +253,7 @@ describe('AppShell', () => {
 		const sheet = await screen.findByRole('dialog');
 		expect(within(sheet).queryByText('tobi')).toBeNull();
 		expect(within(sheet).queryByRole('button', { name: m.sign_out() })).toBeNull();
-		expect(within(sheet).getAllByRole('link')).toHaveLength(7);
+		expect(within(sheet).getAllByRole('link')).toHaveLength(6);
 	});
 
 	it('marks the menu button on a phone when an admin sees all users', async () => {

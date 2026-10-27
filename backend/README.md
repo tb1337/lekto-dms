@@ -947,7 +947,7 @@ what every model learned and how well, oldest first; training on request is for 
    their topic; the training learns topics (of documents and of learned identifiers) with its
    next run (`train` trains at once).
 4. Logos of contacts come by upload. Fetching them from the contacts' websites is off: with
-   `LEKTO_LOGO_FETCH=true` a contact without a logo that gets a domain has it fetched, and
+   `LEKTO_LOGO_FETCH=true` a contact without a logo that gets a domain entered has it fetched, and
    `lekto fetch-logos` fetches them for the contacts from before
    (outgoing HTTPS to their domains only).
 
@@ -1366,9 +1366,10 @@ a temporary Meilisearch index and runs the queries of `evaluation/search/queries
   - *Fetch* (`LEKTO_LOGO_FETCH=true`; off by default, Lekto then never asks the web on its own):
     the worker's job `contacts.logo` asks the contact's own website for its icon, the port
     `LogoFetcher` (`adapters/outbound/logos`, httpx2). It is queued when a contact without a
-    logo, or with a fetched one, gets a domain among its identifiers (entered by hand, learned
-    by training, attached from a document; a logo found there replaces the fetched one, none
-    found leaves it), by an admin (`POST /contacts/{id}/logo/fetch`; all its domains in turn,
+    logo, or with a fetched one, gets a domain entered among its identifiers (by hand, attached
+    from a document or a learned one taken over; a domain training learned is not asked until
+    someone confirms it; a logo found there replaces the fetched one, none found leaves it), by
+    an admin (`POST /contacts/{id}/logo/fetch`; all its entered domains in turn,
     also one that failed; may replace a fetched logo) and for the contacts without a logo with
     `lekto fetch-logos`. A job that runs while `LEKTO_LOGO_FETCH` is off
     (switched off after it was queued) ends at once with the note "not fetched: fetching logos

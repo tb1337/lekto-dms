@@ -119,8 +119,8 @@ class MasterDataService:
         contact or type queue a job that brings the search index of the documents concerned
         up to date (set when there is a search index). `store`: where the logos of contacts
         are, which go with a deleted contact. `fetch_logos`: a contact without a logo, or with a
-        fetched one, that gets a new domain among its identifiers queues fetching its logo
-        (`logos.queue_logo_fetch`). `normalise_batch`: documents per step of normalising after
+        fetched one, that gets a new domain entered among its identifiers queues fetching its
+        logo (`logos.queue_logo_fetch`). `normalise_batch`: documents per step of normalising after
         a move (`normalise_tagged`)."""
         self._uow = uow
         self._clock = clock
@@ -187,8 +187,9 @@ class MasterDataService:
         `topic_ids` replaces the topics it enables (tags of scope `topic`). Taking one away is
         a conflict while a document of the contact carries it; its identifiers lose it. An
         identifier points to one of the topics the contact enables after the change, or to
-        none (ValidationError otherwise). A new domain among the identifiers of a contact
-        without a logo, or with a fetched one, queues fetching it, with fetching on."""
+        none (ValidationError otherwise). A new domain entered (a learned one taken over too)
+        for a contact without a logo, or with a fetched one, queues fetching it, with fetching
+        on."""
         known: list[str] = []
 
         def change(item: Contact) -> None:
@@ -1153,15 +1154,12 @@ async def _check_contact_identifiers(uow: UnitOfWork, contact: Contact) -> None:
 async def replace_learned_identifiers(
     uow: UnitOfWork,
     learned: Mapping[ContactId, Collection[Identifier]],
-    *,
-    fetch_logos_at: datetime | None = None,
 ) -> int:
     """Make `learned` the learned identifiers of all contacts (training found them), in `uow`
     without committing; a contact not in `learned` has none afterwards. Values entered or
     rejected anywhere stay where they are. A learned one points to its topic if its contact
-    enables it (`Contact.set_learned`). Returns how many are learned. `fetch_logos_at` (with
-    fetching on): a contact without a logo, or with a fetched one, that learned a new domain
-    gets its logo fetched, queued for then."""
+    enables it (`Contact.set_learned`). Returns how many are learned. A learned domain fetches
+    no logo: only one entered does (`Contact.domains`)."""
     contacts = await uow.contacts.list_all()
     taken = {
         item.key
@@ -1184,13 +1182,10 @@ async def replace_learned_identifiers(
     count = 0
     for contact in contacts:
         before = list(contact.identifiers)
-        known = contact.domains
         contact.set_learned(fresh[contact.id])
         count += sum(item.source is IdentifierSource.LEARNED for item in contact.identifiers)
         if contact.identifiers != before:
             await uow.contacts.update(contact)
-            if fetch_logos_at is not None:
-                await queue_logo_fetch(uow, contact, known, fetch_logos_at)
     return count
 
 

@@ -13,10 +13,11 @@ export function logoFetching(): Promise<boolean> {
 	);
 }
 
-/** The contact's domains among its identifiers that count: where its website is. */
+/** The contact's domains entered among its identifiers: where its website is. A learned one is
+ * not asked until someone takes it over. */
 export function domainsOf(contact: Pick<Contact, 'identifiers'>): string[] {
 	return contact.identifiers
-		.filter((item) => item.kind === 'email_domain' && item.source !== 'rejected')
+		.filter((item) => item.kind === 'email_domain' && item.source === 'manual')
 		.map((item) => item.value);
 }
 

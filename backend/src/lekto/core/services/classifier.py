@@ -123,12 +123,7 @@ class ClassifierService:
         clock: Clock,
         classifier: Classifier,
         policy: ClassifierPolicy,
-        *,
-        fetch_logos: bool = False,
     ) -> None:
-        """`fetch_logos`: a contact without a logo, or with a fetched one, that learns a new
-        domain gets its logo fetched (`logos.queue_logo_fetch`)."""
-        self._fetch_logos = fetch_logos
         self._uow = uow
         self._store = store
         self._clock = clock
@@ -140,11 +135,6 @@ class ClassifierService:
     @property
     def name(self) -> str:
         return self._classifier.name
-
-    @property
-    def fetch_logos(self) -> bool:
-        """Whether a domain a contact learns queues fetching its logo."""
-        return self._fetch_logos
 
     # --- jobs -------------------------------------------------------------------------------------
 
@@ -294,9 +284,7 @@ class ClassifierService:
                 if kind is IdentifierKind.EMAIL_ADDRESS
             ]
             learned = await replace_learned_identifiers(
-                uow,
-                mine_identifiers(found, taken, personal),
-                fetch_logos_at=self._clock.now() if self._fetch_logos else None,
+                uow, mine_identifiers(found, taken, personal)
             )
             summary: JsonObject = {
                 **trained.summary,

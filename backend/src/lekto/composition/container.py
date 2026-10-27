@@ -700,7 +700,6 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             clock,
             container.classifier,
             classifier_policy_of(settings),
-            fetch_logos=container.logo_fetcher is not None,
         )
     )
     index, embeddings = container.search_index, container.embeddings

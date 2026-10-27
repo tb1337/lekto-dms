@@ -1888,6 +1888,218 @@ Stand: Vorschlag Creamy, 25.10.2026, zur Freigabe durch Tobi. Release offen. Sam
 - Geprüft: 4214 Unit- und Integrationstests (383 übersprungen ohne Dienste), 1224 Vitest (Exit 0), Build; Browser hell, dunkel, 375 px, de und en, Tastatur und ARIA-Baum der Tabelle, 27 Serien zusammengeklappt und aufgeklappt, ohne Konsolenfehler.
 - Offen für Tobi: die Grenze (24 offene Spuren, 500 Dokumente), die Lücke ab drei leeren Monaten, der Stream-Link aus den Stammdaten (Entscheidung 15).
 
+### Übersicht und Kennungen mit einem Decision Model
+
+Stand: Vorschlag Claude, 27.10.2026, zur Freigabe durch Tobi. Release offen.
+
+**Anlass (Tobi, 27.10.2026):** Lekto erkennt viele Kennungen, verwalten lassen sie sich aber nur einzeln im Kontakt. Es fehlt eine Oberfläche, die den ganzen Arbeitsvorrat an einer Stelle zeigt: eine Übersicht unter „lekto“, von der aus man in den Posteingang, die Dokumente oder die Liste der zu bestätigenden Kennungen kommt. Das Bestätigen von Kennungen ist mühsame Handarbeit. Ein Decision Model, also ein Modell vom Typ „decision“, soll es smarter machen, den Menschen entlasten und es zunächst besser sichtbar machen.
+
+**Befund (27.10.2026, nur lesend):**
+
+- **Der Arbeitsvorrat liegt verstreut:**
+  - Gelbe, rote und neue Dokumente stehen im Posteingang (`GET /inbox/summary` zählt schon).
+  - Gelernte Kennungen gibt es nur einzeln im Kontakt-Editor.
+  - Unbekannte Kennungen gibt es nur am einzelnen Dokument (Fakten, „anheften“).
+  - Überfällige Dokumente stehen unter „Erwartet“ (Beta, `GET /expected`).
+  - Fehlgeschlagene Jobs und der Worker stehen unter System → Jobs (`GET /jobs/summary`).
+
+  Eine Liste der gelernten und unbekannten Kennungen über alle Kontakte und Dokumente gibt es weder in der API noch in der UI.
+- **Gelernte Kennungen zählen im Urteil als Beleg** (`Identifier.counts`), genau wie eingetragene. Das Bestätigen schaltet nur den Logo-Abruf frei (seit #175). Eine falsche gelernte Kennung schadet dagegen aktiv, etwa die Gläubiger-ID oder IBAN eines Zahlungsdienstleisters. Der größte Hebel ist darum das Verwerfen, nicht das Übernehmen.
+- **Jedes Training ersetzt alle gelernten Kennungen** (`replace_learned_identifiers`). Eine Empfehlung kann deshalb nicht an der Zeile in `contact_identifiers` hängen, sondern braucht eine eigene Tabelle, die nach Art und Wert geführt wird.
+- **Unbekannte Kennungen** sind Fakten (`document_facts`) einer Art aus `CONTACT_KINDS` in bestätigten Dokumenten mit Kontakt, deren Wert kein Kontakt kennt: weder eingetragen noch gelernt noch verworfen. Die Werte einer Person (`of_person`) gehören nicht dazu.
+- **Decision Models** schreiben keinen Text. Sie bekommen einen Zustand (Text oder JSON) und benannte Fragen (`choice`, `noul`, `score`) und liefern je Option eine Wahrscheinlichkeit. Eine Begründung gibt es nicht.
+  - Ollama bedient sie ab 0.35 über `POST /v1/systemone`, neben den gewöhnlichen Modellen. Tobis Ollama läuft mit 0.40.8.
+  - LiteLLM kann den Pfad als Pass-Through-Endpunkt durchreichen.
+  - Grenzen: 64 Fragen je Anfrage, 2 bis 26 Optionen bei `choice`, 64 KiB je Anfrage; nimble hat einen Kontext von 8.192 Tokens.
+- **Probe mit nimble (27.10.2026):** auf Tobis Ollama gezogen (9B, Q8_0, Apache 2.0, Fähigkeit `decision`), vier erfundene Fälle.
+  - Format der Anfrage:
+    - `questions` ist ein Objekt mit dem Namen der Frage als Schlüssel.
+    - Jede Frage hat `type` und `instructions`.
+    - `criteria` sind bei `choice` die Optionen mit Beschreibung, bei `noul` die Schlüssel `"false"` und `"true"`.
+  - Format der Antwort:
+    - je Frage bei `choice`: `choice`, `probabilities` und `confidence`
+    - je Frage bei `noul`: `noul`, die Wahrscheinlichkeit für „wahr“
+    - `usage.input_tokens`
+  - Rund 950 Eingabe-Tokens je Fall, rund 5 s je Anfrage, 17 s beim ersten Laden.
+  - Ergebnisse:
+    - Gläubiger-ID des Absenders: richtig (`contact`, 99,6 %).
+    - IBAN eines Zahlungsdienstleisters: richtig (`third_party`, 96,9 %).
+    - Kundennummer: richtig (`recipient`, 98,8 %).
+    - Ein Datum, das als Vertragsnummer gelesen wurde: falsch, mit 95 % `recipient` statt `noise`.
+
+  Die Konfidenz ist also keine Richtigkeit. Die Auswertung auf echten Daten entscheidet.
+- **Speicher:** nimble belegt 9,6 GB im VRAM und hat Qwen3-Embedding 4B beim Laden verdrängt. Beide passen auf dem Host nicht gleichzeitig hinein.
+
+**Entscheidungen (Frage-Antwort-Runde 27.10.2026):**
+
+1. **Übersicht:**
+   - `/` ist die Übersicht und die Startseite nach der Anmeldung; der Klick auf „lekto“ führt dorthin. Heute leitet `/` auf den Posteingang weiter.
+   - Sie hat keinen eigenen Menüeintrag; der Posteingang bleibt ein Menüeintrag.
+2. **Genau fünf Quellen auf der Übersicht**, je mit Zahl und Zustand und einem Weg zur passenden Seite:
+   - der Posteingang (gelb, rot, neu)
+   - die gelernten Kennungen
+   - die unbekannten Kennungen in Dokumenten
+   - „Erwartet“
+   - fehlgeschlagene Jobs und der Worker
+
+   Keine Kennzahlen zum Stand: Die stehen unter System → Automatisierung.
+3. **Nach Rolle verschieden:** Die Kennungen sieht nur, wer Stammdaten pflegt, also Admins. Bei den Jobs handeln nur Admins.
+4. **„Erwartet“ geht in der Übersicht auf:** Seite und Menüeintrag `/expected` entfallen, ohne Umleitung. Die Übersicht zeigt die überfälligen und die nächsten erwarteten Dokumente selbst. `GET /expected` und MCP `list_expected` bleiben.
+5. **Kennungen sind Stammdaten:** Sie bekommen einen fünften Reiter „Kennungen“ unter Stammdaten.
+   - Er listet alle unbestätigten Kennungen: die gelernten und die unbekannten aus bestätigten Dokumenten.
+   - Nur Arten, die einen Kontakt belegen (`CONTACT_KINDS`), also keine Rechnungs- oder Bestellnummern.
+   - Aktionen: Übernehmen, Verwerfen und an Kontakt heften, einzeln und als Sammelaktion.
+6. **Ein Decision Model mit eigenen Variablen:**
+   - `LEKTO_DECISION_BASE_URL`, `LEKTO_DECISION_MODEL`, `LEKTO_DECISION_API_KEY` (auch `_FILE`) und `LEKTO_DECISION_TIMEOUT`.
+   - Lekto spricht nur `/v1/systemone`. Ob dahinter Ollama, LiteLLM oder ein eigener Server steht, ist Konfiguration.
+   - Ohne Konfiguration gibt es keine Empfehlungen; alles andere läuft wie heute.
+   - Hauptkandidat ist nimble, zum Vergleich tev1.
+7. **Automatisch:**
+   - Nach jedem Training bekommt jede offene Kennung genau einen Job, deren Dokumente sich seit der letzten Beurteilung geändert haben oder die neu ist.
+   - Die Empfehlung wird gespeichert; dazu gibt es „Neu beurteilen“ (Admins).
+8. **Erst empfehlen, dann verwerfen:**
+   - Schritt 1: Das Modell empfiehlt, und Lekto misst.
+   - Schritt 2: Lekto verwirft automatisch oberhalb einer Schwelle, die die Auswertung festgelegt hat. Als Herkunft steht „vom Modell verworfen“, „Wieder zulassen“ bleibt möglich.
+   - Automatisches Übernehmen gibt es zunächst nicht.
+9. **Auswertung vor dem Einschalten:** `lekto evaluate-decisions` läuft auf den Dev-Daten und gibt nur Zahlen aus (Tobi: erlaubt).
+   - Grundwahrheit: eingetragen oder übernommen heißt „seine“, verworfen heißt „nicht seine“.
+10. **Begründung:** Weil das Modell keine gibt, zeigt die Liste, was Lekto ihm gegeben hat: je Dokument die Stelle mit Beschriftung und Rolle.
+
+**Fragen an das Modell** (Vorschlag, nach der Probe angepasst):
+
+- **Zustand als Text:**
+  - der Kontakt mit Name, Aliassen und schon eingetragenen Kennungen
+  - die Kennung mit Art (deutscher Name) und Wert, so wie geschrieben
+  - je Dokument, höchstens fünf, die jüngsten zuerst: Typ, Datum, Rolle des Fakts und die Stelle mit etwa 200 Zeichen Umgebung
+
+  Das bleibt unter 2.000 Tokens. Der Zustand ist Dokumenttext und geht nur an den konfigurierten Endpunkt, wie beim Sprachmodell.
+- **Drei Fragen:**
+  - `real`, `noul`: „Ist das wirklich eine Kennung (nicht falsch gelesen, kein Datum, kein Betrag, kein Teil eines anderen Werts)?“
+
+    Diese Frage ist eigenständig, weil nimble das Datum in der Wahl unter vier Optionen nicht als `noise` erkannte.
+  - `owner`, `choice`: „Wem gehört sie?“ mit `contact` (dem Absender), `recipient` (dem Empfänger, Haushalt oder Mitarbeiter) und `third_party` (Bank, Zahlungsdienstleister, Behörde, Inkasso).
+  - `stable`, `noul`: „Bleibt sie über viele Dokumente gleich?“
+- **Lesart je Art:**
+  - **Übernehmen** empfiehlt Lekto, wenn sie echt und stabil ist und sie gehört:
+    - bei IBAN, USt-IdNr., Gläubiger-ID, Steuernummer, Handelsregister und Domain dem Kontakt (`contact`)
+    - bei Kunden-, Vertrags-, Personal-, Mitglieds-, Policen-, Darlehens- und Zählernummer, Mandatsreferenz und Kennzeichen dem Kontakt oder dem Empfänger
+  - **Verwerfen** empfiehlt Lekto, wenn:
+    - sie nicht echt ist,
+    - sie einem Dritten gehört,
+    - bei einer Art des Absenders der Empfänger der Halter ist (die eigene IBAN), oder
+    - sie nicht stabil ist.
+  - Sonst ist die Empfehlung **unklar**.
+
+  Die Wahrscheinlichkeit der Empfehlung ist das Produkt der beteiligten Antworten. Die Lesart steht im Code des Kerns, mit Tests je Art.
+
+**Umsetzung in PRs** (Reihenfolge Mock → A → B → C → D → E; jeder PR mit den fünf Prüfungen, bei Änderungen der Web-UI auch deren Prüfungen, `web/openapi.json` neu erzeugt, Texte in `web/messages/{en,de}.json`):
+
+0. **Mock** (Artifact, privat), vor A, in hell und dunkel und in Handybreite:
+   - die Übersicht als Admin und als Nutzer, mit leerem und vollem Vorrat
+   - der Reiter „Kennungen“ mit Auswahl, Sammelleiste, Empfehlung und Wahrscheinlichkeit sowie dem Beleg einer Zeile
+
+   Am Handy hat Stammdaten heute vier gleich breite Reiter; für fünf entscheidet der Mock. Was `web/DESIGN.md` nicht abdeckt (Sammelauswahl in Listen, Kacheln der Übersicht), kommt mit dem PR, der es baut, in `web/DESIGN.md`.
+
+A. **Liste der offenen Kennungen** (`feature/open-identifiers`, `new-feature`):
+   - **Kern:** Die Domäne `OpenIdentifier` hält Art, Wert (normalisiert und wie geschrieben), Herkunft (`learned` oder `unknown`), Kontakt und Dokumente.
+     - Bei `learned` ist der Kontakt der Halter.
+     - Bei `unknown` sind es die Kontakte seiner Dokumente; bei mehreren entscheidet die Person beim Heften.
+     - Dazu kommen die Zahl der Dokumente, das erste und letzte Datum und die jüngsten Stellen.
+     - Die Abfrage kommt als neue Methode in den Port der Fakten (SQL über `contact_identifiers` und `document_facts`, Speicher-Adapter, Contract-Suite).
+   - **REST (Admins):**
+     - `GET /identifiers/open` mit Filtern nach Art, Herkunft und Kontakt, Sortierung und Seiten
+     - `GET /identifiers/open/summary` mit den Zahlen je Herkunft, für die Übersicht
+     - `POST /identifiers/open/decisions`: eine Liste von Entscheidungen. `take_over` macht eine gelernte zu `manual`; `reject` macht sie zu `rejected` (eine unbekannte wird beim Kontakt ihres Dokuments verworfen, damit das Training sie nicht lernt); `attach` heftet eine unbekannte an einen Kontakt (`manual`).
+
+     Alle Entscheidungen laufen in einem UnitOfWork mit einem Commit und den Ereignissen der geänderten Kontakte. Ein Wert, den inzwischen ein anderer Kontakt hält, ist ein Konflikt je Zeile, nicht für alle.
+   - Übernehmen holt das Logo wie heute (`queue_logo_fetch`).
+   - **Web:**
+     - Reiter `?tab=identifiers` unter Stammdaten mit Suche und Filtern.
+     - Zeilen mit Art, Wert, Kontakt (Link in den Kontakt-Dialog) und Dokumenten (Link in die Dokumentliste mit dem Wert als Filter).
+     - Auswahl und Sammelleiste wie im Mock.
+     - Ein Kontakt-Dialog mit gelernten Kennungen verlinkt die Liste, gefiltert auf ihn.
+   - **Doku:** `architektur.md` (Datenmodell: Kennungen) und `web/DESIGN.md` (Sammelauswahl).
+
+B. **Übersicht** (`feature/overview`, `new-feature`):
+   - `/` zeigt die Übersicht statt der Umleitung; „lekto“ in der Kopfzeile führt dorthin.
+   - **Kacheln:**
+     - Posteingang mit `GET /inbox/summary`, die schlimmste Lane als Farbe.
+     - Kennungen mit `GET /identifiers/open/summary`, nur für Admins.
+     - Erwartet mit `GET /expected`: überfällig und die nächsten 30 Tage, eine Zeile je Serie, „alle zeigen“ klappt auf.
+     - System mit `GET /jobs/summary`: fehlgeschlagene Jobs und „Worker zuletzt aktiv“; „erneut versuchen“ geht über System → Jobs.
+
+     Kein neuer Sammel-Endpunkt: Jede Kachel fragt, wie ihre Seite es tut, und lädt bei den Ereignissen neu, die ihre Seite schon hört.
+   - `/expected` mit Seite, Test und Menüeintrag entfällt, ebenso die Pille „Beta“.
+   - **Doku:** `architektur.md` (Kopfzeile und Menü, Serien und Erwartet) und `web/DESIGN.md` (Navigation, Übersicht).
+
+C. **Decision Model und Empfehlungen** (`feature/identifier-decisions`, `new-feature`):
+   - **Port** `DecisionModel` (`core/ports/decision.py`): `decide(DecisionRequest) -> DecisionAnswer`.
+     - Die Anfrage hat einen Zustand als Text und benannte Fragen: Art, Anweisung und Kriterien.
+     - Die Antwort hat Wahrscheinlichkeiten je Frage und Option, das Modell und die Eingabe-Tokens.
+     - Bei Fehlern wirft der Port `DecisionModelError`.
+   - **Adapter:**
+     - `adapters/outbound/systemone` mit dem asynchronen HTTP-Client wie `openai_compat`.
+     - ein Speicher-Adapter mit festen Antworten
+     - die Contract-Suite
+   - **Einstellungen:** `LEKTO_DECISION_*` wie in Entscheidung 6, Timeout als Vorgabe eine Minute. `GET /pipeline` meldet `decision` (konfiguriert ja oder nein), damit die UI die Spalte nur dann zeigt.
+   - **Kern:**
+     - `core/domain/identifier_decisions.py` baut den Zustand aus den Fragen oben und liest die Antworten zu einer Empfehlung (`take_over`, `reject`, `unclear`) mit Wahrscheinlichkeit, je Art.
+     - `IdentifierDecisionService` übernimmt das Fragen, Speichern und Einreihen.
+   - **Speicher:** Revision 0051 legt die Tabelle `identifier_decisions` an. Sie hat:
+     - Schlüssel: Art und Wert
+     - Modell und Zeitpunkt
+     - die beurteilten Dokumente (sortierte IDs)
+     - die Antworten (JSON)
+     - Empfehlung und Wahrscheinlichkeit
+     - den Zustand, so wie gesendet (für den Beleg in der UI)
+
+     Eine Entscheidung einer Person löscht die Zeile nicht: D braucht den Vergleich.
+   - **Jobs:**
+     - `identifiers.decide` mit `coalesce_key` je Art und Wert.
+     - Das Training reiht nach dem Commit die neuen oder geänderten Kennungen ein.
+     - „Neu beurteilen“ reiht die markierten ein.
+     - Die Jobs geben Index- und Verarbeitungsjobs den Vorrang. Damit nimble nicht abwechselnd mit dem Embedding-Modell geladen wird, laufen sie nacheinander in einem Schub.
+   - **Protokoll:** Modell, Dauer und Tokens im Log des Jobs.
+   - **Web:**
+     - Spalte „Empfehlung“ im Reiter Kennungen: Übernehmen, Verwerfen oder Unklar, mit Wahrscheinlichkeit, sortier- und filterbar.
+     - Der Beleg der Zeile zeigt den gesendeten Zustand.
+     - Die Sammelaktion „Empfehlung folgen“ wirkt für die markierten Zeilen mit eindeutiger Empfehlung.
+   - **Doku:**
+     - `architektur.md`: Decision Model als vierte Modellrolle, mit Datenfluss und Privatsphäre
+     - `backend/README.md`: Einstellungen
+     - `deploy/README.md`: ausgehende Anfragen
+     - `docker/.env.example`
+     - ein Hinweis zu Ollama ab 0.35 und dem Pass-Through von LiteLLM
+
+D. **Auswertung** (`feature/evaluate-decisions`, `new-feature`):
+   - `lekto evaluate-decisions [--models nimble,tev1] [--output FILE]` fragt jedes Modell für alle Kennungen, die eine Person entschieden hat und die in mindestens einem bestätigten Dokument stehen.
+   - Die Ausgabe enthält nur Zahlen:
+     - je Art und gesamt die Trefferquote der Empfehlung
+     - Fehlverwerfungen und erfasste falsche Kennungen je Schwelle (0,80 bis 0,99)
+     - die Kalibrierung in Stufen
+     - die Dauer je Anfrage
+   - Keine Werte, keine Namen, kein Text.
+   - Das Ergebnis steht hier im Plan und legt die Schwelle für E fest. Läuft auf den Dev-Daten, mit Tobis Zustimmung zum Lauf.
+
+E. **Automatisch verwerfen** (`feature/decision-reject`, `new-feature`; erst nach D und Tobis Freigabe):
+   - Neue Variable `LEKTO_DECISION_REJECT_ABOVE`; ohne Angabe ist das Verwerfen aus.
+   - Darüber verwirft der Job selbst. `contact_identifiers` bekommt `rejected_by` (`model` oder leer).
+   - Die Liste zeigt „vom Modell verworfen“ mit „Wieder zulassen“.
+   - System → Klassifikator zählt, wie viele das Modell verwarf und wie viele davon eine Person wieder zuließ.
+
+**Offen für Tobi:**
+
+1. **Speicher auf dem Ollama-Host:** nimble (9,6 GB) und Qwen3-Embedding 4B passen nicht gleichzeitig hinein. Nach jedem Schub muss das Embedding-Modell neu laden, und die erste Suche danach wartet einige Sekunden. Möglichkeiten:
+   - Das hinnehmen; die Schübe kommen nur nach dem Training.
+   - Mehr VRAM für den Host.
+   - tev1 4B, das kleiner ist, aber für Deutsch nicht belegt.
+2. **Was heißt „Wieder zulassen“ (E)?** Möglichkeiten:
+   - Die Kennung wird eingetragen (`manual`).
+   - Sie bleibt gelernt, und das Modell beurteilt sie nicht mehr.
+
+   Vorschlag: Sie bleibt gelernt, und das Modell beurteilt sie nicht mehr, weil die Person nur das Verwerfen zurücknimmt.
+3. **Reihenfolge:** A vor B, weil die Kachel „Kennungen“ die Zahlen aus A braucht. Oder B zuerst mit vier Kacheln, und die Kachel „Kennungen“ kommt mit A?
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

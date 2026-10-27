@@ -333,8 +333,10 @@ not in the row.
 `tabular-nums`. On the phone a table keeps to the columns that fit; where it is wider, it scrolls
 inside its card, never the page. A list a person reads item by item is a list of rows, not a
 table. Pagination is `Pagination` (50 per page). A table may offer other sizes in a small menu
-beside the count (`outline`, `sm`; the jobs: 25, 50 and 100, 25 at first); the choice is
-remembered per table in the browser (`page-size.ts`) and holds wherever that table shows.
+beside the count (`outline`, `sm`; the jobs and the deliveries of a webhook: 25, 50 and 100, 25
+at first); the choice is remembered per table in the browser (`page-size.ts`) and holds wherever
+that table shows. Above such a table, a `Segmented` with counts picks what it shows and a
+`Select` narrows it to a kind (the jobs by state and kind, the deliveries by outcome and event).
 
 ### Dialogs, sheets, editors
 

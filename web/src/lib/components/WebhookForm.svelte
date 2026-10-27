@@ -17,10 +17,11 @@
 	import { Choice } from '#lib/components/ui/choice/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
-	import { WEBHOOK_EVENT_TYPES, type WebhookEventType } from '#lib/events.svelte.ts';
+	import { WEBHOOK_EVENT_TYPES } from '#lib/events.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import { EVENT_LABELS } from '#lib/webhooks.ts';
 	import IconButton from '#lib/components/IconButton.svelte';
 	import UnsavedGuard from '#lib/components/UnsavedGuard.svelte';
 
@@ -99,21 +100,6 @@
 		{ value: 'template', label: m.webhook_body_template(), hint: m.webhook_body_template_hint() }
 	]);
 	const bodyHint = $derived(bodies.find((option) => option.value === body)?.hint ?? '');
-
-	const labels: Record<WebhookEventType, () => string> = {
-		'document.received': m.event_received,
-		'document.node_started': m.event_node_started,
-		'document.node_deferred': m.event_node_deferred,
-		'document.node_delegated': m.event_node_delegated,
-		'document.node_completed': m.event_node_completed,
-		'document.lane_changed': m.event_lane_changed,
-		'document.filed': m.event_filed,
-		'document.updated': m.event_updated,
-		'document.deleted': m.event_deleted,
-		'document.review_required': m.event_review_required,
-		'document.confirmed': m.event_confirmed,
-		'document.moved': m.event_moved
-	};
 
 	function modelCallBody() {
 		return modelCall === ''
@@ -262,7 +248,7 @@
 					<Choice bind:checked={all}>{m.webhook_events_all()}</Choice>
 					{#if !all}
 						{#each WEBHOOK_EVENT_TYPES as type (type)}
-							<Choice value={type} bind:group={types} class="ml-6">{labels[type]()}</Choice>
+							<Choice value={type} bind:group={types} class="ml-6">{EVENT_LABELS[type]()}</Choice>
 						{/each}
 					{/if}
 				</fieldset>

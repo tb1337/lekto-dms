@@ -5,13 +5,17 @@
  */
 
 /** The tables that offer a choice of page size. */
-export type PagedTable = 'jobs';
+export type PagedTable = 'jobs' | 'deliveries';
 
 /** The sizes a table offers: the jobs at most 100, as the API gives no more. */
-export const PAGE_SIZES: Record<PagedTable, readonly number[]> = { jobs: [25, 50, 100] };
+export const PAGE_SIZES: Record<PagedTable, readonly number[]> = {
+	jobs: [25, 50, 100],
+	deliveries: [25, 50, 100]
+};
 
-/** The size of a table until one is chosen: the jobs 25 (Tobi, 27.10.2026). */
-export const DEFAULT_PAGE_SIZES: Record<PagedTable, number> = { jobs: 25 };
+/** The size of a table until one is chosen: the jobs and the deliveries 25 (Tobi,
+ * 27.10.2026). */
+export const DEFAULT_PAGE_SIZES: Record<PagedTable, number> = { jobs: 25, deliveries: 25 };
 
 function key(table: PagedTable): string {
 	return `lekto.page-size.${table}`;

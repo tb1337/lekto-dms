@@ -89,15 +89,15 @@ describe('AppShell', () => {
 			'/ui/spaces',
 			'/ui/rules',
 			'/ui/webhooks',
-			'/ui/system',
 			'/ui/admin/master-data',
-			'/ui/admin/users'
+			'/ui/admin/users',
+			'/ui/system'
 		]);
 		expect(screen.getByRole('search')).toBeTruthy();
 		expect(screen.getByRole('searchbox', { name: m.header_search_label() })).toBeTruthy();
 	});
 
-	it('separates the work from setting up, also for users, and marks expected as beta', () => {
+	it('separates the work from running Lekto, also for users, and marks expected as beta', () => {
 		signIn('user');
 		render(AppShell, { children });
 		const nav = mainNavigation();
@@ -111,13 +111,13 @@ describe('AppShell', () => {
 			'/ui/webhooks',
 			'/ui/system'
 		]);
-		// The line stands after the fourth link.
+		// The line stands after the webhooks (Tobi, 27.10.2026).
 		const line = nav.querySelector('[data-slot="separator"]');
-		expect(line?.previousElementSibling?.getAttribute('href')).toBe('/ui/spaces');
+		expect(line?.previousElementSibling?.getAttribute('href')).toBe('/ui/webhooks');
 		// Below xl the second group stands behind "More"; from xl each link (in its wrapper).
 		const next = line?.nextElementSibling;
 		expect((next?.matches('a') ? next : next?.querySelector('a'))?.getAttribute('href')).toBe(
-			'/ui/rules'
+			'/ui/system'
 		);
 		expect(within(nav).getByRole('link', { name: `${m.nav_expected()} ${m.beta()}` })).toBeTruthy();
 	});
@@ -227,9 +227,9 @@ describe('AppShell', () => {
 			'/ui/spaces',
 			'/ui/rules',
 			'/ui/webhooks',
-			'/ui/system',
 			'/ui/admin/master-data',
 			'/ui/admin/users',
+			'/ui/system',
 			'/api/v1/docs'
 		]);
 		const language = within(sheet).getByRole('group', { name: m.language_label() });

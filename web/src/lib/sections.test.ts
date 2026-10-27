@@ -20,7 +20,7 @@ describe('SECTIONS', () => {
 		const paths = SECTIONS.map((section) => section.path);
 		expect(paths.slice(0, 2)).toEqual(['/inbox', '/documents']);
 		expect(paths).not.toContain('/search');
-		expect(paths.slice(-3)).toEqual(['/system', '/admin/master-data', '/admin/users']);
+		expect(paths.slice(-3)).toEqual(['/admin/master-data', '/admin/users', '/system']);
 	});
 
 	it('groups the work before setting up and running, for everyone', () => {
@@ -30,8 +30,8 @@ describe('SECTIONS', () => {
 			'work',
 			'work',
 			'work',
-			'setup',
-			'setup',
+			'work',
+			'work',
 			'setup',
 			'setup',
 			'setup'

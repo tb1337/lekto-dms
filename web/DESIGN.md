@@ -159,13 +159,13 @@ phone the page scrolls.
 
 ## Navigation
 
-- **Menu:** two groups divided by a line. _Work_: Posteingang · Dokumente · Erwartet · Spaces.
-  _Set-up and operation_: Regeln · Webhooks · System · Stammdaten · Nutzer. The rights stay
-  (master data and users for admins only).
+- **Menu:** two groups divided by a line. _Work_: Posteingang · Dokumente · Erwartet · Spaces ·
+  Regeln · Webhooks. _Administration and operation_: Stammdaten · Nutzer · System, the system at
+  the outer right. The rights stay (master data and users for admins only).
 - **From `lg` (1024 px):** the menu stands in the header. Below `xl` (1280 px) the second group
   goes behind "Mehr" (a dropdown), from `xl` it stands in the header too.
-- **Below `lg`:** a sheet from the right. Its button is the rightmost item of the header (thumb
-  corner).
+- **Below `lg`:** a sheet from the right, 320 px wide. Its button is the rightmost item of the
+  header (thumb corner).
 - **Header items:** logo (favicon icon before the wordmark "lekto"), menu, search (the field where
   the header has room, `searchPlaces`: from `2xl`, for admins from 1720 px; otherwise the
   magnifier), user menu (avatar).

@@ -44,8 +44,8 @@
 
 	let { children }: { children: Snippet } = $props();
 
-	// The menu in two groups with a line between them (Tobi, 26.10.2026): the work, then setting
-	// up and running Lekto; the admin areas stand last in the second.
+	// The menu in two groups with a line between them (Tobi, 26.10.2026): the work, then
+	// administering and running Lekto, the system at the outer right (27.10.2026).
 	const sections = $derived(visibleSections(session.isAdmin));
 	const workSections = $derived(sections.filter((section) => section.group === 'work'));
 	const setupSections = $derived(sections.filter((section) => section.group === 'setup'));
@@ -155,8 +155,9 @@
 				><Logo /></a
 			>
 
-			<!-- The menu in the header from lg (web/DESIGN.md, "Navigation"): the work, then setting
-			     up and operating; below xl that second group behind "More" (German names are long). -->
+			<!-- The menu in the header from lg (web/DESIGN.md, "Navigation"): the work, then
+			     administering and operating; below xl that second group behind "More" (German names
+			     are long). -->
 			<nav aria-label={m.nav_main()} class="hidden min-w-0 flex-1 items-center gap-1 lg:flex">
 				{#each workSections as section (section.path)}
 					{@render pill(section, false)}

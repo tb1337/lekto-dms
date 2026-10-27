@@ -1002,7 +1002,7 @@
 	"webhook_delete": "{name} löschen",
 	"webhook_delete_confirm": "Das Zustellprotokoll wird mitgelöscht.",
 	"webhook_secret_title": "Geheimnis von {name}",
-	"webhook_secret_hint": "Wird nur einmal angezeigt. Jetzt sichern; der Empfänger prüft Signaturen damit.",
+	"webhook_secret_hint": "Wird nur einmal angezeigt. Bewahre es jetzt sicher auf; der Empfänger prüft Signaturen damit.",
 	"delivery_delivered": "Zugestellt",
 	"delivery_retrying": "Wird wiederholt",
 	"delivery_gave_up": "Aufgegeben",

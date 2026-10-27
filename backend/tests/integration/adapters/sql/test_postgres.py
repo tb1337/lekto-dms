@@ -35,6 +35,7 @@ pg_stat_activity = Table(
     "pg_stat_activity",
     MetaData(),
     Column("pid", Integer),
+    Column("datname", Text),
     Column("application_name", Text),
 )
 
@@ -230,7 +231,9 @@ async def test_the_listener_connects_again_and_misses_nothing(
     async with database.engine.connect() as connection:
         terminated = await connection.execute(
             select(func.pg_terminate_backend(pg_stat_activity.c.pid)).where(
-                pg_stat_activity.c.application_name == "lekto listener"
+                pg_stat_activity.c.application_name == "lekto listener",
+                # Only this test's listener: other test processes have their own databases.
+                pg_stat_activity.c.datname == func.current_database(),
             )
         )
         assert [row[0] for row in terminated] == [True]

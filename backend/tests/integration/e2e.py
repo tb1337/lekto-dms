@@ -14,7 +14,7 @@ from typing import Any, ClassVar
 import httpx2
 
 from lekto.adapters.inbound.rest import PREFIX
-from lekto.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory
+from lekto.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory, SqlWakeup
 from lekto.composition.api import build_app
 from lekto.composition.container import Container, Services, build_memory_container, build_services
 from lekto.composition.settings import Settings
@@ -128,10 +128,12 @@ async def running_system[S: System](
     other adapters are the memory container's unless `adapters` replaces them. Classification
     is skipped. The worker has to shut down cleanly."""
     database, object_store = stores
+    wakeup = SqlWakeup(database)
     container = replace(
         build_memory_container(),
         unit_of_work=SqlUnitOfWorkFactory(database),
         event_bus=SqlEventBus(database, retry=builders.EVENT_RETRY),
+        wakeup=wakeup,  # the memory container's would signal commits of another database
         object_store=object_store,
         **adapters,
     )
@@ -146,3 +148,4 @@ async def running_system[S: System](
     finally:
         worker.stop()
         await asyncio.wait_for(running, timeout=60)
+        await wakeup.aclose()

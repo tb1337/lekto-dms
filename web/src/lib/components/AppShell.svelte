@@ -287,7 +287,9 @@
 						<Menu aria-hidden="true" />
 						{#if phone.current && scope.allUsers}{@render allUsersMark()}{/if}
 					</Sheet.Trigger>
-					<Sheet.Content side="right" class="w-80 gap-2 overflow-y-auto p-4">
+					<!-- `data-[side=right]:` to beat the sheet's own width of three quarters, which
+					     left the theme's buttons no room on a phone (Tobi, 27.10.2026). -->
+					<Sheet.Content side="right" class="gap-2 overflow-y-auto p-4 data-[side=right]:w-80">
 						<Sheet.Header class="px-2">
 							<Sheet.Title><Logo class="text-lg" /></Sheet.Title>
 						</Sheet.Header>

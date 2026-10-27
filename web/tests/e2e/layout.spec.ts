@@ -112,6 +112,14 @@ for (const size of WIDTHS) {
 			if (overflow > 1) findings.push(`${path}: ${overflow} px wider than the window`);
 			for (const control of small) findings.push(`${path}: ${control}`);
 		}
+		// The navigation sheet of the phone does not scroll sideways either.
+		if (size.name === 'phone') {
+			await page.getByRole('button', { name: 'Open navigation' }).click();
+			const sheet = page.locator('[data-slot="sheet-content"]');
+			await sheet.waitFor();
+			const wider = await sheet.evaluate((element) => element.scrollWidth - element.clientWidth);
+			if (wider > 1) findings.push(`navigation sheet: ${wider} px wider than itself`);
+		}
 		expect(findings).toEqual([]);
 		expect(problems).toEqual([]);
 		await context.close();

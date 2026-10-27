@@ -467,7 +467,7 @@ Zielbild (Tobi, 25.10.2026, `webhooks-und-auftraege.md`, M19–M21, noch nicht u
 - Schlanke Ereignisse: nur Ereignistyp, Zeitpunkt, Ereignis-ID und Dokument-ID. Details holt der Empfänger per API mit eigenem Token; dabei greifen die Rechte der Spaces.
 - Abonnement: Ziel-URL, Ereignistypen, Geheimnis.
 - Auslöser (Tobi, 27.10.2026): Im Formular wählt man bewusst „Ereignisse“ (alle oder mindestens eines) oder „Nur Regeln“ (keine Ereignistypen); vorher hieß ein Webhook ohne Ereignis still „nur für Regeln“. Regeln senden über jeden Webhook ihres Besitzers und fragen ihn, auch über einen mit Ereignissen; die API bleibt, wie sie ist.
-- Zustellung signiert (HMAC-SHA256), Wiederholung mit wachsendem Abstand, Zustellprotokoll in der UI.
+- Zustellung signiert (HMAC-SHA256), Wiederholung mit wachsendem Abstand, Zustellprotokoll in der UI. Das Protokoll ist eine Tabelle mit Seiten wie die Jobs (Tobi, 27.10.2026, nach einem Mock): „Alle | Probleme | Zugestellt“ mit Zahlen (Probleme: wird wiederholt, aufgegeben, verworfen), ein Ereignis zur Auswahl, je Eintrag das Dokument, soweit der Betrachter es lesen darf, und der Fehler als Zeile darunter. Die API bleibt abwärtskompatibel: `GET /webhooks/{id}/deliveries` nimmt dazu `outcome`, `event_type` und `offset`, `GET /webhooks/{id}/deliveries/summary` zählt.
 
 **Nebenläufigkeit im Code**
 

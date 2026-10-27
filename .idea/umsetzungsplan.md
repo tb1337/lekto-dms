@@ -2087,6 +2087,21 @@ E. **Automatisch verwerfen** (`feature/decision-reject`, `new-feature`; erst nac
    - Die Liste zeigt „vom Modell verworfen“ mit „Wieder zulassen“.
    - System → Klassifikator zählt, wie viele das Modell verwarf und wie viele davon eine Person wieder zuließ.
 
+**Mock** (27.10.2026): Design-Fläche „Lekto Übersicht und Kennungen“, https://claude.ai/artifact/6Swof93MJVYL5wWiZRo2Xh (Übersicht als Admin hell und dunkel, als Nutzer am Handy; Reiter Kennungen mit Auswahl hell, dunkel, Handy; eine geöffnete Kennung). Tobi (27.10.2026): „Fragen später. Baue 0-B“.
+
+**A gebaut (27.10.2026, `feature/open-identifiers`):**
+
+- Port: `DocumentFactRepository.sightings(kinds)` liefert die Fakten bestätigter Dokumente mit Kontakt (Domäne `Sighting`), SQL und Speicher, Contract-Test. Domäne `core/domain/open_identifiers.py` (`open_identifiers`, `excerpt`), Service `OpenIdentifierService`, neu `MasterDataService.reject_identifier`.
+- Abweichung: Jede Entscheidung ist ein Commit für sich (über `add_identifier` und `reject_identifier`), nicht alle in einem: So trifft ein Konflikt nur seine Zeile, und die Prüfungen der Stammdaten laufen wie beim Kontaktdialog. „Übernehmen“ und „an Kontakt heften“ sind eine Aktion `confirm` (mit oder ohne `contact_id`).
+- Die Abfrage nach Wörtern ersetzt den Filter nach Kontakt (der Name des Kontakts findet seine Kennungen); den Link aus dem Kontaktdialog auf die gefilterte Liste gibt es noch nicht.
+- Neue Gründe `identifier_entered`, `identifier_not_open`, `identifier_contact_unclear`. `FormDialog` hat eine zweite Aktion (`alternative`) vorn im Fuß; `web/DESIGN.md` beschreibt sie und das Muster „Choosing many“.
+- Am Handy scrollen die fünf Reiter der Stammdaten (gleich breit passten sie nicht auf 390 px).
+- Im Browser geprüft (SQLite-Prüfinstanz mit erfundenen Kontakten und Dokumenten): Liste, Auswahl, Übernehmen und Verwerfen im Stapel, Dialog mit Fundstellen, hell, dunkel, 390 px; behoben dabei: Die Liste lud nach jedem Laden neu (`list.loaded` war Abhängigkeit des Such-Effekts).
+
+**B gebaut (27.10.2026, `feature/overview`, auf A):** `/` zeigt die Übersicht (`+page.ts` mit der Umleitung entfällt); Kacheln `InboxTile` (aus dem Zähler der Kopfzeile), `IdentifiersTile` (Admins), `SystemTile` (`GET /jobs/summary` alle 30 s), darunter `ExpectedSection` (Überfällig und Nächste 30 Tage, Später und Beendet auf Wunsch). `/expected`, Menüeintrag und Beta-Pille entfallen; die E2E-Tests warten nach der Anmeldung auf `/ui/`.
+
+**Nebenbei behoben (`bugfix/type-scale-merge`, unter A):** `tailwind-merge` hielt `text-meta` und die anderen Stufen der Schriftskala für Farben; ein Knopf `default` der Größe `sm` verlor dadurch `text-primary-foreground` und schrieb dunkel auf Petrol (im Browser-Check an „Übernehmen“ gesehen). `cn` und die `tv` der UI-Komponenten kennen die Skala jetzt (`lib/tailwind.ts`).
+
 **Offen für Tobi:**
 
 1. **Speicher auf dem Ollama-Host:** nimble (9,6 GB) und Qwen3-Embedding 4B passen nicht gleichzeitig hinein. Nach jedem Schub muss das Embedding-Modell neu laden, und die erste Suche danach wartet einige Sekunden. Möglichkeiten:

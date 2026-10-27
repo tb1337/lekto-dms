@@ -61,7 +61,7 @@ from lekto.core.domain.spaces import Space
 from lekto.core.domain.tasks import Task
 from lekto.core.domain.users import User
 from lekto.core.domain.verdict import KnownLabels
-from lekto.core.domain.webhooks import Webhook, WebhookDelivery
+from lekto.core.domain.webhooks import DeliveryOutcome, Webhook, WebhookDelivery
 
 
 class Repository[K, E](Protocol):
@@ -865,9 +865,28 @@ class WebhookRepository(Protocol):
         ...
 
     async def deliveries(
-        self, webhook: WebhookId, *, before: DeliveryId | None = None, limit: int = PAGE_SIZE
+        self,
+        webhook: WebhookId,
+        *,
+        before: DeliveryId | None = None,
+        outcomes: Collection[DeliveryOutcome] | None = None,
+        event_type: str | None = None,
+        offset: int = 0,
+        limit: int = PAGE_SIZE,
     ) -> list[WebhookDelivery]:
-        """The log of a webhook, newest first (by id), the page after `before`."""
+        """The log of a webhook, newest first (by id): the page after `before`, or `offset`
+        entries in; only `outcomes` and `event_type` where given."""
+        ...
+
+    async def delivery_counts(
+        self, webhook: WebhookId, *, event_type: str | None = None
+    ) -> dict[DeliveryOutcome, int]:
+        """How many entries the log of a webhook holds by outcome (of `event_type` where
+        given); an outcome without any is missing."""
+        ...
+
+    async def delivery_event_types(self, webhook: WebhookId) -> list[str]:
+        """The event types the log of a webhook holds, in order of their names."""
         ...
 
     async def purge_deliveries(self, *, before: datetime) -> int:

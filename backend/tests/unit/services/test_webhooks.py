@@ -12,13 +12,15 @@ from lekto.core.domain.errors import (
     PermissionDeniedError,
     ValidationError,
 )
-from lekto.core.domain.ids import WebhookId, new_id
+from lekto.core.domain.ids import DocumentId, EventId, WebhookId, new_id
 from lekto.core.domain.users import Role
 from lekto.core.domain.webhooks import (
     DISABLED_FAILING,
     BodyFormat,
+    DeliveryOutcome,
     ModelCallKind,
     ModelCallRole,
+    WebhookDelivery,
     headers_from_bytes,
     new_secret,
 )
@@ -71,6 +73,7 @@ async def test_the_number_of_webhooks_per_user_is_limited(world: World) -> None:
         world.cipher,
         replace(builders.WEBHOOKS, per_user=2),
         builders.TEMPLATES,
+        retention=builders.RETENTION,
     )
     for _ in range(2):
         await service.create(user.id, name="x", url=URL, event_types=["*"])
@@ -365,3 +368,77 @@ async def test_a_model_call_of_an_admin_no_more_serves_no_more(world: World) -> 
     # Its owner may still take the role away.
     webhook = await world.webhooks.update(admin.id, created.webhook.id, model_call=None)
     assert webhook.model_call is None
+
+
+async def test_the_log_names_documents_as_far_as_the_viewer_may_read_them(world: World) -> None:
+    owner, stranger = await world.user("owner"), await world.user("stranger")
+    admin = await world.user(role=Role.ADMIN)
+    mine = await world.pipeline().receive(owner.id, builders.incoming(b"%PDF-1"), filename="a.pdf")
+    theirs = await world.pipeline().receive(
+        stranger.id, builders.incoming(b"%PDF-2"), filename="b.pdf"
+    )
+    hook = (await world.webhooks.create(owner.id, name="x", url=URL, event_types=["*"])).webhook
+
+    def entry(
+        document: DocumentId | None, outcome: DeliveryOutcome, event: str = "document.filed"
+    ) -> WebhookDelivery:
+        return WebhookDelivery.record(
+            webhook_id=hook.id,
+            event_id=EventId(new_id()),
+            event_type=event,
+            document_id=document,
+            attempt=1,
+            started_at=world.clock.now(),
+            duration_ms=5,
+            outcome=outcome,
+            status_code=200 if outcome is DeliveryOutcome.DELIVERED else 503,
+        )
+
+    gone = DocumentId(new_id())
+    async with world.uow() as uow:
+        for delivery in (
+            entry(mine.id, DeliveryOutcome.DELIVERED),
+            entry(theirs.id, DeliveryOutcome.GAVE_UP),
+            entry(gone, DeliveryOutcome.RETRYING, "document.deleted"),
+            entry(None, DeliveryOutcome.DELIVERED, "webhook.test"),
+        ):
+            await uow.webhooks.add_delivery(delivery)
+        await uow.commit()
+
+    seen = {
+        view.delivery.event_type + str(view.delivery.document_id): view
+        for view in await world.webhooks.deliveries(owner.id, hook.id)
+    }
+    readable = seen[f"document.filed{mine.id}"]
+    assert readable.document is not None and readable.document.title == mine.title
+    assert not readable.document_hidden
+    other = seen[f"document.filed{theirs.id}"]
+    assert (other.document, other.document_hidden) == (None, True)
+    assert (
+        seen[f"document.deleted{gone}"].document_hidden,
+        seen["webhook.testNone"].document_hidden,
+    ) == (
+        True,
+        False,
+    )
+    as_admin = await world.webhooks.deliveries(admin.id, hook.id, event_type="document.filed")
+    assert {view.document.title for view in as_admin if view.document} == {mine.title, theirs.title}
+
+    problems = await world.webhooks.deliveries(
+        owner.id, hook.id, outcomes={DeliveryOutcome.GAVE_UP, DeliveryOutcome.RETRYING}
+    )
+    assert {view.delivery.event_type for view in problems} == {"document.filed", "document.deleted"}
+    assert len(await world.webhooks.deliveries(owner.id, hook.id, offset=3)) == 1
+
+    summary = await world.webhooks.delivery_summary(owner.id, hook.id)
+    assert summary.counts == {
+        DeliveryOutcome.DELIVERED: 2,
+        DeliveryOutcome.GAVE_UP: 1,
+        DeliveryOutcome.RETRYING: 1,
+    }
+    assert summary.event_types == ("document.deleted", "document.filed", "webhook.test")
+    assert summary.kept_since == world.clock.now() - builders.RETENTION
+    filed = await world.webhooks.delivery_summary(owner.id, hook.id, event_type="document.filed")
+    assert filed.counts == {DeliveryOutcome.DELIVERED: 1, DeliveryOutcome.GAVE_UP: 1}
+    with pytest.raises(NotFoundError):
+        await world.webhooks.delivery_summary(stranger.id, hook.id)

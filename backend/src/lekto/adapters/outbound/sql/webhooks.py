@@ -1,5 +1,6 @@
 """Webhook repository on SQL tables. Deliveries go with their webhook (ON DELETE CASCADE)."""
 
+from collections.abc import Collection
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -93,14 +94,49 @@ class SqlWebhookRepository(SqlRepository[WebhookId, Webhook]):
         )
 
     async def deliveries(
-        self, webhook: WebhookId, *, before: DeliveryId | None = None, limit: int = PAGE_SIZE
+        self,
+        webhook: WebhookId,
+        *,
+        before: DeliveryId | None = None,
+        outcomes: Collection[DeliveryOutcome] | None = None,
+        event_type: str | None = None,
+        offset: int = 0,
+        limit: int = PAGE_SIZE,
     ) -> list[WebhookDelivery]:
         table = t.webhook_deliveries
         query = select(table).where(table.c.webhook_id == webhook)
         if before is not None:
             query = query.where(table.c.id < before)
-        rows = await self._tx.read(query.order_by(table.c.id.desc()).limit(limit))
+        if outcomes is not None:
+            query = query.where(table.c.outcome.in_([outcome.value for outcome in outcomes]))
+        if event_type is not None:
+            query = query.where(table.c.event_type == event_type)
+        rows = await self._tx.read(query.order_by(table.c.id.desc()).offset(offset).limit(limit))
         return [_delivery(row) for row in rows]
+
+    async def delivery_counts(
+        self, webhook: WebhookId, *, event_type: str | None = None
+    ) -> dict[DeliveryOutcome, int]:
+        table = t.webhook_deliveries
+        query = (
+            select(table.c.outcome, func.count().label("entries"))
+            .where(table.c.webhook_id == webhook)
+            .group_by(table.c.outcome)
+        )
+        if event_type is not None:
+            query = query.where(table.c.event_type == event_type)
+        rows = await self._tx.read(query)
+        return {DeliveryOutcome(row.outcome): int(row.entries) for row in rows}
+
+    async def delivery_event_types(self, webhook: WebhookId) -> list[str]:
+        table = t.webhook_deliveries
+        rows = await self._tx.read(
+            select(table.c.event_type)
+            .where(table.c.webhook_id == webhook)
+            .distinct()
+            .order_by(table.c.event_type)
+        )
+        return [row.event_type for row in rows]
 
     async def purge_deliveries(self, *, before: datetime) -> int:
         table = t.webhook_deliveries

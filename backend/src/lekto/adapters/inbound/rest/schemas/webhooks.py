@@ -24,7 +24,9 @@ from lekto.core.domain.webhooks import (
     WebhookDelivery,
     event_type_names,
 )
+from lekto.core.services._access import DocumentRef
 from lekto.core.services.webhooks import CreatedWebhook
+from lekto.core.services.webhooks.management import DeliverySummary, DeliveryView
 
 EVENT_TYPES_HELP = (
     f"Event types: {', '.join(f'`{name}`' for name in event_type_names())}, or `{ALL_EVENTS}` "
@@ -269,6 +271,11 @@ class WebhookCreated(WebhookOut):
         return cls(**WebhookOut.of(created.webhook).model_dump(), secret=created.secret)
 
 
+class DeliveryDocumentOut(BaseModel):
+    id: UUID
+    title: str
+
+
 class DeliveryOut(BaseModel):
     id: UUID
     webhook_id: UUID
@@ -288,9 +295,26 @@ class DeliveryOut(BaseModel):
     status_code: int | None = Field(description="The receiver's HTTP status, if it answered.")
     error: str | None = Field(description="Why the attempt failed; the answer body is not kept.")
     next_attempt_at: datetime | None
+    document: DeliveryDocumentOut | None = Field(
+        default=None, description="The document of the event, if the caller may read it."
+    )
+    document_hidden: bool = Field(
+        default=False,
+        description="The event is about a document the caller may not read (or one deleted since).",
+    )
 
     @classmethod
-    def of(cls, delivery: WebhookDelivery) -> "DeliveryOut":
+    def of_view(cls, view: DeliveryView) -> "DeliveryOut":
+        return cls.of(view.delivery, view.document, hidden=view.document_hidden)
+
+    @classmethod
+    def of(
+        cls,
+        delivery: WebhookDelivery,
+        document: DocumentRef | None = None,
+        *,
+        hidden: bool = False,
+    ) -> "DeliveryOut":
         return cls(
             id=delivery.id,
             webhook_id=delivery.webhook_id,
@@ -304,4 +328,33 @@ class DeliveryOut(BaseModel):
             status_code=delivery.status_code,
             error=delivery.error,
             next_attempt_at=delivery.next_attempt_at,
+            document=(
+                None
+                if document is None
+                else DeliveryDocumentOut(id=document.id, title=document.title)
+            ),
+            document_hidden=hidden,
+        )
+
+
+class DeliverySummaryOut(BaseModel):
+    delivered: int = Field(description="Entries answered with 2xx.")
+    retrying: int = Field(description="Entries whose attempt failed, another one follows.")
+    gave_up: int = Field(description="Entries that failed for good.")
+    dropped: int = Field(description="Entries not sent (document out of reach, webhook off).")
+    event_types: list[str] = Field(description="The event types the log holds, by name.")
+    kept_since: datetime = Field(description="Older entries are removed (the retention period).")
+
+    @classmethod
+    def of(cls, summary: DeliverySummary) -> "DeliverySummaryOut":
+        def count(outcome: DeliveryOutcome) -> int:
+            return summary.counts.get(outcome, 0)
+
+        return cls(
+            delivered=count(DeliveryOutcome.DELIVERED),
+            retrying=count(DeliveryOutcome.RETRYING),
+            gave_up=count(DeliveryOutcome.GAVE_UP),
+            dropped=count(DeliveryOutcome.DROPPED),
+            event_types=list(summary.event_types),
+            kept_since=summary.kept_since,
         )

@@ -16994,7 +16994,7 @@
           "webhooks"
         ],
         "summary": "The delivery log of a webhook",
-        "description": "Every attempt, newest first: time, event, status, duration, error. The answer of the receiver is not kept. Old entries are removed after the retention period. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).",
+        "description": "Every attempt, newest first: time, event, status, duration, error, and the document as far as the caller may read it. The answer of the receiver is not kept. Old entries are removed after the retention period. Pages go by `before` (the `id` of the last entry of the previous page) or by `offset`; `outcome` and `event_type` narrow the log, `GET /webhooks/{id}/deliveries/summary` counts it. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).",
         "operationId": "list_deliveries_api_v1_webhooks__id__deliveries_get",
         "parameters": [
           {
@@ -17027,6 +17027,55 @@
             "description": "The `id` of the last entry of the previous page."
           },
           {
+            "name": "outcome",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeliveryOutcome"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeat for several.",
+              "title": "Outcome"
+            },
+            "description": "Repeat for several."
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event Type"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -17050,6 +17099,129 @@
                     "$ref": "#/components/schemas/DeliveryOut"
                   },
                   "title": "Response List Deliveries Api V1 Webhooks  Id  Deliveries Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/webhooks/{id}/deliveries/summary": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "What the delivery log of a webhook holds",
+        "description": "How many entries by outcome (of `event_type`, if given), the event types in the log and since when entries are kept. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).",
+        "operationId": "delivery_summary_api_v1_webhooks__id__deliveries_summary_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliverySummaryOut"
                 }
               }
             }
@@ -21853,6 +22025,25 @@
           }
         ]
       },
+      "DeliveryDocumentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "DeliveryDocumentOut"
+      },
       "DeliveryOut": {
         "properties": {
           "id": {
@@ -21940,6 +22131,23 @@
               }
             ],
             "title": "Next Attempt At"
+          },
+          "document": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryDocumentOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The document of the event, if the caller may read it."
+          },
+          "document_hidden": {
+            "type": "boolean",
+            "title": "Document Hidden",
+            "description": "The event is about a document the caller may not read (or one deleted since).",
+            "default": false
           }
         },
         "type": "object",
@@ -21968,6 +22176,54 @@
           "dropped"
         ],
         "title": "DeliveryOutcome"
+      },
+      "DeliverySummaryOut": {
+        "properties": {
+          "delivered": {
+            "type": "integer",
+            "title": "Delivered",
+            "description": "Entries answered with 2xx."
+          },
+          "retrying": {
+            "type": "integer",
+            "title": "Retrying",
+            "description": "Entries whose attempt failed, another one follows."
+          },
+          "gave_up": {
+            "type": "integer",
+            "title": "Gave Up",
+            "description": "Entries that failed for good."
+          },
+          "dropped": {
+            "type": "integer",
+            "title": "Dropped",
+            "description": "Entries not sent (document out of reach, webhook off)."
+          },
+          "event_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Event Types",
+            "description": "The event types the log holds, by name."
+          },
+          "kept_since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Kept Since",
+            "description": "Older entries are removed (the retention period)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "delivered",
+          "retrying",
+          "gave_up",
+          "dropped",
+          "event_types",
+          "kept_since"
+        ],
+        "title": "DeliverySummaryOut"
       },
       "Departure": {
         "type": "string",

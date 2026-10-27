@@ -144,7 +144,12 @@ class World:
     @property
     def webhooks(self) -> WebhookService:
         return WebhookService(
-            self.uow, self.clock, self.cipher, builders.WEBHOOKS, builders.TEMPLATES
+            self.uow,
+            self.clock,
+            self.cipher,
+            builders.WEBHOOKS,
+            builders.TEMPLATES,
+            retention=builders.RETENTION,
         )
 
     @property

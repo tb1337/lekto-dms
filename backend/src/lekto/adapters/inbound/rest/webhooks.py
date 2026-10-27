@@ -10,6 +10,7 @@ from lekto.adapters.inbound.rest.context import Context
 from lekto.adapters.inbound.rest.problems import problem_responses
 from lekto.adapters.inbound.rest.schemas.webhooks import (
     DeliveryOut,
+    DeliverySummaryOut,
     HeaderIn,
     WebhookCreate,
     WebhookCreated,
@@ -19,6 +20,7 @@ from lekto.adapters.inbound.rest.schemas.webhooks import (
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.ids import DeliveryId, UserId, WebhookId
 from lekto.core.domain.reasons import ReasonCode, because
+from lekto.core.domain.webhooks import DeliveryOutcome
 from lekto.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
 from lekto.core.services.webhooks.policy import TEST_REQUESTS, TEST_WINDOW
 
@@ -167,8 +169,11 @@ async def remove_secret(id: UUID, user: CurrentUser, context: Context) -> Webhoo
     "/{id}/deliveries",
     summary="The delivery log of a webhook",
     description=(
-        "Every attempt, newest first: time, event, status, duration, error. The answer of the "
-        "receiver is not kept. Old entries are removed after the retention period. " + WHO
+        "Every attempt, newest first: time, event, status, duration, error, and the document "
+        "as far as the caller may read it. The answer of the receiver is not kept. Old entries "
+        "are removed after the retention period. Pages go by `before` (the `id` of the last "
+        "entry of the previous page) or by `offset`; `outcome` and `event_type` narrow the "
+        "log, `GET /webhooks/{id}/deliveries/summary` counts it. " + WHO
     ),
     response_model=list[DeliveryOut],
     responses=problem_responses(401, 404, 422),
@@ -180,15 +185,44 @@ async def list_deliveries(
     before: Annotated[
         UUID | None, Query(description="The `id` of the last entry of the previous page.")
     ] = None,
+    outcome: Annotated[
+        list[DeliveryOutcome] | None, Query(description="Repeat for several.")
+    ] = None,
+    event_type: Annotated[str | None, Query(max_length=100)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=PAGE_LIMIT)] = PAGE_SIZE,
 ) -> list[DeliveryOut]:
     found = await context.webhooks.deliveries(
         user,
         WebhookId(id),
         before=None if before is None else DeliveryId(before),
+        outcomes=frozenset(outcome) if outcome else None,
+        event_type=event_type,
+        offset=offset,
         limit=limit,
     )
-    return [DeliveryOut.of(delivery) for delivery in found]
+    return [DeliveryOut.of_view(view) for view in found]
+
+
+@router.get(
+    "/{id}/deliveries/summary",
+    summary="What the delivery log of a webhook holds",
+    description=(
+        "How many entries by outcome (of `event_type`, if given), the event types in the log "
+        "and since when entries are kept. " + WHO
+    ),
+    response_model=DeliverySummaryOut,
+    responses=problem_responses(401, 404, 422),
+)
+async def delivery_summary(
+    id: UUID,
+    user: CurrentUser,
+    context: Context,
+    event_type: Annotated[str | None, Query(max_length=100)] = None,
+) -> DeliverySummaryOut:
+    return DeliverySummaryOut.of(
+        await context.webhooks.delivery_summary(user, WebhookId(id), event_type=event_type)
+    )
 
 
 @router.post(

@@ -49,7 +49,13 @@
 	const given = untrack(() => webhook);
 	let name = $state(given?.name ?? '');
 	let url = $state(given?.url ?? '');
-	let all = $state(given ? given.event_types.includes('*') : true);
+	// What sets the webhook off, chosen on purpose (Tobi, 27.10.2026): events (all or some), or
+	// only rules, which is no event at all. Rules may send through or ask any webhook of their
+	// owner either way.
+	let trigger = $state<'events' | 'rules'>(given?.event_types.length === 0 ? 'rules' : 'events');
+	let all = $state(
+		given ? given.event_types.length === 0 || given.event_types.includes('*') : true
+	);
 	let types = $state<string[]>(given ? given.event_types.filter((type) => type !== '*') : []);
 	let active = $state(given?.active ?? true);
 	let signed = $state(given?.signed ?? true);
@@ -80,6 +86,12 @@
 	const callMinutesValid = $derived(
 		modelCall === '' || (Number.isFinite(callMinutes) && callMinutes >= 0.5 && callMinutes <= 1440)
 	);
+
+	const triggers = $derived([
+		{ value: 'events', label: m.webhook_trigger_events() },
+		{ value: 'rules', label: m.webhook_trigger_rules() }
+	]);
+	const eventsMissing = $derived(trigger === 'events' && !all && types.length === 0);
 
 	const bodies = $derived([
 		{ value: 'thin', label: m.webhook_body_thin(), hint: m.webhook_body_thin_hint() },
@@ -122,6 +134,7 @@
 	const incomplete = $derived(
 		name.trim() === '' ||
 			url.trim() === '' ||
+			eventsMissing ||
 			!headersComplete ||
 			(body === 'template' && template.trim() === '') ||
 			!(Number.isInteger(openTasks) && openTasks >= 1 && openTasks <= 64) ||
@@ -153,7 +166,7 @@
 	}
 
 	async function save() {
-		const event_types = all ? ['*'] : types;
+		const event_types = trigger === 'rules' ? [] : all ? ['*'] : types;
 		const content = {
 			body,
 			body_template: body === 'template' ? template : null,
@@ -230,16 +243,36 @@
 				aria-describedby="wh-url-hint"
 			/>
 		</Field.Field>
-		<fieldset class="flex flex-col gap-2">
-			<legend class="mb-1 text-sm font-medium">{m.webhook_events()}</legend>
-			<Choice bind:checked={all}>{m.webhook_events_all()}</Choice>
-			{#if !all}
-				<p class="pl-6 text-sm text-muted-foreground">{m.webhook_events_none_hint()}</p>
-				{#each WEBHOOK_EVENT_TYPES as type (type)}
-					<Choice value={type} bind:group={types} class="ml-6">{labels[type]()}</Choice>
-				{/each}
+		<div class="flex flex-col gap-2">
+			<span id="wh-trigger" class="text-sm font-medium">{m.webhook_trigger()}</span>
+			<Segmented
+				bind:value={() => trigger, (next) => (trigger = next as 'events' | 'rules')}
+				options={triggers}
+				labelledby="wh-trigger"
+			/>
+			{#if trigger === 'rules'}
+				<p class="text-sm text-muted-foreground">{m.webhook_trigger_rules_hint()}</p>
+			{:else}
+				<p class="text-sm text-muted-foreground">{m.webhook_trigger_events_hint()}</p>
+				<fieldset
+					class="mt-1 flex flex-col gap-2"
+					aria-describedby={eventsMissing ? 'wh-events-missing' : undefined}
+				>
+					<legend class="sr-only">{m.webhook_events()}</legend>
+					<Choice bind:checked={all}>{m.webhook_events_all()}</Choice>
+					{#if !all}
+						{#each WEBHOOK_EVENT_TYPES as type (type)}
+							<Choice value={type} bind:group={types} class="ml-6">{labels[type]()}</Choice>
+						{/each}
+					{/if}
+				</fieldset>
+				{#if eventsMissing}
+					<p id="wh-events-missing" class="text-sm text-muted-foreground">
+						{m.webhook_events_missing()}
+					</p>
+				{/if}
 			{/if}
-		</fieldset>
+		</div>
 		<div class="flex flex-col gap-2">
 			<span id="wh-body" class="text-sm font-medium">{m.webhook_body()}</span>
 			<Segmented

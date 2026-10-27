@@ -294,7 +294,8 @@ Two components that **look different on purpose**:
   2 px `brand` underline. A bottom border runs across the bar. It scrolls sideways on the phone
   with a fade at the cut edge. Counts and dots sit beside the label.
 - **`Segmented`**: a choice of how to show something (pages, grid/list/stream, text/pages,
-  form/facts, period quick picks, language, appearance). A grey bar with the choice on a light
+  form/facts, period quick picks, language, appearance), and in a form a choice among two or
+  three short options that changes what follows (a webhook's trigger and body). A grey bar with the choice on a light
   pill that slides over (`motion-safe`, not on first show). Sizes: `md` 40 px, `sm` 32 px; 44 px on
   the phone. With icons only (`names="hidden"`) every option has a label for its tooltip.
 

@@ -14,23 +14,6 @@ the document card, the inbox mark, the navigation breakpoint, "Sichern", footer 
 editors, list rows, page widths, checkboxes, date fields, "enabled" wording and the form of
 address.
 
-## Migration status
-
-#167 brings the code to this document step by step. Until a step has landed, the code may still
-show the old way. New code follows this document, not the old way.
-
-| Step of #167                 | Rules of this document it makes true                                                                                                                         |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 2 Tokens and page frame      | [Typography](#typography), [Radius](#radius-borders-shadows), [Page frame](#page-frame), [Cards](#cards)                                                     |
-| 3 Widgets                    | [Badges](#badges), [Chips](#chips), [Tabs and switches](#tabs-and-switches), [Tables](#tables), [Fields](#fields), [Checkboxes](#checkboxes-radios-switches) |
-| 4 Tooltips and touch targets | [Icon buttons](#buttons), [Tooltips](#help-and-tooltips), [Touch targets](#touch-targets)                                                                    |
-| 5 Fixes                      | [States](#states), [Dialogs](#dialogs-sheets-editors) (widths)                                                                                               |
-| 6 Flows and layout           | [Patterns](#patterns), [Navigation](#navigation), [Document card](#document-card), [Date field](#fields)                                                     |
-| 7 Texts                      | [Texts](#texts)                                                                                                                                              |
-| 8 Guardrails                 | [Enforcement](#enforcement)                                                                                                                                  |
-
-When a step lands, its row is removed. When the table is empty, this section goes.
-
 ## Principles
 
 1. **One system.** A need is met by an existing component or token. If none fits, extend the
@@ -90,22 +73,24 @@ of the build.
 
 The scale is defined in `@theme`. Use these steps only:
 
-| Step (class)      | Size                     | Use                                                  |
-| ----------------- | ------------------------ | ---------------------------------------------------- |
-| `text-title`      | 1.75rem, semibold, tight | The page title (`<h1>`), only through `PageHeader`   |
-| `text-figure`     | 1.625rem, semibold       | A big number on a stat card                          |
-| `text-section`    | 1.125rem, semibold       | A section of a page (`<h2>`), through `SectionTitle` |
-| `text-base`       | 1rem                     | Reading text, dialog titles                          |
-| `text-card-title` | 0.9375rem, semibold      | The heading of a card or pane (`<h2>`/`<h3>`)        |
-| `text-sm`         | 0.875rem                 | Default UI text: rows, fields, buttons               |
-| `text-meta`       | 0.8125rem                | Secondary lines, dense panels (system, processing)   |
-| `text-xs`         | 0.75rem                  | Captions, badges, the eyebrow                        |
-| `text-micro`      | 0.6875rem                | Marks on images (page count), counters in pills      |
+| Step (class)  | Size                     | Use                                                                      |
+| ------------- | ------------------------ | ------------------------------------------------------------------------ |
+| `text-title`  | 1.75rem, semibold, tight | The page title (`<h1>`), only through `PageTitle` (in `PageHeader`)      |
+| `text-figure` | 1.875rem, semibold       | A big number on a stat card                                              |
+| `text-lg`     | 1.125rem, semibold       | A section of a page (`<h2>`), through `SectionTitle`                     |
+| `text-base`   | 1rem                     | Reading text, dialog titles                                              |
+| `text-md`     | 0.9375rem, semibold      | The heading of a card or pane: `Card.Title`, `SectionTitle size="card"`  |
+| `text-sm`     | 0.875rem                 | Default UI text: rows, fields, buttons                                   |
+| `text-meta`   | 0.8125rem                | Secondary lines, dense panels (system, processing), small buttons        |
+| `text-xs`     | 0.75rem                  | Captions, badges, the eyebrow                                            |
+| `text-micro`  | 0.6875rem                | Marks on images (page count), counters in pills                          |
+| `text-nano`   | 0.625rem                 | The smallest marks: the raised `BetaPill`, legends of matrices and files |
 
 - **Eyebrow** (small uppercase label above a group, e.g. "LENSES", "ZEITRAUM"): the `Eyebrow`
   component (`text-xs font-medium uppercase tracking-wide text-muted-foreground`).
 - **Headings in order:** one `<h1>` per page (`PageHeader`), then `<h2>`, then `<h3>`. Do not
-  skip a level for the sake of looks.
+  skip a level for the sake of looks: `SectionTitle` and `Card.Title` take a `level` apart from
+  their size.
 - **Numbers** in tables, counters and durations use `tabular-nums`. Durations do not wrap
   ("4,2s", "1m 3s").
 - **Long words** (German compounds) break with hyphens: titles use `hyphens-auto` and `<html lang>`
@@ -119,6 +104,7 @@ The scale is defined in `@theme`. Use these steps only:
 | Cards, dialogs, sheets, panes, empty notes               | `rounded-2xl`               | `--radius-2xl`                |
 | Chips, badges, `Segmented`, switches, avatars            | `rounded-full`              |                               |
 | Small marks inside a component (code thumb, bar segment) | `rounded-md` / `rounded-sm` | `--radius-md` / `--radius-sm` |
+| The checkbox, swatches of a legend                       | `rounded-xs`                | `--radius-xs`                 |
 
 All radii come from `--radius`. `rounded-3xl`, `rounded-4xl` and arbitrary radii are not used.
 
@@ -126,7 +112,7 @@ All radii come from `--radius`. `rounded-3xl`, `rounded-4xl` and arbitrary radii
 borders mean "empty" or "add": `EmptyNote` and the dashed "+ …" chip.
 
 **Shadows:** cards have none. Popovers, menus and dialogs use the component's shadow. Marks on a
-page image use `.mark-glass`. No other shadows.
+page image use `.mark-glass`; a pinned page of the viewer uses `shadow-pinned`. No other shadows.
 
 **Dividers:** `ui/separator`, not hand-built `h-px`/`w-px` elements.
 
@@ -134,9 +120,11 @@ page image use `.mark-glass`. No other shadows.
 
 - **Page:** `flex flex-col gap-6` from the header down. Sections inside a page use `gap-3` between
   their title and content.
-- **Card padding:** `Card` sizes only. `sm` = `p-3.5` (dense panels: facts, relations), `md` =
-  `p-5` (default), `lg` = `px-6 py-5`. Hand-built paddings are not used.
-- **List rows:** `px-4 py-3`, at least 56 px tall.
+- **Card padding:** `Card` sizes only: `row` = `p-4` (an item of a list), `sm` = `p-3.5` (dense
+  panels: facts, relations), `md` = `p-5` (default), `lg` = `px-5 py-4`, `sm:px-6` (the sections
+  of the system page), `flush` (the card's rows or parts pad themselves). Hand-built paddings
+  are not used.
+- **List rows:** `Card` with `size="row"`, at least 56 px tall.
 - **Breakpoints:** Tailwind defaults: `sm` 640, `md` 768, `lg` 1024, `xl` 1280, `2xl` 1536 px.
 
 ### Page frame
@@ -145,21 +133,25 @@ page image use `.mark-glass`. No other shadows.
 
 - **Back link** (optional, detail pages): `BackLink`, above the title. It leads to the list the
   page came from, with that list's state: lens, filters, search and sort.
-- **Title**: `<h1>` in `text-title`, optionally followed by a count or a badge (lane, Beta).
+- **Title**: `PageTitle`, the `<h1>` in `text-title`, optionally followed by a count or a badge
+  (lane, Beta).
 - **Subtitle** (optional): one line in `text-sm text-muted-foreground` under the title.
 - **Actions**: right of the title, at its height. The primary action of the page is last
   (rightmost). On the phone, a page action may become an icon button. It keeps its label as
   tooltip and `aria-label`.
 
-The header shows **while loading and after an error**. The title shows a skeleton or the generic
+The header shows **while loading and after an error** (`Loading`, `LoadProblem` below it). The title shows a skeleton or the generic
 name of the page ("Regel"), never "Edit " with an empty name.
 
 ### Page widths
 
-| Width    | Max     | Pages                                       |
-| -------- | ------- | ------------------------------------------- |
-| Wide     | 1600 px | Documents (`/documents`), the document page |
-| Standard | 1040 px | Every other page, settings included         |
+| Width    | Max     | Class        | Pages                                       |
+| -------- | ------- | ------------ | ------------------------------------------- |
+| Wide     | 1600 px | `max-w-wide` | Documents (`/documents`), the document page |
+| Standard | 1040 px | `max-w-page` | Every other page, settings included         |
+
+`AppShell` sets the width: a page marks itself `data-wide` (fills the window) or `data-roomy`
+(wide, scrolling) to get the wide one.
 
 Content inside a standard page may be narrower for reading (a form column), never the page itself.
 From desktop width the document page fills the window and scrolls only inside its panes. On the
@@ -170,15 +162,15 @@ phone the page scrolls.
 - **Menu:** two groups divided by a line. _Work_: Posteingang · Dokumente · Erwartet · Spaces.
   _Set-up and operation_: Regeln · Webhooks · System · Stammdaten · Nutzer. The rights stay
   (master data and users for admins only).
-- **From `lg` (1024 px):** the menu stands in the header. If it does not fit, the second group goes
-  behind "Mehr".
+- **From `lg` (1024 px):** the menu stands in the header. Below `xl` (1280 px) the second group
+  goes behind "Mehr" (a dropdown), from `xl` it stands in the header too.
 - **Below `lg`:** a sheet from the right. Its button is the rightmost item of the header (thumb
   corner).
 - **Header items:** logo (favicon icon before the wordmark "lekto"), menu, search (the field where
   the header has room, `searchPlaces`: from `2xl`, for admins from 1720 px; otherwise the
   magnifier), user menu (avatar).
 - **User menu:** name and role, the admin switch "Alle Nutzer einbeziehen", language and appearance
-  (as `Segmented`), settings, API documentation, sign out. On the phone (below `sm`) the sheet
+  (`LanguageChoices`, `ThemeChoices`, each a `Segmented`), settings, API documentation, sign out. On the phone (below `sm`) the sheet
   holds all of it: the header shows only logo, magnifier and menu button.
 - **Inbox counter:** a badge on the menu entry, coloured by the worst lane it holds.
 - **Beta:** a small `BetaPill`, raised at the menu entry, and a larger one beside the page title
@@ -209,12 +201,14 @@ Chips and badges are pills; a pill is never a button that starts an action.
 | `default` | 40 px  | Pages, headers, toolbars, dialog footers |
 | `sm`      | 32 px  | Rows and cards (desktop)                 |
 | `lg`      | 48 px  | The sign-in page only                    |
+| `inline`  | text   | A button that reads as a word in a line  |
 
 On the phone every button is at least 44 px tall (see [Touch targets](#touch-targets)). The
 component handles this. Pages do not add `h-11` by hand.
 
 **Icon buttons:** `IconButton` only. It takes a `label` (its tooltip and `aria-label`), a variant
-and a size (`default` 40 px, `sm` 32 px). Icon buttons are rectangles like every button. There is
+and a size (`default` 40 px, `sm` 32 px), optionally a shorter `hint` as tooltip. Spread a menu
+trigger's props on it to open a menu. Icon buttons are rectangles like every button. There is
 no round "+". Plain `<button>`s are allowed only for whole-row targets and chips, never as
 look-alikes of `Button`.
 
@@ -227,7 +221,8 @@ divider.
 ### Fields
 
 - **`Input`**: `rounded-xl`, 44 px tall, `bg-card`, `border-input`. `Textarea`, `Select`,
-  `SearchSelect` and `SearchField` share its look through `fieldVariants`.
+  `SearchSelect`, `DateInput` and `SearchField` share its look through `ui/field-look.ts`
+  (`FIELD`, `FIELD_HEIGHT`, and `FIELD_FRAME` for a frame around an input).
 - **Label:** `Label`, or `HintLabel` when the field has help (info button beside the label, see
   [Help](#help-and-tooltips)). Every field has a label.
 - **Errors:** `Field.Error` under the field, tied to it with `aria-describedby`.
@@ -237,8 +232,9 @@ divider.
   search (`CreateOffer`).
 - **`SearchField`**: every search input, in pickers, lists and pages alike. The header search and
   the document search are `SearchField`s inside a form.
-- **Dates:** `DateField` (bits-ui), in the UI language. Not `<input type="date">`, which follows
-  the browser language. `PeriodInput` handles periods.
+- **Dates:** `DateInput` (the bits-ui date picker: day, month and year to type, a calendar
+  beside them), in the UI language; its value is the API's day (`2026-10-26`). Not
+  `<input type="date">`, which follows the browser language. `PeriodInput` handles periods.
 - **Tags of every kind:** `TagPicker`. One field with the chosen chips and a dashed "+ …" chip. The
   choice opens as a popover on desktop and as a sheet from the bottom on the phone.
 - **Free values as chips** (other spellings, other names): `ChipInput`.
@@ -254,34 +250,40 @@ divider.
 
 ### Chips
 
-`Chip` is the one chip: a pill, `h-8` (44 px target on the phone), icon and name, optionally
-removable (✕) or toggleable (`aria-pressed`). Its variants:
+`Chip` is the one chip: a pill, `md` 32 px (`h-8`) or `sm` 24 px, icon and name, optionally
+removable (`onremove`, a ✕ with a hit area of 44 px on the phone) or toggleable (`pressed`:
+`aria-pressed`, a check when on). Its variants:
 
-| Variant   | Use                                                              |
-| --------- | ---------------------------------------------------------------- |
-| `filled`  | Tags and topics, in their colour (`chipLook()`)                  |
-| `outline` | Groups (contact and type groups)                                 |
-| `neutral` | Free values (spellings), active filters, search words            |
-| `add`     | The dashed "+ Gruppe" / "+ Thema" / "+ Name" that opens a picker |
+| Variant    | Use                                                              |
+| ---------- | ---------------------------------------------------------------- |
+| `neutral`  | Free values (spellings), search words                            |
+| `outline`  | Groups (contact and type groups), quiet values                   |
+| `selected` | What is chosen: active filters, a toggle that is on              |
+| `add`      | The dashed "+ Gruppe" / "+ Thema" / "+ Name" that opens a picker |
 
-All chips are pills, topics included. The field a chip stands in names its kind. A selected toggle
-chip uses `bg-panel text-brand` with a check icon. `TagChip`, `TagChips`, `GroupChips`,
-`FacetChips` and `ChipInput` render `Chip`.
+Tags and topics in their colours (`chipLook()`) are `TagChip`, drawn in the same shape. All chips
+are pills, topics included. The field a chip stands in names its kind. `TagChips`, `GroupChips`,
+`FacetChips` and `ChipInput` render `Chip` or `TagChip`.
 
 ### Badges
 
-`Badge` (`ui/badge`) shows a state or a short fact. It is never a button.
+`Badge` (`ui/badge`) shows a state or a short fact. It is never a button. Its tones come from
+`tones.ts`, shared with every lane mark:
 
 | Tone                                | Use                                                                                        |
 | ----------------------------------- | ------------------------------------------------------------------------------------------ |
 | `green`, `yellow`, `red`, `running` | Lane and state ("Erledigt", "Prüfen", "Eingreifen", "In Verarbeitung"; "Aktiv"); with icon |
-| `note`                              | Neutral information with meaning ("Persönlich", scope)                                     |
-| `neutral`                           | Plain facts ("1 S.", counts, "Pausiert")                                                   |
-| `warning`                           | A caveat that matters: "Unsigniert" (yellow tone)                                          |
+| `yellow` without icon               | A caveat that matters: "Unsigniert"                                                        |
+| `note`                              | Neutral information with meaning ("Persönlich", scope, kind)                               |
+| `muted`                             | Plain facts ("+3", counts, "Pausiert", read only)                                          |
+| `primary`                           | What is marked as chosen: the current version, a suggestion                                |
+| `outline`                           | A person or an owner; the space of a foreign document                                      |
+| `default`                           | The solid accent; not used on pages so far                                                 |
 | `beta`                              | Through `BetaPill` only                                                                    |
 
-Heights: `sm` 20 px (in rows, `text-xs`), `md` 24 px (in headers). `LaneBadge` is `Badge` with
-the lane tone. Hand-built pills are not used.
+Sizes: `sm` 20 px (in rows, `text-xs`, the default), `md` 24 px (in headers), `lg` 28 px (the
+lane of a document in its row or head). `LaneBadge` is `Badge` with the lane tone. Hand-built
+pills are not used.
 
 ### Tabs and switches
 
@@ -300,9 +302,10 @@ No other tab or segmented look exists. `AutomationTab` and `PeriodFacet` use `Se
 
 ### Cards
 
-`Card` (`ui/card`): `rounded-2xl border bg-card`, sizes `sm`, `md`, `lg` (see
-[Spacing](#spacing-and-layout)). `Card.Title` renders a heading (`<h2>` by default, `level` to
-change it) in `text-card-title`. `Card.Description` is `text-sm text-muted-foreground`. Hand-built
+`Card` (`ui/card`): `rounded-2xl border bg-card`, sizes `row`, `sm`, `md`, `lg`, `flush` (see
+[Spacing](#spacing-and-layout)); `as` picks the element (`li`, `section`, `article`, `form` …),
+`cardVariants` draws the look on an element that cannot be a `Card`. `Card.Title` renders a heading (`<h2>` by default, `level` to
+change it) in `text-md`. `Card.Description` is `text-sm text-muted-foreground`. Hand-built
 `div`s with border and radius are not used.
 
 ### Lists
@@ -312,34 +315,40 @@ column. Each row has:
 
 1. **Leading** (optional): avatar, icon or thumbnail.
 2. **Title**: a link to the detail page, or the opener of the editor where there is no detail page.
-3. **Secondary line**: `text-meta text-muted-foreground`, with badges at the title.
+   Where the row has a detail page, the title's link takes the whole row (on the link
+   `after:absolute after:inset-0`, the row `relative`); the controls of the row stand above it
+   (`relative z-10`).
+3. **Secondary line**: `text-sm text-muted-foreground`, with badges at the title.
 4. **Trailing**: at most the `Switch` (where there is one) and the `EditButton`. Counts may stand
-   before them as links.
+   before them as links. A space's row keeps its members and "Verlassen" as icon buttons: they
+   have no detail page to go to.
 
 **Delete, test, rotate secret, log and other actions live on the detail page or in the editor,**
-not in the row. On the phone the whole row opens the editor or the detail page. It shows the
-secondary line and a chevron, no buttons.
+not in the row.
 
 ### Tables
 
 `ui/table` only. The head is `text-xs font-medium text-muted-foreground`. Numbers align right with
-`tabular-nums`. On the phone a table with more than three columns becomes rows (a stacked layout).
-It does not scroll sideways. Pagination is `Pagination` (50 per page).
+`tabular-nums`. On the phone a table keeps to the columns that fit; where it is wider, it scrolls
+inside its card, never the page. A list a person reads item by item is a list of rows, not a
+table. Pagination is `Pagination` (50 per page).
 
 ### Dialogs, sheets, editors
 
 | Need                                                         | Component                      | Desktop                          | Phone                                                                                                                 |
 | ------------------------------------------------------------ | ------------------------------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Ask before a destructive action                              | `ConfirmDialog` (alert dialog) | centred, `size="sm"`             | centred with gutter                                                                                                   |
+| Ask before a destructive action                              | `ConfirmDialog` (alert dialog) | centred, `size="md"`             | centred with gutter                                                                                                   |
 | A short form (space, token, code, move, reprocess, new user) | `FormDialog`                   | centred, `size` `sm`/`md`/`lg`   | full screen with the editor bar                                                                                       |
 | An editor of master data, lenses                             | `EditorShell`                  | dialog with sticky head and foot | full screen with the editor bar                                                                                       |
 | A secret shown once                                          | `SecretDialog`                 | centred, `size="md"`             | centred with gutter                                                                                                   |
 | A choice from many (tags, facets)                            | popover / `TagPickerDialog`    | popover or dialog                | sheet from the bottom                                                                                                 |
 | Filters                                                      | sidebar                        | sidebar                          | sheet from the bottom, title and close fixed on top, "Zurücksetzen" and "Ergebnisse anzeigen (N)" fixed at the bottom |
 
-- **Widths** come from the `size` prop (`sm` 384 px, `md` 512 px, `lg` 640 px, `xl` 768 px).
+- **Widths** come from the `size` prop (`sm` 384 px, `md` 512 px, `lg` 672 px, `xl` 768 px).
   A `class="max-w-*"` on dialog content is not used.
 - **Phone editor bar:** "Abbrechen" · title · "Speichern", fixed on top. The body scrolls.
+- **Delete in an editor:** a `FormDialog` or `EditorShell` with `ondelete` shows "Löschen" at the
+  start of its footer, apart from the two actions, and asks with `ConfirmDialog`.
 - **Dialog footer:** see [Patterns](#footers).
 - A dialog title names its object: "„Stromrechnung Oktober“ löschen", never a bare "Löschen".
 
@@ -349,6 +358,7 @@ It does not scroll sideways. Pagination is `Pagination` (50 per page).
 
 | Variant                  | Use                                       |
 | ------------------------ | ----------------------------------------- |
+| `default`                | A plain note without tone                 |
 | `note` (blue)            | Information to know                       |
 | `tip` (blue, light bulb) | A recommendation (e.g. read with the VLM) |
 | `warning` (yellow)       | Something to check before going on        |
@@ -362,9 +372,10 @@ eingereiht") or report an error of an action. **A toast never replaces a load er
 - **Help of a field or section:** `InfoTip` or `HintLabel`, an info button beside the label that
   opens the text. The visible text stays what one needs to read the view. Help text holds at most
   about 200 characters. Longer explanations belong in the documentation.
-- **Tooltip** (`ui/tooltip`): the name of an icon button (through `IconButton`), the full text of
-  something cut off, the path of a tag. A native `title=` attribute is used only for cut-off text,
-  never on buttons.
+- **Tooltip** (`ui/tooltip`): the name of an icon button (through `IconButton`), the names of the
+  options of `Segmented`, the inbox mark of a card. A native `title=` attribute is used only for
+  text that is cut off (a truncated name, "+3" for the rest of the tags) and for the names of
+  options in pickers (swatches, icons, months, tag paths), never on buttons.
 - Information is never available only through hover. On the phone a tooltip's content must also be
   reachable another way (label, sheet, detail).
 
@@ -376,8 +387,9 @@ The grid card "contact on top":
    badge (icon, tooltip "Im Posteingang", link to the document in the inbox), when it stands there.
 2. **First page:** the page image (`DocumentThumb`, white paper in both modes). The page count sits
    bottom right as a glass mark (`.mark-glass`). Nothing else covers the page.
-3. **Body:** the title (bold, two lines, hyphenated), type with icon and date, then the tags as
-   chips in one line with "+n" for the rest. Lens card fields (`CardFields`) follow.
+3. **Body:** the title (bold, two lines, hyphenated), type with icon and date, then topic, tags
+   and groups as chips in one line (three fit) with "+n" for the rest. Lens card fields
+   (`CardFields`) follow below a line.
 
 `DocumentRow` (list) and `InboxRow` (inbox) show the same parts in a row: thumbnail, title, contact
 and type, tags, state.
@@ -386,12 +398,12 @@ and type, tags, state.
 
 Every view that loads has these four states. Each looks the same everywhere:
 
-| State     | Component                                                                | Notes                                                                                            |
-| --------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| Loading   | `Skeleton` in the shape of the content, or "Lädt …" with `role="status"` | The page header stays                                                                            |
-| Empty     | `EmptyNote` (dashed box)                                                 | Says what would be here and how it gets here; a link or button to that action where there is one |
-| Error     | `LoadProblem` (`role="alert"`, "Erneut versuchen")                       | On the page, not as a toast. A detail page keeps its header and back link                        |
-| Not found | `LoadProblem` with the way back                                          | Never a dead end                                                                                 |
+| State     | Component                                                              | Notes                                                                                            |
+| --------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Loading   | `Skeleton` in the shape of the content, or `Loading` (`role="status"`) | The page header stays                                                                            |
+| Empty     | `EmptyNote` (dashed box, `action` for the way)                         | Says what would be here and how it gets here; a link or button to that action where there is one |
+| Error     | `LoadProblem` (`role="alert"`, "Erneut versuchen")                     | On the page, not as a toast. A detail page keeps its header and back link                        |
+| Not found | `LoadProblem` with the way back                                        | Never a dead end                                                                                 |
 
 ## Patterns
 
@@ -408,7 +420,8 @@ the phone a full-screen editor carries the same two actions in its top bar.
   "Anlegen"). An action that takes effect at once (switch, chip) needs no save.
 - **Unsaved changes are guarded.** A form with changes asks before the user leaves it: by a link,
   a tab, the back button, closing the dialog or closing the browser (`beforeNavigate`,
-  `beforeunload`). The question is a `ConfirmDialog` with "Verwerfen" and "Weiter bearbeiten".
+  `beforeunload`). The question is a `ConfirmDialog` with "Verwerfen" and "Weiter bearbeiten":
+  `UnsavedGuard`, or `AsyncForm` with `onchanged`.
 - Panes of the document page keep their state while hidden.
 
 ### Destructive actions
@@ -423,7 +436,9 @@ Destructive actions are in editors and on detail pages, not in list rows.
   a list carries that URL back (`from`), and its `BackLink` returns there. The inbox's
   previous/next works the same way.
 - Detail pages of the same kind offer the same actions in the same place: header actions (edit,
-  primary action), a "…" menu for the rest (delete last, in `destructive`).
+  primary action). A single destructive action stands there as an `IconButton` (rule, webhook);
+  where there are more actions, a "…" menu holds the rest (delete last, in `destructive`).
+- `return-to.svelte.ts` keeps the list's URL for the way back.
 
 ### Motion
 
@@ -437,8 +452,8 @@ dialogs. Nothing moves on first show. Nothing grows over its neighbours on hover
   do not overlap.
 - **Desktop:** at least 32 px for controls in rows and cards, 40 px elsewhere. No target is smaller
   than 24 × 24 px.
-- The components implement this (`Button`, `IconButton`, `Chip`, `Segmented`, `TabBar`). Pages do
-  not add sizes by hand.
+- The components implement this (`Button`, `IconButton`, `Chip`, `Segmented`, `TabBar`, `Select`,
+  `Switch`, `ChoiceBox`, `InfoTip`, `BackLink`, `InboxMark`). Pages do not add sizes by hand.
 
 ## Accessibility baseline
 
@@ -496,31 +511,34 @@ Allowed outside the token rules, each for a stated reason:
 | Where                                                                   | What                                   | Why                                                                  |
 | ----------------------------------------------------------------------- | -------------------------------------- | -------------------------------------------------------------------- |
 | `PageViewer`, `DocumentThumb`, `CodeThumb`, `ContactAvatar`, `TotpCard` | `bg-white`                             | Paper, logos and the QR code are drawn for white                     |
+| Overlays of `ui/dialog`, `ui/alert-dialog`, `ui/sheet`                  | `bg-black/*`                           | The dimmed page behind a dialog, as shadcn draws it                  |
+| The sign-in page                                                        | an arbitrary font size                 | The wordmark scales with its font size                               |
 | `DocumentFiles`                                                         | `hsl()` from data                      | The fingerprint colour comes from the file's hash                    |
 | `PageViewer`, `ProcessingBand`, charts                                  | `style=` with computed sizes           | Sizes come from data (zoom, durations, bars)                         |
 | `lib/templates/codemirror.ts`                                           | its own theme                          | The editor sits in a shadow root that the page's styles do not reach |
 | `.lc-tooltip-*` in `app.css`                                            | LayerChart override                    | The library's tooltip ground is otherwise transparent                |
 | `ui/*`                                                                  | shadcn internals (`data-[…]` variants) | Primitives; their look follows this document                         |
 
-A new exception needs a row here.
+A new exception needs a row here and its entry in `tests/design-system.test.ts` (`EXCEPTIONS`).
 
 ## Enforcement
 
-- **Guard tests** (Vitest, after the pattern of `tests/no-raw-choice.test.ts`) fail `pnpm test`
-  when a rule is broken:
-  - no arbitrary font sizes, radii, shadows or Tailwind palette colours outside the exceptions;
-  - no raw `<table>`;
-  - `<h1>` only in `PageHeader`;
-  - no `title=` on `Button`/`IconButton`;
-  - no `max-w-*` on dialog content;
-  - no round icon buttons;
-  - German texts without "Sie" and without a lowercase "du".
+- **Guard tests** (Vitest) fail `pnpm test` when a rule is broken:
+  - `tests/design-system.test.ts`: font sizes, radii, shadows and colours from the tokens only
+    (no arbitrary values, no Tailwind palette) outside the exceptions; `<h1>` only in
+    `PageTitle`; `<table>` only in `ui/table`; no `title=` on `Button`, `IconButton` or a menu
+    trigger; no `max-w-*` on dialog content; icon buttons only through `IconButton`;
+  - `tests/messages-tone.test.ts`: German texts without "Sie" and without a lowercase "du";
+  - `tests/no-raw-text.test.ts`: no raw text in markup; `tests/no-raw-choice.test.ts`: no raw
+    checkbox or radio.
 
-  Their allowlists may only shrink.
+  Their lists of exceptions may only shrink.
 
-- **Layout spec** (Playwright, `tests/e2e`): every area at 390, 1024 and 1440 px. No horizontal
-  overflow, 44 px targets on the phone, no console error.
+- **Layout spec** (Playwright, `tests/e2e/layout.spec.ts`): every area at 390, 1024 and 1440 px.
+  No horizontal overflow, 44 px targets on the phone and 24 px wider (a larger invisible hit area
+  counts), no console error.
 - **Living style guide:** `/dev/components` (development builds) shows every component in every
   variant and size, in light and dark. A new component or variant is added there first.
-- **Review:** every pull request that touches `web/` confirms it follows this document; a deviation
-  needs a change of this document in the same pull request.
+- **Review:** every pull request that touches `web/` confirms it follows this document (the
+  checklist of `.github/pull_request_template.md`); a deviation needs a change of this document
+  in the same pull request.

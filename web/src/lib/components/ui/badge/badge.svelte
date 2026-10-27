@@ -1,5 +1,6 @@
 <script lang="ts" module>
-	import { type VariantProps, tv } from 'tailwind-variants';
+	import type { VariantProps } from 'tailwind-variants';
+	import { tv } from '#lib/tailwind.ts';
 
 	import { TONE_EDGE, TONE_FILL, type Tone } from '#lib/tones.ts';
 

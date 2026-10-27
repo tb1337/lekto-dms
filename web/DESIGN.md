@@ -285,6 +285,11 @@ Sizes: `sm` 20 px (in rows, `text-xs`, the default), `md` 24 px (in headers), `l
 lane of a document in its row or head). `LaneBadge` is `Badge` with the lane tone. Hand-built
 pills are not used.
 
+`VolumeMeter` shows how loud something is as three rising bars (`muted-foreground` on `border`),
+always beside a text that says it in words (`aria-hidden`): how often a webhook event comes for
+one document ("1×", "2–7×", "≈ 13× je Verarbeitung"), with a line under the list that adds up
+the chosen events.
+
 ### Tabs and switches
 
 Two components that **look different on purpose**:
@@ -294,9 +299,10 @@ Two components that **look different on purpose**:
   2 px `brand` underline. A bottom border runs across the bar. It scrolls sideways on the phone
   with a fade at the cut edge. Counts and dots sit beside the label.
 - **`Segmented`**: a choice of how to show something (pages, grid/list/stream, text/pages,
-  form/facts, period quick picks, language, appearance). A grey bar with the choice on a light
-  pill that slides over (`motion-safe`, not on first show). Sizes: `md` 40 px, `sm` 32 px; 44 px on
-  the phone. With icons only (`names="hidden"`) every option has a label for its tooltip.
+  form/facts, period quick picks, language, appearance), and in a form a choice among two or
+  three short options that changes what follows (a webhook's trigger and body). A grey bar with
+  the choice on a light pill that slides over (`motion-safe`, not on first show). Sizes: `md`
+  40 px, `sm` 32 px; 44 px on the phone. With icons only (`names="hidden"`) every option has a label for its tooltip.
 
 No other tab or segmented look exists. `AutomationTab` and `PeriodFacet` use `Segmented`.
 
@@ -332,8 +338,10 @@ not in the row.
 `tabular-nums`. On the phone a table keeps to the columns that fit; where it is wider, it scrolls
 inside its card, never the page. A list a person reads item by item is a list of rows, not a
 table. Pagination is `Pagination` (50 per page). A table may offer other sizes in a small menu
-beside the count (`outline`, `sm`; the jobs: 25, 50 and 100, 25 at first); the choice is
-remembered per table in the browser (`page-size.ts`) and holds wherever that table shows.
+beside the count (`outline`, `sm`; the jobs and the deliveries of a webhook: 25, 50 and 100, 25
+at first); the choice is remembered per table in the browser (`page-size.ts`) and holds wherever
+that table shows. Above such a table, a `Segmented` with counts picks what it shows and a
+`Select` narrows it to a kind (the jobs by state and kind, the deliveries by outcome and event).
 
 ### Dialogs, sheets, editors
 

@@ -1,7 +1,8 @@
 """In-memory webhook repository, on the tables of the in-memory unit of work."""
 
 import copy
-from collections.abc import Iterable
+from collections import Counter
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -10,8 +11,8 @@ from uuid import UUID
 from lekto.adapters.outbound.memory.database import WEBHOOK_DELIVERIES, Table
 from lekto.adapters.outbound.memory.rows import _REMOVED, MemoryRepository, _copy
 from lekto.core.domain.errors import NotFoundError
-from lekto.core.domain.ids import DeliveryId, UserId, WebhookId
-from lekto.core.domain.webhooks import Webhook, WebhookDelivery
+from lekto.core.domain.ids import UserId, WebhookId
+from lekto.core.domain.webhooks import DeliveryOutcome, Webhook, WebhookDelivery
 from lekto.core.ports.repository import PAGE_SIZE
 
 if TYPE_CHECKING:
@@ -70,15 +71,44 @@ class MemoryWebhookRepository(MemoryRepository[WebhookId, Webhook]):
         await self._deliveries.add(DeliveryRow(delivery.id, delivery))
 
     async def deliveries(
-        self, webhook: WebhookId, *, before: DeliveryId | None = None, limit: int = PAGE_SIZE
+        self,
+        webhook: WebhookId,
+        *,
+        outcomes: Collection[DeliveryOutcome] | None = None,
+        event_type: str | None = None,
+        offset: int = 0,
+        limit: int = PAGE_SIZE,
     ) -> list[WebhookDelivery]:
         rows = [
             row.item
             for row in self._deliveries._all()
-            if row.item.webhook_id == webhook and (before is None or row.id < before)
+            if row.item.webhook_id == webhook
+            and (outcomes is None or row.item.outcome in outcomes)
+            and (event_type is None or row.item.event_type == event_type)
         ]
         rows.sort(key=lambda delivery: delivery.id, reverse=True)
-        return [copy.deepcopy(row) for row in rows[:limit]]
+        return [copy.deepcopy(row) for row in rows[offset : offset + limit]]
+
+    async def delivery_counts(
+        self, webhook: WebhookId, *, event_type: str | None = None
+    ) -> dict[DeliveryOutcome, int]:
+        return dict(
+            Counter(
+                row.item.outcome
+                for row in self._deliveries._all()
+                if row.item.webhook_id == webhook
+                and (event_type is None or row.item.event_type == event_type)
+            )
+        )
+
+    async def delivery_event_types(self, webhook: WebhookId) -> list[str]:
+        return sorted(
+            {
+                row.item.event_type
+                for row in self._deliveries._all()
+                if row.item.webhook_id == webhook
+            }
+        )
 
     async def purge_deliveries(self, *, before: datetime) -> int:
         return self._deliveries._remove_rows(

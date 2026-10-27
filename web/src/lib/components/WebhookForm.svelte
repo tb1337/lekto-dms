@@ -17,10 +17,12 @@
 	import { Choice } from '#lib/components/ui/choice/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
-	import { WEBHOOK_EVENT_TYPES, type WebhookEventType } from '#lib/events.svelte.ts';
+	import { WEBHOOK_EVENT_TYPES } from '#lib/events.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import { EVENT_LABELS, selectionVolume, volumeLevel, volumeText } from '#lib/webhooks.ts';
+	import VolumeMeter from '#lib/components/VolumeMeter.svelte';
 	import IconButton from '#lib/components/IconButton.svelte';
 	import UnsavedGuard from '#lib/components/UnsavedGuard.svelte';
 
@@ -49,7 +51,13 @@
 	const given = untrack(() => webhook);
 	let name = $state(given?.name ?? '');
 	let url = $state(given?.url ?? '');
-	let all = $state(given ? given.event_types.includes('*') : true);
+	// What sets the webhook off, chosen on purpose (Tobi, 27.10.2026): events (all or some), or
+	// only rules, which is no event at all. Rules may send through or ask any webhook of their
+	// owner either way.
+	let trigger = $state<'events' | 'rules'>(given?.event_types.length === 0 ? 'rules' : 'events');
+	let all = $state(
+		given ? given.event_types.length === 0 || given.event_types.includes('*') : true
+	);
 	let types = $state<string[]>(given ? given.event_types.filter((type) => type !== '*') : []);
 	let active = $state(given?.active ?? true);
 	let signed = $state(given?.signed ?? true);
@@ -81,27 +89,20 @@
 		modelCall === '' || (Number.isFinite(callMinutes) && callMinutes >= 0.5 && callMinutes <= 1440)
 	);
 
+	const triggers = $derived([
+		{ value: 'events', label: m.webhook_trigger_events() },
+		{ value: 'rules', label: m.webhook_trigger_rules() }
+	]);
+	const eventsMissing = $derived(trigger === 'events' && !all && types.length === 0);
+	// How many deliveries the chosen events bring for one document.
+	const volume = $derived(selectionVolume(types, all));
+
 	const bodies = $derived([
 		{ value: 'thin', label: m.webhook_body_thin(), hint: m.webhook_body_thin_hint() },
 		{ value: 'full', label: m.webhook_body_full(), hint: m.webhook_body_full_hint() },
 		{ value: 'template', label: m.webhook_body_template(), hint: m.webhook_body_template_hint() }
 	]);
 	const bodyHint = $derived(bodies.find((option) => option.value === body)?.hint ?? '');
-
-	const labels: Record<WebhookEventType, () => string> = {
-		'document.received': m.event_received,
-		'document.node_started': m.event_node_started,
-		'document.node_deferred': m.event_node_deferred,
-		'document.node_delegated': m.event_node_delegated,
-		'document.node_completed': m.event_node_completed,
-		'document.lane_changed': m.event_lane_changed,
-		'document.filed': m.event_filed,
-		'document.updated': m.event_updated,
-		'document.deleted': m.event_deleted,
-		'document.review_required': m.event_review_required,
-		'document.confirmed': m.event_confirmed,
-		'document.moved': m.event_moved
-	};
 
 	function modelCallBody() {
 		return modelCall === ''
@@ -122,6 +123,7 @@
 	const incomplete = $derived(
 		name.trim() === '' ||
 			url.trim() === '' ||
+			eventsMissing ||
 			!headersComplete ||
 			(body === 'template' && template.trim() === '') ||
 			!(Number.isInteger(openTasks) && openTasks >= 1 && openTasks <= 64) ||
@@ -153,7 +155,7 @@
 	}
 
 	async function save() {
-		const event_types = all ? ['*'] : types;
+		const event_types = trigger === 'rules' ? [] : all ? ['*'] : types;
 		const content = {
 			body,
 			body_template: body === 'template' ? template : null,
@@ -230,16 +232,55 @@
 				aria-describedby="wh-url-hint"
 			/>
 		</Field.Field>
-		<fieldset class="flex flex-col gap-2">
-			<legend class="mb-1 text-sm font-medium">{m.webhook_events()}</legend>
-			<Choice bind:checked={all}>{m.webhook_events_all()}</Choice>
-			{#if !all}
-				<p class="pl-6 text-sm text-muted-foreground">{m.webhook_events_none_hint()}</p>
-				{#each WEBHOOK_EVENT_TYPES as type (type)}
-					<Choice value={type} bind:group={types} class="ml-6">{labels[type]()}</Choice>
-				{/each}
+		<div class="flex flex-col gap-2">
+			<span id="wh-trigger" class="text-sm font-medium">{m.webhook_trigger()}</span>
+			<Segmented
+				bind:value={() => trigger, (next) => (trigger = next as 'events' | 'rules')}
+				options={triggers}
+				labelledby="wh-trigger"
+			/>
+			{#if trigger === 'rules'}
+				<p class="text-sm text-muted-foreground">{m.webhook_trigger_rules_hint()}</p>
+			{:else}
+				<p class="text-sm text-muted-foreground">{m.webhook_trigger_events_hint()}</p>
+				<fieldset
+					class="mt-1 flex flex-col gap-2"
+					aria-describedby={eventsMissing ? 'wh-events-missing' : undefined}
+				>
+					<legend class="sr-only">{m.webhook_events()}</legend>
+					<Choice bind:checked={all}>{m.webhook_events_all()}</Choice>
+					{#if !all}
+						{#each WEBHOOK_EVENT_TYPES as type (type)}
+							<!-- How often the event comes for one document, in words and as bars (Tobi,
+							     27.10.2026). -->
+							<div class="ml-6 flex max-w-md items-center justify-between gap-4">
+								<Choice value={type} bind:group={types}>{EVENT_LABELS[type]()}</Choice>
+								<span
+									class="flex shrink-0 items-center gap-2 text-xs text-muted-foreground tabular-nums"
+								>
+									{volumeText(type)}
+									<VolumeMeter level={volumeLevel(type)} />
+								</span>
+							</div>
+						{/each}
+					{/if}
+				</fieldset>
+				{#if eventsMissing}
+					<p id="wh-events-missing" class="text-sm text-muted-foreground">
+						{m.webhook_events_missing()}
+					</p>
+				{:else}
+					<p class="text-sm text-muted-foreground">
+						{volume.least === volume.most
+							? m.webhook_volume_total_exact({ count: volume.least })
+							: m.webhook_volume_total_range({ least: volume.least, most: volume.most })}
+						{#if volume.steps.most > 0}
+							{m.webhook_volume_steps({ least: volume.steps.least, most: volume.steps.most })}
+						{/if}
+					</p>
+				{/if}
 			{/if}
-		</fieldset>
+		</div>
 		<div class="flex flex-col gap-2">
 			<span id="wh-body" class="text-sm font-medium">{m.webhook_body()}</span>
 			<Segmented

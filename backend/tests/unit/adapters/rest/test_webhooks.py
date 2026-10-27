@@ -1,5 +1,6 @@
 """`/webhooks`: managing webhooks over the API."""
 
+from datetime import datetime
 from uuid import UUID
 
 from lekto.adapters.inbound.rest import PREFIX
@@ -9,6 +10,7 @@ from lekto.core.domain.ids import DocumentId, EventId, WebhookId, new_id
 from lekto.core.domain.users import Role
 from lekto.core.domain.webhooks import DeliveryOutcome, WebhookDelivery
 from tests.api import auth, bearer
+from tests.builders import RETENTION
 from tests.unit.adapters.rest.support import Api, post
 
 BODY = {
@@ -180,7 +182,11 @@ async def test_users_see_only_their_webhooks_and_admins_all(api: Api) -> None:
     assert (await api.client.get(f"{PREFIX}/webhooks", headers=auth(other))).json() == []
 
     assert (await api.client.get(url, headers=auth(admin))).status_code == 200
-    assert (await api.client.get(f"{url}/deliveries", headers=auth(admin))).json() == []
+    assert (await api.client.get(f"{url}/deliveries", headers=auth(admin))).json() == {
+        "items": [],
+        "total": 0,
+        "next_offset": None,
+    }
     everything = await api.client.get(f"{PREFIX}/webhooks", headers=auth(admin))
     assert [item["id"] for item in everything.json()] == [mine["id"]]
     narrowed = await api.client.get(
@@ -248,10 +254,71 @@ async def test_the_deliveries_are_listed_newest_first_in_pages(api: Api) -> None
         await uow.commit()
     url = f"{PREFIX}/webhooks/{created['id']}/deliveries"
     first = (await api.client.get(url, params={"limit": 2}, headers=auth(user))).json()
-    assert [item["id"] for item in first] == sorted(ids, reverse=True)[:2]
-    assert first[0]["outcome"] == "delivered" and first[0]["status_code"] == 204
-    rest = await api.client.get(url, params={"before": first[-1]["id"]}, headers=auth(user))
-    assert [item["id"] for item in rest.json()] == sorted(ids, reverse=True)[2:]
+    assert [item["id"] for item in first["items"]] == sorted(ids, reverse=True)[:2]
+    assert (first["total"], first["next_offset"]) == (3, 2)
+    assert first["items"][0]["outcome"] == "delivered" and first["items"][0]["status_code"] == 204
+    rest = (await api.client.get(url, params={"offset": 2}, headers=auth(user))).json()
+    assert [item["id"] for item in rest["items"]] == sorted(ids, reverse=True)[2:]
+    assert (rest["total"], rest["next_offset"]) == (3, None)
+
+
+async def test_the_deliveries_filter_by_outcome_and_event_and_are_counted(api: Api) -> None:
+    user, other = await api.user(), await api.user()
+    created = await post(api, "/webhooks", BODY, auth(user))
+    entries = [
+        ("document.filed", DeliveryOutcome.DELIVERED),
+        ("document.filed", DeliveryOutcome.GAVE_UP),
+        ("webhook.test", DeliveryOutcome.DELIVERED),
+        ("rule.send", DeliveryOutcome.RETRYING),
+    ]
+    async with api.container.unit_of_work() as uow:
+        for event_type, outcome in entries:
+            await uow.webhooks.add_delivery(
+                WebhookDelivery.record(
+                    webhook_id=WebhookId(UUID(created["id"])),
+                    event_id=EventId(new_id()),
+                    event_type=event_type,
+                    document_id=None,
+                    attempt=1,
+                    started_at=api.clock.now(),
+                    duration_ms=7,
+                    outcome=outcome,
+                )
+            )
+        await uow.commit()
+    url = f"{PREFIX}/webhooks/{created['id']}/deliveries"
+
+    async def listed(params: dict[str, str | int | list[str]]) -> list[tuple[str, str]]:
+        response = await api.client.get(url, params=params, headers=auth(user))
+        assert response.status_code == 200, response.text
+        return sorted((item["event_type"], item["outcome"]) for item in response.json()["items"])
+
+    problems = await listed({"outcome": ["gave_up", "retrying"]})
+    assert problems == [("document.filed", "gave_up"), ("rule.send", "retrying")]
+    narrowed = await api.client.get(url, params={"outcome": "gave_up"}, headers=auth(user))
+    assert narrowed.json()["total"] == 1
+    assert await listed({"event_type": "webhook.test"}) == [("webhook.test", "delivered")]
+    assert len(await listed({"offset": 3})) == 1
+    first = (await api.client.get(url, headers=auth(user))).json()["items"][0]
+    assert (first["document"], first["document_hidden"]) == (None, False)
+
+    summary = await api.client.get(f"{url}/summary", headers=auth(user))
+    assert summary.status_code == 200, summary.text
+    counted = summary.json()
+    kept_since = datetime.fromisoformat(counted.pop("kept_since"))
+    assert counted == {
+        "delivered": 2,
+        "retrying": 1,
+        "gave_up": 1,
+        "dropped": 0,
+        "event_types": ["document.filed", "rule.send", "webhook.test"],
+    }
+    assert kept_since == api.clock.now() - RETENTION
+    filed = await api.client.get(
+        f"{url}/summary", params={"event_type": "document.filed"}, headers=auth(user)
+    )
+    assert (filed.json()["delivered"], filed.json()["gave_up"]) == (1, 1)
+    assert (await api.client.get(f"{url}/summary", headers=auth(other))).status_code == 404
 
 
 async def test_a_test_request_is_sent_and_logged(api: Api) -> None:
@@ -271,7 +338,7 @@ async def test_a_test_request_is_sent_and_logged(api: Api) -> None:
     listed = await api.client.get(
         f"{PREFIX}/webhooks/{created['id']}/deliveries", headers=auth(user)
     )
-    assert [item["id"] for item in listed.json()] == [row["id"]]
+    assert [item["id"] for item in listed.json()["items"]] == [row["id"]]
 
     assert (await api.client.post(url, headers=auth(other))).status_code == 404
     _, token = await api.services.auth.create_api_token(user.id, "reader", TokenScope.READ)

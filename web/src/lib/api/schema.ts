@@ -1966,9 +1966,29 @@ export interface paths {
 		};
 		/**
 		 * The delivery log of a webhook
-		 * @description Every attempt, newest first: time, event, status, duration, error. The answer of the receiver is not kept. Old entries are removed after the retention period. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).
+		 * @description Every attempt, newest first: time, event, status, duration, error, and the document as far as the caller may read it. The answer of the receiver is not kept. Old entries are removed after the retention period. `outcome` and `event_type` narrow the log; `GET /webhooks/{id}/deliveries/summary` counts it by outcome. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).
 		 */
 		get: operations['list_deliveries_api_v1_webhooks__id__deliveries_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/webhooks/{id}/deliveries/summary': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * What the delivery log of a webhook holds
+		 * @description How many entries by outcome (of `event_type`, if given), the event types in the log and since when entries are kept. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).
+		 */
+		get: operations['delivery_summary_api_v1_webhooks__id__deliveries_summary_get'];
 		put?: never;
 		post?: never;
 		delete?: never;
@@ -3436,6 +3456,16 @@ export interface components {
 			/** Topic Ids */
 			topic_ids?: string[] | null;
 		};
+		/** DeliveryDocumentOut */
+		DeliveryDocumentOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Title */
+			title: string;
+		};
 		/** DeliveryOut */
 		DeliveryOut: {
 			/**
@@ -3484,12 +3514,68 @@ export interface components {
 			error: string | null;
 			/** Next Attempt At */
 			next_attempt_at: string | null;
+			/** @description The document of the event, if the caller may read it. */
+			document: components['schemas']['DeliveryDocumentOut'] | null;
+			/**
+			 * Document Hidden
+			 * @description It is about a document the caller may not read (or one deleted since).
+			 */
+			document_hidden: boolean;
 		};
 		/**
 		 * DeliveryOutcome
 		 * @enum {string}
 		 */
 		DeliveryOutcome: 'delivered' | 'retrying' | 'gave_up' | 'dropped';
+		/** DeliveryPageOut */
+		DeliveryPageOut: {
+			/** Items */
+			items: components['schemas']['DeliveryOut'][];
+			/**
+			 * Total
+			 * @description How many entries match in all.
+			 */
+			total: number;
+			/**
+			 * Next Offset
+			 * @description Pass as `offset` for the next page; null on the last page.
+			 */
+			next_offset: number | null;
+		};
+		/** DeliverySummaryOut */
+		DeliverySummaryOut: {
+			/**
+			 * Delivered
+			 * @description Entries answered with 2xx.
+			 */
+			delivered: number;
+			/**
+			 * Retrying
+			 * @description Entries whose attempt failed, another one follows.
+			 */
+			retrying: number;
+			/**
+			 * Gave Up
+			 * @description Entries that failed for good.
+			 */
+			gave_up: number;
+			/**
+			 * Dropped
+			 * @description Entries not sent (document out of reach, webhook off).
+			 */
+			dropped: number;
+			/**
+			 * Event Types
+			 * @description The event types the log holds, by name.
+			 */
+			event_types: string[];
+			/**
+			 * Kept Since
+			 * Format: date-time
+			 * @description Older entries are removed (the retention period).
+			 */
+			kept_since: string;
+		};
 		/**
 		 * Departure
 		 * @description How a document left the inbox.
@@ -23650,8 +23736,10 @@ export interface operations {
 	list_deliveries_api_v1_webhooks__id__deliveries_get: {
 		parameters: {
 			query?: {
-				/** @description The `id` of the last entry of the previous page. */
-				before?: string | null;
+				/** @description Repeat for several. */
+				outcome?: components['schemas']['DeliveryOutcome'][] | null;
+				event_type?: string | null;
+				offset?: number;
 				limit?: number;
 			};
 			header?: never;
@@ -23668,7 +23756,99 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['DeliveryOut'][];
+					'application/json': components['schemas']['DeliveryPageOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	delivery_summary_api_v1_webhooks__id__deliveries_summary_get: {
+		parameters: {
+			query?: {
+				event_type?: string | null;
+			};
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DeliverySummaryOut'];
 				};
 			};
 			/** @description Unauthorized */

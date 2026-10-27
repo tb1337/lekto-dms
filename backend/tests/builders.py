@@ -56,6 +56,9 @@ CLASSIFIER = classifier_policy_of(DEFAULT_SETTINGS)
 INDEXING = indexing_policy_of(DEFAULT_SETTINGS)
 NEIGHBOURS = neighbours_policy_of(DEFAULT_SETTINGS)
 SEARCH = search_policy_of(DEFAULT_SETTINGS)
+RETENTION = DEFAULT_SETTINGS.retention
+"""How long logs and done jobs are kept, as configured by default."""
+
 WEBHOOKS = webhook_policy_of(DEFAULT_SETTINGS)
 RETRY = retry_policy_of(DEFAULT_SETTINGS)
 SESSIONS = session_policy_of(DEFAULT_SETTINGS)

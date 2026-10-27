@@ -772,7 +772,12 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             store=store,
         ),
         webhooks=WebhookService(
-            uow, clock, container.cipher, webhook_policy_of(settings), container.templates
+            uow,
+            clock,
+            container.cipher,
+            webhook_policy_of(settings),
+            container.templates,
+            retention=settings.retention,
         ),
         lenses=LensService(uow, clock),
         relations=RelationService(uow, clock),

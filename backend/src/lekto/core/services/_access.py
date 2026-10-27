@@ -1,7 +1,7 @@
 """Loading entities, together with the caller's rights where they matter."""
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from uuid import UUID
 
 from lekto.core.domain.classification import CHECKS
@@ -32,6 +32,39 @@ from lekto.core.domain.users import User
 from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services._tags import tag_tree
+
+
+@dataclass(frozen=True)
+class DocumentRef:
+    """A document as a list names it."""
+
+    id: DocumentId
+    title: str
+
+
+class ReadableDocuments:
+    """The documents `user` may read, as a list names them (the jobs, the deliveries of a
+    webhook): each document and its space read once."""
+
+    def __init__(self, uow: UnitOfWork, user: User) -> None:
+        self._uow = uow
+        self._user = user
+        self._documents: dict[DocumentId, Document | None] = {}
+        self._spaces: dict[SpaceId, Space] = {}
+
+    async def ref(self, id: DocumentId) -> DocumentRef | None:
+        """The document, if `user` may read it; None for one they may not, or one that is
+        gone."""
+        if id not in self._documents:
+            self._documents[id] = await self._uow.documents.find(id)
+        document = self._documents[id]
+        if document is None:
+            return None
+        if document.space_id not in self._spaces:
+            self._spaces[document.space_id] = await self._uow.spaces.get(document.space_id)
+        if not can_read_document(self._user, document, self._spaces[document.space_id]):
+            return None
+        return DocumentRef(document.id, document.title)
 
 
 async def load_actor(uow: UnitOfWork, actor: UserId) -> User:

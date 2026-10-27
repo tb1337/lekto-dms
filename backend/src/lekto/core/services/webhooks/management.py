@@ -13,7 +13,7 @@ webhooks that serve (active, an active admin's) at most one serves each kind
 
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from lekto.core.domain.documents import UNSET, Unset
 from lekto.core.domain.errors import (
@@ -22,13 +22,14 @@ from lekto.core.domain.errors import (
     PermissionDeniedError,
     ValidationError,
 )
-from lekto.core.domain.ids import DeliveryId, UserId, WebhookId, new_id
+from lekto.core.domain.ids import UserId, WebhookId, new_id
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.templates import WEBHOOK_NAMES, unknown_values
 from lekto.core.domain.users import User
 from lekto.core.domain.webhooks import (
     DEFAULT_OPEN_TASKS,
     BodyFormat,
+    DeliveryOutcome,
     ModelCallKind,
     ModelCallRole,
     Webhook,
@@ -44,7 +45,7 @@ from lekto.core.ports.identity import DecryptionError, SecretCipher
 from lekto.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
 from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
-from lekto.core.services._access import load_actor
+from lekto.core.services._access import DocumentRef, ReadableDocuments, load_actor
 from lekto.core.services.rules.references import disable_rules, refers_to
 from lekto.core.services.tasks.settling import drop_queued, wake_queue
 from lekto.core.services.webhooks.policy import WebhookPolicy
@@ -61,6 +62,35 @@ class CreatedWebhook:
 
     webhook: Webhook
     secret: str | None = field(repr=False)
+
+
+@dataclass(frozen=True)
+class DeliveryView:
+    """An entry of the log as its viewer may see it: `document` if it names one they may
+    read, `document_hidden` if it names one they may not (or one that is gone)."""
+
+    delivery: WebhookDelivery
+    document: DocumentRef | None = None
+    document_hidden: bool = False
+
+
+@dataclass(frozen=True)
+class DeliveriesPage:
+    """A page of the log and how many entries match in all."""
+
+    deliveries: tuple[DeliveryView, ...]
+    total: int
+
+
+@dataclass(frozen=True)
+class DeliverySummary:
+    """What the log of a webhook holds: how many entries by outcome (of the event type asked
+    for, if any; outcomes without any left out), its event types, and since when entries are
+    kept (the retention period)."""
+
+    counts: Mapping[DeliveryOutcome, int]
+    event_types: tuple[str, ...]
+    kept_since: datetime
 
 
 def secret_context(id: WebhookId) -> bytes:
@@ -81,12 +111,15 @@ class WebhookService:
         cipher: SecretCipher,
         policy: WebhookPolicy,
         templates: TemplateRenderer,
+        *,
+        retention: timedelta,
     ) -> None:
         self._uow = uow
         self._clock = clock
         self._cipher = cipher
         self._policy = policy
         self._templates = templates
+        self._retention = retention
 
     async def create(
         self,
@@ -254,14 +287,40 @@ class WebhookService:
         actor: UserId,
         id: WebhookId,
         *,
-        before: DeliveryId | None = None,
+        outcomes: Collection[DeliveryOutcome] | None = None,
+        event_type: str | None = None,
+        offset: int = 0,
         limit: int = PAGE_SIZE,
-    ) -> list[WebhookDelivery]:
-        """The log of a webhook, newest first."""
+    ) -> DeliveriesPage:
+        """The log of a webhook, newest first, `offset` entries in; only `outcomes` and
+        `event_type` where given. Each entry with its document as the caller may see it."""
         limit = max(1, min(limit, PAGE_LIMIT))
         async with self._uow() as uow:
+            user = await load_actor(uow, actor)
+            webhook = await visible_webhook(uow, user, id)
+            found = await uow.webhooks.deliveries(
+                webhook.id,
+                outcomes=outcomes,
+                event_type=event_type,
+                offset=max(0, offset),
+                limit=limit,
+            )
+            counts = await uow.webhooks.delivery_counts(webhook.id, event_type=event_type)
+            documents = ReadableDocuments(uow, user)
+            views = tuple([await _view(delivery, documents) for delivery in found])
+        total = sum(n for outcome, n in counts.items() if outcomes is None or outcome in outcomes)
+        return DeliveriesPage(views, total)
+
+    async def delivery_summary(
+        self, actor: UserId, id: WebhookId, *, event_type: str | None = None
+    ) -> DeliverySummary:
+        """How many entries the log of a webhook holds by outcome (of `event_type`, if
+        given), its event types, and since when entries are kept."""
+        async with self._uow() as uow:
             webhook = await visible_webhook(uow, await load_actor(uow, actor), id)
-            return await uow.webhooks.deliveries(webhook.id, before=before, limit=limit)
+            counts = await uow.webhooks.delivery_counts(webhook.id, event_type=event_type)
+            event_types = await uow.webhooks.delivery_event_types(webhook.id)
+        return DeliverySummary(counts, tuple(event_types), self._clock.now() - self._retention)
 
     async def _checked(self, uow: UnitOfWork, body: BodyFormat, template: str | None) -> str | None:
         """The template of a `template` body, checked: its syntax, and that it uses only what a
@@ -378,3 +437,10 @@ async def visible_webhook(uow: UnitOfWork, user: User, id: WebhookId) -> Webhook
 async def manageable_webhook(uow: UnitOfWork, user: User, id: WebhookId) -> Webhook:
     """The caller's own webhook, or any webhook for an admin: whoever may see it may change it."""
     return await visible_webhook(uow, user, id)
+
+
+async def _view(delivery: WebhookDelivery, documents: ReadableDocuments) -> DeliveryView:
+    if delivery.document_id is None:
+        return DeliveryView(delivery)
+    document = await documents.ref(delivery.document_id)
+    return DeliveryView(delivery, document, document_hidden=document is None)

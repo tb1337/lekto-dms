@@ -211,4 +211,50 @@ describe('WebhookForm', () => {
 		await user.click(screen.getByRole('button', { name: m.save() }));
 		expect((sent[0].body as { model_call: unknown }).model_call).toBeNull();
 	});
+
+	it('serves only rules when chosen so: no event at all', async () => {
+		render(WebhookForm, { webhook: stored, cancelHref: '/ui/webhooks/hook', ondone: () => {} });
+		await userEvent.click(screen.getByRole('button', { name: m.webhook_trigger_rules() }));
+		expect(screen.queryByText(m.webhook_events_all())).toBeNull();
+		expect(screen.getByText(m.webhook_trigger_rules_hint())).toBeTruthy();
+		await userEvent.click(screen.getByRole('button', { name: m.save() }));
+		expect(sent.at(-1)?.body).toMatchObject({ event_types: [] });
+	});
+
+	it('opens a webhook without events as one for rules, and events start with all of them', async () => {
+		render(WebhookForm, {
+			webhook: { ...stored, event_types: [] },
+			cancelHref: '/ui/webhooks/hook',
+			ondone: () => {}
+		});
+		expect(
+			screen.getByRole('button', { name: m.webhook_trigger_rules() }).getAttribute('aria-pressed')
+		).toBe('true');
+		await userEvent.click(screen.getByRole('button', { name: m.webhook_trigger_events() }));
+		expect((screen.getByLabelText(m.webhook_events_all()) as HTMLInputElement).checked).toBe(true);
+	});
+
+	it('asks for at least one event while not all are chosen', async () => {
+		render(WebhookForm, { webhook: stored, cancelHref: '/ui/webhooks/hook', ondone: () => {} });
+		await userEvent.click(screen.getByLabelText(m.webhook_events_all()));
+		const save = screen.getByRole('button', { name: m.save() }) as HTMLButtonElement;
+		expect(save.disabled).toBe(true);
+		expect(screen.getByText(m.webhook_events_missing())).toBeTruthy();
+		await userEvent.click(screen.getByLabelText(m.event_filed()));
+		expect(save.disabled).toBe(false);
+		await userEvent.click(save);
+		expect(sent.at(-1)?.body).toMatchObject({ event_types: ['document.filed'] });
+	});
+
+	it('tells how often the chosen events come for one document', async () => {
+		render(WebhookForm, { webhook: stored, cancelHref: '/ui/webhooks/hook', ondone: () => {} });
+		expect(
+			screen.getByText(new RegExp(m.webhook_volume_total_range({ least: 31, most: 75 })))
+		).toBeTruthy();
+		await userEvent.click(screen.getByLabelText(m.webhook_events_all()));
+		expect(screen.getAllByText(m.webhook_volume_run({ count: 13 }))).toHaveLength(2);
+		await userEvent.click(screen.getByLabelText(m.event_filed()));
+		const line = screen.getByText(m.webhook_volume_total_exact({ count: 1 }));
+		expect(line.textContent).not.toContain(m.webhook_volume_steps({ least: 26, most: 54 }));
+	});
 });

@@ -6,7 +6,7 @@ from datetime import timedelta
 import pytest
 
 from lekto.core.domain.errors import ConcurrencyError, NotFoundError
-from lekto.core.domain.ids import DocumentId, EventId, new_id
+from lekto.core.domain.ids import DeliveryId, DocumentId, EventId, new_id
 from lekto.core.domain.users import User
 from lekto.core.domain.webhooks import (
     ALL_EVENTS,
@@ -46,11 +46,12 @@ def a_delivery(
     *,
     at: timedelta = timedelta(0),
     outcome: DeliveryOutcome = DeliveryOutcome.DELIVERED,
+    event_type: str = "document.filed",
 ) -> WebhookDelivery:
     return WebhookDelivery.record(
         webhook_id=webhook.id,
         event_id=EventId(new_id()),
-        event_type="document.filed",
+        event_type=event_type,
         document_id=DocumentId(new_id()),
         attempt=1,
         started_at=NOW + at,
@@ -239,9 +240,60 @@ class WebhookRepositoryContract:
         async with uow_factory() as uow:
             page = await uow.webhooks.deliveries(webhook.id, limit=2)
             assert page == newest_first[:2]
-            after = await uow.webhooks.deliveries(webhook.id, before=page[-1].id, limit=10)
+            after = await uow.webhooks.deliveries(webhook.id, offset=2, limit=10)
             assert after == newest_first[2:]
             assert await uow.webhooks.deliveries(webhook.id) == newest_first
+
+    async def test_deliveries_filter_by_outcome_and_event_and_count(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner = await a_user(uow_factory)
+        webhook, other = a_webhook(owner), a_webhook(owner)
+        failed, retrying = DeliveryOutcome.GAVE_UP, DeliveryOutcome.RETRYING
+        deliveries = [
+            a_delivery(webhook, at=timedelta(minutes=0)),
+            a_delivery(webhook, at=timedelta(minutes=1), outcome=failed),
+            a_delivery(webhook, at=timedelta(minutes=2), event_type="webhook.test"),
+            a_delivery(webhook, at=timedelta(minutes=3), outcome=retrying),
+            a_delivery(webhook, at=timedelta(minutes=4), outcome=failed, event_type="rule.send"),
+            a_delivery(other, at=timedelta(minutes=5), outcome=failed),
+        ]
+        async with uow_factory() as uow:
+            await uow.webhooks.add(webhook)
+            await uow.webhooks.add(other)
+            for delivery in deliveries:
+                await uow.webhooks.add_delivery(delivery)
+            await uow.commit()
+        mine = deliveries[:5]
+
+        def newest(*picked: int) -> list[DeliveryId]:
+            return sorted((mine[n].id for n in picked), reverse=True)
+
+        async with uow_factory() as uow:
+            problems = await uow.webhooks.deliveries(webhook.id, outcomes={failed, retrying})
+            assert [d.id for d in problems] == newest(1, 3, 4)
+            filed = await uow.webhooks.deliveries(webhook.id, event_type="document.filed")
+            assert [d.id for d in filed] == newest(0, 1, 3)
+            both = await uow.webhooks.deliveries(
+                webhook.id, outcomes={failed}, event_type="document.filed"
+            )
+            assert [d.id for d in both] == newest(1)
+            page = await uow.webhooks.deliveries(webhook.id, offset=1, limit=2)
+            assert [d.id for d in page] == newest(0, 1, 2, 3, 4)[1:3]
+            assert await uow.webhooks.deliveries(webhook.id, outcomes=set()) == []
+            assert await uow.webhooks.delivery_counts(webhook.id) == {
+                DeliveryOutcome.DELIVERED: 2,
+                failed: 2,
+                retrying: 1,
+            }
+            assert await uow.webhooks.delivery_counts(webhook.id, event_type="rule.send") == {
+                failed: 1
+            }
+            assert await uow.webhooks.delivery_event_types(webhook.id) == [
+                "document.filed",
+                "rule.send",
+                "webhook.test",
+            ]
 
     async def test_a_delivery_needs_its_webhook(self, uow_factory: UnitOfWorkFactory) -> None:
         owner = await a_user(uow_factory)

@@ -94,7 +94,10 @@ async def test_a_green_document_reaches_the_receiver_signed_after_a_failed_try()
         assert first.headers["user-agent"].startswith("Lekto/")
 
         deliveries = await services.webhooks.deliveries(user.id, created.webhook.id)
-        assert [(d.attempt, d.outcome, d.status_code) for d in reversed(deliveries)] == [
+        assert [
+            (v.delivery.attempt, v.delivery.outcome, v.delivery.status_code)
+            for v in reversed(deliveries.deliveries)
+        ] == [
             (1, DeliveryOutcome.RETRYING, 503),
             (2, DeliveryOutcome.DELIVERED, 200),
         ]

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
@@ -77,7 +78,9 @@
 	$effect(() => {
 		void query;
 		clearTimeout(typed);
-		typed = setTimeout(() => void list.reload(), list.loaded ? 250 : 0);
+		// Not a dependency: each load would start the next.
+		const wait = untrack(() => list.loaded) ? 250 : 0;
+		typed = setTimeout(() => void list.reload(), wait);
 		return () => clearTimeout(typed);
 	});
 

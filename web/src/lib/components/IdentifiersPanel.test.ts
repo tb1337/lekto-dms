@@ -114,6 +114,20 @@ describe('IdentifiersPanel', () => {
 		expect(documents.getAttribute('href')).toContain('fact=customer_number%3A20047718%3A');
 	});
 
+	it('loads the list once, and again for other words', async () => {
+		const { rerender } = render(IdentifiersPanel);
+		await screen.findByRole('list', { name: m.master_identifiers() });
+		await new Promise((resolve) => setTimeout(resolve, 600));
+		const lists = () =>
+			fetchMock.mock.calls.filter(
+				([request]) => new URL(request.url).pathname === '/api/v1/identifiers/open'
+			);
+		expect(lists()).toHaveLength(1);
+		await rerender({ query: 'nord' });
+		await vi.waitFor(() => expect(lists()).toHaveLength(2));
+		expect(new URL(lists()[1][0].url).searchParams.get('q')).toBe('nord');
+	});
+
 	it('takes over the chosen ones, leaving out one without a clear contact', async () => {
 		const user = userEvent.setup();
 		render(IdentifiersPanel);

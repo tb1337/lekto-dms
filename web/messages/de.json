@@ -175,6 +175,8 @@
 	"pagination_next": "Nächste Seite",
 	"pagination_page": "Seite {page}",
 	"pagination_range": "{from} – {to} von {total}",
+	"pagination_size": "{size} pro Seite",
+	"pagination_size_label": "Einträge pro Seite",
 	"jobs_open_info": "Laufende Jobs zuerst, dann die fälligen nach Fälligkeit, dann die geplanten (Wiederholungen nach Fehlern, wiederkehrende Jobs). Jede Worker-Schleife nimmt Jobs ihrer Arten; feste Plätze gibt es nicht.",
 	"jobs_order_note": "in der Reihenfolge, in der die Worker sie nehmen",
 	"jobs_failed_info": "Ein Job ist fehlgeschlagen, wenn alle Versuche aufgebraucht sind. Admins versuchen ihn erneut; ein fehlgeschlagener Verarbeitungsschritt wird am Dokument wiederholt. Er bleibt bis Ende der Aufbewahrung.",

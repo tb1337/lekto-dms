@@ -175,6 +175,8 @@
 	"pagination_next": "Next page",
 	"pagination_page": "Page {page}",
 	"pagination_range": "{from} – {to} of {total}",
+	"pagination_size": "{size} per page",
+	"pagination_size_label": "Items per page",
 	"jobs_open_info": "Running jobs first, then the due ones by due time, then the planned ones (retries after a failure, recurring jobs). Each worker loop takes jobs of its own kinds, so there is no fixed position.",
 	"jobs_order_note": "in the order the workers take them",
 	"jobs_failed_info": "A job has failed once all its attempts are used up. Admins try it again; a failed processing step is repeated at its document. Failed jobs stay until the end of the retention period.",

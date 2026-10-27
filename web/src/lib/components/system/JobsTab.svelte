@@ -30,6 +30,7 @@
 		type JobsSummary
 	} from '#lib/jobs.ts';
 	import { NODE_LABELS } from '#lib/node-labels.ts';
+	import { rememberedPageSize } from '#lib/page-size.ts';
 	import { Pager } from '#lib/paging.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
@@ -51,7 +52,6 @@
 
 	const POLL = 5_000;
 	const SLOW_POLL = 60_000;
-	const PAGE = 50;
 	const STATES: Record<View, readonly JobState[]> = {
 		open: OPEN_STATES,
 		failed: ['failed'],
@@ -74,7 +74,7 @@
 			})
 		);
 		return { items: found.items, total: found.total };
-	}, PAGE);
+	}, rememberedPageSize('jobs'));
 
 	async function loadSummary() {
 		try {
@@ -383,8 +383,10 @@
 					<Pagination
 						page={jobs.page}
 						total={jobs.total}
-						size={PAGE}
+						size={jobs.size}
+						table="jobs"
 						onchange={(page) => jobs.go(page)}
+						onsize={(size) => jobs.resize(size)}
 					/>
 				</div>
 			{:else}

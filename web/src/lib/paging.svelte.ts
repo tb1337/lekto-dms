@@ -101,7 +101,8 @@ export class Pager<T> {
 	loading = $state(false);
 	error = $state<unknown>(null);
 	loaded = $state(false);
-	readonly size: number;
+	/** Items per page. */
+	size = $state(0);
 	#load: (offset: number, limit: number) => Promise<{ items: T[]; total: number }>;
 	#generation = 0;
 
@@ -125,6 +126,14 @@ export class Pager<T> {
 	async go(page: number): Promise<void> {
 		this.page = Math.max(1, page);
 		await this.#fetch(true);
+	}
+
+	/** Show `size` items per page, on the page that holds the first item shown so far. */
+	async resize(size: number): Promise<void> {
+		if (size === this.size) return;
+		const first = (this.page - 1) * this.size;
+		this.size = size;
+		await this.go(Math.floor(first / size) + 1);
 	}
 
 	/** Start over from the first page. */

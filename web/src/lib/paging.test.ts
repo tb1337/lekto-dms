@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PagedList } from './paging.svelte.ts';
+import { PagedList, Pager } from './paging.svelte.ts';
 
 const pages: Record<string, { items: number[]; next: string | null }> = {
 	start: { items: [1, 2], next: 'two' },
@@ -103,5 +103,36 @@ describe('PagedList', () => {
 		await slow;
 		expect(paged.total).toBe(2);
 		expect(paged.items).toEqual([2, 3]);
+	});
+});
+
+describe('Pager', () => {
+	function pager() {
+		const asked: [number, number][] = [];
+		const items = Array.from({ length: 130 }, (_, index) => index);
+		const paged = new Pager<number>(async (offset, limit) => {
+			asked.push([offset, limit]);
+			return { items: items.slice(offset, offset + limit), total: items.length };
+		}, 50);
+		return { paged, asked };
+	}
+
+	it('keeps the first item in view when the page size changes', async () => {
+		const { paged, asked } = pager();
+		await paged.go(2); // items 50 to 99
+		await paged.resize(25);
+		expect([paged.page, paged.size, paged.pages]).toEqual([3, 25, 6]);
+		expect(paged.items[0]).toBe(50);
+		await paged.go(4); // items 75 to 99
+		await paged.resize(100);
+		expect([paged.page, paged.pages]).toEqual([1, 2]);
+		expect(asked.at(-1)).toEqual([0, 100]);
+	});
+
+	it('asks nothing for the size it has', async () => {
+		const { paged, asked } = pager();
+		await paged.go(1);
+		await paged.resize(50);
+		expect(asked).toEqual([[0, 50]]);
 	});
 });

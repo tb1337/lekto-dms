@@ -331,7 +331,9 @@ not in the row.
 `ui/table` only. The head is `text-xs font-medium text-muted-foreground`. Numbers align right with
 `tabular-nums`. On the phone a table keeps to the columns that fit; where it is wider, it scrolls
 inside its card, never the page. A list a person reads item by item is a list of rows, not a
-table. Pagination is `Pagination` (50 per page).
+table. Pagination is `Pagination` (50 per page). A table may offer other sizes (the jobs: 25,
+50 and 100) in a small menu beside the count (`outline`, `sm`); the choice is remembered per
+table in the browser (`page-size.ts`) and holds wherever that table shows.
 
 ### Dialogs, sheets, editors
 

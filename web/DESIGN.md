@@ -332,6 +332,15 @@ column. Each row has:
 **Delete, test, rotate secret, log and other actions live on the detail page or in the editor,**
 not in the row.
 
+**Choosing many** (the open identifiers, Tobi 27.10.2026): a list whose items are decided many
+at once puts a `ChoiceBox` at the start of each row and one in its head that chooses the page.
+A chosen row has `bg-panel`. While something is chosen, a selection bar names how many and what
+an action will leave out, then "Auswahl aufheben" (`ghost`) and the actions (`outline`, the
+primary `default` last), all `sm`. On desktop it stands above the list in a `rounded-2xl`
+`bg-panel` box and sticks to the top; on the phone it sticks to the bottom of the screen
+(`bg-card`, a line above), its two actions sharing the width. One item is still decided in its
+dialog, opened from its title: the actions stay out of the row.
+
 ### Tables
 
 `ui/table` only. The head is `text-xs font-medium text-muted-foreground`. Numbers align right with
@@ -357,6 +366,9 @@ that table shows. Above such a table, a `Segmented` with counts picks what it sh
 - **Widths** come from the `size` prop (`sm` 384 px, `md` 512 px, `lg` 672 px, `xl` 768 px).
   A `class="max-w-*"` on dialog content is not used.
 - **Phone editor bar:** "Abbrechen" · title · "Speichern", fixed on top. The body scrolls.
+- **A second way out:** `FormDialog` takes `alternative`, an action that finishes the dialog
+  as well, without asking (rejecting an open identifier beside taking it over): `outline` at the
+  start of the footer; on the phone below the fields.
 - **Delete in an editor:** a `FormDialog` or `EditorShell` with `ondelete` shows "Löschen" at the
   start of its footer, apart from the two actions, and asks with `ConfirmDialog`.
 - **Dialog footer:** see [Patterns](#footers).

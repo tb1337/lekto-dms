@@ -796,6 +796,86 @@ export interface paths {
 		patch: operations['change_field_api_v1_fields__id__patch'];
 		trace?: never;
 	};
+	'/api/v1/identifiers/open': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The open identifiers
+		 * @description Admins only. Open are the identifiers no person has confirmed: those training learned at a contact (`learned`), and those of a contact's kind that confirmed documents with a contact show but no contact has, entered, learned or rejected (`unknown`). A person's value (a user's profile) is never open. The most documents first, then the newest. `q` finds words in the value (with or without spaces), as written or in a contact's name.
+		 */
+		get: operations['open_identifiers_api_v1_identifiers_open_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/identifiers/open/summary': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * How many identifiers are open
+		 * @description Admins only. Open are the identifiers no person has confirmed: those training learned at a contact (`learned`), and those of a contact's kind that confirmed documents with a contact show but no contact has, entered, learned or rejected (`unknown`). A person's value (a user's profile) is never open.
+		 */
+		get: operations['open_summary_api_v1_identifiers_open_summary_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/identifiers/open/detail': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * An open identifier and where it stands
+		 * @description Admins only. The open identifier of `kind` and `value` (normalised, as the list gives it) and where it stands in its five newest documents. 404 if it is not open.
+		 */
+		get: operations['open_detail_api_v1_identifiers_open_detail_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/identifiers/open/decisions': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Confirm or reject open identifiers
+		 * @description Admins only. Each decision is a change of its contact on its own: confirming enters the identifier there by hand (a learned one keeps its topic and user), rejecting takes a learned one out or notes an unknown one rejected, so training does not learn it again. One that cannot be done (no longer open, the contact unclear, another contact has it entered) says why in its outcome; the others are done all the same. In the order given.
+		 */
+		post: operations['decide_open_api_v1_identifiers_open_decisions_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/spaces': {
 		parameters: {
 			query?: never;
@@ -4301,6 +4381,18 @@ export interface components {
 			/** @description Body `full` only; null when the document is gone (`document.deleted`). */
 			document?: components['schemas']['SentDocument'] | null;
 		};
+		/** ExcerptOut */
+		ExcerptOut: {
+			/** Before */
+			before: string;
+			/**
+			 * Match
+			 * @description The identifier as it stands in the text.
+			 */
+			match: string;
+			/** After */
+			after: string;
+		};
 		/**
 		 * ExchangeNode
 		 * @enum {string}
@@ -6579,6 +6671,105 @@ export interface components {
 			display_name: string | null;
 		};
 		/**
+		 * OpenAction
+		 * @enum {string}
+		 */
+		OpenAction: 'confirm' | 'reject';
+		/** OpenContactOut */
+		OpenContactOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Name */
+			name: string;
+		};
+		/** OpenCountsOut */
+		OpenCountsOut: {
+			/** Learned */
+			learned: number;
+			/** Unknown */
+			unknown: number;
+		};
+		/** OpenDecisionIn */
+		OpenDecisionIn: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @description Normalised, as the list gives it.
+			 */
+			value: string;
+			/** @description `confirm`: enter it at the contact by hand; `reject`: training does not learn it again, and a learned one no longer counts. */
+			action: components['schemas']['OpenAction'];
+			/**
+			 * Contact Id
+			 * @description Where; without one, the learned one's contact or the one contact its documents name (to confirm one whose documents name several, give it).
+			 */
+			contact_id?: string | null;
+		};
+		/**
+		 * OpenDecisionsIn
+		 * @example {
+		 *       "decisions": [
+		 *         {
+		 *           "action": "confirm",
+		 *           "kind": "customer_number",
+		 *           "value": "20047718"
+		 *         },
+		 *         {
+		 *           "action": "reject",
+		 *           "kind": "iban",
+		 *           "value": "DE02120300000000202051"
+		 *         }
+		 *       ]
+		 *     }
+		 */
+		OpenDecisionsIn: {
+			/** Decisions */
+			decisions: components['schemas']['OpenDecisionIn'][];
+		};
+		/** OpenDetailOut */
+		OpenDetailOut: {
+			identifier: components['schemas']['OpenIdentifierOut'];
+			/**
+			 * Places
+			 * @description Where it stands in its newest documents (5).
+			 */
+			places: components['schemas']['PlaceOut'][];
+		};
+		/**
+		 * OpenIdentifierOut
+		 * @description An identifier no person has confirmed.
+		 */
+		OpenIdentifierOut: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @description Normalised, as Lekto compares it.
+			 */
+			value: string;
+			/**
+			 * Written
+			 * @description As the newest of its documents writes it.
+			 */
+			written: string;
+			/** @description `learned`: training found it at `contacts[0]`; `unknown`: it stands in confirmed documents but at no contact, `contacts` are their contacts, the one with most documents first. */
+			source: components['schemas']['OpenSource'];
+			/** Contacts */
+			contacts: components['schemas']['OpenContactOut'][];
+			/**
+			 * Documents
+			 * @description Confirmed documents that show it.
+			 */
+			documents: number;
+			/**
+			 * Last
+			 * @description The date of the newest of them.
+			 */
+			last: string | null;
+		};
+		/**
 		 * OpenNodeOut
 		 * @description A node that was uncertain or failed, with the fields left to decide.
 		 */
@@ -6601,6 +6792,30 @@ export interface components {
 			 */
 			fields: components['schemas']['FieldCheckOut'][];
 		};
+		/** OpenPageOut */
+		OpenPageOut: {
+			/** Items */
+			items: components['schemas']['OpenIdentifierOut'][];
+			/**
+			 * Total
+			 * @description How many match the filters.
+			 */
+			total: number;
+			/** @description How many match under each source (not `source`). */
+			counts: components['schemas']['OpenCountsOut'];
+			/**
+			 * Kinds
+			 * @description How many match of each kind (not `kind`).
+			 */
+			kinds: {
+				[key: string]: number;
+			};
+		};
+		/**
+		 * OpenSource
+		 * @enum {string}
+		 */
+		OpenSource: 'learned' | 'unknown';
 		/**
 		 * Operator
 		 * @enum {string}
@@ -6612,6 +6827,16 @@ export interface components {
 		 * @enum {string}
 		 */
 		Outcome: 'ok' | 'uncertain' | 'failed';
+		/** OutcomeOut */
+		OutcomeOut: {
+			kind: components['schemas']['IdentifierKind'];
+			/** Value */
+			value: string;
+			/** Done */
+			done: boolean;
+			/** @description Why it was not done. */
+			reason: components['schemas']['ReasonOut'] | null;
+		};
 		/** PageReadingOut */
 		PageReadingOut: {
 			/**
@@ -6798,6 +7023,24 @@ export interface components {
 			 * @description Whether the search takes the meaning into account besides the words (a search index and embeddings are set up): only then does a client say how a search searched (`mode`, `reason`) and warm the model (`POST /documents/search/warm`).
 			 */
 			meaning_search: boolean;
+		};
+		/** PlaceOut */
+		PlaceOut: {
+			/**
+			 * Document Id
+			 * Format: uuid
+			 */
+			document_id: string;
+			/** Title */
+			title: string;
+			/**
+			 * Date
+			 * Format: date
+			 */
+			date: string;
+			role: components['schemas']['FactRole'];
+			/** @description The text around it, where the document has text and the fact a position. */
+			excerpt: components['schemas']['ExcerptOut'] | null;
 		};
 		/** Processing */
 		Processing: {
@@ -7304,6 +7547,9 @@ export interface components {
 			| 'contact_too_many_identifiers'
 			| 'only_numbers_name_users'
 			| 'identifier_taken'
+			| 'identifier_entered'
+			| 'identifier_not_open'
+			| 'identifier_contact_unclear'
 			| 'title_pattern_too_long'
 			| 'description_too_long'
 			| 'title_pattern_unknown'
@@ -16033,6 +16279,388 @@ export interface operations {
 					 *       "title": "Conflict",
 					 *       "status": 409,
 					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	open_identifiers_api_v1_identifiers_open_get: {
+		parameters: {
+			query?: {
+				source?: components['schemas']['OpenSource'] | null;
+				kind?: components['schemas']['IdentifierKind'] | null;
+				q?: string | null;
+				offset?: number;
+				limit?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['OpenPageOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	open_summary_api_v1_identifiers_open_summary_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['OpenCountsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	open_detail_api_v1_identifiers_open_detail_get: {
+		parameters: {
+			query: {
+				kind: components['schemas']['IdentifierKind'];
+				value: string;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['OpenDetailOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	decide_open_api_v1_identifiers_open_decisions_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['OpenDecisionsIn'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['OutcomeOut'][];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

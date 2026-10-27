@@ -291,6 +291,14 @@ class _Snapshot:
 
 
 class IndexingService:
+    job_kinds = (
+        INDEX_JOB,
+        REFRESH_JOB,
+        RECONCILE_JOB,
+        REBUILD_JOB,
+    )
+    """The kinds of jobs `run_next_job` runs."""
+
     def __init__(
         self,
         uow: UnitOfWorkFactory,

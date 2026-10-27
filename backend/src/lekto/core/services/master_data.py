@@ -100,6 +100,9 @@ def _fields(uow: UnitOfWork) -> NamedRepository[FieldId, FieldDefinition]:
 class MasterDataService:
     """Contacts, document types, tags and field definitions. Changes are admin-only."""
 
+    job_kinds = (NORMALISE_JOB,)
+    """The kinds of jobs `run_next_job` runs."""
+
     def __init__(
         self,
         uow: UnitOfWorkFactory,

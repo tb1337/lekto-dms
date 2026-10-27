@@ -3,6 +3,7 @@ one, below `/ui`."""
 
 import asyncio
 import contextlib
+import logging
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from typing import Protocol
 
@@ -45,15 +46,17 @@ from lekto.adapters.inbound.rest.auth import (
     session_principal,
 )
 from lekto.adapters.inbound.rest.context import ApiContext
-from lekto.adapters.inbound.rest.events import EventHub, dispatch_forever
+from lekto.adapters.inbound.rest.events import EventHub
 from lekto.adapters.inbound.rest.middleware import LimitRequestBody, NoStore
 from lekto.adapters.inbound.rest.paths import HEALTH_PATH, MCP_PATH, PREFIX
 from lekto.adapters.inbound.rest.schemas.events import EventMessage
 from lekto.adapters.inbound.rest.schemas.external import TaskAnswer
 from lekto.adapters.inbound.rest.ui import ui_routes
+from lekto.adapters.inbound.waiting import dispatch_events
 from lekto.core.domain.document_facts import ROLES as FACT_ROLES
 from lekto.core.domain.identifiers import catalog as identifier_kinds
 from lekto.core.domain.reasons import catalog as reasons_catalog
+from lekto.core.ports.wakeup import Channel
 from lekto.core.services.tasks.desk import CALLBACK_PATH
 
 __all__ = ["PREFIX", "create_app"]
@@ -94,6 +97,12 @@ EVENT_ITEM = {
 }
 
 
+log = logging.getLogger(__name__)
+
+DISPATCHER_TIMEOUT = 5
+"""Seconds the event dispatch may take to end when the app stops, before it is cancelled."""
+
+
 class Mount(Protocol):
     """Something the app serves besides the API, below its prefix (the MCP endpoint): its
     routes, and `run()` around the app's lifetime."""
@@ -114,8 +123,14 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        stopping = asyncio.Event()
         dispatcher = asyncio.create_task(
-            dispatch_forever(context.event_bus, context.events_poll_interval)
+            dispatch_events(
+                context.event_bus,
+                context.wakeup.subscribe(Channel.EVENTS),
+                context.events_poll_interval,
+                stopping,
+            )
         )
         try:
             async with contextlib.AsyncExitStack() as stack:
@@ -124,9 +139,14 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
                 yield
         finally:
             hub.close()
-            dispatcher.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await dispatcher
+            stopping.set()
+            try:
+                await asyncio.wait_for(dispatcher, timeout=DISPATCHER_TIMEOUT)
+            except TimeoutError:
+                log.warning("event dispatch did not end in time; cancelling it")
+                dispatcher.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await dispatcher
 
     app = FastAPI(
         title="Lekto DMS API",

@@ -67,6 +67,9 @@ class FileContent:
 
 
 class TaskService:
+    job_kinds = (EXPIRE_JOB,)
+    """The kinds of jobs `run_next_job` runs."""
+
     def __init__(
         self, uow: UnitOfWorkFactory, clock: Clock, cipher: SecretCipher, store: ObjectStore
     ) -> None:

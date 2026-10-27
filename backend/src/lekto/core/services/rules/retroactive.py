@@ -141,6 +141,9 @@ class ApplyPreview:
 
 
 class RuleApplicationService:
+    job_kinds = (APPLY_JOB,)
+    """The kinds of jobs `run_next_job` runs."""
+
     def __init__(
         self,
         uow: UnitOfWorkFactory,

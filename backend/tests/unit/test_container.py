@@ -59,7 +59,12 @@ async def _no_op() -> None:
 
 
 def fake_persistence(_: Settings) -> Persistence:
-    return Persistence(unit_of_work=object, event_bus=object(), close=_no_op)  # type: ignore[arg-type]
+    return Persistence(
+        unit_of_work=object,  # type: ignore[arg-type]
+        event_bus=object(),  # type: ignore[arg-type]
+        wakeup=object(),  # type: ignore[arg-type]
+        close=_no_op,
+    )
 
 
 @pytest.fixture

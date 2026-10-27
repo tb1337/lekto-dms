@@ -83,7 +83,8 @@
 		<p class="text-muted-foreground">{m.admin_only()}</p>
 	{:else}
 		<div>
-			<!-- Five equal tabs on a phone, a shorter name for the types. -->
+			<!-- On a phone a shorter name for the types; five tabs are wider than a phone, so they
+			     scroll sideways with the cut edge faded (web/DESIGN.md, "Tabs and switches"). -->
 			<TabBar
 				label={m.nav_master_data()}
 				tabs={TABS.map((value) => ({
@@ -93,7 +94,6 @@
 						value === 'document-types' && phone.current ? m.master_types_short() : LABEL[value]()
 				}))}
 				current={tab}
-				fill
 			/>
 			<div class="mt-4 flex flex-col gap-3 sm:gap-4">
 				<SearchField

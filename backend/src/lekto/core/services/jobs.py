@@ -15,19 +15,21 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from uuid import UUID
 
-from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import ConflictError
-from lekto.core.domain.ids import ContactId, DocumentId, JobId, SpaceId, UserId
+from lekto.core.domain.ids import ContactId, DocumentId, JobId, UserId
 from lekto.core.domain.jobs import FinishedJob, Job, JobState
-from lekto.core.domain.permissions import can_read_document
 from lekto.core.domain.pipeline import Node
 from lekto.core.domain.reasons import Action, ReasonCode, because
-from lekto.core.domain.spaces import Space
 from lekto.core.domain.statistics import median, percentile
 from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
-from lekto.core.services._access import load_actor, require_admin
+from lekto.core.services._access import (
+    DocumentRef,
+    ReadableDocuments,
+    load_actor,
+    require_admin,
+)
 from lekto.core.services._jobs import NODE_JOB
 from lekto.core.services._kept import Kept
 
@@ -70,12 +72,6 @@ class JobsSummary:
     last_started: datetime | None
     now: datetime
     kept_since: datetime
-
-
-@dataclass(frozen=True)
-class DocumentRef:
-    id: DocumentId
-    title: str
 
 
 @dataclass(frozen=True)
@@ -218,13 +214,12 @@ class JobsService:
 
 
 class _Viewer:
-    """What `user` may see of jobs, with the documents, spaces and contacts read once each."""
+    """What `user` may see of jobs, with the documents and contacts read once each."""
 
     def __init__(self, uow: UnitOfWork, user: User) -> None:
         self._uow = uow
         self._user = user
-        self._documents: dict[DocumentId, Document | None] = {}
-        self._spaces: dict[SpaceId, Space] = {}
+        self._documents = ReadableDocuments(uow, user)
         self._contacts: dict[ContactId, str | None] = {}
 
     async def views(self, jobs: Collection[Job], now: datetime) -> list[JobView]:
@@ -235,7 +230,7 @@ class _Viewer:
         admin = self._user.is_active_admin
         document, hidden = None, False
         if (document_id := _uuid(job.payload.get("document_id"))) is not None:
-            document = await self._readable(DocumentId(document_id))
+            document = await self._documents.ref(DocumentId(document_id))
             hidden = document is None
         contact = None
         if (contact_id := _uuid(job.payload.get("contact_id"))) is not None:
@@ -255,18 +250,6 @@ class _Viewer:
             error=job.last_error if admin else None,
             retry=retry,
         )
-
-    async def _readable(self, id: DocumentId) -> DocumentRef | None:
-        if id not in self._documents:
-            self._documents[id] = await self._uow.documents.find(id)
-        document = self._documents[id]
-        if document is None:
-            return None
-        if document.space_id not in self._spaces:
-            self._spaces[document.space_id] = await self._uow.spaces.get(document.space_id)
-        if not can_read_document(self._user, document, self._spaces[document.space_id]):
-            return None
-        return DocumentRef(document.id, document.title)
 
     async def _contact(self, id: ContactId) -> str | None:
         if id not in self._contacts:

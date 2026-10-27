@@ -285,6 +285,11 @@ Sizes: `sm` 20 px (in rows, `text-xs`, the default), `md` 24 px (in headers), `l
 lane of a document in its row or head). `LaneBadge` is `Badge` with the lane tone. Hand-built
 pills are not used.
 
+`VolumeMeter` shows how loud something is as three rising bars (`muted-foreground` on `border`),
+always beside a text that says it in words (`aria-hidden`): how often a webhook event comes for
+one document ("1×", "2–7×", "≈ 13× je Verarbeitung"), with a line under the list that adds up
+the chosen events.
+
 ### Tabs and switches
 
 Two components that **look different on purpose**:
@@ -295,9 +300,9 @@ Two components that **look different on purpose**:
   with a fade at the cut edge. Counts and dots sit beside the label.
 - **`Segmented`**: a choice of how to show something (pages, grid/list/stream, text/pages,
   form/facts, period quick picks, language, appearance), and in a form a choice among two or
-  three short options that changes what follows (a webhook's trigger and body). A grey bar with the choice on a light
-  pill that slides over (`motion-safe`, not on first show). Sizes: `md` 40 px, `sm` 32 px; 44 px on
-  the phone. With icons only (`names="hidden"`) every option has a label for its tooltip.
+  three short options that changes what follows (a webhook's trigger and body). A grey bar with
+  the choice on a light pill that slides over (`motion-safe`, not on first show). Sizes: `md`
+  40 px, `sm` 32 px; 44 px on the phone. With icons only (`names="hidden"`) every option has a label for its tooltip.
 
 No other tab or segmented look exists. `AutomationTab` and `PeriodFacet` use `Segmented`.
 

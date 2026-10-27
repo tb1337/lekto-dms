@@ -21,7 +21,8 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
-	import { EVENT_LABELS } from '#lib/webhooks.ts';
+	import { EVENT_LABELS, selectionVolume, volumeLevel, volumeText } from '#lib/webhooks.ts';
+	import VolumeMeter from '#lib/components/VolumeMeter.svelte';
 	import IconButton from '#lib/components/IconButton.svelte';
 	import UnsavedGuard from '#lib/components/UnsavedGuard.svelte';
 
@@ -93,6 +94,8 @@
 		{ value: 'rules', label: m.webhook_trigger_rules() }
 	]);
 	const eventsMissing = $derived(trigger === 'events' && !all && types.length === 0);
+	// How many deliveries the chosen events bring for one document.
+	const volume = $derived(selectionVolume(types, all));
 
 	const bodies = $derived([
 		{ value: 'thin', label: m.webhook_body_thin(), hint: m.webhook_body_thin_hint() },
@@ -248,13 +251,32 @@
 					<Choice bind:checked={all}>{m.webhook_events_all()}</Choice>
 					{#if !all}
 						{#each WEBHOOK_EVENT_TYPES as type (type)}
-							<Choice value={type} bind:group={types} class="ml-6">{EVENT_LABELS[type]()}</Choice>
+							<!-- How often the event comes for one document, in words and as bars (Tobi,
+							     27.10.2026). -->
+							<div class="ml-6 flex max-w-md items-center justify-between gap-4">
+								<Choice value={type} bind:group={types}>{EVENT_LABELS[type]()}</Choice>
+								<span
+									class="flex shrink-0 items-center gap-2 text-xs text-muted-foreground tabular-nums"
+								>
+									{volumeText(type)}
+									<VolumeMeter level={volumeLevel(type)} />
+								</span>
+							</div>
 						{/each}
 					{/if}
 				</fieldset>
 				{#if eventsMissing}
 					<p id="wh-events-missing" class="text-sm text-muted-foreground">
 						{m.webhook_events_missing()}
+					</p>
+				{:else}
+					<p class="text-sm text-muted-foreground">
+						{volume.least === volume.most
+							? m.webhook_volume_total_exact({ count: volume.least })
+							: m.webhook_volume_total_range({ least: volume.least, most: volume.most })}
+						{#if volume.steps.most > 0}
+							{m.webhook_volume_steps({ least: volume.steps.least, most: volume.steps.most })}
+						{/if}
 					</p>
 				{/if}
 			{/if}

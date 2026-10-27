@@ -19,6 +19,7 @@
 	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
 	import PageHeader from '#lib/components/page/PageHeader.svelte';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import VolumeMeter from '#lib/components/VolumeMeter.svelte';
 	import * as Alert from '#lib/components/ui/alert/index.ts';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -123,6 +124,11 @@
 			<LaneBadge lane="yellow" />
 			<LaneBadge lane="red" />
 			<LaneBadge lane={null} />
+		</div>
+		<div class="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+			{#each [1, 2, 3] as const as level (level)}
+				<span class="flex items-center gap-2">{level} <VolumeMeter {level} /></span>
+			{/each}
 		</div>
 	</section>
 

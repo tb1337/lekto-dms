@@ -245,4 +245,16 @@ describe('WebhookForm', () => {
 		await userEvent.click(save);
 		expect(sent.at(-1)?.body).toMatchObject({ event_types: ['document.filed'] });
 	});
+
+	it('tells how often the chosen events come for one document', async () => {
+		render(WebhookForm, { webhook: stored, cancelHref: '/ui/webhooks/hook', ondone: () => {} });
+		expect(
+			screen.getByText(new RegExp(m.webhook_volume_total_range({ least: 31, most: 75 })))
+		).toBeTruthy();
+		await userEvent.click(screen.getByLabelText(m.webhook_events_all()));
+		expect(screen.getAllByText(m.webhook_volume_run({ count: 13 }))).toHaveLength(2);
+		await userEvent.click(screen.getByLabelText(m.event_filed()));
+		const line = screen.getByText(m.webhook_volume_total_exact({ count: 1 }));
+		expect(line.textContent).not.toContain(m.webhook_volume_steps({ least: 26, most: 54 }));
+	});
 });

@@ -4,7 +4,7 @@ import { toast } from 'svelte-sonner';
 import { api } from '#lib/api/client.ts';
 import { unwrap } from '#lib/api/call.ts';
 import { reportError } from '#lib/errors.ts';
-import type { WebhookEventType } from '#lib/events.svelte.ts';
+import { WEBHOOK_EVENT_TYPES, type WebhookEventType } from '#lib/events.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 /** Send a test event through the webhook; the outcome is a toast. */
@@ -53,4 +53,67 @@ const LOGGED_LABELS: Record<string, () => string> = {
 export function eventLabel(type: string): string {
 	const label = EVENT_LABELS[type as WebhookEventType] ?? LOGGED_LABELS[type];
 	return label ? label() : type;
+}
+
+/** How often an event typically comes for one document: at least and at most; `run` for the
+ * steps, which come once in every processing run (13 steps; a document runs once or twice). */
+interface Volume {
+	least: number;
+	most: number;
+	run?: boolean;
+}
+
+// From how processing goes and what a fresh document sent to a webhook (Tobi, 27.10.2026):
+// 1 received, 26 steps started and 27 done, 7 lane changes, 4 updates, 3 reviews, 2 confirmed.
+const STEPS = 13;
+export const EVENT_VOLUME: Record<WebhookEventType, Volume> = {
+	'document.received': { least: 1, most: 1 },
+	'document.node_started': { least: STEPS, most: 2 * STEPS, run: true },
+	'document.node_deferred': { least: 0, most: 1 },
+	'document.node_delegated': { least: 0, most: 1 },
+	'document.node_completed': { least: STEPS, most: 2 * STEPS, run: true },
+	'document.lane_changed': { least: 2, most: 7 },
+	'document.filed': { least: 1, most: 1 },
+	'document.updated': { least: 1, most: 5 },
+	'document.deleted': { least: 0, most: 1 },
+	'document.review_required': { least: 0, most: 3 },
+	'document.confirmed': { least: 0, most: 2 },
+	'document.moved': { least: 0, most: 1 }
+};
+
+/** How often an event comes for one document, in words: "1×", "2–7×", "≈ 13× per run". */
+export function volumeText(type: WebhookEventType): string {
+	const { least, most, run } = EVENT_VOLUME[type];
+	if (run) return m.webhook_volume_run({ count: least });
+	if (least === most) return m.webhook_volume_times({ count: least });
+	if (most <= 1)
+		return type === 'document.deleted' ? m.webhook_volume_at_most_once() : m.webhook_volume_rare();
+	return m.webhook_volume_range({ least, most });
+}
+
+/** How loud an event is for one document, for `VolumeMeter`: 1 at most once, 2 a few times,
+ * 3 a dozen or more. */
+export function volumeLevel(type: WebhookEventType): 1 | 2 | 3 {
+	const { most } = EVENT_VOLUME[type];
+	return most <= 1 ? 1 : most <= 7 ? 2 : 3;
+}
+
+/** How many deliveries `types` bring for one document, at least and at most, and how many of
+ * them come from the steps; every event for `all`. */
+export function selectionVolume(
+	types: readonly string[],
+	all: boolean
+): { least: number; most: number; steps: { least: number; most: number } } {
+	const chosen = WEBHOOK_EVENT_TYPES.filter((type) => all || types.includes(type));
+	const total = { least: 0, most: 0, steps: { least: 0, most: 0 } };
+	for (const type of chosen) {
+		const { least, most } = EVENT_VOLUME[type];
+		total.least += least;
+		total.most += most;
+		if (type.startsWith('document.node_')) {
+			total.steps.least += least;
+			total.steps.most += most;
+		}
+	}
+	return total;
 }

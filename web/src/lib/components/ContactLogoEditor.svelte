@@ -15,7 +15,7 @@
 
 	// A contact's logo in its dialog: what it shows (the logo or its initials) and where the logo
 	// came from; upload (PNG, JPEG or WebP), remove, and, where the server fetches logos and the
-	// contact has a domain, fetch it from the website (never in place of an uploaded one). Each
+	// contact has a domain entered, fetch it from the website (never in place of an uploaded one). Each
 	// action is saved at once, apart from the dialog's own fields. With `beside` (a phone), the
 	// logo stands beside it (the name field), the actions and where the logo came from below, as
 	// in the editor's draft (without the hint on file types).
@@ -45,6 +45,20 @@
 
 	const canFetch = $derived(
 		fetching && logo?.source !== 'uploaded' && domainsOf(contact).length > 0
+	);
+	// Only a learned domain: nothing is fetched until someone takes it over; the hint says so.
+	const learnedOnly = $derived(
+		fetching &&
+			logo?.source !== 'uploaded' &&
+			!canFetch &&
+			contact.identifiers.some((item) => item.kind === 'email_domain' && item.source === 'learned')
+	);
+	const hint = $derived(
+		canFetch
+			? `${m.logo_upload_hint()} ${m.logo_fetch_hint()}`
+			: learnedOnly
+				? `${m.logo_upload_hint()} ${m.logo_fetch_learned()}`
+				: m.logo_upload_hint()
 	);
 
 	async function run(action: () => Promise<void>) {
@@ -150,10 +164,7 @@
 				{m.logo_remove()}
 			</Button>
 		{/if}
-		<InfoHint
-			text={canFetch ? `${m.logo_upload_hint()} ${m.logo_fetch_hint()}` : m.logo_upload_hint()}
-			about={m.logo_title()}
-		/>
+		<InfoHint text={hint} about={m.logo_title()} />
 	</div>
 {/snippet}
 

@@ -459,6 +459,23 @@ describe('looks', () => {
 		expect(await screen.findByText(/a\.example, nord\.example/)).toBeTruthy();
 	});
 
+	it('fetches no logo from a domain that is only learned', async () => {
+		render(WithDialogs);
+		const learned = {
+			...CONTACT,
+			logo: null,
+			identifiers: [{ ...CONTACT.identifiers[0], source: 'learned' }]
+		};
+		masterDataDialogs.open('contacts', learned as unknown as Item);
+		expect(await screen.findByText(m.logo_none())).toBeTruthy();
+		expect(screen.getByRole('button', { name: m.logo_upload() })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: m.logo_fetch() })).toBeNull();
+		await userEvent
+			.setup()
+			.click(screen.getByRole('button', { name: m.hint_about({ name: m.logo_title() }) }));
+		expect(await screen.findByText(new RegExp(m.logo_fetch_learned()))).toBeTruthy();
+	});
+
 	it('asks a new contact to be created before it gets a logo', async () => {
 		render(WithDialogs);
 		masterDataDialogs.open('contacts');

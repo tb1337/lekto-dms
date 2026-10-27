@@ -164,6 +164,29 @@ class EventBusContract:
         assert await event_bus.dispatch() == 2
         assert index.received == webhooks.received == [event]
 
+    async def test_due_in_says_when_a_dispatch_has_work(
+        self, uow_factory: UnitOfWorkFactory, event_bus_factory: EventBusFactory
+    ) -> None:
+        clock = ManualClock(NOW)
+        event_bus = event_bus_factory(clock=clock, retry=EVENT_RETRY)
+        assert await event_bus.due_in() is None, "no subscriber, nothing to deliver"
+        flaky = Recorder(failures=1)
+        event_bus.subscribe("flaky", flaky)
+        # An adapter may create the subscription on the first dispatch: due until then.
+        assert await event_bus.due_in() in (None, timedelta(0))
+        await event_bus.dispatch()
+        assert await event_bus.due_in() is None
+        await publish(uow_factory, received())
+        assert await event_bus.due_in() == timedelta(0), "an unhandled event is due now"
+        assert await event_bus.dispatch() == 0
+        assert await event_bus.due_in() == EVENT_RETRY.delay, "the retry, when due"
+        clock.advance(EVENT_RETRY.delay / 2)
+        assert await event_bus.due_in() == EVENT_RETRY.delay / 2
+        clock.advance(EVENT_RETRY.delay)
+        assert await event_bus.due_in() == timedelta(0), "overdue counts as due now"
+        assert await event_bus.dispatch() == 1
+        assert await event_bus.due_in() is None
+
     async def test_failed_delivery_is_repeated(
         self, uow_factory: UnitOfWorkFactory, event_bus: EventBus
     ) -> None:

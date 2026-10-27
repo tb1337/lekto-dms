@@ -12,17 +12,20 @@ wait for its own lock until the busy timeout; `begin_write` raises RuntimeError 
 
 import asyncio
 import weakref
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+import asyncpg
 from sqlalchemy import URL, Table, event
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.dialects.postgresql import Insert as PostgresInsert
 from sqlalchemy.dialects.sqlite import Insert as SqliteInsert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
+
+from lekto.core.ports.wakeup import Channel
 
 # SQLite engine settings, applied to every connection.
 SQLITE_BUSY_TIMEOUT = timedelta(seconds=15)
@@ -45,6 +48,9 @@ class Database:
         self.sqlite_path = sqlite_path  # the file of a SQLite database
         # Tasks holding SQLite's write lock.
         self._writers: weakref.WeakSet[asyncio.Task[Any]] = weakref.WeakSet()
+        # Told what a commit queued, on SQLite (a channel, and the job's kind on `JOBS`); on
+        # Postgres the commit sends `NOTIFY` instead. See `SqlWakeup`.
+        self.listeners: list[Callable[[Channel, str | None], None]] = []
 
     @classmethod
     def sqlite(cls, path: Path, *, read_only: bool = False) -> "Database":
@@ -82,6 +88,21 @@ class Database:
     @property
     def is_sqlite(self) -> bool:
         return self.engine.dialect.name == "sqlite"
+
+    async def connect_raw(self) -> Any:
+        """Postgres: a connection of the driver (asyncpg) outside the pool, for `LISTEN`; the
+        caller closes it."""
+        if self.is_sqlite:
+            raise RuntimeError("SQLite has no connections to listen on")
+        url = self.engine.url
+        return await asyncpg.connect(
+            host=url.host,
+            port=url.port,
+            user=url.username,
+            password=url.password,
+            database=url.database,
+            server_settings={"application_name": "lekto listener"},
+        )
 
     def insert(self, table: Table) -> PostgresInsert | SqliteInsert:
         """An INSERT in the database's dialect: one that can take `ON CONFLICT`."""

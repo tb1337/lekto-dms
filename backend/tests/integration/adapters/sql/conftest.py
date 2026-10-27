@@ -9,7 +9,13 @@ from collections.abc import AsyncIterator, Callable, Iterator
 import pytest
 from sqlalchemy import text
 
-from lekto.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory, migrate
+from lekto.adapters.outbound.sql import (
+    Database,
+    SqlEventBus,
+    SqlUnitOfWorkFactory,
+    SqlWakeup,
+    migrate,
+)
 from lekto.adapters.outbound.sql.tables import metadata
 from lekto.composition.settings import Settings
 from lekto.core.domain.jobs import RetryPolicy
@@ -18,6 +24,7 @@ from lekto.core.ports.event_bus import EventBus
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from tests import builders
 from tests.contracts.event_bus import EventBusFactory
+from tests.contracts.wakeup import WakeupFactory
 from tests.integration.services import create_database, drop_database, postgres
 
 
@@ -75,6 +82,11 @@ def event_bus_factory(database: Database) -> EventBusFactory:
         return SqlEventBus(database, clock=clock, retry=retry)
 
     return create
+
+
+@pytest.fixture
+def wakeup_factory(database: Database) -> WakeupFactory:
+    return lambda: SqlWakeup(database)
 
 
 @pytest.fixture

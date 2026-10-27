@@ -43,6 +43,7 @@ from lekto.core.domain.jobs import FinishedJob, Job, JobCount, JobOverview, JobS
 from lekto.core.domain.json_value import JsonObject, JsonValue
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.validation import require_utc
+from lekto.core.ports.wakeup import Channel
 
 _jobs = t.jobs
 
@@ -79,6 +80,7 @@ class SqlJobQueue:
         }
         if dedup_key is None and coalesce_key is None:
             await self._tx.write(insert(_jobs).values(values))
+            self._tx.signal(Channel.JOBS, kind)
             return id
         if dedup_key is not None and coalesce_key is not None:
             raise ValueError("a job has a dedup key or a coalesce key, not both")
@@ -90,7 +92,10 @@ class SqlJobQueue:
         else:
             statement = statement.on_conflict_do_nothing(index_elements=[_jobs.c.coalesce_key])
         result = await self._tx.write(statement.returning(_jobs.c.id))
-        return id if result.first() is not None else None
+        if result.first() is None:
+            return None
+        self._tx.signal(Channel.JOBS, kind)
+        return id
 
     async def claim(
         self, *, now: datetime, lease: timedelta, kinds: Collection[str] | None = None
@@ -124,6 +129,19 @@ class SqlJobQueue:
         row = result.first()
         return None if row is None else _job(row)
 
+    async def next_due(self, *, kinds: Collection[str] | None = None) -> datetime | None:
+        queued = select(_jobs.c.run_at.label("at")).where(_jobs.c.status == JobStatus.QUEUED.value)
+        running = select(_jobs.c.locked_until.label("at")).where(
+            _jobs.c.status == JobStatus.RUNNING.value
+        )
+        if kinds is not None:
+            queued = queued.where(_jobs.c.kind.in_(list(kinds)))
+            running = running.where(_jobs.c.kind.in_(list(kinds)))
+        times = queued.union_all(running).subquery()
+        at = (await self._tx.read(select(func.min(times.c.at)))).scalar_one()
+        assert at is None or isinstance(at, datetime)
+        return at
+
     async def extend(self, job: Job, *, until: datetime) -> None:
         await self._held(job, locked_until=require_utc(until, "until"))
 
@@ -139,6 +157,7 @@ class SqlJobQueue:
         await self._finish(
             job, status=JobStatus.QUEUED, run_at=require_utc(run_at, "run_at"), last_error=error
         )
+        self._tx.signal(Channel.JOBS, job.kind)
 
     async def release(self, job: Job, *, run_at: datetime, error: str) -> None:
         await self._finish(
@@ -148,6 +167,7 @@ class SqlJobQueue:
             last_error=error,
             releases=_jobs.c.releases + 1,
         )
+        self._tx.signal(Channel.JOBS, job.kind)
 
     async def fail(self, job: Job, *, now: datetime, error: str) -> None:
         await self._finish(
@@ -185,6 +205,7 @@ class SqlJobQueue:
         row = result.first()
         if row is None:  # retried or removed meanwhile
             raise ConflictError(because(ReasonCode.JOB_NOT_FAILED))
+        self._tx.signal(Channel.JOBS, current.kind)
         return _job(row)
 
     async def get(self, job: JobId) -> Job:

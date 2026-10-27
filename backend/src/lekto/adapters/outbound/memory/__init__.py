@@ -29,6 +29,7 @@ from lekto.adapters.outbound.memory.processing import (
 )
 from lekto.adapters.outbound.memory.search_index import MemorySearchIndex
 from lekto.adapters.outbound.memory.unit_of_work import MemoryUnitOfWork, MemoryUnitOfWorkFactory
+from lekto.adapters.outbound.memory.wakeup import MemoryWakeup
 from lekto.adapters.outbound.memory.webhook_sender import FakeWebhookSender
 
 __all__ = [
@@ -59,4 +60,5 @@ __all__ = [
     "MemorySearchIndex",
     "MemoryUnitOfWork",
     "MemoryUnitOfWorkFactory",
+    "MemoryWakeup",
 ]

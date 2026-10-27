@@ -1,20 +1,30 @@
-"""The database transaction of one unit of work, shared by its repositories."""
+"""The database transaction of one unit of work, shared by its repositories.
+
+What the transaction queues (a job becoming queued, events added to the outbox) is signalled
+to the receivers (`Wakeup`): on Postgres with `NOTIFY` as the last statement before COMMIT,
+which Postgres delivers at the commit and never after a rollback; on SQLite in this process
+right after the commit (other processes poll).
+"""
 
 import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from sqlalchemy import CursorResult, Executable, Result
+from sqlalchemy import CursorResult, Executable, Result, func, select
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from lekto.adapters.outbound.sql.database import Database
 from lekto.core.domain.errors import ConcurrencyError, ConflictError
+from lekto.core.ports.wakeup import Channel
 
 log = logging.getLogger(__name__)
 
 # Postgres: deadlock_detected, serialization_failure.
 _CONCURRENCY_SQLSTATES = {"40P01", "40001"}
+
+NOTIFY_CHANNELS = {Channel.JOBS: "lekto_jobs", Channel.EVENTS: "lekto_events"}
+"""The Postgres channels of the signals; the payload of `lekto_jobs` is the job's kind."""
 
 
 class Transaction:
@@ -32,6 +42,7 @@ class Transaction:
         self._writing = False
         self._closed = False
         self._failed = False
+        self._signals: set[tuple[Channel, str | None]] = set()
 
     async def open(self) -> None:
         self._check_usable()
@@ -65,12 +76,26 @@ class Transaction:
                 raise ConcurrencyError("a concurrent change interfered; try again") from error
             raise
 
+    def signal(self, channel: Channel, kind: str | None = None) -> None:
+        """Send a signal on `channel` (with a job's `kind` on `JOBS`) when this transaction
+        commits; nothing if it rolls back."""
+        self._check_usable()
+        self._signals.add((channel, kind))
+
     async def commit(self) -> None:
         connection = self._usable()
+        signals = sorted(self._signals, key=lambda signal: (signal[0], signal[1] or ""))
         try:
+            if signals and not self.database.is_sqlite:
+                for channel, kind in signals:
+                    await self.write(select(func.pg_notify(NOTIFY_CHANNELS[channel], kind or "")))
             await connection.commit()
         finally:
             await self._close()
+        if signals and self.database.is_sqlite:
+            for channel, kind in signals:
+                for listener in self.database.listeners:
+                    listener(channel, kind)
 
     async def rollback(self) -> None:
         self._check_open()

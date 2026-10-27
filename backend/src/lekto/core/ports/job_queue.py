@@ -39,6 +39,12 @@ class JobQueue(Protocol):
         job whose lease has expired. Counts the attempt. None if no job is due."""
         ...
 
+    async def next_due(self, *, kinds: Collection[str] | None = None) -> datetime | None:
+        """When `claim` would next find a job (of `kinds`): the earliest `run_at` of a queued
+        job or the earliest end of a lease of a running one, whichever comes first; None if
+        nothing is queued or running. A time in the past means a job is due now."""
+        ...
+
     # `extend`, `complete`, `reschedule`, `release` and `fail` take the claimed job as returned
     # by `claim`. They raise ConcurrencyError if the job is no longer running under that claim,
     # e.g. because the lease ran out and another worker claimed it: only the current claim may

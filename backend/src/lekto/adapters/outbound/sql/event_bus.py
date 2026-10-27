@@ -29,7 +29,7 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import Row, delete, exists, func, insert, or_, select, update
@@ -85,6 +85,40 @@ class SqlEventBus:
             for name, subscriber in list(self._subscribers.items()):
                 delivered += await self._dispatch_to(name, subscriber, limit)
             return delivered
+
+    async def due_in(self) -> timedelta | None:
+        """One statement: the subscriptions of this bus's subscribers (a missing one is created
+        by the next dispatch, so it is due), the newest event against their lowest position,
+        and the earliest retry (NULL: due at once)."""
+        names = list(self._subscribers)
+        if not names:
+            return None
+        mine = _subscriptions.c.name.in_(names)
+        retries = _retries.c.subscriber.in_(names)
+        row = (
+            await self._query(
+                select(
+                    select(func.count()).where(mine).scalar_subquery().label("known"),
+                    select(func.min(_subscriptions.c.position)).where(mine).scalar_subquery(),
+                    select(func.max(_outbox.c.seq)).scalar_subquery(),
+                    select(func.count())
+                    .where(retries, _retries.c.retry_at.is_(None))
+                    .scalar_subquery(),
+                    select(func.min(_retries.c.retry_at)).where(retries).scalar_subquery(),
+                )
+            )
+        ).one()
+        known, lowest, newest, at_once, retry_at = row
+        if known < len(names) or (newest is not None and newest > lowest) or at_once:
+            return timedelta(0)
+        if retry_at is None:
+            return None
+        assert isinstance(retry_at, datetime)
+        return max(retry_at - self._now(), timedelta(0))
+
+    async def _query(self, statement: Any) -> Any:
+        async with self._db.reading() as connection:
+            return await connection.execute(statement)
 
     async def purge(self, *, before: datetime) -> int:
         lowest = select(func.min(_subscriptions.c.position)).scalar_subquery()

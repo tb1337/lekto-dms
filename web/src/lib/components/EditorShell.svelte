@@ -30,6 +30,7 @@
 		deleteTitle = '',
 		deleteDescription = '',
 		class: className,
+		size = 'lg',
 		tabs,
 		tab = $bindable(''),
 		children: body
@@ -46,8 +47,10 @@
 		ondelete?: () => Promise<void>;
 		deleteTitle?: string;
 		deleteDescription?: string;
-		/** The width of the dialog, and its height with tabs. */
+		/** The height of the dialog with tabs. */
 		class?: string;
+		/** The width of the dialog (`Dialog.Content`). */
+		size?: 'md' | 'lg' | 'xl';
 		tabs?: readonly Segment[];
 		tab?: string;
 		children: Snippet;
@@ -64,12 +67,13 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
+		{size}
 		showCloseButton={!phone.current}
 		class={cn(
 			'flex flex-col gap-0 overflow-hidden p-0',
 			phone.current
-				? 'top-0 left-0 h-dvh max-h-dvh w-full max-w-none translate-x-0 translate-y-0 rounded-none bg-background ring-0'
-				: cn('max-h-[calc(100dvh-2rem)] sm:max-w-xl', className)
+				? 'top-0 left-0 h-dvh max-h-dvh w-full max-w-none translate-x-0 translate-y-0 rounded-none border-0 bg-background'
+				: cn('max-h-[calc(100dvh-2rem)]', className)
 		)}
 	>
 		<AsyncForm class="flex min-h-0 flex-1 flex-col" {action} ondone={() => (open = false)}>

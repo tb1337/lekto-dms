@@ -9,6 +9,10 @@
 	import { stepLook, TONE_TEXT, type Tone } from '#lib/step-look.ts';
 	import { PHASE_LABELS, phaseOf, type Phase, type Step } from '#lib/steps.ts';
 	import { cn } from '#lib/utils.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// The steps of a run on a desktop (mock A, Tobi 23.10.2026): the four phases as columns, one
 	// after another, their steps as the cards of the log before. A card opens its details in a
@@ -79,14 +83,15 @@
 	};
 </script>
 
-<section
-	bind:this={section}
+<Card.Root
+	as="section"
+	bind:ref={section}
 	aria-labelledby="steps-heading"
-	class="flex min-w-0 flex-col gap-3.5 rounded-2xl border bg-card p-5"
+	class="flex min-w-0 flex-col gap-3.5"
 >
-	<h2 id="steps-heading" class="font-semibold">
+	<SectionTitle size="card" id="steps-heading">
 		{m.processing_steps()} · {m.log_run({ run })}
-	</h2>
+	</SectionTitle>
 	<div class="grid items-start" style:grid-template-columns={columns}>
 		{#each groups as group, index (group.phase)}
 			{#if index > 0}
@@ -95,13 +100,11 @@
 				</div>
 			{/if}
 			<div class="flex min-w-0 flex-col gap-2">
-				<h3
-					class="text-[11px] font-semibold tracking-wider whitespace-nowrap text-muted-foreground uppercase"
-				>
+				<Eyebrow as="h3" class="whitespace-nowrap">
 					{PHASE_LABELS[group.phase]()}{#if phaseDuration(group.steps)}<span
 							class="tracking-normal normal-case">{` · ${phaseDuration(group.steps)}`}</span
 						>{/if}
-				</h3>
+				</Eyebrow>
 				{#each group.steps as step (step.node)}
 					<StepCard
 						{step}
@@ -143,18 +146,18 @@
 					aria-hidden="true"
 					strokeWidth={2.2}
 				/>
-				<h3 class="font-semibold">{NODE_LABELS[open.node]()}</h3>
+				<SectionTitle size="card" level={3}>{NODE_LABELS[open.node]()}</SectionTitle>
 				<span class={cn('text-sm', TONE_TEXT[look.tone])}>{look.label}</span>
-				<button
-					type="button"
-					class="ml-auto grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-secondary"
-					aria-label={m.run_close_details()}
+				<IconButton
+					size="sm"
+					class="ml-auto text-muted-foreground"
+					label={m.run_close_details()}
 					onclick={() => close(open.node)}
 				>
-					<ChevronUp class="size-4" aria-hidden="true" />
-				</button>
+					<ChevronUp aria-hidden="true" />
+				</IconButton>
 			</div>
 			{@render details(open)}
 		</div>
 	{/if}
-</section>
+</Card.Root>

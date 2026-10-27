@@ -92,9 +92,8 @@ describe('spaces', () => {
 			`anna ${m.space_personal()} ${m.space_role_read()} ${m.space_members_line({ names: 'anna' })}`
 		]);
 		expect(screen.queryByRole('region', { name: m.spaces_others() })).toBeNull();
-		// Not renamed nor deleted: a personal space; a space one only reads.
-		expect(screen.queryByRole('button', { name: m.space_delete({ name: 'Personal' }) })).toBeNull();
-		expect(screen.getByRole('button', { name: m.space_delete({ name: 'Haushalt' }) })).toBeTruthy();
+		// Deleted in the editor, not in the row (web/DESIGN.md, "Lists").
+		expect(screen.queryByRole('button', { name: m.space_delete({ name: 'Haushalt' }) })).toBeNull();
 		// Members: of one's own personal space and of a space one edits, not of another's.
 		expect(
 			screen.getByRole('button', { name: m.space_members({ name: m.space_personal() }) })
@@ -148,6 +147,9 @@ describe('spaces', () => {
 		await user.click(
 			within(dialog).getByRole('button', { name: m.members_remove({ name: 'anna' }) })
 		);
+		// Asked first.
+		const ask = await screen.findByRole('alertdialog');
+		await user.click(within(ask).getByRole('button', { name: m.members_remove_do() }));
 		await waitFor(() => expect(calls(api)).toContain('DELETE /api/v1/spaces/house/members/u2'));
 		await choose(user, within(dialog).getByLabelText(m.members_add()), 'u3');
 		await user.click(within(dialog).getByRole('button', { name: m.members_grant() }));

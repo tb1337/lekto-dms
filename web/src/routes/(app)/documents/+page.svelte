@@ -30,7 +30,7 @@
 	import Lenses from '#lib/components/Lenses.svelte';
 	import Segmented from '#lib/components/Segmented.svelte';
 	import SortMenu from '#lib/components/SortMenu.svelte';
-	import { Button } from '#lib/components/ui/button/index.ts';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import * as Sheet from '#lib/components/ui/sheet/index.ts';
 	import { coalesced } from '#lib/coalesce.ts';
 	import { describeError } from '#lib/errors.ts';
@@ -82,6 +82,15 @@
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 	import { onChange } from '#lib/watch.svelte.ts';
+	import { returnTo } from '#lib/return-to.svelte.ts';
+	import PageTitle from '#lib/components/page/PageTitle.svelte';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import { FIELD_FRAME } from '#lib/components/ui/field-look.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
+	import Loading from '#lib/components/Loading.svelte';
+	import Upload from '@lucide/svelte/icons/upload';
+	import { BASE } from '#lib/base.ts';
+	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
 
 	// The documents (the archive): listed (newest document date first) or, with words in `q`,
 	// searched (by relevance), with the same filters; sorted as chosen, as a grid or a list, by
@@ -106,6 +115,9 @@
 	let layout = $state<Layout>(rememberedLayout());
 	// A link may ask for a layout (`layout=stream`: the stream of a contact, #145).
 	const asked = $derived(LAYOUTS.find((value) => value === params.get('layout')) ?? null);
+	// "Back" from a document returns to the list as it is now (`returnTo`).
+	$effect(() => returnTo.rememberDocuments(page.url));
+
 	$effect(() => {
 		if (asked) layout = asked;
 	});
@@ -118,7 +130,6 @@
 	const streaming = $derived(layout === 'stream' && !searching);
 	// Counts the events that change documents: the stream loads again.
 	let streamVersion = $state(0);
-	const nextLayout = $derived(LAYOUTS[(LAYOUTS.indexOf(layout) + 1) % LAYOUTS.length]);
 	// The names the filters and the documents show.
 	const pageLookup = new PageLookup();
 	const lookup = $derived(pageLookup.value);
@@ -476,10 +487,10 @@ row of filters, on a desktop narrow by the title. -->
 	<form
 		role="search"
 		class={cn(
-			'min-w-0 items-center gap-2 rounded-full border border-input bg-background focus-within:border-ring',
+			FIELD_FRAME,
 			compact
-				? cn('h-9 w-64 pr-1 pl-3', places.title)
-				: cn('flex h-11 flex-1 pr-1.5 pl-4', places.phone)
+				? cn('h-10 w-64 pr-1 pl-3', places.title)
+				: cn('flex h-11 flex-1 pr-1.5 pl-3.5', places.phone)
 		)}
 		onsubmit={(event) => {
 			event.preventDefault();
@@ -497,19 +508,17 @@ row of filters, on a desktop narrow by the title. -->
 			class="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
 		/>
 		{#if query}
-			<Button
+			<IconButton
 				type="button"
-				variant="ghost"
-				size="icon"
-				class="size-7"
-				aria-label={m.documents_search_clear()}
+				size="sm"
+				label={m.documents_search_clear()}
 				onclick={() => {
 					text = '';
 					search('');
 				}}
 			>
 				<X aria-hidden="true" />
-			</Button>
+			</IconButton>
 		{/if}
 	</form>
 {/snippet}
@@ -549,16 +558,14 @@ row of filters, on a desktop narrow by the title. -->
 	<div class="flex flex-col gap-3">
 		<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
 			<!-- Collapses the filters beside the list; collapsed, it counts the active ones. -->
-			<Button
+			<IconButton
 				variant="outline"
-				size="icon"
 				class="relative hidden lg:inline-flex"
-				aria-label={collapsed
+				label={collapsed
 					? activeFilters > 0
 						? m.filters_expand_active({ count: formatNumber(activeFilters) })
 						: m.filters_expand()
 					: m.filters_collapse()}
-				title={collapsed ? m.filters_expand() : m.filters_collapse()}
 				aria-expanded={!collapsed}
 				aria-controls={collapsed ? undefined : asideId}
 				onclick={toggleFilters}
@@ -576,10 +583,8 @@ row of filters, on a desktop narrow by the title. -->
 				{:else}
 					<PanelLeftClose aria-hidden="true" />
 				{/if}
-			</Button>
-			<h1 class="text-[1.75rem] font-semibold tracking-tight">
-				{lens?.name ?? m.nav_documents()}
-			</h1>
+			</IconButton>
+			<PageTitle>{lens?.name ?? m.nav_documents()}</PageTitle>
 			{#if searching && list.total !== null && list.loaded}
 				<p class="text-sm text-muted-foreground" aria-live="polite">
 					{m.search_total({ count: formatNumber(list.total) })}
@@ -610,7 +615,6 @@ row of filters, on a desktop narrow by the title. -->
 						variant="outline"
 						class="max-lg:size-10 max-lg:px-0"
 						aria-label={m.lens_edit()}
-						title={m.lens_edit()}
 						onclick={() => edit(lens)}
 					>
 						<Pencil aria-hidden="true" />
@@ -674,9 +678,9 @@ row of filters, on a desktop narrow by the title. -->
 								<Sheet.Title>{m.filters_title()}</Sheet.Title>
 								<Sheet.Close>
 									{#snippet child({ props })}
-										<Button variant="ghost" size="icon" {...props} aria-label={m.close()}>
+										<IconButton {...props} label={m.close()}>
 											<X aria-hidden="true" />
-										</Button>
+										</IconButton>
 									{/snippet}
 								</Sheet.Close>
 							</Sheet.Header>
@@ -700,20 +704,40 @@ row of filters, on a desktop narrow by the title. -->
 						</Sheet.Content>
 					</Sheet.Root>
 					{#if !streaming}{@render sortMenu(true)}{/if}
-					<button
-						type="button"
-						class="grid size-11 shrink-0 place-items-center rounded-xl border border-input bg-background hover:bg-secondary"
-						aria-label={LAYOUT_LABELS[nextLayout]()}
-						onclick={() => show(nextLayout)}
-					>
-						{#if nextLayout === 'list'}
-							<List class="size-4" aria-hidden="true" />
-						{:else if nextLayout === 'stream'}
-							<Waypoints class="size-4" aria-hidden="true" />
-						{:else}
-							<LayoutGrid class="size-4" aria-hidden="true" />
-						{/if}
-					</button>
+					<!-- The layout as a menu that shows the current one, as the sort beside it. -->
+					<DropdownMenu.Root>
+						<DropdownMenu.Trigger>
+							{#snippet child({ props })}
+								<IconButton
+									{...props}
+									variant="outline"
+									class="size-11 shrink-0"
+									label={m.layout_current({ layout: LAYOUT_LABELS[layout]() })}
+									tooltip={false}
+								>
+									{#if layout === 'list'}
+										<List aria-hidden="true" />
+									{:else if layout === 'stream'}
+										<Waypoints aria-hidden="true" />
+									{:else}
+										<LayoutGrid aria-hidden="true" />
+									{/if}
+								</IconButton>
+							{/snippet}
+						</DropdownMenu.Trigger>
+						<DropdownMenu.Content align="end" class="w-48">
+							<DropdownMenu.RadioGroup
+								value={layout}
+								onValueChange={(next) => show(next as Layout)}
+							>
+								{#each LAYOUTS as option (option)}
+									<DropdownMenu.RadioItem value={option}>
+										{LAYOUT_LABELS[option]()}
+									</DropdownMenu.RadioItem>
+								{/each}
+							</DropdownMenu.RadioGroup>
+						</DropdownMenu.Content>
+					</DropdownMenu.Root>
 				</div>
 				{#if lens && changed}
 					<LensChanges
@@ -790,15 +814,25 @@ row of filters, on a desktop narrow by the title. -->
 						: searching
 							? m.search_none()
 							: m.documents_none()}
+					{#snippet action()}
+						{#if !isFiltered(filters) && !searching}
+							<!-- Documents come in through the inbox, the one place to upload. -->
+							<a href="{BASE}/inbox" class={cn(buttonVariants({ variant: 'outline' }))}>
+								<Upload aria-hidden="true" />
+								{m.documents_to_inbox()}
+							</a>
+						{/if}
+					{/snippet}
 				</EmptyNote>
 			{:else}
 				<div class="flex flex-col gap-6" aria-busy={list.loading}>
 					{#each groups as group (group.key)}
 						<section class="flex flex-col gap-3" aria-label={group.label ?? undefined}>
 							{#if group.label !== null}
-								<h2
+								<SectionTitle
+									size="card"
 									class={[
-										'flex items-center gap-3 text-[0.95rem] font-semibold',
+										'flex items-center gap-3',
 										group.tone === 'overdue' && 'text-lane-red-foreground',
 										group.tone === 'soon' && 'text-lane-yellow-foreground'
 									]}
@@ -810,7 +844,7 @@ row of filters, on a desktop narrow by the title. -->
 										</span>
 									{/if}
 									<span aria-hidden="true" class="h-px flex-1 bg-border"></span>
-								</h2>
+								</SectionTitle>
 							{/if}
 							{#if layout === 'grid'}
 								<ul
@@ -842,7 +876,7 @@ row of filters, on a desktop narrow by the title. -->
 					{/each}
 				</div>
 				{#if list.loading && !list.loaded}
-					<p class="text-muted-foreground">{m.loading()}</p>
+					<Loading />
 				{/if}
 				{#if list.hasMore}
 					<div class="flex justify-center">

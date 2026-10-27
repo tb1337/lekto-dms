@@ -13,6 +13,9 @@
 	import { countOf, OPEN_STATES, type JobsSummary } from '#lib/jobs.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import Loading from '#lib/components/Loading.svelte';
 
 	// The tab "Maintenance" of the page "System" (Tobi, 26.10.2026): what Lekto does by itself
 	// for new documents, caught up on over the existing ones, one row each: name, the why and
@@ -134,18 +137,18 @@
 	{#if problem && !summary}
 		<LoadProblem {problem} onretry={load} />
 	{:else if !summary}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else}
-		<section class="rounded-2xl border bg-card px-5 py-1 sm:px-6">
+		<Card.Root as="section" size="flush" class="px-5 py-1 sm:px-6">
 			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3.5">
 				<div class="flex items-center gap-1">
-					<h2 class="font-semibold">{m.maintenance_title()}</h2>
+					<SectionTitle size="card">{m.maintenance_title()}</SectionTitle>
 					<InfoTip label={m.hint_about({ name: m.maintenance_title() })} size="sm" class="w-80">
 						<p>{m.maintenance_info()}</p>
 					</InfoTip>
 				</div>
 				{#if !session.isAdmin}
-					<span class="text-[0.8125rem] text-muted-foreground">{m.maintenance_admins_only()}</span>
+					<span class="text-meta text-muted-foreground">{m.maintenance_admins_only()}</span>
 				{/if}
 			</div>
 			<ul>
@@ -159,7 +162,7 @@
 								<p>{action.info}</p>
 							</InfoTip>
 						</div>
-						<span class="text-[0.8125rem] text-muted-foreground tabular-nums">
+						<span class="text-meta text-muted-foreground tabular-nums">
 							{count > 0
 								? m.maintenance_waiting({ count: formatNumber(count) })
 								: m.maintenance_waiting_none()}
@@ -167,9 +170,7 @@
 						{#if session.isAdmin}
 							<div class="flex items-center gap-3">
 								{#if off}
-									<span class="text-[0.8125rem] text-muted-foreground"
-										>{m.maintenance_logos_off()}</span
-									>
+									<span class="text-meta text-muted-foreground">{m.maintenance_logos_off()}</span>
 								{/if}
 								<Button size="sm" variant="outline" disabled={off} onclick={() => ask(action)}>
 									<Play aria-hidden="true" />{m.maintenance_run()}
@@ -179,7 +180,7 @@
 					</li>
 				{/each}
 			</ul>
-		</section>
+		</Card.Root>
 	{/if}
 </div>
 

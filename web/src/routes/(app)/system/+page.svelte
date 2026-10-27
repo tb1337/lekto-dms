@@ -8,6 +8,7 @@
 	import TabBar from '#lib/components/TabBar.svelte';
 	import { m } from '#lib/paraglide/messages.js';
 	import { SYSTEM_TABS, systemTab, type SystemTab } from '#lib/system.ts';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
 
 	// The page "System" (Tobi, 24.10.2026): what Lekto does by itself, for every user; acting
 	// on it (training, trying jobs again, the maintenance) is for admins. The tab stands in the URL.
@@ -24,7 +25,7 @@
 <svelte:head><title>{LABELS[tab]()} · {m.nav_system()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-4 sm:gap-6">
-	<h1 class="text-2xl font-semibold tracking-tight sm:text-[1.75rem]">{m.nav_system()}</h1>
+	<PageHeader title={m.nav_system()} />
 	<TabBar
 		label={m.system_tabs()}
 		tabs={SYSTEM_TABS.map((value) => ({

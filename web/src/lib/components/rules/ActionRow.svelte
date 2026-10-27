@@ -2,12 +2,10 @@
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import MultiPicker from '#lib/components/MultiPicker.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import { namedOptions, withChoice } from '#lib/components/rules/options.ts';
 	import ValueInput from '#lib/components/rules/ValueInput.svelte';
 	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
-	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -26,6 +24,8 @@
 	} from '#lib/rules/model.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { tagOptions } from '#lib/tags.ts';
+	import TagPicker from '#lib/components/TagPicker.svelte';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// One step: an action, a step that asks a webhook, or a condition. `targets` are where the
 	// rule may file: the spaces whoever saves it edits, and other users' personal spaces
@@ -161,10 +161,13 @@
 					bind:value={action.template}
 				/>
 			{:else if action.type === 'add_tags' || action.type === 'remove_tags'}
-				<MultiPicker
+				<!-- The one field for tags, in their colours, as at a document. -->
+				<TagPicker
+					id="tags-{action.key}"
 					{label}
-					{invalid}
-					options={tagOptions(lookup.tags, 'document')}
+					title={m.field_tags()}
+					scope="document"
+					tags={lookup.tags}
 					selected={action.tag_ids}
 					onchange={(next) => {
 						if (action.type === 'add_tags' || action.type === 'remove_tags') action.tag_ids = next;
@@ -292,27 +295,15 @@
 			{/if}
 		</div>
 		<div class="flex gap-0.5">
-			<Button
-				variant="ghost"
-				size="icon"
-				aria-label={m.rule_move_up()}
-				disabled={!onup}
-				onclick={() => onup?.()}
-			>
+			<IconButton label={m.rule_move_up()} disabled={!onup} onclick={() => onup?.()}>
 				<ArrowUp aria-hidden="true" />
-			</Button>
-			<Button
-				variant="ghost"
-				size="icon"
-				aria-label={m.rule_move_down()}
-				disabled={!ondown}
-				onclick={() => ondown?.()}
-			>
+			</IconButton>
+			<IconButton label={m.rule_move_down()} disabled={!ondown} onclick={() => ondown?.()}>
 				<ArrowDown aria-hidden="true" />
-			</Button>
-			<Button variant="ghost" size="icon" aria-label={m.rule_remove()} onclick={onremove}>
+			</IconButton>
+			<IconButton label={m.rule_remove()} onclick={onremove}>
 				<Trash2 aria-hidden="true" />
-			</Button>
+			</IconButton>
 		</div>
 	</div>
 	{#if error}<Field.Error>{error}</Field.Error>{/if}

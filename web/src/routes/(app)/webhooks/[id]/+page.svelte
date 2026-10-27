@@ -7,7 +7,6 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
-	import BackLink from '#lib/components/BackLink.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
@@ -15,7 +14,7 @@
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import * as Table from '#lib/components/ui/table/index.ts';
-	import { describeError, reportError } from '#lib/errors.ts';
+	import { describeError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import { PagedList } from '#lib/paging.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -23,6 +22,14 @@
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 	import { sendTest } from '#lib/webhooks.ts';
+	import type { Tone } from '#lib/tones.ts';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import IconButton from '#lib/components/IconButton.svelte';
+	import Loading from '#lib/components/Loading.svelte';
 
 	type Webhook = components['schemas']['WebhookOut'];
 	type Outcome = components['schemas']['DeliveryOutcome'];
@@ -30,6 +37,8 @@
 	// The page of a webhook: what it is, with the way to its editor, and its deliveries.
 	const id = $derived(page.params.id ?? '');
 	let webhook = $state<Webhook | null>(null);
+	let problem = $state<string | null>(null);
+	let removing = $state(false);
 	let renewing = $state(false);
 	let secret = $state<string | null>(null);
 	let busy = $state(false);
@@ -48,14 +57,21 @@
 	});
 
 	async function load(wanted: string) {
+		problem = null;
 		try {
 			const hook = await unwrap(
 				api.GET('/api/v1/webhooks/{id}', { params: { path: { id: wanted } } })
 			);
 			if (wanted === id) webhook = hook;
 		} catch (error) {
-			if (wanted === id) reportError(error);
+			if (wanted === id) problem = describeError(error);
 		}
+	}
+
+	async function remove() {
+		await unwrap(api.DELETE('/api/v1/webhooks/{id}', { params: { path: { id } } }));
+		toast.success(m.webhook_deleted());
+		await goto(`${BASE}/webhooks`);
 	}
 
 	$effect(() => {
@@ -83,6 +99,13 @@
 		await load(id);
 	}
 
+	const OUTCOME_TONE: Record<Outcome, Tone> = {
+		delivered: 'green',
+		retrying: 'yellow',
+		gave_up: 'red',
+		dropped: 'muted'
+	};
+
 	const outcomeLabel: Record<Outcome, () => string> = {
 		delivered: m.delivery_delivered,
 		retrying: m.delivery_retrying,
@@ -94,21 +117,50 @@
 <svelte:head><title>{webhook?.name ?? m.nav_webhooks()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-6">
-	<BackLink href="{BASE}/webhooks" label={m.nav_webhooks()} />
-
-	{#if webhook}
-		<div class="flex flex-wrap items-start justify-between gap-3">
-			<div class="flex min-w-0 flex-col gap-2">
-				<h1 class="text-[1.75rem] font-semibold tracking-tight break-words">{webhook.name}</h1>
-				<span class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-					<Badge variant={webhook.active ? 'secondary' : 'outline'}>
+	<PageHeader
+		title={webhook?.name ?? m.webhook_generic()}
+		back={{ href: `${BASE}/webhooks`, label: m.nav_webhooks() }}
+	>
+		{#snippet actions()}
+			{#if webhook && canManageWebhook(webhook, session.user)}
+				<a
+					href="{BASE}/webhooks/{webhook.id}/edit"
+					class={cn(buttonVariants({ variant: 'outline' }))}
+				>
+					<Pencil aria-hidden="true" />
+					{m.webhook_edit_do()}
+				</a>
+				<Button variant="outline" disabled={busy} onclick={test}>
+					<Send aria-hidden="true" />
+					{m.webhook_test()}
+				</Button>
+				{#if webhook.signed}
+					<IconButton
+						label={m.webhook_renew({ name: webhook.name })}
+						onclick={() => (renewing = true)}
+					>
+						<KeyRound aria-hidden="true" />
+					</IconButton>
+				{/if}
+				<IconButton
+					label={m.webhook_delete({ name: webhook.name })}
+					onclick={() => (removing = true)}
+				>
+					<Trash2 aria-hidden="true" />
+				</IconButton>
+			{/if}
+		{/snippet}
+		{#snippet below()}
+			{#if webhook}
+				<span class="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+					<Badge variant={webhook.active ? 'green' : 'muted'}>
 						{webhook.active ? m.webhook_on() : m.webhook_off()}
 					</Badge>
 					{#if !webhook.signed}
-						<Badge variant="outline">{m.webhook_unsigned()}</Badge>
+						<Badge variant="yellow">{m.webhook_unsigned()}</Badge>
 					{/if}
 					{#if webhook.model_call}
-						<Badge variant="outline">
+						<Badge variant="note">
 							{webhook.model_call.kind === 'propose'
 								? m.webhook_model_call_propose()
 								: m.webhook_model_call_extract()}
@@ -121,40 +173,18 @@
 						{m.webhook_failing({ count: webhook.failed_streak })}
 					</span>
 				{/if}
-			</div>
-			{#if canManageWebhook(webhook, session.user)}
-				<div class="flex flex-wrap items-center gap-2">
-					<a
-						href="{BASE}/webhooks/{webhook.id}/edit"
-						class={cn(buttonVariants({ variant: 'outline' }))}
-					>
-						<Pencil aria-hidden="true" />
-						{m.webhook_edit_do()}
-					</a>
-					<Button variant="outline" disabled={busy} onclick={test}>
-						<Send aria-hidden="true" />
-						{m.webhook_test()}
-					</Button>
-					{#if webhook.signed}
-						<Button
-							variant="ghost"
-							size="icon"
-							aria-label={m.webhook_renew({ name: webhook.name })}
-							title={m.webhook_renew_do()}
-							onclick={() => (renewing = true)}
-						>
-							<KeyRound aria-hidden="true" />
-						</Button>
-					{/if}
-				</div>
 			{/if}
-		</div>
-	{:else}
-		<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.loading()}</h1>
+		{/snippet}
+	</PageHeader>
+
+	{#if problem}
+		<LoadProblem {problem} onretry={() => void load(id)} />
+	{:else if !webhook}
+		<Loading />
 	{/if}
 
 	<section class="flex flex-col gap-3" aria-labelledby="webhook-deliveries">
-		<h2 id="webhook-deliveries" class="text-lg font-semibold">{m.webhook_log()}</h2>
+		<SectionTitle id="webhook-deliveries">{m.webhook_log()}</SectionTitle>
 		{#if list.error}
 			<LoadProblem problem={describeError(list.error)} onretry={() => list.reload()} />
 		{:else if list.empty}
@@ -184,7 +214,7 @@
 								</span>
 							</Table.Cell>
 							<Table.Cell>
-								<Badge variant={delivery.outcome === 'delivered' ? 'secondary' : 'outline'}>
+								<Badge variant={OUTCOME_TONE[delivery.outcome]}>
 									{outcomeLabel[delivery.outcome]()}
 								</Badge>
 								{#if delivery.next_attempt_at}
@@ -216,6 +246,13 @@
 	</section>
 </div>
 
+<ConfirmDialog
+	bind:open={removing}
+	title={m.webhook_delete({ name: webhook?.name ?? '' })}
+	description={m.webhook_delete_confirm()}
+	confirmLabel={m.delete_title()}
+	onconfirm={remove}
+/>
 <ConfirmDialog
 	bind:open={renewing}
 	title={m.webhook_renew({ name: webhook?.name ?? '' })}

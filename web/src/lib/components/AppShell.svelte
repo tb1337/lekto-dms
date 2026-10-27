@@ -17,10 +17,8 @@
 	import { API_DOCS, BASE } from '#lib/base.ts';
 	import BetaPill from '#lib/components/BetaPill.svelte';
 	import HeaderSearch from '#lib/components/HeaderSearch.svelte';
-	import LanguageMenu from '#lib/components/LanguageMenu.svelte';
 	import Logo from '#lib/components/Logo.svelte';
 	import Segmented from '#lib/components/Segmented.svelte';
-	import ThemeMenu from '#lib/components/ThemeMenu.svelte';
 	import { buttonVariants } from '#lib/components/ui/button/index.ts';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
 	import * as Sheet from '#lib/components/ui/sheet/index.ts';
@@ -39,6 +37,10 @@
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 	import { onChange } from '#lib/watch.svelte.ts';
+	import { Separator } from '#lib/components/ui/separator/index.ts';
+	import LanguageChoices from '#lib/components/LanguageChoices.svelte';
+	import ThemeChoices from '#lib/components/ThemeChoices.svelte';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -149,17 +151,50 @@
 		<!-- Narrower gaps on a phone, and a little narrower below 380 pixels, so that the wordmark,
 		     the magnifier and the menu fit beside each other down to 360. -->
 		<div class="flex h-16 items-center gap-2 px-4 max-[380px]:px-3 sm:gap-4 sm:px-8 lg:gap-7">
-			<a href={home()} class="rounded-md text-lg"><Logo /></a>
+			<a href={home()} class="relative rounded-md text-lg after:absolute after:-inset-y-1.5"
+				><Logo /></a
+			>
 
-			<!-- The menu in the header where it fits: from xl (German names are long). -->
-			<nav aria-label={m.nav_main()} class="hidden min-w-0 flex-1 items-center gap-1 xl:flex">
+			<!-- The menu in the header from lg (web/DESIGN.md, "Navigation"): the work, then setting
+			     up and operating; below xl that second group behind "More" (German names are long). -->
+			<nav aria-label={m.nav_main()} class="hidden min-w-0 flex-1 items-center gap-1 lg:flex">
 				{#each workSections as section (section.path)}
 					{@render pill(section, false)}
 				{/each}
-				<div class="mx-2 h-5 w-px bg-border" aria-hidden="true"></div>
+				<Separator orientation="vertical" class="mx-2 h-5 self-center" />
 				{#each setupSections as section (section.path)}
-					{@render pill(section, false)}
+					<span class="hidden xl:contents">{@render pill(section, false)}</span>
 				{/each}
+				{#if setupSections.length > 0}
+					{@const within = setupSections.some((section) => isCurrent(section, currentPath))}
+					<DropdownMenu.Root>
+						<DropdownMenu.Trigger
+							class={cn(
+								'flex h-9 items-center gap-1 rounded-full px-3 text-sm whitespace-nowrap transition-colors hover:text-foreground xl:hidden',
+								within ? 'bg-secondary font-medium text-foreground' : 'text-muted-foreground'
+							)}
+						>
+							{m.nav_more()}
+							<ChevronDown class="size-4" aria-hidden="true" />
+						</DropdownMenu.Trigger>
+						<DropdownMenu.Content align="start" class="w-56">
+							{#each setupSections as section (section.path)}
+								<DropdownMenu.Item>
+									{#snippet child({ props })}
+										<a
+											{...props}
+											href={href(section)}
+											aria-current={isCurrent(section, currentPath) ? 'page' : undefined}
+										>
+											<section.icon aria-hidden="true" />
+											{section.label()}
+										</a>
+									{/snippet}
+								</DropdownMenu.Item>
+							{/each}
+						</DropdownMenu.Content>
+					</DropdownMenu.Root>
+				{/if}
 			</nav>
 
 			<div class="ml-auto flex items-center gap-1.5 max-[380px]:gap-1 sm:gap-2">
@@ -177,15 +212,14 @@
 					<SearchIcon aria-hidden="true" />
 				</a>
 				<!-- On a phone the header holds only the magnifier and the menu: language, theme and
-				     the account are in the sheet (Tobi, 26.10.2026). -->
+				     the account are in the sheet (Tobi, 26.10.2026). Wider, language and theme are in
+				     the account's menu (web/DESIGN.md, "Navigation"). -->
 				{#if !phone.current}
-					<LanguageMenu />
-					<ThemeMenu />
 					<DropdownMenu.Root>
 						<DropdownMenu.Trigger
 							class={cn(
 								buttonVariants({ size: 'icon' }),
-								'relative font-semibold uppercase [&]:text-[0.95rem]'
+								'relative font-semibold uppercase [&]:text-md'
 							)}
 							aria-label={scope.allUsers
 								? m.account_menu_all_users({ username })
@@ -216,6 +250,10 @@
 								</DropdownMenu.CheckboxItem>
 								<DropdownMenu.Separator />
 							{/if}
+							<LanguageChoices />
+							<DropdownMenu.Separator />
+							<ThemeChoices />
+							<DropdownMenu.Separator />
 							<DropdownMenu.Item onSelect={() => goto(href(SETTINGS))}>
 								<SETTINGS.icon aria-hidden="true" />
 								{SETTINGS.label()}
@@ -243,7 +281,7 @@
 				     the right. On a phone it holds the account too (Tobi, 26.10.2026, variant A). -->
 				<Sheet.Root bind:open={menuOpen}>
 					<Sheet.Trigger
-						class={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'relative xl:hidden')}
+						class={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'relative lg:hidden')}
 						aria-label={phone.current && scope.allUsers ? m.nav_open_all_users() : m.nav_open()}
 					>
 						<Menu aria-hidden="true" />
@@ -273,20 +311,20 @@
 									/>
 								</label>
 							{/if}
-							<div class="mx-4 my-2 h-px bg-border"></div>
+							<Separator class="mx-4 my-2 w-auto" />
 						{/if}
 						<nav aria-label={m.nav_main()} class="flex flex-col gap-1">
 							{#each workSections as section (section.path)}
 								{@render pill(section, true)}
 							{/each}
-							<div class="mx-4 my-2 h-px bg-border"></div>
+							<Separator class="mx-4 my-2 w-auto" />
 							{#each setupSections as section (section.path)}
 								{@render pill(section, true)}
 							{/each}
 						</nav>
 						{#if phone.current}
 							<div class="mt-auto flex flex-col gap-1 pt-2">
-								<div class="mx-4 my-2 h-px bg-border"></div>
+								<Separator class="mx-4 my-2 w-auto" />
 								<div class="flex h-10 items-center justify-between gap-2 px-4">
 									<span
 										id="sheet-language"
@@ -320,11 +358,11 @@
 										onchange={(value) => setMode(value as 'light' | 'dark' | 'system')}
 									/>
 								</div>
-								<div class="mx-4 my-2 h-px bg-border"></div>
+								<Separator class="mx-4 my-2 w-auto" />
 								<button
 									type="button"
 									onclick={() => open(SETTINGS)}
-									class="flex h-10 items-center gap-2.5 rounded-xl px-4 text-[0.9375rem] transition-colors hover:bg-muted"
+									class="flex h-10 items-center gap-2.5 rounded-xl px-4 text-md transition-colors hover:bg-muted"
 								>
 									<SETTINGS.icon class="size-4 text-muted-foreground" aria-hidden="true" />
 									{SETTINGS.label()}
@@ -333,7 +371,7 @@
 									href={API_DOCS}
 									target="_blank"
 									rel="noopener noreferrer"
-									class="flex h-10 items-center gap-2.5 rounded-xl px-4 text-[0.9375rem] transition-colors hover:bg-muted"
+									class="flex h-10 items-center gap-2.5 rounded-xl px-4 text-md transition-colors hover:bg-muted"
 								>
 									<BookOpen class="size-4 text-muted-foreground" aria-hidden="true" />
 									{m.api_docs()}
@@ -343,7 +381,7 @@
 								<button
 									type="button"
 									onclick={signOut}
-									class="flex h-10 items-center gap-2.5 rounded-xl px-4 text-[0.9375rem] transition-colors hover:bg-muted"
+									class="flex h-10 items-center gap-2.5 rounded-xl px-4 text-md transition-colors hover:bg-muted"
 								>
 									<LogOut class="size-4 text-muted-foreground" aria-hidden="true" />
 									{m.sign_out()}
@@ -362,7 +400,7 @@
 		class="flex flex-1 justify-center px-4 py-8 outline-none sm:px-8 lg:has-[[data-wide]]:min-h-0 lg:has-[[data-wide]]:py-6"
 	>
 		<div
-			class="w-full max-w-[1040px] has-[[data-roomy]]:max-w-[1600px] has-[[data-wide]]:max-w-[1600px] lg:has-[[data-wide]]:min-h-0"
+			class="w-full max-w-page has-[[data-roomy]]:max-w-wide has-[[data-wide]]:max-w-wide lg:has-[[data-wide]]:min-h-0"
 		>
 			{@render children()}
 		</div>

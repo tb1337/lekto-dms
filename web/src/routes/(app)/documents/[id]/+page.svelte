@@ -70,6 +70,9 @@
 	} from '#lib/facts.ts';
 	import { adviceText, visionAvailable, type Reading, type Vision } from '#lib/vision.ts';
 	import { onChange } from '#lib/watch.svelte.ts';
+	import BackLink from '#lib/components/BackLink.svelte';
+	import { returnTo } from '#lib/return-to.svelte.ts';
+	import Loading from '#lib/components/Loading.svelte';
 
 	type Document = components['schemas']['DocumentDetails'];
 
@@ -417,13 +420,20 @@
 
 <!-- From the desktop width on the view fills the window; only its cards scroll. -->
 <div class="flex flex-col gap-4 lg:h-full lg:min-h-0" data-wide>
+	{#if problem || !document}
+		<!-- While it loads or when it cannot, the way back stays. -->
+		<BackLink
+			href={inbox ? `${BASE}/inbox` : returnTo.documents}
+			label={inbox ? m.nav_inbox() : m.nav_documents()}
+		/>
+	{/if}
 	{#if problem}
 		<LoadProblem
 			problem={notFound ? m.document_not_found() : describeError(problem)}
 			onretry={notFound ? undefined : load}
 		/>
 	{:else if !document}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<DocumentHeader
 			bind:this={header}
@@ -607,7 +617,7 @@
 									/>
 								{/key}
 							{:else}
-								<p class="text-muted-foreground">{m.loading()}</p>
+								<Loading />
 							{/if}
 						</div>
 					{/if}

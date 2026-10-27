@@ -147,7 +147,7 @@ describe('FactsPanel', () => {
 		// The owner's own IBAN stands on many contacts' documents.
 		expect(screen.getByText(m.facts_other_contacts({ count: 6 }))).toBeTruthy();
 		// Only a pin to attach, its label on hover.
-		expect(screen.getAllByTitle(m.facts_attach())).toHaveLength(2);
+		expect(screen.getAllByRole('button', { name: /^Pin .* as an identifier$/ })).toHaveLength(2);
 		// The GiroCode read, its amount as the field's; another code as it is.
 		expect(screen.getByText(m.code_giro())).toBeTruthy();
 		expect(screen.getByText(m.code_same_as({ field: 'Rechnungsbetrag' }))).toBeTruthy();
@@ -218,7 +218,7 @@ describe('FactsPanel', () => {
 		const onchanged = vi.fn();
 		render(FactsPanel, props({ onchanged }));
 		const user = userEvent.setup();
-		await user.click(screen.getAllByTitle(m.facts_attach())[0]);
+		await user.click(screen.getAllByRole('button', { name: /^Pin .* as an identifier$/ })[0]);
 		const form = screen.getByText(
 			m.facts_attach_title({ kind: m.identifier_kind_customer_number() })
 		).parentElement!;
@@ -323,7 +323,7 @@ describe('FactsPanel', () => {
 		render(FactsPanel, props({ admin: false }));
 		const own = screen.getByRole('heading', { name: /Stadtwerke Musterstadt GmbH/ });
 		expect(within(own).queryByRole('button')).toBeNull();
-		expect(screen.queryAllByTitle(m.facts_attach())).toHaveLength(0);
+		expect(screen.queryAllByRole('button', { name: /^Pin .* as an identifier$/ })).toHaveLength(0);
 		expect(screen.getByText(m.facts_attach_admins())).toBeTruthy();
 	});
 

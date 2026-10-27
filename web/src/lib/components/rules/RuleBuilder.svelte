@@ -2,7 +2,7 @@
 	import Select from '#lib/components/Select.svelte';
 	import ActionRow from '#lib/components/rules/ActionRow.svelte';
 	import ConditionGroup from '#lib/components/rules/ConditionGroup.svelte';
-	import { Button } from '#lib/components/ui/button/index.ts';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
@@ -19,6 +19,10 @@
 		type ActionType,
 		type RuleModel
 	} from '#lib/rules/model.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import Plus from '@lucide/svelte/icons/plus';
+	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
+	import { cn } from '#lib/utils.ts';
 
 	// The form of a rule: name, priority, when it runs, its conditions and actions. The page
 	// saves it; `errors` are by key (see `validate` and `saveErrors`). It does not save while a
@@ -35,6 +39,7 @@
 		general,
 		busy,
 		cancelHref,
+		oncancel,
 		onsubmit
 	}: {
 		model: RuleModel;
@@ -52,14 +57,11 @@
 		general: string | null;
 		busy: boolean;
 		cancelHref: string;
+		/** "Cancel" was chosen: the changes are dropped on purpose (no question on leaving). */
+		oncancel?: () => void;
 		onsubmit: () => void;
 	} = $props();
 
-	const addable = $derived([
-		{ value: '', label: m.rule_add_action() },
-		...ACTION_TYPES.map((type) => ({ value: type, label: ACTION_LABELS[type]() }))
-	]);
-	let adding = $state('');
 	const asks = $derived(model.actions.some((action) => action.type === 'ask_webhook'));
 	let unreadable = $state<Record<string, boolean>>({});
 	const blocked = $derived(Object.values(unreadable).some(Boolean));
@@ -68,9 +70,8 @@
 		unreadable[key] = cannotRead;
 	}
 
-	function add(type: string) {
-		if (type) model.actions.push(newAction(type as ActionType));
-		adding = '';
+	function add(type: ActionType) {
+		model.actions.push(newAction(type));
 	}
 
 	function toggleTrigger(trigger: (typeof TRIGGERS)[number], on: boolean) {
@@ -145,12 +146,12 @@
 	</fieldset>
 
 	<section class="flex flex-col gap-3" aria-labelledby="rule-conditions">
-		<h2 id="rule-conditions" class="text-lg font-semibold">{m.rule_conditions()}</h2>
+		<SectionTitle id="rule-conditions">{m.rule_conditions()}</SectionTitle>
 		<ConditionGroup group={model.conditions} {model} {lookup} {errors} onunreadable={mark} />
 	</section>
 
 	<section class="flex flex-col gap-3" aria-labelledby="rule-actions">
-		<h2 id="rule-actions" class="text-lg font-semibold">{m.rule_actions()}</h2>
+		<SectionTitle id="rule-actions">{m.rule_actions()}</SectionTitle>
 		{#each model.actions as action, index (action.key)}
 			<ActionRow
 				{action}
@@ -167,25 +168,35 @@
 				ondown={index < model.actions.length - 1 ? () => move(model.actions, index, 1) : undefined}
 			/>
 		{/each}
-		<Select
-			aria-label={m.rule_add_action()}
-			bind:value={adding}
-			options={addable}
-			disabled={model.actions.length >= LIMITS.actions}
-			onchange={add}
-			class="h-10 w-full sm:w-72"
-		/>
+		<!-- Added like a condition: a button, here with the kinds of action in its menu. -->
+		<div>
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger
+					class={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+					disabled={model.actions.length >= LIMITS.actions}
+				>
+					<Plus aria-hidden="true" />
+					{m.rule_add_action()}
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content align="start" class="w-64">
+					{#each ACTION_TYPES as type (type)}
+						<DropdownMenu.Item onSelect={() => add(type)}>{ACTION_LABELS[type]()}</DropdownMenu.Item
+						>
+					{/each}
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
+		</div>
 		{#if errors.actions}<Field.Error>{errors.actions}</Field.Error>{/if}
 	</section>
 
 	<div class="flex flex-col gap-3 border-t pt-4">
 		{#if general}<Field.Error>{general}</Field.Error>{/if}
 		<p class="text-sm text-muted-foreground">{m.rule_save_hint()}</p>
-		<div class="flex flex-wrap gap-2">
+		<div class="flex flex-wrap justify-end gap-2">
+			<a href={cancelHref} class={cn(buttonVariants({ variant: 'ghost' }))} onclick={oncancel}
+				>{m.cancel()}</a
+			>
 			<Button type="submit" disabled={busy || blocked}>{m.rule_save()}</Button>
-			<a href={cancelHref} class="inline-flex h-9 items-center px-3 text-sm hover:underline">
-				{m.cancel()}
-			</a>
 		</div>
 	</div>
 </form>

@@ -9,6 +9,7 @@
 	import { describeError } from '#lib/errors.ts';
 	import { localMinute } from '#lib/file-passport.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// When the document came in, set anew at its milestone (Tobi, 21.10.2026): to the minute,
 	// in local time, never ahead. It confirms nothing and no rules run.
@@ -57,15 +58,14 @@
 <Popover.Root bind:open onOpenChange={opened}>
 	<Popover.Trigger>
 		{#snippet child({ props })}
-			<Button
+			<IconButton
 				{...props}
-				variant="ghost"
-				size="icon-xs"
+				size="sm"
 				class="text-muted-foreground"
-				aria-label={m.files_received_edit()}
+				label={m.files_received_edit()}
 			>
 				<Pencil aria-hidden="true" />
-			</Button>
+			</IconButton>
 		{/snippet}
 	</Popover.Trigger>
 	<Popover.Content collisionPadding={8} role="dialog" aria-labelledby="{id}-title" class="w-72">

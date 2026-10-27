@@ -7,6 +7,9 @@ Stack: SvelteKit 3 (Svelte 5, static adapter, no server-side rendering), Tailwin
 shadcn-svelte (bits-ui), Paraglide JS (English and German), openapi-fetch, CodeMirror 6 (templates),
 Vitest. Fonts (Geist, Geist Mono) are part of the build; no CDN.
 
+The design system is binding: [`DESIGN.md`](DESIGN.md) (tokens, type scale, components, patterns,
+texts). Read it before changing the UI.
+
 ## Commands
 
 Run in `web/` (Node 24, pnpm as pinned in `package.json`):

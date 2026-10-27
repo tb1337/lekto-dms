@@ -4,6 +4,7 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { home } from '#lib/navigation.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import PageTitle from '#lib/components/page/PageTitle.svelte';
 
 	const notFound = $derived(page.status === 404);
 </script>
@@ -12,9 +13,9 @@
 
 <main class="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-6 px-6">
 	<Logo class="text-xl" />
-	<h1 class="text-3xl font-semibold tracking-tight">
+	<PageTitle>
 		{notFound ? m.error_not_found() : m.error_title()}
-	</h1>
+	</PageTitle>
 	{#if !notFound && page.error?.message}
 		<p class="text-muted-foreground">{page.error.message}</p>
 	{/if}

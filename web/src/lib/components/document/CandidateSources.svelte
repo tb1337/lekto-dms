@@ -15,7 +15,7 @@
 		<span
 			title={[chip.note, chip.quote && `„${chip.quote}“`].filter(Boolean).join(' ') || undefined}
 			class={cn(
-				'inline-flex items-center gap-1 rounded-full px-2 text-[11px] leading-5 whitespace-nowrap',
+				'inline-flex items-center gap-1 rounded-full px-2 text-micro leading-5 whitespace-nowrap',
 				chip.strong
 					? inverted
 						? 'bg-background/15'

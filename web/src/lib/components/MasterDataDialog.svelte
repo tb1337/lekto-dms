@@ -283,7 +283,7 @@
 	{deleteDescription}
 	{tabs}
 	bind:tab
-	class={tabs ? 'h-[min(53.75rem,calc(100dvh-2rem))] sm:max-w-[40rem]' : undefined}
+	class={tabs ? 'h-[min(53.75rem,calc(100dvh-2rem))]' : undefined}
 >
 	{#if part === 'general'}
 		{#if extra === 'tag' && chooseScope}

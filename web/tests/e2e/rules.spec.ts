@@ -133,20 +133,20 @@ test('a rule is built, dry-run, applied, changed and deleted', async ({ page }) 
 	await expect(page.getByRole('link', { name: `${NAME}` }).first()).toBeVisible();
 	await expect(page.getByRole('checkbox', { name: `Apply to ${NAME}` })).toBeChecked();
 	expect(previews).toBe(1);
-	await page.getByRole('button', { name: /^Switch on and apply to \d+ documents$/ }).click();
+	await page.getByRole('button', { name: /^Activate and apply to \d+ documents$/ }).click();
 	await expect(page.getByText(/^Done: 1 changed/)).toBeVisible({ timeout: 30_000 });
 	const document = await (await api.get(`/api/v1/documents/${created.document}`)).json();
 	expect(document.tag_ids).toContain(created.tag);
 
 	// Switched on, version 1; a change makes version 2 and switches it off until decided.
 	await page.goto(ruleUrl);
-	await expect(page.getByRole('switch', { name: `Switch off ${NAME}` })).toBeChecked();
+	await expect(page.getByRole('switch', { name: `Pause ${NAME}` })).toBeChecked();
 	await page.getByRole('link', { name: 'Edit' }).click();
 	await page.getByRole('textbox', { name: 'Name', exact: true }).fill(`${NAME} v2`);
 	await page.getByRole('button', { name: 'Save and see what it does' }).click();
 	await page.waitForURL(/\/apply\?saved=1$/);
-	await page.getByRole('link', { name: 'Leave off' }).click();
-	await expect(page.getByRole('switch', { name: `Switch on ${NAME} v2` })).not.toBeChecked();
+	await page.getByRole('link', { name: 'Leave paused' }).click();
+	await expect(page.getByRole('switch', { name: `Activate ${NAME} v2` })).not.toBeChecked();
 	await expect(page.getByRole('link', { name: 'Version 2' })).toBeVisible();
 
 	// A refused switch stays as the rule is.
@@ -159,9 +159,9 @@ test('a rule is built, dry-run, applied, changed and deleted', async ({ page }) 
 				})
 			: route.fallback()
 	);
-	await page.getByRole('switch', { name: `Switch on ${NAME} v2` }).click();
+	await page.getByRole('switch', { name: `Activate ${NAME} v2` }).click();
 	await expect(page.getByText('tag gone')).toBeVisible();
-	await expect(page.getByRole('switch', { name: `Switch on ${NAME} v2` })).not.toBeChecked();
+	await expect(page.getByRole('switch', { name: `Activate ${NAME} v2` })).not.toBeChecked();
 	await page.unroute('**/api/v1/rules/*');
 
 	// Version 1 reads as it was.

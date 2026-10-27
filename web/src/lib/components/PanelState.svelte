@@ -2,7 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
-	import { m } from '#lib/paraglide/messages.js';
+	import Loading from '#lib/components/Loading.svelte';
 
 	// What a panel of the master data shows in place of its list: the problem of its load (with
 	// a way to try again), that it is loading, or that there is nothing to list (`empty`, the
@@ -25,7 +25,7 @@
 {#if problem}
 	<LoadProblem {problem} {onretry} />
 {:else if loading}
-	<p class="text-muted-foreground">{m.loading()}</p>
+	<Loading />
 {:else if empty !== null}
 	<EmptyNote compact>{empty}</EmptyNote>
 {:else}

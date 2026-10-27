@@ -50,6 +50,11 @@
 	import { pathLabel, tagOptions } from '#lib/tags.ts';
 	import { cn } from '#lib/utils.ts';
 	import { Choice } from '#lib/components/ui/choice/index.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
+	import { Badge } from '#lib/components/ui/badge/index.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// The facts beside the text: what supports the document's contact, what speaks of other
 	// contacts, the identifiers of no contact (admins attach them, with a topic of the contact,
@@ -259,7 +264,6 @@
 		<button
 			type="button"
 			class="inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1.5 font-medium text-foreground underline-offset-2 hover:underline"
-			title={m.facts_contact_open()}
 			onclick={() => masterDataDialogs.open('contacts', id)}
 		>
 			<ContactAvatar contact={contact ?? { name: '…' }} size="xs" />
@@ -274,12 +278,11 @@
 {/snippet}
 
 {#snippet decideButton(id: string, fact: KeptFact)}
-	<Button
-		variant="ghost"
-		size="icon"
-		class="size-8 shrink-0"
-		aria-label={m.facts_decide_value_label({ value: fact.written ?? shown(fact) })}
-		title={m.facts_decide()}
+	<IconButton
+		size="sm"
+		class="shrink-0"
+		label={m.facts_decide_value_label({ value: fact.written ?? shown(fact) })}
+		hint={m.facts_decide()}
 		aria-expanded={deciding === id}
 		onclick={() => {
 			deciding = deciding === id ? null : id;
@@ -287,7 +290,7 @@
 		}}
 	>
 		<Pencil aria-hidden="true" />
-	</Button>
+	</IconButton>
 {/snippet}
 
 {#snippet keptRow(id: string, fact: KeptFact, spans: Span[])}
@@ -313,7 +316,7 @@
 				</span>
 				<span
 					class={cn(
-						'font-mono text-[13px] break-words',
+						'font-mono text-meta break-words',
 						fact.state === 'rejected' && 'text-muted-foreground line-through'
 					)}>{fact.written ?? fact.value}</span
 				>
@@ -369,7 +372,7 @@
 				<span
 					class={cn(
 						'text-sm break-words',
-						identifier && 'font-mono text-[13px]',
+						identifier && 'font-mono text-meta',
 						identifier?.state === 'rejected' && 'text-muted-foreground line-through'
 					)}
 				>
@@ -394,17 +397,17 @@
 			{/if}
 			{#if identifier && !identifier.contact_id && admin && identifier.state !== 'rejected'}
 				<!-- Only the pin: the label would repeat on every line. -->
-				<Button
+				<IconButton
 					variant="outline"
-					size="icon"
-					class="size-8 shrink-0"
-					aria-label={m.facts_attach_value({ value: shown(identifier) })}
-					title={m.facts_attach()}
+					size="sm"
+					class="shrink-0"
+					label={m.facts_attach_value({ value: shown(identifier) })}
+					hint={m.facts_attach()}
 					aria-expanded={attaching === id}
 					onclick={() => startAttach(identifier)}
 				>
 					<Pin aria-hidden="true" />
-				</Button>
+				</IconButton>
 			{/if}
 		</div>
 		{#if contactId}
@@ -500,9 +503,9 @@
 {/snippet}
 
 <div class="flex flex-col gap-3.5">
-	<section aria-labelledby="facts-title" class="rounded-2xl border bg-card p-3.5">
+	<Card.Root as="section" size="sm" aria-labelledby="facts-title">
 		<div class="flex items-baseline gap-2 px-1 pb-1">
-			<h2 id="facts-title" class="text-[15px] font-semibold">{m.facts_title()}</h2>
+			<SectionTitle size="card" id="facts-title">{m.facts_title()}</SectionTitle>
 			<span class="text-xs text-muted-foreground"
 				>{phone.current ? m.facts_hint_phone() : m.facts_hint()}</span
 			>
@@ -511,25 +514,23 @@
 			<p class="px-1 py-2 text-sm text-muted-foreground">{m.facts_none()}</p>
 		{/if}
 		{#if groups.own.length > 0}
-			<h3
-				class="mt-2 flex items-center gap-1.5 px-1 text-xs font-semibold text-lane-green-foreground"
-			>
+			<Eyebrow as="h3" class="mt-2 flex items-center gap-1.5 px-1 text-lane-green-foreground">
 				<UserCheck class="size-3.5" aria-hidden="true" />
 				{m.facts_own()}
 				{#if facts.contact_id}{@render contactLink(facts.contact_id)}{/if}
-			</h3>
+			</Eyebrow>
 			{#each groups.own as entry (entryId(entry))}
 				{@render entryRow(entry, null)}
 			{/each}
 		{/if}
 		{#if groups.others.length > 0}
-			<h3 class="mt-3 px-1 text-xs font-semibold text-muted-foreground">{m.facts_others()}</h3>
+			<Eyebrow as="h3" class="mt-3 px-1">{m.facts_others()}</Eyebrow>
 			{#each groups.others as entry (entryId(entry))}
 				{@render entryRow(entry, entry.contact_id)}
 			{/each}
 		{/if}
 		{#if groups.unknown.length > 0}
-			<h3 class="mt-3 px-1 text-xs font-semibold text-muted-foreground">{m.facts_unknown()}</h3>
+			<Eyebrow as="h3" class="mt-3 px-1">{m.facts_unknown()}</Eyebrow>
 			<p class="px-1 text-xs text-muted-foreground">
 				{admin ? m.facts_unknown_hint() : m.facts_attach_admins()}
 			</p>
@@ -537,23 +538,23 @@
 				{@render entryRow(entry, null)}
 			{/each}
 		{/if}
-	</section>
+	</Card.Root>
 
 	{#if (facts.numbers && facts.numbers.length > 0) || (facts.decided && facts.decided.length > 0) || facts.editable}
 		<!-- The document's own numbers, a strand's, another document's it refers to (#145); the
 		     facts of other kinds a person decided that the text does not show; adding one. -->
-		<section aria-labelledby="numbers-title" class="rounded-2xl border bg-card p-3.5">
+		<Card.Root as="section" size="sm" aria-labelledby="numbers-title">
 			<div class="flex items-baseline gap-2 px-1 pb-1">
-				<h2 id="numbers-title" class="text-[15px] font-semibold">{m.facts_numbers()}</h2>
+				<SectionTitle size="card" id="numbers-title">{m.facts_numbers()}</SectionTitle>
 				<span class="text-xs text-muted-foreground">{m.facts_numbers_hint()}</span>
 			</div>
 			{#each facts.numbers ?? [] as number (numberId(number))}
 				{@render keptRow(numberId(number), number, number.spans)}
 			{/each}
 			{#if facts.decided && facts.decided.length > 0}
-				<h3 class="mt-3 px-1 text-xs font-semibold text-muted-foreground">
+				<Eyebrow as="h3" class="mt-3 px-1">
 					{m.facts_decided()}
-				</h3>
+				</Eyebrow>
 				{#each facts.decided as fact (decidedId(fact))}
 					{@render keptRow(decidedId(fact), fact, fact.spans)}
 				{/each}
@@ -570,18 +571,18 @@
 					{/if}
 				</div>
 			{/if}
-		</section>
+		</Card.Root>
 	{/if}
 
 	{#if facts.persons && facts.persons.length > 0}
-		<section aria-labelledby="persons-title" class="rounded-2xl border bg-card p-3.5">
+		<Card.Root as="section" size="sm" aria-labelledby="persons-title">
 			<div class="flex items-baseline gap-2 px-1 pb-1">
-				<h2 id="persons-title" class="text-[15px] font-semibold">
+				<SectionTitle size="card" id="persons-title">
 					<UsersIcon
 						class="mr-1 inline-block size-4 align-[-0.15em]"
 						aria-hidden="true"
 					/>{m.facts_persons()}
-				</h2>
+				</SectionTitle>
 				<span class="text-xs text-muted-foreground">{m.facts_persons_hint()}</span>
 			</div>
 			{#each facts.persons as person (person.user_id)}
@@ -610,18 +611,18 @@
 					</button>
 				</div>
 			{/each}
-		</section>
+		</Card.Root>
 	{/if}
 
-	<section aria-labelledby="codes-title" class="rounded-2xl border bg-card p-3.5">
+	<Card.Root as="section" size="sm" aria-labelledby="codes-title">
 		<div class="flex items-baseline gap-2 px-1 pb-1">
 			<!-- The icon in the line of text: the heading keeps the baseline of the hint beside it. -->
-			<h2 id="codes-title" class="text-[15px] font-semibold">
+			<SectionTitle size="card" id="codes-title">
 				<ScanQrCode
 					class="mr-1 inline-block size-4 align-[-0.15em]"
 					aria-hidden="true"
 				/>{m.codes_title()}
-			</h2>
+			</SectionTitle>
 			<span class="text-xs text-muted-foreground">{m.codes_hint()}</span>
 		</div>
 		{#if facts.codes === null}
@@ -652,11 +653,9 @@
 						<div class="flex flex-wrap items-center gap-2">
 							<span class="text-sm font-medium">{code.giro ? m.code_giro() : code.format}</span>
 							{#if code.giro}
-								<span
-									class="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
-								>
+								<Badge variant="muted">
 									{m.code_giro_badge({ format: code.format })}
-								</span>
+								</Badge>
 							{/if}
 							<!-- One code however often it is printed: a chip per page, as at a field. -->
 							<span class="ml-auto flex flex-wrap justify-end gap-1">
@@ -666,7 +665,7 @@
 							</span>
 						</div>
 						{#if code.giro}
-							<dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-[13px]">
+							<dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-meta">
 								<dt class="text-muted-foreground">{m.code_giro_name()}</dt>
 								<dd>{code.giro.name}</dd>
 								{#if ibanContact(code.giro.iban)}
@@ -686,12 +685,10 @@
 									<dd class="flex flex-wrap items-center gap-1.5">
 										{formatMoney(code.giro.amount.amount, code.giro.amount.currency)}
 										{#each code.fields as field (field)}
-											<span
-												class="inline-flex items-center gap-1 rounded-full bg-lane-green px-2 py-0.5 text-[11px] font-medium text-lane-green-foreground"
-											>
+											<Badge variant="green">
 												<Check class="size-3" aria-hidden="true" />
 												{m.code_same_as({ field: fieldName(field) })}
-											</span>
+											</Badge>
 										{/each}
 									</dd>
 								{/if}
@@ -706,20 +703,19 @@
 									class="max-h-24 min-w-0 flex-1 overflow-auto font-mono text-xs break-all whitespace-pre-wrap"
 									>{code.text}</code
 								>
-								<Button
-									variant="ghost"
-									size="icon"
-									class="size-7 shrink-0"
-									aria-label={m.codes_copy()}
+								<IconButton
+									size="sm"
+									class="shrink-0"
+									label={m.codes_copy()}
 									onclick={() => copy(code.text)}
 								>
 									<Copy aria-hidden="true" />
-								</Button>
+								</IconButton>
 							</div>
 						{/if}
 					</div>
 				</div>
 			{/each}
 		{/if}
-	</section>
+	</Card.Root>
 </div>

@@ -1,40 +1,29 @@
 <script lang="ts">
-	import History from '@lucide/svelte/icons/history';
-	import KeyRound from '@lucide/svelte/icons/key-round';
 	import Plus from '@lucide/svelte/icons/plus';
-	import Send from '@lucide/svelte/icons/send';
-	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { onMount } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
-	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import EditButton from '#lib/components/EditButton.svelte';
-	import SecretDialog from '#lib/components/SecretDialog.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
-	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
+	import { buttonVariants } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { userName, type UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { canManageWebhook } from '#lib/permissions.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
-	import { sendTest } from '#lib/webhooks.ts';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import Loading from '#lib/components/Loading.svelte';
 
 	type Webhook = components['schemas']['WebhookOut'];
 
 	let hooks = $state<Webhook[] | null>(null);
 	let users = $state<UserName[]>([]);
 	let problem = $state<string | null>(null);
-	let removing = $state<Webhook | null>(null);
-	let renewing = $state<Webhook | null>(null);
-	let secret = $state<{ webhook: string; value: string } | null>(null);
-	let busy = $state(false);
-
 	const ownerName = (id: string) => userName(users, id);
 
 	async function load() {
@@ -49,65 +38,46 @@
 		}
 	}
 	onMount(() => void load());
-
-	async function remove() {
-		if (!removing) return;
-		await unwrap(api.DELETE('/api/v1/webhooks/{id}', { params: { path: { id: removing.id } } }));
-		toast.success(m.webhook_deleted());
-		await load();
-	}
-
-	async function renew() {
-		if (!renewing) return;
-		const renewed = await unwrap(
-			api.POST('/api/v1/webhooks/{id}/secret', { params: { path: { id: renewing.id } } })
-		);
-		if (renewed.secret) secret = { webhook: renewed.name, value: renewed.secret };
-		await load();
-	}
-
-	async function test(hook: Webhook) {
-		busy = true;
-		try {
-			await sendTest(hook.id);
-		} finally {
-			busy = false;
-		}
-	}
 </script>
 
 <svelte:head><title>{m.nav_webhooks()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-center justify-between gap-3">
-		<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_webhooks()}</h1>
-		<a href="{BASE}/webhooks/new" class={cn(buttonVariants())}>
-			<Plus aria-hidden="true" />
-			{m.webhook_new()}
-		</a>
-	</div>
+	<PageHeader title={m.nav_webhooks()}>
+		{#snippet actions()}
+			<a href="{BASE}/webhooks/new" class={cn(buttonVariants())}>
+				<Plus aria-hidden="true" />
+				{m.webhook_new()}
+			</a>
+		{/snippet}
+	</PageHeader>
 
 	{#if problem}
 		<LoadProblem {problem} onretry={load} />
 	{:else if !hooks}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else if hooks.length === 0}
 		<EmptyNote>{m.webhook_none()}</EmptyNote>
 	{:else}
 		<ul class="flex flex-col gap-2">
 			{#each hooks as hook (hook.id)}
-				<li class="flex flex-wrap items-center gap-3 rounded-2xl border bg-card p-4">
+				<!-- The name's link takes the whole row; the pencil stands above it. -->
+				<Card.Root as="li" size="row" class="relative flex flex-wrap items-center gap-3">
 					<div class="flex min-w-0 flex-1 flex-col gap-1">
-						<span class="flex flex-wrap items-center gap-2 font-medium">
-							<span class="truncate">{hook.name}</span>
-							<Badge variant={hook.active ? 'secondary' : 'outline'}>
+						<span class="flex flex-wrap items-center gap-2">
+							<a
+								href="{BASE}/webhooks/{hook.id}"
+								class="truncate font-medium after:absolute after:inset-0 hover:underline"
+								>{hook.name}</a
+							>
+							<Badge variant={hook.active ? 'green' : 'muted'}>
 								{hook.active ? m.webhook_on() : m.webhook_off()}
 							</Badge>
 							{#if !hook.signed}
-								<Badge variant="outline">{m.webhook_unsigned()}</Badge>
+								<Badge variant="yellow">{m.webhook_unsigned()}</Badge>
 							{/if}
 							{#if hook.model_call}
-								<Badge variant="outline">
+								<Badge variant="note">
 									{hook.model_call.kind === 'propose'
 										? m.webhook_model_call_propose()
 										: m.webhook_model_call_extract()}
@@ -124,72 +94,13 @@
 							>
 						{/if}
 					</div>
-					<div class="flex flex-wrap gap-1">
-						{#if canManageWebhook(hook, session.user)}
-							<Button
-								variant="ghost"
-								size="icon"
-								disabled={busy}
-								aria-label={m.webhook_test({ name: hook.name })}
-								onclick={() => test(hook)}
-							>
-								<Send aria-hidden="true" />
-							</Button>
-						{/if}
-						<a
-							href="{BASE}/webhooks/{hook.id}"
-							aria-label={m.webhook_log({ name: hook.name })}
-							class={cn(buttonVariants({ variant: 'ghost', size: 'icon' }))}
-						>
-							<History aria-hidden="true" />
-						</a>
-						{#if canManageWebhook(hook, session.user) && hook.signed}
-							<Button
-								variant="ghost"
-								size="icon"
-								aria-label={m.webhook_renew({ name: hook.name })}
-								onclick={() => (renewing = hook)}
-							>
-								<KeyRound aria-hidden="true" />
-							</Button>
-						{/if}
-						<Button
-							variant="ghost"
-							size="icon"
-							aria-label={m.webhook_delete({ name: hook.name })}
-							onclick={() => (removing = hook)}
-						>
-							<Trash2 aria-hidden="true" />
-						</Button>
-					</div>
 					<EditButton
+						class="relative z-10"
 						label={m.webhook_edit_named({ name: hook.name })}
 						href="{BASE}/webhooks/{hook.id}/edit"
 					/>
-				</li>
+				</Card.Root>
 			{/each}
 		</ul>
 	{/if}
 </div>
-
-<ConfirmDialog
-	bind:open={() => removing !== null, (open) => !open && (removing = null)}
-	title={m.webhook_delete({ name: removing?.name ?? '' })}
-	description={m.webhook_delete_confirm()}
-	confirmLabel={m.delete_title()}
-	onconfirm={remove}
-/>
-<ConfirmDialog
-	bind:open={() => renewing !== null, (open) => !open && (renewing = null)}
-	title={m.webhook_renew({ name: renewing?.name ?? '' })}
-	description={m.webhook_renew_confirm()}
-	confirmLabel={m.webhook_renew_do()}
-	destructive={false}
-	onconfirm={renew}
-/>
-<SecretDialog
-	secret={secret?.value ?? null}
-	title={m.webhook_secret_title({ name: secret?.webhook ?? '' })}
-	description={m.webhook_secret_hint()}
-	onclose={() => (secret = null)}
-/>

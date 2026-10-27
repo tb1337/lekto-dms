@@ -29,6 +29,9 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { pathLabel } from '#lib/tags.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// A contact's identifiers, one line each under their kind (Tobi, 20.10.2026): the value, a
 	// mark if learned or rejected, the topic it points to. A line opens with its arrow, one at a
@@ -154,22 +157,12 @@
 
 <div class="flex flex-col gap-1" role="group" aria-label={m.master_identifiers()}>
 	<div class="flex items-center gap-2 pb-1">
-		<SearchField
-			bind:value={query}
-			label={m.identifier_search()}
-			class="h-11 min-w-0 flex-1 rounded-full border border-input bg-card px-3.5 focus-within:border-ring sm:h-10 dark:bg-input/30"
-		/>
+		<SearchField bind:value={query} label={m.identifier_search()} class="flex-1" />
 		{#if hint}<InfoHint text={hint} about={m.master_identifiers()} />{/if}
 		{#if phone.current}
-			<Button
-				type="button"
-				size="icon"
-				class="size-11 shrink-0"
-				aria-label={m.identifier_add()}
-				onclick={add}
-			>
+			<IconButton type="button" class="shrink-0" label={m.identifier_add()} onclick={add}>
 				<Plus class="size-5" aria-hidden="true" />
-			</Button>
+			</IconButton>
 		{:else}
 			<Button type="button" variant="outline" class="h-10 shrink-0" onclick={add}>
 				<Plus aria-hidden="true" />
@@ -187,13 +180,11 @@
 	{/if}
 
 	{#each groups as group (group.kind)}
-		<h3
-			class="flex items-baseline gap-2 px-1 pt-2 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-		>
+		<Eyebrow as="h3" class="flex items-baseline gap-2 px-1 pt-2 pb-1">
 			{kindLabel(group.kind)}
 			<span class="font-medium tabular-nums">{group.rows.length}</span>
-		</h3>
-		<ul class="divide-y overflow-hidden rounded-2xl border bg-card">
+		</Eyebrow>
+		<Card.Root as="ul" size="flush" class="divide-y overflow-hidden">
 			{#each group.rows as item (item.key)}
 				{@const open = opened === item.key}
 				{@const topic = topicOf(item.topic_id)}
@@ -229,7 +220,7 @@
 								{item.value || m.identifier_new()}
 							</span>
 							{#if item.source !== 'manual'}
-								<Badge variant={item.source === 'learned' ? 'secondary' : 'outline'}>
+								<Badge variant={item.source === 'learned' ? 'note' : 'muted'}>
 									{item.source === 'learned' ? m.identifier_learned() : m.identifier_rejected()}
 								</Badge>
 							{/if}
@@ -243,16 +234,14 @@
 							{/if}
 						</button>
 						{#if item.source === 'manual'}
-							<Button
+							<IconButton
 								type="button"
-								variant="ghost"
-								size="icon"
-								class="size-9 shrink-0"
-								aria-label={m.identifier_remove_named({ value: item.value || m.identifier_new() })}
+								class="shrink-0"
+								label={m.identifier_remove_named({ value: item.value || m.identifier_new() })}
 								onclick={() => drop(item)}
 							>
 								<X aria-hidden="true" />
-							</Button>
+							</IconButton>
 						{:else}
 							<span class="size-9 shrink-0" aria-hidden="true"></span>
 						{/if}
@@ -368,6 +357,6 @@
 					{/if}
 				</li>
 			{/each}
-		</ul>
+		</Card.Root>
 	{/each}
 </div>

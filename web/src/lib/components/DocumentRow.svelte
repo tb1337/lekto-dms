@@ -11,6 +11,7 @@
 	import { formatDate } from '#lib/i18n.ts';
 	import { byId, foreignSpace, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
 
 	// One document in a list: preview, title, contact (with its logo or initials) and type
 	// (with its icon) each with its shown groups, date, its shown tags, for admins the space of
@@ -45,8 +46,9 @@
 	const foreign = $derived(foreignSpace(document.space_id, lookup, session.user?.id));
 </script>
 
-<div
-	class="flex items-center gap-3 rounded-2xl border bg-card p-3 transition-colors has-[>a:hover]:border-primary"
+<Card.Root
+	size="flush"
+	class="flex items-center gap-3 p-3 transition-colors has-[>a:hover]:border-primary"
 >
 	<a {href} class="flex min-w-0 flex-1 items-center gap-4 rounded-lg">
 		<DocumentThumb
@@ -74,4 +76,4 @@
 		</div>
 	</a>
 	{@render aside?.()}
-</div>
+</Card.Root>

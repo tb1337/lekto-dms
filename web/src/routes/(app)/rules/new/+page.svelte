@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { BASE } from '#lib/base.ts';
-	import BackLink from '#lib/components/BackLink.svelte';
 	import RuleBuilder from '#lib/components/rules/RuleBuilder.svelte';
 	import { describeError } from '#lib/errors.ts';
 	import { loadRuleLookup, spaceOptions, type Lookup } from '#lib/masterdata.svelte.ts';
@@ -12,10 +11,18 @@
 	import { rulePlaces } from '#lib/rules/places.ts';
 	import { createSwitchedOff } from '#lib/rules/save.ts';
 	import { session } from '#lib/session.svelte.ts';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
+	import Loading from '#lib/components/Loading.svelte';
+	import UnsavedGuard from '#lib/components/UnsavedGuard.svelte';
 
 	const model = $state(newModel());
 	// Empty: the caller's personal space, once the spaces are known.
 	let chosen = $state('');
+	// What it was, to ask before changes are lost; cleared once saved or cancelled.
+	const initial = JSON.stringify(toApi(model));
+	let leaving = $state(false);
+	const changed = $derived(chosen !== '' || JSON.stringify(toApi(model)) !== initial);
 	let lookup = $state<Lookup | null>(null);
 	let problem = $state<string | null>(null);
 	const form = new RuleForm();
@@ -30,30 +37,36 @@
 	const place = $derived(chosen || personal);
 	const targets = $derived(spaceOptions(lookup?.spaces ?? [], lookup?.users ?? [], session.user));
 
-	onMount(() => {
+	function loadLookup() {
+		problem = null;
 		loadRuleLookup().then(
 			(value) => (lookup = value),
 			(error) => (problem = describeError(error))
 		);
-	});
+	}
+
+	onMount(loadLookup);
 
 	async function save() {
 		if (!lookup || !form.check(model, lookup.fields)) return;
 		const rule = await form.save(model, () => createSwitchedOff(place, toApi(model)));
-		if (rule) await goto(`${BASE}/rules/${rule.id}/apply?saved=1`);
+		if (!rule) return;
+		leaving = true;
+		await goto(`${BASE}/rules/${rule.id}/apply?saved=1`);
 	}
 </script>
 
 <svelte:head><title>{m.rule_new_title()} · {m.app_name()}</title></svelte:head>
 
+<UnsavedGuard dirty={changed && !leaving} />
+
 <div class="flex flex-col gap-6">
-	<BackLink href="{BASE}/rules" label={m.nav_rules()} />
-	<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.rule_new_title()}</h1>
+	<PageHeader title={m.rule_new_title()} back={{ href: `${BASE}/rules`, label: m.nav_rules() }} />
 
 	{#if problem}
-		<p class="text-destructive" role="alert">{problem}</p>
+		<LoadProblem {problem} onretry={loadLookup} />
 	{:else if !lookup}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<RuleBuilder
 			{model}
@@ -66,6 +79,7 @@
 			general={form.general}
 			busy={form.busy}
 			cancelHref="{BASE}/rules"
+			oncancel={() => (leaving = true)}
 			onsubmit={save}
 		/>
 	{/if}

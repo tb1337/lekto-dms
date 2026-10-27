@@ -70,6 +70,11 @@
 	import { cn } from '#lib/utils.ts';
 	import { above, normalise, ofScope } from '#lib/tags.ts';
 	import { Choice } from '#lib/components/ui/choice/index.ts';
+	import { cardVariants } from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import { Badge } from '#lib/components/ui/badge/index.ts';
+	import UnsavedGuard from '#lib/components/UnsavedGuard.svelte';
+	import DateInput from '#lib/components/DateInput.svelte';
 
 	type Document = components['schemas']['DocumentDetails'];
 	type Patch = components['schemas']['DocumentPatch'];
@@ -423,6 +428,8 @@
 	}
 
 	const dirty = $derived(Object.keys(buildPatch()).length > 0);
+	// Confirmed: what follows (a reload, the next document) is no loss to ask about.
+	let settled = $state(false);
 
 	function readProblem(error: unknown): void {
 		fieldErrors = fieldMessages(error);
@@ -454,6 +461,7 @@
 				})
 			);
 			baseline = null;
+			settled = true;
 			if (enabling) onenabled?.();
 			// The answer says `access: null` when the caller cannot read the document any more.
 			const away =
@@ -511,6 +519,7 @@
 			);
 			preview = null;
 			baseline = null;
+			settled = true;
 			if (enabling) onenabled?.();
 			toast.success(m.document_saved());
 			if ('title' in result) onsaved(result);
@@ -620,8 +629,10 @@
 	const located = $derived([...evidence.values()].some((entry) => entry.check.locations?.length));
 </script>
 
+<UnsavedGuard dirty={dirty && !busy && !settled} />
+
 <form
-	class="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border bg-card"
+	class={cn(cardVariants({ size: 'flush' }), 'flex h-full min-h-0 flex-col overflow-hidden')}
 	onsubmit={submit}
 	novalidate
 	aria-label={m.edit_title()}
@@ -630,12 +641,10 @@
 	{#if end || (reviewing && undecided > 0)}
 		<PaneHead {end}>
 			{#if reviewing && undecided > 0}
-				<span
-					class="inline-flex h-6 items-center gap-1.5 rounded-full bg-lane-yellow px-2.5 text-xs font-medium text-lane-yellow-foreground"
-				>
+				<Badge variant="yellow">
 					<span class="size-[7px] rounded-full bg-lane-yellow-foreground" aria-hidden="true"></span>
 					{undecided === 1 ? m.review_undecided_one() : m.review_undecided({ count: undecided })}
-				</span>
+				</Badge>
 			{/if}
 		</PaneHead>
 	{/if}
@@ -728,8 +737,10 @@
 					bind:value={title}
 					disabled={!editable}
 					aria-invalid={fieldErrors.title ? true : undefined}
+					aria-describedby={fieldErrors.title ? 'doc-title-error' : undefined}
 				/>
-				{#if fieldErrors.title}<p class="text-sm text-destructive">{fieldErrors.title}</p>{/if}
+				{#if fieldErrors.title}<Field.Error id="doc-title-error">{fieldErrors.title}</Field.Error
+					>{/if}
 			</FieldShell>
 			<FieldShell
 				key="document_date"
@@ -743,7 +754,7 @@
 				onfocus={focus}
 				onjump={jump}
 			>
-				<Input id="doc-date" type="date" bind:value={date} disabled={!editable} />
+				<DateInput id="doc-date" label={m.field_date()} bind:value={date} disabled={!editable} />
 			</FieldShell>
 			<FieldShell
 				key="contact"
@@ -1014,7 +1025,7 @@
 </form>
 
 <Dialog.Root open={preview !== null} onOpenChange={(open) => !open && (preview = null)}>
-	<Dialog.Content class="sm:max-w-xl">
+	<Dialog.Content size="lg">
 		<Dialog.Header>
 			<Dialog.Title>{m.dryrun_title()}</Dialog.Title>
 			<Dialog.Description>{m.dryrun_hint()}</Dialog.Description>
@@ -1022,7 +1033,7 @@
 		{#if preview}
 			<div class="flex max-h-[60vh] flex-col gap-4 overflow-auto text-sm">
 				<section>
-					<h3 class="mb-1 font-medium">{m.dryrun_changes()}</h3>
+					<SectionTitle size="card" level={3} class="mb-1">{m.dryrun_changes()}</SectionTitle>
 					<ul class="flex flex-col gap-1">
 						{#each preview.changed as field (field)}
 							<li><span class="text-muted-foreground">{fieldLabel(field, lookup)}</span></li>
@@ -1031,7 +1042,7 @@
 				</section>
 				{#if preview.rules && preview.rules.length > 0}
 					<section>
-						<h3 class="mb-1 font-medium">{m.dryrun_rules()}</h3>
+						<SectionTitle size="card" level={3} class="mb-1">{m.dryrun_rules()}</SectionTitle>
 						<ul class="flex flex-col gap-2">
 							{#each preview.rules as rule (rule.rule_id)}
 								<li class="rounded-xl border p-3">
@@ -1051,7 +1062,7 @@
 				{/if}
 				{#if preview.visibility}
 					<section>
-						<h3 class="mb-1 font-medium">{m.dryrun_visible()}</h3>
+						<SectionTitle size="card" level={3} class="mb-1">{m.dryrun_visible()}</SectionTitle>
 						<p>
 							{m.dryrun_space({ space: describeValue(preview.visibility.space_id, lookup) })}
 						</p>

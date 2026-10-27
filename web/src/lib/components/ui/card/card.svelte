@@ -1,3 +1,27 @@
+<script lang="ts" module>
+	import { tv, type VariantProps } from 'tailwind-variants';
+
+	// Every card (web/DESIGN.md, "Cards"): the radius of cards, a hairline border, no shadow; the
+	// layout inside is the caller's (`class`). The size sets the padding: `row` for items of a list, `sm` for dense panels, `md` by default,
+	// `lg` for the sections of the system page, `flush` for a card whose rows or parts pad
+	// themselves.
+	export const cardVariants = tv({
+		base: 'group/card min-w-0 rounded-2xl border bg-card text-card-foreground',
+		variants: {
+			size: {
+				flush: '',
+				row: 'p-4',
+				sm: 'p-3.5',
+				md: 'p-5',
+				lg: 'px-5 py-4 sm:px-6'
+			}
+		},
+		defaultVariants: { size: 'md' }
+	});
+
+	export type CardSize = VariantProps<typeof cardVariants>['size'];
+</script>
+
 <script lang="ts">
 	import { cn, type WithElementRef } from '#lib/utils.ts';
 	import type { HTMLAttributes } from 'svelte/elements';
@@ -6,20 +30,22 @@
 		ref = $bindable(null),
 		class: className,
 		children,
-		size = 'default',
+		size = 'md',
+		as = 'div',
 		...restProps
-	}: WithElementRef<HTMLAttributes<HTMLDivElement>> & { size?: 'default' | 'sm' } = $props();
+	}: WithElementRef<HTMLAttributes<HTMLElement>> & {
+		size?: CardSize;
+		as?: 'div' | 'section' | 'article' | 'li' | 'ul' | 'aside' | 'form';
+	} = $props();
 </script>
 
-<div
+<svelte:element
+	this={as}
 	bind:this={ref}
 	data-slot="card"
 	data-size={size}
-	class={cn(
-		'group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl bg-card py-(--card-spacing) text-sm text-card-foreground ring-1 ring-foreground/10 [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl',
-		className
-	)}
+	class={cn(cardVariants({ size }), className)}
 	{...restProps}
 >
 	{@render children?.()}
-</div>
+</svelte:element>

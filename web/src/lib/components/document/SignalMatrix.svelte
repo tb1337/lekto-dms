@@ -7,6 +7,10 @@
 	import type { CellKind, MatrixRow } from '#lib/signal-matrix.ts';
 	import { DOT } from '#lib/step-look.ts';
 	import { cn } from '#lib/utils.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import * as Table from '#lib/components/ui/table/index.ts';
+	import { Badge } from '#lib/components/ui/badge/index.ts';
 
 	// "Wer hat was erkannt?" (from mock A, Tobi 23.10.2026): per property the value and what
 	// each signal said about it, as a mark; the number behind it on pointing. Narrow, each value
@@ -22,11 +26,11 @@
 			case 'names':
 				return cn('size-4 rounded-full', fill);
 			case 'evidence':
-				return cn('size-4 rounded-[4px]', fill);
+				return cn('size-4 rounded-xs', fill);
 			case 'other':
 				return 'size-4 rounded-full border-[1.5px] border-muted-foreground';
 			case 'contradicts':
-				return cn('mx-0.5 size-3 rotate-45 rounded-[2px]', DOT.red);
+				return cn('mx-0.5 size-3 rotate-45 rounded-xs', DOT.red);
 			case 'silent':
 				return 'size-4 rounded-full border-[1.5px] border-dashed border-muted-foreground/60';
 		}
@@ -57,41 +61,38 @@
 	];
 </script>
 
-<section
-	aria-labelledby="matrix-heading"
-	class="flex min-w-0 flex-col gap-3 rounded-2xl border bg-card p-5"
->
+<Card.Root as="section" aria-labelledby="matrix-heading" class="flex min-w-0 flex-col gap-3">
 	<div>
-		<h2 id="matrix-heading" class="font-semibold">{m.matrix_title()}</h2>
+		<SectionTitle size="card" id="matrix-heading">{m.matrix_title()}</SectionTitle>
 		<p class="mt-0.5 text-sm text-muted-foreground">{m.matrix_hint()}</p>
 	</div>
-	<table class="w-full table-fixed border-collapse text-sm">
+	<Table.Root class="w-full table-fixed border-collapse text-sm">
 		<colgroup>
 			<col />
 			{#each SIGNAL_NODES as signal (signal)}
 				<col class={chips ? 'w-10' : 'w-28'} />
 			{/each}
 		</colgroup>
-		<thead>
-			<tr>
-				<th scope="col" class="sr-only">{m.matrix_property()}</th>
+		<Table.Header>
+			<Table.Row>
+				<Table.Head scope="col" class="sr-only">{m.matrix_property()}</Table.Head>
 				{#each SIGNAL_NODES as signal (signal)}
-					<th
+					<Table.Head
 						scope="col"
 						class={cn(
 							'pb-2 text-center align-bottom font-normal text-muted-foreground',
-							chips ? 'text-[10px] leading-tight hyphens-auto' : 'text-xs'
+							chips ? 'text-nano leading-tight hyphens-auto' : 'text-xs'
 						)}
 					>
 						{NODE_LABELS[signal]()}
-					</th>
+					</Table.Head>
 				{/each}
-			</tr>
-		</thead>
-		<tbody>
+			</Table.Row>
+		</Table.Header>
+		<Table.Body>
 			{#each rows as row (row.field)}
-				<tr class="border-t border-muted">
-					<th scope="row" class="py-2.5 pr-2 text-left font-normal">
+				<Table.Row class="border-t border-muted">
+					<Table.Head scope="row" class="py-2.5 pr-2 text-left font-normal">
 						<span class="flex min-w-0 items-start gap-2.5">
 							{#if row.open}
 								<TriangleAlert
@@ -119,33 +120,26 @@
 									{row.value}
 								</span>
 								{#if chips}
-									<span
-										class={cn(
-											'self-start rounded-full px-2 py-0.5 text-[11px] font-medium',
-											row.open
-												? 'bg-lane-yellow text-lane-yellow-foreground'
-												: 'bg-lane-green text-lane-green-foreground'
-										)}
-									>
+									<Badge variant={row.open ? 'yellow' : 'green'} class="self-start">
 										{row.chip}
-									</span>
+									</Badge>
 								{/if}
 							</span>
 						</span>
-					</th>
+					</Table.Head>
 					{#each row.cells as cell (cell.signal)}
-						<td class="py-2.5 text-center" title={cell.title}>
+						<Table.Cell class="py-2.5 text-center" title={cell.title}>
 							<span
 								class={cn('inline-block align-middle', mark(cell.kind, row.open))}
 								role="img"
 								aria-label={`${NODE_LABELS[cell.signal]()}: ${word(cell.kind, row.open)}`}
 							></span>
-						</td>
+						</Table.Cell>
 					{/each}
-				</tr>
+				</Table.Row>
 			{/each}
-		</tbody>
-	</table>
+		</Table.Body>
+	</Table.Root>
 	<ul
 		class="flex flex-wrap gap-x-4 gap-y-1.5 border-t border-muted pt-3 text-xs text-muted-foreground"
 	>
@@ -156,4 +150,4 @@
 			</li>
 		{/each}
 	</ul>
-</section>
+</Card.Root>

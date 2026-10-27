@@ -36,7 +36,7 @@ class FakeSource {
 }
 
 const state = vi.hoisted(() => ({ url: new URL('http://lekto/ui/documents') }));
-vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
+vi.mock('$app/navigation', () => ({ beforeNavigate: vi.fn(), goto: vi.fn() }));
 vi.mock('$app/state', () => ({
 	page: {
 		get url() {
@@ -108,7 +108,10 @@ describe('the archive page', () => {
 		);
 		render(Page);
 		await screen.findByText('Strom');
-		const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent?.trim());
+		// The list's headings, not those of the filters beside it.
+		const listHeadings = () =>
+			screen.queryAllByRole('heading', { level: 2 }).filter((h) => !h.closest('aside'));
+		const headings = listHeadings().map((h) => h.textContent?.trim());
 		expect(headings).toEqual([
 			formatDate(new Date(2026, 9, 1), { month: 'long', year: 'numeric' }),
 			formatDate(new Date(2026, 8, 1), { month: 'long', year: 'numeric' }),
@@ -132,7 +135,9 @@ describe('the archive page', () => {
 		);
 		render(Page);
 		await screen.findByText('Strom');
-		expect(screen.queryAllByRole('heading', { level: 2 })).toEqual([]);
+		expect(
+			screen.queryAllByRole('heading', { level: 2 }).filter((h) => !h.closest('aside'))
+		).toEqual([]);
 	});
 
 	it('counts the documents of the filters, and asks with each chosen contact', async () => {

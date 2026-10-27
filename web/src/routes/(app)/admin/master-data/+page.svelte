@@ -1,6 +1,5 @@
 <script lang="ts">
 	import Plus from '@lucide/svelte/icons/plus';
-	import SearchIcon from '@lucide/svelte/icons/search';
 	import { page } from '$app/state';
 	import FieldsPanel from '#lib/components/FieldsPanel.svelte';
 	import MasterDataList from '#lib/components/MasterDataList.svelte';
@@ -13,11 +12,14 @@
 	import { session } from '#lib/session.svelte.ts';
 	import { MASTER_TABS as TABS, masterTabOf, type MasterTab as Tab } from '#lib/master-tabs.ts';
 	import { kindFilter } from '#lib/tag-kinds.ts';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import SearchField from '#lib/components/SearchField.svelte';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// Four tabs: contacts, document types, every kind of tag, fields. The tab stands in the URL
 	// (an unknown one is the first); the API refuses everyone but admins. Each tab has its own
-	// search (in this browser) and adds with the button beside it, on a phone with the round one
-	// beside the title.
+	// search (in this browser) and adds with the button level with the title (on a phone an icon
+	// button).
 	const tab = $derived(masterTabOf(page.url.searchParams));
 	const queries = $state<Record<Tab, string>>({
 		contacts: '',
@@ -54,14 +56,20 @@
 <svelte:head><title>{m.nav_master_data()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-4 sm:gap-6">
-	<div class="flex items-center justify-between gap-3">
-		<h1 class="text-2xl font-semibold tracking-tight sm:text-[1.75rem]">{m.nav_master_data()}</h1>
-		{#if session.isAdmin && phone.current}
-			<Button size="icon" class="size-11 shrink-0" aria-label={ADD[tab]()} onclick={add}>
-				<Plus class="size-5" aria-hidden="true" />
-			</Button>
-		{/if}
-	</div>
+	<PageHeader title={m.nav_master_data()}>
+		{#snippet actions()}
+			{#if session.isAdmin && phone.current}
+				<IconButton label={ADD[tab]()} variant="default" onclick={add}>
+					<Plus aria-hidden="true" />
+				</IconButton>
+			{:else if session.isAdmin}
+				<Button onclick={add}>
+					<Plus aria-hidden="true" />
+					{ADD[tab]()}
+				</Button>
+			{/if}
+		{/snippet}
+	</PageHeader>
 
 	{#if !session.isAdmin}
 		<p class="text-muted-foreground">{m.admin_only()}</p>
@@ -80,26 +88,11 @@
 				fill
 			/>
 			<div class="mt-4 flex flex-col gap-3 sm:gap-4">
-				<div class="flex items-center gap-3">
-					<label
-						class="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-xl border border-input bg-card px-3.5 text-muted-foreground focus-within:border-ring sm:h-10 sm:rounded-full dark:bg-input/30"
-					>
-						<SearchIcon class="size-4 shrink-0" aria-hidden="true" />
-						<input
-							type="search"
-							bind:value={queries[tab]}
-							placeholder={SEARCH[tab]()}
-							aria-label={m.master_search_label({ what: LABEL[tab]() })}
-							class="h-full min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground sm:text-sm"
-						/>
-					</label>
-					{#if !phone.current}
-						<Button onclick={add}>
-							<Plus aria-hidden="true" />
-							{ADD[tab]()}
-						</Button>
-					{/if}
-				</div>
+				<SearchField
+					bind:value={queries[tab]}
+					label={m.master_search_label({ what: LABEL[tab]() })}
+					placeholder={SEARCH[tab]()}
+				/>
 				{#key tab}
 					{#if tab === 'fields'}
 						<FieldsPanel query={queries.fields} />

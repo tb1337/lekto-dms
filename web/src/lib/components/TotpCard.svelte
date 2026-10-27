@@ -61,7 +61,7 @@
 	<Card.Header>
 		<Card.Title class="flex items-center gap-2">
 			{m.totp_title()}
-			<Badge variant={enabled ? 'secondary' : 'outline'}>
+			<Badge variant={enabled ? 'green' : 'muted'}>
 				{enabled ? m.totp_on() : m.totp_off()}
 			</Badge>
 		</Card.Title>

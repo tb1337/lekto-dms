@@ -15,8 +15,8 @@
 	} = $props();
 
 	const SIZES = {
-		xs: 'size-5 text-[0.5625rem]',
-		sm: 'size-6 text-[0.625rem]',
+		xs: 'size-5 text-nano',
+		sm: 'size-6 text-nano',
 		md: 'size-8 text-xs',
 		lg: 'size-12 text-base',
 		xl: 'size-14 text-lg'

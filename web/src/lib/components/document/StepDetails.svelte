@@ -40,6 +40,7 @@
 	} from '#lib/step-details.ts';
 	import { DOT, MARK } from '#lib/step-look.ts';
 	import { cn } from '#lib/utils.ts';
+	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
 
 	type LogEntry = components['schemas']['LogEntry'];
 	type Stored = components['schemas']['StoredFileOut'];
@@ -180,10 +181,10 @@
 								></span>
 							</span>
 							<span class="text-xs font-medium tabular-nums" aria-hidden="true">{page.label}</span>
-							<span class="text-[11px] whitespace-nowrap text-muted-foreground" aria-hidden="true"
+							<span class="text-micro whitespace-nowrap text-muted-foreground" aria-hidden="true"
 								>{m.details_page_short({ page: String(page.page) })}</span
 							>
-							<span class="text-[11px] whitespace-nowrap text-muted-foreground" aria-hidden="true"
+							<span class="text-micro whitespace-nowrap text-muted-foreground" aria-hidden="true"
 								>{m.details_page_words({ words: formatNumber(page.words) })}</span
 							>
 							<span class="sr-only">{page.text}{weak ? ` (${m.details_poor()})` : ''}</span>
@@ -207,7 +208,6 @@
 							<a
 								href={context.pageHref(number)}
 								class="group flex flex-col items-center gap-1 rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-								title={m.details_page_open({ page: String(number) })}
 								aria-label={m.details_page_open({ page: String(number) })}
 							>
 								<img
@@ -217,7 +217,7 @@
 									decoding="async"
 									class="h-24 w-auto max-w-20 rounded-md border bg-surface object-contain transition-shadow group-hover:shadow-md"
 								/>
-								<span class="text-[11px] text-muted-foreground"
+								<span class="text-micro text-muted-foreground"
 									>{m.details_page_short({ page: String(number) })}</span
 								>
 							</a>
@@ -260,7 +260,7 @@
 							<span class="text-xs font-medium tabular-nums" aria-hidden="true"
 								>{formatNumber(amount)}</span
 							>
-							<span class="text-[11px] whitespace-nowrap text-muted-foreground" aria-hidden="true"
+							<span class="text-micro whitespace-nowrap text-muted-foreground" aria-hidden="true"
 								>{m.details_page_short({ page: String(index + 1) })}</span
 							>
 							<span class="sr-only">{label}</span>
@@ -279,13 +279,13 @@
 		<div class="grid gap-x-8 gap-y-4 @xl:grid-cols-2">
 			{#each groups as group (group.kind)}
 				<div class="flex min-w-0 flex-col gap-1.5">
-					<h4 class="text-xs font-normal text-muted-foreground">
+					<Eyebrow as="h4">
 						{group.label}{#if group.threshold !== null}<span>
 								· {m.details_threshold({
 									value: formatNumber(group.threshold, { style: 'percent' })
 								})}</span
 							>{/if}
-					</h4>
+					</Eyebrow>
 					{#if group.ranks.length === 0}
 						<p class="text-sm text-muted-foreground">{m.signal_none()}</p>
 					{:else}

@@ -20,6 +20,7 @@
 	import { formatNumber } from '#lib/i18n.ts';
 	import { matchesWords, searchWords, toggled } from '#lib/picking.ts';
 	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
+	import { Button } from '#lib/components/ui/button/index.ts';
 
 	// A long list of a group of the filters, kept short: the most frequent values (`top`, most
 	// first) and the chosen ones with a box each, a field that searches all of them, and every
@@ -69,12 +70,7 @@
 	<div class="flex flex-col gap-1" role="group" aria-labelledby="{id}-heading">
 		<span id="{id}-heading" class="text-xs text-muted-foreground">{heading}</span>
 		{#if items.length > limit}
-			<SearchField
-				bind:value={query}
-				label={searchLabel}
-				size="sm"
-				class="h-8 rounded-lg border border-input bg-background px-2.5 focus-within:border-ring"
-			/>
+			<SearchField bind:value={query} label={searchLabel} size="sm" />
 		{/if}
 		<ul class="flex flex-col">
 			{#each shown as item (item.id)}
@@ -100,13 +96,14 @@
 			{/each}
 		</ul>
 		{#if items.length > limit}
-			<button
-				type="button"
-				class="w-fit px-1.5 text-sm text-brand hover:underline"
+			<Button
+				variant="link"
+				size="inline"
+				class="w-fit px-1.5 text-sm font-normal"
 				onclick={() => (picking = true)}
 			>
 				{allLabel}
-			</button>
+			</Button>
 			<FacetPicker
 				bind:open={picking}
 				title={pickerTitle}

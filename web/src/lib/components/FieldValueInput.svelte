@@ -6,6 +6,7 @@
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import DateInput from '#lib/components/DateInput.svelte';
 
 	// The input for one field, by its data type; the caller labels it (`id`). An empty field
 	// removes the value. `onunreadable` says while a period's text cannot be read (the value
@@ -61,12 +62,14 @@
 	<Select {id} bind:value {disabled} options={yesNo} aria-invalid={error ? true : undefined} />
 {:else if field.data_type === 'choice' && typeof value === 'string'}
 	<Select {id} bind:value {disabled} options={choices} aria-invalid={error ? true : undefined} />
+{:else if field.data_type === 'date' && typeof value === 'string'}
+	<DateInput {id} label={field.name} bind:value {disabled} invalid={!!error} />
 {:else if typeof value === 'string'}
 	<Input
 		{id}
 		bind:value
 		{disabled}
-		type={field.data_type === 'date' ? 'date' : field.data_type === 'link' ? 'url' : 'text'}
+		type={field.data_type === 'link' ? 'url' : 'text'}
 		inputmode={field.data_type === 'number' ? 'decimal' : undefined}
 		aria-invalid={error ? true : undefined}
 	/>

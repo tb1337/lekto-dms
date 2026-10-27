@@ -1,6 +1,5 @@
 <script lang="ts">
 	import SearchIcon from '@lucide/svelte/icons/search';
-	import X from '@lucide/svelte/icons/x';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { factFilterLabel } from '#lib/facts.ts';
 	import { NO_FILTERS, isFiltered, type Filters } from '#lib/filters.ts';
@@ -10,6 +9,7 @@
 	import { periodLabel } from '#lib/period-label.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { pathLabel } from '#lib/tags.ts';
+	import Chip from '#lib/components/Chip.svelte';
 
 	// What narrows the list, each as a chip that lets it go, and a reset; nothing while nothing
 	// is chosen. Tags, topics and groups are their chips as everywhere (`TagChip`: colour and
@@ -32,7 +32,7 @@
 		readonly?: boolean;
 	} = $props();
 
-	interface Chip {
+	interface FilterChip {
 		key: string;
 		name: string;
 		label: string;
@@ -45,7 +45,7 @@
 	const chips = $derived.by(() => {
 		const byId = new Map(lookup.tags.map((tag) => [tag.id, tag]));
 		const tags = new Map(lookup.tags.map((tag) => [tag.id, pathLabel(tag)]));
-		const result: Chip[] = [];
+		const result: FilterChip[] = [];
 		const period = periodLabel(filters);
 		if (period) {
 			result.push({
@@ -145,22 +145,16 @@
 {#if isFiltered(filters) || query}
 	<div class="flex flex-wrap items-center gap-2" role="group" aria-label={m.filters_active()}>
 		{#if query}
-			<span
-				class="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full border bg-card pr-1 pl-3 text-sm"
+			<Chip
+				variant="outline"
+				onremove={onclearquery}
+				removeLabel={m.search_chip_remove({ words: query })}
 			>
-				<SearchIcon class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-				<span class="truncate">{m.search_chip({ words: query })}</span>
-				{#if onclearquery}
-					<button
-						type="button"
-						class="grid size-6 shrink-0 place-items-center rounded-full hover:bg-secondary"
-						aria-label={m.search_chip_remove({ words: query })}
-						onclick={onclearquery}
-					>
-						<X class="size-3.5" aria-hidden="true" />
-					</button>
-				{/if}
-			</span>
+				{#snippet icon()}
+					<SearchIcon class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+				{/snippet}
+				{m.search_chip({ words: query })}
+			</Chip>
 		{/if}
 		{#each chips as chip (chip.key)}
 			{#if chip.tag}
@@ -172,28 +166,11 @@
 					removeLabel={chip.label}
 				/>
 			{:else}
-				<span
-					class={[
-						'inline-flex h-8 max-w-full items-center gap-1 pl-3 text-sm',
-						readonly ? 'pr-3' : 'pr-1',
-						chip.shape === 'square' ? 'rounded-md' : 'rounded-full',
-						chip.shape === 'outline'
-							? 'border bg-background'
-							: 'border border-primary/40 bg-panel text-brand'
-					]}
+				<Chip
+					variant={chip.shape === 'outline' ? 'outline' : 'selected'}
+					onremove={readonly ? undefined : () => onchange?.({ ...filters, ...chip.without })}
+					removeLabel={chip.label}>{chip.name}</Chip
 				>
-					<span class="truncate">{chip.name}</span>
-					{#if !readonly}
-						<button
-							type="button"
-							class="grid size-6 shrink-0 place-items-center rounded-full hover:bg-background"
-							aria-label={chip.label}
-							onclick={() => onchange?.({ ...filters, ...chip.without })}
-						>
-							<X class="size-3.5" aria-hidden="true" />
-						</button>
-					{/if}
-				</span>
 			{/if}
 		{/each}
 		{#if !readonly && isFiltered(filters)}

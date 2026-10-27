@@ -71,14 +71,13 @@ describe('the archive', () => {
 		const [head, page, text] = [...link.children];
 		expect(within(head as HTMLElement).getByText('Stadtwerke Süd')).toBeTruthy();
 		expect(head.getAttribute('title')).toBe('Stadtwerke Süd');
-		// The tag and the contact's group stand on the page, with its page count.
-		expect(within(page as HTMLElement).getByText('zu bezahlen')).toBeTruthy();
-		expect(within(page as HTMLElement).getByText('Versorger')).toBeTruthy();
+		// Only the page count stands on the page, as glass; the tag and the contact's group stand
+		// below the title (web/DESIGN.md, "Document card").
 		const count = within(page as HTMLElement).getByText(m.doc_pages_short({ count: 2 }));
-		// On glass with an edge, apart from light and dark pages alike.
-		for (const mark of [within(page as HTMLElement).getByTitle('zu bezahlen'), count]) {
-			expect(mark.classList.contains('mark-glass')).toBe(true);
-		}
+		expect(count.classList.contains('mark-glass')).toBe(true);
+		expect(within(page as HTMLElement).queryByText('zu bezahlen')).toBeNull();
+		expect(within(text as HTMLElement).getByText('zu bezahlen')).toBeTruthy();
+		expect(within(text as HTMLElement).getByText('Versorger')).toBeTruthy();
 		expect(text.textContent).toContain('Stromrechnung');
 		expect(text.textContent).toContain('Rechnung');
 		expect(text.textContent).toContain(formatDate('2026-10-01'));

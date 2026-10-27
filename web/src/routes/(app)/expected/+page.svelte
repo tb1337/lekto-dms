@@ -13,6 +13,10 @@
 	import { labelOfKind } from '#lib/identifiers.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import Loading from '#lib/components/Loading.svelte';
 
 	type Expected = components['schemas']['ExpectedOut'];
 	type State = Expected['state'];
@@ -81,33 +85,29 @@
 <svelte:head><title>{m.nav_expected()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-6">
-	<div class="flex flex-col gap-1">
-		<h1
-			class="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[1.75rem] font-semibold tracking-tight"
-		>
-			{m.nav_expected()}
+	<PageHeader title={m.nav_expected()} subtitle={m.expected_hint()}>
+		{#snippet aside()}
 			<!-- The area is new (Tobi, 26.10.2026): the pill says so and, opened, what that means. -->
 			<BetaPill tip={m.expected_beta_tip()} />
-		</h1>
-		<p class="text-sm text-muted-foreground">{m.expected_hint()}</p>
-	</div>
+		{/snippet}
+	</PageHeader>
 
 	{#if problem}
 		<LoadProblem {problem} onretry={() => attempt++} />
 	{:else if !found}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else if found.length === 0}
 		<EmptyNote>{m.expected_none()}</EmptyNote>
 	{:else}
 		{#each sections as section (section.state)}
 			<section class="flex flex-col gap-2" aria-labelledby="expected-{section.state}">
-				<h2 id="expected-{section.state}" class="text-base font-semibold">
+				<SectionTitle id="expected-{section.state}">
 					{section.title()}
 					<span class="font-normal text-muted-foreground">{section.items.length}</span>
-				</h2>
+				</SectionTitle>
 				<ul class="flex flex-col gap-2">
 					{#each section.items as item (item.last.id)}
-						<li class="flex flex-wrap items-center gap-3 rounded-2xl border bg-card p-4">
+						<Card.Root as="li" size="row" class="flex flex-wrap items-center gap-3">
 							<CalendarClock class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
 							<div class="flex min-w-0 flex-1 flex-col gap-1">
 								<span class="flex flex-wrap items-center gap-2 font-medium">
@@ -147,7 +147,7 @@
 									>
 								{/if}
 							</div>
-						</li>
+						</Card.Root>
 					{/each}
 				</ul>
 			</section>

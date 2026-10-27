@@ -13,13 +13,16 @@
 	import Segmented from '#lib/components/Segmented.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
-	import { Button } from '#lib/components/ui/button/index.ts';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import { Choice } from '#lib/components/ui/choice/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { WEBHOOK_EVENT_TYPES, type WebhookEventType } from '#lib/events.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
+	import { cn } from '#lib/utils.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
+	import UnsavedGuard from '#lib/components/UnsavedGuard.svelte';
 
 	type Webhook = components['schemas']['WebhookOut'];
 	type Body = components['schemas']['BodyFormat'];
@@ -133,8 +136,14 @@
 		);
 	}
 
+	// Something typed or chosen since the form opened, to ask before it is lost; cleared once
+	// saved or cancelled.
+	let touched = $state(false);
+	let leaving = $state(false);
+
 	/** Saved: on to the webhook's page, once a new secret was seen. */
 	function done(id: string, newSecret: string | null) {
+		leaving = true;
 		if (newSecret) {
 			savedId = id;
 			secret = { webhook: name.trim(), value: newSecret };
@@ -192,7 +201,14 @@
 	}
 </script>
 
-<AsyncForm class="flex max-w-3xl flex-col gap-6" action={save} ondone={() => {}}>
+<UnsavedGuard dirty={touched && !leaving} />
+
+<AsyncForm
+	class="flex max-w-3xl flex-col gap-6"
+	action={save}
+	ondone={() => {}}
+	onchanged={() => (touched = true)}
+>
 	{#snippet children({ busy, error })}
 		<Field.Field>
 			<Field.Label for="wh-name">{m.field_name()}</Field.Label>
@@ -265,15 +281,13 @@
 						bind:value={header.value}
 						maxlength={4096}
 					/>
-					<Button
+					<IconButton
 						type="button"
-						variant="ghost"
-						size="icon"
-						aria-label={m.webhook_header_remove({ name: header.name })}
+						label={m.webhook_header_remove({ name: header.name })}
 						onclick={() => headers.splice(index, 1)}
 					>
 						<Trash2 aria-hidden="true" />
-					</Button>
+					</IconButton>
 				</div>
 			{/each}
 			<div>
@@ -350,13 +364,15 @@
 		<Choice bind:checked={active} class="font-medium">{m.webhook_active()}</Choice>
 		<div class="flex flex-col gap-3 border-t pt-4">
 			{#if error}<Field.Error>{error}</Field.Error>{/if}
-			<div class="flex flex-wrap gap-2">
+			<div class="flex flex-wrap justify-end gap-2">
+				<a
+					href={cancelHref}
+					class={cn(buttonVariants({ variant: 'ghost' }))}
+					onclick={() => (leaving = true)}>{m.cancel()}</a
+				>
 				<Button type="submit" disabled={busy || incomplete}>
 					{webhook ? m.save() : m.create()}
 				</Button>
-				<a href={cancelHref} class="inline-flex h-9 items-center px-3 text-sm hover:underline">
-					{m.cancel()}
-				</a>
 			</div>
 		</div>
 	{/snippet}

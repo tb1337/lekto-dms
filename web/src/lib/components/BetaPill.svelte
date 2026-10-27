@@ -20,7 +20,7 @@
 		class="w-80"
 		buttonClass={cn(
 			PILL,
-			'h-6 gap-1.5 px-2.5 text-xs shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--beta-foreground)_14%,transparent)] hover:bg-[color-mix(in_oklab,var(--beta-foreground)_12%,var(--beta))] data-open:bg-[color-mix(in_oklab,var(--beta-foreground)_12%,var(--beta))]',
+			'relative h-6 gap-1.5 border border-beta-foreground/15 px-2.5 text-xs after:absolute after:inset-x-0 after:-inset-y-2.5 hover:bg-beta-foreground/12 data-open:bg-beta-foreground/12',
 			className
 		)}
 	>
@@ -31,7 +31,7 @@
 		<p>{tip}</p>
 	</InfoTip>
 {:else}
-	<span class={cn(PILL, 'h-3.5 -translate-y-[7px] px-[5px] text-[9.5px] leading-none', className)}
+	<span class={cn(PILL, 'h-3.5 -translate-y-[7px] px-[5px] text-nano leading-none', className)}
 		>{m.beta()}</span
 	>
 {/if}

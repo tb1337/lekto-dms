@@ -81,7 +81,8 @@
 		trigger
 			? buttonClass
 			: cn(
-					'grid place-items-center text-muted-foreground hover:text-foreground',
+					// A finger's tap on a phone reaches beyond the small icon.
+					'relative grid place-items-center text-muted-foreground after:absolute after:-inset-2.5 hover:text-foreground',
 					size === 'sm' ? 'size-6' : 'size-7',
 					open && 'bg-secondary text-foreground'
 				)
@@ -112,7 +113,7 @@
 			onpointerenter={enter}
 			onpointerleave={leave}
 			class={cn(
-				'z-50 max-w-[calc(100vw-1rem)] rounded-xl bg-foreground px-3.5 py-3 text-[12.5px] leading-normal text-background shadow-lg outline-none',
+				'z-50 max-w-[calc(100vw-1rem)] rounded-xl bg-foreground px-3.5 py-3 text-meta leading-normal text-background shadow-lg outline-none',
 				className
 			)}
 		>

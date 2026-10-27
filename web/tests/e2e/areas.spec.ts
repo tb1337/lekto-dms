@@ -67,9 +67,10 @@ test('every area opens, and the dialogs create things', async ({ page }) => {
 	await expect(page.getByTestId('secret')).toContainText('whsec_');
 	await page.getByRole('button', { name: 'I have stored it' }).click();
 	await page.waitForURL(/\/ui\/webhooks\/(?!new$)[^/]+$/);
-	await page.goto('/ui/webhooks');
+	// Deleted on its page (web/DESIGN.md: list rows hold no delete).
 	await page.getByRole('button', { name: `Delete ${NAME}` }).click();
 	await page.getByRole('alertdialog').getByRole('button', { name: `Delete` }).click();
+	await page.waitForURL('**/ui/webhooks');
 	await expect(page.getByText(NAME)).toHaveCount(0);
 
 	// Settings: an API token (shown once), then revoked.

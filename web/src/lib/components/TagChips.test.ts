@@ -46,14 +46,15 @@ describe('TagChips', () => {
 		expect(screen.queryByText('Paid')).toBeNull(); // hidden
 	});
 
-	it('shows the topic first, square, the tags round', () => {
+	it('shows the topic first, with an edge, all as pills', () => {
 		const { container } = render(TagChips, {
 			document: { tag_ids: ['t2'], topic_id: 'p2' },
 			lookup
 		});
 		const chips = [...container.querySelectorAll('[title]')];
 		expect(chips.map((chip) => chip.textContent?.trim())).toEqual(['Kranken', 'Health']);
-		expect(chips[0].className).toContain('rounded-md');
+		expect(chips[0].className).toContain('rounded-full');
+		expect(chips[0].className).toMatch(/(^| )border( |$)/);
 		expect(chips[1].className).toContain('rounded-full');
 		expect(chips[0].getAttribute('title')).toBe(`Versicherung${SEPARATOR}Kranken`);
 	});
@@ -98,7 +99,7 @@ describe('TagChip', () => {
 		});
 		const chip = container.querySelector('[title="Weiß"]') as HTMLElement;
 		expect(chip.className).toContain('chip-own');
-		expect(chip.className).toContain('rounded-md');
+		expect(chip.className).toContain('rounded-full');
 		const style = chip.getAttribute('style') ?? '';
 		expect(style).toContain('--chip-own: #ffffff');
 		const light = Number(/--chip-light: (\d+)%/.exec(style)?.[1]);

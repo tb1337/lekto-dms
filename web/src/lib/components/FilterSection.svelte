@@ -1,6 +1,8 @@
 <script lang="ts">
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import type { Snippet } from 'svelte';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
 
 	// A group of the filters that opens and closes; closed or open it says what is chosen in
 	// it (`summary`).
@@ -14,8 +16,8 @@
 	const id = $props.id();
 </script>
 
-<section class="rounded-2xl border bg-card px-3" aria-labelledby="{id}-title">
-	<h3 class="m-0">
+<Card.Root as="section" size="flush" class="px-3" aria-labelledby="{id}-title">
+	<h2 class="m-0">
 		<button
 			type="button"
 			id="{id}-title"
@@ -24,11 +26,7 @@
 			aria-controls="{id}-body"
 			onclick={() => (open = !open)}
 		>
-			<span
-				class="min-w-0 flex-1 truncate text-xs font-semibold tracking-wider text-muted-foreground uppercase"
-			>
-				{title}
-			</span>
+			<Eyebrow as="span" class="min-w-0 flex-1 truncate">{title}</Eyebrow>
 			{#if summary}
 				<span class="max-w-[50%] truncate text-xs font-semibold text-brand">{summary}</span>
 			{/if}
@@ -37,10 +35,10 @@
 				aria-hidden="true"
 			/>
 		</button>
-	</h3>
+	</h2>
 	{#if open}
 		<div id="{id}-body" class="flex flex-col gap-3 pb-3">
 			{@render children()}
 		</div>
 	{/if}
-</section>
+</Card.Root>

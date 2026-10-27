@@ -4,6 +4,7 @@
 	import { disputed, type Candidate } from '#lib/candidates.ts';
 	import CandidateSources from '#lib/components/document/CandidateSources.svelte';
 	import { m } from '#lib/paraglide/messages.js';
+	import { Button } from '#lib/components/ui/button/index.ts';
 
 	// The values the signals proposed for an open field, best first, with what each signal
 	// said; one that exists can be taken with a click. A value a signal names and another signal
@@ -29,14 +30,14 @@
 			>
 				{@render lead?.(candidate)}
 				{#if candidate.value !== null && onpick}
-					<button
-						type="button"
+					<Button
+						variant="link"
+						size="inline"
 						onclick={() => onpick(candidate.value)}
 						aria-label={m.candidate_pick({ name: candidate.label })}
-						class="font-medium text-brand hover:underline"
 					>
 						{candidate.label}
-					</button>
+					</Button>
 				{:else}
 					<span class="font-medium">{candidate.label}</span>
 					{#if candidate.value === null}

@@ -32,6 +32,7 @@
 		type ConditionNode,
 		type Operator
 	} from '#lib/rules/model.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// One condition: condition field (and the field), comparison and the value it needs.
 	// `onunreadable` says while the value's text cannot be read (see `ValueInput`). In a
@@ -234,14 +235,12 @@
 										at === index ? event.currentTarget.value : item
 									))}
 							/>
-							<Button
-								variant="ghost"
-								size="icon"
-								aria-label={m.rule_remove_value({ name: entry })}
+							<IconButton
+								label={m.rule_remove_value({ name: entry })}
 								onclick={() => (condition.value = list.filter((_, at) => at !== index))}
 							>
 								<X aria-hidden="true" />
-							</Button>
+							</IconButton>
 						</div>
 					{/each}
 					<Button
@@ -316,27 +315,15 @@
 			{/if}
 		</div>
 		<div class="flex gap-0.5">
-			<Button
-				variant="ghost"
-				size="icon"
-				aria-label={m.rule_move_up()}
-				disabled={!onup}
-				onclick={() => onup?.()}
-			>
+			<IconButton label={m.rule_move_up()} disabled={!onup} onclick={() => onup?.()}>
 				<ArrowUp aria-hidden="true" />
-			</Button>
-			<Button
-				variant="ghost"
-				size="icon"
-				aria-label={m.rule_move_down()}
-				disabled={!ondown}
-				onclick={() => ondown?.()}
-			>
+			</IconButton>
+			<IconButton label={m.rule_move_down()} disabled={!ondown} onclick={() => ondown?.()}>
 				<ArrowDown aria-hidden="true" />
-			</Button>
-			<Button variant="ghost" size="icon" aria-label={m.rule_remove()} onclick={onremove}>
+			</IconButton>
+			<IconButton label={m.rule_remove()} onclick={onremove}>
 				<Trash2 aria-hidden="true" />
-			</Button>
+			</IconButton>
 		</div>
 	</div>
 	{#if error}<Field.Error>{error}</Field.Error>{/if}

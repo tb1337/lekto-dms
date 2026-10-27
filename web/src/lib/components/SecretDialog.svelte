@@ -39,7 +39,7 @@
 </script>
 
 <Dialog.Root bind:open={() => secret !== null, (open) => !open && onclose()}>
-	<Dialog.Content class="max-w-lg">
+	<Dialog.Content size="md">
 		<Dialog.Header>
 			<Dialog.Title>{title}</Dialog.Title>
 			<Dialog.Description>{description}</Dialog.Description>

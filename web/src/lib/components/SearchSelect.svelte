@@ -19,6 +19,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { matchesWords, searchWords } from '#lib/picking.ts';
 	import { cn } from '#lib/utils.ts';
+	import { FIELD, FIELD_HEIGHT } from '#lib/components/ui/field-look.ts';
 
 	// A choice from a long list, by searching: contact, document type, topic. Closed it looks like
 	// a `Select` (the chosen one as `chosen` draws it, else its label, else `placeholder`; a value
@@ -102,7 +103,7 @@
 		{disabled}
 		role="combobox"
 		data-value={value}
-		class="flex h-11 w-full min-w-0 items-center gap-2 rounded-xl border border-input bg-card px-3 text-left text-base transition-colors focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30"
+		class={cn(FIELD, FIELD_HEIGHT, 'flex items-center gap-2 text-left')}
 	>
 		{#if current && chosen}
 			{@render chosen(current)}

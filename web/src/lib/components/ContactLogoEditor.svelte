@@ -97,7 +97,7 @@
 	<!-- Beside the name (a phone): small pills without icons, as in the draft, each taking a tap
 	     of 44 pixels (32 and 6 above and below). -->
 	{@const pill = beside
-		? 'relative h-8 rounded-full px-3 text-[0.8125rem] after:absolute after:inset-x-0 after:-inset-y-1.5'
+		? 'relative h-8 rounded-full px-3 text-meta after:absolute after:inset-x-0 after:-inset-y-1.5'
 		: ''}
 	<div class="flex flex-wrap items-center gap-2">
 		<input

@@ -20,6 +20,9 @@
 	} from '#lib/identifiers.ts';
 	import type { Contact, Tag } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import Loading from '#lib/components/Loading.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
+	import DateInput from '#lib/components/DateInput.svelte';
 
 	// A user's profile (Tobi, 21.10.2026): the display name others see, and what only the user
 	// and admins see: other names, birth date, e-mail and the person's own numbers. Found in a
@@ -118,9 +121,9 @@
 
 {#if profile === null}
 	{#if problem}
-		<p class="text-sm text-destructive" role="alert">{problem}</p>
+		<LoadProblem {problem} onretry={load} />
 	{:else}
-		<p class="text-sm text-muted-foreground">{m.loading()}</p>
+		<Loading class="text-sm" />
 	{/if}
 {:else}
 	<form class="flex flex-col gap-4" onsubmit={save}>
@@ -157,7 +160,7 @@
 		<div class="grid gap-4 sm:grid-cols-2">
 			<Field.Field>
 				<Field.Label for="{uid}-birth">{m.profile_birth_date()}</Field.Label>
-				<Input id="{uid}-birth" type="date" bind:value={birthDate} />
+				<DateInput id="{uid}-birth" label={m.profile_birth_date()} bind:value={birthDate} />
 			</Field.Field>
 			<Field.Field>
 				<Field.Label for="{uid}-email">{m.profile_email()}</Field.Label>

@@ -11,12 +11,16 @@
 	import ReferencePicker, {
 		type Reference
 	} from '#lib/components/templates/ReferencePicker.svelte';
-	import { Button } from '#lib/components/ui/button/index.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import { labelOfKind } from '#lib/identifiers.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { reportError } from '#lib/errors.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
+	import IconButton from '#lib/components/IconButton.svelte';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 
 	type Relations = components['schemas']['RelationsOut'];
 	type Related = components['schemas']['RelatedOut'];
@@ -71,6 +75,9 @@
 				),
 			done
 		);
+	// Removing a relation asks first; rejecting a suggestion does not (web/DESIGN.md).
+	let removing = $state<{ id: string; title: string } | null>(null);
+
 	const unrelate = (other: string, done: string) =>
 		act(
 			() =>
@@ -133,16 +140,16 @@
 	);
 </script>
 
-<section aria-labelledby="relations-title" class="rounded-2xl border bg-card p-3.5">
+<Card.Root as="section" size="sm" aria-labelledby="relations-title">
 	<div class="flex items-baseline gap-2 px-1 pb-1">
-		<h2 id="relations-title" class="text-[15px] font-semibold">{m.relations_title()}</h2>
+		<SectionTitle size="card" id="relations-title">{m.relations_title()}</SectionTitle>
 		<span class="text-xs text-muted-foreground">{m.relations_hint()}</span>
 	</div>
 	{#if relations && groups.length === 0}
 		<p class="px-1 py-2 text-sm text-muted-foreground">{m.relations_none()}</p>
 	{/if}
 	{#each groups as group (group.key)}
-		<h3 class="mt-2 px-1 text-xs font-semibold text-muted-foreground">{group.title}</h3>
+		<Eyebrow as="h3" class="mt-2 px-1">{group.title}</Eyebrow>
 		{#each group.items as item (item.document.id)}
 			<div class="flex items-center gap-2 rounded-xl px-2.5 py-2">
 				<Link2 class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -163,38 +170,36 @@
 					<span class="text-xs text-muted-foreground">{evidence(item)}</span>
 				</div>
 				{#if item.changeable && group.key === 'suggested'}
-					<Button
+					<IconButton
 						variant="outline"
-						size="icon"
-						class="size-8 shrink-0"
+						size="sm"
+						class="shrink-0"
 						disabled={busy}
-						aria-label={m.relations_accept({ title: item.document.title })}
-						title={m.relations_accept_short()}
+						label={m.relations_accept({ title: item.document.title })}
+						hint={m.relations_accept_short()}
 						onclick={() => relate(item.document.id, m.relations_accepted())}
 					>
 						<Check aria-hidden="true" />
-					</Button>
+					</IconButton>
 				{/if}
 				{#if item.changeable}
-					<Button
-						variant="ghost"
-						size="icon"
-						class="size-8 shrink-0"
+					<IconButton
+						size="sm"
+						class="shrink-0"
 						disabled={busy}
-						aria-label={group.key === 'suggested'
+						label={group.key === 'suggested'
 							? m.relations_reject({ title: item.document.title })
 							: m.relations_remove({ title: item.document.title })}
-						title={group.key === 'suggested'
+						hint={group.key === 'suggested'
 							? m.relations_reject_short()
 							: m.relations_remove_short()}
 						onclick={() =>
-							unrelate(
-								item.document.id,
-								group.key === 'suggested' ? m.relations_rejected() : m.relations_removed()
-							)}
+							group.key === 'suggested'
+								? unrelate(item.document.id, m.relations_rejected())
+								: (removing = item.document)}
 					>
 						<X aria-hidden="true" />
-					</Button>
+					</IconButton>
 				{/if}
 			</div>
 		{/each}
@@ -209,4 +214,14 @@
 			/>
 		</div>
 	{/if}
-</section>
+</Card.Root>
+
+<ConfirmDialog
+	bind:open={() => removing !== null, (next) => !next && (removing = null)}
+	title={m.relations_remove({ title: removing?.title ?? '' })}
+	description={m.relations_remove_confirm()}
+	confirmLabel={m.relations_remove_short()}
+	onconfirm={async () => {
+		if (removing) await unrelate(removing.id, m.relations_removed());
+	}}
+/>

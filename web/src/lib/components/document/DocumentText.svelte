@@ -13,6 +13,9 @@
 	import { inUnits, pageRanges, quoteStretches, segmentsOf, type Stretch } from '#lib/facts.ts';
 	import { formatNumber } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 
 	// What was read from the document: the text as it is set, in a fixed-pitch font so that its
 	// columns line up, page by page; `marks` (what a fact points to) and `quotes` (those of the
@@ -175,9 +178,11 @@
 
 <svelte:window onscroll={follow} />
 
-<section
+<Card.Root
+	as="section"
+	size="flush"
 	aria-label={m.view_text()}
-	class="flex min-h-[32rem] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-card lg:min-h-0"
+	class="flex min-h-[32rem] min-w-0 flex-1 flex-col overflow-hidden lg:min-h-0"
 >
 	<PaneHead {end}>
 		<span class="px-1 text-sm text-muted-foreground">
@@ -194,7 +199,7 @@
 	<!-- As set: no wrapping, the card scrolls sideways. -->
 	<div bind:this={textBox} class="relative min-h-0 flex-1 overflow-auto" onscroll={follow}>
 		{#if problem}
-			<p class="p-6 text-destructive" role="alert">{problem}</p>
+			<div class="p-6"><LoadProblem {problem} onretry={loadText} /></div>
 		{:else if text === null}
 			<p class="p-6 text-sm text-muted-foreground">{loading ? m.loading() : m.text_none()}</p>
 		{:else}
@@ -205,12 +210,10 @@
 					class="px-7 py-6"
 				>
 					{#if pages.length > 1}
-						<p class="mb-3 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-							{m.content_page({ page: index + 1 })}
-						</p>
+						<Eyebrow class="mb-3">{m.content_page({ page: index + 1 })}</Eyebrow>
 					{/if}
 					<pre
-						class="font-mono text-[13px] leading-relaxed whitespace-pre">{#if marked.length > 0}{#each segmentsOf(text, ranges[index], marked) as segment, at (at)}{#if segment.marked}<mark
+						class="font-mono text-meta leading-relaxed whitespace-pre">{#if marked.length > 0}{#each segmentsOf(text, ranges[index], marked) as segment, at (at)}{#if segment.marked}<mark
 										data-mark
 										class="rounded-sm bg-primary/20 text-inherit ring-2 ring-primary"
 										>{segment.text}</mark
@@ -220,4 +223,4 @@
 			{/each}
 		{/if}
 	</div>
-</section>
+</Card.Root>

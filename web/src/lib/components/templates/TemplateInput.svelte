@@ -4,12 +4,12 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import CodeEditor from '#lib/components/templates/CodeEditor.svelte';
 	import TemplateEditor from '#lib/components/templates/TemplateEditor.svelte';
-	import { Button } from '#lib/components/ui/button/index.ts';
 	import { latest } from '#lib/latest.ts';
 	import { fieldTypeLabel } from '#lib/fields.ts';
 	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { usableFields, type TemplatePurpose } from '#lib/templates/values.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// A template (Liquid) of a rule or a title pattern in a small field: coloured, with completion
 	// after `{{`, `{%` and `|`, red with the reason when the server finds it invalid, and a button
@@ -132,16 +132,9 @@
 			{steps}
 			class="min-w-0 flex-1"
 		/>
-		<Button
-			variant="ghost"
-			size="icon"
-			class="shrink-0"
-			aria-label={m.template_editor_open()}
-			title={m.template_editor_open()}
-			onclick={() => (editing = true)}
-		>
+		<IconButton class="shrink-0" label={m.template_editor_open()} onclick={() => (editing = true)}>
 			<Braces aria-hidden="true" />
-		</Button>
+		</IconButton>
 	</div>
 	<p class="text-sm text-destructive" class:hidden={!error} aria-live="polite">
 		{error ?? ''}

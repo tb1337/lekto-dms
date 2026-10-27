@@ -100,6 +100,7 @@ beforeEach(() => signIn('admin'));
 afterEach(() => {
 	session.clear();
 	vi.unstubAllGlobals();
+	localStorage.clear();
 });
 
 describe('the jobs tab', () => {
@@ -115,10 +116,21 @@ describe('the jobs tab', () => {
 		expect(within(rows[1]).getByText(m.jobs_state_running())).toBeTruthy();
 		expect(within(rows[2]).getByText(m.jobs_hidden_document())).toBeTruthy();
 		expect(calls(api)).toContain(
-			'GET /api/v1/jobs?state=running&state=due&state=planned&offset=0&limit=50'
+			'GET /api/v1/jobs?state=running&state=due&state=planned&offset=0&limit=25'
 		);
 		expect(screen.getByText(/1 – 4 (von|of) 4/)).toBeTruthy();
 		expect(screen.queryByRole('button', { name: m.jobs_retry() })).toBeNull();
+	});
+
+	it('shows as many jobs to a page as this browser last chose', async () => {
+		localStorage.setItem('lekto.page-size.jobs', '100');
+		const api = routes();
+		vi.stubGlobal('fetch', api);
+		render(JobsTab);
+		await screen.findByRole('table');
+		expect(calls(api)).toContain(
+			'GET /api/v1/jobs?state=running&state=due&state=planned&offset=0&limit=100'
+		);
 	});
 
 	it('filters by kind and turns the pages', async () => {
@@ -139,11 +151,11 @@ describe('the jobs tab', () => {
 			'contacts.logo'
 		);
 		await userEvent.click(
-			await screen.findByRole('button', { name: m.pagination_page({ page: '3' }) })
+			await screen.findByRole('button', { name: m.pagination_page({ page: '2' }) })
 		);
-		expect(await screen.findByText(/101 – 120 (von|of) 120/)).toBeTruthy();
+		expect(await screen.findByText(/26 – 50 (von|of) 120/)).toBeTruthy();
 		expect(calls(api)).toContain(
-			'GET /api/v1/jobs?state=running&state=due&state=planned&kind=contacts.logo&offset=100&limit=50'
+			'GET /api/v1/jobs?state=running&state=due&state=planned&kind=contacts.logo&offset=25&limit=25'
 		);
 	});
 
@@ -205,7 +217,7 @@ describe('the jobs tab', () => {
 		expect(cells).toContain('3s'); // waited
 		expect(cells).toContain('2s'); // ran
 		expect(within(kinds).getByText('900')).toBeTruthy();
-		expect(calls(api)).toContain('GET /api/v1/jobs?state=done&offset=0&limit=50');
+		expect(calls(api)).toContain('GET /api/v1/jobs?state=done&offset=0&limit=25');
 	});
 
 	it('shows a user the failed jobs without errors or retries', async () => {

@@ -96,6 +96,7 @@ from lekto.core.domain.inbox import Confirmation
 from lekto.core.domain.jobs import FinishedJob, Job, JobCount, JobOverview, JobState, JobStatus
 from lekto.core.domain.json_value import JsonObject, JsonValue
 from lekto.core.domain.master_data import Contact, DocumentType, MasterData, Tag, TagScope
+from lekto.core.domain.open_identifiers import Sighting
 from lekto.core.domain.permissions import Reach
 from lekto.core.domain.pipeline import NodeRun
 from lekto.core.domain.profiles import Profile
@@ -746,6 +747,20 @@ class MemoryDocumentFactRepository:
             for key in wanted & shown:
                 found.setdefault(key, set()).add(document.contact_id)
         return {key: frozenset(contacts) for key, contacts in found.items()}
+
+    async def sightings(self, kinds: Collection[IdentifierKind]) -> list[Sighting]:
+        self._uow._check_open()
+        wanted = set(kinds)
+        seen = []
+        for document in self._uow._rows(DOCUMENTS):
+            if document.confirmed_at is None or document.contact_id is None:
+                continue
+            row = self._uow._row(DOCUMENT_FACTS, document.id)
+            for fact in () if row is _REMOVED else row.facts:
+                if fact.kind in wanted and fact.state is not FactState.REJECTED:
+                    dated = document.document_date or document.created_at.date()
+                    seen.append(Sighting(document.id, document.contact_id, dated, fact))
+        return seen
 
 
 class MemoryOutbox:

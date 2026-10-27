@@ -1024,6 +1024,46 @@ class UnitOfWorkContract:
                 customer: frozenset({utility.id})
             }
 
+    async def test_document_facts_tell_where_they_stand_confirmed(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """Only confirmed documents with a contact, facts not rejected, of the kinds asked; a
+        document without a date is dated by the day it came."""
+        owner, space = await owner_with_space(uow_factory)
+        utility = Contact.create(name="Stadtwerke", now=NOW)
+        iban = (IdentifierKind.IBAN, "DE02120300000000202051")
+        invoice = (IdentifierKind.INVOICE_NUMBER, "R-4711")
+        vat = (IdentifierKind.VAT_ID, "DE312456789")
+        documents = [builders.processed(owner, space) for _ in range(4)]
+        for document in documents:
+            document.contact_id = utility.id
+        documents[0].document_date = date(2026, 9, 30)
+        documents[3].contact_id = None
+        for document in (documents[0], documents[1], documents[3]):
+            document.mark_confirmed(NOW)
+        async with uow_factory() as uow:
+            await uow.contacts.add(utility)
+            for document in documents:
+                await uow.documents.add(document)
+                await uow.document_facts.replace_found(
+                    document.id, [found(*iban), found(*invoice), found(*vat, position=40)]
+                )
+            await uow.document_facts.decide(
+                documents[1].id, replace(found(*vat, position=40), state=FactState.REJECTED)
+            )
+            await uow.commit()
+        async with uow_factory() as uow:
+            seen = await uow.document_facts.sightings([IdentifierKind.IBAN, IdentifierKind.VAT_ID])
+            assert await uow.document_facts.sightings([]) == []
+        assert sorted((item.document, item.fact.key) for item in seen) == sorted(
+            [(documents[0].id, iban), (documents[0].id, vat), (documents[1].id, iban)]
+        )
+        assert {item.contact for item in seen} == {utility.id}
+        dated = {item.document: item.dated for item in seen}
+        assert dated[documents[0].id] == date(2026, 9, 30)
+        assert dated[documents[1].id] == documents[1].created_at.date()
+        assert next(item.fact for item in seen if item.fact.key == vat).position == 40
+
     async def test_document_facts_keep_what_they_are_and_a_person_s_decision(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:

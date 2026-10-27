@@ -11,7 +11,7 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.fields import FieldDefinition, FieldType
-from lekto.core.domain.identifiers import Identifier, IdentifierSource
+from lekto.core.domain.identifiers import Identifier, IdentifierSource, Key
 from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
 from lekto.core.domain.jobs import Job, RetryPolicy
 from lekto.core.domain.master_data import (
@@ -257,6 +257,29 @@ class MasterDataService:
             change,
             check=lambda uow, item: _check_contact(uow, item),
             after=lambda uow, item: self._logo_for(uow, item, known),
+        )
+
+    async def reject_identifier(self, actor: UserId, id: ContactId, key: Key) -> Contact:
+        """Reject one identifier at the contact (admins): one it learned no longer counts, one
+        no contact has is noted there; training learns neither again. The others stay as they
+        are. One the contact entered by hand is a conflict (change the contact instead); one
+        another contact learned or rejected moves here, one it entered is a conflict."""
+        kind, value = key
+        dropped = Identifier(kind, value, IdentifierSource.REJECTED)
+
+        def change(item: Contact) -> None:
+            if any(e.key == key and e.source is MANUAL for e in item.identifiers):
+                raise ConflictError(because(ReasonCode.IDENTIFIER_ENTERED, value=value))
+            manual = [e for e in item.identifiers if e.source is MANUAL]
+            rejected = [
+                e
+                for e in item.identifiers
+                if e.source is IdentifierSource.REJECTED and e.key != key
+            ]
+            item.set_identifiers(manual, [*rejected, dropped])
+
+        return await self._change(
+            actor, _contacts, id, change, check=lambda uow, item: _check_contact(uow, item)
         )
 
     async def _logo_for(self, uow: UnitOfWork, contact: Contact, known: Collection[str]) -> None:

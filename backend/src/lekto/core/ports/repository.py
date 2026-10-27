@@ -50,6 +50,7 @@ from lekto.core.domain.ids import (
 from lekto.core.domain.inbox import Confirmation, InboxTab
 from lekto.core.domain.lenses import Lens
 from lekto.core.domain.master_data import Contact, DocumentType, Tag, TagScope
+from lekto.core.domain.open_identifiers import Sighting
 from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane, Node, NodeRun
 from lekto.core.domain.profiles import Profile
@@ -518,6 +519,11 @@ class DocumentFactRepository(Protocol):
     ) -> dict[tuple[IdentifierKind, str], frozenset[ContactId]]:
         """For each of `identifiers`, the contacts of the confirmed documents that show it (a
         fact not rejected); one that no confirmed document with a contact shows is left out."""
+        ...
+
+    async def sightings(self, kinds: Collection[IdentifierKind]) -> list[Sighting]:
+        """Every fact of one of `kinds` that a confirmed document with a contact shows (not
+        rejected), in no particular order."""
         ...
 
 

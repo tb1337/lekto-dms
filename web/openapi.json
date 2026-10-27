@@ -7117,6 +7117,507 @@
         ]
       }
     },
+    "/api/v1/identifiers/open": {
+      "get": {
+        "tags": [
+          "identifiers"
+        ],
+        "summary": "The open identifiers",
+        "description": "Admins only. Open are the identifiers no person has confirmed: those training learned at a contact (`learned`), and those of a contact's kind that confirmed documents with a contact show but no contact has, entered, learned or rejected (`unknown`). A person's value (a user's profile) is never open. The most documents first, then the newest. `q` finds words in the value (with or without spaces), as written or in a contact's name.",
+        "operationId": "open_identifiers_api_v1_identifiers_open_get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OpenSource"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/IdentifierKind"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 0,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenPageOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/identifiers/open/summary": {
+      "get": {
+        "tags": [
+          "identifiers"
+        ],
+        "summary": "How many identifiers are open",
+        "description": "Admins only. Open are the identifiers no person has confirmed: those training learned at a contact (`learned`), and those of a contact's kind that confirmed documents with a contact show but no contact has, entered, learned or rejected (`unknown`). A person's value (a user's profile) is never open.",
+        "operationId": "open_summary_api_v1_identifiers_open_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenCountsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/identifiers/open/detail": {
+      "get": {
+        "tags": [
+          "identifiers"
+        ],
+        "summary": "An open identifier and where it stands",
+        "description": "Admins only. The open identifier of `kind` and `value` (normalised, as the list gives it) and where it stands in its five newest documents. 404 if it is not open.",
+        "operationId": "open_detail_api_v1_identifiers_open_detail_get",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/IdentifierKind"
+            }
+          },
+          {
+            "name": "value",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "title": "Value"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenDetailOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/identifiers/open/decisions": {
+      "post": {
+        "tags": [
+          "identifiers"
+        ],
+        "summary": "Confirm or reject open identifiers",
+        "description": "Admins only. Each decision is a change of its contact on its own: confirming enters the identifier there by hand (a learned one keeps its topic and user), rejecting takes a learned one out or notes an unknown one rejected, so training does not learn it again. One that cannot be done (no longer open, the contact unclear, another contact has it entered) says why in its outcome; the others are done all the same. In the order given.",
+        "operationId": "decide_open_api_v1_identifiers_open_decisions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenDecisionsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OutcomeOut"
+                  },
+                  "type": "array",
+                  "title": "Response Decide Open Api V1 Identifiers Open Decisions Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "the request body is larger than 1048576 bytes"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/spaces": {
       "get": {
         "tags": [
@@ -23764,6 +24265,30 @@
         "title": "EventBody",
         "description": "An event (body `thin`), with the document for body `full`."
       },
+      "ExcerptOut": {
+        "properties": {
+          "before": {
+            "type": "string",
+            "title": "Before"
+          },
+          "match": {
+            "type": "string",
+            "title": "Match",
+            "description": "The identifier as it stands in the text."
+          },
+          "after": {
+            "type": "string",
+            "title": "After"
+          }
+        },
+        "type": "object",
+        "required": [
+          "before",
+          "match",
+          "after"
+        ],
+        "title": "ExcerptOut"
+      },
       "ExchangeNode": {
         "type": "string",
         "enum": [
@@ -28370,6 +28895,200 @@
         ],
         "title": "OidcInfo"
       },
+      "OpenAction": {
+        "type": "string",
+        "enum": [
+          "confirm",
+          "reject"
+        ],
+        "title": "OpenAction"
+      },
+      "OpenContactOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "OpenContactOut"
+      },
+      "OpenCountsOut": {
+        "properties": {
+          "learned": {
+            "type": "integer",
+            "title": "Learned"
+          },
+          "unknown": {
+            "type": "integer",
+            "title": "Unknown"
+          }
+        },
+        "type": "object",
+        "required": [
+          "learned",
+          "unknown"
+        ],
+        "title": "OpenCountsOut"
+      },
+      "OpenDecisionIn": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "Normalised, as the list gives it."
+          },
+          "action": {
+            "$ref": "#/components/schemas/OpenAction",
+            "description": "`confirm`: enter it at the contact by hand; `reject`: training does not learn it again, and a learned one no longer counts."
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id",
+            "description": "Where; without one, the learned one's contact or the one contact its documents name (to confirm one whose documents name several, give it)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value",
+          "action"
+        ],
+        "title": "OpenDecisionIn"
+      },
+      "OpenDecisionsIn": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/OpenDecisionIn"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Decisions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decisions"
+        ],
+        "title": "OpenDecisionsIn",
+        "examples": [
+          {
+            "decisions": [
+              {
+                "action": "confirm",
+                "kind": "customer_number",
+                "value": "20047718"
+              },
+              {
+                "action": "reject",
+                "kind": "iban",
+                "value": "DE02120300000000202051"
+              }
+            ]
+          }
+        ]
+      },
+      "OpenDetailOut": {
+        "properties": {
+          "identifier": {
+            "$ref": "#/components/schemas/OpenIdentifierOut"
+          },
+          "places": {
+            "items": {
+              "$ref": "#/components/schemas/PlaceOut"
+            },
+            "type": "array",
+            "title": "Places",
+            "description": "Where it stands in its newest documents (5)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "identifier",
+          "places"
+        ],
+        "title": "OpenDetailOut"
+      },
+      "OpenIdentifierOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "Normalised, as Lekto compares it."
+          },
+          "written": {
+            "type": "string",
+            "title": "Written",
+            "description": "As the newest of its documents writes it."
+          },
+          "source": {
+            "$ref": "#/components/schemas/OpenSource",
+            "description": "`learned`: training found it at `contacts[0]`; `unknown`: it stands in confirmed documents but at no contact, `contacts` are their contacts, the one with most documents first."
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/OpenContactOut"
+            },
+            "type": "array",
+            "title": "Contacts"
+          },
+          "documents": {
+            "type": "integer",
+            "title": "Documents",
+            "description": "Confirmed documents that show it."
+          },
+          "last": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last",
+            "description": "The date of the newest of them."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value",
+          "written",
+          "source",
+          "contacts",
+          "documents",
+          "last"
+        ],
+        "title": "OpenIdentifierOut",
+        "description": "An identifier no person has confirmed."
+      },
       "OpenNodeOut": {
         "properties": {
           "node": {
@@ -28417,6 +29136,53 @@
         "title": "OpenNodeOut",
         "description": "A node that was uncertain or failed, with the fields left to decide."
       },
+      "OpenPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OpenIdentifierOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "How many match the filters."
+          },
+          "counts": {
+            "$ref": "#/components/schemas/OpenCountsOut",
+            "description": "How many match under each source (not `source`)."
+          },
+          "kinds": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/IdentifierKind"
+            },
+            "type": "object",
+            "title": "Kinds",
+            "description": "How many match of each kind (not `kind`)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "counts",
+          "kinds"
+        ],
+        "title": "OpenPageOut"
+      },
+      "OpenSource": {
+        "type": "string",
+        "enum": [
+          "learned",
+          "unknown"
+        ],
+        "title": "OpenSource"
+      },
       "Operator": {
         "type": "string",
         "enum": [
@@ -28440,6 +29206,40 @@
           "failed"
         ],
         "title": "Outcome"
+      },
+      "OutcomeOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "done": {
+            "type": "boolean",
+            "title": "Done"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReasonOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why it was not done."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value",
+          "done",
+          "reason"
+        ],
+        "title": "OutcomeOut"
       },
       "PageReadingOut": {
         "properties": {
@@ -28734,6 +29534,47 @@
             }
           }
         ]
+      },
+      "PlaceOut": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "role": {
+            "$ref": "#/components/schemas/FactRole"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExcerptOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The text around it, where the document has text and the fact a position."
+          }
+        },
+        "type": "object",
+        "required": [
+          "document_id",
+          "title",
+          "date",
+          "role",
+          "excerpt"
+        ],
+        "title": "PlaceOut"
       },
       "Processing": {
         "properties": {
@@ -29414,6 +30255,9 @@
           "contact_too_many_identifiers",
           "only_numbers_name_users",
           "identifier_taken",
+          "identifier_entered",
+          "identifier_not_open",
+          "identifier_contact_unclear",
           "title_pattern_too_long",
           "description_too_long",
           "title_pattern_unknown",
@@ -35111,6 +35955,15 @@
     },
     "only_numbers_name_users": {},
     "identifier_taken": {
+      "value": "text"
+    },
+    "identifier_entered": {
+      "value": "text"
+    },
+    "identifier_not_open": {
+      "value": "text"
+    },
+    "identifier_contact_unclear": {
       "value": "text"
     },
     "title_pattern_too_long": {

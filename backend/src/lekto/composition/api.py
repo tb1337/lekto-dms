@@ -69,6 +69,7 @@ def api_context(container: Container, settings: Settings, services: Services) ->
         profiles=services.profiles,
         spaces=services.spaces,
         master_data=services.master_data,
+        open_identifiers=services.open_identifiers,
         logos=services.logos,
         oidc=services.oidc,
         search=services.search,

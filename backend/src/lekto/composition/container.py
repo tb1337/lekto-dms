@@ -112,6 +112,7 @@ from lekto.core.services.maintenance import MaintenanceService
 from lekto.core.services.master_data import MasterDataService
 from lekto.core.services.nodes import OcrNode, PagesNode, ParseNode
 from lekto.core.services.oidc import OidcService
+from lekto.core.services.open_identifiers import OpenIdentifierService
 from lekto.core.services.pipeline import NodeExecutor, PipelineService
 from lekto.core.services.profiles import ProfileService
 from lekto.core.services.relating import RelateNode
@@ -501,6 +502,7 @@ class Services:
     profiles: ProfileService
     spaces: SpaceService
     master_data: MasterDataService
+    open_identifiers: OpenIdentifierService
     logos: LogoService
     rules: RuleService
     rule_applications: RuleApplicationService
@@ -748,6 +750,14 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         max_text=settings.rules_max_text,
         pipeline_version=__version__,
     )
+    master_data = MasterDataService(
+        uow,
+        clock,
+        container.templates,
+        index_renames=index is not None,
+        store=store,
+        fetch_logos=container.logo_fetcher is not None,
+    )
     return Services(
         auth=auth,
         oidc=(
@@ -766,14 +776,8 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         users=UserService(uow, clock, container.password_hasher, rules=change_rules),
         profiles=ProfileService(uow, clock),
         spaces=SpaceService(uow, clock),
-        master_data=MasterDataService(
-            uow,
-            clock,
-            container.templates,
-            index_renames=index is not None,
-            store=store,
-            fetch_logos=container.logo_fetcher is not None,
-        ),
+        master_data=master_data,
+        open_identifiers=OpenIdentifierService(uow, store, master_data),
         logos=LogoService(uow, clock, store, container.images, container.logo_fetcher),
         rules=RuleService(
             uow,

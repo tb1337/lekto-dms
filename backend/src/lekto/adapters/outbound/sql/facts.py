@@ -22,6 +22,7 @@ from lekto.core.domain.document_facts import (
 )
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import ContactId, DocumentId
+from lekto.core.domain.open_identifiers import Sighting
 
 type Key = tuple[IdentifierKind, str]
 
@@ -119,6 +120,30 @@ class SqlDocumentFactRepository:
             for row in await self._tx.read(query):
                 found[(IdentifierKind(row.kind), row.value)].add(ContactId(row.contact_id))
         return {key: frozenset(contacts) for key, contacts in found.items()}
+
+    async def sightings(self, kinds: Collection[IdentifierKind]) -> list[Sighting]:
+        table, documents = t.document_facts, t.documents
+        if not kinds:
+            return []
+        query = (
+            select(table, documents.c.contact_id, documents.c.document_date, documents.c.created_at)
+            .join(documents, documents.c.id == table.c.document_id)
+            .where(
+                table.c.kind.in_(sorted(kind.value for kind in kinds)),
+                table.c.state != FactState.REJECTED.value,
+                documents.c.confirmed_at.is_not(None),
+                documents.c.contact_id.is_not(None),
+            )
+        )
+        return [
+            Sighting(
+                document=DocumentId(row.document_id),
+                contact=ContactId(row.contact_id),
+                dated=row.document_date or row.created_at.date(),
+                fact=_fact(row),
+            )
+            for row in await self._tx.read(query)
+        ]
 
 
 def _row(document: DocumentId, fact: DocumentFact) -> dict[str, object]:

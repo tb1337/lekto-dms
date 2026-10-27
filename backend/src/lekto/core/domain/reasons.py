@@ -352,6 +352,9 @@ class ReasonCode(StrEnum):
     CONTACT_TOO_MANY_IDENTIFIERS = "contact_too_many_identifiers"
     ONLY_NUMBERS_NAME_USERS = "only_numbers_name_users"
     IDENTIFIER_TAKEN = "identifier_taken"
+    IDENTIFIER_ENTERED = "identifier_entered"
+    IDENTIFIER_NOT_OPEN = "identifier_not_open"
+    IDENTIFIER_CONTACT_UNCLEAR = "identifier_contact_unclear"
     TITLE_PATTERN_TOO_LONG = "title_pattern_too_long"
     DESCRIPTION_TOO_LONG = "description_too_long"
     TITLE_PATTERN_UNKNOWN = "title_pattern_unknown"
@@ -831,6 +834,11 @@ TEMPLATES: Mapping[ReasonCode, str] = {
         "only a customer or personnel number names the user it belongs to"
     ),
     ReasonCode.IDENTIFIER_TAKEN: "'{value}' is already taken",
+    ReasonCode.IDENTIFIER_ENTERED: "'{value}' is entered at the contact by hand",
+    ReasonCode.IDENTIFIER_NOT_OPEN: "'{value}' is no longer open",
+    ReasonCode.IDENTIFIER_CONTACT_UNCLEAR: (
+        "'{value}' stands in documents of several contacts: choose the contact"
+    ),
     ReasonCode.TITLE_PATTERN_TOO_LONG: "a title pattern is at most {max:number} characters",
     ReasonCode.DESCRIPTION_TOO_LONG: "description must not be longer than {max:number} characters",
     ReasonCode.TITLE_PATTERN_UNKNOWN: (

@@ -10,8 +10,8 @@ export type PagedTable = 'jobs';
 /** The sizes a table offers: the jobs at most 100, as the API gives no more. */
 export const PAGE_SIZES: Record<PagedTable, readonly number[]> = { jobs: [25, 50, 100] };
 
-/** The size of a table until one is chosen (web/DESIGN.md, "Tables"). */
-export const DEFAULT_PAGE_SIZE = 50;
+/** The size of a table until one is chosen: the jobs 25 (Tobi, 27.10.2026). */
+export const DEFAULT_PAGE_SIZES: Record<PagedTable, number> = { jobs: 25 };
 
 function key(table: PagedTable): string {
 	return `lekto.page-size.${table}`;
@@ -26,13 +26,13 @@ export function rememberedPageSize(table: PagedTable): number {
 		// Not readable: the default holds.
 	}
 	const size = Number(found);
-	return PAGE_SIZES[table].includes(size) ? size : DEFAULT_PAGE_SIZE;
+	return PAGE_SIZES[table].includes(size) ? size : DEFAULT_PAGE_SIZES[table];
 }
 
 /** Remember `size` for `table`; the default is forgotten rather than stored. */
 export function rememberPageSize(table: PagedTable, size: number): void {
 	try {
-		if (size === DEFAULT_PAGE_SIZE) globalThis.localStorage?.removeItem(key(table));
+		if (size === DEFAULT_PAGE_SIZES[table]) globalThis.localStorage?.removeItem(key(table));
 		else globalThis.localStorage?.setItem(key(table), String(size));
 	} catch {
 		// Not remembered: the default holds next time.

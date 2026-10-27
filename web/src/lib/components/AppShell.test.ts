@@ -6,10 +6,11 @@ import { inbox } from '#lib/inbox.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { phone } from '#lib/phone.svelte.ts';
 import { scope } from '#lib/scope.svelte.ts';
+import { SETTINGS } from '#lib/sections.ts';
 import { session, type User } from '#lib/session.svelte.ts';
 import AppShell from './AppShell.svelte';
 
-vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
+vi.mock('$app/navigation', () => ({ beforeNavigate: vi.fn(), goto: vi.fn() }));
 vi.mock('$app/state', () => ({ page: { url: new URL('http://lekto/ui/inbox') } }));
 
 const children = createRawSnippet(() => ({ render: () => '<p>content</p>' }));
@@ -84,6 +85,7 @@ describe('AppShell', () => {
 		expect(links.map((link) => link.getAttribute('href'))).toEqual([
 			'/ui/inbox',
 			'/ui/documents',
+			'/ui/expected',
 			'/ui/spaces',
 			'/ui/rules',
 			'/ui/webhooks',
@@ -93,6 +95,39 @@ describe('AppShell', () => {
 		]);
 		expect(screen.getByRole('search')).toBeTruthy();
 		expect(screen.getByRole('searchbox', { name: m.header_search_label() })).toBeTruthy();
+	});
+
+	it('separates the work from setting up, also for users, and marks expected as beta', () => {
+		signIn('user');
+		render(AppShell, { children });
+		const nav = mainNavigation();
+		const links = within(nav).getAllByRole('link');
+		expect(links.map((link) => link.getAttribute('href'))).toEqual([
+			'/ui/inbox',
+			'/ui/documents',
+			'/ui/expected',
+			'/ui/spaces',
+			'/ui/rules',
+			'/ui/webhooks',
+			'/ui/system'
+		]);
+		// The line stands after the fourth link.
+		const line = nav.querySelector('[data-slot="separator"]');
+		expect(line?.previousElementSibling?.getAttribute('href')).toBe('/ui/spaces');
+		// Below xl the second group stands behind "More"; from xl each link (in its wrapper).
+		const next = line?.nextElementSibling;
+		expect((next?.matches('a') ? next : next?.querySelector('a'))?.getAttribute('href')).toBe(
+			'/ui/rules'
+		);
+		expect(within(nav).getByRole('link', { name: `${m.nav_expected()} ${m.beta()}` })).toBeTruthy();
+	});
+
+	it('shows the logo with its icon', () => {
+		signIn('user');
+		render(AppShell, { children });
+		const logo = screen.getByRole('img', { name: m.app_name() });
+		expect(logo.querySelector('svg')).toBeTruthy();
+		expect(logo.textContent?.trim()).toBe('lekto');
 	});
 
 	it('counts what is open in the inbox, coloured by the worst lane', async () => {
@@ -161,31 +196,79 @@ describe('AppShell', () => {
 		expect(screen.getByText('content')).toBeTruthy();
 	});
 
-	it('keeps language and theme in the header, beside the account menu', async () => {
+	it('keeps language and theme in the account menu (web/DESIGN.md, "Navigation")', async () => {
 		phone.override(false);
 		signIn('user');
 		render(AppShell, { children });
-		expect(screen.getByRole('button', { name: m.theme_label() })).toBeTruthy();
-		expect(screen.getByRole('button', { name: /^Sprache|^Language/ })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: m.theme_label() })).toBeNull();
 		const menu = await openAccountMenu();
-		expect(within(menu).queryByRole('menuitemradio')).toBeNull();
+		expect(within(menu).getAllByRole('menuitemradio').length).toBeGreaterThanOrEqual(5);
+		expect(within(menu).getByText(m.theme_label())).toBeTruthy();
+		expect(within(menu).getByText(m.language_label())).toBeTruthy();
 	});
 
-	it('moves language and theme into the account menu on a phone', async () => {
+	it('moves the account into the navigation sheet on a phone', async () => {
 		phone.override(true);
-		signIn('user');
+		signIn('admin');
 		render(AppShell, { children });
 		expect(screen.queryByRole('button', { name: m.theme_label() })).toBeNull();
 		expect(screen.queryByRole('button', { name: /^Sprache|^Language/ })).toBeNull();
-		const menu = await openAccountMenu();
-		const radios = within(menu).getAllByRole('menuitemradio');
-		expect(radios.map((radio) => radio.textContent?.trim())).toEqual([
-			...locales.map((locale) => LANGUAGE_NAMES[locale]),
-			m.theme_light(),
-			m.theme_dark(),
-			m.theme_system()
+		expect(screen.queryByRole('button', { name: m.account_menu({ username: 'tobi' }) })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: m.nav_open() }));
+		const sheet = await screen.findByRole('dialog');
+		expect(within(sheet).getByText('tobi')).toBeTruthy();
+		expect(within(sheet).getByText(m.role_admin())).toBeTruthy();
+		expect(within(sheet).getByRole('switch', { name: new RegExp(m.all_users()) })).toBeTruthy();
+		const links = within(sheet).getAllByRole('link');
+		expect(links.map((link) => link.getAttribute('href'))).toEqual([
+			'/ui/inbox',
+			'/ui/documents',
+			'/ui/expected',
+			'/ui/spaces',
+			'/ui/rules',
+			'/ui/webhooks',
+			'/ui/system',
+			'/ui/admin/master-data',
+			'/ui/admin/users',
+			'/api/v1/docs'
 		]);
-		expect(within(menu).getByRole('menuitem', { name: m.sign_out() })).toBeTruthy();
+		const language = within(sheet).getByRole('group', { name: m.language_label() });
+		expect(
+			within(language)
+				.getAllByRole('button')
+				.map((b) => b.textContent?.trim())
+		).toEqual(locales.map((locale) => LANGUAGE_NAMES[locale]));
+		const theme = within(sheet).getByRole('group', { name: m.theme_label() });
+		expect(
+			within(theme)
+				.getAllByRole('button')
+				.map((b) => b.getAttribute('aria-label'))
+		).toEqual([m.theme_light(), m.theme_dark(), m.theme_system()]);
+		expect(within(sheet).getByRole('button', { name: SETTINGS.label() })).toBeTruthy();
+		expect(within(sheet).getByRole('button', { name: m.sign_out() })).toBeTruthy();
+	});
+
+	it('keeps the sheet to the navigation on a tablet, and the account in the header', async () => {
+		phone.override(false);
+		signIn('user');
+		render(AppShell, { children });
+		expect(screen.getByRole('button', { name: m.account_menu({ username: 'tobi' }) })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: m.nav_open() }));
+		const sheet = await screen.findByRole('dialog');
+		expect(within(sheet).queryByText('tobi')).toBeNull();
+		expect(within(sheet).queryByRole('button', { name: m.sign_out() })).toBeNull();
+		expect(within(sheet).getAllByRole('link')).toHaveLength(7);
+	});
+
+	it('marks the menu button on a phone when an admin sees all users', async () => {
+		phone.override(true);
+		signIn('admin');
+		scope.set(true);
+		render(AppShell, { children });
+		expect(screen.getByRole('button', { name: m.nav_open_all_users() })).toBeTruthy();
+		scope.set(false);
+		await tick();
+		expect(screen.getByRole('button', { name: m.nav_open() })).toBeTruthy();
 	});
 
 	it('links the API documentation from the account menu, in a new tab', async () => {

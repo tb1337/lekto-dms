@@ -8,13 +8,18 @@ from uuid import UUID
 import pytest
 
 from lekto.adapters.outbound.memory import (
+    FAKE_GIRO_CODE,
+    FakeCodeReader,
     FakeEmbeddings,
     MemorySearchIndex,
 )
+from lekto.adapters.outbound.memory.processing import FAKE_PDF
+from lekto.core.domain.document_facts import FactRole
 from lekto.core.domain.documents import DocumentChanges
 from lekto.core.domain.errors import EmbeddingsError, PermissionDeniedError, SearchIndexError
 from lekto.core.domain.events import NodeCompleted, NodeDeferred, NodeStarted
 from lekto.core.domain.fields import FieldType
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import DocumentId, new_id
 from lekto.core.domain.jobs import JobStatus
 from lekto.core.domain.master_data import TagScope
@@ -22,6 +27,8 @@ from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane, Node, Outcome
 from lekto.core.domain.search import LAYOUT, IndexDocument
 from lekto.core.domain.users import Role
+from lekto.core.services.classification.signals import FactsSignal
+from lekto.core.services.fact_decisions import FactAction, FactDecision
 from lekto.core.services.indexing import (
     _RETRIES,
     INDEX_JOB,
@@ -29,6 +36,7 @@ from lekto.core.services.indexing import (
     REFRESH_JOB,
     split_sections,
 )
+from lekto.core.services.objects import archive_key
 from tests import builders
 from tests.builders import HOUR, NOW, UNCERTAIN, Returns, incoming, index_document
 from tests.unit.services.search_support import (
@@ -768,3 +776,43 @@ def test_the_number_of_sections_is_limited() -> None:
 def test_limits_must_be_positive() -> None:
     with pytest.raises(ValueError):
         replace(builders.INDEXING, max_chunks=0)
+
+
+async def test_a_person_s_decision_about_a_fact_reaches_the_index(setup: Setup) -> None:
+    """The decision is a change of the document (`document.updated`, field `facts`): the index
+    holds the fact by its tokens and its value."""
+    owner = await setup.world.user()
+    document = await setup.document(owner, "Mahnung zur Rechnung R-2026-0815")
+    await setup.world.documents.decide_fact(
+        owner.id,
+        document.id,
+        FactDecision(
+            action=FactAction.ADD,
+            kind=IdentifierKind.INVOICE_NUMBER,
+            value="R-2026-0815",
+            role=FactRole.REFERS,
+        ),
+    )
+    await setup.settle()
+    entry = setup.entry(document.id)
+    assert "invoice_number|R20260815|refers" in entry.facts
+    assert entry.fact_values == ("R20260815",)
+
+
+async def test_the_facts_read_outside_processing_reach_the_index(setup: Setup) -> None:
+    """`read-codes` keeps a GiroCode's IBAN as a fact: the index takes it in at once."""
+    owner = await setup.world.user()
+    document = await setup.document(owner, "Stromrechnung mit Überweisungsträger")
+    await setup.world.object_store.put(
+        archive_key(document.id), FAKE_PDF, content_type="application/pdf"
+    )
+    facts = FactsSignal(setup.world.uow, setup.world.object_store, FakeCodeReader([FAKE_GIRO_CODE]))
+    pipeline = setup.world.pipeline(facts=facts)
+    async with setup.world.uow() as uow:
+        current = await uow.documents.get(document.id)
+        current.mark_confirmed(NOW)
+        await uow.documents.update(current)
+        await uow.commit()
+    assert await pipeline.request_facts() == 1
+    await setup.settle(pipeline_service=pipeline)
+    assert any(token.startswith("iban|") for token in setup.entry(document.id).facts)

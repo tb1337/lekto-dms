@@ -7,7 +7,7 @@
 
 <a
 	{href}
-	class="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+	class="relative inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground after:absolute after:-inset-x-1 after:-inset-y-3 hover:text-foreground"
 >
 	<ArrowLeft class="size-4" aria-hidden="true" />
 	{label}

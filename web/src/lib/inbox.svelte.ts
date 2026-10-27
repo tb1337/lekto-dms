@@ -9,16 +9,17 @@ import type { components } from '#lib/api/schema.ts';
 import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { scope } from '#lib/scope.svelte.ts';
+import { TONE_EDGE, TONE_FILL } from '#lib/tones.ts';
 
 export type InboxSummary = components['schemas']['InboxSummaryOut'];
 export type BadgeTone = 'red' | 'yellow' | 'green' | 'grey';
 
 /** The counter's colours: the lane's ground and its writing (4.5:1 in light and dark). */
 export const BADGE_TONES: Record<BadgeTone, string> = {
-	red: 'border-lane-red-foreground/25 bg-lane-red text-lane-red-foreground',
-	yellow: 'border-lane-yellow-foreground/25 bg-lane-yellow text-lane-yellow-foreground',
-	green: 'border-lane-green-foreground/25 bg-lane-green text-lane-green-foreground',
-	grey: 'border-lane-running-foreground/25 bg-lane-running text-lane-running-foreground'
+	red: `${TONE_FILL.red} ${TONE_EDGE.red}`,
+	yellow: `${TONE_FILL.yellow} ${TONE_EDGE.yellow}`,
+	green: `${TONE_FILL.green} ${TONE_EDGE.green}`,
+	grey: `${TONE_FILL.running} ${TONE_EDGE.running}`
 };
 
 /** The counter's colour: the worst lane among the open documents; grey with only documents

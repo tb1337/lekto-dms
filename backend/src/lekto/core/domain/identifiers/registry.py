@@ -5,15 +5,35 @@ a value."""
 from collections.abc import Mapping
 
 from lekto.core.domain.identifiers.base import IdentifierKind, IdentifierType
+from lekto.core.domain.identifiers.child_benefit_number import ChildBenefitNumber
+from lekto.core.domain.identifiers.claim_number import ClaimNumber
+from lekto.core.domain.identifiers.commercial_register import CommercialRegister
+from lekto.core.domain.identifiers.contract_number import ContractNumber
+from lekto.core.domain.identifiers.credit_note_number import CreditNoteNumber
+from lekto.core.domain.identifiers.creditor_id import CreditorId
 from lekto.core.domain.identifiers.customer_number import CustomerNumber
 from lekto.core.domain.identifiers.email_address import EmailAddress
 from lekto.core.domain.identifiers.email_domain import EmailDomain
+from lekto.core.domain.identifiers.file_reference import FileReference
 from lekto.core.domain.identifiers.health_insurance_number import HealthInsuranceNumber
 from lekto.core.domain.identifiers.iban import Iban
+from lekto.core.domain.identifiers.invoice_number import InvoiceNumber
+from lekto.core.domain.identifiers.letter_date import LetterDate
+from lekto.core.domain.identifiers.license_plate import LicensePlate
+from lekto.core.domain.identifiers.loan_number import LoanNumber
+from lekto.core.domain.identifiers.mandate_reference import MandateReference
+from lekto.core.domain.identifiers.membership_number import MembershipNumber
+from lekto.core.domain.identifiers.meter_number import MeterNumber
+from lekto.core.domain.identifiers.order_number import OrderNumber
+from lekto.core.domain.identifiers.our_reference import OurReference
 from lekto.core.domain.identifiers.personnel_number import PersonnelNumber
+from lekto.core.domain.identifiers.policy_number import PolicyNumber
 from lekto.core.domain.identifiers.social_security_number import SocialSecurityNumber
 from lekto.core.domain.identifiers.tax_id import TaxId
+from lekto.core.domain.identifiers.tax_number import TaxNumber
+from lekto.core.domain.identifiers.ticket_number import TicketNumber
 from lekto.core.domain.identifiers.vat_id import VatId
+from lekto.core.domain.identifiers.your_reference import YourReference
 
 TYPES: Mapping[IdentifierKind, IdentifierType] = {
     item.kind: item
@@ -27,6 +47,26 @@ TYPES: Mapping[IdentifierKind, IdentifierType] = {
         SocialSecurityNumber(),
         HealthInsuranceNumber(),
         EmailAddress(),
+        CreditorId(),
+        CommercialRegister(),
+        TaxNumber(),
+        ContractNumber(),
+        PolicyNumber(),
+        MembershipNumber(),
+        MeterNumber(),
+        LoanNumber(),
+        MandateReference(),
+        LicensePlate(),
+        InvoiceNumber(),
+        CreditNoteNumber(),
+        OrderNumber(),
+        FileReference(),
+        OurReference(),
+        ClaimNumber(),
+        TicketNumber(),
+        YourReference(),
+        LetterDate(),
+        ChildBenefitNumber(),
     )
 }
 """Every kind's type (a test holds that none is missing)."""

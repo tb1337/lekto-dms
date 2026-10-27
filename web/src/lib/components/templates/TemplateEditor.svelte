@@ -10,12 +10,15 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Sheet from '#lib/components/ui/sheet/index.ts';
 	import { latest } from '#lib/latest.ts';
+	import { fieldText } from '#lib/card-fields.ts';
+	import { fieldTypeLabel } from '#lib/fields.ts';
 	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import type { EditorHandle } from '#lib/templates/codemirror.ts';
 	import { TEMPLATES_GUIDE } from '#lib/templates/guide.ts';
 	import { FILTERS, FILTER_CHIPS, insertFilter, insertValue } from '#lib/templates/liquid.ts';
 	import {
+		factNames,
 		LIST_NAMES,
 		TEMPLATE_NAMES,
 		TEMPLATE_NAME_LABELS,
@@ -24,6 +27,9 @@
 		stepNames,
 		type TemplatePurpose
 	} from '#lib/templates/values.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import * as Tooltip from '#lib/components/ui/tooltip/index.ts';
+	import { mergeProps } from 'bits-ui';
 
 	type Preview = components['schemas']['TemplatePreviewOut'];
 
@@ -40,6 +46,7 @@
 		maxlength = 500,
 		purpose = 'rule',
 		steps = [],
+		target = null,
 		onapply
 	}: {
 		open?: boolean;
@@ -52,6 +59,8 @@
 		purpose?: TemplatePurpose;
 		/** A rule's step: the names of the steps before it that ask (`steps.<name>`). */
 		steps?: readonly string[];
+		/** The field the template sets (a rule's action): the result is read as its type has it. */
+		target?: FieldDefinition | null;
 		onapply: (value: string) => void;
 	} = $props();
 
@@ -73,11 +82,18 @@
 		const template = draft;
 		const document = reference?.id ?? null;
 		const kind = documentType ?? null;
+		const field = target?.id ?? null;
 		const current = previewed();
 		const timer = setTimeout(() => {
 			void unwrap(
 				api.POST('/api/v1/templates/preview', {
-					body: { template, document_id: document, document_type_id: kind, purpose }
+					body: {
+						template,
+						document_id: document,
+						document_type_id: kind,
+						purpose,
+						...(field ? { field_id: field } : {})
+					}
 				})
 			).then(
 				(found) => {
@@ -92,6 +108,14 @@
 	});
 
 	const chips = FILTER_CHIPS.map((name) => FILTERS.find((filter) => filter.name === name)!);
+
+	// The facts the reference document has, with their names (the preview gives their values).
+	const factLabels = new Map(factNames().map((fact) => [fact.name, fact.label]));
+	const shownFacts = $derived(
+		Object.keys(preview?.values ?? {})
+			.filter((path) => path.startsWith('facts.'))
+			.map((path) => ({ name: path, label: factLabels.get(path) ?? path }))
+	);
 
 	function insert(path: string) {
 		handle?.edit((text, from, to) => insertValue(text, from, to, path, LIST_NAMES.has(path)));
@@ -135,21 +159,28 @@
 				<div class="flex flex-wrap items-center gap-1">
 					<span class="mr-1 text-xs text-muted-foreground">{m.template_filters()}</span>
 					{#each chips as chip (chip.name)}
-						<Button
-							variant="outline"
-							size="xs"
-							class="font-mono"
-							title={chip.insert}
-							onclick={() => filter(chip.insert)}
-						>
-							{chip.name}
-						</Button>
+						<!-- What it inserts, on hover. -->
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...mergeProps(props, { onclick: () => filter(chip.insert) })}
+										variant="outline"
+										size="xs"
+										class="font-mono"
+									>
+										{chip.name}
+									</Button>
+								{/snippet}
+							</Tooltip.Trigger>
+							<Tooltip.Content class="font-mono">{chip.insert}</Tooltip.Content>
+						</Tooltip.Root>
 					{/each}
 					<a
 						href={TEMPLATES_GUIDE}
 						target="_blank"
 						rel="noopener noreferrer"
-						class="ml-auto text-xs text-primary underline-offset-2 hover:underline"
+						class="ml-auto text-xs text-brand underline-offset-2 hover:underline"
 					>
 						{m.template_guide()}
 					</a>
@@ -162,7 +193,7 @@
 			</div>
 
 			<section class="flex flex-col gap-1.5" aria-labelledby="{id}-values">
-				<h3 id="{id}-values" class="text-sm font-medium">{m.template_values()}</h3>
+				<SectionTitle size="card" level={3} id="{id}-values">{m.template_values()}</SectionTitle>
 				<ul class="divide-y rounded-lg border">
 					{#each TEMPLATE_NAMES as name (name)}
 						{@render row(name, TEMPLATE_NAME_LABELS[name]())}
@@ -183,9 +214,20 @@
 					{/if}
 				</ul>
 			</section>
+			<section class="flex flex-col gap-1.5" aria-labelledby="{id}-facts">
+				<SectionTitle size="card" level={3} id="{id}-facts">{m.template_facts()}</SectionTitle>
+				<!-- Those the document shows; all of them by typing `facts.` in the editor. -->
+				<ul class="divide-y rounded-lg border">
+					{#each shownFacts as fact (fact.name)}
+						{@render row(fact.name, fact.label)}
+					{/each}
+					<!-- A list: no value to show. -->
+					{@render row('fact_list', m.template_value_fact_list(), true)}
+				</ul>
+			</section>
 			{#if fields.length > 0}
 				<section class="flex flex-col gap-1.5" aria-labelledby="{id}-fields">
-					<h3 id="{id}-fields" class="text-sm font-medium">{m.template_fields()}</h3>
+					<SectionTitle size="card" level={3} id="{id}-fields">{m.template_fields()}</SectionTitle>
 					<ul class="divide-y rounded-lg border">
 						{#each fields as field (field.id)}
 							{@render row(`field.${field.key}`, field.name)}
@@ -212,6 +254,19 @@
 							class="mt-1 max-h-48 overflow-auto rounded-lg border bg-secondary p-2 font-mono text-xs whitespace-pre-wrap">{preview.rendered}</pre>
 					{:else}
 						<span class="font-medium">{preview.rendered}</span>
+					{/if}
+					{#if target && target.data_type !== 'text' && preview.rendered !== ''}
+						<!-- What the field gets: the rendered text read as its type has it. -->
+						{#if preview.unreadable}
+							<span class="block text-destructive">
+								{m.template_unreadable({ type: fieldTypeLabel(target.data_type) })}
+							</span>
+						{:else if preview.read !== null && preview.read !== undefined}
+							<span class="block text-muted-foreground">
+								{m.template_read({ type: fieldTypeLabel(target.data_type) })}
+								<span class="font-medium text-foreground">{fieldText(preview.read, target)}</span>
+							</span>
+						{/if}
 					{/if}
 				{/if}
 			</div>

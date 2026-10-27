@@ -26,8 +26,13 @@ Layout of a set directory:
   `document_date`, optionally `recipient`, `topic`, `title` and `language`, from which the
   answer of the language model's signal is built; `fields`: proposals by field name
   (`value`, `evidence`, `label`), in that answer as text; `lane`: the lane this answer leads
-  to, if not the expected one). `expected` and `fake` may give `lanes` by run where a run
-  differs; `runs` names the runs a case belongs to (default: both).
+  to, if not the expected one; `facts`: the entries of the answer to the facts request,
+  `kind`, `value`, `role`, `evidence`, `label`). `expected.facts` (`kind`, `value` as
+  written, `role`) are the facts the document must have, scored where given;
+  `expected.relations` the cases of the run it is related with (either way), by name; a case
+  without them expects none. `expected` and
+  `fake` may give `lanes` by run where a run differs; `runs` names the runs a case belongs to
+  (default: both).
 """
 
 import json
@@ -37,12 +42,15 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from lekto.core.domain.document_facts import FactRole
 from lekto.core.domain.fields import FieldType
+from lekto.core.domain.identifiers import IdentifierKind, normalise_identifier
 from lekto.core.domain.json_value import JsonObject, JsonValue
 from lekto.core.domain.master_data import Assignment
 from lekto.core.domain.pipeline import Lane
 from lekto.core.ports.llm import StructuredRequest
 from lekto.core.services.classification.prompts import (
+    FACTS_SCHEMA,
     FIELDS_OF_TYPE,
     PROPOSE_SCHEMA,
     SPACES_HEADING,
@@ -112,6 +120,10 @@ class MasterDataSpec:
     users: tuple[UserSpec, ...] = ()
 
 
+type ExpectedFact = tuple[IdentifierKind, str, FactRole]
+"""A fact a case's document must have: its kind, its value (normalised) and its role."""
+
+
 @dataclass(frozen=True)
 class Expected:
     lane: Lane
@@ -123,6 +135,8 @@ class Expected:
     lanes: dict[Run, Lane] = field(default_factory=dict)
     topic: str | None = None
     space: str | None = None
+    facts: frozenset[ExpectedFact] | None = None  # None: the case's facts are not scored
+    relations: frozenset[str] = frozenset()  # the cases it is related with, by name
 
     def lane_in(self, run: Run) -> Lane:
         return self.lanes.get(run, self.lane)
@@ -134,16 +148,19 @@ class FakeAnswer:
     fields: dict[str, JsonValue]
     lane: Lane
     lanes: dict[Run, Lane] = field(default_factory=dict)
+    facts: tuple[JsonValue, ...] = ()  # the entries of the answer to the facts request
 
     def lane_in(self, run: Run) -> Lane:
         return self.lanes.get(run, self.lane)
 
     def respond(self, request: StructuredRequest) -> JsonObject:
-        """The answer to a request of the language model's signal (`proposal`) or of the fields
-        node."""
+        """The answer to a request of the language model's signal (`proposal`, `facts`) or of
+        the fields node."""
         if request.schema_name == PROPOSE_SCHEMA:
-            return self._proposal(request.user)
-        keys = dict(_KEY_LINE.findall(_before_document(request.user)))
+            return self._proposal(request.task)
+        if request.schema_name == FACTS_SCHEMA:
+            return {"facts": list(self.facts)}
+        keys = dict(_KEY_LINE.findall(request.task))
         empty: JsonObject = {"value": None, "evidence": None, "label": None}
         return {"fields": {key: self.fields.get(name, empty) for key, name in keys.items()}}
 
@@ -246,17 +263,13 @@ def load_set(path: Path) -> EvaluationSet:
     return EvaluationSet(path, master, cases, training)
 
 
-# The fixed answer learns the field keys it is asked for only from the rendered prompt, so the
-# three below follow the wording of `core/services/classification/prompts.py` (`propose_message`,
-# `extract_message`): the line that opens the document, the field lines `- a1: "Name"`, the
-# headings "Fields", "Document types" and "Fields for every document", and a type's keys after
-# `FIELDS_OF_TYPE`; the spaces under `SPACES_HEADING` as `- s1: label`. A change there leaves
-# the fields of the fixed answers empty; `tests/unit/test_evaluation.py` renders the prompts to
-# hold the two together.
-
-
-def _before_document(message: str) -> str:
-    return message.split("The document follows", 1)[0]
+# The fixed answer learns the field keys it is asked for only from the rendered task, so the
+# functions below follow the wording of `core/services/classification/prompts.py`
+# (`propose_task`, `extract_task`): the field lines `- a1: "Name"`, the headings "Fields",
+# "Document types" and "Fields for every document", and a type's keys after `FIELDS_OF_TYPE`;
+# the spaces under `SPACES_HEADING` as `- s1: label`. A change there leaves the fields of the
+# fixed answers empty; `tests/unit/test_evaluation.py` renders the tasks to hold the two
+# together.
 
 
 _KEY_LINE = re.compile(r'^\s*- (a\d+): "([^"\n]*)"', re.M)
@@ -268,7 +281,7 @@ def _proposal_keys(message: str, document_type: JsonValue) -> dict[str, str]:
     names: dict[str, str] = {}
     wanted: list[str] = []
     section = None
-    for line in _before_document(message).splitlines():
+    for line in message.splitlines():
         if not line.startswith(" ") and line.endswith(":"):
             section = line
             continue
@@ -291,10 +304,9 @@ _SPACE_LINE = re.compile(r"^- (s\d+): (.*)$")
 
 def _space_keys(message: str) -> dict[str, str]:
     """The keys of the spaces the request lists, by their labels; empty without spaces."""
-    before = _before_document(message)
-    if SPACES_HEADING not in before:
+    if SPACES_HEADING not in message:
         return {}
-    listed = before.split(SPACES_HEADING, 1)[1]
+    listed = message.split(SPACES_HEADING, 1)[1]
     return {
         found[2]: found[1]
         for line in listed.splitlines()
@@ -437,6 +449,8 @@ def _case(markdown: Path, master: MasterDataSpec) -> Case:
             lanes=_lanes(expected_data),
             topic=expected_data.get("topic"),
             space=expected_data.get("space"),
+            facts=_facts(expected_data["facts"]) if "facts" in expected_data else None,
+            relations=frozenset(expected_data.get("relations", ())),
         )
         fake = None
         if data.get("fake") is not None:
@@ -451,6 +465,7 @@ def _case(markdown: Path, master: MasterDataSpec) -> Case:
                     if "lane" in fake_data or "lanes" in fake_data
                     else dict(expected.lanes)
                 ),
+                facts=tuple(fake_data.get("facts", ())),
             )
         case = Case(
             name=name,
@@ -465,6 +480,15 @@ def _case(markdown: Path, master: MasterDataSpec) -> Case:
         raise EvaluationSetError(f"{name}: {error!r}") from None
     _check_names(case, master)
     return case
+
+
+def _facts(items: Any) -> frozenset[ExpectedFact]:
+    """The facts expected, each with its kind, its value as written and its role."""
+    facts: set[ExpectedFact] = set()
+    for item in items:
+        kind = IdentifierKind(item["kind"])
+        facts.add((kind, normalise_identifier(kind, str(item["value"])), FactRole(item["role"])))
+    return frozenset(facts)
 
 
 def _topic(item: Any) -> tuple[str, str | None]:

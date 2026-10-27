@@ -15,7 +15,7 @@ import json
 import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from types import MappingProxyType
 from typing import Any
@@ -30,8 +30,10 @@ from lekto.core.domain.classification import (
     field_key,
     node_reasons,
 )
+from lekto.core.domain.document_facts import ReadFact
 from lekto.core.domain.documents import UNSET, Document, DocumentChanges, Unset
 from lekto.core.domain.errors import (
+    LanguageModelError,
     NotFoundError,
     UnprocessableDocumentError,
     ValidationError,
@@ -102,18 +104,21 @@ from lekto.core.ports.clock import Clock
 from lekto.core.ports.llm import LanguageModel, StructuredAnswer, StructuredRequest
 from lekto.core.ports.locator import TextLocator
 from lekto.core.ports.object_store import ObjectStore
-from lekto.core.ports.unit_of_work import UnitOfWorkFactory
+from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._spaces import SpaceCandidates, space_candidates
 from lekto.core.services.classification.answers import (
     AnswerError,
     Proposal,
     StoredProposal,
     extract_schema,
+    facts_schema,
     field_keys,
     key_ids,
     parse_extract,
+    parse_facts,
     parse_propose,
     propose_schema,
+    read_fact_to_json,
 )
 from lekto.core.services.classification.external import (
     ExternalCall,
@@ -125,20 +130,30 @@ from lekto.core.services.classification.external import (
     propose_context,
     values_of,
 )
+from lekto.core.services.classification.kept_facts import READ_FACTS, TextFacts, keep_facts
 from lekto.core.services.classification.prompts import (
     EXTRACT_PROMPT,
     EXTRACT_SCHEMA,
-    EXTRACT_SYSTEM,
+    FACT_KINDS,
+    FACT_ROLES,
+    FACTS_PROMPT,
+    FACTS_SCHEMA,
     PROPOSE_PROMPT,
     PROPOSE_SCHEMA,
-    PROPOSE_SYSTEM,
+    SYSTEM,
     Listed,
-    extract_message,
-    propose_message,
-    retry_message,
+    document_marker,
+    document_message,
+    extract_task,
+    facts_task,
+    propose_task,
+    retry_note,
 )
 from lekto.core.services.classification.signals import (
     ABSTAINED,
+    FACTS_ERROR,
+    FACTS_INPUT,
+    MODEL_FACTS,
     PROPOSAL,
     abstained,
     abstained_reason,
@@ -259,29 +274,46 @@ class _ModelStep:
         self,
         document: Document,
         node: Node,
-        system: str,
-        message: str,
+        sent: Shortened,
+        task: str,
         schema: JsonObject,
         name: str,
         parse: Callable[[str], T],
+        *,
+        calls: list[ModelCall] | None = None,
+        request: str = "",
     ) -> tuple[T, list[StructuredAnswer]]:
-        """The parsed answer and all answers; once more after an unfit one. What was sent and
-        received is kept beside the document (`exchanges_key`), also when the node fails."""
+        """The parsed answer and all answers; once more after an unfit one, with the note what
+        was wrong after the task (the call begins as the first did). What was sent and received
+        is kept beside the document (`exchanges_key`), also when the node fails; `calls`: those
+        of the node's run before, kept with these, and `request` names this further request
+        about the document (`ModelCall.request`)."""
         assert self._model is not None
         answers: list[StructuredAnswer] = []
-        calls: list[ModelCall] = []
+        kept: list[ModelCall] = calls if calls is not None else []
         errors: list[str] = []
-        user = message
+        text = document_message(sent)
+        retry: str | None = None
         try:
             for _ in range(2):
                 answer = await self._model.complete(
-                    StructuredRequest(system=system, user=user, schema=schema, schema_name=name)
+                    StructuredRequest(
+                        system=SYSTEM,
+                        document=text,
+                        task=task,
+                        schema=schema,
+                        schema_name=name,
+                        retry=retry,
+                    )
                 )
                 answers.append(answer)
-                calls.append(
+                kept.append(
                     ModelCall(
-                        system=system,
-                        user=user,
+                        system=SYSTEM,
+                        document=text,
+                        task=task,
+                        retry=retry,
+                        request=request,
                         answer=answer.content,
                         model=answer.model,
                         usage=answer.usage,
@@ -291,11 +323,11 @@ class _ModelStep:
                     return parse(answer.content), answers
                 except AnswerError as error:
                     errors.append(str(error))
-                    user = retry_message(message, str(error))
+                    retry = retry_note(str(error))
             raise _UnfitAnswerError(errors, answers)
         finally:
-            if calls:
-                await keep_calls(self._store, document, node, calls)
+            if kept:
+                await keep_calls(self._store, document, node, kept)
 
     def _input(self, document: Document, text: str, sent: Shortened, prompt: str) -> JsonObject:
         assert self._model is not None
@@ -350,7 +382,7 @@ class LlmSignal(_ModelStep):
         super().__init__(uow, store, model, clock, policy)
         self._desk = desk
 
-    async def run(self, document: Document) -> NodeResult | ExternalCall:
+    async def run(self, document: Document) -> "NodeResult | ExternalCall | ModelFactsResult":
         outside = await model_call_state(self._uow, self._desk, document, TaskKind.PROPOSE)
         if outside is None and self._model is None:
             return abstained(because(ReasonCode.NO_LANGUAGE_MODEL))
@@ -440,32 +472,71 @@ class LlmSignal(_ModelStep):
             "spaces": {key: str(space.id) for key, space in spaces.items()},
         }
         try:
+            calls: list[ModelCall] = []
             answer, answers = await self._ask(
                 document,
                 Node.SIGNAL_LLM,
-                PROPOSE_SYSTEM,
-                propose_message(
+                sent,
+                propose_task(
                     listed_contacts,
                     typed,
                     general,
                     tag_names,
-                    sent,
                     [(key, space.prompt_label) for key, space in spaces.items()],
+                    marker=document_marker(sent),
                 ),
                 schema,
                 PROPOSE_SCHEMA,
                 lambda content: parse_propose(content, list(keys), list(spaces)),
+                calls=calls,
             )
         except _UnfitAnswerError as error:
             return self._unfit(error, input)
         chosen = {key: space.id for key, space in spaces.items()}
-        return NodeResult(
+        read, asked, model_read = await self._facts(document, sent, calls)
+        output = _answered(answers, answer.raw) | read
+        output["tokens"] = [
+            *tokens_of(item.usage for item in answers),
+            *tokens_of((item.usage for item in asked), request=FACTS_SCHEMA),
+        ]
+        result = NodeResult(
             outcome=Outcome.OK,
             model_version=_model_version(answers[-1]),
-            input=input,
-            output=_answered(answers, answer.raw)
-            | {PROPOSAL: StoredProposal.of(answer, key_ids(keys), chosen).to_json()},
+            input=input | {FACTS_INPUT: FACTS_PROMPT},
+            output=output | {PROPOSAL: StoredProposal.of(answer, key_ids(keys), chosen).to_json()},
         )
+        return ModelFactsResult(result, await TextFacts.read(text), model_read)
+
+    async def _facts(
+        self, document: Document, sent: Shortened, calls: list[ModelCall]
+    ) -> tuple[JsonObject, list[StructuredAnswer], list[ReadFact] | None]:
+        """The facts with their role the model reads (`facts-1`), a second request on the
+        beginning the first shared (system prompt and document: prompt caching): the output's
+        part, the answers and the facts (None: it read none). What goes wrong is in the output
+        and never fails the signal, also an error that would pass with time (the proposal
+        stands without facts; asking the model again reads them)."""
+        try:
+            read, answers = await self._ask(
+                document,
+                Node.SIGNAL_LLM,
+                sent,
+                facts_task(marker=document_marker(sent)),
+                facts_schema([kind.value for kind in FACT_KINDS], [r.value for r in FACT_ROLES]),
+                FACTS_SCHEMA,
+                parse_facts,
+                calls=calls,
+                request=FACTS_SCHEMA,
+            )
+        except _UnfitAnswerError as error:
+            return {FACTS_ERROR: str(error)}, error.answers, None
+        except LanguageModelError as error:
+            log.warning(
+                "the language model read no facts: %s",
+                error,
+                extra={"document_id": str(document.id)},
+            )
+            return {FACTS_ERROR: str(error)}, [], None
+        return {MODEL_FACTS: [read_fact_to_json(fact) for fact in read]}, answers, read
 
     async def _answered(self, document: Document, text: str, outside: ModelCallState) -> NodeResult:
         """What the webhook's task brought: its proposal, as the model's, or why none."""
@@ -523,6 +594,23 @@ def _listed_spaces(candidates: SpaceCandidates | None) -> dict[str, ListedSpace]
     labels += [ListedSpace(space.id, space.name, space.description or None) for space in shared]
     labels += [ListedSpace(space.id, candidates.label(space.id)) for space in others]
     return {f"s{number}": item for number, item in enumerate(labels, start=1)}
+
+
+@dataclass(frozen=True)
+class ModelFactsResult:
+    """The language model's proposal, and the facts it read: kept with the facts of the
+    patterns and codes when the result is recorded (`kept_facts`; None: it read none, the facts
+    of an earlier answer go)."""
+
+    result: NodeResult
+    text: TextFacts
+    read: list[ReadFact] | None
+
+    async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
+        report = await keep_facts(uow, document.id, self.text, self.read)
+        if report is None:
+            return self.result
+        return replace(self.result, output=self.result.output | {READ_FACTS: report})
 
 
 class JudgeNode:
@@ -831,9 +919,11 @@ class FieldsNode(_ModelStep):
                 proposals, answers = await self._ask(
                     document,
                     Node.FIELDS,
-                    EXTRACT_SYSTEM,
-                    extract_message(
-                        None if document_type is None else document_type.name, keys, sent
+                    sent,
+                    extract_task(
+                        None if document_type is None else document_type.name,
+                        keys,
+                        marker=document_marker(sent),
                     ),
                     extract_schema(keys),
                     EXTRACT_SCHEMA,

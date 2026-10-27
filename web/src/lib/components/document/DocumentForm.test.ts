@@ -15,7 +15,7 @@ import DocumentForm from './DocumentForm.svelte';
 
 type Document = components['schemas']['DocumentDetails'];
 
-vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
+vi.mock('$app/navigation', () => ({ beforeNavigate: vi.fn(), goto: vi.fn() }));
 
 const OWNER = '0199a6c4-0000-7000-8000-000000000001';
 const SPACE = '0199a6c4-0000-7000-8000-0000000000d1';

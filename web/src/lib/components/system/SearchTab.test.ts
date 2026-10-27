@@ -1,6 +1,6 @@
 // The tab "Search index": the share of documents in the index and with vectors, what is open,
 // the durations, and the check of admins; without embeddings nothing of the meaning.
-import { render, screen } from '@testing-library/svelte';
+import { render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatDuration } from '#lib/duration.ts';
@@ -88,6 +88,30 @@ describe('the search index tab', () => {
 		render(SearchTab);
 		expect(await screen.findByText(m.search_in_index())).toBeTruthy();
 		expect(screen.queryByRole('button', { name: m.search_check_button() })).toBeNull();
+	});
+
+	it('lets an admin rebuild the index after a question, a user not', async () => {
+		const api = fakeApi({
+			'GET /api/v1/search/status': () => ({
+				...status,
+				index: { ...status.index, indexing: false }
+			}),
+			'POST /api/v1/search/reindex': () => new Response(null, { status: 202 })
+		});
+		vi.stubGlobal('fetch', api);
+		const { unmount } = render(SearchTab);
+		await userEvent.click(await screen.findByRole('button', { name: m.search_reindex_button() }));
+		const dialog = await screen.findByRole('alertdialog');
+		expect(dialog.textContent).toContain(m.search_reindex_confirm_text());
+		expect(calls(api)).not.toContain('POST /api/v1/search/reindex');
+		await userEvent.click(within(dialog).getByRole('button', { name: m.search_reindex_button() }));
+		await waitFor(() => expect(calls(api)).toContain('POST /api/v1/search/reindex'));
+		unmount();
+
+		signIn('user');
+		render(SearchTab);
+		expect(await screen.findByText(m.search_in_index())).toBeTruthy();
+		expect(screen.queryByRole('button', { name: m.search_reindex_button() })).toBeNull();
 	});
 
 	it('says so when the installation has no search', async () => {

@@ -3,6 +3,11 @@
 First adapter: OpenAI-compatible API (Ollama locally, or a cloud provider). The answer is
 returned as text; checking it against the schema is the core's job, because providers enforce
 schemas with different reliability.
+
+A request has a fixed form, so that calls about one document begin alike and an endpoint can
+cache what they share (prompt caching; Lekto sets no cache marks, a proxy such as LiteLLM may):
+the system prompt, the same for every call; the document; the task, what this call wants; and
+after an answer that did not fit, the note to answer again.
 """
 
 from dataclasses import dataclass, field
@@ -13,12 +18,17 @@ from lekto.core.domain.json_value import JsonObject
 
 @dataclass(frozen=True, kw_only=True)
 class StructuredRequest:
-    """A system and a user message, and the JSON Schema the answer must follow."""
+    """The system prompt, the document and the task, each a message in this order, and the JSON
+    Schema the answer must follow. `document` is the document's text in its markers, from the
+    person's side, never in the system prompt (it is untrusted). `retry`: after an answer that
+    did not fit, what was wrong with it; it comes last, so the calls before share the beginning."""
 
     system: str
-    user: str
+    document: str
+    task: str
     schema: JsonObject
     schema_name: str  # letters, digits, `_` and `-`; some providers require a name
+    retry: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

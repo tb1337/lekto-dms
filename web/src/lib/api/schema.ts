@@ -541,6 +541,26 @@ export interface paths {
 		patch: operations['change_contact_api_v1_contacts__id__patch'];
 		trace?: never;
 	};
+	'/api/v1/contacts/logos/fetch': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Fetch the missing logos
+		 * @description Admins only. Only with `LEKTO_LOGO_FETCH` (503 otherwise; `GET /pipeline` tells, `logo_fetch`). The worker fetches the logo of every contact without one that has a domain among its identifiers whose fetch has not failed (one that failed is tried again at the contact, `POST /contacts/{id}/logo/fetch`). A contact queued already is not queued twice.
+		 */
+		post: operations['fetch_logos_api_v1_contacts_logos_fetch_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/contacts/{id}/identifiers': {
 		parameters: {
 			query?: never;
@@ -1125,6 +1145,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/documents/stream': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The documents in a stream
+		 * @description The documents the filters of `GET /documents` find among those the caller reads (with `all_users`, an admin's, every user's), in lanes: a series (one contact and type, and one contract or customer number, at a steady interval) with the relation target its documents refer to at its start and the document it expects next; branches (documents that refer to one of a series or to its target, with the chain of theirs); chains of documents related only among themselves; and the rest in one lane. At most the 500 newest documents (`truncated`); beyond 24 lanes of series and chains the rest come folded.
+		 */
+		get: operations['stream_api_v1_documents_stream_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/classifier': {
 		parameters: {
 			query?: never;
@@ -1517,6 +1557,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/documents/{id}/facts/decisions': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Decide about a fact of a document
+		 * @description Editors of the document's space and admins add a fact, correct its value or role, reject it or withdraw a decision; a person's kinds of facts only admins. A decision outlasts a new processing. The first decision about a document's facts counts as a verdict on them. Answers the facts as `GET /documents/{id}/facts`. 404 for a fact the document does not have; 409 for adding one it has, while it has no text, and with `at_contact` for a value another contact entered by hand or that is a person's; 422 for a value that is none of its kind, adding without a role, and `at_contact` on a document without a contact or for a kind a contact does not keep.
+		 */
+		post: operations['decide_document_fact_api_v1_documents__id__facts_decisions_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/documents/{id}/files': {
 		parameters: {
 			query?: never;
@@ -1735,6 +1795,66 @@ export interface paths {
 		 * @description Admins only. After an update of the parser (0.2 reads the text as it is set instead of Docling's Markdown): the worker reads the text of every document again whose text was read in its current run and that is not being processed. Nodes, lane and metadata stay as they are; the processing log gets the new reading (`input.reparse`), the search index takes up the new text (with embeddings, one per document). Train the classifier afterwards (`POST /classifier/train`). A document queued already is not queued twice.
 		 */
 		post: operations['reparse_api_v1_pipeline_reparse_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/pipeline/relate': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Find the relations of every document again
+		 * @description Admins only. The worker relates every document that is not being processed with the documents it refers to and those that refer to it: for documents from before the node `relate`, and after a document type became a relation target. Relations a person set or rejected stay. A document queued already is not queued twice.
+		 */
+		post: operations['relate_api_v1_pipeline_relate_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/pipeline/render-pages': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Render the missing page images
+		 * @description Admins only. The worker renders the page images of every document from before the node `pages` existed (its `pages` node is skipped in its current run). A document queued already is not queued twice.
+		 */
+		post: operations['render_pages_api_v1_pipeline_render_pages_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/pipeline/read-codes': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Read the codes of every document
+		 * @description Admins only. The worker reads the codes on the pages of every document whose text was read and that is not being processed, and keeps the identifiers it shows: for documents from before codes were read. A document queued already is not queued twice.
+		 */
+		post: operations['read_codes_api_v1_pipeline_read_codes_post'];
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -1989,6 +2109,70 @@ export interface paths {
 		 * @description Checks as when creating. Only its owner sees and changes a lens; other users' lenses are not found (404).
 		 */
 		patch: operations['update_lens_api_v1_lenses__id__patch'];
+		trace?: never;
+	};
+	'/api/v1/documents/{id}/relations': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The relations of a document
+		 * @description Needs read access. The relations whose other end the caller reads. A relation points from the newer document to the older one (by their document dates, else when they came in). Only who reads both documents sees it; who edits the newer and reads the older sets, accepts or removes it (403 otherwise).
+		 */
+		get: operations['relations_api_v1_documents__id__relations_get'];
+		put?: never;
+		/**
+		 * Relate a document with another
+		 * @description Sets the relation between the two documents, or accepts Lekto's suggestion of it. A relation points from the newer document to the older one (by their document dates, else when they came in). Only who reads both documents sees it; who edits the newer and reads the older sets, accepts or removes it (403 otherwise). 409 if it is set already or both are the same document.
+		 */
+		post: operations['relate_api_v1_documents__id__relations_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/documents/{id}/relations/{other_id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/**
+		 * Remove a relation
+		 * @description Removes the relation between the two documents, or rejects Lekto's suggestion of it: one Lekto made is kept as rejected, so it is not suggested again. A relation points from the newer document to the older one (by their document dates, else when they came in). Only who reads both documents sees it; who edits the newer and reads the older sets, accepts or removes it (403 otherwise). 404 if they are not related.
+		 */
+		delete: operations['unrelate_api_v1_documents__id__relations__other_id__delete'];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/expected': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The documents expected next
+		 * @description The series among the documents the caller may read (with `all_users`, an admin's, every user's; others 403): documents of one contact and type, and of one contract or customer number where they show one, at least three at a steady interval. Each with its next date and where that stands today; the overdue first, then by date. Derived on each call, nothing stored; today as it is in `tz`.
+		 */
+		get: operations['expected_api_v1_expected_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
 		trace?: never;
 	};
 	'/api/v1/jobs/summary': {
@@ -2680,6 +2864,11 @@ export interface components {
 			height: number;
 		};
 		/**
+		 * Cadence
+		 * @enum {string}
+		 */
+		Cadence: 'weekly' | 'monthly' | 'quarterly' | 'half_yearly' | 'yearly' | 'days';
+		/**
 		 * CandidateOut
 		 * @description A value the signals proposed for a field.
 		 */
@@ -2947,7 +3136,9 @@ export interface components {
 			| 'channel'
 			| 'text'
 			| 'field'
-			| 'document_date';
+			| 'document_date'
+			| 'fact'
+			| 'relation';
 		/**
 		 * ConditionSchema
 		 * @description `field` `op` `value`. Operators by field: contact, document_type: `is`, `in`, `present`,
@@ -2964,7 +3155,11 @@ export interface components {
 		 *     before the date), `present`, `missing`; step (in a condition step only: what a step that
 		 *     asks brought, at `path`): `is`, `in` (texts without case, numbers as numbers, true or
 		 *     false), `contains` (a text in a text, an item of a list), `gt`, `lt` (a number or a date),
-		 *     `present`, `missing`.
+		 *     `present`, `missing`; fact (`fact_kind`, `fact_role` if given; facts a person rejected do
+		 *     not count): `is`, `in` (the values as written, compared as Lekto compares them), `matches`
+		 *     (against each value as the text writes it; `^` and `$` mark its ends), `present`,
+		 *     `missing`; relation (the documents it refers to by a set relation; suggestions do not
+		 *     count): `present` (any), `missing` (none), `is`, `in` (one of the document type ids).
 		 * @example {
 		 *       "field": "contact",
 		 *       "op": "is",
@@ -2975,6 +3170,19 @@ export interface components {
 		 *       "field": "text",
 		 *       "op": "matches",
 		 *       "value": "Rechnung\\s+Nr"
+		 *     }
+		 * @example {
+		 *       "fact_kind": "invoice_number",
+		 *       "fact_role": "refers",
+		 *       "field": "fact",
+		 *       "op": "present"
+		 *     }
+		 * @example {
+		 *       "field": "relation",
+		 *       "op": "in",
+		 *       "value": [
+		 *         "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b"
+		 *       ]
 		 *     }
 		 */
 		ConditionSchema: {
@@ -3010,6 +3218,10 @@ export interface components {
 			 * @default false
 			 */
 			case_sensitive: boolean;
+			/** @description Only when `field` is `fact`: the kind of the facts. */
+			fact_kind?: components['schemas']['IdentifierKind'] | null;
+			/** @description Only when `field` is `fact`: their role; none for any. */
+			fact_role?: components['schemas']['FactRole'] | null;
 		};
 		/** ConditionStepAction */
 		'ConditionStepAction-Input': {
@@ -3701,6 +3913,39 @@ export interface components {
 			| 'field'
 			| '-field';
 		/**
+		 * DocumentNumberOut
+		 * @description A fact kept for the document: a number that is no contact's or person's identifier, its
+		 *     own (invoice, credit note, order number), a strand's (file reference, "Unser Zeichen",
+		 *     claim, ticket) or another document's it refers to ("Ihre Rechnung Nr.", "Ihr Zeichen"); or
+		 *     one of another kind a person decided.
+		 */
+		DocumentNumberOut: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @description Normalised, as Lekto compares it.
+			 */
+			value: string;
+			/**
+			 * Written
+			 * @description As the text writes it where it stands first.
+			 */
+			written: string | null;
+			role: components['schemas']['FactRole'];
+			/** Origins */
+			origins: components['schemas']['FactOrigin'][];
+			/**
+			 * @description As `FoundIdentifierOut.state`.
+			 * @default found
+			 */
+			state: components['schemas']['FactState'];
+			/**
+			 * Spans
+			 * @description Where it stands in the text.
+			 */
+			spans: components['schemas']['SpanOut'][];
+		};
+		/**
 		 * DocumentOutOfReach
 		 * @description After a change: the rules filed the document where the caller can no longer read it.
 		 *     The change is stored; nothing else about the document is shown.
@@ -3846,6 +4091,12 @@ export interface components {
 			/** Icon */
 			icon?: string | null;
 			/**
+			 * Relation Target
+			 * @description Documents refer to those of the type (a contract, a policy) by a contract or customer number they share; without it such a number connects no documents.
+			 * @default false
+			 */
+			relation_target: boolean;
+			/**
 			 * Fields
 			 * @description The fields of the type besides the global ones, each once, required or optional: set with it in one transaction (as `PUT /document-types/{id}/fields`).
 			 */
@@ -3894,6 +4145,11 @@ export interface components {
 			 * @example receipt
 			 */
 			icon: string | null;
+			/**
+			 * Relation Target
+			 * @description Documents refer to those of the type (a contract, a policy) by a contract or customer number they share; without it such a number connects no documents.
+			 */
+			relation_target: boolean;
 		};
 		/**
 		 * DocumentTypePatch
@@ -3914,6 +4170,8 @@ export interface components {
 			group_ids?: string[] | null;
 			/** Icon */
 			icon?: string | null;
+			/** Relation Target */
+			relation_target?: boolean | null;
 		};
 		/**
 		 * EventBody
@@ -3963,6 +4221,66 @@ export interface components {
 		 */
 		ExchangeNode: 'ocr' | 'signal_llm' | 'fields';
 		/**
+		 * ExpectedNextOut
+		 * @description The document a series expects next: a placeholder at the end of its lane.
+		 */
+		ExpectedNextOut: {
+			/**
+			 * Next Date
+			 * Format: date
+			 */
+			next_date: string;
+			/**
+			 * Next Period
+			 * @description In ISO notation (`2026-11`), where it has one.
+			 */
+			next_period: string | null;
+			state: components['schemas']['SeriesState'];
+			cadence: components['schemas']['Cadence'];
+			/** Spread Days */
+			spread_days: number;
+		};
+		/**
+		 * ExpectedOut
+		 * @description A series and the document it expects next.
+		 */
+		ExpectedOut: {
+			contact: components['schemas']['NamedOut'];
+			document_type: components['schemas']['NamedOut'];
+			/** @description The contract or customer number the series follows, if its documents show one. */
+			number: components['schemas']['SeriesNumberOut'] | null;
+			/** @description A calendar step (`weekly` to `yearly`) or `days` (see `interval_days`). */
+			cadence: components['schemas']['Cadence'];
+			/**
+			 * Interval Days
+			 * @description The median gap between its documents.
+			 */
+			interval_days: number;
+			/**
+			 * Spread Days
+			 * @description How far a document may come off its step (± days).
+			 */
+			spread_days: number;
+			/**
+			 * Documents
+			 * @description How many documents the series has (one per period).
+			 */
+			documents: number;
+			last: components['schemas']['LastDocumentOut'];
+			/**
+			 * Next Date
+			 * Format: date
+			 */
+			next_date: string;
+			/**
+			 * Next Period
+			 * @description The period the next document is for, in ISO notation (`2026-11`), where the series carries one.
+			 */
+			next_period: string | null;
+			/** @description `overdue` (its date and spread are over), `soon` (in the next 30 days), `later`, or `ended` (two dates missed). */
+			state: components['schemas']['SeriesState'];
+		};
+		/**
 		 * ExtractContext
 		 * @description `fields`' request (`external.extract`) for the fields the proposal did not give (the
 		 *     judge decided another type, or there is no proposal). Lekto checks the answer as a
@@ -3995,6 +4313,86 @@ export interface components {
 			};
 		};
 		/**
+		 * FactAction
+		 * @enum {string}
+		 */
+		FactAction: 'add' | 'correct' | 'reject' | 'withdraw';
+		/**
+		 * FactDecisionIn
+		 * @description A person's decision about a fact of the document.
+		 * @example {
+		 *       "action": "correct",
+		 *       "kind": "invoice_number",
+		 *       "role": "refers",
+		 *       "value": "4711"
+		 *     }
+		 * @example {
+		 *       "action": "correct",
+		 *       "at_contact": true,
+		 *       "kind": "customer_number",
+		 *       "new_value": "2004 7719",
+		 *       "value": "20047718"
+		 *     }
+		 * @example {
+		 *       "action": "add",
+		 *       "kind": "contract_number",
+		 *       "role": "target",
+		 *       "value": "V-123"
+		 *     }
+		 */
+		FactDecisionIn: {
+			/** @description `add` a fact the sources did not find (`value` as written, `role` required); `correct` the fact of `kind` and `value` (its role, and with `new_value` its value: the old one is then rejected); `reject` it (it is no fact of the document); `withdraw` a decision (a fact a source found is as found again, one only a person gave goes). */
+			action: components['schemas']['FactAction'];
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @description `add`: as written; otherwise the fact's value, normalised.
+			 */
+			value: string;
+			/** @description `add`: its role; `correct`: the role it has instead. */
+			role?: components['schemas']['FactRole'] | null;
+			/**
+			 * New Value
+			 * @description `correct`: the value, as written.
+			 */
+			new_value?: string | null;
+			/**
+			 * At Contact
+			 * @description `correct`, for admins: correct the value at the document's contact too (the old one goes from its identifiers, the new one is entered by hand); only for the kinds a contact keeps.
+			 * @default false
+			 */
+			at_contact: boolean;
+		};
+		/**
+		 * FactFilterBody
+		 * @description A fact the documents have: of `kind`, with `value` (as written; it needs its kind), in
+		 *     `role`; what is null is any.
+		 */
+		FactFilterBody: {
+			kind?: components['schemas']['IdentifierKind'] | null;
+			/** Value */
+			value?: string | null;
+			role?: components['schemas']['FactRole'] | null;
+		};
+		/**
+		 * FactOrigin
+		 * @description Where a fact comes from; one fact may come from several sources.
+		 * @enum {string}
+		 */
+		FactOrigin: 'pattern' | 'code' | 'model' | 'person';
+		/**
+		 * FactRole
+		 * @description What a fact is to the document that shows it (`fakten.md`, Rollen).
+		 * @enum {string}
+		 */
+		FactRole: 'contact' | 'target' | 'own' | 'thread' | 'refers' | 'person';
+		/**
+		 * FactState
+		 * @description Whether a source found the fact as it is, or a person decided it.
+		 * @enum {string}
+		 */
+		FactState: 'found' | 'added' | 'corrected' | 'rejected';
+		/**
 		 * FactsOut
 		 * @example {
 		 *       "codes": [],
@@ -4004,8 +4402,12 @@ export interface components {
 		 *           "in_code": false,
 		 *           "in_text": true,
 		 *           "kind": "customer_number",
+		 *           "origins": [
+		 *             "pattern"
+		 *           ],
 		 *           "other_contact_ids": [],
 		 *           "other_contacts": 0,
+		 *           "role": "contact",
 		 *           "spans": [
 		 *             {
 		 *               "end": 421,
@@ -4049,6 +4451,22 @@ export interface components {
 			 * @description The codes on the pages; null while they are not read (`read-codes`).
 			 */
 			codes: components['schemas']['CodeOut'][] | null;
+			/**
+			 * Numbers
+			 * @description The document's numbers that are no contact's or person's identifier, as the text reads: as the facts signal kept them (empty until it ran again after 0.7), with a person's decisions, those rejected too.
+			 */
+			numbers?: components['schemas']['DocumentNumberOut'][];
+			/**
+			 * Decided
+			 * @description The kept facts of the other kinds that `identifiers` does not show: for admins all of them (a person's numbers, those only the language model read), for others those a person decided (one added, a corrected value, one rejected the text does not show), none of a person's.
+			 */
+			decided?: components['schemas']['DocumentNumberOut'][];
+			/**
+			 * Editable
+			 * @description Whether the caller decides about the facts: an editor of the space or an admin (`POST /documents/{id}/facts/decisions`).
+			 * @default false
+			 */
+			editable: boolean;
 			/**
 			 * Persons
 			 * @description The users the document names, the surest first: for the editors of its space and admins; null for readers. What is private about a person (aliases, birth date, identifiers, a contact's number that names them) finds them only for admins and that person: anyone else sees another user only where the text has their display name (that a number is Anna's tax ID is Anna's).
@@ -4436,6 +4854,24 @@ export interface components {
 			 * @description Where it stands in the text.
 			 */
 			spans: components['schemas']['SpanOut'][];
+			/** @description What it is to the document (`contact`: points to the contact, `target`: to what a series refers to, `own`: marks the document, `thread`: joins a strand, `refers`: refers to another document, `person`: points to a person). As kept for the document; until the facts signal ran again after 0.7, the role of its kind. */
+			role: components['schemas']['FactRole'];
+			/**
+			 * Origins
+			 * @description Where it comes from: `pattern` (the text), `code`, `model`, `person`.
+			 */
+			origins: components['schemas']['FactOrigin'][];
+			/**
+			 * @description `found` as the sources found it, or a person's decision: `added`, `corrected`, `rejected` (it is no fact of the document).
+			 * @default found
+			 */
+			state: components['schemas']['FactState'];
+			/**
+			 * Kept
+			 * @description Whether the document keeps it as a fact (a person decides about it); not before the facts signal ran.
+			 * @default false
+			 */
+			kept: boolean;
 			/**
 			 * Other Contacts
 			 * @description For admins: on the confirmed documents of how many contacts other than the document's it stands (the IBAN of one's own account stands on many); null for others.
@@ -4596,6 +5032,8 @@ export interface components {
 		};
 		/**
 		 * IdentifierKind
+		 * @description The kinds of identifiers, which are the kinds of facts too (`domain.document_facts`;
+		 *     `.idea/fakten.md`, the catalog by role).
 		 * @enum {string}
 		 */
 		IdentifierKind:
@@ -4607,7 +5045,27 @@ export interface components {
 			| 'tax_id'
 			| 'social_security_number'
 			| 'health_insurance_number'
-			| 'email_address';
+			| 'email_address'
+			| 'creditor_id'
+			| 'commercial_register'
+			| 'tax_number'
+			| 'contract_number'
+			| 'policy_number'
+			| 'membership_number'
+			| 'meter_number'
+			| 'loan_number'
+			| 'mandate_reference'
+			| 'license_plate'
+			| 'invoice_number'
+			| 'credit_note_number'
+			| 'order_number'
+			| 'file_reference'
+			| 'our_reference'
+			| 'claim_number'
+			| 'ticket_number'
+			| 'your_reference'
+			| 'letter_date'
+			| 'child_benefit_number';
 		/** IdentifierOut */
 		IdentifierOut: {
 			kind: components['schemas']['IdentifierKind'];
@@ -5014,6 +5472,11 @@ export interface components {
 		 * @enum {string}
 		 */
 		LaneFilter: 'green' | 'yellow' | 'red' | 'processing';
+		/**
+		 * LaneKind
+		 * @enum {string}
+		 */
+		LaneKind: 'series' | 'branch' | 'chain' | 'single';
 		/** LanesOut */
 		LanesOut: {
 			/**
@@ -5032,11 +5495,26 @@ export interface components {
 			 */
 			red: number;
 		};
+		/** LastDocumentOut */
+		LastDocumentOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Title */
+			title: string;
+			/**
+			 * Document Date
+			 * Format: date
+			 */
+			document_date: string;
+		};
 		/**
 		 * Layout
 		 * @enum {string}
 		 */
-		Layout: 'grid' | 'list';
+		Layout: 'grid' | 'list' | 'stream';
 		/**
 		 * LensCreate
 		 * @example {
@@ -5115,6 +5593,11 @@ export interface components {
 			document_date_to?: string | null;
 			/** @description A period that moves with the day the lens is opened; not together with `document_date_from` or `_to`. */
 			document_period?: components['schemas']['RelativePeriod'] | null;
+			/**
+			 * Facts
+			 * @description Facts the documents have, each (`fact` of `GET /documents`).
+			 */
+			facts?: components['schemas']['FactFilterBody'][];
 		};
 		/**
 		 * LensOrder
@@ -5731,19 +6214,42 @@ export interface components {
 		ModelCallKind: 'propose' | 'extract';
 		/**
 		 * ModelCallOut
-		 * @description One request to the language model and its answer.
+		 * @description One request to the language model and its answer. A call of the signal or the fields node
+		 *     (since `propose-6`, `extract-6`) sent `system`, `document`, `task` and, after an unfit
+		 *     answer, `retry`, each a message in this order; a call of one message has it in `user`.
 		 */
 		ModelCallOut: {
 			/**
 			 * System
-			 * @description The system message.
+			 * @description The system message, the same for every call.
 			 */
 			system: string;
 			/**
 			 * User
-			 * @description The user message, with the document's text.
+			 * @description The one message of a call that sent one: a page the VLM read, the context a webhook got for a model call, a call before `propose-6`; else empty.
 			 */
 			user: string;
+			/**
+			 * Document
+			 * @description The document's text in its markers; else empty.
+			 */
+			document: string;
+			/**
+			 * Task
+			 * @description What the call wanted, after the document; else empty.
+			 */
+			task: string;
+			/**
+			 * Retry
+			 * @description After an answer that did not fit: what was wrong, sent last.
+			 */
+			retry: string | null;
+			/**
+			 * Request
+			 * @description A further request about the document (`facts`: the facts with their role); empty for the node's first request and its attempts.
+			 * @enum {string}
+			 */
+			request: '' | 'facts';
 			/**
 			 * Answer
 			 * @description The model's text as it came.
@@ -5884,6 +6390,16 @@ export interface components {
 			 */
 			spans: components['schemas']['SpanOut'][];
 		};
+		/** NamedOut */
+		NamedOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Name */
+			name: string;
+		};
 		/**
 		 * Node
 		 * @description The nodes of the ingest graph, in a topological order: every node comes after the nodes
@@ -5891,7 +6407,8 @@ export interface components {
 		 *
 		 *     The signals each propose metadata from one source: the language model, the trained
 		 *     classifier, similar confirmed documents, facts in the text (names, identifiers). `judge`
-		 *     decides from all of them, `fields` reads the fields of the decided type.
+		 *     decides from all of them, `fields` reads the fields of the decided type, `relate` finds the
+		 *     documents it refers to and those that refer to it (issue #145), before the rules see them.
 		 * @enum {string}
 		 */
 		Node:
@@ -5905,6 +6422,7 @@ export interface components {
 			| 'signal_facts'
 			| 'judge'
 			| 'fields'
+			| 'relate'
 			| 'apply_rules'
 			| 'file';
 		/**
@@ -6342,6 +6860,14 @@ export interface components {
 				[key: string]: unknown;
 			};
 		};
+		/** QueuedOut */
+		QueuedOut: {
+			/**
+			 * Queued
+			 * @description How many were queued now (not those queued already).
+			 */
+			queued: number;
+		};
 		/**
 		 * ReadingOut
 		 * @example {
@@ -6478,6 +7004,7 @@ export interface components {
 			| 'title_yields'
 			| 'value_empty'
 			| 'template_missing_value'
+			| 'template_unreadable'
 			| 'node_attempts_exhausted'
 			| 'node_crashed'
 			| 'file_not_pdf_or_image'
@@ -6653,6 +7180,23 @@ export interface components {
 			| 'not_iban'
 			| 'not_vat_id'
 			| 'not_customer_number'
+			| 'not_of_kind'
+			| 'fact_kind_unknown'
+			| 'fact_not_in_text'
+			| 'fact_not_asked'
+			| 'fact_criterion_empty'
+			| 'rule_fact_of_person'
+			| 'relation_exists'
+			| 'relation_not_found'
+			| 'relation_to_itself'
+			| 'fact_filter_of_person'
+			| 'fact_of_a_person'
+			| 'fact_not_found'
+			| 'fact_exists'
+			| 'fact_role_missing'
+			| 'fact_of_person'
+			| 'fact_at_contact_admin'
+			| 'fact_not_at_contact'
 			| 'not_personnel_number'
 			| 'not_domain'
 			| 'free_mail_domain'
@@ -6776,6 +7320,106 @@ export interface components {
 			recovery_codes: string[];
 		};
 		/**
+		 * RelateIn
+		 * @description The document to relate the document with; Lekto points the relation from the newer to the
+		 *     older.
+		 * @example {
+		 *       "document_id": "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b"
+		 *     }
+		 */
+		RelateIn: {
+			/**
+			 * Document Id
+			 * Format: uuid
+			 */
+			document_id: string;
+		};
+		/**
+		 * RelatedDocumentOut
+		 * @description The document at the other end of a relation, as a list shows it.
+		 */
+		RelatedDocumentOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Title */
+			title: string;
+			/** Document Type Id */
+			document_type_id: string | null;
+			/** Contact Id */
+			contact_id: string | null;
+			/** Document Date */
+			document_date: string | null;
+		};
+		/** RelatedOut */
+		RelatedOut: {
+			document: components['schemas']['RelatedDocumentOut'];
+			/** @description `person` set it, `lekto` recognised it. */
+			origin: components['schemas']['RelationOrigin'];
+			/** @description `set`, or `suggested` (a person decides). */
+			state: components['schemas']['RelationState'];
+			/**
+			 * Evidence
+			 * @description What Lekto had: `kind` of the source (`fact`, `period`, ...) and its values; empty for a person's.
+			 */
+			evidence: {
+				[key: string]: unknown;
+			};
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/**
+			 * Decided At
+			 * @description When a person last decided it.
+			 */
+			decided_at: string | null;
+			/**
+			 * Changeable
+			 * @description Whether the caller edits the newer of the two: then they accept, reject or remove it.
+			 */
+			changeable: boolean;
+		};
+		/**
+		 * RelationOrigin
+		 * @enum {string}
+		 */
+		RelationOrigin: 'person' | 'lekto';
+		/**
+		 * RelationState
+		 * @enum {string}
+		 */
+		RelationState: 'set' | 'suggested' | 'rejected';
+		/**
+		 * RelationsOut
+		 * @description The relations of a document whose other end the caller reads.
+		 */
+		RelationsOut: {
+			/**
+			 * Refers To
+			 * @description The older documents it refers to (bezieht sich auf), the newest first.
+			 */
+			refers_to: components['schemas']['RelatedOut'][];
+			/**
+			 * Referred By
+			 * @description The newer documents that refer to it (darauf beziehen sich).
+			 */
+			referred_by: components['schemas']['RelatedOut'][];
+			/**
+			 * Suggested
+			 * @description Relations Lekto suggests in either direction: a person accepts or rejects them.
+			 */
+			suggested: components['schemas']['RelatedOut'][];
+			/**
+			 * Editable
+			 * @description Whether the caller edits the document: then they relate it with another (the newer of the two must be one they edit, 403 otherwise).
+			 */
+			editable: boolean;
+		};
+		/**
 		 * RelativePeriod
 		 * @description A period that moves with the day the lens is opened (the quick picks of the filters).
 		 * @enum {string}
@@ -6818,6 +7462,7 @@ export interface components {
 			| 'signal_facts'
 			| 'judge'
 			| 'fields'
+			| 'relate'
 			| 'apply_rules'
 			| 'file';
 		/**
@@ -7355,7 +8000,7 @@ export interface components {
 			run: number;
 			/**
 			 * Calls
-			 * @description One call, or two after an answer that did not fit the schema.
+			 * @description One call, or two after an answer that did not fit the schema; then those of a further request (`request`).
 			 */
 			calls: components['schemas']['ModelCallOut'][];
 		};
@@ -7554,6 +8199,20 @@ export interface components {
 			 */
 			deadline: string;
 		};
+		/** SeriesNumberOut */
+		SeriesNumberOut: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @description Normalised, as Lekto compares it.
+			 */
+			value: string;
+		};
+		/**
+		 * SeriesState
+		 * @enum {string}
+		 */
+		SeriesState: 'overdue' | 'soon' | 'later' | 'ended';
 		/**
 		 * SessionOut
 		 * @description A new session; its token is in the cookie only.
@@ -7618,7 +8277,7 @@ export interface components {
 			field_id: string;
 			/**
 			 * Value
-			 * @description As the field's type has it; for a text field a template, as a title's.
+			 * @description Text is a template for every type, as a title's: what it renders is read as the field's type has it, first in the forms templates write (`1234.5`, `2026-03-12`, `2026-Q3`, `true`), else as a person writes it (`2.111,68 €`, `12. März 2026`, `KW 38/2026`, `ja`; an ambiguous number as `LEKTO_TEMPLATE_LOCALE` means it, an amount without currency in `LEKTO_DEFAULT_CURRENCY`); text that cannot be read sets nothing (noted, the document does not wait for it). An amount, a period or yes/no as JSON is a fixed value.
 			 */
 			value:
 				| string
@@ -7649,7 +8308,7 @@ export interface components {
 			type: 'set_title';
 			/**
 			 * Template
-			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like), and the facts: `facts.<kind>` (the document's own value of the kind, as written), `facts.refers.<kind>` (one it refers to), `facts.girocode` (`name`, `iban`, `bic`, `amount`, `purpose`) and `fact_list` (each with `kind`, `value`, `written`, `role`, `origin`); none a person rejected, none of a person's. Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md
 			 * @example {{ contact }} {{ document_type }} {{ document_date | date: '%Y-%m' }}
 			 */
 			template: string;
@@ -7910,6 +8569,85 @@ export interface components {
 			metadata: components['schemas']['FileMetadataOut'] | null;
 		};
 		/**
+		 * StreamDocumentOut
+		 * @description A document as the stream shows it.
+		 */
+		StreamDocumentOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Title */
+			title: string;
+			/** Document Date */
+			document_date: string | null;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/** Contact Id */
+			contact_id: string | null;
+			/** Document Type Id */
+			document_type_id: string | null;
+			lane: components['schemas']['Lane'] | null;
+		};
+		/** StreamLaneOut */
+		StreamLaneOut: {
+			/** @description `series`; `branch` (documents that refer to one of a series or to its target, with the chain of theirs); `chain` (documents related only among themselves); `single` (documents without series and relation). */
+			kind: components['schemas']['LaneKind'];
+			/**
+			 * Documents
+			 * @description Oldest first.
+			 */
+			documents: components['schemas']['StreamDocumentOut'][];
+			/**
+			 * Contact Id
+			 * @description Of a series.
+			 */
+			contact_id: string | null;
+			/**
+			 * Document Type Id
+			 * @description Of a series.
+			 */
+			document_type_id: string | null;
+			/**
+			 * Number
+			 * @description The contract or customer number a series follows.
+			 */
+			number: string | null;
+			/** @description The relation target at the start of a series (the contract); one may stand at the start of several. */
+			target: components['schemas']['StreamDocumentOut'] | null;
+			/** @description Of a series that has not ended: the document it expects next. */
+			expected: components['schemas']['ExpectedNextOut'] | null;
+			/**
+			 * Parent
+			 * @description Of a branch: the index of its series lane.
+			 */
+			parent: number | null;
+			/**
+			 * Joins
+			 * @description Of a branch: the document of the series (or its target) it refers to.
+			 */
+			joins: string | null;
+			/**
+			 * Folded
+			 * @description Beyond 24 lanes of series and chains, the rest (with their branches): shown on demand.
+			 */
+			folded: boolean;
+		};
+		/** StreamOut */
+		StreamOut: {
+			/** Lanes */
+			lanes: components['schemas']['StreamLaneOut'][];
+			/**
+			 * Truncated
+			 * @description More documents than a stream shows (500, the newest): a narrower filter shows it whole.
+			 */
+			truncated: boolean;
+		};
+		/**
 		 * Strength
 		 * @description How surely a document names a person.
 		 * @enum {string}
@@ -8064,7 +8802,7 @@ export interface components {
 		TemplatePreviewIn: {
 			/**
 			 * Template
-			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md At most 500 characters, a webhook's body 10000.
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like), and the facts: `facts.<kind>` (the document's own value of the kind, as written), `facts.refers.<kind>` (one it refers to), `facts.girocode` (`name`, `iban`, `bic`, `amount`, `purpose`) and `fact_list` (each with `kind`, `value`, `written`, `role`, `origin`); none a person rejected, none of a person's. Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md At most 500 characters, a webhook's body 10000.
 			 */
 			template: string;
 			/**
@@ -8084,6 +8822,11 @@ export interface components {
 			 * @description The type whose fields the template may use (a title pattern's); else the document's type, else every field.
 			 */
 			document_type_id?: string | null;
+			/**
+			 * Field Id
+			 * @description The field a rule's action sets with the template: what it renders is read as the field's type has it (`read`, `unreadable`); also without a document if the template uses no value.
+			 */
+			field_id?: string | null;
 		};
 		/** TemplatePreviewOut */
 		TemplatePreviewOut: {
@@ -8118,6 +8861,24 @@ export interface components {
 			values: {
 				[key: string]: string;
 			} | null;
+			/**
+			 * Read
+			 * @description With `field_id`: the value the rendered text gives the field, in its JSON form; None if nothing was rendered or it cannot be read.
+			 */
+			read?:
+				| (
+						| string
+						| boolean
+						| components['schemas']['MoneyValue']
+						| components['schemas']['PeriodValue']
+				  )
+				| null;
+			/**
+			 * Unreadable
+			 * @description With `field_id`: the rendered text cannot be read as the field's type has it, so the action would set nothing.
+			 * @default false
+			 */
+			unreadable: boolean;
 		};
 		/** TimesOut */
 		TimesOut: {
@@ -12577,6 +13338,94 @@ export interface operations {
 					 *       "title": "Internal Server Error",
 					 *       "status": 500,
 					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	fetch_logos_api_v1_contacts_logos_fetch_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['QueuedOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Service Unavailable",
+					 *       "status": 503,
+					 *       "detail": "database: unreachable"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -17390,6 +18239,8 @@ export interface operations {
 				topic_id?: string[] | null;
 				document_date_from?: string | null;
 				document_date_to?: string | null;
+				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				fact?: string[] | null;
 			};
 			header?: never;
 			path?: never;
@@ -17824,6 +18675,110 @@ export interface operations {
 			};
 		};
 	};
+	stream_api_v1_documents_stream_get: {
+		parameters: {
+			query?: {
+				/** @description Every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+				contact_id?: string[] | null;
+				document_type_id?: string[] | null;
+				tag_id?: string[] | null;
+				space_id?: string[] | null;
+				lane?: components['schemas']['LaneFilter'][] | null;
+				field_id?: string | null;
+				contact_group_id?: string[] | null;
+				document_type_group_id?: string[] | null;
+				topic_id?: string[] | null;
+				document_date_from?: string | null;
+				document_date_to?: string | null;
+				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				fact?: string[] | null;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['StreamOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
 	status_api_v1_classifier_get: {
 		parameters: {
 			query?: never;
@@ -18091,6 +19046,8 @@ export interface operations {
 				topic_id?: string[] | null;
 				document_date_from?: string | null;
 				document_date_to?: string | null;
+				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				fact?: string[] | null;
 			};
 			header?: never;
 			path?: never;
@@ -18401,6 +19358,8 @@ export interface operations {
 				topic_id?: string[] | null;
 				document_date_from?: string | null;
 				document_date_to?: string | null;
+				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				fact?: string[] | null;
 			};
 			header?: never;
 			path?: never;
@@ -20272,6 +21231,151 @@ export interface operations {
 			};
 		};
 	};
+	decide_document_fact_api_v1_documents__id__facts_decisions_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['FactDecisionIn'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['FactsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
 	document_files_api_v1_documents__id__files_get: {
 		parameters: {
 			query?: never;
@@ -21425,6 +22529,219 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['ReparseOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	relate_api_v1_pipeline_relate_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['QueuedOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	render_pages_api_v1_pipeline_render_pages_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['QueuedOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	read_codes_api_v1_pipeline_read_codes_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['QueuedOut'];
 				};
 			};
 			/** @description Unauthorized */
@@ -23376,6 +24693,459 @@ export interface operations {
 					 *       "title": "Content Too Large",
 					 *       "status": 413,
 					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	relations_api_v1_documents__id__relations_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['RelationsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	relate_api_v1_documents__id__relations_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['RelateIn'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['RelationsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	unrelate_api_v1_documents__id__relations__other_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+				other_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['RelationsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	expected_api_v1_expected_get: {
+		parameters: {
+			query?: {
+				/** @description Every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+				/** @description The IANA time zone the months begin in. */
+				tz?: string;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ExpectedOut'][];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

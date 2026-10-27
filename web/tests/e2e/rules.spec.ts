@@ -1,7 +1,7 @@
 // The rule builder against a real API: a nested rule is built, checked before saving, saved
 // switched off, dry-run on an existing document, switched on and applied, changed, read in an
 // earlier version, opened and saved again unchanged (no new version), and deleted.
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 
 const ADMIN = process.env.LEKTO_ADMIN_USERNAME ?? 'admin';
 const ADMIN_PASSWORD = process.env.LEKTO_ADMIN_PASSWORD ?? '';
@@ -68,12 +68,24 @@ test.afterAll(async () => {
 	await api.dispose();
 });
 
+/** Choose `value` in a `Select`: on the desktop a popover of options, each with its value. */
+async function choose(field: Locator, value: string) {
+	await field.click();
+	await field.page().locator(`[role="option"][data-value="${value}"]`).click();
+}
+
+/** Choose the option labelled `label` in a `Select`. */
+async function chooseLabel(field: Locator, label: string) {
+	await field.click();
+	await field.page().getByRole('option', { name: label, exact: true }).click();
+}
+
 async function signIn(page: Page) {
 	await page.goto('/ui/login');
 	await page.getByLabel('Username').fill(ADMIN);
 	await page.getByLabel('Password').fill(ADMIN_PASSWORD);
 	await page.getByRole('button', { name: 'Sign in' }).click();
-	await page.waitForURL('**/ui/documents');
+	await page.waitForURL('**/ui/inbox');
 }
 
 test('a rule is built, dry-run, applied, changed and deleted', async ({ page }) => {
@@ -94,20 +106,20 @@ test('a rule is built, dry-run, applied, changed and deleted', async ({ page }) 
 	await expect(page.getByText('Give the rule a name.')).toBeVisible();
 	await expect(page.getByText('Add at least one action.')).toBeVisible();
 
-	await page.getByRole('textbox', { name: 'Name' }).fill(NAME);
+	await page.getByRole('textbox', { name: 'Name', exact: true }).fill(NAME);
 	const root = page.getByRole('group', { name: 'Conditions' });
 	// All of: channel is one of web, and a group (any): contact is ours, or text contains NAME.
-	await root.getByLabel('Field').first().selectOption('channel');
-	await root.getByLabel('Comparison').first().selectOption('in');
+	await choose(root.getByRole('combobox', { name: 'Subject' }).first(), 'channel');
+	await choose(root.getByRole('combobox', { name: 'Comparison' }).first(), 'in');
 	await root.getByRole('group', { name: 'Value' }).getByLabel('Web UI').check();
 	await root.getByRole('button', { name: 'Add group' }).last().click();
 	const group = root.getByRole('group', { name: 'Group' });
-	await group.getByLabel('Field').selectOption('contact');
-	await group.getByLabel('Value').selectOption({ label: `${NAME} contact` });
+	await choose(group.getByRole('combobox', { name: 'Subject' }), 'contact');
+	await chooseLabel(group.getByRole('combobox', { name: 'Value' }), `${NAME} contact`);
 	await group.getByRole('button', { name: 'Add condition' }).click();
-	await group.getByLabel('Field').last().selectOption('text');
-	await group.getByLabel('Value').last().fill(NAME);
-	await page.getByLabel('Add action').selectOption('add_tags');
+	await choose(group.getByRole('combobox', { name: 'Subject' }).last(), 'text');
+	await group.getByRole('textbox', { name: 'Value' }).last().fill(NAME);
+	await choose(page.getByRole('combobox', { name: 'Add action' }), 'add_tags');
 	await page.getByRole('group', { name: 'Add tags' }).getByLabel(`${NAME} tag`).check();
 	let previews = 0;
 	page.on('request', (request) => {
@@ -121,20 +133,20 @@ test('a rule is built, dry-run, applied, changed and deleted', async ({ page }) 
 	await expect(page.getByRole('link', { name: `${NAME}` }).first()).toBeVisible();
 	await expect(page.getByRole('checkbox', { name: `Apply to ${NAME}` })).toBeChecked();
 	expect(previews).toBe(1);
-	await page.getByRole('button', { name: /^Switch on and apply to \d+ documents$/ }).click();
+	await page.getByRole('button', { name: /^Activate and apply to \d+ documents$/ }).click();
 	await expect(page.getByText(/^Done: 1 changed/)).toBeVisible({ timeout: 30_000 });
 	const document = await (await api.get(`/api/v1/documents/${created.document}`)).json();
 	expect(document.tag_ids).toContain(created.tag);
 
 	// Switched on, version 1; a change makes version 2 and switches it off until decided.
 	await page.goto(ruleUrl);
-	await expect(page.getByRole('switch', { name: `Switch off ${NAME}` })).toBeChecked();
+	await expect(page.getByRole('switch', { name: `Pause ${NAME}` })).toBeChecked();
 	await page.getByRole('link', { name: 'Edit' }).click();
-	await page.getByRole('textbox', { name: 'Name' }).fill(`${NAME} v2`);
+	await page.getByRole('textbox', { name: 'Name', exact: true }).fill(`${NAME} v2`);
 	await page.getByRole('button', { name: 'Save and see what it does' }).click();
 	await page.waitForURL(/\/apply\?saved=1$/);
-	await page.getByRole('link', { name: 'Leave off' }).click();
-	await expect(page.getByRole('switch', { name: `Switch on ${NAME} v2` })).not.toBeChecked();
+	await page.getByRole('link', { name: 'Leave paused' }).click();
+	await expect(page.getByRole('switch', { name: `Activate ${NAME} v2` })).not.toBeChecked();
 	await expect(page.getByRole('link', { name: 'Version 2' })).toBeVisible();
 
 	// A refused switch stays as the rule is.
@@ -147,9 +159,9 @@ test('a rule is built, dry-run, applied, changed and deleted', async ({ page }) 
 				})
 			: route.fallback()
 	);
-	await page.getByRole('switch', { name: `Switch on ${NAME} v2` }).click();
+	await page.getByRole('switch', { name: `Activate ${NAME} v2` }).click();
 	await expect(page.getByText('tag gone')).toBeVisible();
-	await expect(page.getByRole('switch', { name: `Switch on ${NAME} v2` })).not.toBeChecked();
+	await expect(page.getByRole('switch', { name: `Activate ${NAME} v2` })).not.toBeChecked();
 	await page.unroute('**/api/v1/rules/*');
 
 	// Version 1 reads as it was.

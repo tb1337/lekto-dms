@@ -26,6 +26,7 @@ from typing import Protocol
 from uuid import UUID
 
 from lekto.core.domain.classifier import ClassifierModel
+from lekto.core.domain.document_facts import DocumentFact, FactCriterion
 from lekto.core.domain.documents import Channel, Document, Sha256
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.fields import FieldDefinition, sort_value
@@ -53,6 +54,7 @@ from lekto.core.domain.master_data import Contact, DocumentType, Tag, TagScope
 from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane, Node, NodeRun
 from lekto.core.domain.profiles import Profile
+from lekto.core.domain.relations import Relation
 from lekto.core.domain.rules import Rule, RuleApplication, RuleVersion
 from lekto.core.domain.sorting import sort_key
 from lekto.core.domain.spaces import Space
@@ -163,7 +165,8 @@ class DocumentFilter:
     `labelled`: whether a person confirmed the metadata or decided the space (the classifier's
     examples; not in the search index).
     `field`: a value for it is set. `document_dates`: the document date lies in the period (a
-    document without one does not match)."""
+    document without one does not match). `facts`: the document has a fact that matches each
+    (`FactCriterion`; none a person rejected)."""
 
     contacts: frozenset[ContactId] | None = None
     document_types: frozenset[DocumentTypeId] | None = None
@@ -177,6 +180,7 @@ class DocumentFilter:
     labelled: bool | None = None
     field: FieldId | None = None
     document_dates: Period | None = None
+    facts: tuple[FactCriterion, ...] = ()
 
     def __post_init__(self) -> None:
         for sets in (self.tags, self.contact_groups, self.document_type_groups):
@@ -206,6 +210,7 @@ class DocumentFilter:
             and (self.confirmed is None or view.confirmed is self.confirmed)
             and (self.labelled is None or view.labelled is self.labelled)
             and (self.field is None or self.field in view.fields)
+            and all(criterion.token in view.facts for criterion in self.facts)
             and (
                 self.document_dates is None
                 or (
@@ -244,6 +249,7 @@ class FilterView:
     fields: frozenset[FieldId]
     document_date: date | None = None
     labelled: bool = False  # not in the search index
+    facts: frozenset[str] = frozenset()  # `document_facts.fact_tokens`
 
     @classmethod
     def of(
@@ -252,6 +258,7 @@ class FilterView:
         *,
         contact_groups: frozenset[TagId] = frozenset(),
         document_type_groups: frozenset[TagId] = frozenset(),
+        facts: frozenset[str] = frozenset(),
     ) -> "FilterView":
         return cls(
             contact=document.contact_id,
@@ -266,6 +273,7 @@ class FilterView:
             fields=frozenset(document.fields),
             document_date=document.document_date,
             labelled=document.confirmed_at is not None or document.space_confirmed_at is not None,
+            facts=facts,
         )
 
 
@@ -448,22 +456,69 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         ...
 
 
-class DocumentIdentifierRepository(Protocol):
-    """The identifiers each document shows, in its text or its codes, as the facts signal last
-    found them: for telling on how many contacts' documents a value stands (the IBAN of the
-    owner's own account stands on many)."""
+class DocumentRelationRepository(Protocol):
+    """The relations between documents (`domain.relations`)."""
 
-    async def replace(
-        self, document: DocumentId, identifiers: Collection[tuple[IdentifierKind, str]]
-    ) -> None:
-        """Make `identifiers` (kind and normalised value) those of `document`."""
+    async def of_document(self, document: DocumentId) -> list[Relation]:
+        """The relations of `document` in both directions, rejected ones included; the newest
+        first by when they were made."""
+        ...
+
+    async def of_documents(self, documents: Collection[DocumentId]) -> list[Relation]:
+        """The relations of any of `documents`, in both directions, rejected ones included."""
+        ...
+
+    async def find(self, newer: DocumentId, older: DocumentId) -> Relation | None: ...
+
+    async def put(self, relation: Relation) -> None:
+        """Keep `relation`, in place of one between the same documents."""
+        ...
+
+    async def remove(self, newer: DocumentId, older: DocumentId) -> None:
+        """Forget the relation; nothing if there is none."""
+        ...
+
+
+class DocumentFactRepository(Protocol):
+    """The facts of each document (`domain.document_facts`): what its sources found, as the
+    facts signal last ran, and what a person decided. They tell on how many contacts' documents
+    a value stands (the IBAN of the owner's own account stands on many)."""
+
+    async def of_document(self, document: DocumentId) -> list[DocumentFact]:
+        """The facts of `document` as the text reads (`reading_order`), those a person rejected
+        included."""
+        ...
+
+    async def of_documents(
+        self, documents: Collection[DocumentId]
+    ) -> dict[DocumentId, list[DocumentFact]]:
+        """`of_document` for each of `documents` at once; one without facts is left out."""
+        ...
+
+    async def replace_found(self, document: DocumentId, found: Collection[DocumentFact]) -> None:
+        """Make `found` (each `FactState.FOUND`, a kind and value once) the facts the sources
+        found for `document`: those found before go, what a person decided stays and is not
+        replaced by a fact found of its kind and value (`document_facts.merged`).
+        ValidationError for a fact of another state or a key twice."""
+        ...
+
+    async def decide(self, document: DocumentId, fact: DocumentFact) -> None:
+        """Keep a person's decision about a fact of `document` (a state by a person: added,
+        corrected, rejected): it takes the place of the fact of its kind and value.
+        ValidationError for a fact as found."""
+        ...
+
+    async def withdraw(self, document: DocumentId, key: tuple[IdentifierKind, str]) -> None:
+        """A person's decision about the fact of `key` no longer stands (`withdrawn`): a fact a
+        source found is as found again, one only a person gave goes. Nothing where no person
+        decided the fact of `key`."""
         ...
 
     async def contacts_of(
         self, identifiers: Collection[tuple[IdentifierKind, str]]
     ) -> dict[tuple[IdentifierKind, str], frozenset[ContactId]]:
-        """For each of `identifiers`, the contacts of the confirmed documents that show it;
-        one that no confirmed document with a contact shows is left out."""
+        """For each of `identifiers`, the contacts of the confirmed documents that show it (a
+        fact not rejected); one that no confirmed document with a contact shows is left out."""
         ...
 
 

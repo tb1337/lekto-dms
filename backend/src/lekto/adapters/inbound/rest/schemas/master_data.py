@@ -344,6 +344,11 @@ class DocumentTypeCreate(NameIn):
     )
     group_ids: TypeGroups = Field(default_factory=list)
     icon: Icon | None = None
+    relation_target: bool = Field(
+        default=False,
+        description="Documents refer to those of the type (a contract, a policy) by a contract "
+        "or customer number they share; without it such a number connects no documents.",
+    )
     fields: list[FieldAssignmentIn] = Field(
         default_factory=list,
         max_length=500,
@@ -372,6 +377,7 @@ class DocumentTypePatch(BaseModel):
     title_pattern: TitlePattern | None = None
     group_ids: TypeGroups | None = None
     icon: Icon | None = None
+    relation_target: bool | None = None
 
 
 class DocumentTypeOut(MasterDataOut):
@@ -379,6 +385,10 @@ class DocumentTypeOut(MasterDataOut):
     title_pattern: str | None = Field(examples=["Lohn {document_date:YYYY-MM}"])
     group_ids: list[UUID] = Field(description="The document type groups it is in.")
     icon: str | None = Field(description="The name of a Lucide icon.", examples=["receipt"])
+    relation_target: bool = Field(
+        description="Documents refer to those of the type (a contract, a policy) by a contract "
+        "or customer number they share; without it such a number connects no documents."
+    )
 
     @classmethod
     def of(cls, item: DocumentType) -> "DocumentTypeOut":
@@ -389,6 +399,7 @@ class DocumentTypeOut(MasterDataOut):
             title_pattern=item.title_pattern,
             group_ids=sorted(item.group_ids),
             icon=item.icon,
+            relation_target=item.relation_target,
             created_at=item.created_at,
         )
 

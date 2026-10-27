@@ -23,7 +23,7 @@ from lekto.adapters.outbound.sql import events, tables
 from lekto.adapters.outbound.sql.classifier_models import SqlClassifierModelRepository
 from lekto.adapters.outbound.sql.database import Database
 from lekto.adapters.outbound.sql.documents import SqlDocumentRepository, SqlProcessingLog
-from lekto.adapters.outbound.sql.identifiers import SqlDocumentIdentifierRepository
+from lekto.adapters.outbound.sql.facts import SqlDocumentFactRepository
 from lekto.adapters.outbound.sql.identity import (
     SqlApiTokenRepository,
     SqlCredentialRepository,
@@ -41,6 +41,7 @@ from lekto.adapters.outbound.sql.master_data import (
     SqlTagRepository,
 )
 from lekto.adapters.outbound.sql.processing_facts import SqlProcessingFacts
+from lekto.adapters.outbound.sql.relations import SqlDocumentRelationRepository
 from lekto.adapters.outbound.sql.rules import SqlRuleApplicationRepository, SqlRuleRepository
 from lekto.adapters.outbound.sql.spaces import SqlSpaceRepository
 from lekto.adapters.outbound.sql.tasks import SqlTaskRepository
@@ -102,7 +103,8 @@ class SqlUnitOfWork:
         self.documents = SqlDocumentRepository(self._tx)
         self.processing_log = SqlProcessingLog(self._tx)
         self.processing_facts = SqlProcessingFacts(self._tx)
-        self.document_identifiers = SqlDocumentIdentifierRepository(self._tx)
+        self.document_facts = SqlDocumentFactRepository(self._tx)
+        self.document_relations = SqlDocumentRelationRepository(self._tx)
         self.inbox = SqlInboxRepository(self._tx, self.documents)
         self.rules = SqlRuleRepository(self._tx)
         self.rule_applications = SqlRuleApplicationRepository(self._tx)

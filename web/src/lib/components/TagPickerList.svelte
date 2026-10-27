@@ -6,6 +6,9 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { toggled } from '#lib/picking.ts';
 	import { matchesQuery, ofScope, pathLabel } from '#lib/tags.ts';
+	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
 
 	// Several tags of one scope to choose: a search over their paths, then every tag of the scope
 	// that may be chosen (`offered`) with a checkbox, nested as in its tree; while searching the
@@ -54,23 +57,18 @@
 </script>
 
 <div class="shrink-0 px-4 pb-3">
-	<SearchField
-		bind:ref={search}
-		bind:value={query}
-		label={searchLabel}
-		class="h-11 rounded-xl bg-muted px-3 focus-within:ring-2 focus-within:ring-ring/40"
-	/>
+	<SearchField bind:ref={search} bind:value={query} label={searchLabel} />
 </div>
 <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-4 pb-4">
 	{@render actions?.()}
 	{#if searching && matches.length === 0}
 		<p class="px-1 text-sm text-muted-foreground">{m.picker_no_match()}</p>
-		<h3 class="mt-2 px-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+		<Eyebrow as="h3" class="mt-2 px-1">
 			{m.picker_all({ kind: title })}
-		</h3>
+		</Eyebrow>
 	{/if}
 	{#if listed.length > 0}
-		<ul class="divide-y overflow-hidden rounded-2xl border bg-card">
+		<Card.Root as="ul" size="flush" class="divide-y overflow-hidden">
 			{#each listed as tag (tag.id)}
 				{@const nested = !searching || matches.length === 0}
 				<li>
@@ -88,9 +86,7 @@
 								<span class="text-xs text-muted-foreground">{pathLabel(tag)}</span>
 							{/if}
 						</span>
-						<input
-							type="checkbox"
-							class="size-5 shrink-0 accent-primary"
+						<ChoiceBox
 							aria-label={pathLabel(tag)}
 							checked={selected.includes(tag.id)}
 							onchange={(event) => toggle(tag.id, event.currentTarget.checked)}
@@ -98,6 +94,6 @@
 					</label>
 				</li>
 			{/each}
-		</ul>
+		</Card.Root>
 	{/if}
 </div>

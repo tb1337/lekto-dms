@@ -34,6 +34,7 @@
 	import { phone } from '#lib/phone.svelte.ts';
 	import { below, ofScope, pathLabel } from '#lib/tags.ts';
 	import { cn } from '#lib/utils.ts';
+	import { Choice, ChoiceBox } from '#lib/components/ui/choice/index.ts';
 
 	/** The kinds of tag a new one can be, each with an example. */
 	const KIND_CARDS: { scope: TagScope; title: () => string; example: () => string }[] = [
@@ -109,6 +110,7 @@
 	let identifiers = $state<IdentifierRow[]>([]);
 	let description = $state('');
 	let titlePattern = $state('');
+	let relationTarget = $state(false);
 	let assigned = $state<Assignment[]>([]);
 	let groupIds = $state<string[]>([]);
 	let topicIds = $state<string[]>([]);
@@ -201,6 +203,7 @@
 		identifiers = rowsOf(initial?.identifiers);
 		description = initial?.description ?? '';
 		titlePattern = initial?.title_pattern ?? '';
+		relationTarget = initial?.relation_target ?? false;
 		groupIds = [...(initial?.group_ids ?? [])];
 		topicIds = [...(initial?.topic_ids ?? [])];
 		kind = scope;
@@ -238,6 +241,7 @@
 				...changesOf(identifiers, topicIds),
 				description: description.trim() || null,
 				title_pattern: titlePattern.trim() || null,
+				relation_target: relationTarget,
 				fields: extra === 'description' && fields ? assigned : null,
 				group_ids: groupIds,
 				topic_ids: topicIds,
@@ -279,7 +283,7 @@
 	{deleteDescription}
 	{tabs}
 	bind:tab
-	class={tabs ? 'h-[min(53.75rem,calc(100dvh-2rem))] sm:max-w-[40rem]' : undefined}
+	class={tabs ? 'h-[min(53.75rem,calc(100dvh-2rem))]' : undefined}
 >
 	{#if part === 'general'}
 		{#if extra === 'tag' && chooseScope}
@@ -296,13 +300,13 @@
 								kind === card.scope && 'border-primary bg-primary/10 hover:bg-primary/10'
 							)}
 						>
-							<input
+							<ChoiceBox
 								type="radio"
 								name="{uid}-kind"
 								value={card.scope}
 								checked={kind === card.scope}
 								onchange={() => chooseKind(card.scope)}
-								class="mt-0.5 size-4 shrink-0 accent-primary"
+								class="mt-0.5"
 							/>
 							<span class="flex flex-col gap-0.5">
 								<span class="text-sm font-medium">{card.title()}</span>
@@ -383,39 +387,19 @@
 						/>
 					</div>
 					<div class="flex flex-wrap gap-x-6 gap-y-2">
-						<label class="flex items-center gap-2 text-sm">
-							<input
-								type="radio"
-								name="{uid}-assignment"
-								checked={!manual}
-								onchange={() => (manual = false)}
-								class="size-4 accent-primary"
-							/>
+						<Choice type="radio" name="{uid}-assignment" value={false} bind:group={manual}>
 							{m.tag_assignment_auto()}
-						</label>
-						<label class="flex items-center gap-2 text-sm">
-							<input
-								type="radio"
-								name="{uid}-assignment"
-								checked={manual}
-								onchange={() => (manual = true)}
-								class="size-4 accent-primary"
-							/>
+						</Choice>
+						<Choice type="radio" name="{uid}-assignment" value={true} bind:group={manual}>
 							{m.tag_assignment_manual()}
-						</label>
+						</Choice>
 					</div>
 				</fieldset>
 			{/if}
 			<div class="flex items-center gap-1">
-				<label class="flex items-center gap-2 text-sm font-medium">
-					<input
-						type="checkbox"
-						bind:checked={shown}
-						class="size-4 accent-primary"
-						aria-describedby="{uid}-shown-hint"
-					/>
+				<Choice bind:checked={shown} aria-describedby="{uid}-shown-hint" class="font-medium">
 					{m.tag_shown()}
-				</label>
+				</Choice>
 				<InfoHint
 					text={isGroup
 						? m.tag_group_shown_hint()
@@ -547,6 +531,20 @@
 					</a>
 				{/if}
 			</Field.Field>
+			<div class="flex items-center gap-1">
+				<Choice
+					bind:checked={relationTarget}
+					aria-describedby="{uid}-relation-target-hint"
+					class="font-medium"
+				>
+					{m.master_relation_target()}
+				</Choice>
+				<InfoHint
+					text={m.master_relation_target_hint()}
+					about={m.master_relation_target()}
+					id="{uid}-relation-target-hint"
+				/>
+			</div>
 		{/if}
 	{/if}
 	{#if part === 'identifiers'}

@@ -334,7 +334,9 @@ process (`services/_kept.py`).
   returns both. Documents processed before this have none until they are processed again.
 - What the model nodes (`signal_llm`, `fields`, and `ocr` when the vision model read) send is
   kept beside the document, one file per node with every run
-  (`documents/{id}/exchanges/<node>.json`: system and user message, the raw answer and the
+  (`documents/{id}/exchanges/<node>.json`: what each call sent – the system prompt, the
+  document, the task and, after an unfit answer, the note to answer again; one `user` message for
+  a page the VLM read, a webhook's context and calls before `propose-6` – the raw answer and the
   endpoint's whole usage report); editors and admins read it through
   `GET /documents/{id}/exchanges/{node}`. The files go with the document's other derivatives.
 - Deleting a document queues `documents.remove_files` in the same transaction: the worker
@@ -476,7 +478,7 @@ and the space, the fields node reads the fields of the decided type and the titl
 (`core/services/classification`, the rules in `core/domain/verdict.py`).
 
 - **`signal_llm`**: one request to an OpenAI-compatible chat completions endpoint
-  (`adapters/outbound/openai_compat`, `LEKTO_LLM_*`, prompt `propose-5`) for sender and recipient,
+  (`adapters/outbound/openai_compat`, `LEKTO_LLM_*`, prompt `propose-6`) for sender and recipient,
   the topic (one of the automatic topics the listed contacts enable, or none; the prompt lists
   them at each of the at most 20 preselected contacts), type, tags (the automatic document
   tags), date, a title, the language, and the values of the fields of the type it chooses
@@ -491,7 +493,44 @@ and the space, the fields node reads the fields of the decided type and the titl
   JSON schema (`response_format` `json_schema`, or `json_object` for providers without schema
   support); an answer that does not fit is asked for once more, then the signal fails (red).
   Without a configured model (`LEKTO_LLM_BASE_URL` and `LEKTO_LLM_MODEL`) it abstains with "no language
-  model is configured", and a person classifies.
+  model is configured", and a person classifies. After the proposal it asks a second time on the
+  same beginning (system prompt and document; prompt `facts-1`, issue #145 PR 5): the facts of
+  the document with their role, each of a listed kind (no person's number, nothing the patterns
+  read surely such as IBAN or VAT ID), the value as written, the quoted passage and its label. A
+  provider's prompt cache serves the second request where the schema of the answer does not
+  stand before the system prompt (`LEKTO_LLM_RESPONSE_FORMAT=json_object`, or a local server
+  that turns the schema into a grammar); with `json_schema` at OpenAI or a Claude model the
+  schemas differ and the document is paid twice. What goes wrong with this request (an unfit
+  answer twice, an error, also one that would pass with time such as a rate limit) is in the
+  output (`facts_error`) and never fails the signal: the document keeps the facts of the
+  patterns, and asking the model again reads them. A webhook that answers `propose` reads no
+  facts: there is no model call `facts` for webhooks (yet). The job of a node is held for four
+  model requests in a row (`LEKTO_LLM_TIMEOUT` each).
+- **The form of a request** (`StructuredRequest`, issue #145): every call to the model sends
+  `messages[0]` the system prompt, the same for every call (`prompts.SYSTEM`: data, not
+  instructions; one JSON object; no invented values; quotes and labels); `messages[1]` the
+  document in its markers, as the person's message, never in the system prompt; `messages[2]`
+  the task (the lists, the fields and what each part of the answer is); after an answer that
+  does not fit, the note what was wrong, last. Calls about one document so begin alike (both
+  shorten the text to `LEKTO_LLM_INPUT_BUDGET` the same way), and an endpoint that caches a
+  shared beginning computes system prompt and document once. Lekto sets no cache marks: Ollama
+  (while the model stays loaded) and Groq (for now its GPT-OSS models) cache by themselves; for
+  Anthropic a LiteLLM proxy sets them (`cache_control_injection_points` with `index: 1`, the
+  document, which also covers the system prompt before it; by `role: user` every user message
+  would get a mark, the task and a retry too, and each call would write the cache anew).
+  Some providers put a `response_format` schema before the system prompt (OpenAI; Claude behaves
+  alike), and Lekto's schema differs per document and call: there `LEKTO_LLM_RESPONSE_FORMAT=json_object`
+  sends the schema as a message after the task instead, and the beginning is shared. The log
+  names, per call, the prompt tokens the endpoint took from its cache where it reports them
+  (`output.tokens[].cached`: `prompt_tokens_details.cached_tokens`, or
+  `cache_read_input_tokens` through LiteLLM); the web UI shows them in the token details.
+  Two limits of the form (review of #149, open with Tobi): system prompt, document and task must
+  fit the model's context together (`LEKTO_LLM_INPUT_BUDGET` is the document's share, the task
+  with its lists comes on top) – Ollama drops older messages whole when a prompt is too long and
+  keeps the last, so the model would get the task without the document, where before the runner
+  cut the one message; and an endpoint whose chat template requires the roles to alternate (some
+  Gemma and Mistral templates under vLLM or llama.cpp with `--jinja`) refuses two user messages
+  in a row.
 - **`signal_classifier`**: TF-IDF of words and word pairs and a logistic regression per target
   (contact, topic, type, each automatic document tag, the space), trained on the confirmed
   documents (`LEKTO_CLASSIFIER`, see Classifier). The space is learned from the documents whose
@@ -522,8 +561,134 @@ and the space, the fields node reads the fields of the decided type and the titl
   OCR node deletes it with a new archive, a reprocessing from the judge takes it): an
   identifier in a code counts as one in the text, the payee of a GiroCode as a name in the
   text, which proposes nothing alone. Reading the codes may fail; the signal warns and goes on
-  without them. Which identifiers the document shows goes to `document_identifiers`, which
-  tells on the confirmed documents of how many contacts an identifier stands. It also finds
+  without them. The identifiers the document shows are its facts (`document_facts`, issue
+  #145, `domain.document_facts`): kind and normalised value, the role (`contact`, `target`,
+  `own`, `thread`, `refers`, `person`; the role of the kind unless the language model read the
+  fact), where it comes from (`pattern`, `code`, `model`, `person`), as written and
+  where it stands first in the text (reading order), and whether a person decided it. A run of
+  the signal replaces the facts found before; a person's decision stays. The facts the language
+  model read are checked as a field's value is: of a kind and in a role it was asked for, a
+  value of the kind standing in the text, a quoted passage of the text that shows it (for the
+  day of a letter, one that names the letter), and none of a person's numbers under whatever
+  kind (the person's kinds in the text, the users' profiles); a fact of the same kind and value
+  as a pattern's is one fact with both origins, in the model's role (a reminder's
+  "Rechnungsnummer" of the invoice it reminds of is `refers`). The two signals run side by side:
+  whichever stores its result last keeps both readers' facts (`kept_facts`: the facts signal
+  takes the model's from the log, the model's signal the codes already kept; one lock per
+  document), and names how many of the model's it took and those it refused with why
+  (`read_facts`). The facts tell on the
+  confirmed documents of how many contacts an identifier stands; `GET /documents/{id}/facts`
+  names each identifier's `role` and `origins`. Revision 0047 takes over the rows of
+  `document_identifiers` (role of their kind, origin `pattern`).
+- **A person's decisions about facts** (issue #145 PR 6, `services/fact_decisions.py`,
+  `POST /documents/{id}/facts/decisions`): editors of the document's space and admins add a
+  fact the sources did not find, correct its value or role, reject it (it is no fact of the
+  document) or withdraw a decision; the kinds that are a person's alone (tax ID, social
+  security and health insurance number, e-mail address, child benefit number) only admins. A
+  corrected value is two decisions: the old value rejected, the new one corrected, so a run
+  that finds the old one again does not bring it back. Decisions outlast new runs of the facts
+  signal; a rejected fact is no evidence of a contact for it either, and training learns no
+  identifier from it (one a person added or corrected it does learn). Withdrawn, a fact is as
+  the sources find it now (its role too), one only a person gave goes. An admin who corrects a
+  contact's kind may correct it at the document's contact too (`at_contact`): the old value is
+  rejected there, the new one takes its place, entered by hand, or learned with the same spaces
+  and user where the old one was learned (who saw the old one sees the new one, #82). The first
+  decision about a document's facts is a verdict on them (`field_verdicts`, field `facts`):
+  corrected or added, early before the first run stopped; confirming a document with facts in
+  the inbox takes them. The facts report says whether the caller decides (`editable`) and
+  whether the document keeps an identifier as a fact (`kept`), lists the rejected numbers too,
+  and the kept facts the identifiers do not show (`decided`: for admins all, a found tax ID as
+  well; for others those a person decided, none of a person's); each fact names its `state`. The API document names each kind's role
+  until a source tells (`x-fact-roles`).
+- **Relations between documents** (issue #145 PR 9, `domain/relations.py`,
+  `services/relations.py`, `GET`/`POST /documents/{id}/relations`,
+  `DELETE /documents/{id}/relations/{other_id}`; `.idea/bezuege.md`): a document refers to
+  another ("bezieht sich auf": the correction to the original, the reminder to the invoice, the
+  invoice to the contract), many to many and without a kind of its own; the document types at
+  both ends tell what it means. A relation points from the newer document to the older (by their
+  document dates, else when they came in), so it is set from either end; a date set or changed
+  later turns it (the pair is stored once, its direction read from the dates now). It is set (by a person
+  or, sure, by Lekto) or suggested (Lekto was unsure; a person accepts or rejects it) and never
+  makes a document yellow; a rejected suggestion stays as rejected and is not suggested again,
+  a person's relation that is removed goes. Only who reads both documents sees a relation; who
+  edits the newer and reads the older sets, accepts or removes it (`changeable` on each). Each
+  names its `origin` and Lekto's `evidence` (the fact, the period). The first decision about a
+  document's relations is a verdict (`field_verdicts`, field `relations`, at the newer one):
+  added, accepted or corrected, early before the first run stopped. No events go out for
+  relations yet. MCP's `get_document` lists the relations the caller sees; MCP sets none (an
+  assistant reads text from outside, an instruction there could relate documents unnoticed).
+  Revision 0048 adds the table `document_relations`. An admin marks a document type as a
+  relation target (`relation_target` at `/document-types`, revision 0049; the switch
+  "Bezugsziel" in its dialog): a contract or customer number a document shares connects it only
+  with documents of such a type (a contract, a policy); without it, such a number connects no
+  documents, as it would connect every invoice with every other.
+- **Recognising relations** (issue #145 PR 11, `services/relating.py`, node `relate` between
+  `fields` and `apply_rules`, revision 0050): in both directions, a number the document refers
+  to ("Ihre Rechnung Nr. 4711", role `refers`) as another document's own (invoice, credit note,
+  order number); a contract, policy or customer number shared with a document of a relation
+  target's type (and, for such a document, the documents that share its number); the same
+  contact, type and period (a field of type period) at another document date, unless their
+  personnel, customer, contract or a person's numbers differ (two people's payslips); the day of a letter it
+  answers (`letter_date`) as the date of a document of the same contact. One document of the
+  same contact sets the relation, several (or one without a contact) are suggestions, another
+  contact's none (a document with a contact looks only among its contact's documents). Two
+  relation targets are never related by a customer number, by a contract number only as a
+  suggestion. A pair a person decided stays; a suggestion of Lekto's becomes set when a source
+  is sure now, and a relation of Lekto's no person decided goes when no source finds it any
+  more (a contact corrected since). The node never makes a document yellow; its log names
+  the relations it made (`relate-1`). Outside processing a job (`pipeline.relate`) finds them
+  again after a person decided the contact, type, date, fields or facts or confirmed the
+  document, and `lekto relate` queues it for every document not being processed (after the
+  update to this version, and after marking a relation target). The rules see the set
+  relations to documents the rule's author may read (condition `relation`), and confirming a
+  document with relations Lekto set takes them (`field_verdicts`; a suggestion stays the
+  person's to decide). Lekto relates across spaces; only who reads both ends sees one, in the
+  relations and in the log of `relate`. Every change of relations, Lekto's or a person's, holds
+  one lock.
+- **Series and the documents expected next** (issue #145 PR 12, `domain/series.py`,
+  `services/expected.py`, `GET /expected`, MCP `list_expected`; `.idea/bezuege.md` decisions
+  10–12): documents of one contact and type, and of one contract or customer number where they
+  show one (by value, whatever its kind; a document whose number was not read joins the only
+  numbered series of its contact and type; a person's number names none), at least three with
+  a document date at a steady interval. The interval is the median gap, as a calendar step where
+  it is one (weekly to yearly; month ends stay month ends), else in days (at most 60, four
+  documents, kept exactly). A gap of several steps is missed documents, a one-off within a step
+  is set aside (both only a few); the spread is how far a document came off its step, against
+  the one before or the rhythm (at least 2 days; in a longer history the worst step aside); a
+  spread over a third of the step (a fifth for three documents) makes no series. Two documents
+  of one day or one period (a correction) count once. The next document is expected one step after the last
+  (with the next period where the series carries one), overdue once its spread is over, and the
+  series has ended after two missed dates, today as it is in `tz`. Derived on each call over the
+  documents the caller reads (`all_users`: an admin's, every user's), nothing stored, no events;
+  MCP lists the ended ones only with `include_ended`. The web UI shows
+  them under "Erwartet": overdue, next 30 days, later, ended.
+- **The stream** (issue #145 PR 13, `services/stream.py`, `GET /documents/stream`;
+  `.idea/bezuege.md` decisions 13–17): the documents the filters of `GET /documents` find, in
+  lanes: a series with the relation target its documents refer to at its start (the contract;
+  one may stand at the start of several series) and the document it expects next at its end;
+  branches (documents that refer to one of a series or to its target without belonging to it,
+  with the chain of theirs); chains of documents related only among themselves; the rest in one
+  lane ("single"), documents in processing included. At most the 500 newest documents
+  (`truncated`: a narrower filter shows it whole); beyond 24 lanes of series and chains the rest
+  come folded (`folded`), with their branches, and the view shows them on demand. It is the third
+  layout of the document list and of a lens (`layout: stream`); the document view links to the
+  stream of its contact (`/documents?contact=…&layout=stream`). On a wide screen the months run
+  from left to right, on a phone each lane runs down, newest first.
+- **The kinds of facts** (`IdentifierKind`, issue #145 PR 4; one module per kind in
+  `domain/identifiers`): besides IBAN, VAT ID, customer and personnel number, e-mail domain and
+  a person's numbers, those that point to the contact (creditor ID with its check digits,
+  commercial register number `HRB 12345` anywhere, a company's tax number), to what a series
+  refers to (contract, policy, membership, meter, loan number, mandate reference, licence plate;
+  a contact's, which may name a user), mark the document (invoice, credit note, order number),
+  join a strand (file reference, "Unser Zeichen", claim, ticket number), refer to a document
+  ("Ihr Zeichen", the day of the addressee's letter "Ihr Schreiben vom 18.06.2026" as
+  `letter_date`), point to a person (child benefit number). Each is found after its labels
+  (German and English); a number written after "Ihr", "Ihre" or "your" ("Ihre Rechnung Nr.
+  4711") refers to another's document (role `refers`). The customer number lost the labels of
+  contracts, policies and memberships; a contact's customer number still matches those kinds
+  with its value, and an admin may change its kind in the contact dialog. A value that does not
+  fit a kind is refused with `not_of_kind`. The facts report lists the document's numbers that
+  are no contact's or person's identifier (`numbers`). It also finds
   persons (`persons`: user id, strength, kinds of evidence, never the values): one of their
   own identifiers, or a contact's customer or personnel number that names them, is `hard`;
   their birth date in the text `medium`; their display name or an alias `weak` (an address
@@ -574,7 +739,7 @@ and no signal recognised anything.
 The fields node reads the fields of the decided type and the global ones. If the model asked
 for the type the judge decided, its values are taken over; otherwise (after a type correction,
 or for a document from before the signals) it asks the model for the missing ones (prompt
-`extract-5`). Each field is required or optional per type it is assigned to, a global one by its
+`extract-6`, the same system prompt and document as the signal's, its own task). Each field is required or optional per type it is assigned to, a global one by its
 own switch:
 
 | Field | Check | Not passed |
@@ -754,11 +919,14 @@ what every model learned and how well, oldest first; training on request is for 
    classifier is trained on the new texts afterwards (`train`).
 3. 0.2 reads the bar and QR codes on the pages. `lekto read-codes` has
    the worker read them for the documents from before and keep the identifiers each document
-   shows (`document_identifiers`), so that the warning when attaching an identifier counts
+   shows (`document_facts`, until 0047 `document_identifiers`), so that the warning when attaching an identifier counts
    every confirmed document. It reads locally and sends nothing out; nodes, lane and metadata
    stay as they are. Documents taken over get their codes only this way: the signals abstain
    for them. Run it once `reparse` is through, which changes the text the identifiers are read
    from.
+4. The node `relate` (issue #145) finds the relations of new documents; documents from before
+   have it skipped. `lekto relate` has the worker find theirs; run it after `read-codes`, and
+   again after marking a document type as a relation target.
 
 **After the update to 0.3.** Revisions 0024 to 0029 run at start; then four things:
 
@@ -937,6 +1105,8 @@ where it is and edits where it goes (global: admins); every version names its sp
   | `text` | `contains` (normalised like the classification checks), `matches` (regular expression) |
   | `document_date` | `is`, `gt`, `lt`, `present`, `missing` |
   | `field` (with `field_id`) | by data type: text and link `is`, `in`, `contains`, `matches`; number, amount, date `is`, `gt`, `lt`; yes/no `is`; choice `is`, `in`; period `is`, `overlaps` (shares a day with a period), `gt` (starts after a date), `lt` (ends before a date); all `present`, `missing` |
+  | `fact` (with `fact_kind`, `fact_role` or any role; issue #145) | `present`, `missing`, `is`, `in` (the values as written, kept and compared normalised), `matches` (against each value as the text writes it, `^` and `$` at its ends); facts a person rejected do not count, and a fact condition is never unknown |
+  | `relation` (issue #145) | `present` (refers to any document), `missing` (to none), `is`, `in` (to a document of one of the types); the set relations it refers by (the newer of the pair), not suggestions; never unknown |
 
   `matches` takes `case_sensitive` (default false). Patterns run with the `regex` package
   (`adapters/outbound/regex`) in a thread with a time limit (`LEKTO_RULES_PATTERN_TIMEOUT`); a
@@ -974,7 +1144,7 @@ where it is and edits where it goes (global: admins); every version names its sp
   (`{{ steps.accounting.beleg }}`). The log shows each step (`steps`: a condition's `holds`,
   a question's task, status and answer).
 - **Templates** (in full, with examples: [docs/templates.md](../docs/templates.md)). A title,
-  the value of a text field and a review's reason are Liquid templates (`python-liquid`,
+  a field's value given as text and a review's reason are Liquid templates (`python-liquid`,
   `adapters/outbound/liquid`): `{{ contact }}`, `{% if field.la_brutto %}`,
   filters with `|`. They see `title`, `filename`, `original_filename`, `contact`, `topic`,
   `document_type`, `document_date`, `added`, `tags` (those set), `contact_groups` and
@@ -982,8 +1152,10 @@ where it is and edits where it goes (global: admins); every version names its sp
   (a personal space by its user's name), `uploaded_by` (who uploaded it, by display name, else username),
   `channel`, `pages` and
   `field.<key>` (`FieldOut.key`, from the name: `LA_Brutto` is `la_brutto`; an amount has
-  `.amount` and `.currency`, a period `.start` and `.end`), as the rules leave the document. A
-  period writes itself in ISO 8601 by what it is (`Period.notation`): `2026-09`, `2026-W38`,
+  `.amount` and `.currency`, a period `.start` and `.end`), as the rules leave the document,
+  and its facts (`facts.<kind>` as written on one line, `facts.refers.<kind>`,
+  `facts.girocode.*`, `fact_list`; none a person rejected, none of a person's; see
+  docs/templates.md). A period writes itself in ISO 8601 by what it is (`Period.notation`): `2026-09`, `2026-W38`,
   `2026-Q3` (ISO has no short form for a quarter), `2026`, a day as `2026-09-15`, else its
   ends, `2026-09-01/2026-09-14`; `{{ field.x.start | datetime: format: 'MMMM yyyy' }}` writes
   it in words. `datetime`, `currency` and
@@ -996,7 +1168,24 @@ where it is and edits where it goes (global: admins); every version names its sp
   Renaming a field rewrites the templates that use it (a new version); a field a template uses
   is not deleted (409). `POST /templates/preview` checks a template and renders it with a
   document the caller may read, and gives that document's values as a template writes them
-  (`values`, for the template editor's list).
+  (`values`, for the template editor's list); with `field_id` it reads the result as that
+  field (`read`, `unreadable`), without a document too if the template uses no value.
+- **Setting a field** (`set_field`, issue #145). Text is a template for every field type; what
+  it renders is read as the type has it (`fields.read_written`): first the forms templates write
+  (`1234.5`, `2026-03-14`, `2026-Q3`, `true`, an amount with or without a currency code), else
+  as a person writes it (`2.111,68 €`, `14. März 2026`, `KW 38/2026`, `ja`), an ambiguous
+  number as `LEKTO_TEMPLATE_LOCALE`'s language means it, an amount without currency in
+  `LEKTO_DEFAULT_CURRENCY`, a two-digit year nearest to the day the document came in; a number
+  or an amount has no words but a currency's, a currency code is an ISO 4217 one, a period
+  without a year is not read, nor one in ISO form that names none (`2026-Q5`). What cannot be read sets nothing (note `skipped`,
+  `template_unreadable`, no yellow). An amount, a period or yes/no as JSON is a fixed value;
+  fixed values that are text in their JSON form (`"12.50"`, `"2026-03-31"`, a choice, a link)
+  write themselves and read as before (also `.5`, `1e3`, `20260314`), and a choice's option is
+  fixed even where it holds braces. Text without markup is read when the rule is saved (422 if
+  it cannot be). Rules setting one field keep their order with templates; values are compared
+  by what they are (`84.2` and `84.20` are one amount). A stored value that is no valid
+  template blocks neither renaming nor deleting a field, and a rename rewrites only values with
+  markup. Templates of fields see the fields as they were, not what other field actions set.
 - **Evaluation.** All conditions see the state before any rule acts; a rule's action never makes
   another rule match in the same run. Contact, topic, type and tags the model set and no
   person confirmed are distrusted, and so are the groups of such a contact or type: a rule that
@@ -1080,9 +1269,16 @@ and why by words alone where the meaning was to take part (`reason` with a code:
   layout 3 the space instead of the drawer; layout 4 the tags with their ancestors and the groups
   of contact and type with theirs (`contact_group_ids`, `document_type_group_ids` filterable,
   their names searchable); layout 5 the topic with its ancestors (`topic_ids` filterable,
-  `topics` searchable, the topic's path in the header of the first section's embedding). The
+  `topics` searchable, the topic's path in the header of the first section's embedding); layout
+  7 the facts (issue #145 PR 7): `facts` filterable, a token per fact not rejected by its kind,
+  value and role and by each part of them (`kind|value|role`, `*` for any:
+  `document_facts.fact_tokens`), and `fact_values` searchable, the values normalised (a search
+  for `R20260815` finds "R-2026-0815"; a person's numbers are no words of the search). The
   reconciliation writes older entries again and keeps their vectors, since the embedded text
-  does not change (no document had a topic before): no embedding calls.
+  does not change (no document had a topic before layout 5; the facts are not embedded): no
+  embedding calls. A person's decision about a fact, and the facts `read-codes` keeps outside
+  processing, are a change of the document (`document.updated` with the field `facts`): the
+  index takes them in at once.
 - **Sorting.** `sort` comes first among Meilisearch's ranking rules, so relevance breaks ties,
   also with vectors; document date, arrival and the title's sort key are sortable. Without
   `sort` (or with `relevance`), the hits come by relevance.
@@ -1239,7 +1435,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `sort` (`relevance`, the default, or a key of `GET /documents`; relevance breaks ties), `limit`, `offset`, `semantic_ratio`; hits with snippet (the document with `in_inbox`, as in `GET /documents`), `estimated_total`, `next_offset`, `mode` with `reason` and `meaning_pending` (and `semantic`) |
 | `POST /documents/search/warm` | Have the model of the embeddings loaded before a search needs it (`204`, one embedding in the background, at most once a minute) |
 | `POST /search/reindex` | Rebuild the search index in the background (admins); `202` |
-| `GET /documents` | Readable documents, each with `in_inbox` (it stands open in the caller's inbox); `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), `field`, `-field` (the value of the field `sort_field_id`: a date, a period by its first day, a number, an amount by its value; `422` for other types), documents without a date or value last either way; filters `contact_id`, `document_type_id`, `space_id` (each repeats, one of them must match), `tag_id` (with the tags below it; repeats, all must match), `contact_group_id` and `document_type_group_id` (the document's contact or type in the group or one below it; each repeats, one of them must match), `topic_id` (the topic or one below it; repeats, one of them must match), `document_date_from` and `document_date_to` (the document date lies between them, both days included, either end open; a document without a date does not match; `422` if the end lies before the start), `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (`next_cursor` of the page before, an opaque value naming its last document; its sort value is looked up, `422` if that document is gone) |
+| `GET /documents` | Readable documents, each with `in_inbox` (it stands open in the caller's inbox); `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), `field`, `-field` (the value of the field `sort_field_id`: a date, a period by its first day, a number, an amount by its value; `422` for other types), documents without a date or value last either way; filters `contact_id`, `document_type_id`, `space_id` (each repeats, one of them must match), `tag_id` (with the tags below it; repeats, all must match), `contact_group_id` and `document_type_group_id` (the document's contact or type in the group or one below it; each repeats, one of them must match), `topic_id` (the topic or one below it; repeats, one of them must match), `document_date_from` and `document_date_to` (the document date lies between them, both days included, either end open; a document without a date does not match; `422` if the end lies before the start), `lane`, `field_id` (a value for the field), `fact` (a fact the document has, none a person rejected, as `kind:value:role`, the value as written, needing its kind and possibly holding colons, any part empty for any: `invoice_number:4711:`, `contract_number::`, `::refers`; repeats, all must match; at most five; a person's facts, by a kind that is a person's alone or by the role `person`, only for admins, `403`, also in a lens), `all_users` (admins); `limit`, `cursor` (`next_cursor` of the page before, an opaque value naming its last document; its sort value is looked up, `422` if that document is gone) |
 | `GET /documents/facets` | Counts for the filters of the document view, with the filters of `GET /documents` and `all_users` (admins): `total`, per contact and type (`id` null: without one), group of contacts and of types, topic and tag (each with the documents of those below it, once), year and its months of the document date (`undated`: without one). Contacts, types, groups, topics and the period combine as either-or and count without their own choice, so each tells what one more would add; tags count with the whole filter |
 | `POST /documents` | Upload (multipart: `file`, optional `space_id` (a space the caller edits; default: the uploader's personal space), optional `channel=migration`, `uploaded_by` and `metadata` for admins; otherwise the channel is `web` with a session, `api` with a token); `202` with `id`, `status_url` |
 | `GET/PATCH/DELETE /documents/{id}` | Metadata and state with the caller's access, `channel`, `topic_id` (see Topics); change (editors; the answer has the change rules' `rules` report); delete (editors and admins); `uploaded_by` names who uploaded it, `access` is `read` or `edit` |
@@ -1266,7 +1462,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /events` | Server-sent events of the documents the caller may read, for admins also `classifier.trained`; `?document_id=` |
 | `GET/POST /webhooks`, `GET/PATCH/DELETE /webhooks/{id}` | Webhooks: the caller's own (admins read everybody's, `?owner=`); create (the answer shows the secret once), change, switch on or off, delete; see Webhooks |
 | `POST/DELETE /webhooks/{id}/secret`, `POST /webhooks/{id}/test`, `GET /webhooks/{id}/deliveries` | Renew the secret (the old one signs 24 hours longer; an unsigned webhook signs from then on) or stop signing, send a test request, the delivery log (`before`, `limit`) |
-| `GET/POST /lenses`, `GET/PATCH/DELETE /lenses/{id}`, `PUT /lenses/order` | Lenses, the caller's saved looks at the documents (only theirs; others' are `404`, also for admins): `filter` (the filters of `GET /documents` as lists, `document_period` `this_year`, `last_12_months` or `last_year` moves with the day), `query`, `sort` (`relevance` only with `query`, `field` only without), `sort_field_id`, `grouping` (`none`, `month`, `due`, `document_type`, `contact`), `layout` (`grid`, `list`), `card_field_ids` (at most three), `due_field_id` (a date field); names unique per user, at most 100; deleted master data and fields are left out when a lens is read; `order` takes each lens once |
+| `GET/POST /lenses`, `GET/PATCH/DELETE /lenses/{id}`, `PUT /lenses/order` | Lenses, the caller's saved looks at the documents (only theirs; others' are `404`, also for admins): `filter` (the filters of `GET /documents` as lists, `document_period` `this_year`, `last_12_months` or `last_year` moves with the day, `facts` as `kind`, `value`, `role`, the value kept normalised), `query`, `sort` (`relevance` only with `query`, `field` only without), `sort_field_id`, `grouping` (`none`, `month`, `due`, `document_type`, `contact`), `layout` (`grid`, `list`), `card_field_ids` (at most three), `due_field_id` (a date field); names unique per user, at most 100; deleted master data and fields are left out when a lens is read; `order` takes each lens once |
 | `GET /health` | Database, bucket or storage directory and, if configured, the search index reachable; `200` (`ok`, or `degraded` if only the search is down) or `503`, no authentication; not written to the access log |
 
 - Uploads are streamed into a temporary file and hashed on the way; the limit
@@ -1458,9 +1654,10 @@ language model of `LEKTO_LLM_*`, for every document (an exception to "webhooks s
 owner may read"). Of the active webhooks of active admins at most one serves each kind (`409`
 `model_call_taken`); a webhook switched off, deleted, or whose owner is no admin any more serves
 no more, and the language model answers again (without one `signal_llm` abstains).
-`propose` takes over `signal_llm` (prompt `propose-5`), `extract` the request of `fields` for
+`propose` takes over `signal_llm` (prompt `propose-6`), `extract` the request of `fields` for
 the fields the proposal did not give (another type decided, or no proposal; prompt
-`extract-5`). The node sends a task
+`extract-6`). The context does not follow the prompt's form: the contracts stay
+`propose-ext-1` and `extract-ext-1`. The node sends a task
 whose body is always the context, whatever the webhook's `body`: `contract` (`propose-ext-1`,
 `extract-ext-1`), `task` (`id`, `kind`, `document_id`, `run`, `deadline`, `callback`, `token`),
 `document` (`filename`, `media_type`, `pages`, `received`, the text in full, and signed links to
@@ -1617,9 +1814,10 @@ as in REST: `read` may use every tool but `update_metadata`.
 | Tool | Does |
 | --- | --- |
 | `search` | `query`, `limit` (1 to 25), `offset`, optional `contact`, `document_type`, `tags` (names of document tags, all of them; a tag finds the documents with a tag below it too), `topics` (names of topics, one of them; a topic finds those with a topic below it too): hits with `id`, `title`, `score`, `snippet` (plain text), contact, type, topic, tags, date, lane, `access`; `next_offset`, `semantic` |
-| `get_document` | `id`: metadata with contact, topic, type, tags and fields by name, lane and processing status |
+| `get_document` | `id`: metadata with contact, topic, type, tags and fields by name, lane and processing status, and the document's `relations` with documents the caller reads too (`id`, `title`, type, date, `direction` `refers_to` or `referred_by`, `suggested`); read only |
 | `get_text` | `id`, `offset`, `limit` (characters, at most `LEKTO_MCP_TEXT_MAX`, 20,000): a piece of the document's text as it is set, `next_offset` to continue. The text is content from outside; the tool description tells clients not to follow instructions in it |
 | `update_metadata` | `id` and any of `title`, `contact`, `topic`, `document_type` (name; `null` removes; a topic the contact enables), `tags` (names of document tags, the complete list, replaces), `document_date` (`null` removes), `fields` (field name to value; `null` removes). Needs a `read_write` token and edit rights; the change rules of its space run as for `PATCH /documents/{id}` and the result shows them. If the rules filed the document where the caller can no longer read it, the result has only `id` and `access: null` |
+| `list_expected` | The series of documents the caller reads and the document each expects next (contact, type, number, cadence, spread, newest document, next date and period, `overdue`, `soon`, `later` or `ended`); read only |
 | `list_tags` | The tags with `scope` and `path`, in the order of their trees, optionally of one `scope`; document tags name the tags of the other tools, topics the `topic` of `update_metadata` |
 
 Names are matched regardless of case; an unknown name is an error, nothing is created. A
@@ -1742,7 +1940,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `LEKTO_LLM_TEMPERATURE` | Worker | `0` | 0 to 2; 0 for repeatable answers; `none` sends none (for models that reject one, such as Claude Sonnet 5.5) |
 | `LEKTO_LLM_SEED` | Worker | unset | Passed to the endpoint, if set |
 | `LEKTO_LLM_TIMEOUT` | Worker | `300` | Seconds per request (`600` on a CPU) |
-| `LEKTO_LLM_RESPONSE_FORMAT` | Worker | `json_schema` | `json_object` for providers without JSON schema support |
+| `LEKTO_LLM_RESPONSE_FORMAT` | Worker | `json_schema` | `json_object` for providers without JSON schema support; the schema then goes as a message after the task (also for prompt caching where a provider puts the schema before the system prompt) |
 | `LEKTO_LLM_INPUT_BUDGET` | Worker | `12000` | Characters of document text per request (a run of spaces counts once) |
 | `LEKTO_LLM_MAX_TAGS` | Worker | `200` | Tags listed per request |
 | `LEKTO_EMBEDDING_BASE_URL` | both | unset | OpenAI-compatible endpoint; set together with the model or neither (the worker embeds sections, the API embeds queries) |

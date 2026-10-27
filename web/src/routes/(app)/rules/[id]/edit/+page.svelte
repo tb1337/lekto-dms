@@ -6,7 +6,6 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
-	import BackLink from '#lib/components/BackLink.svelte';
 	import RuleBuilder from '#lib/components/rules/RuleBuilder.svelte';
 	import { spaceOptions } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -16,6 +15,10 @@
 	import { placeOf, rulePlaces } from '#lib/rules/places.ts';
 	import { changeSwitchedOff } from '#lib/rules/save.ts';
 	import { session } from '#lib/session.svelte.ts';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
+	import Loading from '#lib/components/Loading.svelte';
+	import UnsavedGuard from '#lib/components/UnsavedGuard.svelte';
 
 	type Rule = components['schemas']['RuleOut'];
 
@@ -41,6 +44,14 @@
 	);
 
 	// The rule files where whoever saves it may file (the API checks it for the caller).
+	// Changed since it loaded, to ask before it is lost; cleared once saved or cancelled.
+	let leaving = $state(false);
+	const changed = $derived(
+		rule !== null &&
+			model !== null &&
+			(place !== current || JSON.stringify(toApi(model)) !== JSON.stringify(toApi(fromApi(rule))))
+	);
+
 	const targets = $derived(spaceOptions(lookup?.spaces ?? [], lookup?.users ?? [], session.user));
 
 	$effect(() => {
@@ -62,6 +73,7 @@
 		const before = toApi(fromApi(rule));
 		const moved = place !== current;
 		if (!moved && JSON.stringify(definition) === JSON.stringify(before)) {
+			leaving = true;
 			await goto(`${BASE}/rules/${rule.id}`);
 			return;
 		}
@@ -69,24 +81,30 @@
 		const saved = await form.save(model, () =>
 			changeSwitchedOff(target, definition, moved ? place : undefined)
 		);
-		if (saved) await goto(`${BASE}/rules/${saved.id}/apply?saved=1`);
+		if (!saved) return;
+		leaving = true;
+		await goto(`${BASE}/rules/${saved.id}/apply?saved=1`);
 	}
 </script>
 
 <svelte:head
-	><title>{m.rule_edit_title({ name: rule?.name ?? '' })} · {m.app_name()}</title></svelte:head
+	><title
+		>{rule ? m.rule_edit_title({ name: rule.name }) : m.rule_edit_generic()} · {m.app_name()}</title
+	></svelte:head
 >
 
+<UnsavedGuard dirty={changed && !leaving} />
+
 <div class="flex flex-col gap-6">
-	<BackLink href="{BASE}/rules/{id}" label={rule?.name ?? m.nav_rules()} />
-	<h1 class="text-[1.75rem] font-semibold tracking-tight">
-		{m.rule_edit_title({ name: rule?.name ?? '' })}
-	</h1>
+	<PageHeader
+		title={rule ? m.rule_edit_title({ name: rule.name }) : m.rule_edit_generic()}
+		back={{ href: `${BASE}/rules/${id}`, label: rule?.name ?? m.nav_rules() }}
+	/>
 
 	{#if problem}
-		<p class="text-destructive" role="alert">{problem}</p>
+		<LoadProblem {problem} onretry={() => loader.retry()} />
 	{:else if !rule || !model || !lookup}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<RuleBuilder
 			{model}
@@ -100,6 +118,7 @@
 			general={form.general}
 			busy={form.busy}
 			cancelHref="{BASE}/rules/{rule.id}"
+			oncancel={() => (leaving = true)}
 			onsubmit={save}
 		/>
 	{/if}

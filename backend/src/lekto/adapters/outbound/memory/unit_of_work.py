@@ -10,7 +10,7 @@ import copy
 import dataclasses
 from collections import Counter
 from collections.abc import Callable, Collection, Hashable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from types import TracebackType
 from typing import Any, Self, cast
@@ -22,7 +22,8 @@ from lekto.adapters.outbound.memory.database import (
     CLASSIFIER_MODELS,
     CONTACTS,
     CREDENTIALS,
-    DOCUMENT_IDENTIFIERS,
+    DOCUMENT_FACTS,
+    DOCUMENT_RELATIONS,
     DOCUMENT_TYPES,
     DOCUMENTS,
     EXTERNAL_IDENTITIES,
@@ -38,10 +39,12 @@ from lekto.adapters.outbound.memory.database import (
     TASKS,
     USERS,
     WEBHOOKS,
-    IdentifiersRow,
+    FactsRow,
     MemoryDatabase,
+    RelationRow,
     SeenMark,
     Table,
+    relation_row_id,
 )
 from lekto.adapters.outbound.memory.identity import (
     MemoryApiTokenRepository,
@@ -61,6 +64,16 @@ from lekto.adapters.outbound.memory.rules import (
 )
 from lekto.adapters.outbound.memory.tasks import MemoryTaskRepository
 from lekto.adapters.outbound.memory.webhooks import MemoryWebhookRepository
+from lekto.core.domain.document_facts import (
+    DocumentFact,
+    FactState,
+    check_decided,
+    check_found,
+    fact_tokens,
+    merged,
+    reading_order,
+    withdrawn,
+)
 from lekto.core.domain.documents import Document, Sha256
 from lekto.core.domain.entity import Entity
 from lekto.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
@@ -87,6 +100,7 @@ from lekto.core.domain.permissions import Reach
 from lekto.core.domain.pipeline import NodeRun
 from lekto.core.domain.profiles import Profile
 from lekto.core.domain.reasons import ReasonCode, because
+from lekto.core.domain.relations import Relation
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import User
 from lekto.core.domain.validation import name_key, require_utc
@@ -134,7 +148,8 @@ class MemoryUnitOfWork:
         self.documents = MemoryDocumentRepository(self, DOCUMENTS)
         self.processing_log = MemoryProcessingLog(self)
         self.processing_facts = MemoryProcessingFacts(self)
-        self.document_identifiers = MemoryDocumentIdentifierRepository(self)
+        self.document_facts = MemoryDocumentFactRepository(self)
+        self.document_relations = MemoryDocumentRelationRepository(self)
         self.inbox = MemoryInboxRepository(self)
         self.rules = MemoryRuleRepository(self, RULES)
         self.rule_applications = MemoryRuleApplicationRepository(self, RULE_APPLICATIONS)
@@ -492,6 +507,7 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
         return _Groups(
             {row.id: row.group_ids for row in self._uow._rows(CONTACTS)},
             {row.id: row.group_ids for row in self._uow._rows(DOCUMENT_TYPES)},
+            {row.id: fact_tokens(row.facts) for row in self._uow._rows(DOCUMENT_FACTS)},
         )
 
     async def count_tagged(
@@ -608,18 +624,104 @@ class MemoryProcessingLog:
         return [entry for entry in entries if entry.document_id == document]
 
 
-class MemoryDocumentIdentifierRepository:
+class MemoryDocumentRelationRepository:
     def __init__(self, uow: MemoryUnitOfWork) -> None:
         self._uow = uow
 
-    async def replace(
-        self, document: DocumentId, identifiers: Collection[tuple[IdentifierKind, str]]
-    ) -> None:
+    def _live(self) -> list[Relation]:
+        """The relations whose documents are both there (the database cascades)."""
+        return [
+            row.relation
+            for row in self._uow._rows(DOCUMENT_RELATIONS)
+            if self._uow._row(DOCUMENTS, row.relation.newer) is not _REMOVED
+            and self._uow._row(DOCUMENTS, row.relation.older) is not _REMOVED
+        ]
+
+    async def of_document(self, document: DocumentId) -> list[Relation]:
+        return await self.of_documents([document])
+
+    async def of_documents(self, documents: Collection[DocumentId]) -> list[Relation]:
         self._uow._check_open()
-        current = self._uow._row(DOCUMENT_IDENTIFIERS, document)
+        wanted = set(documents)
+        found = [item for item in self._live() if item.newer in wanted or item.older in wanted]
+        return sorted(found, key=lambda item: (item.created_at, item.key), reverse=True)
+
+    async def find(self, newer: DocumentId, older: DocumentId) -> Relation | None:
+        self._uow._check_open()
+        return next((item for item in self._live() if item.key == (newer, older)), None)
+
+    async def put(self, relation: Relation) -> None:
+        self._uow._check_open()
+        id = relation_row_id(relation.newer, relation.older)
+        current = self._uow._row(DOCUMENT_RELATIONS, id)
         version = 1 if current is _REMOVED else current.version + 1
-        row = IdentifiersRow(id=document, identifiers=frozenset(identifiers), version=version)
-        self._uow._write(DOCUMENT_IDENTIFIERS, document, row)
+        self._uow._write(DOCUMENT_RELATIONS, id, RelationRow(id, relation, version))
+
+    async def remove(self, newer: DocumentId, older: DocumentId) -> None:
+        self._uow._check_open()
+        id = relation_row_id(newer, older)
+        if self._uow._row(DOCUMENT_RELATIONS, id) is not _REMOVED:
+            self._uow._write(DOCUMENT_RELATIONS, id, _REMOVED)
+
+
+class MemoryDocumentFactRepository:
+    def __init__(self, uow: MemoryUnitOfWork) -> None:
+        self._uow = uow
+
+    async def of_document(self, document: DocumentId) -> list[DocumentFact]:
+        self._uow._check_open()
+        if self._uow._row(DOCUMENTS, document) is _REMOVED:
+            return []  # its facts go with it, as the database cascades
+        row = self._uow._row(DOCUMENT_FACTS, document)
+        return [] if row is _REMOVED else list(row.facts)
+
+    async def of_documents(
+        self, documents: Collection[DocumentId]
+    ) -> dict[DocumentId, list[DocumentFact]]:
+        found = {id: await self.of_document(id) for id in documents}
+        return {id: facts for id, facts in found.items() if facts}
+
+    async def replace_found(self, document: DocumentId, found: Collection[DocumentFact]) -> None:
+        self._uow._check_open()
+        check_found(found)
+        self._keep(document, lambda kept: merged(kept, found))
+
+    async def decide(self, document: DocumentId, fact: DocumentFact) -> None:
+        self._uow._check_open()
+        check_decided(fact)
+        self._keep(
+            document,
+            lambda kept: sorted(
+                [item for item in kept if item.key != fact.key] + [fact], key=reading_order
+            ),
+        )
+
+    async def withdraw(self, document: DocumentId, key: tuple[IdentifierKind, str]) -> None:
+        self._uow._check_open()
+
+        def change(kept: tuple[DocumentFact, ...]) -> list[DocumentFact]:
+            facts = []
+            for fact in kept:
+                if fact.key != key or not fact.state.by_person:
+                    facts.append(fact)
+                elif (found := withdrawn(fact)) is not None:
+                    facts.append(found)
+            return facts
+
+        self._keep(document, change)
+
+    def _keep(
+        self,
+        document: DocumentId,
+        change: Callable[[tuple[DocumentFact, ...]], Iterable[DocumentFact]],
+    ) -> None:
+        current = self._uow._row(DOCUMENT_FACTS, document)
+        kept = () if current is _REMOVED else current.facts
+        version = 1 if current is _REMOVED else current.version + 1
+        facts = tuple(change(kept))
+        self._uow._write(
+            DOCUMENT_FACTS, document, FactsRow(id=document, facts=facts, version=version)
+        )
 
     async def contacts_of(
         self, identifiers: Collection[tuple[IdentifierKind, str]]
@@ -630,8 +732,13 @@ class MemoryDocumentIdentifierRepository:
         for document in self._uow._rows(DOCUMENTS):
             if document.confirmed_at is None or document.contact_id is None:
                 continue
-            shown = self._uow._row(DOCUMENT_IDENTIFIERS, document.id)
-            for key in wanted & (set() if shown is _REMOVED else shown.identifiers):
+            row = self._uow._row(DOCUMENT_FACTS, document.id)
+            shown = {
+                fact.key
+                for fact in (() if row is _REMOVED else row.facts)
+                if fact.state is not FactState.REJECTED
+            }
+            for key in wanted & shown:
                 found.setdefault(key, set()).add(document.contact_id)
         return {key: frozenset(contacts) for key, contacts in found.items()}
 
@@ -890,6 +997,7 @@ class _Groups:
 
     contacts: Mapping[UUID, frozenset[TagId]]
     document_types: Mapping[UUID, frozenset[TagId]]
+    facts: Mapping[UUID, frozenset[str]] = field(default_factory=dict)  # `fact_tokens`
 
     def view(self, document: Document) -> FilterView:
         return FilterView.of(
@@ -898,6 +1006,7 @@ class _Groups:
             document_type_groups=self.document_types.get(
                 document.document_type_id or UUID(int=0), frozenset()
             ),
+            facts=self.facts.get(document.id, frozenset()),
         )
 
 

@@ -38,9 +38,18 @@ from typing import Literal, Self
 from uuid import UUID
 
 from lekto.core.domain.classification import field_key
+from lekto.core.domain.document_facts import FactRole
 from lekto.core.domain.documents import Channel
 from lekto.core.domain.errors import ValidationError
-from lekto.core.domain.fields import FieldDefinition, FieldType, FieldValue, field_from_json
+from lekto.core.domain.fields import (
+    FieldDefinition,
+    FieldType,
+    FieldValue,
+    Writing,
+    field_from_json,
+    read_written,
+)
+from lekto.core.domain.identifiers import IdentifierKind, normalise_identifier
 from lekto.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -93,6 +102,8 @@ class ConditionField(StrEnum):
     TEXT = "text"
     FIELD = "field"
     DOCUMENT_DATE = "document_date"
+    FACT = "fact"  # a fact of the document (#145): of `fact_kind`, in `fact_role` if given
+    RELATION = "relation"  # a document it refers to (#145): any, or of one of the types
 
 
 class Operator(StrEnum):
@@ -134,6 +145,10 @@ _FIELD_OPERATORS: dict[ConditionField, frozenset[Operator]] = {
     ConditionField.DOCUMENT_DATE: frozenset(
         {Operator.IS, Operator.GT, Operator.LT, Operator.PRESENT, Operator.MISSING}
     ),
+    ConditionField.FACT: frozenset(
+        {Operator.IS, Operator.IN, Operator.MATCHES, Operator.PRESENT, Operator.MISSING}
+    ),
+    ConditionField.RELATION: _REFERENCE_OPERATORS,
 }
 TAG_FIELDS: dict[ConditionField, TagScope] = {
     ConditionField.TAGS: TagScope.DOCUMENT,
@@ -142,7 +157,9 @@ TAG_FIELDS: dict[ConditionField, TagScope] = {
     ConditionField.TOPIC: TagScope.TOPIC,
 }
 """The conditions on tags (a topic is one), and the scope of the tags each names."""
-_ID_FIELDS = frozenset({ConditionField.CONTACT, ConditionField.DOCUMENT_TYPE, *TAG_FIELDS})
+_ID_FIELDS = frozenset(
+    {ConditionField.CONTACT, ConditionField.DOCUMENT_TYPE, ConditionField.RELATION, *TAG_FIELDS}
+)
 _ORDERED = frozenset({Operator.IS, Operator.GT, Operator.LT, Operator.PRESENT, Operator.MISSING})
 FIELD_TYPE_OPERATORS: dict[FieldType, frozenset[Operator]] = {
     FieldType.TEXT: frozenset(
@@ -191,7 +208,12 @@ class Condition:
     """Field, operator and value. `value` is None for `present` and `missing`, a list for
     `in`, otherwise one value. `field_id` names the field of a `field` condition, `path` what
     a `step` condition looks at (`accounting.paid`: the answer of the step `accounting`, its
-    key `paid`); `case_sensitive` applies to `matches` only."""
+    key `paid`); `case_sensitive` applies to `matches` only. A `fact` condition looks at the
+    document's facts of `fact_kind` (none a person rejected), in `fact_role` if given; `is`
+    and `in` compare their values as Lekto compares them (written as they stand in a text,
+    kept normalised), `matches` runs against each value as the text writes it. A `relation`
+    condition looks at the documents it refers to (set relations, not suggestions): `present`
+    and `missing` at any, `is` and `in` at their document types."""
 
     field: ConditionField
     op: Operator
@@ -199,8 +221,14 @@ class Condition:
     field_id: FieldId | None = None
     case_sensitive: bool = False
     path: str | None = None
+    fact_kind: IdentifierKind | None = None
+    fact_role: FactRole | None = None
 
     def __post_init__(self) -> None:
+        if (self.field is ConditionField.FACT) != (self.fact_kind is not None):
+            raise ValidationError("fact_kind is given exactly for fact conditions")
+        if self.fact_role is not None and self.field is not ConditionField.FACT:
+            raise ValidationError("fact_role is given for fact conditions only")
         if (self.field is ConditionField.FIELD) != (self.field_id is not None):
             raise ValidationError("field_id is given exactly for field conditions")
         if (self.field is ConditionField.STEP) != (self.path is not None):
@@ -231,6 +259,12 @@ class Condition:
             # One spelling of every id, so conditions compare ids as text.
             ids = [str(require_uuid(item, self.field.value)) for item in items]
             object.__setattr__(self, "value", ids if self.op is Operator.IN else ids[0])
+        if self.field is ConditionField.FACT and self.op in (Operator.IS, Operator.IN):
+            # As Lekto compares the values of their kind.
+            assert self.fact_kind is not None
+            kind = self.fact_kind
+            values = [normalise_identifier(kind, str(item)) for item in items]
+            object.__setattr__(self, "value", values if self.op is Operator.IN else values[0])
 
     def _check_value(self, value: JsonValue) -> None:
         match self.field:
@@ -254,6 +288,18 @@ class Condition:
                     _text(value, MAX_TEXT)
             case ConditionField.STEP:
                 _step_value(self.op, value)
+            case ConditionField.FACT:
+                _text(value, MAX_PATTERN if self.op is Operator.MATCHES else MAX_TEXT)
+
+    @property
+    def target(self) -> str:
+        """What a `matches` condition runs against: `text`, a field's id, or the facts
+        (`fact:<kind>:<role>`)."""
+        if self.field is ConditionField.FACT:
+            assert self.fact_kind is not None
+            role = "" if self.fact_role is None else self.fact_role.value
+            return f"fact:{self.fact_kind.value}:{role}"
+        return "text" if self.field_id is None else str(self.field_id)
 
     @property
     def values(self) -> list[JsonValue]:
@@ -394,8 +440,12 @@ class RemoveTags:
 
 @dataclass(frozen=True)
 class SetField:
-    """`value` in the JSON form of the field's type (`field_to_json`); for a text field a
-    template, as the title's."""
+    """`value`: text is a template for any type, as the title's; what it renders is read as the
+    field's type has it (`fields.read_written`), and what cannot be read sets nothing. Other
+    values are fixed, in the JSON form of the field's type (`field_to_json`): an amount or a
+    period as an object, yes or no as a boolean, a number as a JSON number. A fixed value that is
+    text in its JSON form (`"12.50"`, `"2026-03-12"`, a choice, a link) is a template that writes
+    itself and reads as it is: rules saved before templates for every type stay as they were."""
 
     field_id: FieldId
     value: JsonValue
@@ -582,7 +632,7 @@ class RuleDefinition:
             match condition.field:
                 case ConditionField.CONTACT:
                     contacts.update(ContactId(id) for id in _ids(condition))
-                case ConditionField.DOCUMENT_TYPE:
+                case ConditionField.DOCUMENT_TYPE | ConditionField.RELATION:
                     types.update(DocumentTypeId(id) for id in _ids(condition))
                 case tag_field if tag_field in TAG_FIELDS:
                     named = [TagId(id) for id in _ids(condition)]
@@ -646,18 +696,30 @@ class RuleDefinition:
         ]
 
     @property
+    def uses_codes(self) -> bool:
+        """Whether the rule may need the codes on the document's pages: a template that names
+        the facts (`facts.girocode`), or a step that asks a webhook (its body sees them)."""
+        for action in self.actions:
+            match action:
+                case (
+                    SetTitle(template=text)
+                    | ForceReview(reason=text)
+                    | SetField(value=str() as text)
+                ) if "fact" in text:
+                    return True
+                case AskWebhook():
+                    return True
+        return False
+
+    @property
     def uses_text(self) -> bool:
         return any(condition.field is ConditionField.TEXT for condition in self.all_conditions())
 
     def patterns(self) -> set[tuple[str, str, bool]]:
-        """The regular expressions of the conditions: target (`text` or a field id),
-        pattern and case setting."""
+        """The regular expressions of the conditions: target (`Condition.target`), pattern
+        and case setting."""
         return {
-            (
-                "text" if condition.field_id is None else str(condition.field_id),
-                str(condition.value),
-                condition.case_sensitive,
-            )
+            (condition.target, str(condition.value), condition.case_sensitive)
             for condition in self.all_conditions()
             if condition.op is Operator.MATCHES
         }
@@ -731,7 +793,28 @@ def check_fields(
     for index, action in enumerate(definition.actions):
         if isinstance(action, SetField):
             with _at(f"actions[{index}]"):
-                field_from_json(_field(definitions, action.field_id), action.value)
+                field = _field(definitions, action.field_id)
+                if not is_template(field, action.value):
+                    field_from_json(field, action.value)
+                elif (
+                    # Text without markup writes itself: it must be readable now. A template's
+                    # syntax and values are checked where the rule is saved (a port renders it).
+                    not TEMPLATE_MARKUP.search(str(action.value))
+                    and read_written(field, str(action.value), Writing()) is None
+                ):
+                    raise field.refusal(action.value)
+
+
+TEMPLATE_MARKUP = re.compile(r"\{[{%]")
+"""Where Liquid begins an output or a tag."""
+
+
+def is_template(field: FieldDefinition, value: JsonValue) -> bool:
+    """Whether a `set_field` value for `field` is a template: text, unless it is one of a choice
+    field's options as written (a fixed value, whatever it holds: `Projekt {{A}}`)."""
+    if not isinstance(value, str):
+        return False
+    return not (field.data_type is FieldType.CHOICE and value in field.choices)
 
 
 def condition_value(field: FieldDefinition, op: Operator, value: JsonValue) -> FieldValue:

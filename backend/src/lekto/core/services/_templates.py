@@ -4,6 +4,7 @@ the document is now."""
 from collections.abc import Iterable
 from datetime import datetime
 
+from lekto.core.domain.codes import Code
 from lekto.core.domain.documents import Document
 from lekto.core.domain.fields import FieldDefinition, field_to_json
 from lekto.core.domain.ids import DocumentTypeId, EventId
@@ -18,8 +19,10 @@ async def document_values(
     document: Document,
     document_type: DocumentTypeId | None,
     fields: Iterable[FieldDefinition],
+    codes: Iterable[Code] = (),
 ) -> dict[str, TemplateValue]:
-    """The values a template sees of `document` as it is (`templates.template_values`)."""
+    """The values a template sees of `document` as it is (`templates.template_values`), its
+    facts too (`codes`: those on its pages, for `facts.girocode`)."""
     contact = None if document.contact_id is None else await uow.contacts.find(document.contact_id)
     kind = None if document_type is None else await uow.document_types.find(document_type)
     space = await uow.spaces.find(document.space_id)
@@ -39,6 +42,8 @@ async def document_values(
         contact_groups=[names[id] for id in (contact.group_ids if contact else ()) if id in names],
         document_type_groups=[names[id] for id in (kind.group_ids if kind else ()) if id in names],
         topic=names.get(document.topic_id) if document.topic_id is not None else None,
+        kept_facts=await uow.document_facts.of_document(document.id),
+        codes=codes,
     )
 
 
@@ -61,14 +66,14 @@ def event_values(event_id: EventId, type: str, occurred_at: datetime) -> dict[st
 
 
 async def webhook_values(
-    uow: UnitOfWork, document: Document, link_base: str | None
+    uow: UnitOfWork, document: Document, link_base: str | None, codes: Iterable[Code] = ()
 ) -> dict[str, TemplateValue]:
     """The values a webhook's template sees of `document`: those of a rule's template (the fields
-    of its type), its id, lane and link."""
+    of its type, `codes` for `facts.girocode`), its id, lane and link."""
     fields = [
         item for item in await uow.fields.list_all() if item.applies_to(document.document_type_id)
     ]
-    values = await document_values(uow, document, document.document_type_id, fields)
+    values = await document_values(uow, document, document.document_type_id, fields, codes)
     values["document_id"] = str(document.id)
     if document.lane is not None:
         values["lane"] = document.lane.value

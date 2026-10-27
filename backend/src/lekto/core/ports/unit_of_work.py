@@ -14,7 +14,8 @@ from lekto.core.ports.job_queue import JobQueue
 from lekto.core.ports.repository import (
     ClassifierModelRepository,
     ContactRepository,
-    DocumentIdentifierRepository,
+    DocumentFactRepository,
+    DocumentRelationRepository,
     DocumentRepository,
     DocumentTypeRepository,
     FieldDefinitionRepository,
@@ -72,7 +73,10 @@ class UnitOfWork(Protocol):
     @property
     def processing_facts(self) -> ProcessingFacts: ...
     @property
-    def document_identifiers(self) -> DocumentIdentifierRepository: ...
+    def document_facts(self) -> DocumentFactRepository: ...
+
+    @property
+    def document_relations(self) -> DocumentRelationRepository: ...
     @property
     def inbox(self) -> InboxRepository: ...
     @property

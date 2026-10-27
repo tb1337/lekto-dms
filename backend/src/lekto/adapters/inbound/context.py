@@ -17,6 +17,7 @@ from lekto.core.services.auth import AuthService
 from lekto.core.services.automation import AutomationService
 from lekto.core.services.classifier import ClassifierService
 from lekto.core.services.documents import DocumentService
+from lekto.core.services.expected import ExpectedService
 from lekto.core.services.inbox import InboxService
 from lekto.core.services.indexing import IndexingService
 from lekto.core.services.jobs import JobsService
@@ -26,10 +27,12 @@ from lekto.core.services.master_data import MasterDataService
 from lekto.core.services.oidc import OidcService
 from lekto.core.services.pipeline import PipelineService
 from lekto.core.services.profiles import ProfileService
+from lekto.core.services.relations import RelationService
 from lekto.core.services.rules import RuleService
 from lekto.core.services.rules.retroactive import RuleApplicationService
 from lekto.core.services.search import SearchService
 from lekto.core.services.spaces import SpaceService
+from lekto.core.services.stream import StreamService
 from lekto.core.services.tasks.service import TaskService
 from lekto.core.services.users import UserService
 from lekto.core.services.webhooks import WebhookDeliveryService, WebhookService
@@ -57,6 +60,9 @@ class ApiContext:
     webhook_delivery: WebhookDeliveryService
     tasks: TaskService
     lenses: LensService
+    relations: RelationService
+    expected: ExpectedService
+    stream: StreamService
     jobs: JobsService
     automation: AutomationService
     event_bus: EventBus

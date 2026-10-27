@@ -5,6 +5,7 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import ChipInput from '#lib/components/ChipInput.svelte';
+	import HintLabel from '#lib/components/HintLabel.svelte';
 	import IdentifiersEditor from '#lib/components/IdentifiersEditor.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
@@ -19,6 +20,9 @@
 	} from '#lib/identifiers.ts';
 	import type { Contact, Tag } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import Loading from '#lib/components/Loading.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
+	import DateInput from '#lib/components/DateInput.svelte';
 
 	// A user's profile (Tobi, 21.10.2026): the display name others see, and what only the user
 	// and admins see: other names, birth date, e-mail and the person's own numbers. Found in a
@@ -117,20 +121,34 @@
 
 {#if profile === null}
 	{#if problem}
-		<p class="text-sm text-destructive" role="alert">{problem}</p>
+		<LoadProblem {problem} onretry={load} />
 	{:else}
-		<p class="text-sm text-muted-foreground">{m.loading()}</p>
+		<Loading class="text-sm" />
 	{/if}
 {:else}
 	<form class="flex flex-col gap-4" onsubmit={save}>
-		<p class="text-sm text-muted-foreground">{m.profile_hint()}</p>
 		<Field.Field>
-			<Field.Label for="{uid}-name">{m.profile_display_name()}</Field.Label>
-			<Input id="{uid}-name" bind:value={displayName} maxlength={150} autocomplete="name" />
-			<Field.Description>{m.profile_display_name_hint()}</Field.Description>
+			<HintLabel
+				for="{uid}-name"
+				label={m.profile_display_name()}
+				hint={m.profile_display_name_hint()}
+				hintId="{uid}-name-hint"
+			/>
+			<Input
+				id="{uid}-name"
+				bind:value={displayName}
+				maxlength={150}
+				autocomplete="name"
+				aria-describedby="{uid}-name-hint"
+			/>
 		</Field.Field>
 		<Field.Field>
-			<Field.Label id="{uid}-aliases-label">{m.profile_aliases()}</Field.Label>
+			<HintLabel
+				id="{uid}-aliases-label"
+				label={m.profile_aliases()}
+				hint={m.profile_aliases_hint()}
+				hintId="{uid}-aliases-hint"
+			/>
 			<ChipInput
 				bind:values={aliases}
 				labelledby="{uid}-aliases-label"
@@ -138,12 +156,11 @@
 				addLabel={m.profile_alias_chip()}
 				inputLabel={m.profile_alias_input()}
 			/>
-			<Field.Description id="{uid}-aliases-hint">{m.profile_aliases_hint()}</Field.Description>
 		</Field.Field>
 		<div class="grid gap-4 sm:grid-cols-2">
 			<Field.Field>
 				<Field.Label for="{uid}-birth">{m.profile_birth_date()}</Field.Label>
-				<Input id="{uid}-birth" type="date" bind:value={birthDate} />
+				<DateInput id="{uid}-birth" label={m.profile_birth_date()} bind:value={birthDate} />
 			</Field.Field>
 			<Field.Field>
 				<Field.Label for="{uid}-email">{m.profile_email()}</Field.Label>

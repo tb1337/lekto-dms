@@ -10,11 +10,14 @@
 		action,
 		ondone,
 		class: className,
+		onchanged,
 		children
 	}: {
 		action: () => Promise<void>;
 		ondone: () => void;
 		class?: string;
+		/** Something in the form was typed or chosen (for a question before leaving). */
+		onchanged?: () => void;
 		children: Snippet<[{ busy: boolean; error: string | null }]>;
 	} = $props();
 
@@ -37,6 +40,6 @@
 	}
 </script>
 
-<form class={className} onsubmit={submit} novalidate>
+<form class={className} onsubmit={submit} oninput={onchanged} onchange={onchanged} novalidate>
 	{@render children({ busy, error })}
 </form>

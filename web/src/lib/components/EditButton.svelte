@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Pencil from '@lucide/svelte/icons/pencil';
-	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
 	import { cn } from '#lib/utils.ts';
 
 	// The pencil that opens an item's editor: last in its row, in a column of its own behind a
@@ -16,18 +16,7 @@
 </script>
 
 <div class={cn('flex shrink-0 items-center self-stretch border-l pl-2', className)}>
-	{#if href}
-		<a
-			{href}
-			aria-label={label}
-			title={label}
-			class={buttonVariants({ variant: 'ghost', size: 'icon' })}
-		>
-			<Pencil aria-hidden="true" />
-		</a>
-	{:else}
-		<Button variant="ghost" size="icon" aria-label={label} title={label} {onclick}>
-			<Pencil aria-hidden="true" />
-		</Button>
-	{/if}
+	<IconButton {label} {href} {onclick}>
+		<Pencil aria-hidden="true" />
+	</IconButton>
 </div>

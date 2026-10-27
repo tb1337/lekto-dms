@@ -5,7 +5,6 @@
 	import Minus from '@lucide/svelte/icons/minus';
 	import Plus from '@lucide/svelte/icons/plus';
 	import { onMount, tick, type Snippet } from 'svelte';
-	import { Button } from '#lib/components/ui/button/index.ts';
 	import Segmented from '#lib/components/Segmented.svelte';
 	import type { Mark, Place } from '#lib/document-view.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -24,6 +23,10 @@
 		type Point,
 		type Room
 	} from '#lib/viewer/zoom.ts';
+	import { Separator } from '#lib/components/ui/separator/index.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
+	import Loading from '#lib/components/Loading.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 
 	// The pages of a document side by side, wrapping into rows: the zoom decides how many stand
 	// in a row (`viewer/zoom.ts`). Ctrl or ⌘ with the wheel, a pinch, the buttons and the keys
@@ -310,14 +313,9 @@
 		aria-label={m.pdf_toolbar()}
 		class="@container flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-card px-3 py-2"
 	>
-		<Button
-			variant="ghost"
-			size="icon"
-			onclick={() => zoomTo(zoom / 1.25, center())}
-			aria-label={m.pdf_zoom_out()}
-		>
+		<IconButton onclick={() => zoomTo(zoom / 1.25, center())} label={m.pdf_zoom_out()}>
 			<Minus aria-hidden="true" />
-		</Button>
+		</IconButton>
 		<button
 			type="button"
 			class="min-w-14 rounded-full px-2 py-1.5 text-center text-sm tabular-nums hover:bg-accent"
@@ -327,15 +325,10 @@
 		>
 			{Math.round(zoom * 100)} %
 		</button>
-		<Button
-			variant="ghost"
-			size="icon"
-			onclick={() => zoomTo(zoom * 1.25, center())}
-			aria-label={m.pdf_zoom_in()}
-		>
+		<IconButton onclick={() => zoomTo(zoom * 1.25, center())} label={m.pdf_zoom_in()}>
 			<Plus aria-hidden="true" />
-		</Button>
-		<span class="mx-1 h-5 w-px bg-border" aria-hidden="true"></span>
+		</IconButton>
+		<Separator orientation="vertical" class="mx-1 h-5 self-center" />
 		<Segmented
 			size="sm"
 			names="@3xl"
@@ -370,9 +363,9 @@
 		class="justify-[safe_center] relative flex min-h-[24rem] flex-1 touch-pan-x touch-pan-y [scrollbar-gutter:stable] flex-wrap content-start gap-3 overflow-auto p-3"
 	>
 		{#if loading}
-			<p class="w-full py-16 text-center text-muted-foreground">{m.loading()}</p>
+			<Loading class="w-full py-16 text-center" />
 		{:else if problem}
-			<p class="w-full py-16 text-center text-destructive" role="alert">{problem}</p>
+			<div class="w-full p-6"><LoadProblem {problem} /></div>
 		{:else}
 			{#each sizes as size, index (index)}
 				<div
@@ -386,12 +379,11 @@
 						{#each mark.boxes as box, boxIndex (boxIndex)}
 							<div
 								class={cn(
-									'pointer-events-none absolute rounded-[3px] transition-shadow',
+									'pointer-events-none absolute rounded-xs transition-shadow',
 									mark.derived
 										? 'bg-primary/10 outline-2 outline-offset-1 outline-primary outline-dashed'
 										: 'bg-primary/20 ring-2 ring-primary',
-									mark.pinned &&
-										'shadow-[0_0_0_7px_color-mix(in_oklab,var(--primary)_22%,transparent)]'
+									mark.pinned && 'shadow-pinned'
 								)}
 								style:left={`${box.x * 100}%`}
 								style:top={`${box.y * 100}%`}
@@ -401,7 +393,7 @@
 							>
 								{#if boxIndex === 0}
 									<span
-										class="absolute bottom-full left-0 mb-1 rounded-md bg-primary px-1.5 text-[10px] leading-4 font-semibold whitespace-nowrap text-primary-foreground"
+										class="absolute bottom-full left-0 mb-1 rounded-md bg-primary px-1.5 text-nano leading-4 font-semibold whitespace-nowrap text-primary-foreground"
 									>
 										{mark.label}
 									</span>

@@ -55,9 +55,12 @@
 	{#if item.tab === 'processing'}
 		<ProcessingProgress processing={document.processing} compact class="mt-1 max-w-48" />
 	{:else if item.tab === 'review' || item.tab === 'intervene'}
-		<span class="flex min-w-0 items-center gap-2 text-sm">
+		<!-- On a phone the reason gets a line of its own, two at most, instead of a few words. -->
+		<span
+			class="flex min-w-0 flex-col items-start gap-1 text-sm sm:flex-row sm:items-center sm:gap-2"
+		>
 			<LaneBadge lane={document.lane} class="shrink-0" />
-			<span class="truncate text-muted-foreground">
+			<span class="line-clamp-2 text-muted-foreground sm:line-clamp-1">
 				{suggestion
 					? suggestionText(suggestion, document.space_id, lookup)
 					: (reasonsText(item.open[0]?.reasons, item.open[0]?.reason, labelled(lookup)) ??
@@ -65,7 +68,7 @@
 			</span>
 		</span>
 	{:else if item.tab === 'new'}
-		<span class="flex items-center gap-1.5 text-sm font-medium text-primary">
+		<span class="flex items-center gap-1.5 text-sm font-medium text-brand">
 			<span class="size-2 rounded-full bg-primary" aria-hidden="true"></span>
 			{m.inbox_new()}
 		</span>

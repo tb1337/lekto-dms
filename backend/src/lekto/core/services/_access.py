@@ -5,6 +5,7 @@ from dataclasses import replace
 from uuid import UUID
 
 from lekto.core.domain.classification import CHECKS
+from lekto.core.domain.document_facts import FactCriterion, FactRole, person_only
 from lekto.core.domain.documents import Document, DocumentChanges, Sha256, Unset
 from lekto.core.domain.errors import (
     AuthenticationError,
@@ -25,8 +26,10 @@ from lekto.core.domain.permissions import (
 )
 from lekto.core.domain.pipeline import Node, NodeRun
 from lekto.core.domain.reasons import Action, ReasonCode, because
+from lekto.core.domain.rules import ConditionField, RuleDefinition
 from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
+from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services._tags import tag_tree
 
@@ -221,7 +224,8 @@ async def readable_log(uow: UnitOfWork, user: User, log: Sequence[NodeRun]) -> l
     persons the facts and the judge found (`persons`, and the space check's `unseen_by`) they
     see themselves, and another user only as far as the text names them by their display name
     (`_persons_seen`): what is private about a person found them for admins and that person
-    alone. Admins see everything; the stored log keeps everything for reprocessing."""
+    alone. The relations `relate` made name only documents they may read. Admins see
+    everything; the stored log keeps everything for reprocessing."""
     if user.is_active_admin:
         return list(log)
     readable: dict[str, bool] = {}
@@ -246,6 +250,18 @@ async def readable_log(uow: UnitOfWork, user: User, log: Sequence[NodeRun]) -> l
         assert isinstance(output, dict)
         if run.node in (Node.SIGNAL_FACTS, Node.JUDGE) and "persons" in output:
             output = _persons_seen(output, str(user.id))
+        if run.node is Node.RELATE and isinstance(output.get("relations"), list):
+            # A relation to a document the reader may not read is none of theirs (#145).
+            relations = output["relations"]
+            assert isinstance(relations, list)
+            output = {
+                **output,
+                "relations": [
+                    item
+                    for item in relations
+                    if isinstance(item, dict) and await may_read(item.get("document_id"))
+                ],
+            }
         result.append(replace(run, result=replace(run.result, output=output)))
     return result
 
@@ -317,3 +333,34 @@ async def _readable(
         else:
             result[key] = await _readable(item, may_read, neighbours=False)
     return result
+
+
+def check_fact_filter(user: User, filter: DocumentFilter) -> None:
+    """Only admins find documents by a person's facts: of a kind a person's alone (a tax ID
+    found on a document is that person's) or in the role `person`; PermissionDeniedError
+    otherwise."""
+    if user.is_active_admin:
+        return
+    if any(of_a_person(item) for item in filter.facts):
+        raise PermissionDeniedError(because(ReasonCode.FACT_FILTER_OF_PERSON))
+
+
+def check_rule_facts(user: User, definition: RuleDefinition) -> None:
+    """Only admins write and apply rules on a person's facts, as only they find documents by
+    them (`check_fact_filter`): a condition on a kind a person's alone or in the role `person`;
+    PermissionDeniedError otherwise."""
+    if user.is_active_admin:
+        return
+    for condition in definition.all_conditions():
+        if condition.field is ConditionField.FACT and of_a_person(
+            FactCriterion(kind=condition.fact_kind, role=condition.fact_role)
+        ):
+            raise PermissionDeniedError(because(ReasonCode.RULE_FACT_OF_PERSON))
+
+
+def of_a_person(criterion: FactCriterion) -> bool:
+    """Whether a filter by facts looks for a person's: by a kind a person's alone, or by the
+    role `person`."""
+    return (criterion.kind is not None and person_only(criterion.kind)) or (
+        criterion.role is FactRole.PERSON
+    )

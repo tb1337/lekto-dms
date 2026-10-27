@@ -1,7 +1,7 @@
 """What a document shows of its contact, over HTTP, and attaching an identifier to a contact."""
 
 import dataclasses
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 
 import httpx2
 import pytest
@@ -188,3 +188,88 @@ async def test_an_admin_attaches_an_identifier_from_a_document(facts_api: Api) -
     # Attaching it again changes nothing.
     again = await post(api, path, body, auth(admin))
     assert again.json()["identifiers"] == attached.json()["identifiers"]
+
+
+async def test_a_person_decides_about_a_fact(facts_api: Api) -> None:
+    api = facts_api
+    owner = await api.user()
+    url = f"{DOCUMENTS}/{await upload(api, auth(owner))}"
+    decide = f"{url}/facts/decisions"
+
+    async def numbers(body: Mapping[str, object]) -> list[tuple[str, str, str]]:
+        response = await api.client.post(decide, json=body, headers=auth(owner))
+        assert response.status_code == 200, response.text
+        return [(item["value"], item["role"], item["state"]) for item in response.json()["numbers"]]
+
+    given = {"action": "add", "kind": "invoice_number", "value": "R-1001", "role": "own"}
+    assert await numbers(given) == [("R1001", "own", "added")]
+    reject = {"action": "reject", "kind": "invoice_number", "value": "R1001"}
+    assert await numbers(reject) == [("R1001", "own", "rejected")]
+    assert await numbers({**reject, "action": "withdraw"}) == []
+
+    unknown = await api.client.post(decide, json=reject, headers=auth(owner))
+    assert unknown.status_code == 404
+    assert unknown.json()["reason"]["code"] == "fact_not_found"
+    wrong = await api.client.post(
+        decide, json={**given, "kind": "creditor_id", "value": "DE00"}, headers=auth(owner)
+    )
+    assert wrong.status_code == 422
+    report = await api.client.get(f"{url}/facts", headers=auth(owner))
+    assert report.json()["editable"] is True
+
+
+async def test_documents_are_found_by_their_facts(facts_api: Api) -> None:
+    """In the list and its counts, by `kind:value:role`; a person's kinds only for admins; a
+    lens keeps facts with their values normalised."""
+    api = facts_api
+    owner = await api.user()
+    document = await upload(api, auth(owner))
+    added = await api.client.post(
+        f"{DOCUMENTS}/{document}/facts/decisions",
+        json={"action": "add", "kind": "invoice_number", "value": "R-1001", "role": "own"},
+        headers=auth(owner),
+    )
+    assert added.status_code == 200, added.text
+
+    async def listed(*facts: str) -> list[str] | int:
+        response = await api.client.get(
+            DOCUMENTS, params=[("fact", fact) for fact in facts], headers=auth(owner)
+        )
+        if response.status_code != 200:
+            return response.status_code
+        return [item["id"] for item in response.json()["items"]]
+
+    assert await listed("invoice_number:R 1001:") == [document]
+    assert await listed("invoice_number::own", "::own") == [document]
+    assert await listed("invoice_number:R-1002:") == []
+    assert await listed("invoice_number:R-1001:refers") == []
+    assert await listed("nonsense") == 422
+    assert await listed(":4711:") == 422  # a value needs its kind
+    assert await listed("tax_id::") == 403  # a person's kind
+    assert await listed("::person") == 403  # a person's role
+    assert await listed("letter_date:15.08.2026 10:30:") == []  # a value may hold colons
+    unknown = await api.client.get(DOCUMENTS, params={"fact": "bogus::"}, headers=auth(owner))
+    assert (unknown.status_code, unknown.json()["reason"]["code"]) == (422, "fact_kind_unknown")
+    facets = await api.client.get(
+        f"{DOCUMENTS}/facets", params={"fact": "invoice_number::"}, headers=auth(owner)
+    )
+    assert facets.status_code == 200, facets.text
+
+    lens = await api.client.post(
+        f"{PREFIX}/lenses",
+        json={
+            "name": "Rechnung R-1001",
+            "filter": {"facts": [{"kind": "invoice_number", "value": "R-1001"}]},
+        },
+        headers=auth(owner),
+    )
+    assert lens.status_code == 201, lens.text
+    assert lens.json()["filter"]["facts"] == [
+        {"kind": "invoice_number", "value": "R1001", "role": None}
+    ]
+    personal = await api.client.post(
+        f"{PREFIX}/lenses",
+        json={"name": "Steuer", "filter": {"facts": [{"kind": "tax_id"}]}},
+        headers=auth(owner),
+    )
+    assert personal.status_code == 403

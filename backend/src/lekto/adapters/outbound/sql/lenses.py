@@ -8,6 +8,8 @@ from sqlalchemy import Row, delete, select
 
 from lekto.adapters.outbound.sql import tables as t
 from lekto.adapters.outbound.sql.repositories import SqlRepository, Values
+from lekto.core.domain.document_facts import FactCriterion, FactRole
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import (
     ContactId,
     DocumentTypeId,
@@ -97,6 +99,14 @@ def _filter_json(filter: LensFilter) -> dict[str, Any]:
         "date_from": None if filter.date_from is None else filter.date_from.isoformat(),
         "date_to": None if filter.date_to is None else filter.date_to.isoformat(),
         "relative_period": None if filter.relative_period is None else filter.relative_period.value,
+        "facts": [
+            {
+                "kind": None if item.kind is None else item.kind.value,
+                "value": item.value,
+                "role": None if item.role is None else item.role.value,
+            }
+            for item in filter.facts
+        ],
     }
 
 
@@ -122,4 +132,12 @@ def _filter(data: dict[str, Any]) -> LensFilter:
         date_from=day("date_from"),
         date_to=day("date_to"),
         relative_period=None if relative is None else RelativePeriod(relative),
+        facts=tuple(
+            FactCriterion(
+                None if item.get("kind") is None else IdentifierKind(item["kind"]),
+                item.get("value"),
+                None if item.get("role") is None else FactRole(item["role"]),
+            )
+            for item in data.get("facts", ())
+        ),
     )

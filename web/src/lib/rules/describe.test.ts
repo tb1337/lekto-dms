@@ -40,10 +40,17 @@ describe('the template of an action', () => {
 		).toEqual({ lead: `${m.rule_action_set_field()}: Notiz = `, template: '{{ title }}' });
 	});
 
-	it('is absent from other actions and other fields', () => {
+	it('is absent from other actions and fixed values', () => {
 		const amount = { amount: '1.00', currency: 'EUR' };
 		expect(actionTemplate({ type: 'set_field', field_id: 'f2', value: amount }, lookup)).toBeNull();
 		expect(actionTemplate({ type: 'add_tags', tag_ids: [] }, lookup)).toBeNull();
+	});
+
+	it('is the value of a field of any type given as a template', () => {
+		const value = '{{ steps.erp.total }} EUR';
+		expect(actionTemplate({ type: 'set_field', field_id: 'f2', value }, lookup)?.template).toBe(
+			value
+		);
 	});
 });
 
@@ -53,6 +60,14 @@ describe('operators in the words of a period', () => {
 		expect(operatorLabel('field', 'lt', 'period')).toBe(m.rule_op_period_lt());
 		expect(operatorLabel('field', 'overlaps', 'period')).toBe(m.rule_op_overlaps());
 		expect(operatorLabel('field', 'gt', 'date')).toBe(m.rule_op_date_gt());
+	});
+});
+
+describe('operators in the words of a relation', () => {
+	it('refers to a document of a type, to any or to none', () => {
+		expect(operatorLabel('relation', 'is')).toBe(m.rule_op_relation_is());
+		expect(operatorLabel('relation', 'present')).toBe(m.rule_op_relation_present());
+		expect(operatorLabel('relation', 'missing')).toBe(m.rule_op_relation_missing());
 	});
 });
 
@@ -82,7 +97,9 @@ describe('conditions on groups', () => {
 			value: 'g1',
 			fieldId: null,
 			caseSensitive: false,
-			path: null
+			path: null,
+			factKind: null,
+			factRole: null
 		};
 		expect(describeCondition(condition, groups)).toBe(
 			`${m.rule_field_contact_group()} ${m.rule_op_tags_contains()} Insurer › Health insurer`
@@ -117,7 +134,9 @@ describe('the topic', () => {
 			value: 't1',
 			fieldId: null,
 			caseSensitive: false,
-			path: null
+			path: null,
+			factKind: null,
+			factRole: null
 		};
 		expect(describeCondition(condition, topics)).toBe(
 			`${m.field_topic()} ${m.rule_op_is()} Insurance › Health`

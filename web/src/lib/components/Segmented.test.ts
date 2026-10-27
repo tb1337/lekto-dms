@@ -33,7 +33,11 @@ describe('Segmented', () => {
 	it('names icons only by their label, read out and on hover', () => {
 		render(Segmented, { label: 'Layout', value: 'list', options: OPTIONS, names: 'hidden' });
 		const list = screen.getByRole('button', { name: 'List' });
-		expect(list.getAttribute('title')).toBe('List');
+		// On hover a tooltip says it (web/DESIGN.md: no native title on a button).
+		expect(list.hasAttribute('title')).toBe(false);
+		expect(
+			list.getAttribute('data-tooltip-trigger') ?? list.getAttribute('data-state')
+		).not.toBeNull();
 		expect(list.textContent?.trim()).toBe('');
 	});
 });

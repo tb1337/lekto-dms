@@ -28,6 +28,8 @@
 	import { scope } from '#lib/scope.svelte.ts';
 	import { uploads } from '#lib/upload.svelte.ts';
 	import { onChange } from '#lib/watch.svelte.ts';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import Loading from '#lib/components/Loading.svelte';
 
 	// The inbox, the way in: documents come here by the upload button (with the dialog) or by
 	// dropping files and folders on the page (at once into the personal space; not on a phone),
@@ -172,17 +174,14 @@
 <svelte:window ondragenter={dragOver} ondragover={dragOver} ondrop={drop} />
 
 <div class="flex flex-col gap-6">
-	<!-- The button stands level with the title, as on the other pages; the hint goes below. -->
-	<div class="flex flex-col gap-1">
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_inbox()}</h1>
+	<PageHeader title={m.nav_inbox()} subtitle={m.upload_page_hint()} subtitleClass="max-sm:hidden">
+		{#snippet actions()}
 			<Button class="h-11 sm:h-10" onclick={() => (uploadOpen = true)}>
 				<Upload aria-hidden="true" />
 				{m.upload_title()}
 			</Button>
-		</div>
-		<p class="text-sm text-muted-foreground max-sm:hidden">{m.upload_page_hint()}</p>
-	</div>
+		{/snippet}
+	</PageHeader>
 
 	<UploadSummary />
 
@@ -196,6 +195,7 @@
 				count: inbox.summary ? entry.count(inbox.summary) : 0
 			}))}
 			current={tab ?? ''}
+			class="min-w-0 flex-1 basis-80"
 		/>
 		{#if (tab === null || tab === 'new') && fresh > 0}
 			<Button variant="ghost" class="h-11 sm:h-9" onclick={() => (askAll = true)}>
@@ -228,7 +228,7 @@
 			{/each}
 		</ul>
 		{#if list.loading && !list.loaded}
-			<p class="text-muted-foreground">{m.loading()}</p>
+			<Loading />
 		{/if}
 		{#if list.hasMore}
 			<div class="flex justify-center">
@@ -258,9 +258,9 @@
 		ondragleave={() => (dragging = false)}
 	>
 		<div
-			class="pointer-events-none flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-primary bg-card px-12 py-16 text-center shadow-lg"
+			class="pointer-events-none flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-primary bg-card px-12 py-16 text-center shadow-lg"
 		>
-			<Upload class="size-9 text-primary" aria-hidden="true" />
+			<Upload class="size-9 text-brand" aria-hidden="true" />
 			<p class="text-xl font-semibold">{m.upload_drop_overlay()}</p>
 			<p class="text-sm text-muted-foreground">{m.upload_drop_overlay_hint()}</p>
 		</div>

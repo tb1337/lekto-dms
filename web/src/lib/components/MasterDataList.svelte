@@ -1,5 +1,4 @@
 <script lang="ts">
-	import X from '@lucide/svelte/icons/x';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -21,10 +20,12 @@
 	import { phone } from '#lib/phone.svelte.ts';
 	import { scope } from '#lib/scope.svelte.ts';
 	import { below, pathLabel } from '#lib/tags.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import Chip from '#lib/components/Chip.svelte';
 
 	// Contacts (with their logo or initials, groups, aliases, identifiers, topics) or document
-	// types (with their icon, description, groups, title pattern, fields), found by the search of
-	// the page. A link from the Tags tab lists the contacts of a group or topic, the types of a
+	// types (with their icon, description, groups, title pattern, fields, whether a relation
+	// target), found by the search of the page. A link from the Tags tab lists the contacts of a group or topic, the types of a
 	// group (`?group=`, `?topic=`, with the ones below it). A row opens the editor.
 	let { kind, query = '' }: { kind: 'contacts' | 'document-types'; query?: string } = $props();
 	const ops = $derived(KINDS[kind]);
@@ -120,6 +121,7 @@
 		const notes: { text: string; title?: string }[] = [];
 		if (item.title_pattern)
 			notes.push({ text: m.master_title_pattern(), title: item.title_pattern });
+		if (item.relation_target) notes.push({ text: m.master_relation_target() });
 		const fieldsText = fieldsNote(item);
 		if (fieldsText) notes.push({ text: fieldsText });
 		return notes;
@@ -170,19 +172,11 @@
 				? m.master_filter_group({ name: pathLabel(filterTag) })
 				: m.master_filter_topic({ name: pathLabel(filterTag) })}
 		<div>
-			<span
-				class="inline-flex h-9 max-w-full items-center gap-1 rounded-full border bg-card pr-1 pl-3.5 text-sm max-sm:h-11"
+			<Chip
+				variant="selected"
+				removeLabel={m.master_filter_remove({ name: label })}
+				onremove={() => goto(`?tab=${kind}`, { reset: false })}>{label}</Chip
 			>
-				<span class="min-w-0 truncate">{label}</span>
-				<button
-					type="button"
-					class="relative grid size-7 shrink-0 place-items-center rounded-full after:absolute after:-inset-1 hover:bg-secondary max-sm:size-9"
-					aria-label={m.master_filter_remove({ name: label })}
-					onclick={() => goto(`?tab=${kind}`, { reset: false })}
-				>
-					<X class="size-4" aria-hidden="true" />
-				</button>
-			</span>
 		</div>
 	{/if}
 	<PanelState
@@ -195,7 +189,7 @@
 				: m.assignment_none_found()}
 		onretry={load}
 	>
-		<ul class="divide-y overflow-hidden rounded-2xl border bg-card" aria-label={ops.title()}>
+		<Card.Root as="ul" size="flush" class="divide-y overflow-hidden" aria-label={ops.title()}>
 			{#each listed as item (item.id)}
 				{@const groups = groupsOf(item)}
 				<MasterRow
@@ -232,6 +226,6 @@
 					{/if}
 				</MasterRow>
 			{/each}
-		</ul>
+		</Card.Root>
 	</PanelState>
 </div>

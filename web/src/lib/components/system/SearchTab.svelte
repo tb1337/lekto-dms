@@ -1,12 +1,15 @@
 <script lang="ts">
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
+	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import { ApiError } from '#lib/api/problem.ts';
 	import type { components } from '#lib/api/schema.ts';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import InfoTip from '#lib/components/InfoTip.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { formatDuration } from '#lib/duration.ts';
@@ -16,12 +19,18 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import { Badge } from '#lib/components/ui/badge/index.ts';
+	import { Separator } from '#lib/components/ui/separator/index.ts';
+	import Loading from '#lib/components/Loading.svelte';
 
 	// The tab "Search index" of the page "System" (Tobi, 24.10.2026): how much of the documents
 	// the index holds, with vectors, what is still to do and how long an indexing takes; admins
 	// check it against the database ("Check thoroughly": it only counts). Without embeddings it
 	// shows nothing of the meaning (Tobi, 24.10.2026). It asks again every ten seconds while
-	// the page is in view.
+	// the page is in view. Admins rebuild the index (Tobi, 26.10.2026), after a question: the
+	// search works by words only meanwhile.
 	type Status = components['schemas']['SearchStatusOut'];
 	type Check = components['schemas']['IndexCheckOut'];
 
@@ -32,6 +41,7 @@
 	let missing = $state(false);
 	let check = $state<Check | null>(null);
 	let checking = $state(false);
+	let rebuildAsked = $state(false);
 
 	async function load() {
 		try {
@@ -64,6 +74,12 @@
 		}
 	}
 
+	async function rebuild() {
+		await unwrap(api.POST('/api/v1/search/reindex'));
+		toast.success(m.search_reindex_queued());
+		void load();
+	}
+
 	const share = (part: number, whole: number) =>
 		whole === 0 ? 1 : Math.min(1, Math.max(0, part / whole));
 	const percent = (value: number) =>
@@ -75,6 +91,15 @@
 	const embedded = $derived(status ? share(status.index.embedded, status.index.documents) : 0);
 	const since = $derived(status ? formatDate(status.since, { dateStyle: 'medium' }) : '');
 </script>
+
+{#snippet heading(text: string, about: string)}
+	<div class="flex items-center gap-1">
+		<SectionTitle size="card">{text}</SectionTitle>
+		<InfoTip label={m.hint_about({ name: text })} size="sm" class="w-80">
+			<p>{about}</p>
+		</InfoTip>
+	</div>
+{/snippet}
 
 {#snippet bar(value: number, label: string)}
 	<div
@@ -99,7 +124,7 @@
 		>
 			{value}
 		</span>
-		<span class="text-[0.8125rem] text-muted-foreground">{label}</span>
+		<span class="text-meta text-muted-foreground">{label}</span>
 	</div>
 {/snippet}
 
@@ -109,24 +134,20 @@
 	{:else if problem && !status}
 		<LoadProblem {problem} onretry={load} />
 	{:else if !status}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<div class="flex flex-wrap gap-6">
-			<section
-				class="flex min-w-0 flex-[2_1_520px] flex-col gap-5 rounded-2xl border bg-card px-5 py-4 sm:px-6"
-			>
+			<Card.Root as="section" size="lg" class="flex min-w-0 flex-[2_1_520px] flex-col gap-5">
 				<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-					<h2 class="font-semibold">{m.search_state_title()}</h2>
+					{@render heading(m.search_state_title(), m.search_state_info())}
 					{#if status.index.indexing}
-						<span
-							class="inline-flex h-[26px] items-center gap-2 rounded-full bg-note px-2.5 text-xs font-medium text-note-foreground"
-						>
+						<Badge variant="note" size="md">
 							<span
 								aria-hidden="true"
 								class="size-2 rounded-full bg-note-foreground ring-[3px] ring-note-foreground/20"
 							></span>
 							{m.search_writing()}
-						</span>
+						</Badge>
 					{/if}
 				</div>
 				<div class="flex flex-col gap-2">
@@ -140,7 +161,7 @@
 								})}
 							</span>
 						</span>
-						<span class="text-[1.375rem] font-semibold tabular-nums">{percent(inIndex)}</span>
+						<span class="text-2xl font-semibold tabular-nums">{percent(inIndex)}</span>
 					</div>
 					{@render bar(inIndex, m.search_in_index())}
 				</div>
@@ -156,10 +177,9 @@
 									})}
 								</span>
 							</span>
-							<span class="text-[1.375rem] font-semibold tabular-nums">{percent(embedded)}</span>
+							<span class="text-2xl font-semibold tabular-nums">{percent(embedded)}</span>
 						</div>
 						{@render bar(embedded, m.search_meaning())}
-						<span class="text-xs text-muted-foreground">{m.search_meaning_hint()}</span>
 					</div>
 				{/if}
 				<div class="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
@@ -185,14 +205,12 @@
 						{@render tile(fileSize(status.index.size_bytes), m.search_size_label())}
 					{/if}
 				</div>
-			</section>
+			</Card.Root>
 
-			<section
-				class="flex min-w-0 flex-[1_1_280px] flex-col gap-2.5 rounded-2xl border bg-card px-5 py-4 sm:px-6"
-			>
-				<h2 class="font-semibold">{m.search_open_title()}</h2>
+			<Card.Root as="section" size="lg" class="flex min-w-0 flex-[1_1_280px] flex-col gap-2.5">
+				{@render heading(m.search_open_title(), m.search_open_info())}
 				<div class="flex items-baseline gap-2">
-					<span class="text-[1.875rem] font-semibold tracking-tight tabular-nums">
+					<span class="text-figure tabular-nums">
 						{formatNumber(status.queued + status.running)}
 					</span>
 					<span class="text-muted-foreground">{m.search_open_jobs()}</span>
@@ -206,9 +224,8 @@
 						{m.search_open_unknown()}
 					{/if}
 				</span>
-				<span class="text-[0.8125rem] text-muted-foreground">{m.search_open_hint()}</span>
-				<div aria-hidden="true" class="my-1.5 h-px bg-border"></div>
-				<span class="text-[0.8125rem] text-muted-foreground">
+				<Separator class="my-1.5" />
+				<span class="text-meta text-muted-foreground">
 					{m.search_open_split({
 						running: formatNumber(status.running),
 						queued: formatNumber(status.queued)
@@ -216,17 +233,17 @@
 				</span>
 				<a
 					href="?tab=jobs"
-					class="inline-flex items-center gap-1.5 text-[0.8125rem] text-primary hover:underline"
+					class="inline-flex items-center gap-1.5 text-meta text-brand hover:underline"
 				>
 					{m.search_open_link()}<ArrowRight class="size-3.5" aria-hidden="true" />
 				</a>
-			</section>
+			</Card.Root>
 		</div>
 
-		<section class="rounded-2xl border bg-card px-5 py-4 sm:px-6">
-			<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<h2 class="font-semibold">{m.search_durations_title()}</h2>
-				<span class="text-[0.8125rem] text-muted-foreground">
+		<Card.Root as="section" size="lg">
+			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+				{@render heading(m.search_durations_title(), m.search_durations_info())}
+				<span class="text-meta text-muted-foreground">
 					{m.search_durations_since({ date: since })}
 				</span>
 			</div>
@@ -237,14 +254,14 @@
 					{#each [[m.search_with_embedding(), status.embedded_jobs, true], [m.search_without_embedding(), status.plain_jobs, false]] as const as [label, times, embedding] (label)}
 						{#if times && (meaning || !embedding)}
 							<div class="flex flex-col gap-1 rounded-xl border p-4">
-								<span class="text-[0.8125rem] text-muted-foreground">{label}</span>
+								<span class="text-meta text-muted-foreground">{label}</span>
 								<div class="flex items-baseline gap-2">
-									<span class="text-[1.75rem] font-semibold tracking-tight tabular-nums">
+									<span class="text-figure tabular-nums">
 										{seconds(times.median_ms)}
 									</span>
-									<span class="text-[0.8125rem] text-muted-foreground">{m.search_median()}</span>
+									<span class="text-meta text-muted-foreground">{m.search_median()}</span>
 								</div>
-								<span class="text-[0.8125rem] text-muted-foreground">
+								<span class="text-meta text-muted-foreground">
 									{m.search_jobs_line({
 										p90: seconds(times.p90_ms),
 										count: formatNumber(times.count)
@@ -257,27 +274,19 @@
 						{/if}
 					{/each}
 				</div>
-				{#if meaning}
-					<p class="mt-3.5 max-w-3xl text-[0.8125rem] text-muted-foreground">
-						{m.search_durations_note()}
-					</p>
-				{/if}
 			{/if}
-		</section>
+		</Card.Root>
 
 		{#if session.isAdmin}
-			<section class="flex flex-col gap-4 rounded-2xl border bg-card px-5 py-4 sm:px-6">
-				<div class="flex flex-wrap items-start justify-between gap-3">
-					<div class="flex max-w-2xl flex-col gap-1">
-						<h2 class="font-semibold">{m.search_check_title()}</h2>
-						<span class="text-[0.8125rem] text-muted-foreground">{m.search_check_text()}</span>
-					</div>
+			<Card.Root as="section" size="lg" class="flex flex-col gap-4">
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					{@render heading(m.search_check_title(), m.search_check_info())}
 					<Button variant="outline" disabled={checking} onclick={runCheck}>
 						<ListChecks aria-hidden="true" />{m.search_check_button()}
 					</Button>
 				</div>
 				{#if check}
-					<span class="text-[0.8125rem] text-muted-foreground">
+					<span class="text-meta text-muted-foreground">
 						{m.search_check_took({ duration: seconds(check.took_ms) })}
 					</span>
 					<div class="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
@@ -293,16 +302,36 @@
 												: 'bg-surface'
 									)}
 								>
-									<span class="text-[1.375rem] font-semibold tabular-nums"
-										>{formatNumber(count)}</span
-									>
-									<span class="text-[0.8125rem]">{label}</span>
+									<span class="text-2xl font-semibold tabular-nums">{formatNumber(count)}</span>
+									<span class="text-meta">{label}</span>
 								</div>
 							{/if}
 						{/each}
 					</div>
 				{/if}
-			</section>
+			</Card.Root>
+
+			<Card.Root as="section" size="lg" class="flex flex-col gap-4">
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					{@render heading(m.search_reindex_title(), m.search_reindex_info())}
+					<Button
+						variant="outline"
+						disabled={status.index.indexing}
+						onclick={() => (rebuildAsked = true)}
+					>
+						<RefreshCw aria-hidden="true" />{m.search_reindex_button()}
+					</Button>
+				</div>
+			</Card.Root>
 		{/if}
 	{/if}
 </div>
+
+<ConfirmDialog
+	bind:open={rebuildAsked}
+	title={m.search_reindex_confirm_title()}
+	description={m.search_reindex_confirm_text()}
+	confirmLabel={m.search_reindex_button()}
+	destructive={false}
+	onconfirm={rebuild}
+/>

@@ -288,7 +288,9 @@ describe('ActiveFilters', () => {
 		await user.click(screen.getByRole('button', { name: m.filter_remove({ name: 'Nord' }) }));
 		expect(onchange).toHaveBeenLastCalledWith({ ...filters, contacts: [] });
 		const topic = screen.getByRole('button', { name: m.filter_topic_remove({ name: 'Wohnung' }) });
-		expect(topic.closest('span')?.className).toContain('rounded-md');
+		// A pill like every chip (web/DESIGN.md), the topic with an edge.
+		expect(topic.closest('span')?.className).toContain('rounded-full');
+		expect(topic.closest('span')?.className).toMatch(/(^| )border( |$)/);
 		expect(screen.getByText(/September 2026/)).toBeTruthy();
 		await user.click(screen.getByRole('button', { name: m.filter_reset() }));
 		expect(onchange).toHaveBeenLastCalledWith(NO_FILTERS);

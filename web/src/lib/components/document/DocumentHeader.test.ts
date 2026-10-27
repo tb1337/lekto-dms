@@ -11,7 +11,7 @@ import type { Reading } from '#lib/vision.ts';
 import { goto } from '$app/navigation';
 import DocumentHeader from './DocumentHeader.svelte';
 
-vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
+vi.mock('$app/navigation', () => ({ beforeNavigate: vi.fn(), goto: vi.fn() }));
 
 type Document = components['schemas']['DocumentDetails'];
 
@@ -163,7 +163,7 @@ describe('DocumentHeader', () => {
 		it('reads with the model again when the person keeps that, naming where', async () => {
 			const { user, dialog } = await openReprocess();
 			const again = within(dialog).getByRole('checkbox', { name: m.reprocess_vision_again() });
-			expect(again.getAttribute('aria-checked')).toBe('true');
+			expect((again as HTMLInputElement).checked).toBe(true);
 			expect(dialog.textContent).toContain(
 				m.vision_hint({ endpoint: 'chat.example', model: 'claude-sonnet' })
 			);

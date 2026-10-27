@@ -14,12 +14,15 @@ from lekto.core.domain.classification import (
     FieldCheck,
     checks_to_json,
 )
+from lekto.core.domain.document_facts import DocumentFact, FactOrigin, FactRole
 from lekto.core.domain.documents import Document, DocumentChanges
-from lekto.core.domain.first_runs import Decision, FieldVerdict, Verdict
+from lekto.core.domain.first_runs import FACTS, RELATIONS, Decision, FieldVerdict, Verdict
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import SpaceId
 from lekto.core.domain.master_data import Assignment, Contact, Tag
 from lekto.core.domain.pipeline import Lane, Node, NodeResult, Outcome
 from lekto.core.domain.reasons import written
+from lekto.core.domain.relations import Relation, RelationOrigin, RelationState
 from lekto.core.domain.users import User
 from lekto.core.services.pipeline import MetadataResult, PipelineService
 from tests.builders import NOW, Returns, incoming
@@ -165,6 +168,52 @@ async def test_confirming_in_the_inbox_judges_every_field(world: World) -> None:
     contact = found[CONTACT]
     assert (contact.decision, contact.decided_at) == (Decision.INBOX, world.clock.now())
     assert contact.signals == {Node.SIGNAL_LLM: True, Node.SIGNAL_CLASSIFIER: False}
+
+
+async def test_confirming_a_document_with_facts_takes_them(world: World) -> None:
+    """Confirmed in the inbox, the facts the sources found count as taken."""
+    s = await scene(world, sure_date=False)
+    document = await received(s)
+    await world.drain(s.pipeline)
+    fact = DocumentFact(
+        kind=IdentifierKind.INVOICE_NUMBER,
+        value="4711",
+        role=FactRole.OWN,
+        origins=frozenset({FactOrigin.PATTERN}),
+    )
+    async with world.uow() as uow:
+        await uow.document_facts.replace_found(document.id, [fact])
+        await uow.commit()
+
+    await s.pipeline.confirm(s.owner.id, document.id, DocumentChanges(document_date=DATE))
+
+    assert (await verdicts(world, document))[FACTS].verdict is Verdict.TAKEN
+
+
+async def test_confirming_a_document_with_relations_takes_them(world: World) -> None:
+    """Confirmed in the inbox, the relations Lekto set for it count as taken (#145); a
+    suggestion does not (the person still decides it)."""
+    s = await scene(world, sure_date=False)
+    document = await received(s)
+    await world.drain(s.pipeline)
+    other = await s.pipeline.receive(
+        s.owner.id, incoming(b"%PDF-1.7 older"), filename="b.pdf", space=None
+    )
+    async with world.uow() as uow:
+        await uow.document_relations.put(
+            Relation(
+                newer=document.id,
+                older=other.id,
+                origin=RelationOrigin.LEKTO,
+                state=RelationState.SET,
+                created_at=NOW,
+            )
+        )
+        await uow.commit()
+
+    await s.pipeline.confirm(s.owner.id, document.id, DocumentChanges(document_date=DATE))
+
+    assert (await verdicts(world, document))[RELATIONS].verdict is Verdict.TAKEN
 
 
 async def test_a_change_judges_what_it_sets_and_what_the_automation_set(world: World) -> None:

@@ -17,7 +17,19 @@
     },
     "lanes": {
       "trained": "yellow"
-    }
+    },
+    "facts": [
+      {
+        "kind": "credit_note_number",
+        "value": "G-2026-1203",
+        "role": "own"
+      },
+      {
+        "kind": "customer_number",
+        "value": "88 77 66",
+        "role": "contact"
+      }
+    ]
   },
   "fake": {
     "classification": {
@@ -50,6 +62,22 @@
         "evidence": "Kundennummer: 88 77 66",
         "label": "Kundennummer"
       }
-    }
+    },
+    "facts": [
+      {
+        "kind": "credit_note_number",
+        "value": "G-2026-1203",
+        "role": "own",
+        "evidence": "Gutschrift G-2026-1203",
+        "label": "Gutschrift"
+      },
+      {
+        "kind": "customer_number",
+        "value": "88 77 66",
+        "role": "contact",
+        "evidence": "Kundennummer: 88 77 66",
+        "label": "Kundennummer"
+      }
+    ]
   }
 }

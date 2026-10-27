@@ -160,6 +160,7 @@ class World:
             policy or builders.WEBHOOKS,
             builders.TEMPLATES,
             link_base=LINK_BASE,
+            store=self.object_store,
         )
 
     @property

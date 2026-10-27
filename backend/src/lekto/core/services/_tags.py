@@ -63,9 +63,10 @@ def matches(
     filter: DocumentFilter,
     contacts: Mapping[ContactId, frozenset[TagId]],
     types: Mapping[DocumentTypeId, frozenset[TagId]],
+    facts: frozenset[str] = frozenset(),
 ) -> bool:
     """The (expanded) filter as the repository applies it; `contacts` and `types`: their
-    groups (`group_lookup`)."""
+    groups (`group_lookup`); `facts`: the document's (`fact_tokens`), if the filter asks."""
     contact = contacts.get(document.contact_id) if document.contact_id else None
     kind = types.get(document.document_type_id) if document.document_type_id else None
     return filter.matches(
@@ -73,6 +74,7 @@ def matches(
             document,
             contact_groups=contact or frozenset(),
             document_type_groups=kind or frozenset(),
+            facts=facts,
         )
     )
 

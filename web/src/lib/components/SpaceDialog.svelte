@@ -16,7 +16,10 @@
 		initialDescription = '',
 		named = true,
 		submitLabel = m.save(),
-		onsubmit
+		onsubmit,
+		ondelete,
+		deleteTitle = '',
+		deleteDescription = ''
 	}: {
 		open?: boolean;
 		title: string;
@@ -25,6 +28,10 @@
 		named?: boolean;
 		submitLabel?: string;
 		onsubmit: (name: string, description: string) => Promise<void>;
+		/** Deleting the space, from its editor (web/DESIGN.md, "Lists"). */
+		ondelete?: () => Promise<void>;
+		deleteTitle?: string;
+		deleteDescription?: string;
 	} = $props();
 
 	let name = $state('');
@@ -44,6 +51,9 @@
 	{submitLabel}
 	disabled={named && name.trim() === ''}
 	action={() => onsubmit(name.trim(), description.trim())}
+	{ondelete}
+	{deleteTitle}
+	{deleteDescription}
 >
 	{#snippet children(error)}
 		{#if named}

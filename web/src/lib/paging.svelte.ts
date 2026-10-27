@@ -91,3 +91,78 @@ export class PagedList<T> {
 		}
 	}
 }
+
+/** One page of a table at a time (`Pagination`), by offset and limit, with how many there are. */
+export class Pager<T> {
+	items = $state<T[]>([]);
+	total = $state(0);
+	/** The current page, from 1. */
+	page = $state(1);
+	loading = $state(false);
+	error = $state<unknown>(null);
+	loaded = $state(false);
+	readonly size: number;
+	#load: (offset: number, limit: number) => Promise<{ items: T[]; total: number }>;
+	#generation = 0;
+
+	constructor(
+		load: (offset: number, limit: number) => Promise<{ items: T[]; total: number }>,
+		size: number
+	) {
+		this.#load = load;
+		this.size = size;
+	}
+
+	get pages(): number {
+		return Math.max(1, Math.ceil(this.total / this.size));
+	}
+
+	get empty(): boolean {
+		return this.loaded && !this.loading && this.error === null && this.items.length === 0;
+	}
+
+	/** Show `page` (kept within the pages there are). */
+	async go(page: number): Promise<void> {
+		this.page = Math.max(1, page);
+		await this.#fetch(true);
+	}
+
+	/** Start over from the first page. */
+	async reload(): Promise<void> {
+		this.items = [];
+		this.total = 0;
+		this.loaded = false;
+		await this.go(1);
+	}
+
+	/** Load the current page again without emptying it (after an event or a poll); a page
+	 * beyond the last one, now that there are fewer, becomes the last. */
+	async refresh(): Promise<void> {
+		await this.#fetch(false);
+	}
+
+	async #fetch(replace: boolean): Promise<void> {
+		const generation = ++this.#generation;
+		this.loading = replace;
+		if (replace) this.error = null;
+		try {
+			let found = await this.#load((this.page - 1) * this.size, this.size);
+			if (generation !== this.#generation) return;
+			const last = Math.max(1, Math.ceil(found.total / this.size));
+			if (this.page > last) {
+				this.page = last;
+				found = await this.#load((last - 1) * this.size, this.size);
+				if (generation !== this.#generation) return;
+			}
+			this.items = found.items;
+			this.total = found.total;
+			this.error = null;
+			this.loaded = true;
+		} catch (error) {
+			// A page already on screen stays; the next poll or reload tries again.
+			if (generation === this.#generation && (replace || !this.loaded)) this.error = error;
+		} finally {
+			if (generation === this.#generation) this.loading = false;
+		}
+	}
+}

@@ -11,7 +11,6 @@
 	import UserManage from '#lib/components/UserManage.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
-	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import * as Table from '#lib/components/ui/table/index.ts';
@@ -20,6 +19,9 @@
 	import { userLabel } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import Loading from '#lib/components/Loading.svelte';
+	import FormDialog from '#lib/components/FormDialog.svelte';
 
 	type User = components['schemas']['UserOut'];
 	type Role = components['schemas']['Role'];
@@ -32,8 +34,6 @@
 	let displayName = $state('');
 	let role = $state<Role>('user');
 	let password = $state('');
-	let error = $state<string | null>(null);
-	let busy = $state(false);
 
 	async function load() {
 		try {
@@ -52,56 +52,46 @@
 		displayName = '';
 		role = 'user';
 		password = '';
-		error = null;
 		creating = true;
 	}
 
-	async function create(event: SubmitEvent) {
-		event.preventDefault();
-		if (busy) return;
-		busy = true;
-		error = null;
-		try {
-			await unwrap(
-				api.POST('/api/v1/users', {
-					body: {
-						username: username.trim(),
-						role,
-						...(displayName.trim() ? { display_name: displayName.trim() } : {}),
-						...(password ? { password } : {})
-					}
-				})
-			);
-			toast.success(m.user_created());
-			creating = false;
-			await load();
-		} catch (failure) {
-			error = describeError(failure);
-		} finally {
-			busy = false;
-		}
+	// Run by the dialog's form (`FormDialog`): busy meanwhile, the error shown when it throws.
+	async function create() {
+		await unwrap(
+			api.POST('/api/v1/users', {
+				body: {
+					username: username.trim(),
+					role,
+					...(displayName.trim() ? { display_name: displayName.trim() } : {}),
+					...(password ? { password } : {})
+				}
+			})
+		);
+		toast.success(m.user_created());
+		await load();
 	}
 </script>
 
 <svelte:head><title>{m.nav_users()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-center justify-between gap-3">
-		<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_users()}</h1>
-		{#if session.isAdmin}
-			<Button onclick={openCreate}>
-				<Plus aria-hidden="true" />
-				{m.user_new()}
-			</Button>
-		{/if}
-	</div>
+	<PageHeader title={m.nav_users()}>
+		{#snippet actions()}
+			{#if session.isAdmin}
+				<Button onclick={openCreate}>
+					<Plus aria-hidden="true" />
+					{m.user_new()}
+				</Button>
+			{/if}
+		{/snippet}
+	</PageHeader>
 
 	{#if !session.isAdmin}
 		<p class="text-muted-foreground">{m.admin_only()}</p>
 	{:else if problem}
 		<LoadProblem {problem} onretry={load} />
 	{:else if !users}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<Table.Root>
 			<Table.Header>
@@ -124,7 +114,7 @@
 						</Table.Cell>
 						<Table.Cell>{user.role === 'admin' ? m.role_admin() : m.role_user()}</Table.Cell>
 						<Table.Cell>
-							<Badge variant={user.active ? 'secondary' : 'outline'}>
+							<Badge variant={user.active ? 'green' : 'muted'}>
 								{user.active ? m.user_active() : m.user_inactive()}
 							</Badge>
 						</Table.Cell>
@@ -142,57 +132,40 @@
 	{/if}
 </div>
 
-<Dialog.Root bind:open={creating}>
-	<Dialog.Content>
-		<form class="flex flex-col gap-4" onsubmit={create} novalidate>
-			<Dialog.Header><Dialog.Title>{m.user_new()}</Dialog.Title></Dialog.Header>
-			<Field.Field>
-				<Field.Label for="new-username">{m.login_username()}</Field.Label>
-				<Input
-					id="new-username"
-					bind:value={username}
-					maxlength={150}
-					autocomplete="off"
-					required
-				/>
-			</Field.Field>
-			<Field.Field>
-				<Field.Label for="new-display-name">{m.profile_display_name()}</Field.Label>
-				<Input id="new-display-name" bind:value={displayName} maxlength={150} autocomplete="off" />
-				<Field.Description>{m.profile_display_name_hint()}</Field.Description>
-			</Field.Field>
-			<Field.Field>
-				<Field.Label for="new-role">{m.user_role()}</Field.Label>
-				<Select
-					id="new-role"
-					value={role}
-					options={[
-						{ value: 'user', label: m.role_user() },
-						{ value: 'admin', label: m.role_admin() }
-					]}
-					onchange={(value) => (role = value as Role)}
-				/>
-			</Field.Field>
-			<Field.Field>
-				<Field.Label for="new-password">{m.user_start_password()}</Field.Label>
-				<Input
-					id="new-password"
-					type="password"
-					autocomplete="new-password"
-					bind:value={password}
-				/>
-				<Field.Description>{m.password_rules()}</Field.Description>
-			</Field.Field>
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-			<Dialog.Footer>
-				<Button type="button" variant="ghost" onclick={() => (creating = false)}
-					>{m.cancel()}</Button
-				>
-				<Button type="submit" disabled={busy || username.trim() === ''}>{m.create()}</Button>
-			</Dialog.Footer>
-		</form>
-	</Dialog.Content>
-</Dialog.Root>
+<FormDialog
+	bind:open={creating}
+	title={m.user_new()}
+	submitLabel={m.create()}
+	disabled={username.trim() === ''}
+	action={create}
+>
+	<Field.Field>
+		<Field.Label for="new-username">{m.login_username()}</Field.Label>
+		<Input id="new-username" bind:value={username} maxlength={150} autocomplete="off" required />
+	</Field.Field>
+	<Field.Field>
+		<Field.Label for="new-display-name">{m.profile_display_name()}</Field.Label>
+		<Input id="new-display-name" bind:value={displayName} maxlength={150} autocomplete="off" />
+		<Field.Description>{m.profile_display_name_hint()}</Field.Description>
+	</Field.Field>
+	<Field.Field>
+		<Field.Label for="new-role">{m.user_role()}</Field.Label>
+		<Select
+			id="new-role"
+			value={role}
+			options={[
+				{ value: 'user', label: m.role_user() },
+				{ value: 'admin', label: m.role_admin() }
+			]}
+			onchange={(value) => (role = value as Role)}
+		/>
+	</Field.Field>
+	<Field.Field>
+		<Field.Label for="new-password">{m.user_start_password()}</Field.Label>
+		<Input id="new-password" type="password" autocomplete="new-password" bind:value={password} />
+		<Field.Description>{m.password_rules()}</Field.Description>
+	</Field.Field>
+</FormDialog>
 
 {#if managing}
 	<UserManage

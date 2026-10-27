@@ -1,4 +1,4 @@
-// The tab "Jobs": counts, the open jobs of a kind, the failed ones tried again by an admin.
+// The tab "Jobs": counts, the jobs as a table with pages, the failed ones tried again by an admin.
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,6 +6,7 @@ import type { Job } from '#lib/jobs.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
 import { calls, fakeApi } from '#lib/testing/documents.ts';
+import { choose } from '#lib/testing/select.ts';
 import JobsTab from './JobsTab.svelte';
 
 const summary = {
@@ -102,22 +103,48 @@ afterEach(() => {
 });
 
 describe('the jobs tab', () => {
-	it('counts the jobs and opens the jobs of a kind', async () => {
+	it('counts the jobs and lists the open ones as a table, what runs next on top', async () => {
 		const api = routes();
 		vi.stubGlobal('fetch', api);
 		render(JobsTab);
 		expect(await screen.findByText(m.jobs_worker_active())).toBeTruthy();
-		const group = screen.getByRole('button', { name: /Verarbeitungsschritt|Processing step/ });
-		expect(group.getAttribute('aria-expanded')).toBe('false');
-		expect(screen.queryByRole('button', { name: /Logo/ })).toBeNull(); // nothing open
-		await userEvent.click(group);
-		expect(await screen.findByText('Stadtwerke – Abschlag')).toBeTruthy();
-		expect(screen.getByText(m.jobs_hidden_document())).toBeTruthy();
-		expect(group.getAttribute('aria-expanded')).toBe('true');
+		const table = await screen.findByRole('table');
+		const rows = within(table).getAllByRole('row');
+		expect(rows).toHaveLength(3); // the header and two jobs
+		expect(within(rows[1]).getByRole('link', { name: 'Stadtwerke – Abschlag' })).toBeTruthy();
+		expect(within(rows[1]).getByText(m.jobs_state_running())).toBeTruthy();
+		expect(within(rows[2]).getByText(m.jobs_hidden_document())).toBeTruthy();
 		expect(calls(api)).toContain(
-			'GET /api/v1/jobs?state=running&state=due&state=planned&kind=pipeline.node&offset=0&limit=20'
+			'GET /api/v1/jobs?state=running&state=due&state=planned&offset=0&limit=50'
 		);
-		expect(screen.getByRole('button', { name: m.load_more() })).toBeTruthy();
+		expect(screen.getByText(/1 – 4 (von|of) 4/)).toBeTruthy();
+		expect(screen.queryByRole('button', { name: m.jobs_retry() })).toBeNull();
+	});
+
+	it('filters by kind and turns the pages', async () => {
+		const api = fakeApi({
+			'GET /api/v1/jobs/summary': () => summary,
+			'GET /api/v1/jobs': (_request, url) => ({
+				items: [job({ id: `p${url.searchParams.get('offset')}` })],
+				total: 120,
+				next_offset: null
+			})
+		});
+		vi.stubGlobal('fetch', api);
+		render(JobsTab);
+		await screen.findByRole('table');
+		await choose(
+			userEvent.setup(),
+			screen.getByRole('combobox', { name: m.jobs_kind() }),
+			'contacts.logo'
+		);
+		await userEvent.click(
+			await screen.findByRole('button', { name: m.pagination_page({ page: '3' }) })
+		);
+		expect(await screen.findByText(/101 – 120 (von|of) 120/)).toBeTruthy();
+		expect(calls(api)).toContain(
+			'GET /api/v1/jobs?state=running&state=due&state=planned&kind=contacts.logo&offset=100&limit=50'
+		);
 	});
 
 	it('lets an admin try a failed job again, a failed step at its document', async () => {
@@ -127,13 +154,58 @@ describe('the jobs tab', () => {
 		await userEvent.click(
 			await screen.findByRole('button', { name: new RegExp(m.jobs_view_failed()) })
 		);
-		const logo = (await screen.findByText('Stadtwerke')).closest('li') as HTMLElement;
-		expect(within(logo).getByText('timeout')).toBeTruthy();
+		const logo = (await screen.findByText('Stadtwerke')).closest('tr') as HTMLElement;
+		expect(screen.getByText('timeout')).toBeTruthy();
 		await userEvent.click(within(logo).getByRole('button', { name: m.jobs_retry() }));
-		const step = screen.getByText('Stadtwerke – Abschlag').closest('li') as HTMLElement;
+		const step = screen.getByText('Stadtwerke – Abschlag').closest('tr') as HTMLElement;
 		await userEvent.click(within(step).getByRole('button', { name: m.jobs_retry() }));
 		const posts = calls(api).filter((call) => call.startsWith('POST'));
 		expect(posts).toEqual(['POST /api/v1/jobs/f2/retry', 'POST /api/v1/documents/d1/retry']);
+	});
+
+	it('shows the done jobs with their times and how long each kind takes', async () => {
+		const api = fakeApi({
+			'GET /api/v1/jobs/summary': () => summary,
+			'GET /api/v1/jobs/durations': () => ({
+				kinds: [
+					{
+						kind: 'pipeline.node',
+						count: 900,
+						wait_median_ms: 360000,
+						wait_p90_ms: 900000,
+						run_median_ms: 9000,
+						run_p90_ms: 41000
+					}
+				],
+				since: '2026-10-17T12:00:00Z'
+			}),
+			'GET /api/v1/jobs': () => ({
+				items: [
+					job({
+						id: 'd1',
+						state: 'done',
+						started_at: '2026-10-24T11:59:03Z',
+						finished_at: '2026-10-24T11:59:05Z'
+					})
+				],
+				total: 1,
+				next_offset: null
+			})
+		});
+		vi.stubGlobal('fetch', api);
+		render(JobsTab);
+		await userEvent.click(
+			await screen.findByRole('button', { name: new RegExp(m.jobs_view_done()) })
+		);
+		expect(await screen.findByText(m.jobs_durations_title())).toBeTruthy();
+		const [jobs, kinds] = screen.getAllByRole('table');
+		const cells = within(jobs)
+			.getAllByRole('cell')
+			.map((cell) => cell.textContent?.trim());
+		expect(cells).toContain('3s'); // waited
+		expect(cells).toContain('2s'); // ran
+		expect(within(kinds).getByText('900')).toBeTruthy();
+		expect(calls(api)).toContain('GET /api/v1/jobs?state=done&offset=0&limit=50');
 	});
 
 	it('shows a user the failed jobs without errors or retries', async () => {
@@ -156,13 +228,15 @@ describe('the jobs tab', () => {
 		expect(await screen.findByText('Stadtwerke')).toBeTruthy();
 		expect(screen.queryByRole('button', { name: m.jobs_retry() })).toBeNull();
 		expect(screen.queryByText(m.jobs_last_error())).toBeNull();
+		expect(screen.getByRole('columnheader', { name: m.jobs_col_failed_at() })).toBeTruthy();
 	});
 
 	it('warns when jobs are due and no worker took one for a while', async () => {
 		vi.stubGlobal(
 			'fetch',
 			fakeApi({
-				'GET /api/v1/jobs/summary': () => ({ ...summary, last_started_at: '2026-10-24T11:50:00Z' })
+				'GET /api/v1/jobs/summary': () => ({ ...summary, last_started_at: '2026-10-24T11:50:00Z' }),
+				'GET /api/v1/jobs': () => ({ items: [], total: 0, next_offset: null })
 			})
 		);
 		render(JobsTab);

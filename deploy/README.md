@@ -376,6 +376,9 @@ The same update reads bar and QR codes: run `lekto read-codes` after it (and aft
 `lekto reparse`), and the worker reads the codes of the documents from before and keeps the
 identifiers each one shows; it reads locally, nothing is sent out. A document that is being
 processed at that moment is skipped; run the command again once it is through.
+The update that brought the relations between documents (#145) finds those of new documents;
+run `lekto relate` after it (after `read-codes`), and again after marking a document type as a
+relation target, and the worker relates the documents from before.
 The same update renamed `LEKTO_STEP_MAX_ATTEMPTS` and `LEKTO_STEP_RETRY_DELAY` to
 `LEKTO_NODE_MAX_ATTEMPTS` and `LEKTO_NODE_RETRY_DELAY`; a container with an old name refuses
 to start and says so.

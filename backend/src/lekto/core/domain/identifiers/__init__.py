@@ -40,6 +40,7 @@ from lekto.core.domain.identifiers.identifier import (
     Identifier,
     IdentifierSource,
     matches,
+    related_keys,
 )
 from lekto.core.domain.identifiers.learning import LEARN_FROM, Confirmed, mine_identifiers
 from lekto.core.domain.identifiers.reading import (
@@ -47,6 +48,8 @@ from lekto.core.domain.identifiers.reading import (
     identifiers_from,
     identifiers_in,
     of_person,
+    places_in,
+    referred_in,
 )
 from lekto.core.domain.identifiers.registry import (
     CONTACT_KINDS,
@@ -86,6 +89,9 @@ __all__ = [
     "mine_identifiers",
     "normalise_identifier",
     "of_person",
+    "places_in",
+    "referred_in",
+    "related_keys",
     "seen_by",
     "social_security_number_valid",
     "tax_id_valid",

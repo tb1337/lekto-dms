@@ -8,7 +8,6 @@
 	import FilePlus from '@lucide/svelte/icons/file-plus';
 	import Inbox from '@lucide/svelte/icons/inbox';
 	import Pencil from '@lucide/svelte/icons/pencil';
-	import SearchIcon from '@lucide/svelte/icons/search';
 	import { untrack } from 'svelte';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
@@ -37,6 +36,14 @@
 	import { formatDate, formatNumber } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import * as Table from '#lib/components/ui/table/index.ts';
+	import { Badge } from '#lib/components/ui/badge/index.ts';
+	import type { Tone } from '#lib/tones.ts';
+	import SearchField from '#lib/components/SearchField.svelte';
+	import Loading from '#lib/components/Loading.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 
 	// The document's files as a passport (Tobi, 20.10.2026; not a table as in Paperless-ngx): the
 	// life of the file from the sender to its last change in Lekto, one passport each for the
@@ -131,16 +138,10 @@
 	};
 
 	type FirstLane = NonNullable<Reviewed['first_lane']>;
-	const FIRST_LANES: Record<FirstLane, { label: () => string; tone: string }> = {
-		green: {
-			label: m.files_first_lane_green,
-			tone: 'bg-lane-green text-lane-green-foreground'
-		},
-		yellow: {
-			label: m.files_first_lane_yellow,
-			tone: 'bg-lane-yellow text-lane-yellow-foreground'
-		},
-		red: { label: m.files_first_lane_red, tone: 'bg-lane-red text-lane-red-foreground' }
+	const FIRST_LANES: Record<FirstLane, { label: () => string; tone: Tone }> = {
+		green: { label: m.files_first_lane_green, tone: 'green' },
+		yellow: { label: m.files_first_lane_yellow, tone: 'yellow' },
+		red: { label: m.files_first_lane_red, tone: 'red' }
 	};
 
 	const life = $derived(files ? lifeOf(files, document) : []);
@@ -207,46 +208,40 @@
 	{@const dates = madeOn(metadata)}
 	{@const said = saidBy(metadata)}
 	{@const print = fingerprint(file.sha256)}
-	<article
+	<Card.Root
+		as="article"
+		size="flush"
 		aria-label={title}
-		class="flex min-w-0 flex-col overflow-hidden rounded-2xl border bg-card"
+		class="flex min-w-0 flex-col overflow-hidden"
 	>
 		<div class="flex items-center gap-3 px-4 pt-4 pb-3">
 			<span
-				class="grid h-14 w-11 shrink-0 place-items-end justify-center rounded-md border bg-surface pb-1.5 text-[10px] font-bold text-brand"
+				class="grid h-14 w-11 shrink-0 place-items-end justify-center rounded-md border bg-surface pb-1.5 text-nano font-bold text-brand"
 				aria-hidden="true">{metadata?.format ?? '?'}</span
 			>
 			<div class="flex min-w-0 flex-col gap-1">
-				<h2 class="text-base font-semibold">{title}</h2>
+				<SectionTitle size="card">{title}</SectionTitle>
 				{#if metadata}
 					<div class="flex flex-wrap gap-1.5">
 						{#if metadata.pdf_version}
-							<span
-								class="rounded-full bg-secondary px-2 py-0.5 text-[11.5px] font-semibold text-muted-foreground"
-							>
+							<Badge variant="muted">
 								{m.files_pdf_version({ version: metadata.pdf_version })}
-							</span>
+							</Badge>
 						{/if}
 						{#if metadata.pdfa}
-							<span
-								class="rounded-full bg-lane-green px-2 py-0.5 text-[11.5px] font-semibold text-lane-green-foreground"
-							>
+							<Badge variant="green">
 								{fileKind(file)}
-							</span>
+							</Badge>
 						{/if}
 						{#if metadata.width && metadata.height}
-							<span
-								class="rounded-full bg-secondary px-2 py-0.5 text-[11.5px] font-semibold text-muted-foreground"
-							>
+							<Badge variant="muted">
 								{m.files_pixels_value({ width: metadata.width, height: metadata.height })}
-							</span>
+							</Badge>
 						{/if}
 						{#if metadata.dpi}
-							<span
-								class="rounded-full bg-secondary px-2 py-0.5 text-[11.5px] font-semibold text-muted-foreground"
-							>
+							<Badge variant="muted">
 								{m.files_dpi_value({ dpi: formatNumber(metadata.dpi) })}
-							</span>
+							</Badge>
 						{/if}
 					</div>
 				{/if}
@@ -254,17 +249,17 @@
 		</div>
 		<dl class="grid grid-cols-3 border-y">
 			<div class="flex flex-col gap-0.5 px-4 py-2.5">
-				<dt class="order-last text-[11.5px] text-muted-foreground">{m.files_size()}</dt>
+				<dt class="order-last text-xs text-muted-foreground">{m.files_size()}</dt>
 				<dd class="text-base font-semibold tabular-nums">{fileSize(file.size)}</dd>
 			</div>
 			<div class="flex flex-col gap-0.5 border-l px-4 py-2.5">
-				<dt class="order-last text-[11.5px] text-muted-foreground">{m.files_pages()}</dt>
+				<dt class="order-last text-xs text-muted-foreground">{m.files_pages()}</dt>
 				<dd class="text-base font-semibold tabular-nums">
 					{metadata?.pages ? formatNumber(metadata.pages) : '–'}
 				</dd>
 			</div>
 			<div class="flex flex-col gap-0.5 border-l px-4 py-2.5">
-				<dt class="order-last text-[11.5px] text-muted-foreground">{m.files_entries()}</dt>
+				<dt class="order-last text-xs text-muted-foreground">{m.files_entries()}</dt>
 				<dd class="text-base font-semibold tabular-nums">
 					{metadata ? formatNumber(metadata.entries.length) : '–'}
 				</dd>
@@ -294,7 +289,7 @@
 			</svg>
 			<div class="flex min-w-0 flex-col gap-1">
 				<span class="text-xs text-muted-foreground">{m.files_fingerprint()}</span>
-				<code class="font-mono text-[12.5px] break-all">
+				<code class="font-mono text-meta break-all">
 					{file.sha256.slice(0, 16)}…{file.sha256.slice(-8)}
 				</code>
 				<Button
@@ -346,24 +341,22 @@
 				</dl>
 			{/if}
 		{/if}
-	</article>
+	</Card.Root>
 {/snippet}
 
 <!-- One card filling the view; inside, on its surface, the life, the passports and the entries. -->
-<div
-	class="flex min-h-[32rem] flex-col overflow-hidden rounded-2xl border bg-card lg:min-h-0 lg:flex-1"
->
+<Card.Root size="flush" class="flex min-h-[32rem] flex-col overflow-hidden lg:min-h-0 lg:flex-1">
 	<!-- Positioned: what is only for screen readers stays inside the scrolling area. -->
 	<div class="@container relative min-h-0 flex-1 overflow-y-auto bg-surface p-3.5">
 		{#if problem}
-			<p class="p-2 text-destructive" role="alert">{problem}</p>
+			<div class="p-2"><LoadProblem {problem} onretry={load} /></div>
 		{:else if !files}
-			<p class="p-2 text-sm text-muted-foreground">{m.loading()}</p>
+			<Loading class="p-2 text-sm" />
 		{:else}
 			{@const largest = Math.max(files.original.size, files.archive?.size ?? 0, 1)}
 			<div class="flex flex-col gap-3.5">
-				<section aria-labelledby="files-life" class="rounded-2xl border bg-card p-4">
-					<h2 id="files-life" class="text-[15px] font-semibold">{m.files_life()}</h2>
+				<Card.Root as="section" size="row" aria-labelledby="files-life">
+					<SectionTitle size="card" id="files-life">{m.files_life()}</SectionTitle>
 					<ol
 						class="relative mt-4 grid gap-4 @3xl:[grid-template-columns:repeat(var(--steps),minmax(0,1fr))] @3xl:gap-0"
 						style:--steps={life.length}
@@ -397,7 +390,7 @@
 									{#if gap}
 										<!-- How long lay between the two, on the line where they meet. -->
 										<span
-											class="absolute top-3 left-0 z-10 hidden -translate-x-1/2 -translate-y-1/2 rounded-full bg-card px-1.5 text-[11px] leading-4 whitespace-nowrap text-muted-foreground tabular-nums @3xl:block"
+											class="absolute top-3 left-0 z-10 hidden -translate-x-1/2 -translate-y-1/2 rounded-full bg-card px-1.5 text-micro leading-4 whitespace-nowrap text-muted-foreground tabular-nums @3xl:block"
 											aria-hidden="true"
 										>
 											{duration(gap)}
@@ -469,34 +462,31 @@
 						{@const first = FIRST_LANES[document.first_lane]}
 						<dl class="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t pt-3 text-sm">
 							<dt class="text-muted-foreground">{m.files_first_lane()}</dt>
-							<dd class={cn('rounded-full px-2 py-0.5 text-[11.5px] font-semibold', first.tone)}>
-								{first.label()}
-							</dd>
+							<dd><Badge variant={first.tone}>{first.label()}</Badge></dd>
 						</dl>
 					{/if}
-				</section>
+				</Card.Root>
 
 				<div class="grid gap-3.5 @4xl:grid-cols-2">
 					{@render passport(m.files_original(), files.original, files.original, largest)}
 					{#if files.archive}
 						{@render passport(m.files_archive(), files.archive, files.original, largest)}
 					{:else}
-						<section
+						<Card.Root
+							as="section"
+							size="row"
 							aria-label={m.files_archive()}
-							class="flex flex-col gap-2 rounded-2xl border bg-card p-4"
+							class="flex flex-col gap-2"
 						>
-							<h2 class="text-base font-semibold">{m.files_archive()}</h2>
+							<SectionTitle size="card">{m.files_archive()}</SectionTitle>
 							<p class="text-sm text-muted-foreground">{m.files_no_archive()}</p>
-						</section>
+						</Card.Root>
 					{/if}
 				</div>
 
-				<section
-					aria-labelledby="files-all"
-					class="flex flex-col gap-3 rounded-2xl border bg-card p-4"
-				>
+				<Card.Root as="section" size="row" aria-labelledby="files-all" class="flex flex-col gap-3">
 					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-						<h2 id="files-all" class="text-[15px] font-semibold">{m.files_all()}</h2>
+						<SectionTitle size="card" id="files-all">{m.files_all()}</SectionTitle>
 						<!-- A width of its own: the controls beside it stay where they are. -->
 						<span class="min-w-[7.5em] text-sm text-muted-foreground tabular-nums">
 							{m.files_count({
@@ -504,18 +494,7 @@
 								total: formatNumber(all.length)
 							})}
 						</span>
-						<label
-							class="flex h-10 min-w-0 flex-[1_1_14rem] items-center gap-2 rounded-full border border-input bg-card px-3.5 text-muted-foreground focus-within:border-ring dark:bg-input/30"
-						>
-							<SearchIcon class="size-4 shrink-0" aria-hidden="true" />
-							<input
-								type="search"
-								bind:value={query}
-								placeholder={m.files_search()}
-								aria-label={m.files_search()}
-								class="h-full min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground sm:text-sm"
-							/>
-						</label>
+						<SearchField bind:value={query} label={m.files_search()} class="flex-[1_1_14rem]" />
 						{#if files.archive}
 							<Segmented
 								bind:value={which}
@@ -543,43 +522,43 @@
 						<p class="text-sm text-muted-foreground">{m.files_metadata_none()}</p>
 					{:else}
 						<div class="overflow-x-auto">
-							<table class="w-full min-w-[34rem] table-fixed border-collapse text-sm">
+							<Table.Root class="w-full min-w-[34rem] table-fixed border-collapse text-sm">
 								<colgroup><col class="w-[30%]" /><col /><col class="w-28" /></colgroup>
-								<thead>
-									<tr
-										class="text-left text-[11.5px] font-semibold tracking-wide text-muted-foreground uppercase"
-									>
-										<th class="px-2.5 pb-2 font-semibold">{m.files_key()}</th>
-										<th class="px-2.5 pb-2 font-semibold">{m.files_value()}</th>
-										<th class="px-2.5 pb-2 font-semibold">{m.files_source()}</th>
-									</tr>
-								</thead>
-								<tbody>
+								<Table.Header>
+									<Table.Row>
+										<Table.Head class="px-2.5">{m.files_key()}</Table.Head>
+										<Table.Head class="px-2.5">{m.files_value()}</Table.Head>
+										<Table.Head class="px-2.5">{m.files_source()}</Table.Head>
+									</Table.Row>
+								</Table.Header>
+								<Table.Body>
 									{#each entries as entry, index (index)}
-										<tr class="border-t align-top">
-											<td class="px-2.5 py-2 font-mono text-[12.5px] break-all">{entry.key}</td>
-											<td class="px-2.5 py-2 break-words whitespace-pre-line">{entry.value}</td>
-											<td class="px-2.5 py-2">
-												<span
-													class="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold text-muted-foreground"
-												>
+										<Table.Row class="border-t align-top">
+											<Table.Cell class="px-2.5 py-2 font-mono text-meta break-all"
+												>{entry.key}</Table.Cell
+											>
+											<Table.Cell class="px-2.5 py-2 break-words whitespace-pre-line"
+												>{entry.value}</Table.Cell
+											>
+											<Table.Cell class="px-2.5 py-2">
+												<Badge variant="muted">
 													{SOURCES[entry.source]()}
-												</span>
-											</td>
-										</tr>
+												</Badge>
+											</Table.Cell>
+										</Table.Row>
 									{:else}
-										<tr class="border-t">
-											<td colspan="3" class="px-2.5 py-3 text-muted-foreground">
+										<Table.Row class="border-t">
+											<Table.Cell colspan={3} class="px-2.5 py-3 text-muted-foreground">
 												{m.assignment_none_found()}
-											</td>
-										</tr>
+											</Table.Cell>
+										</Table.Row>
 									{/each}
-								</tbody>
-							</table>
+								</Table.Body>
+							</Table.Root>
 						</div>
 					{/if}
-				</section>
+				</Card.Root>
 			</div>
 		{/if}
 	</div>
-</div>
+</Card.Root>

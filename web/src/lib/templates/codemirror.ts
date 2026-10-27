@@ -147,7 +147,8 @@ const theme = EditorView.theme({
 });
 
 /** The completions at the cursor: values and fields in an expression (in the order of
- * `names`, then the fields), a field's key after `field.`, filters after `|`, tags after `{%`. A
+ * `names`, then the fields), a field's key after `field.`, the next part after `facts.`,
+ * filters after `|`, tags after `{%`. A
  * value picked in a `{{` without its `}}` gets it. */
 export function completionSource(lists: () => Completions) {
 	return (context: CompletionContext): CompletionResult | null => {
@@ -186,6 +187,24 @@ export function completionSource(lists: () => Completions) {
 						return { label: step, apply: step + close, detail: name.label, type: 'property' };
 					});
 				break;
+			case 'path': {
+				// The next part of the path: a value, or a part with more below it (`refers.`).
+				const prefix = spot.path ?? '';
+				const next = new Map<string, Completion>();
+				for (const name of names) {
+					if (!name.name.startsWith(prefix)) continue;
+					const [part, ...deeper] = name.name.slice(prefix.length).split('.');
+					if (!part || next.has(part)) continue;
+					next.set(
+						part,
+						deeper.length > 0
+							? { label: part, apply: `${part}.`, type: 'namespace' }
+							: { label: part, apply: part + close, detail: name.label, type: 'property' }
+					);
+				}
+				options = [...next.values()];
+				break;
+			}
 			case 'value':
 				options = [
 					...names.map((name, index) => ({

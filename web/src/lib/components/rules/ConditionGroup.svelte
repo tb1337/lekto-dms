@@ -21,6 +21,8 @@
 		type RuleModel
 	} from '#lib/rules/model.ts';
 	import { cn } from '#lib/utils.ts';
+	import { Choice } from '#lib/components/ui/choice/index.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// A group of conditions: and/or, turned around or not, with conditions and subgroups.
 	// `onunreadable` says, by the condition's key, while a value's text cannot be read.
@@ -82,33 +84,18 @@
 			onchange={(mode) => (group.mode = mode === 'any' ? 'any' : 'all')}
 			class="h-10 w-full sm:w-56"
 		/>
-		<label class="flex items-center gap-2 text-sm">
-			<input type="checkbox" class="size-4 accent-primary" bind:checked={group.negate} />
-			{m.rule_negate()}
-		</label>
+		<Choice bind:checked={group.negate}>{m.rule_negate()}</Choice>
 		{#if !root}
 			<div class="ml-auto flex gap-0.5">
-				<Button
-					variant="ghost"
-					size="icon"
-					aria-label={m.rule_move_up()}
-					disabled={!onup}
-					onclick={() => onup?.()}
-				>
+				<IconButton label={m.rule_move_up()} disabled={!onup} onclick={() => onup?.()}>
 					<ArrowUp aria-hidden="true" />
-				</Button>
-				<Button
-					variant="ghost"
-					size="icon"
-					aria-label={m.rule_move_down()}
-					disabled={!ondown}
-					onclick={() => ondown?.()}
-				>
+				</IconButton>
+				<IconButton label={m.rule_move_down()} disabled={!ondown} onclick={() => ondown?.()}>
 					<ArrowDown aria-hidden="true" />
-				</Button>
-				<Button variant="ghost" size="icon" aria-label={m.rule_remove()} onclick={onremove}>
+				</IconButton>
+				<IconButton label={m.rule_remove()} onclick={onremove}>
 					<Trash2 aria-hidden="true" />
-				</Button>
+				</IconButton>
 			</div>
 		{/if}
 	</div>

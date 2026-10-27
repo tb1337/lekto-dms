@@ -45,7 +45,12 @@ to check that the checks catch wrong answers.
   Erika Musterfrau with a synthetic tax ID): her tax assessment with her tax ID stands in the
   uploader's personal space, and Lekto suggests handing it over to her (`expected.space`,
   yellow for that alone); a joint assessment addressed to both only warns that she would not
-  see it there, and stays green.
+  see it there, and stays green. Some cases expect the document's facts with their role
+  (`expected.facts`; issue #145) and give the model's facts as the fixed answer to its facts
+  request (`fake.facts`): the power bill its own invoice and customer number, the reminder
+  (17) the invoice it reminds of as `refers` (the patterns take its "Rechnungsnummer" for its
+  own), the credit note (18) its own number, which no pattern reads, and the corrected power
+  bill (48) its own number, the invoice it replaces, the customer and the meter number.
 
 Every case runs twice, each time on a fresh installation in memory:
 
@@ -74,7 +79,9 @@ person and the share of those the person corrected afterwards (the feedback meas
 only suggested is not applied, its suggestion counts for the hit rate); tag
 precision and recall; and per run the lanes expected against lanes got, what the instructions
 in the text achieved, each case, and the outcomes of the label check per case and in total
-(recorded, not enforced: `beside`, `apart`, label missing, no label, unknown). The command
+(recorded, not enforced: `beside`, `apart`, label missing, no label, unknown); and the facts
+the cases expect that the documents have with their role, the others, and the facts beyond
+those expected of the kinds a case expects. The command
 exits with status 1 if any document came out green that should not have or with a wrong value,
 or a field changed without a passed check.
 

@@ -35,6 +35,8 @@
 	import { LIST_SORTS, sortLabel } from '#lib/listing.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import Chip from '#lib/components/Chip.svelte';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	type Listed = components['schemas']['ListedDocument'];
 
@@ -81,7 +83,7 @@
 	let sort = $state('');
 	let dueId = $state('');
 	let grouping = $state<Grouping>('none');
-	let layout = $state<'grid' | 'list'>('grid');
+	let layout = $state<Layout>('grid');
 	let cardIds = $state<string[]>([]);
 	let dragged = $state<number | null>(null);
 
@@ -202,7 +204,7 @@
 	ondelete={initial ? remove : undefined}
 	deleteTitle={m.lens_delete({ name: initial?.name ?? '' })}
 	deleteDescription={m.lens_delete_confirm()}
-	class="sm:max-w-3xl"
+	size="xl"
 >
 	<div class="grid gap-6 sm:grid-cols-[minmax(0,1fr)_15rem]">
 		<div class="flex min-w-0 flex-col gap-5">
@@ -251,21 +253,15 @@
 				<div class="flex flex-wrap gap-1.5">
 					{#each GROUPINGS as option (option.value)}
 						{@const active = grouping === option.value}
-						<button
-							type="button"
-							aria-pressed={active}
+						<Chip
+							pressed={active}
 							disabled={option.value === 'due' && !dueId}
 							title={option.value === 'due' && !dueId ? m.lens_grouping_due_hint() : undefined}
-							class={[
-								'h-8 rounded-full border px-3 text-sm transition-colors disabled:opacity-50',
-								active
-									? 'border-primary bg-panel font-semibold text-brand'
-									: 'bg-background hover:bg-secondary'
-							]}
+							class="disabled:opacity-50"
 							onclick={() => (grouping = option.value)}
 						>
 							{option.label()}
-						</button>
+						</Chip>
 					{/each}
 				</div>
 			</div>
@@ -279,9 +275,10 @@
 					value={layout}
 					options={[
 						{ value: 'grid', label: m.layout_grid() },
-						{ value: 'list', label: m.layout_list() }
+						{ value: 'list', label: m.layout_list() },
+						{ value: 'stream', label: m.layout_stream() }
 					]}
-					onchange={(next) => (layout = next as 'grid' | 'list')}
+					onchange={(next) => (layout = next as Layout)}
 				/>
 			</div>
 
@@ -308,32 +305,29 @@
 									{fieldTypeLabel(field.data_type)}
 								</span>
 							{/if}
-							<button
-								type="button"
-								class="grid size-7 place-items-center rounded-full hover:bg-secondary disabled:opacity-30"
-								aria-label={m.lens_field_up({ name: field?.name ?? id })}
+							<IconButton
+								size="sm"
+								label={m.lens_field_up({ name: field?.name ?? id })}
 								disabled={index === 0}
 								onclick={() => move(index, index - 1)}
 							>
-								<ArrowUp class="size-3.5" aria-hidden="true" />
-							</button>
-							<button
-								type="button"
-								class="grid size-7 place-items-center rounded-full hover:bg-secondary disabled:opacity-30"
-								aria-label={m.lens_field_down({ name: field?.name ?? id })}
+								<ArrowUp aria-hidden="true" />
+							</IconButton>
+							<IconButton
+								size="sm"
+								label={m.lens_field_down({ name: field?.name ?? id })}
 								disabled={index === cardIds.length - 1}
 								onclick={() => move(index, index + 1)}
 							>
-								<ArrowDown class="size-3.5" aria-hidden="true" />
-							</button>
-							<button
-								type="button"
-								class="grid size-7 place-items-center rounded-full hover:bg-secondary"
-								aria-label={m.lens_field_remove({ name: field?.name ?? id })}
+								<ArrowDown aria-hidden="true" />
+							</IconButton>
+							<IconButton
+								size="sm"
+								label={m.lens_field_remove({ name: field?.name ?? id })}
 								onclick={() => (cardIds = cardIds.filter((entry) => entry !== id))}
 							>
-								<X class="size-3.5" aria-hidden="true" />
-							</button>
+								<X aria-hidden="true" />
+							</IconButton>
 						</li>
 					{/each}
 				</ol>

@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Awaitable, Callable, Collection
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
@@ -8,8 +9,21 @@ import pytest
 
 from lekto.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSource
 from lekto.core.domain.classifier import ClassifierModel
+from lekto.core.domain.document_facts import (
+    DocumentFact,
+    FactCriterion,
+    FactOrigin,
+    FactRole,
+    FactState,
+    role_of,
+)
 from lekto.core.domain.documents import Document, DocumentChanges
-from lekto.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
+from lekto.core.domain.errors import (
+    ConcurrencyError,
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from lekto.core.domain.fields import FieldDefinition, FieldType, Money, Url
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from lekto.core.domain.ids import (
@@ -35,6 +49,7 @@ from lekto.core.domain.pipeline import (
 )
 from lekto.core.domain.profiles import Profile
 from lekto.core.domain.reasons import ReasonCode, because, written
+from lekto.core.domain.relations import Relation, RelationOrigin, RelationState
 from lekto.core.domain.rules import (
     AddTags,
     Condition,
@@ -762,11 +777,11 @@ class UnitOfWorkContract:
 
     async def test_field_definition_round_trip(self, uow_factory: UnitOfWorkFactory) -> None:
         """Scope and choices; a field required for some of its types or, global, everywhere.
-        A document type keeps its title pattern."""
+        A document type keeps its title pattern and whether it is a relation target."""
         invoice = DocumentType.create(
             name="Invoice", now=NOW, title_pattern="{document_date:YYYY} {field:Number}"
         )
-        reminder = DocumentType.create(name="Reminder", now=NOW)
+        reminder = DocumentType.create(name="Reminder", now=NOW, relation_target=True)
         bound = FieldDefinition.create(
             name="Billing period",
             data_type=FieldType.CHOICE,
@@ -791,6 +806,8 @@ class UnitOfWorkContract:
             assert (await uow.document_types.get(invoice.id)).title_pattern == (
                 "{document_date:YYYY} {field:Number}"
             )
+            assert await uow.document_types.get(reminder.id) == reminder
+            assert not (await uow.document_types.get(invoice.id)).relation_target
             stored = await uow.fields.get(bound.id)
             assert stored.is_required_for(invoice.id)
             assert not stored.is_required_for(reminder.id)
@@ -970,10 +987,10 @@ class UnitOfWorkContract:
             assert (await uow.documents.get(document.id)).uploaded_by is None
             assert not await uow.documents.exists(uploaded_by=leaving.id)
 
-    async def test_document_identifiers_tell_the_contacts_that_show_them(
+    async def test_document_facts_tell_the_contacts_that_show_them(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
-        """Only confirmed documents with a contact count."""
+        """Only confirmed documents with a contact count, and facts not rejected."""
         owner, space = await owner_with_space(uow_factory)
         utility, bank = (Contact.create(name=name, now=NOW) for name in ("Stadtwerke", "Bank"))
         own = (IdentifierKind.IBAN, "DE02120300000000202051")
@@ -988,24 +1005,164 @@ class UnitOfWorkContract:
         async with uow_factory() as uow:
             await uow.contacts.add(utility)
             await uow.contacts.add(bank)
-            for document, identifiers in zip(documents, shows, strict=True):
+            for document, keys in zip(documents, shows, strict=True):
                 await uow.documents.add(document)
-                await uow.document_identifiers.replace(document.id, identifiers)
+                await uow.document_facts.replace_found(document.id, [found(*key) for key in keys])
             await uow.commit()
         unknown = (IdentifierKind.EMAIL_DOMAIN, "example.org")
         async with uow_factory() as uow:
-            assert await uow.document_identifiers.contacts_of([own, customer, other, unknown]) == {
+            assert await uow.document_facts.contacts_of([own, customer, other, unknown]) == {
                 own: frozenset({utility.id, bank.id}),
                 customer: frozenset({utility.id}),
             }
-            assert await uow.document_identifiers.contacts_of([]) == {}
-            await uow.document_identifiers.replace(documents[0].id, [customer])
+            assert await uow.document_facts.contacts_of([]) == {}
+            await uow.document_facts.replace_found(documents[0].id, [found(*customer)])
             await uow.documents.remove(documents[1].id)
             await uow.commit()
         async with uow_factory() as uow:
-            assert await uow.document_identifiers.contacts_of([own, customer]) == {
+            assert await uow.document_facts.contacts_of([own, customer]) == {
                 customer: frozenset({utility.id})
             }
+
+    async def test_document_facts_keep_what_they_are_and_a_person_s_decision(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """A fact keeps its role, origins, as written and position; the facts found again
+        replace those found before, but not what a person decided."""
+        owner, space = await owner_with_space(uow_factory)
+        document = builders.processed(owner, space)
+        iban = DocumentFact(
+            kind=IdentifierKind.IBAN,
+            value="DE02120300000000202051",
+            role=FactRole.CONTACT,
+            origins=frozenset({FactOrigin.PATTERN, FactOrigin.CODE}),
+            written="DE02 1203 0000 0000 2020 51",
+            position=120,
+        )
+        vat = found(IdentifierKind.VAT_ID, "DE312456789", position=40)
+        coded = found(IdentifierKind.CUSTOMER_NUMBER, "777", position=None)
+        async with uow_factory() as uow:
+            await uow.documents.add(document)
+            assert await uow.document_facts.of_document(document.id) == []
+            await uow.document_facts.replace_found(document.id, [iban, coded, vat])
+            await uow.commit()
+        async with uow_factory() as uow:
+            # As the text reads: by position, those only in a code last.
+            assert await uow.document_facts.of_document(document.id) == [vat, iban, coded]
+            # Several documents at once; one without facts is left out.
+            other = DocumentId(new_id())
+            assert await uow.document_facts.of_documents([document.id, other]) == {
+                document.id: [vat, iban, coded]
+            }
+        rejected = replace(vat, state=FactState.REJECTED)
+        async with uow_factory() as uow:
+            await uow.document_facts.decide(document.id, rejected)
+            with pytest.raises(ValidationError):
+                await uow.document_facts.decide(document.id, vat)  # a decision is a person's
+            with pytest.raises(ValidationError):
+                await uow.document_facts.replace_found(document.id, [rejected])
+            with pytest.raises(ValidationError):
+                await uow.document_facts.replace_found(document.id, [vat, vat])
+            await uow.commit()
+        again = replace(vat, written="DE 312 456 789")
+        async with uow_factory() as uow:
+            await uow.document_facts.replace_found(document.id, [again, coded])
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.document_facts.of_document(document.id) == [rejected, coded]
+            await uow.documents.remove(document.id)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.document_facts.of_document(document.id) == []
+
+    async def test_a_person_s_decision_about_a_fact_is_withdrawn(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """A fact a source found is as found again, one only a person gave goes; a fact as
+        found stays as it is."""
+        owner, space = await owner_with_space(uow_factory)
+        document = builders.processed(owner, space)
+        vat = found(IdentifierKind.VAT_ID, "DE312456789", position=40)
+        iban = found(IdentifierKind.IBAN, "DE02120300000000202051", position=10)
+        given = DocumentFact(
+            kind=IdentifierKind.INVOICE_NUMBER,
+            value="4711",
+            role=FactRole.OWN,
+            origins=frozenset({FactOrigin.PERSON}),
+            state=FactState.ADDED,
+        )
+        async with uow_factory() as uow:
+            await uow.documents.add(document)
+            await uow.document_facts.replace_found(document.id, [vat, iban])
+            await uow.document_facts.decide(document.id, replace(vat, state=FactState.REJECTED))
+            await uow.document_facts.decide(document.id, given)
+            await uow.commit()
+        async with uow_factory() as uow:
+            for key in (vat.key, given.key, iban.key, (IdentifierKind.IBAN, "DE00")):
+                await uow.document_facts.withdraw(document.id, key)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.document_facts.of_document(document.id) == [iban, vat]
+
+    async def test_relations_between_documents(self, uow_factory: UnitOfWorkFactory) -> None:
+        """A relation from the newer to the older document: found from either end, replaced in
+        place, removed, and gone with either document."""
+        owner, space = await owner_with_space(uow_factory)
+        invoice, reminder, other = (builders.processed(owner, space) for _ in range(3))
+        relation = Relation(
+            newer=reminder.id,
+            older=invoice.id,
+            origin=RelationOrigin.LEKTO,
+            state=RelationState.SUGGESTED,
+            evidence={"kind": "fact", "fact_kind": "invoice_number", "value": "4711"},
+            created_at=NOW,
+        )
+        async with uow_factory() as uow:
+            for document in (invoice, reminder, other):
+                await uow.documents.add(document)
+            await uow.document_relations.put(relation)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.document_relations.of_document(invoice.id) == [relation]
+            assert await uow.document_relations.of_document(reminder.id) == [relation]
+            assert await uow.document_relations.of_document(other.id) == []
+            assert await uow.document_relations.find(reminder.id, invoice.id) == relation
+            assert await uow.document_relations.find(invoice.id, reminder.id) is None
+        accepted = replace(
+            relation,
+            state=RelationState.SET,
+            decided_by=owner.id,
+            decided_at=NOW + timedelta(minutes=1),
+        )
+        later = Relation(
+            newer=other.id,
+            older=invoice.id,
+            origin=RelationOrigin.PERSON,
+            state=RelationState.SET,
+            created_at=NOW + timedelta(minutes=2),
+        )
+        async with uow_factory() as uow:
+            await uow.document_relations.put(accepted)
+            await uow.document_relations.put(later)
+            await uow.commit()
+        async with uow_factory() as uow:
+            # Newest first.
+            assert await uow.document_relations.of_documents([invoice.id]) == [later, accepted]
+            await uow.document_relations.remove(other.id, invoice.id)
+            await uow.document_relations.remove(other.id, reminder.id)  # none: nothing
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.document_relations.of_document(invoice.id) == [accepted]
+            await uow.documents.remove(reminder.id)
+            await uow.document_relations.put(later)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.document_relations.of_document(invoice.id) == [later]
+            # Gone with the older document too.
+            await uow.documents.remove(invoice.id)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.document_relations.of_document(other.id) == []
 
     async def test_remove_document(self, uow_factory: UnitOfWorkFactory) -> None:
         owner, space = await owner_with_space(uow_factory)
@@ -1461,6 +1618,39 @@ class UnitOfWorkContract:
         assert sorted(await paged(NEWEST_FIRST, since_christmas)) == ["arzt", "bank", "Ärztebrief"]
         before = DocumentFilter(document_dates=Period(date.min, date(2025, 12, 23)))
         assert await paged(NEWEST_FIRST, before) == []
+
+    async def test_query_finds_documents_by_their_facts(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """A fact by kind, value and role, or a part of it; none a person rejected."""
+        owner, space = await owner_with_space(uow_factory)
+        reminder, invoice, other = (builders.processed(owner, space) for _ in range(3))
+        number = found(IdentifierKind.INVOICE_NUMBER, "4711", position=1)
+        async with uow_factory() as uow:
+            for document in (reminder, invoice, other):
+                await uow.documents.add(document)
+            await uow.document_facts.replace_found(
+                reminder.id, [replace(number, role=FactRole.REFERS)]
+            )
+            await uow.document_facts.replace_found(invoice.id, [number])
+            await uow.document_facts.replace_found(other.id, [number])
+            await uow.document_facts.decide(other.id, replace(number, state=FactState.REJECTED))
+            await uow.commit()
+
+        async def having(*criteria: FactCriterion) -> set[DocumentId]:
+            async with uow_factory() as uow:
+                listed = await uow.documents.query(DocumentFilter(facts=criteria), limit=9)
+                visible = await uow.documents.query_visible(
+                    owner.id, DocumentFilter(facts=criteria), limit=9
+                )
+            assert {item.id for item in listed} == {item.id for item in visible}
+            return {item.id for item in listed}
+
+        kind = IdentifierKind.INVOICE_NUMBER
+        assert await having(FactCriterion(kind, "4711")) == {reminder.id, invoice.id}
+        assert await having(FactCriterion(kind, "4711", FactRole.REFERS)) == {reminder.id}
+        assert await having(FactCriterion(role=FactRole.OWN)) == {invoice.id}
+        assert await having(FactCriterion(kind, "4712")) == set()
 
     async def test_query_sorts_by_when_documents_came_in_and_by_arrival(
         self, uow_factory: UnitOfWorkFactory
@@ -2048,3 +2238,14 @@ class UnitOfWorkContract:
             assert not await uow.documents.exists(sha256=builders.sha256("other"))
             with pytest.raises(ValueError):
                 await uow.documents.exists()
+
+
+def found(kind: IdentifierKind, value: str, *, position: int | None = 0) -> DocumentFact:
+    """A fact the patterns of the text found, with the role of its kind."""
+    return DocumentFact(
+        kind=kind,
+        value=value,
+        role=role_of(kind),
+        origins=frozenset({FactOrigin.PATTERN if position is not None else FactOrigin.CODE}),
+        position=position,
+    )

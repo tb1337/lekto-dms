@@ -342,9 +342,17 @@ async def test_templates_name_fields_by_their_key(world: World) -> None:
     )
     rule = await r.personal_rule(owner, definition("Lohn", channel_api(), *actions))
     assert rule.definition.actions == actions
-    # A field that is not text takes its value as it is, not as a template.
+    # A field of any type takes a template; an amount as JSON is a fixed value.
     amount = SetField(gross.id, {"amount": "1.00", "currency": "EUR"})
     assert await r.personal_rule(owner, definition("Betrag", channel_api(), amount))
+    templated = SetField(gross.id, "{{ field.notiz }} EUR")
+    assert await r.personal_rule(owner, definition("Vorlage", channel_api(), templated))
+    with pytest.raises(ValidationError, match=r"actions\[0\]: unknown value field\.netto"):
+        unknown = SetField(gross.id, "{{ field.netto }}")
+        await r.personal_rule(owner, definition("Netto", channel_api(), unknown))
+    # Text without markup writes itself: it must be readable as the type has it.
+    with pytest.raises(ValidationError, match=r"actions\[0\]: .*does not accept 'zwölf'"):
+        await r.personal_rule(owner, definition("Wort", channel_api(), SetField(gross.id, "zwölf")))
 
 
 async def test_renaming_a_field_rewrites_the_templates_that_use_it(world: World) -> None:
@@ -353,7 +361,7 @@ async def test_renaming_a_field_rewrites_the_templates_that_use_it(world: World)
     service = world.master_data
     gross = await service.create_field(r.admin.id, "LA_Brutto", FieldType.AMOUNT)
     note = await service.create_field(r.admin.id, "Notiz", FieldType.TEXT)
-    await service.create_field(r.admin.id, "LA_Brutto_alt", FieldType.AMOUNT)
+    old = await service.create_field(r.admin.id, "LA_Brutto_alt", FieldType.AMOUNT)
     uses = await r.personal_rule(
         owner,
         definition(
@@ -361,6 +369,7 @@ async def test_renaming_a_field_rewrites_the_templates_that_use_it(world: World)
             channel_api(),
             SetTitle("Lohn {{ field.la_brutto }} {{ field['la_brutto'].amount }}"),
             SetField(note.id, "{% if field.la_brutto_alt %}x{% endif %}{{ field.la_brutto }}"),
+            SetField(old.id, "{{ field.la_brutto }}"),
         ),
     )
     other = await r.personal_rule(owner, definition("Andere", channel_api(), SetTitle("Scan")))
@@ -373,6 +382,7 @@ async def test_renaming_a_field_rewrites_the_templates_that_use_it(world: World)
         SetTitle("Lohn {{ field.gesamtbrutto }} {{ field.gesamtbrutto.amount }}"),
         # Another field whose key begins the same stays.
         SetField(note.id, "{% if field.la_brutto_alt %}x{% endif %}{{ field.gesamtbrutto }}"),
+        SetField(old.id, "{{ field.gesamtbrutto }}"),  # a field of any type
     )
     assert (await r.rules.get(owner.id, other.id)).current.number == 1
 
@@ -382,13 +392,47 @@ async def test_a_field_a_template_uses_is_not_deleted(world: World) -> None:
     owner = await world.user()
     service = world.master_data
     gross = await service.create_field(r.admin.id, "LA_Brutto", FieldType.AMOUNT)
+    net = await service.create_field(r.admin.id, "Netto", FieldType.AMOUNT)
     rule = await r.personal_rule(
         owner, definition("Lohn", channel_api(), ForceReview("{{ field.la_brutto.amount }}"))
+    )
+    amount = await r.personal_rule(
+        owner, definition("Netto", channel_api(), SetField(net.id, "{{ field.la_brutto }}"))
     )
     with pytest.raises(ConflictError, match=r"field\.la_brutto is used by .*'Lohn'"):
         await service.delete_field(r.admin.id, gross.id)
     await r.rules.delete(owner.id, rule.id)
+    with pytest.raises(ConflictError, match=r"field\.la_brutto is used by .*'Netto'"):
+        await service.delete_field(r.admin.id, gross.id)
+    await r.rules.delete(owner.id, amount.id)
     await service.delete_field(r.admin.id, gross.id)
+
+
+async def test_fixed_values_with_braces_block_nothing(world: World) -> None:
+    """A choice that holds Liquid's markup is a fixed value; renaming and deleting another field
+    pass by it, and a fixed link that names a field's key keeps it."""
+    r = await rule_world(world)
+    owner = await world.user()
+    service = world.master_data
+    kind = await service.create_field(r.admin.id, "Art", FieldType.CHOICE, choices=["A {{ B", "C"])
+    link = await service.create_field(r.admin.id, "Portal", FieldType.LINK)
+    gross = await service.create_field(r.admin.id, "Betrag", FieldType.AMOUNT)
+    actions = (
+        SetField(kind.id, "A {{ B"),
+        SetField(link.id, "https://portal.example/field.betrag"),
+        SetTitle("{{ field.betrag }}"),
+    )
+    rule = await r.personal_rule(owner, definition("Fest", channel_api(), *actions))
+
+    await service.change_field(r.admin.id, gross.id, name="Brutto")
+    changed = await r.rules.get(owner.id, rule.id)
+    assert changed.definition.actions == (
+        actions[0],
+        actions[1],
+        SetTitle("{{ field.brutto }}"),
+    )
+    other = await service.create_field(r.admin.id, "Notiz", FieldType.TEXT)
+    await service.delete_field(r.admin.id, other.id)
 
 
 async def test_a_pattern_is_checked_by_the_matcher_that_runs_it(world: World) -> None:

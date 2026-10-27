@@ -18,7 +18,7 @@ from typing import Any
 
 from lekto.core.domain.classification import DOCUMENT_DATE, field_id_of
 from lekto.core.domain.documents import Channel
-from lekto.core.domain.first_runs import JUDGED_FIELDS, Verdict
+from lekto.core.domain.first_runs import FACTS, JUDGED_FIELDS, RELATIONS, Verdict
 from lekto.core.domain.ids import UserId
 from lekto.core.domain.pipeline import NODES, Lane, Node
 from lekto.core.domain.statistics import percentiles
@@ -303,15 +303,17 @@ def _flow(counts: Sequence[LaneCount]) -> tuple[Flow, ...]:
 def _fields(
     verdicts: Mapping[tuple[str, Verdict], int], names: Mapping[Any, str]
 ) -> tuple[FieldVerdicts, ...]:
-    """The verdicts per field: the fields every document has first, then the custom ones by
-    name; custom fields whose definition is gone are left out."""
+    """The verdicts per field: the fields every document has first, its facts, then the custom
+    ones by name; custom fields whose definition is gone are left out."""
     counts: dict[str, dict[Verdict, int]] = defaultdict(dict)
     for (field, verdict), number in verdicts.items():
         counts[field][verdict] = number
     fields = []
     for field, found in counts.items():
         id = field_id_of(field)
-        if (id is None and field not in JUDGED_FIELDS) or (id is not None and id not in names):
+        if (id is None and field not in (*JUDGED_FIELDS, FACTS, RELATIONS)) or (
+            id is not None and id not in names
+        ):
             continue
         early = found.pop(Verdict.EARLY, 0)
         fields.append(FieldVerdicts(field, None if id is None else names[id], found, early))

@@ -598,10 +598,24 @@ class LogEntry(BaseModel):
 
 
 class ModelCallOut(BaseModel):
-    """One request to the language model and its answer."""
+    """One request to the language model and its answer. A call of the signal or the fields node
+    (since `propose-6`, `extract-6`) sent `system`, `document`, `task` and, after an unfit
+    answer, `retry`, each a message in this order; a call of one message has it in `user`."""
 
-    system: str = Field(description="The system message.")
-    user: str = Field(description="The user message, with the document's text.")
+    system: str = Field(description="The system message, the same for every call.")
+    user: str = Field(
+        description="The one message of a call that sent one: a page the VLM read, the context "
+        "a webhook got for a model call, a call before `propose-6`; else empty."
+    )
+    document: str = Field(description="The document's text in its markers; else empty.")
+    task: str = Field(description="What the call wanted, after the document; else empty.")
+    retry: str | None = Field(
+        description="After an answer that did not fit: what was wrong, sent last."
+    )
+    request: Literal["", "facts"] = Field(
+        description="A further request about the document (`facts`: the facts with their "
+        "role); empty for the node's first request and its attempts."
+    )
     answer: str = Field(description="The model's text as it came.")
     model: str = Field(examples=["qwen3:8b"])
     usage: dict[str, Any] = Field(
@@ -617,6 +631,10 @@ class ModelCallOut(BaseModel):
         return cls(
             system=call.system,
             user=call.user,
+            document=call.document,
+            task=call.task,
+            retry=call.retry,
+            request="facts" if call.request == "facts" else "",
             answer=call.answer,
             model=call.model,
             usage=dict(call.usage),
@@ -628,7 +646,8 @@ class RunExchangeOut(BaseModel):
 
     run: int
     calls: list[ModelCallOut] = Field(
-        description="One call, or two after an answer that did not fit the schema."
+        description="One call, or two after an answer that did not fit the schema; then those "
+        "of a further request (`request`)."
     )
 
     @classmethod

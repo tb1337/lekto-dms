@@ -22,7 +22,7 @@ import Page from './+page.svelte';
 
 type Document = components['schemas']['DocumentDetails'];
 
-vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
+vi.mock('$app/navigation', () => ({ beforeNavigate: vi.fn(), goto: vi.fn() }));
 vi.mock('$app/state', async () => ({
 	page: (await import('#lib/testing/page-state.svelte.ts')).testPage
 }));
@@ -53,6 +53,12 @@ function documentRoutes(id: string, current: () => Document): Parameters<typeof 
 		[`GET /api/v1/documents/${id}`]: () => current(),
 		[`GET /api/v1/documents/${id}/review`]: () => ({ document: current(), open: [], nodes: [] }),
 		[`GET /api/v1/documents/${id}/reading`]: () => ({ vision: false, pages: [], advice: null }),
+		[`GET /api/v1/documents/${id}/relations`]: () => ({
+			refers_to: [],
+			referred_by: [],
+			suggested: [],
+			editable: true
+		}),
 		// The properties tab says so; the test looks at seen.
 		[`GET /api/v1/documents/${id}/files`]: () =>
 			json({ type: 'about:blank', title: 'Not Found', status: 404 }, 404)
@@ -267,6 +273,7 @@ describe('the document tab', () => {
 	const TEXT = 'Kundennummer EBeschV 4711\n\f\nSeite zwei';
 	const FACTS: Facts = {
 		contact_id: null,
+		editable: false,
 		named: [],
 		identifiers: [
 			{
@@ -275,6 +282,10 @@ describe('the document tab', () => {
 				contact_id: null,
 				in_text: true,
 				in_code: false,
+				role: 'contact',
+				origins: ['pattern'],
+				state: 'found',
+				kept: true,
 				spans: [{ start: 13, end: 20, locations: [] }],
 				other_contacts: null
 			}

@@ -70,6 +70,7 @@ def test_ocr_and_pages_run_side_by_side_and_filing_waits_for_both() -> None:
         *SIGNALS,
         Node.JUDGE,
         Node.FIELDS,
+        Node.RELATE,
         Node.APPLY_RULES,
         Node.FILE,
     }
@@ -80,6 +81,7 @@ def test_ocr_and_pages_run_side_by_side_and_filing_waits_for_both() -> None:
         *SIGNALS,
         Node.JUDGE,
         Node.FIELDS,
+        Node.RELATE,
     }
 
 
@@ -249,7 +251,8 @@ def test_a_result_names_the_nodes_that_became_due_with_it() -> None:
         assert document.record_result(signal, 1, OK, NOW) == ()
     assert document.record_result(SIGNAL_NODES[-1], 1, OK, NOW) == (Node.JUDGE,)
     document.record_result(Node.JUDGE, 1, OK, NOW)
-    document.record_result(Node.FIELDS, 1, OK, NOW)
+    assert document.record_result(Node.FIELDS, 1, OK, NOW) == (Node.RELATE,)
+    assert document.record_result(Node.RELATE, 1, OK, NOW) == (Node.APPLY_RULES,)
     assert document.record_result(Node.APPLY_RULES, 1, OK, NOW) == (Node.FILE,)
     assert document.record_result(Node.FILE, 1, OK, NOW) == ()
     assert status(document) is ProcessingStatus.COMPLETED
@@ -350,6 +353,7 @@ def test_confirming_a_red_document_takes_over_the_failed_and_unrun_nodes() -> No
         *SIGNAL_NODES,
         Node.JUDGE,
         Node.FIELDS,
+        Node.RELATE,
     )
     taken_over = document.processing.nodes[Node.PARSE]
     assert (taken_over.status, taken_over.outcome) == (NodeStatus.DONE, Outcome.OK)
@@ -600,6 +604,7 @@ def test_confirming_waits_for_a_node_still_running() -> None:
         *SIGNAL_NODES,
         Node.JUDGE,
         Node.FIELDS,
+        Node.RELATE,
     )
 
 

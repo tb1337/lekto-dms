@@ -19,7 +19,19 @@
     },
     "lanes": {
       "trained": "yellow"
-    }
+    },
+    "facts": [
+      {
+        "kind": "invoice_number",
+        "value": "VB-889911",
+        "role": "refers"
+      },
+      {
+        "kind": "customer_number",
+        "value": "88 77 66",
+        "role": "contact"
+      }
+    ]
   },
   "fake": {
     "classification": {
@@ -62,6 +74,22 @@
         "evidence": "bis zum 24.06.2026",
         "label": null
       }
-    }
+    },
+    "facts": [
+      {
+        "kind": "customer_number",
+        "value": "88 77 66",
+        "role": "contact",
+        "evidence": "Kundennummer: 88 77 66",
+        "label": "Kundennummer"
+      },
+      {
+        "kind": "invoice_number",
+        "value": "VB-889911",
+        "role": "refers",
+        "evidence": "Rechnungsnummer: VB-889911 vom 12.05.2026",
+        "label": "Rechnungsnummer"
+      }
+    ]
   }
 }

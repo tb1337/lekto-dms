@@ -99,6 +99,7 @@ from lekto.core.services.classification.signals import (
 )
 from lekto.core.services.classifier import ClassifierPolicy, ClassifierService
 from lekto.core.services.documents import DocumentService
+from lekto.core.services.expected import ExpectedService
 from lekto.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
 from lekto.core.services.inbox import InboxService
 from lekto.core.services.indexing import IndexingPolicy, IndexingService
@@ -111,12 +112,15 @@ from lekto.core.services.nodes import OcrNode, PagesNode, ParseNode
 from lekto.core.services.oidc import OidcService
 from lekto.core.services.pipeline import NodeExecutor, PipelineService
 from lekto.core.services.profiles import ProfileService
+from lekto.core.services.relating import RelateNode
+from lekto.core.services.relations import RelationService
 from lekto.core.services.rules import RuleService
 from lekto.core.services.rules.changes import ChangeRules
 from lekto.core.services.rules.nodes import ApplyRulesNode, FileNode
 from lekto.core.services.rules.retroactive import RuleApplicationService
 from lekto.core.services.search import SearchPolicy, SearchService
 from lekto.core.services.spaces import SpaceService
+from lekto.core.services.stream import StreamService
 from lekto.core.services.tasks.desk import TaskDesk
 from lekto.core.services.tasks.service import TaskService
 from lekto.core.services.users import UserService
@@ -491,6 +495,9 @@ class Services:
     webhook_delivery: WebhookDeliveryService
     tasks: TaskService
     lenses: LensService
+    relations: RelationService
+    expected: ExpectedService
+    stream: StreamService
     documents: DocumentService
     inbox: InboxService
     pipeline: PipelineService
@@ -506,10 +513,17 @@ VISION_REQUEST_TIMEOUT = timedelta(minutes=5)
 """How long the vision language model may take for one page."""
 
 
+MODEL_CALLS_PER_NODE = 4
+"""The most requests to the language model one node makes in a row: the proposal and the facts
+of `signal_llm` (#145), each once more after an unfit answer."""
+
+
 def node_lease(settings: Settings) -> timedelta:
     """How long a worker holds the job of a node: longer than any node may take, except the
     OCR of a document the vision model reads (`vision_lease`)."""
-    return max(settings.ocr_timeout, 2 * settings.llm_timeout) + WORK_LEASE_MARGIN
+    return (
+        max(settings.ocr_timeout, MODEL_CALLS_PER_NODE * settings.llm_timeout) + WORK_LEASE_MARGIN
+    )
 
 
 def vision_lease(settings: Settings) -> timedelta | None:
@@ -695,6 +709,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             locator=container.locator,
             desk=desk,
         ),
+        Node.RELATE: RelateNode(),
         Node.APPLY_RULES: ApplyRulesNode(
             uow,
             store,
@@ -754,11 +769,15 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             container.templates,
             container.patterns,
             link_base=None if settings.public_url is None else str(settings.public_url),
+            store=store,
         ),
         webhooks=WebhookService(
             uow, clock, container.cipher, webhook_policy_of(settings), container.templates
         ),
         lenses=LensService(uow, clock),
+        relations=RelationService(uow, clock),
+        expected=ExpectedService(uow, clock),
+        stream=StreamService(uow, clock),
         tasks=TaskService(uow, clock, container.cipher, store),
         jobs=JobsService(uow, clock, retention=settings.retention),
         automation=AutomationService(uow, clock),
@@ -770,6 +789,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             webhook_policy_of(settings),
             container.templates,
             link_base=None if settings.public_url is None else str(settings.public_url),
+            store=store,
         ),
         rule_applications=RuleApplicationService(
             uow,
@@ -798,7 +818,8 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             suggest_contact=settings.contact_suggest_threshold,
             retry=retry_policy_of(settings),
             # Longer than any node may take, so a running node never loses its claim.
-            # A classification node may ask the model twice (once more after an invalid answer).
+            # The model's signal asks the model up to four times (proposal and facts, each once
+            # more after an invalid answer).
             # The OCR node that reads a document with the vision model extends its claim.
             lease=node_lease(settings),
             vision=container.ocr.vision,

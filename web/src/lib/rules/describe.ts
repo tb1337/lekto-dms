@@ -1,5 +1,7 @@
 /** Texts of the rule builder: fields, operators, actions, problems; a rule as sentences. */
 import { describeValue } from '#lib/describe.ts';
+import { roleLabel, type FactRole } from '#lib/facts.ts';
+import { kindLabel, type IdentifierKind } from '#lib/identifiers.ts';
 import { byId, holderOf, spaceLabel, userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import type {
@@ -14,7 +16,7 @@ import type {
 	Problem,
 	Trigger
 } from '#lib/rules/model.ts';
-import { isTagField } from '#lib/rules/model.ts';
+import { isTagField, isTemplated } from '#lib/rules/model.ts';
 import { session } from '#lib/session.svelte.ts';
 import { pathLabel } from '#lib/tags.ts';
 
@@ -28,7 +30,9 @@ const CONDITION_FIELDS: Record<Exclude<ConditionField, 'field'>, () => string> =
 	channel: m.rule_field_channel,
 	text: m.rule_field_text,
 	document_date: m.field_date,
-	step: m.rule_field_step
+	step: m.rule_field_step,
+	fact: m.rule_field_fact,
+	relation: m.rule_field_relation
 };
 
 export function fieldLabel(field: ConditionField): string {
@@ -78,6 +82,13 @@ const TAG_OPERATORS: Partial<Record<Operator, () => string>> = {
 	present: m.rule_op_tags_present,
 	missing: m.rule_op_tags_missing
 };
+// "Bezug | auf ein Dokument vom Typ | Rechnung": the documents it refers to.
+const RELATION_OPERATORS: Partial<Record<Operator, () => string>> = {
+	is: m.rule_op_relation_is,
+	in: m.rule_op_relation_in,
+	present: m.rule_op_relation_present,
+	missing: m.rule_op_relation_missing
+};
 const DATE_OPERATORS: Partial<Record<Operator, () => string>> = {
 	is: m.rule_op_date_is,
 	gt: m.rule_op_date_gt,
@@ -99,6 +110,7 @@ export function operatorLabel(
 ): string {
 	let special: Partial<Record<Operator, () => string>> = {};
 	if (isTagField(field)) special = TAG_OPERATORS;
+	else if (field === 'relation') special = RELATION_OPERATORS;
 	else if (field === 'document_date' || type === 'date') special = DATE_OPERATORS;
 	else if (type === 'number' || type === 'amount') special = NUMBER_OPERATORS;
 	else if (type === 'period') special = PERIOD_OPERATORS;
@@ -155,7 +167,9 @@ export function describeCondition(condition: ConditionNode, lookup: Lookup | nul
 			? (field?.name ?? m.rule_unknown())
 			: condition.field === 'step'
 				? `steps.${condition.path ?? ''}`
-				: fieldLabel(condition.field);
+				: condition.field === 'fact'
+					? factSubject(condition)
+					: fieldLabel(condition.field);
 	const op = operatorLabel(condition.field, condition.op, field?.data_type ?? null);
 	if (condition.value === null) return `${subject} ${op}`;
 	const values = Array.isArray(condition.value) ? condition.value : [condition.value];
@@ -167,6 +181,13 @@ export function describeCondition(condition: ConditionNode, lookup: Lookup | nul
 	return `${subject} ${op} ${shown}${caseNote}`;
 }
 
+/** A fact condition's subject: "Fact Invoice number (refers to a document)". */
+function factSubject(condition: ConditionNode): string {
+	const kind = condition.factKind ? kindLabel(condition.factKind as IdentifierKind) : '';
+	const role = condition.factRole ? ` (${roleLabel(condition.factRole as FactRole)})` : '';
+	return `${m.rule_field_fact()} ${kind}${role}`;
+}
+
 function describeConditionValue(
 	condition: ConditionNode,
 	value: unknown,
@@ -174,17 +195,18 @@ function describeConditionValue(
 ): string {
 	if (typeof value === 'string') {
 		if (condition.field === 'contact') return nameOf(value, lookup?.contacts ?? []);
-		if (condition.field === 'document_type') return nameOf(value, lookup?.documentTypes ?? []);
+		if (condition.field === 'document_type' || condition.field === 'relation')
+			return nameOf(value, lookup?.documentTypes ?? []);
 		if (isTagField(condition.field) || condition.field === 'topic') return tagName(value, lookup);
 		if (condition.field === 'channel') return CHANNEL_LABELS[value as Channel]?.() ?? value;
-		if (condition.field === 'text') return value;
+		if (condition.field === 'text' || condition.field === 'fact') return value;
 		if (condition.op === 'contains' || condition.op === 'matches') return value;
 	}
 	return describeValue(value, null);
 }
 
-/** The template of an action (a title, a text field's value, a review's reason) and what
- * stands before it ("Set field: Note = "); null for an action without one. */
+/** The template of an action (a title, a field's value given as a template, a review's reason)
+ * and what stands before it ("Set field: Note = "); null for an action without one. */
 export function actionTemplate(
 	action: ActionNode | ApiAction,
 	lookup: Lookup | null
@@ -197,7 +219,8 @@ export function actionTemplate(
 			return { lead: `${label}: `, template: action.reason };
 		case 'set_field': {
 			const field = fieldOf(action.field_id, lookup);
-			if (field?.data_type !== 'text' || typeof action.value !== 'string') return null;
+			if (!field || typeof action.value !== 'string' || !isTemplated(field, action.value))
+				return null;
 			return { lead: `${label}: ${field.name} = `, template: action.value };
 		}
 	}

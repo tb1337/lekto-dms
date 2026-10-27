@@ -4110,6 +4110,100 @@
         ]
       }
     },
+    "/api/v1/contacts/logos/fetch": {
+      "post": {
+        "tags": [
+          "master data"
+        ],
+        "summary": "Fetch the missing logos",
+        "description": "Admins only. Only with `LEKTO_LOGO_FETCH` (503 otherwise; `GET /pipeline` tells, `logo_fetch`). The worker fetches the logo of every contact without one that has a domain among its identifiers whose fetch has not failed (one that failed is tried again at the contact, `POST /contacts/{id}/logo/fetch`). A contact queued already is not queued twice.",
+        "operationId": "fetch_logos_api_v1_contacts_logos_fetch_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuedOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "database: unreachable"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/contacts/{id}/identifiers": {
       "post": {
         "tags": [
@@ -9898,6 +9992,28 @@
               ],
               "title": "Document Date To"
             }
+          },
+          {
+            "name": "fact",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 5
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none.",
+              "title": "Fact"
+            },
+            "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none."
           }
         ],
         "responses": {
@@ -10317,6 +10433,354 @@
                   "title": "Service Unavailable",
                   "status": 503,
                   "detail": "database: unreachable"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/documents/stream": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "The documents in a stream",
+        "description": "The documents the filters of `GET /documents` find among those the caller reads (with `all_users`, an admin's, every user's), in lanes: a series (one contact and type, and one contract or customer number, at a steady interval) with the relation target its documents refer to at its start and the document it expects next; branches (documents that refer to one of a series or to its target, with the chain of theirs); chains of documents related only among themselves; and the rest in one lane. At most the 500 newest documents (`truncated`); beyond 24 lanes of series and chains the rest come folded.",
+        "operationId": "stream_api_v1_documents_stream_get",
+        "parameters": [
+          {
+            "name": "all_users",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Every user's documents instead of the caller's reach (admins).",
+              "default": false,
+              "title": "All Users"
+            },
+            "description": "Every user's documents instead of the caller's reach (admins)."
+          },
+          {
+            "name": "contact_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Id"
+            }
+          },
+          {
+            "name": "document_type_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Type Id"
+            }
+          },
+          {
+            "name": "tag_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag Id"
+            }
+          },
+          {
+            "name": "space_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Space Id"
+            }
+          },
+          {
+            "name": "lane",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LaneFilter"
+                  },
+                  "maxItems": 4
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lane"
+            }
+          },
+          {
+            "name": "field_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Field Id"
+            }
+          },
+          {
+            "name": "contact_group_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Group Id"
+            }
+          },
+          {
+            "name": "document_type_group_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Type Group Id"
+            }
+          },
+          {
+            "name": "topic_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic Id"
+            }
+          },
+          {
+            "name": "document_date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Date From"
+            }
+          },
+          {
+            "name": "document_date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Date To"
+            }
+          },
+          {
+            "name": "fact",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 5
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none.",
+              "title": "Fact"
+            },
+            "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -11133,6 +11597,28 @@
               ],
               "title": "Document Date To"
             }
+          },
+          {
+            "name": "fact",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 5
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none.",
+              "title": "Fact"
+            },
+            "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none."
           }
         ],
         "responses": {
@@ -11459,6 +11945,28 @@
               ],
               "title": "Document Date To"
             }
+          },
+          {
+            "name": "fact",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 5
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none.",
+              "title": "Fact"
+            },
+            "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none."
           }
         ],
         "responses": {
@@ -13653,6 +14161,170 @@
         ]
       }
     },
+    "/api/v1/documents/{id}/facts/decisions": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Decide about a fact of a document",
+        "description": "Editors of the document's space and admins add a fact, correct its value or role, reject it or withdraw a decision; a person's kinds of facts only admins. A decision outlasts a new processing. The first decision about a document's facts counts as a verdict on them. Answers the facts as `GET /documents/{id}/facts`. 404 for a fact the document does not have; 409 for adding one it has, while it has no text, and with `at_contact` for a value another contact entered by hand or that is a person's; 422 for a value that is none of its kind, adding without a role, and `at_contact` on a document without a contact or for a kind a contact does not keep.",
+        "operationId": "decide_document_fact_api_v1_documents__id__facts_decisions_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactDecisionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "the request body is larger than 1048576 bytes"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/documents/{id}/files": {
       "get": {
         "tags": [
@@ -15017,6 +15689,240 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ReparseOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pipeline/relate": {
+      "post": {
+        "tags": [
+          "pipeline"
+        ],
+        "summary": "Find the relations of every document again",
+        "description": "Admins only. The worker relates every document that is not being processed with the documents it refers to and those that refer to it: for documents from before the node `relate`, and after a document type became a relation target. Relations a person set or rejected stay. A document queued already is not queued twice.",
+        "operationId": "relate_api_v1_pipeline_relate_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuedOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pipeline/render-pages": {
+      "post": {
+        "tags": [
+          "pipeline"
+        ],
+        "summary": "Render the missing page images",
+        "description": "Admins only. The worker renders the page images of every document from before the node `pages` existed (its `pages` node is skipped in its current run). A document queued already is not queued twice.",
+        "operationId": "render_pages_api_v1_pipeline_render_pages_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuedOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pipeline/read-codes": {
+      "post": {
+        "tags": [
+          "pipeline"
+        ],
+        "summary": "Read the codes of every document",
+        "description": "Admins only. The worker reads the codes on the pages of every document whose text was read and that is not being processed, and keeps the identifiers it shows: for documents from before codes were read. A document queued already is not queued twice.",
+        "operationId": "read_codes_api_v1_pipeline_read_codes_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuedOut"
                 }
               }
             }
@@ -17366,6 +18272,550 @@
         ]
       }
     },
+    "/api/v1/documents/{id}/relations": {
+      "get": {
+        "tags": [
+          "relations"
+        ],
+        "summary": "The relations of a document",
+        "description": "Needs read access. The relations whose other end the caller reads. A relation points from the newer document to the older one (by their document dates, else when they came in). Only who reads both documents sees it; who edits the newer and reads the older sets, accepts or removes it (403 otherwise).",
+        "operationId": "relations_api_v1_documents__id__relations_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "relations"
+        ],
+        "summary": "Relate a document with another",
+        "description": "Sets the relation between the two documents, or accepts Lekto's suggestion of it. A relation points from the newer document to the older one (by their document dates, else when they came in). Only who reads both documents sees it; who edits the newer and reads the older sets, accepts or removes it (403 otherwise). 409 if it is set already or both are the same document.",
+        "operationId": "relate_api_v1_documents__id__relations_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelateIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "the request body is larger than 1048576 bytes"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/documents/{id}/relations/{other_id}": {
+      "delete": {
+        "tags": [
+          "relations"
+        ],
+        "summary": "Remove a relation",
+        "description": "Removes the relation between the two documents, or rejects Lekto's suggestion of it: one Lekto made is kept as rejected, so it is not suggested again. A relation points from the newer document to the older one (by their document dates, else when they came in). Only who reads both documents sees it; who edits the newer and reads the older sets, accepts or removes it (403 otherwise). 404 if they are not related.",
+        "operationId": "unrelate_api_v1_documents__id__relations__other_id__delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "other_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Other Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/expected": {
+      "get": {
+        "tags": [
+          "expected"
+        ],
+        "summary": "The documents expected next",
+        "description": "The series among the documents the caller may read (with `all_users`, an admin's, every user's; others 403): documents of one contact and type, and of one contract or customer number where they show one, at least three at a steady interval. Each with its next date and where that stands today; the overdue first, then by date. Derived on each call, nothing stored; today as it is in `tz`.",
+        "operationId": "expected_api_v1_expected_get",
+        "parameters": [
+          {
+            "name": "all_users",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Every user's documents instead of the caller's reach (admins).",
+              "default": false,
+              "title": "All Users"
+            },
+            "description": "Every user's documents instead of the caller's reach (admins)."
+          },
+          {
+            "name": "tz",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "The IANA time zone the months begin in.",
+              "examples": [
+                "Europe/Berlin"
+              ],
+              "default": "UTC",
+              "title": "Tz"
+            },
+            "description": "The IANA time zone the months begin in."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpectedOut"
+                  },
+                  "title": "Response Expected Api V1 Expected Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/jobs/summary": {
       "get": {
         "tags": [
@@ -19288,6 +20738,18 @@
         "title": "BoxOut",
         "description": "A rectangle on the page as shown (rotation applied), in fractions of its width and\nheight from the top left corner."
       },
+      "Cadence": {
+        "type": "string",
+        "enum": [
+          "weekly",
+          "monthly",
+          "quarterly",
+          "half_yearly",
+          "yearly",
+          "days"
+        ],
+        "title": "Cadence"
+      },
       "CandidateOut": {
         "properties": {
           "value": {
@@ -19738,7 +21200,9 @@
           "channel",
           "text",
           "field",
-          "document_date"
+          "document_date",
+          "fact",
+          "relation"
         ],
         "title": "ConditionField"
       },
@@ -19836,6 +21300,28 @@
             "title": "Case Sensitive",
             "description": "For `matches` only; other comparisons ignore case.",
             "default": false
+          },
+          "fact_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IdentifierKind"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only when `field` is `fact`: the kind of the facts."
+          },
+          "fact_role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FactRole"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only when `field` is `fact`: their role; none for any."
           }
         },
         "additionalProperties": false,
@@ -19845,7 +21331,7 @@
           "op"
         ],
         "title": "ConditionSchema",
-        "description": "`field` `op` `value`. Operators by field: contact, document_type: `is`, `in`, `present`,\n`missing`; topic: the same, where a topic matches the ones below it too (unknown while the\nmodel set it and nobody confirmed it); tags (document tags), contact_group (the groups of\nthe document's contact),\ndocument_type_group (those of its type): `contains` (this one), `in` (one of), `present`\n(any), `missing` (none), where a tag or group matches the ones below it too; channel:\n`is`, `in`; text: `contains`, `matches` (regular expression); document_date and\nnumber, amount, date fields: `is`, `gt`, `lt`, `present`, `missing`; text and link\nfields: `is`, `in`, `contains`, `matches`, `present`, `missing`; choice: `is`, `in`,\n`present`, `missing`; boolean: `is`, `present`, `missing`; period fields: `is`,\n`overlaps` (shares a day with the given period), `gt` (starts after the date), `lt` (ends\nbefore the date), `present`, `missing`; step (in a condition step only: what a step that\nasks brought, at `path`): `is`, `in` (texts without case, numbers as numbers, true or\nfalse), `contains` (a text in a text, an item of a list), `gt`, `lt` (a number or a date),\n`present`, `missing`.",
+        "description": "`field` `op` `value`. Operators by field: contact, document_type: `is`, `in`, `present`,\n`missing`; topic: the same, where a topic matches the ones below it too (unknown while the\nmodel set it and nobody confirmed it); tags (document tags), contact_group (the groups of\nthe document's contact),\ndocument_type_group (those of its type): `contains` (this one), `in` (one of), `present`\n(any), `missing` (none), where a tag or group matches the ones below it too; channel:\n`is`, `in`; text: `contains`, `matches` (regular expression); document_date and\nnumber, amount, date fields: `is`, `gt`, `lt`, `present`, `missing`; text and link\nfields: `is`, `in`, `contains`, `matches`, `present`, `missing`; choice: `is`, `in`,\n`present`, `missing`; boolean: `is`, `present`, `missing`; period fields: `is`,\n`overlaps` (shares a day with the given period), `gt` (starts after the date), `lt` (ends\nbefore the date), `present`, `missing`; step (in a condition step only: what a step that\nasks brought, at `path`): `is`, `in` (texts without case, numbers as numbers, true or\nfalse), `contains` (a text in a text, an item of a list), `gt`, `lt` (a number or a date),\n`present`, `missing`; fact (`fact_kind`, `fact_role` if given; facts a person rejected do\nnot count): `is`, `in` (the values as written, compared as Lekto compares them), `matches`\n(against each value as the text writes it; `^` and `$` mark its ends), `present`,\n`missing`; relation (the documents it refers to by a set relation; suggestions do not\ncount): `present` (any), `missing` (none), `is`, `in` (one of the document type ids).",
         "examples": [
           {
             "field": "contact",
@@ -19857,6 +21343,19 @@
             "field": "text",
             "op": "matches",
             "value": "Rechnung\\s+Nr"
+          },
+          {
+            "fact_kind": "invoice_number",
+            "fact_role": "refers",
+            "field": "fact",
+            "op": "present"
+          },
+          {
+            "field": "relation",
+            "op": "in",
+            "value": [
+              "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b"
+            ]
           }
         ]
       },
@@ -21275,6 +22774,64 @@
         "title": "DocumentListSort",
         "description": "The keys of `DocumentSort`, and `field`: by the value of the field `sort_field_id`.\nOnly the list sorts by a field; the search index holds no field values."
       },
+      "DocumentNumberOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "Normalised, as Lekto compares it."
+          },
+          "written": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Written",
+            "description": "As the text writes it where it stands first."
+          },
+          "role": {
+            "$ref": "#/components/schemas/FactRole"
+          },
+          "origins": {
+            "items": {
+              "$ref": "#/components/schemas/FactOrigin"
+            },
+            "type": "array",
+            "title": "Origins"
+          },
+          "state": {
+            "$ref": "#/components/schemas/FactState",
+            "description": "As `FoundIdentifierOut.state`.",
+            "default": "found"
+          },
+          "spans": {
+            "items": {
+              "$ref": "#/components/schemas/SpanOut"
+            },
+            "type": "array",
+            "title": "Spans",
+            "description": "Where it stands in the text."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value",
+          "written",
+          "role",
+          "origins",
+          "spans"
+        ],
+        "title": "DocumentNumberOut",
+        "description": "A fact kept for the document: a number that is no contact's or person's identifier, its\nown (invoice, credit note, order number), a strand's (file reference, \"Unser Zeichen\",\nclaim, ticket) or another document's it refers to (\"Ihre Rechnung Nr.\", \"Ihr Zeichen\"); or\none of another kind a person decided."
+      },
       "DocumentOutOfReach": {
         "properties": {
           "id": {
@@ -21633,6 +23190,12 @@
             ],
             "title": "Icon"
           },
+          "relation_target": {
+            "type": "boolean",
+            "title": "Relation Target",
+            "description": "Documents refer to those of the type (a contract, a policy) by a contract or customer number they share; without it such a number connects no documents.",
+            "default": false
+          },
           "fields": {
             "items": {
               "$ref": "#/components/schemas/FieldAssignmentIn"
@@ -21738,6 +23301,11 @@
             "examples": [
               "receipt"
             ]
+          },
+          "relation_target": {
+            "type": "boolean",
+            "title": "Relation Target",
+            "description": "Documents refer to those of the type (a contract, a policy) by a contract or customer number they share; without it such a number connects no documents."
           }
         },
         "type": "object",
@@ -21748,7 +23316,8 @@
           "description",
           "title_pattern",
           "group_ids",
-          "icon"
+          "icon",
+          "relation_target"
         ],
         "title": "DocumentTypeOut"
       },
@@ -21835,6 +23404,17 @@
               }
             ],
             "title": "Icon"
+          },
+          "relation_target": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relation Target"
           }
         },
         "additionalProperties": false,
@@ -21924,6 +23504,127 @@
         ],
         "title": "ExchangeNode"
       },
+      "ExpectedNextOut": {
+        "properties": {
+          "next_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Next Date"
+          },
+          "next_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Period",
+            "description": "In ISO notation (`2026-11`), where it has one."
+          },
+          "state": {
+            "$ref": "#/components/schemas/SeriesState"
+          },
+          "cadence": {
+            "$ref": "#/components/schemas/Cadence"
+          },
+          "spread_days": {
+            "type": "integer",
+            "title": "Spread Days"
+          }
+        },
+        "type": "object",
+        "required": [
+          "next_date",
+          "next_period",
+          "state",
+          "cadence",
+          "spread_days"
+        ],
+        "title": "ExpectedNextOut",
+        "description": "The document a series expects next: a placeholder at the end of its lane."
+      },
+      "ExpectedOut": {
+        "properties": {
+          "contact": {
+            "$ref": "#/components/schemas/NamedOut"
+          },
+          "document_type": {
+            "$ref": "#/components/schemas/NamedOut"
+          },
+          "number": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeriesNumberOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The contract or customer number the series follows, if its documents show one."
+          },
+          "cadence": {
+            "$ref": "#/components/schemas/Cadence",
+            "description": "A calendar step (`weekly` to `yearly`) or `days` (see `interval_days`)."
+          },
+          "interval_days": {
+            "type": "integer",
+            "title": "Interval Days",
+            "description": "The median gap between its documents."
+          },
+          "spread_days": {
+            "type": "integer",
+            "title": "Spread Days",
+            "description": "How far a document may come off its step (± days)."
+          },
+          "documents": {
+            "type": "integer",
+            "title": "Documents",
+            "description": "How many documents the series has (one per period)."
+          },
+          "last": {
+            "$ref": "#/components/schemas/LastDocumentOut"
+          },
+          "next_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Next Date"
+          },
+          "next_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Period",
+            "description": "The period the next document is for, in ISO notation (`2026-11`), where the series carries one."
+          },
+          "state": {
+            "$ref": "#/components/schemas/SeriesState",
+            "description": "`overdue` (its date and spread are over), `soon` (in the next 30 days), `later`, or `ended` (two dates missed)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "contact",
+          "document_type",
+          "number",
+          "cadence",
+          "interval_days",
+          "spread_days",
+          "documents",
+          "last",
+          "next_date",
+          "next_period",
+          "state"
+        ],
+        "title": "ExpectedOut",
+        "description": "A series and the document it expects next."
+      },
       "ExtractContext": {
         "properties": {
           "contract": {
@@ -21976,6 +23677,169 @@
         "title": "ExtractContext",
         "description": "`fields`' request (`external.extract`) for the fields the proposal did not give (the\njudge decided another type, or there is no proposal). Lekto checks the answer as a\nlanguage model's."
       },
+      "FactAction": {
+        "type": "string",
+        "enum": [
+          "add",
+          "correct",
+          "reject",
+          "withdraw"
+        ],
+        "title": "FactAction"
+      },
+      "FactDecisionIn": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/FactAction",
+            "description": "`add` a fact the sources did not find (`value` as written, `role` required); `correct` the fact of `kind` and `value` (its role, and with `new_value` its value: the old one is then rejected); `reject` it (it is no fact of the document); `withdraw` a decision (a fact a source found is as found again, one only a person gave goes)."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Value",
+            "description": "`add`: as written; otherwise the fact's value, normalised."
+          },
+          "role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FactRole"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`add`: its role; `correct`: the role it has instead."
+          },
+          "new_value": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Value",
+            "description": "`correct`: the value, as written."
+          },
+          "at_contact": {
+            "type": "boolean",
+            "title": "At Contact",
+            "description": "`correct`, for admins: correct the value at the document's contact too (the old one goes from its identifiers, the new one is entered by hand); only for the kinds a contact keeps.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "kind",
+          "value"
+        ],
+        "title": "FactDecisionIn",
+        "description": "A person's decision about a fact of the document.",
+        "examples": [
+          {
+            "action": "correct",
+            "kind": "invoice_number",
+            "role": "refers",
+            "value": "4711"
+          },
+          {
+            "action": "correct",
+            "at_contact": true,
+            "kind": "customer_number",
+            "new_value": "2004 7719",
+            "value": "20047718"
+          },
+          {
+            "action": "add",
+            "kind": "contract_number",
+            "role": "target",
+            "value": "V-123"
+          }
+        ]
+      },
+      "FactFilterBody": {
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IdentifierKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FactRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FactFilterBody",
+        "description": "A fact the documents have: of `kind`, with `value` (as written; it needs its kind), in\n`role`; what is null is any."
+      },
+      "FactOrigin": {
+        "type": "string",
+        "enum": [
+          "pattern",
+          "code",
+          "model",
+          "person"
+        ],
+        "title": "FactOrigin",
+        "description": "Where a fact comes from; one fact may come from several sources."
+      },
+      "FactRole": {
+        "type": "string",
+        "enum": [
+          "contact",
+          "target",
+          "own",
+          "thread",
+          "refers",
+          "person"
+        ],
+        "title": "FactRole",
+        "description": "What a fact is to the document that shows it (`fakten.md`, Rollen)."
+      },
+      "FactState": {
+        "type": "string",
+        "enum": [
+          "found",
+          "added",
+          "corrected",
+          "rejected"
+        ],
+        "title": "FactState",
+        "description": "Whether a source found the fact as it is, or a person decided it."
+      },
       "FactsOut": {
         "properties": {
           "contact_id": {
@@ -22021,6 +23885,28 @@
             "title": "Codes",
             "description": "The codes on the pages; null while they are not read (`read-codes`)."
           },
+          "numbers": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentNumberOut"
+            },
+            "type": "array",
+            "title": "Numbers",
+            "description": "The document's numbers that are no contact's or person's identifier, as the text reads: as the facts signal kept them (empty until it ran again after 0.7), with a person's decisions, those rejected too."
+          },
+          "decided": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentNumberOut"
+            },
+            "type": "array",
+            "title": "Decided",
+            "description": "The kept facts of the other kinds that `identifiers` does not show: for admins all of them (a person's numbers, those only the language model read), for others those a person decided (one added, a corrected value, one rejected the text does not show), none of a person's."
+          },
+          "editable": {
+            "type": "boolean",
+            "title": "Editable",
+            "description": "Whether the caller decides about the facts: an editor of the space or an admin (`POST /documents/{id}/facts/decisions`).",
+            "default": false
+          },
           "persons": {
             "anyOf": [
               {
@@ -22054,8 +23940,12 @@
                 "in_code": false,
                 "in_text": true,
                 "kind": "customer_number",
+                "origins": [
+                  "pattern"
+                ],
                 "other_contact_ids": [],
                 "other_contacts": 0,
+                "role": "contact",
                 "spans": [
                   {
                     "end": 421,
@@ -22889,6 +24779,29 @@
             "title": "Spans",
             "description": "Where it stands in the text."
           },
+          "role": {
+            "$ref": "#/components/schemas/FactRole",
+            "description": "What it is to the document (`contact`: points to the contact, `target`: to what a series refers to, `own`: marks the document, `thread`: joins a strand, `refers`: refers to another document, `person`: points to a person). As kept for the document; until the facts signal ran again after 0.7, the role of its kind."
+          },
+          "origins": {
+            "items": {
+              "$ref": "#/components/schemas/FactOrigin"
+            },
+            "type": "array",
+            "title": "Origins",
+            "description": "Where it comes from: `pattern` (the text), `code`, `model`, `person`."
+          },
+          "state": {
+            "$ref": "#/components/schemas/FactState",
+            "description": "`found` as the sources found it, or a person's decision: `added`, `corrected`, `rejected` (it is no fact of the document).",
+            "default": "found"
+          },
+          "kept": {
+            "type": "boolean",
+            "title": "Kept",
+            "description": "Whether the document keeps it as a fact (a person decides about it); not before the facts signal ran.",
+            "default": false
+          },
           "other_contacts": {
             "anyOf": [
               {
@@ -22926,6 +24839,8 @@
           "in_text",
           "in_code",
           "spans",
+          "role",
+          "origins",
           "other_contacts"
         ],
         "title": "FoundIdentifierOut"
@@ -23255,9 +25170,30 @@
           "tax_id",
           "social_security_number",
           "health_insurance_number",
-          "email_address"
+          "email_address",
+          "creditor_id",
+          "commercial_register",
+          "tax_number",
+          "contract_number",
+          "policy_number",
+          "membership_number",
+          "meter_number",
+          "loan_number",
+          "mandate_reference",
+          "license_plate",
+          "invoice_number",
+          "credit_note_number",
+          "order_number",
+          "file_reference",
+          "our_reference",
+          "claim_number",
+          "ticket_number",
+          "your_reference",
+          "letter_date",
+          "child_benefit_number"
         ],
-        "title": "IdentifierKind"
+        "title": "IdentifierKind",
+        "description": "The kinds of identifiers, which are the kinds of facts too (`domain.document_facts`;\n`.idea/fakten.md`, the catalog by role)."
       },
       "IdentifierOut": {
         "properties": {
@@ -24037,6 +25973,16 @@
         "title": "LaneFilter",
         "description": "A lane, or `processing`: documents that have no lane yet."
       },
+      "LaneKind": {
+        "type": "string",
+        "enum": [
+          "series",
+          "branch",
+          "chain",
+          "single"
+        ],
+        "title": "LaneKind"
+      },
       "LanesOut": {
         "properties": {
           "green": {
@@ -24063,11 +26009,37 @@
         ],
         "title": "LanesOut"
       },
+      "LastDocumentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "document_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Document Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "document_date"
+        ],
+        "title": "LastDocumentOut"
+      },
       "Layout": {
         "type": "string",
         "enum": [
           "grid",
-          "list"
+          "list",
+          "stream"
         ],
         "title": "Layout"
       },
@@ -24286,6 +26258,15 @@
               }
             ],
             "description": "A period that moves with the day the lens is opened; not together with `document_date_from` or `_to`."
+          },
+          "facts": {
+            "items": {
+              "$ref": "#/components/schemas/FactFilterBody"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Facts",
+            "description": "Facts the documents have, each (`fact` of `GET /documents`)."
           }
         },
         "additionalProperties": false,
@@ -25605,12 +27586,43 @@
           "system": {
             "type": "string",
             "title": "System",
-            "description": "The system message."
+            "description": "The system message, the same for every call."
           },
           "user": {
             "type": "string",
             "title": "User",
-            "description": "The user message, with the document's text."
+            "description": "The one message of a call that sent one: a page the VLM read, the context a webhook got for a model call, a call before `propose-6`; else empty."
+          },
+          "document": {
+            "type": "string",
+            "title": "Document",
+            "description": "The document's text in its markers; else empty."
+          },
+          "task": {
+            "type": "string",
+            "title": "Task",
+            "description": "What the call wanted, after the document; else empty."
+          },
+          "retry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry",
+            "description": "After an answer that did not fit: what was wrong, sent last."
+          },
+          "request": {
+            "type": "string",
+            "enum": [
+              "",
+              "facts"
+            ],
+            "title": "Request",
+            "description": "A further request about the document (`facts`: the facts with their role); empty for the node's first request and its attempts."
           },
           "answer": {
             "type": "string",
@@ -25635,12 +27647,16 @@
         "required": [
           "system",
           "user",
+          "document",
+          "task",
+          "retry",
+          "request",
           "answer",
           "model",
           "usage"
         ],
         "title": "ModelCallOut",
-        "description": "One request to the language model and its answer."
+        "description": "One request to the language model and its answer. A call of the signal or the fields node\n(since `propose-6`, `extract-6`) sent `system`, `document`, `task` and, after an unfit\nanswer, `retry`, each a message in this order; a call of one message has it in `user`."
       },
       "ModelCallTask": {
         "properties": {
@@ -25848,6 +27864,25 @@
         ],
         "title": "NamedContactOut"
       },
+      "NamedOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "NamedOut"
+      },
       "Node": {
         "type": "string",
         "enum": [
@@ -25861,11 +27896,12 @@
           "signal_facts",
           "judge",
           "fields",
+          "relate",
           "apply_rules",
           "file"
         ],
         "title": "Node",
-        "description": "The nodes of the ingest graph, in a topological order: every node comes after the nodes\nit needs (`GRAPH`). Nodes that do not need each other run side by side.\n\nThe signals each propose metadata from one source: the language model, the trained\nclassifier, similar confirmed documents, facts in the text (names, identifiers). `judge`\ndecides from all of them, `fields` reads the fields of the decided type."
+        "description": "The nodes of the ingest graph, in a topological order: every node comes after the nodes\nit needs (`GRAPH`). Nodes that do not need each other run side by side.\n\nThe signals each propose metadata from one source: the language model, the trained\nclassifier, similar confirmed documents, facts in the text (names, identifiers). `judge`\ndecides from all of them, `fields` reads the fields of the decided type, `relate` finds the\ndocuments it refers to and those that refer to it (issue #145), before the rules see them."
       },
       "NodeReviewOut": {
         "properties": {
@@ -26727,6 +28763,20 @@
         "title": "ProposeContext",
         "description": "`signal_llm`'s request (`external.propose`): the context to propose the document's\nmetadata from. No prompt: the consumer makes its own. Lekto checks the answer as a\nlanguage model's: its structure at once (422), its values against the text and the other\nsignals; a contact turns green only with a second signal or hard evidence."
       },
+      "QueuedOut": {
+        "properties": {
+          "queued": {
+            "type": "integer",
+            "title": "Queued",
+            "description": "How many were queued now (not those queued already)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "queued"
+        ],
+        "title": "QueuedOut"
+      },
       "ReadingOut": {
         "properties": {
           "vision": {
@@ -26881,6 +28931,7 @@
           "title_yields",
           "value_empty",
           "template_missing_value",
+          "template_unreadable",
           "node_attempts_exhausted",
           "node_crashed",
           "file_not_pdf_or_image",
@@ -27056,6 +29107,23 @@
           "not_iban",
           "not_vat_id",
           "not_customer_number",
+          "not_of_kind",
+          "fact_kind_unknown",
+          "fact_not_in_text",
+          "fact_not_asked",
+          "fact_criterion_empty",
+          "rule_fact_of_person",
+          "relation_exists",
+          "relation_not_found",
+          "relation_to_itself",
+          "fact_filter_of_person",
+          "fact_of_a_person",
+          "fact_not_found",
+          "fact_exists",
+          "fact_role_missing",
+          "fact_of_person",
+          "fact_at_contact_admin",
+          "fact_not_at_contact",
           "not_personnel_number",
           "not_domain",
           "free_mail_domain",
@@ -27216,6 +29284,200 @@
         "title": "RecoveryCodes",
         "description": "Shown once; each works once instead of a TOTP code."
       },
+      "RelateIn": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document_id"
+        ],
+        "title": "RelateIn",
+        "description": "The document to relate the document with; Lekto points the relation from the newer to the\nolder.",
+        "examples": [
+          {
+            "document_id": "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b"
+          }
+        ]
+      },
+      "RelatedDocumentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "document_type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Type Id"
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "document_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "document_type_id",
+          "contact_id",
+          "document_date"
+        ],
+        "title": "RelatedDocumentOut",
+        "description": "The document at the other end of a relation, as a list shows it."
+      },
+      "RelatedOut": {
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/RelatedDocumentOut"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/RelationOrigin",
+            "description": "`person` set it, `lekto` recognised it."
+          },
+          "state": {
+            "$ref": "#/components/schemas/RelationState",
+            "description": "`set`, or `suggested` (a person decides)."
+          },
+          "evidence": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Evidence",
+            "description": "What Lekto had: `kind` of the source (`fact`, `period`, ...) and its values; empty for a person's."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At",
+            "description": "When a person last decided it."
+          },
+          "changeable": {
+            "type": "boolean",
+            "title": "Changeable",
+            "description": "Whether the caller edits the newer of the two: then they accept, reject or remove it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "document",
+          "origin",
+          "state",
+          "evidence",
+          "created_at",
+          "decided_at",
+          "changeable"
+        ],
+        "title": "RelatedOut"
+      },
+      "RelationOrigin": {
+        "type": "string",
+        "enum": [
+          "person",
+          "lekto"
+        ],
+        "title": "RelationOrigin"
+      },
+      "RelationState": {
+        "type": "string",
+        "enum": [
+          "set",
+          "suggested",
+          "rejected"
+        ],
+        "title": "RelationState"
+      },
+      "RelationsOut": {
+        "properties": {
+          "refers_to": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedOut"
+            },
+            "type": "array",
+            "title": "Refers To",
+            "description": "The older documents it refers to (bezieht sich auf), the newest first."
+          },
+          "referred_by": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedOut"
+            },
+            "type": "array",
+            "title": "Referred By",
+            "description": "The newer documents that refer to it (darauf beziehen sich)."
+          },
+          "suggested": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedOut"
+            },
+            "type": "array",
+            "title": "Suggested",
+            "description": "Relations Lekto suggests in either direction: a person accepts or rejects them."
+          },
+          "editable": {
+            "type": "boolean",
+            "title": "Editable",
+            "description": "Whether the caller edits the document: then they relate it with another (the newer of the two must be one they edit, 403 otherwise)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "refers_to",
+          "referred_by",
+          "suggested",
+          "editable"
+        ],
+        "title": "RelationsOut",
+        "description": "The relations of a document whose other end the caller reads."
+      },
       "RelativePeriod": {
         "type": "string",
         "enum": [
@@ -27291,6 +29553,7 @@
           "signal_facts",
           "judge",
           "fields",
+          "relate",
           "apply_rules",
           "file"
         ],
@@ -28413,7 +30676,7 @@
             },
             "type": "array",
             "title": "Calls",
-            "description": "One call, or two after an answer that did not fit the schema."
+            "description": "One call, or two after an answer that did not fit the schema; then those of a further request (`request`)."
           }
         },
         "type": "object",
@@ -28871,6 +31134,34 @@
         "title": "SentTask",
         "description": "A task: answer it at `callback` with `token` as `Authorization: Bearer` by `deadline`\n(`POST /api/v1/external/tasks/{id}/result`)."
       },
+      "SeriesNumberOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "Normalised, as Lekto compares it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value"
+        ],
+        "title": "SeriesNumberOut"
+      },
+      "SeriesState": {
+        "type": "string",
+        "enum": [
+          "overdue",
+          "soon",
+          "later",
+          "ended"
+        ],
+        "title": "SeriesState"
+      },
       "SessionOut": {
         "properties": {
           "user": {
@@ -28986,7 +31277,7 @@
               }
             ],
             "title": "Value",
-            "description": "As the field's type has it; for a text field a template, as a title's."
+            "description": "Text is a template for every type, as a title's: what it renders is read as the field's type has it, first in the forms templates write (`1234.5`, `2026-03-12`, `2026-Q3`, `true`), else as a person writes it (`2.111,68 €`, `12. März 2026`, `KW 38/2026`, `ja`; an ambiguous number as `LEKTO_TEMPLATE_LOCALE` means it, an amount without currency in `LEKTO_DEFAULT_CURRENCY`); text that cannot be read sets nothing (noted, the document does not wait for it). An amount, a period or yes/no as JSON is a fixed value."
           }
         },
         "additionalProperties": false,
@@ -29031,7 +31322,7 @@
             "type": "string",
             "maxLength": 500,
             "title": "Template",
-            "description": "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md",
+            "description": "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like), and the facts: `facts.<kind>` (the document's own value of the kind, as written), `facts.refers.<kind>` (one it refers to), `facts.girocode` (`name`, `iban`, `bic`, `amount`, `purpose`) and `fact_list` (each with `kind`, `value`, `written`, `role`, `origin`); none a person rejected, none of a person's. Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md",
             "examples": [
               "{{ contact }} {{ document_type }} {{ document_date | date: '%Y-%m' }}"
             ]
@@ -29569,6 +31860,224 @@
         ],
         "title": "StoredFileOut"
       },
+      "StreamDocumentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "document_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Date"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "document_type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Type Id"
+          },
+          "lane": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lane"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "document_date",
+          "created_at",
+          "contact_id",
+          "document_type_id",
+          "lane"
+        ],
+        "title": "StreamDocumentOut",
+        "description": "A document as the stream shows it."
+      },
+      "StreamLaneOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/LaneKind",
+            "description": "`series`; `branch` (documents that refer to one of a series or to its target, with the chain of theirs); `chain` (documents related only among themselves); `single` (documents without series and relation)."
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/StreamDocumentOut"
+            },
+            "type": "array",
+            "title": "Documents",
+            "description": "Oldest first."
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id",
+            "description": "Of a series."
+          },
+          "document_type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Type Id",
+            "description": "Of a series."
+          },
+          "number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number",
+            "description": "The contract or customer number a series follows."
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StreamDocumentOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The relation target at the start of a series (the contract); one may stand at the start of several."
+          },
+          "expected": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpectedNextOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of a series that has not ended: the document it expects next."
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent",
+            "description": "Of a branch: the index of its series lane."
+          },
+          "joins": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joins",
+            "description": "Of a branch: the document of the series (or its target) it refers to."
+          },
+          "folded": {
+            "type": "boolean",
+            "title": "Folded",
+            "description": "Beyond 24 lanes of series and chains, the rest (with their branches): shown on demand."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "documents",
+          "contact_id",
+          "document_type_id",
+          "number",
+          "target",
+          "expected",
+          "parent",
+          "joins",
+          "folded"
+        ],
+        "title": "StreamLaneOut"
+      },
+      "StreamOut": {
+        "properties": {
+          "lanes": {
+            "items": {
+              "$ref": "#/components/schemas/StreamLaneOut"
+            },
+            "type": "array",
+            "title": "Lanes"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "More documents than a stream shows (500, the newest): a narrower filter shows it whole."
+          }
+        },
+        "type": "object",
+        "required": [
+          "lanes",
+          "truncated"
+        ],
+        "title": "StreamOut"
+      },
       "Strength": {
         "type": "string",
         "enum": [
@@ -29942,7 +32451,7 @@
             "type": "string",
             "maxLength": 10000,
             "title": "Template",
-            "description": "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md At most 500 characters, a webhook's body 10000."
+            "description": "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like), and the facts: `facts.<kind>` (the document's own value of the kind, as written), `facts.refers.<kind>` (one it refers to), `facts.girocode` (`name`, `iban`, `bic`, `amount`, `purpose`) and `fact_list` (each with `kind`, `value`, `written`, `role`, `origin`); none a person rejected, none of a person's. Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md At most 500 characters, a webhook's body 10000."
           },
           "document_id": {
             "anyOf": [
@@ -29979,6 +32488,19 @@
             ],
             "title": "Document Type Id",
             "description": "The type whose fields the template may use (a title pattern's); else the document's type, else every field."
+          },
+          "field_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field Id",
+            "description": "The field a rule's action sets with the template: what it renders is read as the field's type has it (`read`, `unreadable`); also without a document if the template uses no value."
           }
         },
         "additionalProperties": false,
@@ -30060,6 +32582,38 @@
                 "field.la_brutto": "3.650,00 EUR"
               }
             ]
+          },
+          "read": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MoneyValue"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PeriodValue"
+                  }
+                ],
+                "description": "By data type: text, choice and link: string; number: decimal as string; date: `YYYY-MM-DD`; boolean: true/false; amount: `{amount, currency}`; period: `{start, end}` as `YYYY-MM-DD`, both days included."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read",
+            "description": "With `field_id`: the value the rendered text gives the field, in its JSON form; None if nothing was rendered or it cannot be read."
+          },
+          "unreadable": {
+            "type": "boolean",
+            "title": "Unreadable",
+            "description": "With `field_id`: the rendered text cannot be read as the field's type has it, so the action would set nothing.",
+            "default": false
           }
         },
         "type": "object",
@@ -31797,6 +34351,10 @@
     "template_missing_value": {
       "path": "text"
     },
+    "template_unreadable": {
+      "value": "text",
+      "type": "field_type"
+    },
     "node_attempts_exhausted": {
       "attempts": "number"
     },
@@ -32192,6 +34750,41 @@
     "not_customer_number": {
       "value": "text"
     },
+    "not_of_kind": {
+      "value": "text",
+      "kind": "identifier_kind"
+    },
+    "fact_kind_unknown": {
+      "kind": "text"
+    },
+    "fact_not_in_text": {
+      "value": "text"
+    },
+    "fact_not_asked": {
+      "kind": "text",
+      "role": "text"
+    },
+    "fact_criterion_empty": {},
+    "rule_fact_of_person": {},
+    "relation_exists": {},
+    "relation_not_found": {},
+    "relation_to_itself": {},
+    "fact_filter_of_person": {},
+    "fact_of_a_person": {},
+    "fact_not_found": {
+      "kind": "identifier_kind",
+      "value": "text"
+    },
+    "fact_exists": {
+      "kind": "identifier_kind",
+      "value": "text"
+    },
+    "fact_role_missing": {},
+    "fact_of_person": {},
+    "fact_at_contact_admin": {},
+    "fact_not_at_contact": {
+      "kind": "identifier_kind"
+    },
     "not_personnel_number": {
       "value": "text"
     },
@@ -32413,6 +35006,137 @@
       "contact": false,
       "person": true,
       "names_user": false
+    },
+    "creditor_id": {
+      "contact": true,
+      "person": false,
+      "names_user": false
+    },
+    "commercial_register": {
+      "contact": true,
+      "person": false,
+      "names_user": false
+    },
+    "tax_number": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "contract_number": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "policy_number": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "membership_number": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "meter_number": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "loan_number": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "mandate_reference": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "license_plate": {
+      "contact": true,
+      "person": false,
+      "names_user": true
+    },
+    "invoice_number": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "credit_note_number": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "order_number": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "file_reference": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "our_reference": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "claim_number": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "ticket_number": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "your_reference": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "letter_date": {
+      "contact": false,
+      "person": false,
+      "names_user": false
+    },
+    "child_benefit_number": {
+      "contact": false,
+      "person": true,
+      "names_user": false
     }
+  },
+  "x-fact-roles": {
+    "iban": "contact",
+    "vat_id": "contact",
+    "customer_number": "contact",
+    "personnel_number": "contact",
+    "email_domain": "contact",
+    "tax_id": "person",
+    "social_security_number": "person",
+    "health_insurance_number": "person",
+    "email_address": "person",
+    "creditor_id": "contact",
+    "commercial_register": "contact",
+    "tax_number": "contact",
+    "contract_number": "target",
+    "policy_number": "target",
+    "membership_number": "target",
+    "meter_number": "target",
+    "loan_number": "target",
+    "mandate_reference": "target",
+    "license_plate": "target",
+    "invoice_number": "own",
+    "credit_note_number": "own",
+    "order_number": "own",
+    "file_reference": "thread",
+    "our_reference": "thread",
+    "claim_number": "thread",
+    "ticket_number": "thread",
+    "your_reference": "refers",
+    "letter_date": "refers",
+    "child_benefit_number": "person"
   }
 }

@@ -1,9 +1,9 @@
 <script lang="ts">
 	import Plus from '@lucide/svelte/icons/plus';
-	import X from '@lucide/svelte/icons/x';
 	import { tick } from 'svelte';
 	import { addChips } from '#lib/chips.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import Chip from '#lib/components/Chip.svelte';
 
 	// Values as chips in a field (a contact's other spellings; Tobi, 20.10.2026): each with its
 	// ✕, then a dashed chip that turns into a small input. Enter adds what was typed and stays for
@@ -69,19 +69,10 @@
 	class="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-input bg-card p-2 dark:bg-input/30"
 >
 	{#each values as value, index (index)}
-		<span
-			class="inline-flex h-8 max-w-full items-center gap-1 rounded-full bg-secondary pr-1 pl-3 text-sm"
+		<Chip
+			removeLabel={m.alias_remove({ name: value })}
+			onremove={() => (values = values.filter((_, other) => other !== index))}>{value}</Chip
 		>
-			<span class="truncate">{value}</span>
-			<button
-				type="button"
-				class="grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-background hover:text-foreground"
-				aria-label={m.alias_remove({ name: value })}
-				onclick={() => (values = values.filter((_, other) => other !== index))}
-			>
-				<X class="size-3.5" aria-hidden="true" />
-			</button>
-		</span>
 	{/each}
 	{#if adding}
 		<input
@@ -99,13 +90,9 @@
 			}}
 		/>
 	{:else}
-		<button
-			type="button"
-			class="inline-flex h-8 items-center gap-1.5 rounded-full border border-dashed border-muted-foreground/50 px-3 text-sm text-brand transition-colors hover:bg-secondary max-sm:h-11"
-			onclick={start}
-		>
-			<Plus class="size-4" aria-hidden="true" />
+		<Chip variant="add" onclick={start}>
+			{#snippet icon()}<Plus class="size-4 shrink-0" aria-hidden="true" />{/snippet}
 			{addLabel}
-		</button>
+		</Chip>
 	{/if}
 </div>

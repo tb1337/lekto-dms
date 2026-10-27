@@ -7,6 +7,7 @@
  */
 import type { components } from '#lib/api/schema.ts';
 import { isMoney, isPeriod } from '#lib/fields.ts';
+import { readPeriod, writePeriod } from '#lib/periods.ts';
 
 type Schemas = components['schemas'];
 
@@ -40,6 +41,10 @@ export interface ConditionNode {
 	caseSensitive: boolean;
 	/** A condition on what a step brought: `<step>.<key>…`; null for other fields. */
 	path: string | null;
+	/** A condition on the document's facts (#145): their kind, and their role (null: any);
+	 * null for other fields. */
+	factKind: string | null;
+	factRole: string | null;
 }
 
 export interface GroupNode {
@@ -58,7 +63,15 @@ export interface ConditionStepNode {
 	conditions: GroupNode;
 }
 export type ActionNode =
-	(Exclude<ApiAction, { type: 'condition' }> & { key: string }) | ConditionStepNode;
+	| (Exclude<ApiAction, { type: 'condition' | 'set_field' }> & { key: string })
+	| SetFieldNode
+	| ConditionStepNode;
+/** Setting a field: `templated` says whether the value is edited as a template or as a fixed
+ * value (the builder's own, not sent; unset: `isTemplated` decides from the value). */
+export type SetFieldNode = Extract<ApiAction, { type: 'set_field' }> & {
+	key: string;
+	templated?: boolean;
+};
 
 export interface RuleModel {
 	name: string;
@@ -101,7 +114,9 @@ export const CONDITION_FIELDS: readonly ConditionField[] = [
 	'channel',
 	'text',
 	'document_date',
-	'field'
+	'field',
+	'fact',
+	'relation'
 ];
 export const STEP_CONDITION_FIELDS: readonly ConditionField[] = ['step', ...CONDITION_FIELDS];
 
@@ -144,7 +159,9 @@ export const CONDITION_FIELD_OPERATORS: Record<
 	channel: ['is', 'in'],
 	text: ['contains', 'matches'],
 	document_date: ORDERED,
-	step: ['is', 'in', 'contains', 'gt', 'lt', 'present', 'missing']
+	step: ['is', 'in', 'contains', 'gt', 'lt', 'present', 'missing'],
+	fact: ['present', 'missing', 'is', 'in', 'matches'],
+	relation: ['present', 'missing', 'is', 'in']
 };
 
 export const FIELD_TYPE_OPERATORS: Record<FieldType, readonly Operator[]> = {
@@ -223,7 +240,9 @@ function conditionFromApi(condition: ApiCondition): ConditionNode {
 		value: clone(condition.value ?? null),
 		fieldId: condition.field_id ?? null,
 		caseSensitive: condition.case_sensitive ?? false,
-		path: condition.path ?? null
+		path: condition.path ?? null,
+		factKind: condition.fact_kind ?? null,
+		factRole: condition.fact_role ?? null
 	};
 }
 
@@ -254,15 +273,22 @@ function conditionToApi(condition: ConditionNode): ApiCondition {
 		value: clone(condition.value),
 		field_id: condition.fieldId,
 		case_sensitive: condition.caseSensitive,
-		...(condition.path === null ? {} : { path: condition.path })
+		...(condition.path === null ? {} : { path: condition.path }),
+		...(condition.field === 'fact'
+			? {
+					fact_kind: condition.factKind as ApiCondition['fact_kind'],
+					fact_role: (condition.factRole ?? null) as ApiCondition['fact_role']
+				}
+			: {})
 	};
 }
 
 function actionToApi(node: ActionNode): ApiAction {
 	if (node.type === 'condition')
 		return { type: 'condition', conditions: groupToApi(node.conditions) };
-	const action = clone(node) as Partial<ActionNode>;
+	const action = clone(node) as Partial<ActionNode> & { templated?: boolean };
 	delete action.key;
+	delete action.templated;
 	const plain = action as ApiAction;
 	if (plain.type === 'add_tags' || plain.type === 'remove_tags') {
 		return { ...plain, tag_ids: [...plain.tag_ids].sort() };
@@ -302,7 +328,9 @@ export function newCondition(field: ConditionField = 'contact'): ConditionNode {
 		value: defaultValue(field, op, null),
 		fieldId: null,
 		caseSensitive: false,
-		path: field === 'step' ? '' : null
+		path: field === 'step' ? '' : null,
+		factKind: field === 'fact' ? 'invoice_number' : null,
+		factRole: null
 	};
 }
 
@@ -386,6 +414,8 @@ export function changeConditionField(
 	condition.fieldId = null;
 	condition.caseSensitive = false;
 	condition.path = field === 'step' ? '' : null;
+	condition.factKind = field === 'fact' ? 'invoice_number' : null;
+	condition.factRole = null;
 	condition.op = operatorsFor(condition, fields)[0];
 	condition.value = defaultValue(field, condition.op, null);
 }
@@ -515,6 +545,7 @@ export function referencedIds(node: ConditionNode | ActionNode): string[] {
 		if (
 			node.field === 'contact' ||
 			node.field === 'document_type' ||
+			node.field === 'relation' ||
 			node.field === 'topic' ||
 			isTagField(node.field)
 		) {
@@ -665,6 +696,7 @@ function checkCondition(
 		if (!steps.includes(path.split('.')[0])) return { code: 'step_unknown' };
 	}
 	if (condition.field === 'field' && !condition.fieldId) return { code: 'field' };
+	if (condition.field === 'fact' && !condition.factKind) return { code: 'choose' };
 	const field = fields.find((entry) => entry.id === condition.fieldId) ?? null;
 	if (field && !FIELD_TYPE_OPERATORS[field.data_type].includes(condition.op)) {
 		return { code: 'operator' };
@@ -688,12 +720,17 @@ function checkValue(
 ): Problem | null {
 	const textual = condition.op === 'contains' || condition.op === 'matches';
 	if (condition.field === 'step') return checkStepValue(condition.op, value);
-	if (condition.field === 'text' || (condition.field === 'field' && textual)) {
+	if (
+		condition.field === 'text' ||
+		(condition.field === 'field' && textual) ||
+		condition.field === 'fact'
+	) {
 		return checkText(value, condition.op === 'matches' ? LIMITS.pattern : LIMITS.text);
 	}
 	switch (condition.field) {
 		case 'contact':
 		case 'document_type':
+		case 'relation':
 		case 'topic':
 		case 'tags':
 		case 'contact_group':
@@ -752,6 +789,71 @@ function checkFieldValue(field: FieldInfo, value: Value): Problem | null {
 	}
 }
 
+// --- a field's value as a template ---------------------------------------------------------
+
+/** Where Liquid begins an output or a tag. */
+const MARKUP = /\{[{%]/;
+
+/**
+ * Whether an action's value for `field` is shown as a template: always for a text field; for
+ * the other types, text that is not a fixed value in the field's JSON form (an amount, a
+ * period and yes or no are fixed as JSON, a number and a date as their text, a choice as one of
+ * its options or text without markup, a link as text without markup). An empty value is a
+ * fixed one not given yet. The API takes text as a template for every type (a choice's option
+ * as it is) and reads what it writes; the builder decides once, when it shows the action
+ * (`SetFieldNode.templated`).
+ */
+export function isTemplated(field: FieldInfo | null, value: Value): boolean {
+	if (typeof value !== 'string') return false;
+	if (field?.data_type === 'text') return true;
+	if (value === '') return false;
+	switch (field?.data_type) {
+		case 'boolean':
+		case 'amount':
+		case 'period':
+			return true;
+		case 'number':
+			return !isNumber(value);
+		case 'date':
+			return !isDate(value);
+		case 'choice':
+			return !field.choices.includes(value) && MARKUP.test(value);
+		default:
+			return MARKUP.test(value);
+	}
+}
+
+/** A fixed value as the text a template starts from: an amount with its currency, a period in
+ * ISO 8601, yes or no as `true` or `false`. */
+export function asTemplate(value: Value): string {
+	if (typeof value === 'string') return value;
+	if (typeof value === 'boolean' || typeof value === 'number') return String(value);
+	if (isMoney(value)) return value.amount === '' ? '' : `${value.amount} ${value.currency}`;
+	if (isPeriod(value)) return writePeriod(value.start, value.end);
+	return '';
+}
+
+/** A template's text as a fixed value of `field`, where it is one (`12.50 EUR` an amount, a
+ * date as `YYYY-MM-DD`); otherwise the field's empty value. */
+export function asFixed(field: FieldInfo, value: Value): Value {
+	const text = typeof value === 'string' ? value.trim() : '';
+	const empty = defaultValue('field', 'is', field);
+	switch (field.data_type) {
+		case 'amount': {
+			const found = /^(-?\d+(?:\.\d+)?) ?([A-Z]{3})$/.exec(text);
+			return found ? { amount: found[1], currency: found[2] } : empty;
+		}
+		case 'boolean':
+			return text === 'false' ? false : empty;
+		case 'period':
+			return readPeriod(text) ?? empty;
+		case 'text':
+			return text;
+		default:
+			return isTemplated(field, text) ? empty : text;
+	}
+}
+
 /** What the API reads as a finite decimal (Python's `Decimal`: exponent, `_` between digits). */
 function isNumber(value: Value): boolean {
 	if (typeof value === 'number') return Number.isFinite(value);
@@ -787,7 +889,10 @@ function checkAction(action: ActionNode, fields: readonly FieldInfo[]): Problem 
 		case 'set_field': {
 			if (!action.field_id) return { code: 'field' };
 			const field = fields.find((entry) => entry.id === action.field_id);
-			return field ? checkFieldValue(field, action.value) : null;
+			if (!field) return null;
+			return (action.templated ?? isTemplated(field, action.value))
+				? checkText(action.value, LIMITS.text)
+				: checkFieldValue(field, action.value);
 		}
 		case 'force_review':
 			return checkText(action.reason, LIMITS.text);

@@ -16,7 +16,103 @@ export type CodeFacts = components['schemas']['CodeOut'];
 export type CodePlace = components['schemas']['CodePlaceOut'];
 export type Span = components['schemas']['SpanOut'];
 export type FoundPerson = components['schemas']['FoundPersonOut'];
+export type DocumentNumber = components['schemas']['DocumentNumberOut'];
 export type Strength = FoundPerson['strength'];
+export type FactRole = components['schemas']['FactRole'];
+export type FactState = components['schemas']['FactState'];
+export type FactOrigin = components['schemas']['FactOrigin'];
+type FactDecisionIn = components['schemas']['FactDecisionIn'];
+/** A person's decision about a fact (`POST /documents/{id}/facts/decisions`), with what the
+ * action needs only. */
+export type FactDecision = Pick<FactDecisionIn, 'action' | 'kind' | 'value'> &
+	Partial<Pick<FactDecisionIn, 'role' | 'new_value' | 'at_contact'>>;
+
+/** A fact kept for the document, as the pane shows and decides about it. */
+export interface KeptFact {
+	kind: IdentifierKind;
+	value: string;
+	written?: string | null;
+	role: FactRole;
+	origins: readonly FactOrigin[];
+	state?: FactState;
+}
+
+/** The roles a person gives a fact, in the order the forms offer them. */
+export const FACT_ROLES: readonly FactRole[] = [
+	'contact',
+	'target',
+	'own',
+	'thread',
+	'refers',
+	'person'
+];
+
+/** The role of a fact of each kind until a source tells (`x-fact-roles`): a fact added gets it
+ * unless the person chooses another. */
+export const KIND_ROLES: Record<IdentifierKind, FactRole> = {
+	iban: 'contact',
+	vat_id: 'contact',
+	customer_number: 'contact',
+	personnel_number: 'contact',
+	email_domain: 'contact',
+	tax_id: 'person',
+	social_security_number: 'person',
+	health_insurance_number: 'person',
+	email_address: 'person',
+	creditor_id: 'contact',
+	commercial_register: 'contact',
+	tax_number: 'contact',
+	contract_number: 'target',
+	policy_number: 'target',
+	membership_number: 'target',
+	meter_number: 'target',
+	loan_number: 'target',
+	mandate_reference: 'target',
+	license_plate: 'target',
+	invoice_number: 'own',
+	credit_note_number: 'own',
+	order_number: 'own',
+	file_reference: 'thread',
+	our_reference: 'thread',
+	claim_number: 'thread',
+	ticket_number: 'thread',
+	your_reference: 'refers',
+	letter_date: 'refers',
+	child_benefit_number: 'person'
+};
+
+/** Whether only a person gave the fact: withdrawing the decision removes it. */
+export function onlyByPerson(fact: KeptFact): boolean {
+	return fact.origins.every((origin) => origin === 'person');
+}
+
+/** A person's decision about a fact, in words ("rejected"); nothing for one as found. */
+export function stateLabel(state: FactState | undefined): string | null {
+	switch (state) {
+		case 'added':
+			return m.facts_state_added();
+		case 'corrected':
+			return m.facts_state_corrected();
+		case 'rejected':
+			return m.facts_state_rejected();
+		default:
+			return null;
+	}
+}
+
+const ROLE_LABELS: Record<FactRole, () => string> = {
+	contact: m.fact_role_contact,
+	target: m.fact_role_target,
+	own: m.fact_role_own,
+	thread: m.fact_role_thread,
+	refers: m.fact_role_refers,
+	person: m.fact_role_person
+};
+
+/** What a fact is to the document, in words ("points to the contact"). */
+export function roleLabel(role: FactRole): string {
+	return ROLE_LABELS[role]();
+}
 
 /** How surely the document names a person, in words. */
 export function strengthLabel(strength: Strength): string {
@@ -185,9 +281,12 @@ export function grouped(facts: Facts): {
 /** What the chip at the contact field counts. */
 export function factCounts(facts: Facts): { evidence: number; unknown: number; codes: number } {
 	const groups = grouped(facts);
+	// A fact a person rejected is none of the document's.
+	const kept = (entries: readonly (NamedContact | FoundIdentifier)[]) =>
+		entries.filter((entry) => !('state' in entry) || entry.state !== 'rejected').length;
 	return {
-		evidence: groups.own.length,
-		unknown: groups.unknown.length,
+		evidence: kept(groups.own),
+		unknown: kept(groups.unknown),
 		codes: facts.codes?.length ?? 0
 	};
 }
@@ -201,4 +300,42 @@ export function factsSummary({ evidence, unknown, codes }: ReturnType<typeof fac
 		...count(unknown, m.facts_chip_unknown_one, m.facts_chip_unknown),
 		...count(codes, m.facts_chip_codes_one, m.facts_chip_codes)
 	].join(' · ');
+}
+
+/** A fact of the documents filter (`fact` of `GET /documents`): `kind:value:role`, a part empty
+ * for any. */
+export function factFilter(
+	kind: IdentifierKind | null,
+	value: string | null,
+	role: FactRole | null
+): string {
+	return [kind ?? '', value?.trim() ?? '', role ?? ''].join(':');
+}
+
+/** The parts of a fact of the filter: the kind before the first colon, the role after the
+ * last, the value between (it may hold colons, a time of day); what is empty is null. */
+export function parseFactFilter(fact: string): {
+	kind: IdentifierKind | null;
+	value: string | null;
+	role: FactRole | null;
+} {
+	const first = fact.indexOf(':');
+	const last = fact.lastIndexOf(':');
+	const kind = first < 0 ? fact : fact.slice(0, first);
+	const value = first < 0 || last === first ? '' : fact.slice(first + 1, last);
+	const role = last > first ? fact.slice(last + 1) : '';
+	return {
+		kind: (kind || null) as IdentifierKind | null,
+		value: value || null,
+		role: (role || null) as FactRole | null
+	};
+}
+
+/** A fact of the filter in words: "Rechnungsnummer 4711 · verweist auf ein Dokument"; a kind
+ * or role this UI does not know (an old link) as written. */
+export function factFilterLabel(fact: string): string {
+	const { kind, value, role } = parseFactFilter(fact);
+	const kindText = kind ? (kind in KIND_ROLES ? kindLabel(kind) : kind) : m.filter_fact_any_kind();
+	const roleText = role ? (role in ROLE_LABELS ? roleLabel(role) : role) : null;
+	return [[kindText, value].filter(Boolean).join(' '), roleText].filter(Boolean).join(' · ');
 }

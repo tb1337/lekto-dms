@@ -7,6 +7,7 @@ from pathlib import Path
 from lekto.adapters.outbound.memory import FAKE_GIRO_CODE, FakeCodeReader, FakeOcr
 from lekto.adapters.outbound.memory.processing import FAKE_PDF
 from lekto.core.domain.codes import Code
+from lekto.core.domain.document_facts import FactOrigin, FactRole
 from lekto.core.domain.documents import Document
 from lekto.core.domain.identifiers import Identifier, IdentifierKind
 from lekto.core.domain.ids import ContactId
@@ -51,7 +52,7 @@ async def test_the_identifiers_and_the_payee_of_a_code_count(world: World) -> No
         {"contact_id": str(payee.id), "kind": "iban", "value": GIRO_IBAN, "in_code": True}
     ]
     assert result.output["codes"] == 1
-    assert result.identifiers == {(IdentifierKind.IBAN, GIRO_IBAN)}
+    assert {fact.key for fact in result.facts} == {(IdentifierKind.IBAN, GIRO_IBAN)}
 
 
 async def test_the_codes_are_read_once_and_again_with_a_new_archive(world: World) -> None:
@@ -80,7 +81,7 @@ async def test_codes_that_cannot_be_read_leave_the_facts_of_the_text(world: Worl
     document = await with_archive(world, await stored(world, await world.user(), TEXT))
     result = await facts(world, document, Broken())
     assert "codes" not in result.output
-    assert result.identifiers == {(IdentifierKind.IBAN, OWN_IBAN)}
+    assert {fact.key for fact in result.facts} == {(IdentifierKind.IBAN, OWN_IBAN)}
     assert not await world.object_store.exists(codes_key(document.id))
     # Without an archive (or a reader) there are no codes either.
     other = await stored(world, await world.user(), TEXT)
@@ -104,7 +105,7 @@ async def confirmed(world: World, contact: Contact, codes: list[Code]) -> Docume
 async def contacts_of(world: World, iban: str) -> frozenset[ContactId]:
     key = (IdentifierKind.IBAN, iban)
     async with world.uow() as uow:
-        return (await uow.document_identifiers.contacts_of([key])).get(key, frozenset())
+        return (await uow.document_facts.contacts_of([key])).get(key, frozenset())
 
 
 async def test_the_identifiers_a_document_shows_are_kept(world: World) -> None:
@@ -115,6 +116,23 @@ async def test_the_identifiers_a_document_shows_are_kept(world: World) -> None:
     # The owner's own IBAN stands on both; the GiroCode's only on the utility's.
     assert await contacts_of(world, OWN_IBAN) == {utility.id, bank.id}
     assert await contacts_of(world, GIRO_IBAN) == {utility.id}
+
+
+async def test_the_facts_keep_where_they_come_from_and_their_role(world: World) -> None:
+    """The text's IBAN by its pattern, where it stands and as written; the GiroCode's by the
+    code; both with the role of their kind; the report names both."""
+    utility = Contact.create(name="Werke", now=builders.NOW)
+    await contacts(world, utility)
+    document = await confirmed(world, utility, [FAKE_GIRO_CODE])
+    async with world.uow() as uow:
+        kept = {fact.value: fact for fact in await uow.document_facts.of_document(document.id)}
+    own, giro = kept[OWN_IBAN], kept[GIRO_IBAN]
+    assert (own.origins, own.role) == (frozenset({FactOrigin.PATTERN}), FactRole.CONTACT)
+    assert own.position is not None and own.written is not None
+    assert TEXT[own.position :].startswith(own.written)
+    assert (giro.origins, giro.position) == (frozenset({FactOrigin.CODE}), None)
+    report = await world.documents.facts((await world.user(role=Role.ADMIN)).id, document.id)
+    assert report.stored[(IdentifierKind.IBAN, GIRO_IBAN)].origins == {FactOrigin.CODE}
 
 
 async def test_admins_learn_which_other_contacts_show_an_identifier(world: World) -> None:
@@ -153,3 +171,25 @@ async def test_read_codes_reads_the_facts_of_documents_from_before(world: World)
     async with world.uow() as uow:
         log = await uow.processing_log.list_for(document.id)
     assert all(entry.node is not Node.SIGNAL_FACTS for entry in log)
+
+
+async def test_the_report_lists_the_document_s_numbers(world: World) -> None:
+    """Its own invoice number and the one of the invoice a reminder refers to, as the text
+    reads, with where they stand; a customer number stays among the identifiers."""
+    owner = await world.user()
+    text = (
+        "Mahnung\nRechnungsnummer: M-77\nIhre Rechnung Nr. 4711 ist offen.\nKundennummer 20047718\n"
+    )
+    document = await stored(world, owner, text)
+    result = await facts(world, document, FakeCodeReader([]))
+    async with world.uow() as uow:
+        await result.apply(uow, await uow.documents.get(document.id), builders.NOW)
+        await uow.commit()
+    report = await world.documents.facts(owner.id, document.id)
+    numbers = [(item.fact.kind, item.fact.value, item.fact.role) for item in report.numbers]
+    assert numbers == [
+        (IdentifierKind.INVOICE_NUMBER, "M77", FactRole.OWN),
+        (IdentifierKind.INVOICE_NUMBER, "4711", FactRole.REFERS),
+    ]
+    assert text[report.numbers[1].spans[0].start : report.numbers[1].spans[0].end] == "4711"
+    assert [item.kind for item in report.facts.identifiers] == [IdentifierKind.CUSTOMER_NUMBER]

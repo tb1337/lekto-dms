@@ -5,7 +5,7 @@ Lekto writes some texts from the values of a document. These texts are templates
 
 - a document type's title pattern;
 - the title a rule sets;
-- the value of a text field a rule sets;
+- the value of a field a rule sets, of any type (see [Setting a field](#setting-a-field));
 - the reason of a forced review;
 - the body of a webhook with the body `template` (it has to make JSON; see
   [Webhook bodies](#webhook-bodies)).
@@ -70,6 +70,29 @@ is `faellig_am`. The field management and the template editor show each field's 
 Renaming a field rewrites the templates that use it. A field that a template uses cannot be
 deleted.
 
+## Facts
+
+The numbers and references a document shows (its facts: invoice number, customer number, the
+invoice a reminder refers to, ...) are no fields, but a template sees them, so a rule can put
+one into a field:
+
+| Value | Writes |
+| --- | --- |
+| `facts.<kind>` | the document's own value of the kind, the first as the text reads, as the text writes it: `{{ facts.invoice_number }}` |
+| `facts.refers.<kind>` | the first value of the kind that refers to another document: `Mahnung zu Rechnung {{ facts.refers.invoice_number }}` |
+| `facts.girocode.<part>` | the first GiroCode on the pages: `amount` (an amount), `iban`, `name`, `bic`, `purpose` |
+| `fact_list` | every fact, each with `kind`, `value` (normalised, as Lekto compares it), `written` (as the text writes it), `role` and `origin` (`person`, `model`, `pattern` or `code`): `{{ fact_list \| where: "kind", "iban" \| map: "value" \| join: ", " }}` |
+
+The kinds are fixed in the code and English (`invoice_number`, `customer_number`,
+`contract_number`, `letter_date`, ...); the template editor offers them with their names. A
+fact a person rejected is missing, one they corrected gives their value as they wrote it; a
+person's decision runs the change rules, so a field a rule fills from a fact follows it. A
+person's numbers (tax ID, social security number, ..., and any a person marked as a person's)
+are not among them. A value stands on one line, as written: a line break in it is a blank, a
+soft hyphen is gone. Without the fact, writing it is a missing value: the action sets nothing
+(noted, not yellow). Saving checks the paths: `facts.invoice_numbr` or `facts.tax_id` is an
+unknown value.
+
 ## Filters
 
 All of [Liquid's standard filters](https://shopify.github.io/liquid/filters/) work, among them:
@@ -120,6 +143,44 @@ A value that is missing tests as false in `{% if %}`, and `default` takes its pl
 
 When a template is saved, Lekto checks it: Liquid syntax, known filters, and known values
 (`unknown value field.brutto` if no field has that key).
+
+## Setting a field
+
+A rule sets a field of any type with a template. What the template writes is read as the
+field's type has it, the way Lekto reads a value a document shows:
+
+1. First the forms templates write themselves: a number as its decimal text (`1234.5`, `.5`;
+   `1.234` is one point two three four), a day in ISO 8601 (`2026-03-14`), a period as above
+   (`2026-Q3`, `2026-W38`, `2026-09-01/2026-09-14`; `2026-Q5` is none), yes or no as `true` or
+   `false`, an amount as a number with a currency code (ISO 4217) before or after it, or without
+   one.
+2. Otherwise as a person writes it: `2.111,68 €`, `3.650,00 EUR`, `14. März 2026`, `14.03.26`,
+   `KW 38/2026`, `September 2026`, `ja`, `nein`. A number that reads two ways (`1.234`)
+   counts as the language of `LEKTO_TEMPLATE_LOCALE` means it; an amount without a currency
+   is in `LEKTO_DEFAULT_CURRENCY`; a two-digit year is the reading nearest to the day the
+   document came in.
+
+| Type | Template | The field gets |
+| --- | --- | --- |
+| Amount | `{{ field.la_brutto }}` | `5914.00 EUR` |
+| Amount | `{{ steps.accounting.total }} {{ steps.accounting.currency }}` | `84.20 EUR` |
+| Date | `{{ document_date }}` | `2026-03-14` |
+| Number | `{{ field.stunden \| times: 2 }}` (37,5 hours) | `75.0` |
+| Yes/no | `{% if tags contains 'Bezahlt' %}ja{% else %}nein{% endif %}` | yes |
+| Choice | `{{ steps.crm.status }}` | `offen`, if it is one of the options |
+| Period | `{{ field.leistungszeitraum }}` | `2026-06` |
+
+What cannot be read sets nothing, like a missing value: the action is skipped with the note
+"'later' cannot be read as a date", and the document does not wait for a person because of it.
+A number or an amount is only the value, without words but a currency's: `7 Stück` is no
+number, `Fällig in 14 Tagen` no amount (`{{ x | remove: ' Stück' }}` takes the word out). A
+period without a year (`September`) is not read: a rule does not guess the year. A choice
+must be one of the field's options as written; an option is a fixed value even where it holds
+braces. Text without `{{` or `{%` writes itself and is
+read when the rule is saved: `12,50 €` is a fixed amount, `zwölf` is refused. The template
+editor shows what the field gets from the document you chose. In the rule builder a field
+that is not text has a fixed value or a template; an amount, a period or yes/no given as JSON
+over the API stays a fixed value.
 
 ## Examples
 

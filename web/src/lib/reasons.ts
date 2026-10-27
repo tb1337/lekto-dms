@@ -6,6 +6,8 @@
  */
 import type { components } from '#lib/api/schema.ts';
 import { fieldLabel } from '#lib/describe.ts';
+import { fieldTypeLabel, isFieldType } from '#lib/fields.ts';
+import { labelOfKind } from '#lib/identifiers.ts';
 import { formatDate, formatNumber, formatPercent, getLocale, regionalLocale } from '#lib/i18n.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { NODE_LABELS } from '#lib/node-labels.ts';
@@ -29,7 +31,9 @@ export type ReasonKind =
 	| 'list'
 	| 'nodes'
 	| 'thing'
-	| 'action';
+	| 'action'
+	| 'field_type'
+	| 'identifier_kind';
 
 /** A message of `#lib/paraglide/messages.js`, whatever it takes. */
 type Message = (inputs: never) => string;
@@ -154,6 +158,7 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	title_yields: entry(m.reason_title_yields),
 	value_empty: entry(m.reason_value_empty),
 	template_missing_value: entry(m.reason_template_missing_value),
+	template_unreadable: entry(m.reason_template_unreadable, { type: 'field_type' }),
 	node_attempts_exhausted: entry(m.reason_node_attempts_exhausted, { attempts: 'number' }),
 	node_crashed: entry(m.reason_node_crashed),
 	file_not_pdf_or_image: entry(m.reason_file_not_pdf_or_image),
@@ -332,6 +337,23 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	not_iban: entry(m.reason_not_iban),
 	not_vat_id: entry(m.reason_not_vat_id),
 	not_customer_number: entry(m.reason_not_customer_number),
+	not_of_kind: entry(m.reason_not_of_kind, { kind: 'identifier_kind' }),
+	fact_kind_unknown: entry(m.reason_fact_kind_unknown),
+	fact_not_in_text: entry(m.reason_fact_not_in_text),
+	relation_exists: entry(m.reason_relation_exists),
+	relation_not_found: entry(m.reason_relation_not_found),
+	relation_to_itself: entry(m.reason_relation_to_itself),
+	fact_criterion_empty: entry(m.reason_fact_criterion_empty),
+	fact_filter_of_person: entry(m.reason_fact_filter_of_person),
+	rule_fact_of_person: entry(m.reason_rule_fact_of_person),
+	fact_not_asked: entry(m.reason_fact_not_asked),
+	fact_of_a_person: entry(m.reason_fact_of_a_person),
+	fact_not_found: entry(m.reason_fact_not_found, { kind: 'identifier_kind' }),
+	fact_exists: entry(m.reason_fact_exists, { kind: 'identifier_kind' }),
+	fact_role_missing: entry(m.reason_fact_role_missing),
+	fact_of_person: entry(m.reason_fact_of_person),
+	fact_at_contact_admin: entry(m.reason_fact_at_contact_admin),
+	fact_not_at_contact: entry(m.reason_fact_not_at_contact, { kind: 'identifier_kind' }),
 	not_personnel_number: entry(m.reason_not_personnel_number),
 	not_domain: entry(m.reason_not_domain),
 	free_mail_domain: entry(m.reason_free_mail_domain),
@@ -550,6 +572,10 @@ function write(value: unknown, kind: ReasonKind | undefined, options: ReasonOpti
 			return own(THINGS, String(value))?.() ?? String(value);
 		case 'action':
 			return own(ACTIONS, String(value))?.() ?? String(value);
+		case 'field_type':
+			return isFieldType(value) ? fieldTypeLabel(value) : String(value);
+		case 'identifier_kind':
+			return labelOfKind(String(value));
 		case 'nodes':
 			return new Intl.ListFormat(listLocale(), { type: 'conjunction' }).format(
 				items(value).map((node) => {

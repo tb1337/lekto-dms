@@ -1,7 +1,16 @@
-// The names of the jobs' kinds and states and the line that says where a job stands.
+// The names of the jobs' kinds and states and what the table says of a job.
 import { afterEach, describe, expect, it } from 'vitest';
 import { getLocale, setLocale } from '#lib/paraglide/runtime.js';
-import { countOf, jobTiming, kindLabel, totals, workersStill, type Job } from './jobs.ts';
+import {
+	countOf,
+	jobDue,
+	jobRun,
+	jobWait,
+	kindLabel,
+	totals,
+	workersStill,
+	type Job
+} from './jobs.ts';
 
 const before = getLocale();
 afterEach(() => setLocale(before, { reload: false }));
@@ -50,22 +59,35 @@ describe('the jobs', () => {
 		});
 	});
 
-	it('say how long one runs or waits, when it is due and when it ended', () => {
+	it('say when one is due, how long it waited and how long it ran', () => {
 		setLocale('de', { reload: false });
 		const running = job({ state: 'running', attempts: 1, started_at: '2026-10-24T11:59:46Z' });
-		expect(jobTiming(running, NOW)).toBe('seit 14s · Versuch 1');
-		expect(jobTiming(job({}), NOW)).toBe('wartet seit 6m\u00a00s');
+		expect(jobDue(running, NOW)).toMatch(/11:54|13:54/); // the time it fell due, in the zone
+		expect(jobWait(running, NOW)).toBe('5m\u00a046s');
+		expect(jobRun(running, NOW)).toBe('bisher 14s');
+		expect(jobDue(job({}), NOW)).toBe('seit 6m\u00a00s');
+		expect(jobWait(job({}), NOW)).toBe('bisher 6m\u00a00s');
+		expect(jobRun(job({}), NOW)).toBe('–');
 		const retry = job({ state: 'planned', attempts: 1, run_at: '2026-10-24T12:00:25Z' });
-		expect(jobTiming(retry, NOW)).toBe('Versuch 2 in 25s');
+		expect(jobDue(retry, NOW)).toBe('in 25s · 2. Versuch');
+		expect(jobWait(retry, NOW)).toBe('–');
 		const later = job({ state: 'planned', run_at: '2026-10-24T13:00:00Z' });
-		expect(jobTiming(later, NOW)).toBe('fällig in 1h\u00a00m');
-		const failed = job({ state: 'failed', attempts: 3, finished_at: '2026-10-24T09:12:00Z' });
-		expect(jobTiming(failed, NOW)).toMatch(/^nach 3 Versuchen · /);
-		const once = job({ state: 'failed', attempts: 1, finished_at: '2026-10-24T09:12:00Z' });
-		expect(jobTiming(once, NOW)).toMatch(/^nach 1 Versuch · /);
-		expect(jobTiming(job({ state: 'done', finished_at: '2026-10-24T09:12:00Z' }), NOW)).toMatch(
-			/^erledigt /
-		);
+		expect(jobDue(later, NOW)).toBe('in 1h\u00a00m');
+		const failed = job({
+			state: 'failed',
+			attempts: 3,
+			started_at: '2026-10-24T09:11:50Z',
+			finished_at: '2026-10-24T09:12:00Z'
+		});
+		expect(jobDue(failed, NOW)).toMatch(/24\.10\.26/);
+		expect(jobRun(failed, NOW)).toBe('10s');
+		const done = job({
+			state: 'done',
+			started_at: '2026-10-24T11:54:03Z',
+			finished_at: '2026-10-24T11:54:05Z'
+		});
+		expect(jobWait(done, NOW)).toBe('3s');
+		expect(jobRun(done, NOW)).toBe('2s');
 	});
 
 	it('tell when the workers stand still', () => {

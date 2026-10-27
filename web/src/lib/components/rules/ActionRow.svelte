@@ -2,12 +2,10 @@
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import MultiPicker from '#lib/components/MultiPicker.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import { namedOptions, withChoice } from '#lib/components/rules/options.ts';
 	import ValueInput from '#lib/components/rules/ValueInput.svelte';
 	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
-	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -16,13 +14,18 @@
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import {
 		MISSING,
+		asFixed,
+		asTemplate,
 		defaultValue,
+		isTemplated,
 		type ActionNode,
 		type Missing,
 		type RuleModel
 	} from '#lib/rules/model.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { tagOptions } from '#lib/tags.ts';
+	import TagPicker from '#lib/components/TagPicker.svelte';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// One step: an action, a step that asks a webhook, or a condition. `targets` are where the
 	// rule may file: the spaces whoever saves it edits, and other users' personal spaces
@@ -81,6 +84,26 @@
 			: null
 	);
 
+	// A field's value as a template or a fixed value: decided once by the value when the action
+	// is shown or gets another field, then as the person switches (not anew with every key).
+	$effect(() => {
+		if (action.type === 'set_field' && action.templated === undefined && field) {
+			action.templated = isTemplated(field, action.value);
+		}
+	});
+	const templated = $derived(
+		action.type === 'set_field' && (action.templated ?? isTemplated(field, action.value))
+	);
+
+	function switchTemplated(next: boolean) {
+		if (action.type !== 'set_field' || !field) return;
+		action.value = (
+			next ? asTemplate(action.value) : asFixed(field, action.value)
+		) as typeof action.value;
+		action.templated = next;
+		if (!next) onunreadable?.(false);
+	}
+
 	const MISSING_LABELS: Record<Missing, () => string> = {
 		red: m.rule_missing_red,
 		yellow: m.rule_missing_yellow,
@@ -138,10 +161,13 @@
 					bind:value={action.template}
 				/>
 			{:else if action.type === 'add_tags' || action.type === 'remove_tags'}
-				<MultiPicker
+				<!-- The one field for tags, in their colours, as at a document. -->
+				<TagPicker
+					id="tags-{action.key}"
 					{label}
-					{invalid}
-					options={tagOptions(lookup.tags, 'document')}
+					title={m.field_tags()}
+					scope="document"
+					tags={lookup.tags}
 					selected={action.tag_ids}
 					onchange={(next) => {
 						if (action.type === 'add_tags' || action.type === 'remove_tags') action.tag_ids = next;
@@ -158,6 +184,7 @@
 						const chosen = lookup.fields.find((entry) => entry.id === id) ?? null;
 						action.field_id = id;
 						action.value = (defaultValue('field', 'is', chosen) ?? '') as typeof action.value;
+						action.templated = undefined;
 					}}
 					class="h-10"
 				/>
@@ -166,6 +193,8 @@
 						{field}
 						{invalid}
 						template
+						{templated}
+						ontemplated={switchTemplated}
 						fields={lookup.fields}
 						{steps}
 						id="value-{action.key}"
@@ -266,27 +295,15 @@
 			{/if}
 		</div>
 		<div class="flex gap-0.5">
-			<Button
-				variant="ghost"
-				size="icon"
-				aria-label={m.rule_move_up()}
-				disabled={!onup}
-				onclick={() => onup?.()}
-			>
+			<IconButton label={m.rule_move_up()} disabled={!onup} onclick={() => onup?.()}>
 				<ArrowUp aria-hidden="true" />
-			</Button>
-			<Button
-				variant="ghost"
-				size="icon"
-				aria-label={m.rule_move_down()}
-				disabled={!ondown}
-				onclick={() => ondown?.()}
-			>
+			</IconButton>
+			<IconButton label={m.rule_move_down()} disabled={!ondown} onclick={() => ondown?.()}>
 				<ArrowDown aria-hidden="true" />
-			</Button>
-			<Button variant="ghost" size="icon" aria-label={m.rule_remove()} onclick={onremove}>
+			</IconButton>
+			<IconButton label={m.rule_remove()} onclick={onremove}>
 				<Trash2 aria-hidden="true" />
-			</Button>
+			</IconButton>
 		</div>
 	</div>
 	{#if error}<Field.Error>{error}</Field.Error>{/if}

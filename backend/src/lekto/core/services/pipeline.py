@@ -22,6 +22,7 @@ from lekto.core.domain.documents import (
     received_at,
 )
 from lekto.core.domain.errors import (
+    ConcurrencyError,
     ConflictError,
     InvalidTransitionError,
     NotFoundError,
@@ -31,7 +32,8 @@ from lekto.core.domain.errors import (
     UnsupportedMediaTypeError,
     ValidationError,
 )
-from lekto.core.domain.first_runs import Decision
+from lekto.core.domain.events import DocumentUpdated
+from lekto.core.domain.first_runs import FACTS, Decision
 from lekto.core.domain.ids import DocumentId, SpaceId, TagId, UserId
 from lekto.core.domain.imports import IMPORTED, ImportedMetadata
 from lekto.core.domain.inbox import Confirmation
@@ -89,6 +91,7 @@ from lekto.core.services._jobs import (
     NodeJob,
     document_payload,
     enqueue_nodes,
+    lost,
     payload_document,
     retrying,
 )
@@ -105,6 +108,8 @@ from lekto.core.services.inbox import (
 )
 from lekto.core.services.master_data import learn_alias
 from lekto.core.services.objects import original_key
+from lekto.core.services.relating import RELATE_JOB, queue_relate, relate
+from lekto.core.services.relations import RELATIONS_LOCK
 from lekto.core.services.rules.running import corrected_fields, person_record, space_choice
 from lekto.core.services.tasks.settling import Delegation, cancel_tasks
 
@@ -676,6 +681,10 @@ class PipelineService:
             result = replace(result, output={**result.output, **person, **chosen})
             await self._log(uow, id, Node.APPLY_RULES, run, result, now, now)
             access = document_access(user, document, source if target is None else target)
+            # The person decided what its relations rest on: they are found again (from the
+            # fields on, the node `relate` runs again anyway).
+            if resume_at is Node.APPLY_RULES:
+                await queue_relate(uow, document.id, now)
             await self._restart(uow, document)
         return None if access is None else DocumentView(document, access)
 
@@ -734,6 +743,24 @@ class PipelineService:
         async with self._uow() as uow:
             await require_admin(uow, actor, Action.REPARSE_ALL)
         return await self.reparse()
+
+    async def request_render_pages(self, actor: UserId) -> int:
+        """Admins only: `catch_up(Node.PAGES)` (the command `render-pages`)."""
+        async with self._uow() as uow:
+            await require_admin(uow, actor, Action.RENDER_PAGES_ALL)
+        return await self.catch_up(Node.PAGES)
+
+    async def request_read_codes(self, actor: UserId) -> int:
+        """Admins only: `request_facts` (the command `read-codes`)."""
+        async with self._uow() as uow:
+            await require_admin(uow, actor, Action.READ_CODES_ALL)
+        return await self.request_facts()
+
+    async def request_relate(self, actor: UserId) -> int:
+        """Admins only: `request_relations` (the command `relate`)."""
+        async with self._uow() as uow:
+            await require_admin(uow, actor, Action.RELATE_ALL)
+        return await self.request_relations()
 
     async def reparse(self) -> int:
         """Read the text of every document again (after an update of the parser): a job for
@@ -822,12 +849,17 @@ class PipelineService:
         running and its result changes neither the status nor the lane.
         """
         return await self._jobs.run_next(
-            [NODE_JOB, CATCH_UP_JOB, REPARSE_JOB, FACTS_JOB], self._lease, self._run_claimed
+            [NODE_JOB, CATCH_UP_JOB, REPARSE_JOB, FACTS_JOB, RELATE_JOB],
+            self._lease,
+            self._run_claimed,
         )
 
     async def _run_claimed(self, job: Job) -> None:
         if job.kind == FACTS_JOB:
             await self._read_facts(job)
+            return
+        if job.kind == RELATE_JOB:
+            await self._relate_aside(job)
             return
         try:
             target = NodeJob.from_json(job.payload)
@@ -930,9 +962,52 @@ class PipelineService:
         async def apply(uow: UnitOfWork) -> None:
             current = await uow.documents.find(document_id)
             if current is not None:
-                await outcome.apply(uow, current, self._clock.now())
+                now = self._clock.now()
+                await outcome.apply(uow, current, now)
+                # Its facts changed outside processing: the search index takes them in.
+                updated = DocumentUpdated(document_id=document_id, occurred_at=now, fields=(FACTS,))
+                await uow.outbox.add([updated])
 
         await self._jobs.end(job, also=apply)
+
+    async def _relate_aside(self, job: Job) -> None:
+        """Find a document's relations outside processing (`relating.RELATE_JOB`); nothing is
+        recorded in its log. An attempt that raises runs again later, like a node."""
+        try:
+            document_id = payload_document(job.payload)
+        except (KeyError, ValueError) as error:
+            await self._jobs.invalid(job, error)
+            return
+        try:
+            async with self._uow() as uow:
+                await uow.lock(RELATIONS_LOCK)
+                document = await uow.documents.find(document_id)
+                now = self._clock.now()
+                related = None if document is None else await relate(uow, document, now)
+                result: JsonObject = (
+                    {}
+                    if related is None
+                    else {"relations": len(related.made), "dropped": len(related.dropped)}
+                )
+                await uow.jobs.complete(job, now=now, result=result)
+                await uow.commit()
+        except ConcurrencyError:
+            lost(job)
+        except Exception as error:
+            await self._failed_aside(job, "finding the relations failed", document_id, error)
+
+    async def request_relations(self) -> int:
+        """Queue finding the relations of every document that is not being processed (the
+        command `relate`): for documents from before the node `relate`, and after a relation
+        target was marked. Returns how many were queued; one queued already is not queued
+        twice."""
+
+        def relations(document: Document) -> tuple[JsonObject, str] | None:
+            if document.processing.status is ProcessingStatus.PROCESSING:
+                return None
+            return document_payload(document.id), f"{document.id}:relate"
+
+        return await self._queue_each(RELATE_JOB, relations)
 
     async def _reparse(self, job: Job, document_id: DocumentId, run: int) -> None:
         """Read a document's text again (`reparse`) and record the reading beside processing.

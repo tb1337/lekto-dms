@@ -68,3 +68,7 @@ class ReparseOut(BaseModel):
     queued: int = Field(
         description="Documents whose text is read again (not those queued already)."
     )
+
+
+class QueuedOut(BaseModel):
+    queued: int = Field(description="How many were queued now (not those queued already).")

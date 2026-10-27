@@ -3,6 +3,7 @@
 	import { monthPeriod, periodOf, relativePeriod, yearPeriod, type Filters } from '#lib/filters.ts';
 	import { formatDate, formatNumber } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import Chip from '#lib/components/Chip.svelte';
 
 	type Period = Pick<Filters, 'dateFrom' | 'dateTo'>;
 	type Year = components['schemas']['YearCount'];
@@ -79,20 +80,12 @@
 </script>
 
 <div class="flex flex-col gap-2.5">
-	<div class="grid grid-cols-3 rounded-lg border bg-background p-0.5">
+	<div class="flex flex-wrap gap-1.5">
 		{#each QUICK as quick (quick.label())}
 			{@const active = same(quick.period, period)}
-			<button
-				type="button"
-				aria-pressed={active}
-				class={[
-					'h-7 truncate rounded-md px-1 text-xs transition-colors',
-					active ? 'bg-primary font-semibold text-primary-foreground' : 'hover:bg-secondary'
-				]}
-				onclick={() => onchange(active ? NONE : quick.period)}
-			>
+			<Chip size="sm" pressed={active} onclick={() => onchange(active ? NONE : quick.period)}>
 				{quick.label()}
-			</button>
+			</Chip>
 		{/each}
 	</div>
 	{#if years.length > 0}
@@ -105,18 +98,15 @@
 					class={[
 						'relative flex h-9 items-center justify-between gap-1 overflow-hidden rounded-lg border px-2 text-left transition-colors',
 						active
-							? 'border-primary bg-primary text-primary-foreground'
-							: 'bg-background hover:border-primary/60'
+							? 'border-primary/30 bg-panel font-medium text-brand'
+							: 'bg-card hover:bg-secondary'
 					]}
 					onclick={() => onchange(active ? NONE : yearPeriod(year.year))}
 				>
 					{#if showCounts}
 						<span
 							aria-hidden="true"
-							class={[
-								'absolute bottom-0 left-0 h-1',
-								active ? 'bg-primary-foreground/50' : 'bg-primary/40'
-							]}
+							class={['absolute bottom-0 left-0 h-1', active ? 'bg-primary/60' : 'bg-primary/30']}
 							style:width={`${Math.round((year.count / most) * 100)}%`}
 						></span>
 					{/if}
@@ -125,7 +115,7 @@
 						<span
 							class={[
 								'relative text-xs tabular-nums',
-								active ? 'text-primary-foreground/80' : 'text-muted-foreground'
+								active ? 'text-brand/80' : 'text-muted-foreground'
 							]}
 						>
 							{formatNumber(year.count)}
@@ -168,7 +158,7 @@
 						})}
 						title={m.facet_month_count({ month: month.name, count: formatNumber(month.count) })}
 						disabled={month.count === 0 && !active}
-						class="flex h-full flex-col items-center justify-end gap-0.5 text-[0.625rem] text-muted-foreground disabled:opacity-40"
+						class="flex h-full flex-col items-center justify-end gap-0.5 text-nano text-muted-foreground disabled:opacity-40"
 						onclick={() => onchange(active ? yearPeriod(focus ?? 0) : monthPeriod(month.month))}
 					>
 						<span

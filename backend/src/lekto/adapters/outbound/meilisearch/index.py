@@ -71,6 +71,7 @@ SEARCHABLE = [
     "contact_groups",
     "document_type_groups",
     "fields",
+    "fact_values",
     "filename",
     "text",
 ]
@@ -85,6 +86,7 @@ FILTERABLE = [
     "document_type_group_ids",
     "confirmed",
     "field_ids",
+    "facts",
     "document_date",
 ]
 SORTABLE = ["document_date", "created_at", "title_key"]
@@ -409,6 +411,8 @@ class MeilisearchIndex:
             "topics": list(document.topics),
             "fields": list(document.fields),
             "field_ids": [str(field) for field in document.field_ids],
+            "facts": list(document.facts),
+            "fact_values": list(document.fact_values),
             "document_date": None
             if document.document_date is None
             else _day(document.document_date),
@@ -532,6 +536,8 @@ def filter_expression(visibility: Visibility, criteria: DocumentFilter) -> str |
         parts.append("confirmed = true" if criteria.confirmed else "NOT confirmed = true")
     if criteria.field is not None:
         parts.append(f"field_ids = {_quote(criteria.field)}")
+    for criterion in criteria.facts:
+        parts.append(f"facts = {_quote(criterion.token)}")
     return " AND ".join(parts) or None
 
 

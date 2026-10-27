@@ -2,6 +2,8 @@
 	import type { Component, Snippet } from 'svelte';
 	import type { HTMLAttributes } from 'svelte/elements';
 	import { cn } from '#lib/utils.ts';
+	import { cardVariants } from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 
 	// A group of fields on a card of its own: basics, global fields, fields of the type; the
 	// filing box uses the same card. `action` stands at the end of the head (a button).
@@ -27,7 +29,7 @@
 
 <section
 	aria-labelledby={id}
-	class={cn('flex flex-col gap-1.5 rounded-2xl border bg-card px-4 pt-3.5 pb-3', className)}
+	class={cn(cardVariants({ size: 'flush' }), 'flex flex-col gap-1.5 px-4 pt-3.5 pb-3', className)}
 	{...rest}
 >
 	<div class="mb-0.5 flex items-center gap-2.5 border-b border-muted pb-2.5">
@@ -38,7 +40,7 @@
 			<Icon class="size-4" />
 		</span>
 		<div class="flex min-w-0 flex-col">
-			<h3 {id} class="text-[0.95rem] leading-tight font-semibold">{title}</h3>
+			<SectionTitle size="card" level={3} {id}>{title}</SectionTitle>
 			<span class="text-xs text-muted-foreground">{hint}</span>
 		</div>
 		{#if action}{@render action()}{/if}

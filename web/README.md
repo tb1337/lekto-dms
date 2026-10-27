@@ -7,6 +7,9 @@ Stack: SvelteKit 3 (Svelte 5, static adapter, no server-side rendering), Tailwin
 shadcn-svelte (bits-ui), Paraglide JS (English and German), openapi-fetch, CodeMirror 6 (templates),
 Vitest. Fonts (Geist, Geist Mono) are part of the build; no CDN.
 
+The design system is binding: [`DESIGN.md`](DESIGN.md) (tokens, type scale, components, patterns,
+texts). Read it before changing the UI.
+
 ## Commands
 
 Run in `web/` (Node 24, pnpm as pinned in `package.json`):
@@ -25,7 +28,8 @@ The smoke tests (`tests/e2e`) run against the API serving the built UI. `smoke.s
 user through the admin of the environment, signs in with password and TOTP, navigates, reloads and
 signs out. `areas.spec.ts` signs in as that admin (without a second factor), opens every area
 without a console error (a CSP violation is one) and creates and removes a contact, a space, a
-webhook and an API token:
+webhook and an API token; `webhooks.spec.ts` creates a webhook on its page, tests, changes and
+deletes it; `rules.spec.ts` does the same with a rule:
 
 ```sh
 pnpm build
@@ -111,10 +115,17 @@ search, the inbox with its counter, rules and the counts at the master data foll
 
 ## Header
 
-The app's header holds the menu, the wordmark, the search, language, theme and the account menu
-(`AppShell`). On a phone (below `sm`) language and theme are groups of the account menu instead
-(`LanguageChoices`, `ThemeChoices`, which the header's own menus use too); the sign-in page keeps
-both menus at every width.
+The app's header holds the logo (the favicon's icon before the wordmark, `Logo`), the menu, the
+search, language, theme and the account menu (`AppShell`). The menu has two groups with a line
+between them, for everyone: the work (inbox, documents, expected, spaces) and setting up and
+running Lekto (rules, webhooks, system, and for admins master data and users); `sections.ts`
+holds the groups and who sees an area. "Expected" carries a small "Beta" pill, and the page a
+larger one beside its title that opens a note (`BetaPill`, colour `--beta`). Below `xl` the menu
+is a sheet from the right, opened by the button at the outer right; on a phone (below `sm`) the
+header keeps only the magnifier and that button, and the sheet holds the account as well: name
+and role, for admins the switch to include all users, the navigation, then language and theme as
+pills, settings, the API documentation and sign out. The sign-in page keeps the language and
+theme menus at every width.
 
 ## Master data
 

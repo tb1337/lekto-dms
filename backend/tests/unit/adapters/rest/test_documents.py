@@ -52,6 +52,7 @@ async def test_upload_is_accepted_and_processed(api: Api) -> None:
         "signal_facts",
         "judge",
         "fields",
+        "relate",
         "apply_rules",
         "file",
     ]
@@ -393,6 +394,10 @@ async def test_the_model_exchanges_are_listed_per_run(api: Api) -> None:
                 {
                     "system": "s",
                     "user": "u",
+                    "document": "",
+                    "task": "",
+                    "retry": None,
+                    "request": "",
                     "answer": "{}",
                     "model": "m",
                     "usage": {"total_tokens": 9},
@@ -450,7 +455,7 @@ async def test_retry_and_reprocess(api: Api) -> None:
     assert nodes(processing) == {
         "receive": "done",
         "pages": nodes(failed["processing"])["pages"],  # done or dropped: the branches race
-        **waiting("ocr", "parse", *SIGNALS, "judge", "fields", "apply_rules", "file"),
+        **waiting("ocr", "parse", *SIGNALS, "judge", "fields", "relate", "apply_rules", "file"),
     }
     again = await api.client.post(f"{url}/retry", headers=auth(owner))
     assert again.status_code == 409  # running, not failed

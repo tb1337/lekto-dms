@@ -10,7 +10,9 @@ const lists = () => ({
 	names: [
 		{ name: 'title', label: 'Title' },
 		{ name: 'contact', label: 'Contact' },
-		{ name: 'steps.flow', label: 'Answer of flow' }
+		{ name: 'steps.flow', label: 'Answer of flow' },
+		{ name: 'facts.invoice_number', label: 'Invoice number' },
+		{ name: 'facts.refers.invoice_number', label: 'Invoice number referred to' }
 	],
 	fields: [{ key: 'la_brutto', name: 'LA_Brutto' }]
 });
@@ -28,6 +30,8 @@ describe('completion', () => {
 			['title', 'title }}'],
 			['contact', 'contact }}'],
 			['steps.flow', 'steps.flow }}'],
+			['facts.invoice_number', 'facts.invoice_number }}'],
+			['facts.refers.invoice_number', 'facts.refers.invoice_number }}'],
 			['field.la_brutto', 'field.la_brutto }}']
 		]);
 		// Listed as given, not by the alphabet.
@@ -43,6 +47,16 @@ describe('completion', () => {
 		expect(filters?.options.find((option) => option.label === 'date')?.apply).toBe("date: '%Y-%m'");
 		expect(complete('{% ')?.options.map((option) => option.label)).toContain('if');
 		expect(complete('Lohn ')).toBeNull();
+	});
+
+	it('offers the next part of a path after facts.', () => {
+		const parts = (text: string) =>
+			complete(text)?.options.map((option) => [option.label, option.apply]);
+		expect(parts('{{ facts.')).toEqual([
+			['invoice_number', 'invoice_number }}'],
+			['refers', 'refers.']
+		]);
+		expect(parts('{{ facts.refers.inv')).toEqual([['invoice_number', 'invoice_number }}']]);
 	});
 
 	it('offers the steps before that ask after steps.', () => {

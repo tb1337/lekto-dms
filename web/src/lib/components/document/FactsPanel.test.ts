@@ -5,6 +5,7 @@ import type { Facts } from '#lib/facts.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { choose } from '#lib/testing/select.ts';
 import FactsPanel from './FactsPanel.svelte';
 
 const UTILITY = 'contact-1';
@@ -25,6 +26,7 @@ const lookup = {
 
 const FACTS: Facts = {
 	contact_id: UTILITY,
+	editable: false,
 	named: [
 		{
 			contact_id: UTILITY,
@@ -42,6 +44,10 @@ const FACTS: Facts = {
 			contact_id: UTILITY,
 			in_text: true,
 			in_code: true,
+			role: 'contact',
+			origins: ['pattern', 'code'],
+			state: 'found',
+			kept: true,
 			spans: [{ start: 40, end: 67, locations: [] }],
 			other_contacts: 0
 		},
@@ -51,6 +57,10 @@ const FACTS: Facts = {
 			contact_id: null,
 			in_text: true,
 			in_code: false,
+			role: 'contact',
+			origins: ['pattern'],
+			state: 'found',
+			kept: true,
 			spans: [{ start: 80, end: 89, locations: [] }],
 			other_contacts: 0
 		},
@@ -60,6 +70,10 @@ const FACTS: Facts = {
 			contact_id: null,
 			in_text: true,
 			in_code: false,
+			role: 'contact',
+			origins: ['pattern'],
+			state: 'found',
+			kept: true,
 			spans: [{ start: 100, end: 127, locations: [] }],
 			other_contacts: 6
 		}
@@ -128,10 +142,12 @@ describe('FactsPanel', () => {
 		expect(screen.getAllByText('DE89 3704 0044 0532 0130 00')).toHaveLength(2);
 		expect(screen.getByText(m.facts_unknown())).toBeTruthy();
 		expect(screen.getByText('20047718')).toBeTruthy();
+		// Each with what it is to the document.
+		expect(screen.getAllByText(`· ${m.fact_role_contact()}`)).toHaveLength(3);
 		// The owner's own IBAN stands on many contacts' documents.
 		expect(screen.getByText(m.facts_other_contacts({ count: 6 }))).toBeTruthy();
 		// Only a pin to attach, its label on hover.
-		expect(screen.getAllByTitle(m.facts_attach())).toHaveLength(2);
+		expect(screen.getAllByRole('button', { name: /^Pin .* as an identifier$/ })).toHaveLength(2);
 		// The GiroCode read, its amount as the field's; another code as it is.
 		expect(screen.getByText(m.code_giro())).toBeTruthy();
 		expect(screen.getByText(m.code_same_as({ field: 'Rechnungsbetrag' }))).toBeTruthy();
@@ -152,6 +168,30 @@ describe('FactsPanel', () => {
 		await fireEvent.click(customer);
 		expect(onmark).toHaveBeenLastCalledWith(spans, true, kind);
 		expect(customer.getAttribute('aria-pressed')).toBe('true');
+	});
+
+	it('lists the document’s numbers with their roles and marks them', async () => {
+		const onmark = vi.fn();
+		const spans = [{ start: 30, end: 34, locations: [] }];
+		const numbers = [
+			{
+				kind: 'invoice_number',
+				value: '4711',
+				written: '4711',
+				role: 'refers',
+				origins: ['pattern'],
+				state: 'found',
+				spans
+			}
+		];
+		render(FactsPanel, props({ onmark, facts: { ...FACTS, numbers } }));
+		expect(screen.getByRole('heading', { name: m.facts_numbers() })).toBeTruthy();
+		const row = screen.getByRole('button', {
+			name: new RegExp(`^${m.identifier_kind_invoice_number()}`)
+		});
+		expect(row.textContent).toContain(m.fact_role_refers());
+		await fireEvent.mouseEnter(row.closest('[role="presentation"]')!);
+		expect(onmark).toHaveBeenLastCalledWith(spans, false, m.identifier_kind_invoice_number());
 	});
 
 	it('marks what of a code stands in the text, and shows a code on each of its pages', async () => {
@@ -178,7 +218,7 @@ describe('FactsPanel', () => {
 		const onchanged = vi.fn();
 		render(FactsPanel, props({ onchanged }));
 		const user = userEvent.setup();
-		await user.click(screen.getAllByTitle(m.facts_attach())[0]);
+		await user.click(screen.getAllByRole('button', { name: /^Pin .* as an identifier$/ })[0]);
 		const form = screen.getByText(
 			m.facts_attach_title({ kind: m.identifier_kind_customer_number() })
 		).parentElement!;
@@ -192,6 +232,64 @@ describe('FactsPanel', () => {
 		const [request] = fetchMock.mock.calls[0];
 		expect(new URL(request.url).pathname).toBe(`/api/v1/contacts/${UTILITY}/identifiers`);
 		expect(await request.json()).toEqual({ kind: 'customer_number', value: '20047718' });
+	});
+
+	it('lets an editor correct, reject and add a fact (#145)', async () => {
+		const onchanged = vi.fn();
+		const number = {
+			kind: 'invoice_number' as const,
+			value: '4711',
+			written: '4711',
+			role: 'own' as const,
+			origins: ['pattern' as const],
+			state: 'found' as const,
+			spans: []
+		};
+		const rejected = { ...number, value: 'M77', written: 'M-77', state: 'rejected' as const };
+		render(
+			FactsPanel,
+			props({ onchanged, facts: { ...FACTS, editable: true, numbers: [number, rejected] } })
+		);
+		const user = userEvent.setup();
+		const body = async (index: number) => fetchMock.mock.calls[index][0].json();
+
+		// The role of the invoice it refers to.
+		await user.click(
+			screen.getByRole('button', { name: m.facts_decide_value_label({ value: '4711' }) })
+		);
+		await choose(user, screen.getByRole('combobox', { name: m.facts_decide_role() }), 'refers');
+		await user.click(screen.getByRole('button', { name: m.facts_decide_save() }));
+		await waitFor(() => expect(onchanged).toHaveBeenCalledTimes(1));
+		expect(await body(0)).toEqual({
+			at_contact: false,
+			action: 'correct',
+			kind: 'invoice_number',
+			value: '4711',
+			role: 'refers'
+		});
+
+		// A rejected one is only restored.
+		expect(screen.getByText(m.facts_state_rejected())).toBeTruthy();
+		await user.click(
+			screen.getByRole('button', { name: m.facts_decide_value_label({ value: 'M-77' }) })
+		);
+		expect(screen.queryByRole('button', { name: m.facts_decide_save() })).toBeNull();
+		await user.click(screen.getByRole('button', { name: m.facts_decide_restore() }));
+		await waitFor(() => expect(onchanged).toHaveBeenCalledTimes(2));
+		expect((await body(1)).action).toBe('withdraw');
+
+		// Added, with the role of its kind.
+		await user.click(screen.getByRole('button', { name: m.facts_add() }));
+		await user.type(screen.getByRole('textbox', { name: m.facts_decide_value() }), 'R-1001');
+		await user.click(screen.getByRole('button', { name: m.facts_add_save() }));
+		await waitFor(() => expect(onchanged).toHaveBeenCalledTimes(3));
+		expect(await body(2)).toEqual({
+			at_contact: false,
+			action: 'add',
+			kind: 'invoice_number',
+			value: 'R-1001',
+			role: 'own'
+		});
 	});
 
 	it("opens the contact's dialog from its name, for admins", async () => {
@@ -225,7 +323,7 @@ describe('FactsPanel', () => {
 		render(FactsPanel, props({ admin: false }));
 		const own = screen.getByRole('heading', { name: /Stadtwerke Musterstadt GmbH/ });
 		expect(within(own).queryByRole('button')).toBeNull();
-		expect(screen.queryAllByTitle(m.facts_attach())).toHaveLength(0);
+		expect(screen.queryAllByRole('button', { name: /^Pin .* as an identifier$/ })).toHaveLength(0);
 		expect(screen.getByText(m.facts_attach_admins())).toBeTruthy();
 	});
 

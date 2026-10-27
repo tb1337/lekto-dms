@@ -1,6 +1,6 @@
 /**
- * The background jobs on the page "System": the names of their kinds and states, and the line
- * that says where a job stands ("for 14s · attempt 1", "waiting for 6m 2s").
+ * The background jobs on the page "System": the names of their kinds and states, and what the
+ * table says of each ("6s ago", "in 25s · attempt 2", how long it waited and ran).
  */
 import type { components } from '#lib/api/schema.ts';
 import { formatDuration } from '#lib/duration.ts';
@@ -22,6 +22,7 @@ const KINDS: Record<string, () => string> = {
 	'pipeline.catch_up': m.job_kind_pipeline_catch_up,
 	'pipeline.reparse': m.job_kind_pipeline_reparse,
 	'pipeline.facts': m.job_kind_pipeline_facts,
+	'pipeline.relate': m.job_kind_pipeline_relate,
 	'search.index': m.job_kind_search_index,
 	'search.refresh': m.job_kind_search_refresh,
 	'search.reconcile': m.job_kind_search_reconcile,
@@ -64,31 +65,45 @@ function seconds(from: string, to: Date): number {
 	return Math.max(0, (to.getTime() - new Date(from).getTime()) / 1000);
 }
 
-/** Where `job` stands at `now`: how long it runs or waits, when it is due, when it ended. */
-export function jobTiming(job: Job, now: Date): string {
+/** When `job` is or was due, as the table's column "Due" / "Failed" / "Done" says it: a running
+ * job by the time it fell due; a due one "6s ago"; a planned one "in 25s · attempt 2"; a failed
+ * or done one by when it ended. */
+export function jobDue(job: Job, now: Date): string {
 	switch (job.state) {
 		case 'running':
-			return m.jobs_running_for({
-				duration: formatDuration(seconds(job.started_at ?? job.run_at, now)),
-				attempt: String(job.attempts)
-			});
+			return when(job.run_at);
 		case 'due':
-			return m.jobs_due_for({ duration: formatDuration(seconds(job.run_at, now)) });
+			return m.jobs_since({ duration: formatDuration(seconds(job.run_at, now)) });
 		case 'planned': {
 			const duration = formatDuration(seconds(now.toISOString(), new Date(job.run_at)));
 			return job.attempts > 0
-				? m.jobs_planned_in({ attempt: String(job.attempts + 1), duration })
-				: m.jobs_planned_first({ duration });
+				? m.jobs_in_attempt({ attempt: String(job.attempts + 1), duration })
+				: m.jobs_in({ duration });
 		}
-		case 'failed': {
-			const date = when(job.finished_at ?? job.run_at);
-			return job.attempts === 1
-				? m.jobs_failed_after_one({ date })
-				: m.jobs_failed_after({ attempt: String(job.attempts), date });
-		}
+		case 'failed':
 		case 'done':
-			return m.jobs_done_at({ date: when(job.finished_at ?? job.run_at) });
+			return when(job.finished_at ?? job.run_at);
 	}
+}
+
+/** How long `job` waited for a worker: from due to started, so far for a due one; "–" for a
+ * planned one. */
+export function jobWait(job: Job, now: Date): string {
+	if (job.state === 'due')
+		return m.jobs_so_far({ duration: formatDuration(seconds(job.run_at, now)) });
+	if (job.state === 'planned' || !job.started_at) return '–';
+	return formatDuration(seconds(job.run_at, new Date(job.started_at)));
+}
+
+/** How long `job` ran: from started to finished, so far for a running one; "–" before it
+ * started. */
+export function jobRun(job: Job, now: Date): string {
+	if (!job.started_at) return '–';
+	if (job.state === 'running') {
+		return m.jobs_so_far({ duration: formatDuration(seconds(job.started_at, now)) });
+	}
+	if (!job.finished_at) return '–';
+	return formatDuration(seconds(job.started_at, new Date(job.finished_at)));
 }
 
 function when(iso: string): string {

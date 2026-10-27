@@ -491,6 +491,7 @@ async def test_a_red_document_can_be_taken_over(world: World) -> None:
     assert [entry.node for entry in taken] == [
         Node.JUDGE,
         Node.FIELDS,
+        Node.RELATE,
         Node.APPLY_RULES,
     ]
     assert taken[0].result.output["outcome_before"] == "failed"

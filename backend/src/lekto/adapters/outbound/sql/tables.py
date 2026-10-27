@@ -161,6 +161,8 @@ document_types = _master_data(
     Column("title_pattern", Text, nullable=True),
     # The name of a Lucide icon.
     Column("icon", Text, nullable=True),
+    # Documents refer to those of the type by a contract or customer number (issue #145).
+    Column("relation_target", Boolean, nullable=False, server_default=false()),
 )
 # Names are unique per scope (a contact group may be named like a document tag).
 tags = Table(
@@ -384,10 +386,11 @@ document_fields = Table(
     Column("value_boolean", Boolean, nullable=True),
 )
 
-# What the facts signal last found a document to show, in its text or its codes (kind and
-# normalised value of an identifier): on how many contacts' confirmed documents a value stands.
-document_identifiers = Table(
-    "document_identifiers",
+# The facts of a document (`domain.document_facts`): kind and normalised value, its role, where
+# it comes from (`origins`, comma-separated), as written and where it stands first in the text,
+# and whether a person decided it (`state`). Until 0047 `document_identifiers` (kind and value).
+document_facts = Table(
+    "document_facts",
     metadata,
     Column(
         "document_id",
@@ -397,7 +400,32 @@ document_identifiers = Table(
     ),
     Column("kind", Text, primary_key=True),
     Column("value", Text, primary_key=True),
+    Column("role", Text, nullable=False),
+    Column("origins", Text, nullable=False),
+    Column("written", Text, nullable=True),
+    Column("position", Integer, nullable=True),
+    Column("state", Text, nullable=False, server_default="found"),
     Index(None, "kind", "value"),
+)
+
+# A document refers to an older one (`domain.relations`); a relation goes with either document.
+document_relations = Table(
+    "document_relations",
+    metadata,
+    Column("newer_id", Uuid, ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "older_id",
+        Uuid,
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    ),
+    Column("origin", Text, nullable=False),
+    Column("state", Text, nullable=False),
+    Column("evidence", json_type(), nullable=False, server_default="{}"),
+    Column("created_at", UtcDateTime, nullable=False),
+    Column("decided_by", Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
+    Column("decided_at", UtcDateTime, nullable=True),
 )
 
 processing_log = Table(

@@ -54,6 +54,10 @@
 	/* Notes and tips (alerts `note` and `tip`): blue, as GitHub and Docusaurus draw notes. */
 	--note: #e7f0fb;
 	--note-foreground: #1d4f91;
+	/* The "Beta" pill at an area that is new (Tobi, 26.10.2026): pale violet with dark writing,
+	   as the chips are drawn; not the petrol, not a lane. 8.2:1 here, 8.9:1 in the dark. */
+	--beta: #efe9fd;
+	--beta-foreground: #512a9e;
 	/* Charts (the page "System"): the lanes as solid marks, a second line, the pale band of a
 	   90th percentile. */
 	--chart-1: #4a9f66;
@@ -99,6 +103,8 @@
 	--lane-running-foreground: #a2a8a5;
 	--note: #14223a;
 	--note-foreground: #8db8f0;
+	--beta: #261b47;
+	--beta-foreground: #c9b9fa;
 	--chart-1: #5cc486;
 	--chart-2: #e3bb4d;
 	--chart-3: #d4554c;
@@ -106,14 +112,48 @@
 	--chart-5: #21403c;
 }
 
+/*
+ * The type scale (web/DESIGN.md, "Typography"): Tailwind's steps plus the in-between ones the UI
+ * uses. No other font size is allowed; `tests/design-tokens.test.ts` checks it.
+ */
+@theme {
+	--text-nano: 0.625rem;
+	--text-nano--line-height: 0.875rem;
+	--text-micro: 0.6875rem;
+	--text-micro--line-height: 1rem;
+	--text-meta: 0.8125rem;
+	--text-meta--line-height: 1.25rem;
+	--text-md: 0.9375rem;
+	--text-md--line-height: 1.375rem;
+	--text-title: 1.75rem;
+	--text-title--line-height: 2.25rem;
+	--text-title--letter-spacing: -0.025em;
+	--text-title--font-weight: 600;
+	--text-figure: 1.875rem;
+	--text-figure--line-height: 2.25rem;
+	--text-figure--letter-spacing: -0.025em;
+	--text-figure--font-weight: 600;
+
+	/* The two page widths (web/DESIGN.md, "Page widths"). */
+	--container-page: 1040px;
+	--container-wide: 1600px;
+}
+
 @theme inline {
 	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
 
+	/* Small marks inside a component: a bar segment, a swatch, a box on a page. */
+	--radius-xs: calc(var(--radius) - 9px);
 	--radius-sm: calc(var(--radius) - 4px);
 	--radius-md: calc(var(--radius) - 2px);
 	--radius-lg: var(--radius);
 	--radius-xl: calc(var(--radius) + 4px);
+	/* Cards, dialogs, sheets and panes; tied to `--radius` like the rest (web/DESIGN.md). */
+	--radius-2xl: calc(var(--radius) + 4px);
+
+	/* The halo of a mark on a page that is pinned (the viewer of a document). */
+	--shadow-pinned: 0 0 0 7px color-mix(in oklab, var(--primary) 22%, transparent);
 
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
@@ -141,6 +181,8 @@
 	--color-lane-green-foreground: var(--lane-green-foreground);
 	--color-note: var(--note);
 	--color-note-foreground: var(--note-foreground);
+	--color-beta: var(--beta);
+	--color-beta-foreground: var(--beta-foreground);
 	--color-lane-yellow: var(--lane-yellow);
 	--color-lane-yellow-foreground: var(--lane-yellow-foreground);
 	--color-lane-red: var(--lane-red);
@@ -218,10 +260,10 @@
 
 @layer components {
 	/*
-	 * A mark on a document's image, a tag or the page count on a card (Tobi, 20.10.2026: variant
-	 * I of the canvas page "Kennzeichen"): its colour of the design on glass, so that the text of
-	 * the page below blurs, and an edge dark outside and light inside with a shadow, so that it
-	 * stands apart from light and dark pages alike. The ground (82 % of its colour) comes with it.
+	 * A mark on a document's image (the page count on a card, a mark on a page): its colour of
+	 * the design on glass, so that the text of the page below blurs, and an edge dark outside and
+	 * light inside with a shadow, so that it stands apart from light and dark pages alike. The
+	 * ground (82 % of its colour) comes with it. Tags stand below the image (web/DESIGN.md).
 	 */
 	.mark-glass {
 		-webkit-backdrop-filter: blur(10px) saturate(1.4);

@@ -31,6 +31,8 @@ from lekto.core.domain.errors import DomainError, SearchUnavailableError, Valida
 from lekto.core.domain.fields import FieldDefinition, field_from_json
 from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
 from lekto.core.domain.master_data import TagScope
+from lekto.core.domain.relations import RelationState
+from lekto.core.domain.series import SeriesState
 from lekto.core.domain.sorting import sort_key
 from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.tag_tree import TagTree
@@ -58,6 +60,41 @@ CHANGES = ToolAnnotations(
 class NameRef(BaseModel):
     id: UUID
     name: str
+
+
+class RelationRef(BaseModel):
+    """A relation of the document with another you may read (`bezieht sich auf`)."""
+
+    id: UUID = Field(description="The other document.")
+    title: str
+    document_type: NameRef | None
+    document_date: date | None
+    direction: str = Field(
+        description="refers_to (this document refers to it) or referred_by (it refers to this "
+        "document)."
+    )
+    suggested: bool = Field(description="Lekto suggests it; a person has not decided it.")
+
+
+class ExpectedRef(BaseModel):
+    """A series of documents and the one it expects next (#145)."""
+
+    contact: str
+    document_type: str
+    number: str | None = Field(description="The contract or customer number it follows, if any.")
+    cadence: str = Field(description="weekly, monthly, quarterly, half_yearly, yearly or days.")
+    interval_days: int
+    spread_days: int
+    documents: int
+    last_document: UUID = Field(description="Its newest document (`get_document`).")
+    last_date: date
+    next_date: date
+    next_period: str | None = Field(description="The period the next one is for (`2026-11`).")
+    state: str = Field(description="overdue, soon (next 30 days), later or ended.")
+
+
+class ExpectedOut(BaseModel):
+    series: list[ExpectedRef]
 
 
 class DocumentOut(BaseModel):
@@ -90,6 +127,10 @@ class DocumentOut(BaseModel):
     )
     created_at: datetime
     updated_at: datetime
+    relations: list[RelationRef] = Field(
+        default_factory=list,
+        description="Its relations with documents you may read too; read only (#145).",
+    )
 
 
 class SearchItem(BaseModel):
@@ -251,6 +292,24 @@ def document_out(document: Document, access: SpaceRole, names: Names) -> Documen
     )
 
 
+async def relation_refs(
+    context: ApiContext, user: UserId, id: DocumentId, names: Names
+) -> list[RelationRef]:
+    """The document's relations with documents `user` reads too, as the tools give them."""
+    related = await context.relations.relations(user, id)
+    return [
+        RelationRef(
+            id=item.other.id,
+            title=item.other.title,
+            document_type=names.document_type(item.other.document_type_id),
+            document_date=item.other.document_date,
+            direction=item.direction.value,
+            suggested=item.relation.state is RelationState.SUGGESTED,
+        )
+        for item in (*related.refers_to, *related.referred_by, *related.suggested)
+    ]
+
+
 def principal_of(ctx: Context) -> Principal:
     """The caller, put there by the bearer check in front of the server."""
     request = ctx.request_context.request
@@ -355,14 +414,17 @@ def build_server(context: ApiContext) -> MCPServer:
     @server.tool(
         name="get_document",
         description="The metadata of a document you may read: title, contact, type, topic, "
-        "tags, date, fields and processing state.",
+        "tags, date, fields, processing state, and its relations with documents you may read.",
         annotations=READ_ONLY,
     )
     @guarded
     async def get_document(ctx: Context, id: UUID) -> DocumentOut:
         user = principal_of(ctx).id
         view = await context.documents.view(user, DocumentId(id))
-        return document_out(view.document, view.access, await Names.load(context, user))
+        names = await Names.load(context, user)
+        out = document_out(view.document, view.access, names)
+        out.relations = await relation_refs(context, user, DocumentId(id), names)
+        return out
 
     @server.tool(
         name="get_text",
@@ -454,7 +516,9 @@ def build_server(context: ApiContext) -> MCPServer:
             id=change.document.id,
             access=change.access,
             # A change of a document leaves the master data as it is.
-            document=document_out(change.document, change.access, names),
+            document=document_out(change.document, change.access, names).model_copy(
+                update={"relations": await relation_refs(context, user, change.document.id, names)}
+            ),
             rules=(
                 None
                 if change.rules is None
@@ -489,6 +553,55 @@ def build_server(context: ApiContext) -> MCPServer:
                 for tag in tree.of_scope(wanted)
             ]
         )
+
+    @server.tool(
+        name="list_expected",
+        description=(
+            "The documents expected next: series of documents you may read (one contact and "
+            "type, and one contract or customer number where they show one, at least three at "
+            "a steady interval), each with its next date and whether it is overdue; the overdue "
+            "first, the ended ones only on request. Read only; nothing is stored."
+        ),
+        annotations=READ_ONLY,
+    )
+    @guarded
+    async def list_expected(
+        ctx: Context,
+        include_ended: Annotated[
+            bool, Field(description="Also the series that ended (two dates missed).")
+        ] = False,
+    ) -> ExpectedOut:
+        user = principal_of(ctx).id
+        found = [
+            item
+            for item in await context.expected.expected(user)
+            if include_ended or item.state is not SeriesState.ENDED
+        ]
+        series = []
+        for item in found:
+            key, last = item.series.key, item.last
+            assert last.document_date is not None
+            series.append(
+                ExpectedRef(
+                    contact=item.contact,
+                    document_type=item.document_type,
+                    number=None if key.number is None else key.number[1],
+                    cadence=item.series.cadence.value,
+                    interval_days=item.series.interval,
+                    spread_days=item.series.spread,
+                    documents=len(item.series.documents),
+                    last_document=last.id,
+                    last_date=last.document_date,
+                    next_date=item.series.next_date,
+                    next_period=(
+                        None
+                        if item.series.next_period is None
+                        else item.series.next_period.notation
+                    ),
+                    state=item.state.value,
+                )
+            )
+        return ExpectedOut(series=series)
 
     return server
 

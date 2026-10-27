@@ -20,6 +20,8 @@
 		type Decision,
 		type How
 	} from '#lib/user-removal.ts';
+	import Loading from '#lib/components/Loading.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 
 	// Deleting a user (Tobi, 22.10.2026): the spaces they leave behind are decided here, each
 	// with a click, and all goes in one request; with none, it is a plain confirmation.
@@ -97,15 +99,15 @@
 </script>
 
 <AlertDialog.Root bind:open>
-	<AlertDialog.Content class="max-w-lg">
+	<AlertDialog.Content size="md">
 		<AlertDialog.Header>
 			<AlertDialog.Title>{m.user_delete()}</AlertDialog.Title>
 			<AlertDialog.Description>{m.user_delete_confirm()}</AlertDialog.Description>
 		</AlertDialog.Header>
 		{#if problem}
-			<p class="text-destructive" role="alert">{problem}</p>
+			<LoadProblem {problem} onretry={load} />
 		{:else if blocking === null}
-			<p class="text-muted-foreground">{m.loading()}</p>
+			<Loading />
 		{:else if blocking.length > 0}
 			<div class="flex max-h-[55vh] flex-col gap-4 overflow-auto">
 				<p class="text-sm">{m.user_delete_spaces()}</p>

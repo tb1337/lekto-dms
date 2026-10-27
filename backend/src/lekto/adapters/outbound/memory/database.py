@@ -4,15 +4,15 @@ import asyncio
 from collections.abc import Callable, Hashable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from lekto.core.domain.classifier import ClassifierModel
+from lekto.core.domain.document_facts import DocumentFact
 from lekto.core.domain.documents import Document
 from lekto.core.domain.entity import Entity
 from lekto.core.domain.events import DomainEvent
 from lekto.core.domain.fields import FieldDefinition
 from lekto.core.domain.first_runs import FieldVerdict, FirstRun
-from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.identity import ApiToken, ExternalIdentity, Session
 from lekto.core.domain.ids import DocumentId, EventId, JobId, UserId
 from lekto.core.domain.inbox import Confirmation
@@ -20,6 +20,7 @@ from lekto.core.domain.jobs import Job
 from lekto.core.domain.lenses import Lens
 from lekto.core.domain.master_data import Contact, DocumentType, MasterData, Tag
 from lekto.core.domain.pipeline import NodeRun
+from lekto.core.domain.relations import Relation
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import User
 from lekto.core.domain.validation import name_key
@@ -34,11 +35,25 @@ class Table[E: Entity[UUID]]:
 
 
 @dataclass
-class IdentifiersRow:
-    """The identifiers one document shows (a row keyed by the document's id)."""
+class RelationRow:
+    """A relation between two documents (a row keyed by `relation_row_id`)."""
+
+    id: UUID
+    relation: Relation
+    version: int
+
+
+def relation_row_id(newer: DocumentId, older: DocumentId) -> UUID:
+    """The key of the row of the relation from `newer` to `older`."""
+    return uuid5(NAMESPACE_URL, f"lekto:relation:{newer}:{older}")
+
+
+@dataclass
+class FactsRow:
+    """The facts of one document (a row keyed by the document's id)."""
 
     id: DocumentId
-    identifiers: frozenset[tuple[IdentifierKind, str]]
+    facts: tuple[DocumentFact, ...]
     version: int
 
 
@@ -115,7 +130,8 @@ LOGIN_FAILURES = Table("login failures", _no_keys)
 RULES = Table("rule", _no_keys)
 RULE_VERSIONS = Table("rule version", _no_keys)
 RULE_APPLICATIONS = Table("rule application", _no_keys)
-DOCUMENT_IDENTIFIERS = Table[IdentifiersRow]("document identifiers", _no_keys)
+DOCUMENT_FACTS = Table[FactsRow]("document facts", _no_keys)
+DOCUMENT_RELATIONS = Table[RelationRow]("document relation", _no_keys)
 CLASSIFIER_MODELS = Table("classifier model", _classifier_model_keys)
 WEBHOOKS = Table("webhook", _no_keys)
 WEBHOOK_DELIVERIES = Table("webhook delivery", _no_keys)

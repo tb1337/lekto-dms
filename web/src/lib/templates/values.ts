@@ -1,4 +1,6 @@
 import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
+import { KIND_ROLES } from '#lib/facts.ts';
+import { IDENTIFIER_KINDS, NUMBER_KINDS, kindLabel } from '#lib/identifiers.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 /** The values a template sees, as the server names them (`field.<key>` aside). */
@@ -82,6 +84,44 @@ export function stepNames(steps: readonly string[]): { name: string; label: stri
 	}));
 }
 
+/** The parts of a GiroCode a template sees (`facts.girocode.<part>`). */
+const GIROCODE_PARTS = ['amount', 'iban', 'name', 'purpose', 'bic'] as const;
+
+/** What a template sees of the document's facts (#145): its own value of each kind
+ * (`facts.<kind>`), the one of another document it refers to (`facts.refers.<kind>`, for the
+ * kinds a document refers by), the GiroCode on its pages, and all facts (`fact_list`). A
+ * person's kinds alone are not among them. */
+export function factNames(): { name: string; label: string }[] {
+	// A kind that refers to another document by default (`your_reference`, `letter_date`):
+	// only below `facts.refers`.
+	const kinds = [...new Set([...NUMBER_KINDS, ...IDENTIFIER_KINDS])].filter(
+		(kind) => KIND_ROLES[kind] !== 'refers'
+	);
+	return [
+		...kinds.map((kind) => ({
+			name: `facts.${kind}`,
+			label: m.template_value_fact({ kind: kindLabel(kind) })
+		})),
+		...NUMBER_KINDS.map((kind) => ({
+			name: `facts.refers.${kind}`,
+			label: m.template_value_fact_refers({ kind: kindLabel(kind) })
+		})),
+		...GIROCODE_PARTS.map((part) => ({
+			name: `facts.girocode.${part}`,
+			label: m.template_value_girocode({ part: GIROCODE_LABELS[part]() })
+		})),
+		{ name: 'fact_list', label: m.template_value_fact_list() }
+	];
+}
+
+const GIROCODE_LABELS: Record<(typeof GIROCODE_PARTS)[number], () => string> = {
+	amount: m.code_giro_amount,
+	iban: m.identifier_kind_iban,
+	name: m.code_giro_name,
+	purpose: m.code_giro_purpose,
+	bic: m.code_giro_bic
+};
+
 /** The values a template of `purpose` sees, with their names, for completion and lists; in a
  * rule's step also what the steps before it that ask brought (`steps`). */
 export function templateNames(
@@ -90,6 +130,7 @@ export function templateNames(
 ): { name: string; label: string }[] {
 	const names = [
 		...TEMPLATE_NAMES.map((name) => ({ name, label: TEMPLATE_NAME_LABELS[name]() })),
+		...factNames(),
 		...stepNames(steps)
 	];
 	if (purpose === 'rule') return names;
@@ -106,7 +147,8 @@ export function templateNames(
 export const LIST_NAMES: ReadonlySet<string> = new Set([
 	'tags',
 	'contact_groups',
-	'document_type_groups'
+	'document_type_groups',
+	'fact_list'
 ]);
 
 /** The fields a template may use: those of `documentType` (undefined: every field, as in a

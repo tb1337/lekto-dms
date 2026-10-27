@@ -41,6 +41,7 @@
      closes (Escape, outside), "Fertig" clears it itself. -->
 <Dialog.Root bind:open onOpenChange={(value) => !value && (query = '')}>
 	<Dialog.Content
+		size="md"
 		showCloseButton={false}
 		onOpenAutoFocus={(event) => {
 			// Wider screens start in the search; a phone's keyboard waits for a tap.
@@ -52,7 +53,7 @@
 			'flex flex-col gap-0 overflow-hidden p-0',
 			phone.current
 				? 'top-auto bottom-0 left-0 h-[85dvh] max-h-[85dvh] w-full max-w-none translate-x-0 translate-y-0 rounded-t-2xl rounded-b-none data-[state=open]:slide-in-from-bottom-10'
-				: 'h-[min(36rem,calc(100dvh-2rem))] sm:max-w-md'
+				: 'h-[min(36rem,calc(100dvh-2rem))]'
 		)}
 	>
 		{#if phone.current}

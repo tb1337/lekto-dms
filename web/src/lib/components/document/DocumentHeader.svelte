@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import Waypoints from '@lucide/svelte/icons/waypoints';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
@@ -23,11 +23,8 @@
 	import Select from '#lib/components/Select.svelte';
 	import ProcessingProgress from '#lib/components/ProcessingProgress.svelte';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
-	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
-	import { Checkbox } from '#lib/components/ui/checkbox/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
-	import { Label } from '#lib/components/ui/label/index.ts';
 	import { documentApi, inboxDocument, tabHref, type Neighbours } from '#lib/document-view.ts';
 	import { reportError } from '#lib/errors.ts';
 	import { readersLaterText, visibleText, type Viewer } from '#lib/filing.ts';
@@ -40,6 +37,12 @@
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 	import { adviceText, visionAvailable, type Reading, type Vision } from '#lib/vision.ts';
+	import { Choice } from '#lib/components/ui/choice/index.ts';
+	import BackLink from '#lib/components/BackLink.svelte';
+	import IconButton from '#lib/components/IconButton.svelte';
+	import PageTitle from '#lib/components/page/PageTitle.svelte';
+	import { returnTo } from '#lib/return-to.svelte.ts';
+	import FormDialog from '#lib/components/FormDialog.svelte';
 
 	type Document = components['schemas']['DocumentDetails'];
 	type ReprocessNode = components['schemas']['ReprocessNode'];
@@ -167,21 +170,20 @@
 		await act(() => retryProcessing(document.id), m.retry_started());
 	}
 
+	// Run by the dialog's form (`FormDialog`): it is busy meanwhile, closes when this resolves
+	// and shows the error when it throws.
 	async function reprocess() {
 		const params = { params: { path: { id: document.id } } };
-		const done = await act(
-			() =>
-				withVision
-					? unwrap(api.POST('/api/v1/documents/{id}/vision', params))
-					: unwrap(
-							api.POST('/api/v1/documents/{id}/reprocess', {
-								...params,
-								body: { from_node: fromNode }
-							})
-						),
-			withVision ? m.vision_started() : m.reprocess_started()
-		);
-		if (done) reprocessOpen = false;
+		await (withVision
+			? unwrap(api.POST('/api/v1/documents/{id}/vision', params))
+			: unwrap(
+					api.POST('/api/v1/documents/{id}/reprocess', {
+						...params,
+						body: { from_node: fromNode }
+					})
+				));
+		toast.success(withVision ? m.vision_started() : m.reprocess_started());
+		onchanged();
 	}
 
 	async function readWithVision() {
@@ -198,79 +200,52 @@
 		const receiver = users.find(
 			(other) => other.personal_space_id === target && other.id !== user?.id
 		);
+		await unwrap(
+			api.POST('/api/v1/documents/{id}/move', {
+				params: { path: { id: document.id } },
+				body: { space_id: target }
+			})
+		);
 		// Handed over (a personal space the caller is no member of is not among their spaces),
 		// or into a space the caller only reads: the document leaves their hands, and the view
 		// goes back where it came from instead of showing it gone.
 		if (!into || into.role !== 'edit') {
-			busy = true;
-			try {
-				await unwrap(
-					api.POST('/api/v1/documents/{id}/move', {
-						params: { path: { id: document.id } },
-						body: { space_id: target }
-					})
-				);
-				toast.success(receiver ? m.move_handed_over({ name: userLabel(receiver) }) : m.move_done());
-				moveOpen = false;
-				await goto(inbox ? `${BASE}/inbox` : `${BASE}/documents`);
-			} catch (error) {
-				reportError(error);
-			} finally {
-				busy = false;
-			}
+			toast.success(receiver ? m.move_handed_over({ name: userLabel(receiver) }) : m.move_done());
+			moveOpen = false;
+			await goto(inbox ? `${BASE}/inbox` : returnTo.documents);
 			return;
 		}
-		const done = await act(
-			() =>
-				unwrap(
-					api.POST('/api/v1/documents/{id}/move', {
-						params: { path: { id: document.id } },
-						body: { space_id: target }
-					})
-				),
-			m.move_done()
-		);
-		if (done) moveOpen = false;
+		toast.success(m.move_done());
+		onchanged();
 	}
 
 	async function remove() {
 		await unwrap(api.DELETE('/api/v1/documents/{id}', { params: { path: { id: document.id } } }));
 		toast.success(m.delete_done());
-		await goto(inbox ? `${BASE}/inbox` : `${BASE}/documents`);
+		await goto(inbox ? `${BASE}/inbox` : returnTo.documents);
 	}
 </script>
 
 <div class="flex flex-col gap-3.5">
 	<div class="flex min-h-9 flex-wrap items-center gap-3">
-		<a
-			href={inbox ? `${BASE}/inbox` : `${BASE}/documents`}
-			class="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-		>
-			<ArrowLeft class="size-4" aria-hidden="true" />
-			{inbox ? m.nav_inbox() : m.nav_documents()}
-		</a>
+		<BackLink
+			href={inbox ? `${BASE}/inbox` : returnTo.documents}
+			label={inbox ? m.nav_inbox() : m.nav_documents()}
+		/>
 		{#if inbox && inbox.position !== null}
 			<nav aria-label={m.doc_inbox_nav()} class="ml-auto flex items-center gap-1">
 				<span class="mr-1.5 text-sm text-muted-foreground">
 					{m.doc_inbox_position({ position: inbox.position, total: inbox.total })}
 				</span>
 				{#if inbox.previous}
-					<a
-						href={inboxHref(inbox.previous)}
-						class={cn(buttonVariants({ variant: 'outline', size: 'icon' }), 'size-9')}
-						aria-label={m.doc_previous()}
-					>
+					<IconButton href={inboxHref(inbox.previous)} variant="outline" label={m.doc_previous()}>
 						<ChevronLeft aria-hidden="true" />
-					</a>
+					</IconButton>
 				{/if}
 				{#if inbox.next}
-					<a
-						href={inboxHref(inbox.next)}
-						class={cn(buttonVariants({ variant: 'outline', size: 'icon' }), 'size-9')}
-						aria-label={m.doc_next()}
-					>
+					<IconButton href={inboxHref(inbox.next)} variant="outline" label={m.doc_next()}>
 						<ChevronRight aria-hidden="true" />
-					</a>
+					</IconButton>
 				{/if}
 			</nav>
 		{/if}
@@ -279,9 +254,7 @@
 	<header class="flex flex-wrap items-start justify-between gap-4">
 		<div class="flex min-w-0 flex-col gap-1.5">
 			<div class="flex flex-wrap items-center gap-3">
-				<h1 class="text-[1.75rem] leading-tight font-semibold tracking-tight break-words">
-					{document.title}
-				</h1>
+				<PageTitle>{document.title}</PageTitle>
 				<LaneBadge lane={document.lane} />
 			</div>
 			<p class="text-sm text-muted-foreground">
@@ -311,11 +284,18 @@
 		<!-- On a phone the actions are icons, so that they stand in one row; their names are read
 		     out and shown on hover. -->
 		<div class="flex flex-wrap gap-2">
-			<DropdownMenu.Root>
-				<DropdownMenu.Trigger
+			{#if document.contact_id}
+				<!-- The stream of its contact (#145). -->
+				<a
+					href="{BASE}/documents?contact={document.contact_id}&layout=stream"
 					class={cn(buttonVariants({ variant: 'outline' }), 'max-sm:px-3')}
-					title={m.doc_download()}
 				>
+					<Waypoints aria-hidden="true" />
+					<span class="max-sm:sr-only">{m.doc_show_stream()}</span>
+				</a>
+			{/if}
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger class={cn(buttonVariants({ variant: 'outline' }), 'max-sm:px-3')}>
 					<Download aria-hidden="true" />
 					<span class="max-sm:sr-only">{m.doc_download()}</span>
 					<ChevronDown aria-hidden="true" />
@@ -335,7 +315,6 @@
 				<Button
 					variant="outline"
 					class="max-sm:px-3"
-					title={m.move_title()}
 					onclick={startMove}
 					disabled={targets.length === 0}
 				>
@@ -388,28 +367,25 @@
 
 <ConfirmDialog
 	bind:open={confirmDelete}
-	title={m.delete_title()}
+	title={m.doc_delete_named({ title: document.title })}
 	description={m.delete_confirm({ title: document.title })}
 	confirmLabel={m.delete_title()}
 	onconfirm={remove}
 />
 
-<Dialog.Root bind:open={moveOpen}>
-	<Dialog.Content>
-		<Dialog.Header>
-			<Dialog.Title>{m.move_title()}</Dialog.Title>
-			<Dialog.Description>{m.move_hint()}</Dialog.Description>
-		</Dialog.Header>
-		<Field.Field>
-			<Field.Label for="move-space">{m.field_space()}</Field.Label>
-			<Select id="move-space" bind:value={target} options={targets} />
-		</Field.Field>
-		<Dialog.Footer>
-			<Button variant="ghost" onclick={() => (moveOpen = false)}>{m.cancel()}</Button>
-			<Button disabled={busy || !target} onclick={move}>{m.move_title()}</Button>
-		</Dialog.Footer>
-	</Dialog.Content>
-</Dialog.Root>
+<FormDialog
+	bind:open={moveOpen}
+	title={m.move_title()}
+	description={m.move_hint()}
+	submitLabel={m.move_title()}
+	disabled={!target}
+	action={move}
+>
+	<Field.Field>
+		<Field.Label for="move-space">{m.field_space()}</Field.Label>
+		<Select id="move-space" bind:value={target} options={targets} />
+	</Field.Field>
+</FormDialog>
 
 {#if vision}
 	<ConfirmDialog
@@ -424,36 +400,29 @@
 	/>
 {/if}
 
-<Dialog.Root bind:open={reprocessOpen}>
-	<Dialog.Content>
-		<Dialog.Header>
-			<Dialog.Title>{m.reprocess_title()}</Dialog.Title>
-			<Dialog.Description>{m.reprocess_hint()}</Dialog.Description>
-		</Dialog.Header>
-		<Field.Field>
-			<Field.Label for="reprocess-node">{m.reprocess_from()}</Field.Label>
-			<Select id="reprocess-node" bind:value={fromNode} options={nodes} />
-		</Field.Field>
-		{#if askVision && readable && vision}
-			<div class="flex flex-col gap-1.5">
-				<div class="flex items-center gap-2">
-					<Checkbox id="reprocess-vision" bind:checked={visionAgain} />
-					<Label for="reprocess-vision">{m.reprocess_vision_again()}</Label>
-				</div>
-				<p class="pl-6 text-sm text-muted-foreground">
-					{visionAgain
-						? m.vision_hint({ endpoint: vision.endpoint, model: vision.model })
-						: m.reprocess_vision_lost()}
-				</p>
-			</div>
-		{:else if askVision}
-			<p class="text-sm text-muted-foreground">{m.reprocess_vision_lost()}</p>
-		{/if}
-		<Dialog.Footer>
-			<Button variant="ghost" onclick={() => (reprocessOpen = false)}>{m.cancel()}</Button>
-			<Button disabled={busy} onclick={reprocess}>
-				{withVision ? m.reprocess_with_vision() : m.reprocess_title()}
-			</Button>
-		</Dialog.Footer>
-	</Dialog.Content>
-</Dialog.Root>
+<FormDialog
+	bind:open={reprocessOpen}
+	title={m.reprocess_title()}
+	description={m.reprocess_hint()}
+	submitLabel={withVision ? m.reprocess_with_vision() : m.reprocess_title()}
+	action={reprocess}
+>
+	<Field.Field>
+		<Field.Label for="reprocess-node">{m.reprocess_from()}</Field.Label>
+		<Select id="reprocess-node" bind:value={fromNode} options={nodes} />
+	</Field.Field>
+	{#if askVision && readable && vision}
+		<div class="flex flex-col gap-1.5">
+			<Choice bind:checked={visionAgain} class="font-medium">
+				{m.reprocess_vision_again()}
+			</Choice>
+			<p class="pl-6 text-sm text-muted-foreground">
+				{visionAgain
+					? m.vision_hint({ endpoint: vision.endpoint, model: vision.model })
+					: m.reprocess_vision_lost()}
+			</p>
+		</div>
+	{:else if askVision}
+		<p class="text-sm text-muted-foreground">{m.reprocess_vision_lost()}</p>
+	{/if}
+</FormDialog>

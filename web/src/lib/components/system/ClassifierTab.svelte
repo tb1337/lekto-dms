@@ -8,6 +8,7 @@
 	import { ApiError } from '#lib/api/problem.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { fieldLabel } from '#lib/describe.ts';
+	import InfoTip from '#lib/components/InfoTip.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import * as Chart from '#lib/components/ui/chart/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -18,6 +19,12 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import * as Card from '#lib/components/ui/card/index.ts';
+	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
+	import * as Table from '#lib/components/ui/table/index.ts';
+	import { Badge } from '#lib/components/ui/badge/index.ts';
+	import { Separator } from '#lib/components/ui/separator/index.ts';
+	import Loading from '#lib/components/Loading.svelte';
 
 	// The tab "Classifier" of the page "System" (Tobi, 24.10.2026): what the latest model
 	// learned and how well, how far the next training is, how the models got better, and how
@@ -159,24 +166,34 @@
 	const anySignal = $derived((signals?.signals ?? []).some((item) => item.hits + item.misses > 0));
 </script>
 
+{#snippet heading(text: string, about: string)}
+	<div class="flex items-center gap-1">
+		<SectionTitle size="card">{text}</SectionTitle>
+		<InfoTip label={m.hint_about({ name: text })} size="sm" class="w-80">
+			<p>{about}</p>
+		</InfoTip>
+	</div>
+{/snippet}
+
 <div class="flex flex-col gap-6">
 	{#if unavailable}
 		<p class="text-muted-foreground">{m.classifier_not_configured()}</p>
 	{:else if problem && !status}
 		<LoadProblem {problem} onretry={load} />
 	{:else if !status}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<div class="flex flex-wrap gap-6">
-			<section
-				class="flex min-w-0 flex-[2_1_560px] flex-col gap-[18px] rounded-2xl border bg-card px-5 py-4 sm:px-6"
-			>
+			<Card.Root as="section" size="lg" class="flex min-w-0 flex-[2_1_560px] flex-col gap-[18px]">
 				<div class="flex flex-wrap items-start justify-between gap-3">
 					<div class="flex flex-col gap-0.5">
 						{#if status.model}
 							{@const model = status.model}
-							<h2 class="font-semibold">{m.classifier_model_title({ number: model.number })}</h2>
-							<span class="text-[0.8125rem] text-muted-foreground">
+							{@render heading(
+								m.classifier_model_title({ number: model.number }),
+								m.classifier_model_info()
+							)}
+							<span class="text-meta text-muted-foreground">
 								{model.examples_until
 									? m.classifier_model_trained_until({
 											date: when(model.trained_at),
@@ -194,7 +211,7 @@
 										})}
 							</span>
 						{:else}
-							<h2 class="font-semibold">{m.classifier_no_model()}</h2>
+							{@render heading(m.classifier_no_model(), m.classifier_model_info())}
 						{/if}
 					</div>
 					{#if session.isAdmin}
@@ -211,19 +228,19 @@
 								<span class="text-2xl font-semibold tracking-tight tabular-nums">
 									{formatNumber(count)}
 								</span>
-								<span class="text-[0.8125rem] text-muted-foreground">{label}</span>
+								<span class="text-meta text-muted-foreground">{label}</span>
 							</div>
 						{/each}
 					</div>
 					{#if model.accuracy}
 						{@const accuracy = model.accuracy}
 						<div class="flex flex-col gap-2.5">
-							<span class="text-[0.8125rem] text-muted-foreground">
+							<span class="text-meta text-muted-foreground">
 								{m.classifier_tested({ tested: formatNumber(accuracy.tested) })}
 							</span>
 							{#each [[m.field_contact(), accuracy.contact], [m.field_document_type(), accuracy.document_type]] as const as [label, value] (label)}
 								<div class="grid grid-cols-[120px_1fr_48px] items-center gap-3">
-									<span class="text-[0.8125rem]">{label}</span>
+									<span class="text-meta">{label}</span>
 									<div
 										role="progressbar"
 										aria-label={label}
@@ -242,7 +259,7 @@
 							{/each}
 						</div>
 					{:else}
-						<span class="text-[0.8125rem] text-muted-foreground">
+						<span class="text-meta text-muted-foreground">
 							{m.classifier_accuracy_none()}
 						</span>
 					{/if}
@@ -250,14 +267,12 @@
 						<span class="font-mono text-xs text-muted-foreground">{model.method}</span>
 					{/if}
 				{/if}
-			</section>
+			</Card.Root>
 
-			<section
-				class="flex min-w-0 flex-[1_1_280px] flex-col gap-3 rounded-2xl border bg-card px-5 py-4 sm:px-6"
-			>
-				<h2 class="font-semibold">{m.classifier_next_title()}</h2>
+			<Card.Root as="section" size="lg" class="flex min-w-0 flex-[1_1_280px] flex-col gap-3">
+				{@render heading(m.classifier_next_title(), m.classifier_next_info())}
 				<div class="flex items-baseline gap-2">
-					<span class="text-[1.875rem] font-semibold tracking-tight tabular-nums">
+					<span class="text-figure tabular-nums">
 						{formatNumber(done)}
 					</span>
 					<span class="text-muted-foreground">
@@ -277,37 +292,35 @@
 						style:width="{Math.min(100, (100 * done) / Math.max(1, needed))}%"
 					></div>
 				</div>
-				<span class="text-[0.8125rem] text-muted-foreground">
+				<span class="text-meta text-muted-foreground">
 					{status.model
 						? m.classifier_next_text({ number: status.model.number })
 						: m.classifier_first_text()}
 				</span>
-				<div aria-hidden="true" class="my-1 h-px bg-border"></div>
-				<span class="text-[0.8125rem] text-muted-foreground">
+				<Separator class="my-1" />
+				<span class="text-meta text-muted-foreground">
 					{m.classifier_confirmed_total({ count: formatNumber(status.confirmed) })}
 				</span>
-				<span class="text-[0.8125rem] text-muted-foreground">
+				<span class="text-meta text-muted-foreground">
 					{m.classifier_threshold({ threshold: percent(status.threshold) })}
 				</span>
-			</section>
+			</Card.Root>
 		</div>
 
-		<section class="rounded-2xl border bg-card px-5 py-4 sm:px-6">
-			<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<h2 class="font-semibold">{m.classifier_history_title()}</h2>
-				<span class="text-[0.8125rem] text-muted-foreground">{m.classifier_history_hint()}</span>
+		<Card.Root as="section" size="lg">
+			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+				{@render heading(m.classifier_history_title(), m.classifier_history_info())}
+				<span class="text-meta text-muted-foreground">{m.classifier_history_hint()}</span>
 			</div>
 			{#if measured.length < 2}
 				<p class="mt-3 text-muted-foreground">{m.classifier_history_none()}</p>
 			{:else}
-				<div
-					class="mt-3 flex flex-wrap gap-x-[18px] gap-y-2 text-[0.8125rem] text-muted-foreground"
-				>
+				<div class="mt-3 flex flex-wrap gap-x-[18px] gap-y-2 text-meta text-muted-foreground">
 					<span class="inline-flex items-center gap-1.5">
 						<span aria-hidden="true" class="w-[18px] border-t-[2.5px] border-primary"></span>
 						{m.field_contact()}
 						{#if latestMeasured}
-							<span class="font-semibold text-primary">{percent(latestMeasured.contact)}</span>
+							<span class="font-semibold text-brand">{percent(latestMeasured.contact)}</span>
 						{/if}
 					</span>
 					<span class="inline-flex items-center gap-1.5">
@@ -369,60 +382,55 @@
 					</Chart.Container>
 				</div>
 			{/if}
-		</section>
+		</Card.Root>
 
-		<section class="rounded-2xl border bg-card px-5 py-4 sm:px-6">
-			<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<h2 class="font-semibold">{m.classifier_signals_title()}</h2>
-				<span class="text-[0.8125rem] text-muted-foreground">{m.classifier_signals_hint()}</span>
+		<Card.Root as="section" size="lg">
+			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+				{@render heading(m.classifier_signals_title(), m.classifier_signals_info())}
+				<span class="text-meta text-muted-foreground">{m.classifier_signals_hint()}</span>
 			</div>
-			<p class="mt-2 max-w-3xl text-[0.8125rem] text-muted-foreground">
-				{m.classifier_signals_text()}
-			</p>
 			{#if !anySignal}
 				<p class="mt-3 text-muted-foreground">{m.classifier_signals_none()}</p>
 			{:else}
 				<div class="mt-4 overflow-x-auto">
-					<table class="w-full min-w-[720px] border-collapse tabular-nums">
-						<thead>
-							<tr>
-								<th
+					<Table.Root class="w-full min-w-[720px] border-collapse tabular-nums">
+						<Table.Header>
+							<Table.Row>
+								<Table.Head
 									scope="col"
 									class="border-b pr-3 pb-2.5 text-left text-xs font-medium text-muted-foreground"
 								>
 									{m.classifier_signal()}
-								</th>
+								</Table.Head>
 								{#each FIELDS as field (field)}
-									<th
+									<Table.Head
 										scope="col"
 										class="border-b px-3 pb-2.5 text-left text-xs font-medium text-muted-foreground"
 									>
 										{fieldLabel(field, null)}
-									</th>
+									</Table.Head>
 								{/each}
-							</tr>
-						</thead>
-						<tbody>
+							</Table.Row>
+						</Table.Header>
+						<Table.Body>
 							{#each table as row (row.signal)}
-								<tr>
-									<th
+								<Table.Row>
+									<Table.Head
 										scope="row"
 										class="border-b py-3.5 pr-3 text-left font-medium whitespace-nowrap"
 									>
 										{NODE_LABELS[row.signal]()}
-									</th>
+									</Table.Head>
 									{#each row.cells as cell (cell.field)}
-										<td class="border-b px-3 py-3.5 align-top">
+										<Table.Cell class="border-b px-3 py-3.5 align-top">
 											{#if cell.rate}
 												<div class="flex min-w-[110px] flex-col gap-[5px]">
-													<span class={cn('text-lg font-semibold', cell.best && 'text-primary')}>
+													<span class={cn('text-lg font-semibold', cell.best && 'text-brand')}>
 														{percent(cell.rate.share)}
 														{#if cell.best}
-															<span
-																class="ml-1.5 inline-flex h-[18px] items-center rounded-full bg-panel px-[7px] align-[2px] text-[0.6875rem] font-medium text-primary"
-															>
+															<Badge variant="primary" class="ml-1.5 align-middle">
 																{m.classifier_signal_best()}
-															</span>
+															</Badge>
 														{/if}
 													</span>
 													<div class="h-1.5 overflow-hidden rounded-full bg-muted">
@@ -443,14 +451,14 @@
 													>–</span
 												>
 											{/if}
-										</td>
+										</Table.Cell>
 									{/each}
-								</tr>
+								</Table.Row>
 							{/each}
-						</tbody>
-					</table>
+						</Table.Body>
+					</Table.Root>
 				</div>
 			{/if}
-		</section>
+		</Card.Root>
 	{/if}
 </div>

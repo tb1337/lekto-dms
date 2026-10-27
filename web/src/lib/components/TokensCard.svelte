@@ -17,6 +17,10 @@
 	import { describeError, reportError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import IconButton from '#lib/components/IconButton.svelte';
+	import Loading from '#lib/components/Loading.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
+	import DateInput from '#lib/components/DateInput.svelte';
 
 	type Token = components['schemas']['TokenOut'];
 	type Scope = components['schemas']['TokenScope'];
@@ -86,9 +90,9 @@
 	</Card.Header>
 	<Card.Content>
 		{#if problem}
-			<p class="text-destructive">{problem}</p>
+			<LoadProblem {problem} onretry={load} />
 		{:else if tokens === null}
-			<p class="text-muted-foreground">{m.loading()}</p>
+			<Loading />
 		{:else if tokens.length === 0}
 			<p class="text-muted-foreground">{m.token_none()}</p>
 		{:else}
@@ -112,17 +116,15 @@
 									: m.token_no_expiry()}
 							</p>
 						</div>
-						<Badge variant="outline">
+						<Badge variant="note">
 							{token.scope === 'read' ? m.token_scope_read() : m.token_scope_read_write()}
 						</Badge>
-						<Button
-							variant="ghost"
-							size="icon"
-							aria-label={m.token_revoke_named({ name: token.name })}
+						<IconButton
+							label={m.token_revoke_named({ name: token.name })}
 							onclick={() => (revoking = token)}
 						>
 							<Trash aria-hidden="true" />
-						</Button>
+						</IconButton>
 					</li>
 				{/each}
 			</ul>
@@ -153,7 +155,7 @@
 	</Field.Field>
 	<Field.Field>
 		<Field.Label for="token-expires">{m.token_expires_on()}</Field.Label>
-		<Input id="token-expires" type="date" min={today} bind:value={expires} />
+		<DateInput id="token-expires" label={m.token_expires_on()} min={today} bind:value={expires} />
 		<Field.Description>{m.token_expires_hint()}</Field.Description>
 	</Field.Field>
 </FormDialog>

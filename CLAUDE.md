@@ -9,13 +9,13 @@ only way in.
 | Path | Content |
 | --- | --- |
 | `backend/` | Python package `lekto`: `core` (domain, ports, services), `adapters` (inbound, outbound), `composition` |
-| `web/` | Web UI: SvelteKit single-page app below `/ui`, client generated from `web/openapi.json` (see `web/README.md`) |
+| `web/` | Web UI: SvelteKit single-page app below `/ui`, client generated from `web/openapi.json` (see `web/README.md`); design system in `web/DESIGN.md` (binding) |
 | `migration/` | Paperless-ngx migration client: separate uv project `lekto_migration` (`plan`, `check`, `prepare`, `run`; see `migration/README.md`) |
 | `deploy/` | Runtime image files (s6-overlay services, `image/rootfs`), `test-image.sh`, `README.md` (operation, backup) |
 | `examples/` | `model-calls/`: an example consumer of model calls through a webhook (Python, standard library only, Ollama) and a Compose extension to try it |
 | `docker/` | Compose examples with the published images (`ghcr.io/tb1337/lekto:latest`): SQLite, Postgres, extensions (workers, S3, Ollama, Caddy, Traefik, nginx), migration; settings in `.env` (`.env.example`) |
 | `.devcontainer/` | Devcontainer: Compose services (Postgres, Garage, Meilisearch), the fixed credentials for tests and CI (in `compose.yml`), the development instance (`README.md`, `dev.local.env.example`, `dev-setup.sh`) |
-| `.vscode/tasks.json` | VS Code tasks that run the development instance from the devcontainer (start, stop, migrate, UI, reindex, render-pages, read-codes, migration) |
+| `.vscode/tasks.json` | VS Code tasks that run the development instance from the devcontainer (start, stop, migrate, UI, reindex, render-pages, read-codes, relate, migration) |
 | `Dockerfile` | Stages `base`, `deps`, `app`, `s6`, `web` (UI build), `dev` (devcontainer) and `runtime` (production image); `migration/Dockerfile` builds `lekto-migration` |
 | `.idea/` | Design documents in German: `architektur.md` (binding), `umsetzungsplan.md` |
 
@@ -97,6 +97,10 @@ changes in `migration/` its checks.
 - State change, domain events and follow-up jobs go through one `UnitOfWork` and one commit.
 - The web UI talks to the REST API only. Every text a user reads is in `web/messages/{en,de}.json`;
   a test fails on raw text in markup.
+- The web UI follows [`web/DESIGN.md`](web/DESIGN.md), binding like `.idea/architektur.md`: tokens,
+  type scale, components, patterns, texts (German in the polite "Du" with a capital D). Read it
+  before changing anything in `web/`. A change it does not cover, or a deviation, needs a decision
+  and a change of `web/DESIGN.md` in the same pull request; never work around it in a component.
 
 ## Labels
 

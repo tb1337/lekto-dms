@@ -19,6 +19,8 @@ from lekto.adapters.inbound.schemas import (
     RuleNoteOut,
     RuleReportOut,
 )
+from lekto.core.domain.document_facts import FactRole
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.rules import (
     DEFAULT_PRIORITY,
@@ -64,7 +66,11 @@ class ConditionSchema(BaseModel):
     before the date), `present`, `missing`; step (in a condition step only: what a step that
     asks brought, at `path`): `is`, `in` (texts without case, numbers as numbers, true or
     false), `contains` (a text in a text, an item of a list), `gt`, `lt` (a number or a date),
-    `present`, `missing`."""
+    `present`, `missing`; fact (`fact_kind`, `fact_role` if given; facts a person rejected do
+    not count): `is`, `in` (the values as written, compared as Lekto compares them), `matches`
+    (against each value as the text writes it; `^` and `$` mark its ends), `present`,
+    `missing`; relation (the documents it refers to by a set relation; suggestions do not
+    count): `present` (any), `missing` (none), `is`, `in` (one of the document type ids)."""
 
     model_config = ConfigDict(
         extra="forbid",
@@ -76,6 +82,17 @@ class ConditionSchema(BaseModel):
                     "op": "matches",
                     "value": "Rechnung\\s+Nr",
                     "case_sensitive": True,
+                },
+                {
+                    "field": "fact",
+                    "op": "present",
+                    "fact_kind": "invoice_number",
+                    "fact_role": "refers",
+                },
+                {
+                    "field": "relation",
+                    "op": "in",
+                    "value": ["01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b"],
                 },
             ]
         },
@@ -114,6 +131,13 @@ class ConditionSchema(BaseModel):
     )
     case_sensitive: bool = Field(
         default=False, description="For `matches` only; other comparisons ignore case."
+    )
+    fact_kind: IdentifierKind | None = Field(
+        default=None, description="Only when `field` is `fact`: the kind of the facts."
+    )
+    fact_role: FactRole | None = Field(
+        default=None,
+        description="Only when `field` is `fact`: their role; none for any.",
     )
 
 
@@ -181,10 +205,14 @@ TEMPLATE_DESCRIPTION = (
     "those set), "
     "`contact_groups` and `document_type_groups` (lists, the groups the contact and the type are "
     "in), `space`, `uploaded_by` (who uploaded it), "
-    "`channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and "
+    "`channel`, `pages`, `field.<key>` (`FieldOut.key`; an amount has `.amount` and "
     "`.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, "
-    "`2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM "
-    "yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets "
+    "`2026-W38`, `2026-Q3` and the like), and the facts: `facts.<kind>` (the document's own "
+    "value of the kind, as written), `facts.refers.<kind>` (one it refers to), `facts.girocode` "
+    "(`name`, `iban`, `bic`, `amount`, `purpose`) and `fact_list` (each with `kind`, `value`, "
+    "`written`, `role`, `origin`); none a person rejected, none of a person's. Besides "
+    "Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in "
+    "`LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets "
     "nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: "
     f"{TEMPLATES_GUIDE}"
 )
@@ -220,7 +248,15 @@ class SetFieldAction(BaseModel):
     type: Literal["set_field"]
     field_id: UUID
     value: FieldJson = Field(
-        description="As the field's type has it; for a text field a template, as a title's."
+        description=(
+            "Text is a template for every type, as a title's: what it renders is read as the "
+            "field's type has it, first in the forms templates write (`1234.5`, `2026-03-12`, "
+            "`2026-Q3`, `true`), else as a person writes it (`2.111,68 €`, `12. März 2026`, "
+            "`KW 38/2026`, `ja`; an ambiguous number as `LEKTO_TEMPLATE_LOCALE` means it, an "
+            "amount without currency in `LEKTO_DEFAULT_CURRENCY`); text that cannot be read sets "
+            "nothing (noted, the document does not wait for it). An amount, a period or yes/no "
+            "as JSON is a fixed value."
+        )
     )
 
 
@@ -558,6 +594,12 @@ class TemplatePreviewIn(BaseModel):
         description="The type whose fields the template may use (a title pattern's); else "
         "the document's type, else every field.",
     )
+    field_id: UUID | None = Field(
+        default=None,
+        description="The field a rule's action sets with the template: what it renders is read "
+        "as the field's type has it (`read`, `unreadable`); also without a document if the "
+        "template uses no value.",
+    )
 
 
 class TemplatePreviewOut(BaseModel):
@@ -577,6 +619,16 @@ class TemplatePreviewOut(BaseModel):
         description="The document's values as a template writes them, by path (`contact`, "
         "`field.la_brutto`): each one it has, whatever the template. None without a document.",
         examples=[{"contact": "Stadtwerke", "field.la_brutto": "3.650,00 EUR"}],
+    )
+    read: FieldJson | None = Field(
+        default=None,
+        description="With `field_id`: the value the rendered text gives the field, in its JSON "
+        "form; None if nothing was rendered or it cannot be read.",
+    )
+    unreadable: bool = Field(
+        default=False,
+        description="With `field_id`: the rendered text cannot be read as the field's type has "
+        "it, so the action would set nothing.",
     )
 
 

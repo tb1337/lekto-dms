@@ -4,6 +4,7 @@
 	import type { Period } from '#lib/fields.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { readPeriod, writePeriod } from '#lib/periods.ts';
+	import DateInput from '#lib/components/DateInput.svelte';
 
 	// A period: from and to as dates, or in one field as it is written (`2026-Q2`, `KW 17/2026`,
 	// `März 2026`, …), which sets both; changed from and to show there in ISO 8601. One date
@@ -100,27 +101,25 @@
 <div class="grid grid-cols-2 gap-2">
 	<label class="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
 		{m.field_period_from()}
-		<Input
+		<DateInput
 			{id}
-			type="date"
 			class="px-2.5"
 			value={value.start}
 			{disabled}
-			aria-invalid={invalid || undefined}
-			aria-label={label ? m.field_period_from_of({ name: label }) : undefined}
-			oninput={(event) => set({ ...value, start: event.currentTarget.value })}
+			{invalid}
+			label={label ? m.field_period_from_of({ name: label }) : m.field_period_from()}
+			onchange={(start) => set({ ...value, start })}
 		/>
 	</label>
 	<label class="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
 		{m.field_period_to()}
-		<Input
-			type="date"
+		<DateInput
 			class="px-2.5"
 			value={value.end}
 			{disabled}
-			aria-invalid={invalid || undefined}
-			aria-label={label ? m.field_period_to_of({ name: label }) : undefined}
-			oninput={(event) => set({ ...value, end: event.currentTarget.value })}
+			{invalid}
+			label={label ? m.field_period_to_of({ name: label }) : m.field_period_to()}
+			onchange={(end) => set({ ...value, end })}
 		/>
 	</label>
 	<label class="col-span-2 flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">

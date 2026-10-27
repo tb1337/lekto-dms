@@ -4,18 +4,20 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import CodeEditor from '#lib/components/templates/CodeEditor.svelte';
 	import TemplateEditor from '#lib/components/templates/TemplateEditor.svelte';
-	import { Button } from '#lib/components/ui/button/index.ts';
 	import { latest } from '#lib/latest.ts';
+	import { fieldTypeLabel } from '#lib/fields.ts';
 	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { usableFields, type TemplatePurpose } from '#lib/templates/values.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// A template (Liquid) of a rule or a title pattern in a small field: coloured, with completion
 	// after `{{`, `{%` and `|`, red with the reason when the server finds it invalid, and a button
 	// to the template editor. `documentType`: undefined for a rule (every field), null for a type
 	// not saved yet (the fields for every type, and `extraFields`: those it is created with),
 	// else that type's fields. `fields` are the field definitions where the page holds them
-	// already (a rule's lookup); without them they are fetched once.
+	// already (a rule's lookup); without them they are fetched once. `target`: the field a rule's
+	// action sets with the template; what it renders is read as that field's type has it.
 	let {
 		id,
 		value = $bindable(''),
@@ -26,7 +28,8 @@
 		invalid = false,
 		maxlength = 500,
 		purpose = 'rule',
-		steps = []
+		steps = [],
+		target = null
 	}: {
 		id: string;
 		value?: string;
@@ -42,6 +45,8 @@
 		purpose?: TemplatePurpose;
 		/** A rule's step: the names of the steps before it that ask (`steps.<name>`). */
 		steps?: readonly string[];
+		/** The field the template sets (a rule's action). */
+		target?: FieldDefinition | null;
 	} = $props();
 
 	let loaded = $state<FieldDefinition[]>([]);
@@ -78,6 +83,7 @@
 	$effect(() => {
 		const template = value.trim();
 		const kind = documentType ?? null;
+		const field = target;
 		const current = checked();
 		if (!template) {
 			error = null;
@@ -86,11 +92,22 @@
 		const timer = setTimeout(() => {
 			void unwrap(
 				api.POST('/api/v1/templates/preview', {
-					body: { template, document_type_id: kind, purpose }
+					body: {
+						template,
+						document_type_id: kind,
+						purpose,
+						...(field ? { field_id: field.id } : {})
+					}
 				})
 			).then(
 				(found) => {
-					if (current()) error = found.error ?? null;
+					if (!current()) return;
+					// Text that uses no value is read at once: one its field cannot take is refused.
+					error =
+						found.error ??
+						(found.unreadable && field
+							? m.template_unreadable({ type: fieldTypeLabel(field.data_type) })
+							: null);
 				},
 				() => {
 					if (current()) error = null;
@@ -115,16 +132,9 @@
 			{steps}
 			class="min-w-0 flex-1"
 		/>
-		<Button
-			variant="ghost"
-			size="icon"
-			class="shrink-0"
-			aria-label={m.template_editor_open()}
-			title={m.template_editor_open()}
-			onclick={() => (editing = true)}
-		>
+		<IconButton class="shrink-0" label={m.template_editor_open()} onclick={() => (editing = true)}>
 			<Braces aria-hidden="true" />
-		</Button>
+		</IconButton>
 	</div>
 	<p class="text-sm text-destructive" class:hidden={!error} aria-live="polite">
 		{error ?? ''}
@@ -140,5 +150,6 @@
 	{maxlength}
 	{purpose}
 	{steps}
+	{target}
 	onapply={(next) => (value = next)}
 />

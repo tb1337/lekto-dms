@@ -5,7 +5,14 @@ import { goto } from '$app/navigation';
 import { events } from '#lib/events.svelte.ts';
 import { formatDate } from '#lib/i18n.ts';
 import { forgetMeaningSearch } from '#lib/meaning-search.ts';
-import { rememberLayout } from '#lib/listing.ts';
+import {
+	filtersCollapsed,
+	rememberFilters,
+	rememberFiltersCollapsed,
+	rememberLayout,
+	rememberedFilters
+} from '#lib/listing.ts';
+import { NO_FILTERS } from '#lib/filters.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
 import { calls, fakeApi, listedOf, OWNER } from '#lib/testing/documents.ts';
@@ -29,7 +36,7 @@ class FakeSource {
 }
 
 const state = vi.hoisted(() => ({ url: new URL('http://lekto/ui/documents') }));
-vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
+vi.mock('$app/navigation', () => ({ beforeNavigate: vi.fn(), goto: vi.fn() }));
 vi.mock('$app/state', () => ({
 	page: {
 		get url() {
@@ -52,7 +59,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	rememberLayout('grid');
+	localStorage.clear();
 	session.clear();
 	vi.unstubAllGlobals();
 });
@@ -101,7 +108,10 @@ describe('the archive page', () => {
 		);
 		render(Page);
 		await screen.findByText('Strom');
-		const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent?.trim());
+		// The list's headings, not those of the filters beside it.
+		const listHeadings = () =>
+			screen.queryAllByRole('heading', { level: 2 }).filter((h) => !h.closest('aside'));
+		const headings = listHeadings().map((h) => h.textContent?.trim());
 		expect(headings).toEqual([
 			formatDate(new Date(2026, 9, 1), { month: 'long', year: 'numeric' }),
 			formatDate(new Date(2026, 8, 1), { month: 'long', year: 'numeric' }),
@@ -125,7 +135,9 @@ describe('the archive page', () => {
 		);
 		render(Page);
 		await screen.findByText('Strom');
-		expect(screen.queryAllByRole('heading', { level: 2 })).toEqual([]);
+		expect(
+			screen.queryAllByRole('heading', { level: 2 }).filter((h) => !h.closest('aside'))
+		).toEqual([]);
 	});
 
 	it('counts the documents of the filters, and asks with each chosen contact', async () => {
@@ -421,6 +433,95 @@ describe('the archive page', () => {
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(screen.queryByText(m.reason_search_no_embeddings(), { exact: false })).toBeNull();
 		expect(calls(api).some((call) => call.includes('/search/warm'))).toBe(false);
+	});
+
+	it('applies the filters this browser last set when opened without any', async () => {
+		rememberFilters({ ...NO_FILTERS, contacts: ['c1'], tags: ['t1'] });
+		vi.stubGlobal('fetch', fakeApi());
+		render(Page);
+		expect(vi.mocked(goto)).toHaveBeenCalledWith('?contact=c1&tag=t1', {
+			replace: true,
+			reset: false
+		});
+	});
+
+	it.each([
+		// A link's filters show, and are remembered in turn; words and a lens leave the memory.
+		['?tag=t2', { ...NO_FILTERS, tags: ['t2'] }],
+		['?contact=c2&layout=stream', { ...NO_FILTERS, contacts: ['c2'] }],
+		['?q=Strom', { ...NO_FILTERS, contacts: ['c1'] }],
+		['?lens=l1', { ...NO_FILTERS, contacts: ['c1'] }],
+		['?lens=l1&tag=t2', { ...NO_FILTERS, contacts: ['c1'] }]
+	])('leaves what a link brings alone (%s)', async (search, remembered) => {
+		rememberFilters({ ...NO_FILTERS, contacts: ['c1'] });
+		state.url = new URL(`http://lekto/ui/documents${search}`);
+		vi.stubGlobal(
+			'fetch',
+			fakeApi({ 'GET /api/v1/documents/stream': () => ({ lanes: [], truncated: false }) })
+		);
+		render(Page);
+		await screen.findByRole('heading', { level: 1 });
+		expect(vi.mocked(goto)).not.toHaveBeenCalled();
+		expect(rememberedFilters()).toEqual(remembered);
+	});
+
+	it('remembers the filters as they change, and forgets them with a reset', async () => {
+		state.url = new URL('http://lekto/ui/documents?contact=c1&tag=t1');
+		vi.stubGlobal('fetch', fakeApi());
+		const user = userEvent.setup();
+		render(Page);
+		await user.click(
+			await screen.findByRole('button', { name: m.filter_tag_remove({ name: 't1' }) })
+		);
+		expect(rememberedFilters()).toEqual({ ...NO_FILTERS, contacts: ['c1'] });
+		expect(vi.mocked(goto)).toHaveBeenLastCalledWith('?contact=c1', { reset: false });
+		await user.click(screen.getByRole('button', { name: m.filter_reset() }));
+		expect(rememberedFilters()).toBeNull();
+		expect(vi.mocked(goto)).toHaveBeenLastCalledWith('/ui/documents', { reset: false });
+	});
+
+	it('does not remember the filters of a lens', async () => {
+		state.url = new URL('http://lekto/ui/documents?lens=l1&tag=t1');
+		vi.stubGlobal('fetch', fakeApi());
+		const user = userEvent.setup();
+		render(Page);
+		await user.click(
+			await screen.findByRole('button', { name: m.filter_tag_remove({ name: 't1' }) })
+		);
+		expect(vi.mocked(goto)).toHaveBeenLastCalledWith('?lens=l1', { reset: false });
+		expect(rememberedFilters()).toBeNull();
+	});
+
+	it('collapses the filters beside the list, counts the active ones, and remembers it', async () => {
+		state.url = new URL('http://lekto/ui/documents?contact=c1&tag=t1');
+		vi.stubGlobal('fetch', fakeApi());
+		const user = userEvent.setup();
+		render(Page);
+		const aside = screen.getByRole('complementary', { name: m.filters_title() });
+		const collapse = screen.getByRole('button', { name: m.filters_collapse() });
+		expect(collapse.getAttribute('aria-expanded')).toBe('true');
+		expect(collapse.getAttribute('aria-controls')).toBe(aside.id);
+		await user.click(collapse);
+		expect(screen.queryByRole('complementary', { name: m.filters_title() })).toBeNull();
+		const expand = screen.getByRole('button', {
+			name: m.filters_expand_active({ count: '2' })
+		});
+		expect(expand.getAttribute('aria-expanded')).toBe('false');
+		expect(expand.hasAttribute('aria-controls')).toBe(false);
+		expect(filtersCollapsed()).toBe(true);
+		// The active filters stay as chips.
+		expect(screen.getByRole('group', { name: m.filters_active() })).toBeTruthy();
+		await user.click(expand);
+		expect(screen.getByRole('complementary', { name: m.filters_title() })).toBeTruthy();
+		expect(filtersCollapsed()).toBe(false);
+	});
+
+	it('opens with the filters collapsed as remembered', async () => {
+		rememberFiltersCollapsed(true);
+		vi.stubGlobal('fetch', fakeApi());
+		render(Page);
+		expect(screen.queryByRole('complementary', { name: m.filters_title() })).toBeNull();
+		expect(screen.getByRole('button', { name: m.filters_expand() })).toBeTruthy();
 	});
 
 	it('takes no lane from an older link', async () => {

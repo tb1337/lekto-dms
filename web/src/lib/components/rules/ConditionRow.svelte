@@ -10,10 +10,14 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
+	import { FACT_ROLES, roleLabel } from '#lib/facts.ts';
+	import { session } from '#lib/session.svelte.ts';
+	import { IDENTIFIER_KINDS, NUMBER_KINDS, PERSON_KINDS, labelOfKind } from '#lib/identifiers.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { CHANNEL_LABELS, fieldLabel, operatorLabel } from '#lib/rules/describe.ts';
 	import { tagOptions } from '#lib/tags.ts';
+	import { Choice } from '#lib/components/ui/choice/index.ts';
 	import {
 		CHANNELS,
 		CONDITION_FIELDS,
@@ -28,6 +32,7 @@
 		type ConditionNode,
 		type Operator
 	} from '#lib/rules/model.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
 
 	// One condition: condition field (and the field), comparison and the value it needs.
 	// `onunreadable` says while the value's text cannot be read (see `ValueInput`). In a
@@ -54,6 +59,24 @@
 	} = $props();
 
 	const field = $derived(lookup.fields.find((entry) => entry.id === condition.fieldId) ?? null);
+	// A person's numbers (by kind or role) only for admins, as only they find documents by
+	// them; a kind saved otherwise (over the API) is shown all the same.
+	const factKindOptions = $derived(
+		[
+			...new Set<string>([
+				...NUMBER_KINDS,
+				...IDENTIFIER_KINDS,
+				...(session.isAdmin ? PERSON_KINDS : []),
+				...(condition.factKind ? [condition.factKind] : [])
+			])
+		].map((kind) => ({ value: kind, label: labelOfKind(kind) }))
+	);
+	const factRoleOptions = $derived([
+		{ value: '', label: m.filter_fact_any_role() },
+		...FACT_ROLES.filter(
+			(role) => role !== 'person' || session.isAdmin || condition.factRole === 'person'
+		).map((role) => ({ value: role, label: roleLabel(role) }))
+	]);
 	const operators = $derived(operatorsFor(condition, lookup.fields));
 	const conditionFieldOptions = $derived(
 		(steps === null ? CONDITION_FIELDS : STEP_CONDITION_FIELDS).map((field) => ({
@@ -107,6 +130,7 @@
 			case 'contact':
 				return lookup.contacts.map((entry) => ({ value: entry.id, label: entry.name }));
 			case 'document_type':
+			case 'relation':
 				return lookup.documentTypes.map((entry) => ({ value: entry.id, label: entry.name }));
 			case 'tags':
 			case 'contact_group':
@@ -153,6 +177,23 @@
 				class="h-10 w-full font-mono sm:w-44"
 			/>
 		{/if}
+		{#if condition.field === 'fact'}
+			<!-- Its kind and its role, any role unless one is chosen; a person's for admins. -->
+			<Select
+				aria-label={m.facts_add_kind()}
+				value={condition.factKind ?? ''}
+				options={factKindOptions}
+				onchange={(kind) => (condition.factKind = kind)}
+				class="h-10 w-full sm:w-44"
+			/>
+			<Select
+				aria-label={m.facts_decide_role()}
+				value={condition.factRole ?? ''}
+				options={factRoleOptions}
+				onchange={(role) => (condition.factRole = role || null)}
+				class="h-10 w-full sm:w-44"
+			/>
+		{/if}
 		{#if condition.field === 'field'}
 			<Select
 				aria-label={m.rule_condition_field()}
@@ -194,14 +235,12 @@
 										at === index ? event.currentTarget.value : item
 									))}
 							/>
-							<Button
-								variant="ghost"
-								size="icon"
-								aria-label={m.rule_remove_value({ name: entry })}
+							<IconButton
+								label={m.rule_remove_value({ name: entry })}
 								onclick={() => (condition.value = list.filter((_, at) => at !== index))}
 							>
 								<X aria-hidden="true" />
-							</Button>
+							</IconButton>
 						</div>
 					{/each}
 					<Button
@@ -270,38 +309,21 @@
 				/>
 			{/if}
 			{#if condition.op === 'matches'}
-				<label class="mt-2 flex items-center gap-2 text-sm">
-					<input
-						type="checkbox"
-						class="size-4 accent-primary"
-						bind:checked={condition.caseSensitive}
-					/>
+				<Choice bind:checked={condition.caseSensitive} class="mt-2">
 					{m.rule_case_sensitive()}
-				</label>
+				</Choice>
 			{/if}
 		</div>
 		<div class="flex gap-0.5">
-			<Button
-				variant="ghost"
-				size="icon"
-				aria-label={m.rule_move_up()}
-				disabled={!onup}
-				onclick={() => onup?.()}
-			>
+			<IconButton label={m.rule_move_up()} disabled={!onup} onclick={() => onup?.()}>
 				<ArrowUp aria-hidden="true" />
-			</Button>
-			<Button
-				variant="ghost"
-				size="icon"
-				aria-label={m.rule_move_down()}
-				disabled={!ondown}
-				onclick={() => ondown?.()}
-			>
+			</IconButton>
+			<IconButton label={m.rule_move_down()} disabled={!ondown} onclick={() => ondown?.()}>
 				<ArrowDown aria-hidden="true" />
-			</Button>
-			<Button variant="ghost" size="icon" aria-label={m.rule_remove()} onclick={onremove}>
+			</IconButton>
+			<IconButton label={m.rule_remove()} onclick={onremove}>
 				<Trash2 aria-hidden="true" />
-			</Button>
+			</IconButton>
 		</div>
 	</div>
 	{#if error}<Field.Error>{error}</Field.Error>{/if}

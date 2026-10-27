@@ -4,15 +4,16 @@ import hashlib
 import json
 import logging
 from collections import Counter
-from collections.abc import Collection, Sequence
-from dataclasses import dataclass, replace
+from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from uuid import UUID
 
 from lekto.core.domain import media_types
 from lekto.core.domain.classification import CONFIRMING, SPACE
-from lekto.core.domain.codes import Code, GiroCode, code_identifiers, codes_from_json, giro_code
+from lekto.core.domain.codes import Code, GiroCode, code_identifiers, giro_code
+from lekto.core.domain.document_facts import NUMBER_KINDS, DocumentFact, FactRole, person_only
 from lekto.core.domain.documents import Channel, Document, DocumentChanges, confirms
 from lekto.core.domain.errors import (
     ConflictError,
@@ -22,10 +23,10 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.exchanges import RunExchange, exchanges_from_json
-from lekto.core.domain.facts import Facts, facts_in, on_pages
+from lekto.core.domain.facts import Facts, Span, facts_in, identifier_spans, on_pages
 from lekto.core.domain.fields import SORTABLE_TYPES, FieldType, FieldValue
 from lekto.core.domain.first_runs import Decision
-from lekto.core.domain.identifiers import IdentifierKind
+from lekto.core.domain.identifiers import TYPES, IdentifierKind
 from lekto.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -38,6 +39,7 @@ from lekto.core.domain.ids import (
 from lekto.core.domain.locations import Box, Location
 from lekto.core.domain.master_data import Assignment
 from lekto.core.domain.permissions import (
+    can_edit_document,
     can_hand_over,
     can_move_document,
     can_read_document,
@@ -70,6 +72,7 @@ from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import (
     access_to,
     admin_only,
+    check_fact_filter,
     checked_changes,
     controllable_document,
     field_definitions,
@@ -82,14 +85,15 @@ from lekto.core.services._access import (
 from lekto.core.services._first_runs import keep_verdicts
 from lekto.core.services._moves import move_by_person
 from lekto.core.services._tags import expand, expanded, tag_counts, tag_tree
+from lekto.core.services.fact_decisions import FactDecision, decide_fact
 from lekto.core.services.inbox import Review, in_inbox, node_reviews, open_nodes
 from lekto.core.services.maintenance import REMOVE_FILES_JOB, RemoveFiles
 from lekto.core.services.objects import (
     EXCHANGE_NODES,
     archive_key,
-    codes_key,
     exchanges_key,
     legacy_exchanges_key,
+    load_codes,
     load_layout,
     load_text,
     original_key,
@@ -98,6 +102,7 @@ from lekto.core.services.objects import (
     structure_key,
 )
 from lekto.core.services.profiles import matching_persons
+from lekto.core.services.relating import queue_relate, relates_by
 from lekto.core.services.rules.changes import ChangeRules
 from lekto.core.services.rules.running import Prepared, RuleRun
 from lekto.core.services.tasks.settling import cancel_tasks
@@ -181,6 +186,46 @@ class DocumentFacts:
     # The names of the persons found, for the editors of the document's space and admins; None
     # for readers, whose facts then hold no persons.
     person_names: dict[UserId, str] | None = None
+    # The facts kept for the document (`domain.document_facts`) by kind and value: their role
+    # and where they come from; one the facts signal has not kept yet has none.
+    stored: Mapping[tuple[IdentifierKind, str], DocumentFact] = field(default_factory=dict)
+    # The document's numbers that are no contact's or person's identifier (its own, a strand's,
+    # another document's it refers to), as the text reads, with where they stand; those a
+    # person rejected too.
+    numbers: tuple["DocumentNumber", ...] = ()
+    # The kept facts of the other kinds the identifiers found in the text do not show: for
+    # admins all of them (a person's numbers, those only the model read), for others those a
+    # person decided, none of a person's (`_other_fact_shown`).
+    decided: tuple["DocumentNumber", ...] = ()
+    # Whether the caller decides about the facts: an editor of the space or an admin.
+    editable: bool = False
+
+
+@dataclass(frozen=True)
+class DocumentNumber:
+    """A fact of a kind no contact or person has (`NUMBER_KINDS`) and where it stands."""
+
+    fact: DocumentFact
+    spans: tuple[Span, ...]
+
+    def on(self, places: TextPlaces) -> "DocumentNumber":
+        placed = tuple(
+            replace(span, locations=places.locations(span.start, span.end)) for span in self.spans
+        )
+        return DocumentNumber(self.fact, placed)
+
+
+def _other_fact_shown(user: User, fact: DocumentFact) -> bool:
+    """Whether the facts report lists a kept fact the identifiers do not show: every one to an
+    admin; to others one a person decided, of no person's kind alone and not a person's (an
+    IBAN in the role `person`)."""
+    if user.is_active_admin:
+        return True
+    return (
+        fact.state.by_person
+        and not person_only(fact.kind)
+        and not (TYPES[fact.kind].for_persons and fact.role is FactRole.PERSON)
+    )
 
 
 async def _check_sortable(uow: UnitOfWork, order: DocumentOrder) -> None:
@@ -364,6 +409,7 @@ class DocumentService:
             editor = document_access(user, document, space) is SpaceRole.EDIT
             persons = await matching_persons(uow, user)
             labels = {item.id: item.label for item in await uow.users.list_all()}
+            stored = {fact.key: fact for fact in await uow.document_facts.of_document(id)}
         try:
             text = (await load_text(store, id)).decode("utf-8", errors="replace")
         except NotFoundError:
@@ -371,12 +417,30 @@ class DocumentService:
         codes = await self._codes(id)
         pages = await load_layout(store, id)
 
-        def found() -> Facts:
+        def found() -> tuple[Facts, tuple[DocumentNumber, ...], tuple[DocumentNumber, ...]]:
             facts = facts_in(text, contacts, codes or (), persons=persons, places=True)
-            return on_pages(facts, TextPlaces(text, pages)) if pages else facts
+            numbers = tuple(
+                DocumentNumber(fact, identifier_spans(text, fact.kind, fact.value))
+                for fact in stored.values()
+                if fact.kind in NUMBER_KINDS
+            )
+            shown = {item.key for item in facts.identifiers}
+            decided = tuple(
+                DocumentNumber(fact, identifier_spans(text, fact.kind, fact.value))
+                for fact in stored.values()
+                if fact.kind not in NUMBER_KINDS
+                and fact.key not in shown
+                and _other_fact_shown(user, fact)
+            )
+            if pages:
+                places = TextPlaces(text, pages)
+                facts = on_pages(facts, places)
+                numbers = tuple(item.on(places) for item in numbers)
+                decided = tuple(item.on(places) for item in decided)
+            return facts, numbers, decided
 
         # Matching every contact's names against a long text takes a while: not in the loop.
-        facts = await asyncio.to_thread(found)
+        facts, numbers, decided = await asyncio.to_thread(found)
         amounts = {
             field: value
             for field, value in document.fields.items()
@@ -388,7 +452,7 @@ class DocumentService:
         others = None
         if user.is_active_admin:
             async with self._uow() as uow:
-                carrying = await uow.document_identifiers.contacts_of(
+                carrying = await uow.document_facts.contacts_of(
                     [item.key for item in facts.identifiers]
                 )
             others = {key: contacts_ - {document.contact_id} for key, contacts_ in carrying.items()}
@@ -405,18 +469,52 @@ class DocumentService:
                 if editor
                 else None
             ),
+            stored=stored,
+            numbers=numbers,
+            decided=decided,
+            editable=can_edit_document(user, document, space),
+        )
+
+    async def decide_fact(self, actor: UserId, id: DocumentId, decision: FactDecision) -> None:
+        """Keep a person's decision about a fact of the document (`fact_decisions`); the change
+        rules of its space and the global ones run on the facts before and after it, the
+        document's values as they are (a field a rule fills from a fact follows it)."""
+        rules = self._rules
+        if rules is None:
+            await decide_fact(self._uow, self._object_store, self._clock, actor, id, decision)
+            return
+        async with self._uow() as uow:
+            document, _ = await writable_document(uow, await load_actor(uow, actor), id)
+            candidates = await rules.rules(uow, document)
+            candidates += await rules.followers(uow, candidates)
+        prepared = await rules.prepare(candidates, document) if candidates else Prepared()
+
+        async def run_rules(
+            uow: UnitOfWork, user: User, document: Document, kept_before: Sequence[DocumentFact]
+        ) -> None:
+            if not await rules.rules(uow, document):
+                return
+            await rules.after_change(
+                uow,
+                actor=user,
+                before=copy.deepcopy(document),
+                document=document,
+                changes=DocumentChanges(),
+                prepared=prepared,
+                definitions=await field_definitions(uow),
+                now=self._clock.now(),
+                kept_before=kept_before,
+            )
+            await _save(uow, document)
+
+        await decide_fact(
+            self._uow, self._object_store, self._clock, actor, id, decision, after=run_rules
         )
 
     async def _codes(self, id: DocumentId) -> tuple[Code, ...] | None:
         """The codes read from the archive's pages, None while they are not (or of an earlier
         version)."""
-        try:
-            return codes_from_json(json.loads(await self._object_store.get(codes_key(id))))
-        except NotFoundError:
-            return None
-        except (ValueError, ValidationError):
-            log.warning("an unreadable file of codes", extra={"document_id": str(id)})
-            return None
+        return await load_codes(self._object_store, id)
 
     async def read_structure(self, actor: UserId, id: DocumentId) -> bytes:
         """The structure of the text as JSON: its pages, lines and words with their boxes
@@ -450,6 +548,7 @@ class DocumentService:
         limit = max(1, min(limit, PAGE_LIMIT))
         async with self._uow() as uow:
             user = await load_lister(uow, actor, all_users, Action.LIST_ALL_DOCUMENTS)
+            check_fact_filter(user, filter)
             await _check_sortable(uow, order)
             position = await _position(uow, user, order, after, everyone=all_users)
             filter = await expanded(uow, filter)
@@ -564,7 +663,9 @@ class DocumentService:
         tag, topic or group counts the documents with it or one below it, each once, as its
         filter finds them."""
         async with self._uow() as uow:
-            await load_lister(uow, actor, all_users, Action.COUNT_ALL_DOCUMENTS)
+            check_fact_filter(
+                await load_lister(uow, actor, all_users, Action.COUNT_ALL_DOCUMENTS), filter
+            )
             user = None if all_users else actor
             tree = await tag_tree(uow)
             found: dict[DocumentFilter, list[FacetRow]] = {}
@@ -765,6 +866,8 @@ class DocumentService:
             access = document_access(user, document, space)
             if not dry_run:
                 await _save(uow, document)
+                if relates_by(changed):  # what its relations rest on changed
+                    await queue_relate(uow, document.id, now)
                 await uow.commit()
         report = access is not None and access.can_edit
         return MetadataChange(document, access, space, run if report else None, before)

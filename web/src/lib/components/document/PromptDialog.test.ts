@@ -39,6 +39,23 @@ describe('PromptDialog', () => {
 		expect(screen.queryByText('second of reader')).toBeNull();
 	});
 
+	it('names the request for the facts apart from the attempts of the proposal', async () => {
+		const user = userEvent.setup();
+		const facts = { ...call('the system'), user: '', task: 'list the facts', request: 'facts' };
+		render(PromptDialog, {
+			open: true,
+			title: 'Prompt · Language model',
+			meta: 'm',
+			calls: [call('the system'), call('the system'), facts as Call]
+		});
+		expect(
+			await screen.findByRole('button', { name: m.prompt_attempt({ number: 2, total: 2 }) })
+		).toBeTruthy();
+		await user.click(screen.getByRole('button', { name: m.prompt_facts() }));
+		await user.click(await screen.findByRole('button', { name: m.prompt_task() }));
+		expect(screen.getByText('list the facts')).toBeTruthy();
+	});
+
 	it('shows what went to a webhook without a system message', async () => {
 		render(PromptDialog, {
 			open: true,
@@ -49,5 +66,35 @@ describe('PromptDialog', () => {
 		expect(await screen.findByText('the text')).toBeTruthy();
 		expect(screen.queryByRole('button', { name: m.prompt_system() })).toBeNull();
 		expect(screen.getByRole('button', { name: m.prompt_answer() })).toBeTruthy();
+	});
+
+	it('shows the parts of a call in the order they were sent, with their tokens', async () => {
+		const user = userEvent.setup();
+		const sent = {
+			system: 'S'.repeat(10),
+			user: '',
+			document: 'D'.repeat(60),
+			task: 'T'.repeat(30),
+			retry: null,
+			answer: '{}',
+			model: 'm',
+			usage: { prompt_tokens: 100, completion_tokens: 3 }
+		} as unknown as Call;
+		const again = { ...sent, retry: 'not JSON' } as unknown as Call;
+		render(PromptDialog, { open: true, title: 'Prompt', meta: 'm', calls: [sent, again] });
+
+		const names = [m.prompt_system(), m.prompt_document(), m.prompt_task(), m.prompt_answer()];
+		for (const name of names) expect(await screen.findByRole('button', { name })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: m.prompt_user() })).toBeNull();
+		expect(screen.queryByRole('button', { name: m.prompt_retry() })).toBeNull();
+		expect(screen.getByText(m.prompt_parts_note())).toBeTruthy();
+		await user.click(screen.getByRole('button', { name: m.prompt_document() }));
+		expect(screen.getByText(m.prompt_input({ characters: '60', tokens: '60' }))).toBeTruthy();
+
+		await user.click(
+			screen.getByRole('button', { name: m.prompt_attempt({ number: 2, total: 2 }) })
+		);
+		await user.click(await screen.findByRole('button', { name: m.prompt_retry() }));
+		expect(screen.getByText('not JSON')).toBeTruthy();
 	});
 });

@@ -134,6 +134,7 @@ class ReasonCode(StrEnum):
     TITLE_YIELDS = "title_yields"
     VALUE_EMPTY = "value_empty"
     TEMPLATE_MISSING_VALUE = "template_missing_value"
+    TEMPLATE_UNREADABLE = "template_unreadable"
     # nodes: failures, notes, abstaining signals
     NODE_ATTEMPTS_EXHAUSTED = "node_attempts_exhausted"
     NODE_CRASHED = "node_crashed"
@@ -313,6 +314,23 @@ class ReasonCode(StrEnum):
     NOT_IBAN = "not_iban"
     NOT_VAT_ID = "not_vat_id"
     NOT_CUSTOMER_NUMBER = "not_customer_number"
+    NOT_OF_KIND = "not_of_kind"
+    FACT_KIND_UNKNOWN = "fact_kind_unknown"
+    FACT_NOT_IN_TEXT = "fact_not_in_text"
+    FACT_NOT_ASKED = "fact_not_asked"
+    FACT_CRITERION_EMPTY = "fact_criterion_empty"
+    RULE_FACT_OF_PERSON = "rule_fact_of_person"
+    RELATION_EXISTS = "relation_exists"
+    RELATION_NOT_FOUND = "relation_not_found"
+    RELATION_TO_ITSELF = "relation_to_itself"
+    FACT_FILTER_OF_PERSON = "fact_filter_of_person"
+    FACT_OF_A_PERSON = "fact_of_a_person"
+    FACT_NOT_FOUND = "fact_not_found"
+    FACT_EXISTS = "fact_exists"
+    FACT_ROLE_MISSING = "fact_role_missing"
+    FACT_OF_PERSON = "fact_of_person"
+    FACT_AT_CONTACT_ADMIN = "fact_at_contact_admin"
+    FACT_NOT_AT_CONTACT = "fact_not_at_contact"
     NOT_PERSONNEL_NUMBER = "not_personnel_number"
     NOT_DOMAIN = "not_domain"
     FREE_MAIL_DOMAIN = "free_mail_domain"
@@ -527,6 +545,7 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.TITLE_YIELDS: "another rule sets the title",
     ReasonCode.VALUE_EMPTY: "the value would be empty",
     ReasonCode.TEMPLATE_MISSING_VALUE: "{path} has no value",
+    ReasonCode.TEMPLATE_UNREADABLE: "'{value}' cannot be read as {type:field_type}",
     ReasonCode.NODE_ATTEMPTS_EXHAUSTED: (
         "node did not finish in {attempts:number} attempts (the worker died or ran out of time "
         "each time)"
@@ -756,6 +775,28 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.SKIP_NOT_AVAILABLE: "not available",
     ReasonCode.NOT_IBAN: "'{value}' is not a valid IBAN",
     ReasonCode.NOT_VAT_ID: "'{value}' is not a VAT number",
+    ReasonCode.FACT_KIND_UNKNOWN: "'{kind}' is no kind of fact Lekto knows",
+    ReasonCode.FACT_NOT_IN_TEXT: "'{value}' does not appear in the text",
+    ReasonCode.FACT_NOT_ASKED: "a fact '{kind}' in the role '{role}' was not asked for",
+    ReasonCode.FACT_CRITERION_EMPTY: (
+        "a filter by facts names a kind, a role, or a kind with its value"
+    ),
+    ReasonCode.FACT_FILTER_OF_PERSON: "only admins find documents by a person's numbers",
+    ReasonCode.RULE_FACT_OF_PERSON: "only admins write rules on a person's numbers",
+    ReasonCode.RELATION_EXISTS: "the documents are related already",
+    ReasonCode.RELATION_NOT_FOUND: "the documents are not related",
+    ReasonCode.RELATION_TO_ITSELF: "a document does not refer to itself",
+    ReasonCode.FACT_OF_A_PERSON: "the value is one of a person's numbers",
+    ReasonCode.FACT_NOT_FOUND: "the document has no fact {kind:identifier_kind} '{value}'",
+    ReasonCode.FACT_EXISTS: "the document has the fact {kind:identifier_kind} '{value}' already",
+    ReasonCode.FACT_ROLE_MISSING: "a fact added needs its role",
+    ReasonCode.FACT_OF_PERSON: "only admins decide the facts that are a person's alone",
+    ReasonCode.FACT_AT_CONTACT_ADMIN: "only admins correct a fact at the contact too",
+    ReasonCode.FACT_NOT_AT_CONTACT: (
+        "a {kind:identifier_kind} is corrected at the contact only on a document with a "
+        "contact, and only for the kinds a contact keeps"
+    ),
+    ReasonCode.NOT_OF_KIND: "'{value}' is no valid {kind:identifier_kind}",
     ReasonCode.NOT_CUSTOMER_NUMBER: (
         "'{value}' is no customer number (4 to 30 letters and digits, one a digit)"
     ),
@@ -889,6 +930,10 @@ class Action(StrEnum):
     RETRY_JOBS = "retry_jobs"
     CHECK_INDEX = "check_index"
     REPARSE_ALL = "reparse_all"
+    RELATE_ALL = "relate_all"
+    RENDER_PAGES_ALL = "render_pages_all"
+    READ_CODES_ALL = "read_codes_all"
+    FETCH_LOGOS_ALL = "fetch_logos_all"
     MAKE_GLOBAL_RULES = "make_global_rules"
     CHANGE_GLOBAL_RULES = "change_global_rules"
     MAKE_SPACE_RULES = "make_space_rules"
@@ -919,6 +964,10 @@ ACTIONS: Mapping[Action, str] = {
     Action.RETRY_JOBS: "try failed jobs again",
     Action.CHECK_INDEX: "check the search index against the documents",
     Action.REPARSE_ALL: "read the text of all documents again",
+    Action.RELATE_ALL: "find the relations of all documents again",
+    Action.RENDER_PAGES_ALL: "render the missing page images",
+    Action.READ_CODES_ALL: "read the codes of all documents",
+    Action.FETCH_LOGOS_ALL: "fetch the missing logos",
     Action.MAKE_GLOBAL_RULES: "make global rules",
     Action.CHANGE_GLOBAL_RULES: "change global rules",
     Action.MAKE_SPACE_RULES: "make the rules of this space",
@@ -951,6 +1000,8 @@ KINDS: Mapping[str, str] = {
     "nodes": "nodes",
     "thing": "thing",
     "action": "action",
+    "field_type": "field_type",
+    "identifier_kind": "identifier_kind",
 }
 """The kinds a template may give a parameter (after its colon; none: text), by the name the
 catalog gives them: `number` a number, `percent` a fraction from 0 to 1, `date` a day in ISO
@@ -960,7 +1011,8 @@ for none), `names` a list of names, `fields` a list of check fields (`contact`, 
 a list of names one after the other (spaces a document went through), `reason` another reason
 (`Reason.to_json`), `list` a list of names, quoted and joined by commas, `nodes` a list of
 nodes of the pipeline (`ocr`, ...), `thing` what something is, as an English noun (`document
-type`, `title`), `action` one of `Action` (what only some may do)."""
+type`, `title`), `action` one of `Action` (what only some may do), `field_type` a field's data
+type (`amount`), `identifier_kind` a kind of identifier or fact (`invoice_number`)."""
 
 
 class _Formatter(string.Formatter):
@@ -991,12 +1043,30 @@ class _Formatter(string.Formatter):
                     return ACTIONS[Action(str(value))]
                 except ValueError:
                     return str(value)
+            case "field_type":
+                return _FIELD_TYPES.get(str(value), str(value))
+            case "identifier_kind":
+                return str(value).replace("_", " ")
             case "reason":
                 try:
                     return Reason.from_json(value).text  # type: ignore[arg-type]
                 except ValidationError:
                     return str(value)
         return str(value)
+
+
+_FIELD_TYPES = {
+    "text": "text",
+    "number": "a number",
+    "amount": "an amount",
+    "date": "a date",
+    "boolean": "yes or no",
+    "choice": "one of the choices",
+    "link": "a link",
+    "period": "a period",
+}
+"""A field's data type as a reason writes it (`FieldType`; the domain of the reasons does not
+import the fields)."""
 
 
 def _items(value: object) -> list[object]:

@@ -34,6 +34,7 @@
 	import { classifierThresholds } from '#lib/step-details.ts';
 	import { byPerson, stepSummary } from '#lib/step-summary.ts';
 	import { countsOf, phaseSeconds, phasesOf, stepsOf, stuck, type Step } from '#lib/steps.ts';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 
 	type Document = components['schemas']['DocumentDetails'];
 	type LogEntry = components['schemas']['LogEntry'];
@@ -466,7 +467,7 @@
      each on their own, the page does not. Both are positioned, so what lies absolutely in them
      (text for screen readers) scrolls with them instead of stretching the page. -->
 <div class="lg:flex lg:h-full lg:min-h-0 lg:flex-col">
-	{#if problem}<p class="mb-4 shrink-0 text-destructive" role="alert">{problem}</p>{/if}
+	{#if problem}<div class="mb-4 shrink-0"><LoadProblem {problem} onretry={load} /></div>{/if}
 	{#if wide}
 		<div
 			class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_20rem] grid-rows-[minmax(0,1fr)] items-start gap-6"

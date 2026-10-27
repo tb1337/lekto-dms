@@ -5,12 +5,17 @@ from collections.abc import Collection, Mapping, Sequence
 from datetime import datetime
 
 from lekto.core.domain.classification import SPACE, FieldCheck, field_key
+from lekto.core.domain.document_facts import FactState
 from lekto.core.domain.documents import Document
 from lekto.core.domain.fields import FieldDefinition
 from lekto.core.domain.first_runs import (
+    FACTS,
     JUDGED_FIELDS,
+    RELATIONS,
     Decision,
+    FieldVerdict,
     FirstRun,
+    Verdict,
     decided_fields,
     early_verdicts,
     judge_fields,
@@ -19,6 +24,7 @@ from lekto.core.domain.first_runs import (
 from lekto.core.domain.ids import FieldId, TagId
 from lekto.core.domain.master_data import Assignment
 from lekto.core.domain.pipeline import Lane, NodeRun
+from lekto.core.domain.relations import RelationOrigin, RelationState
 from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services.inbox import field_checks
 
@@ -88,6 +94,38 @@ async def keep_verdicts(
         checks=checks,
         decided_at=now,
     )
+    if decision is Decision.INBOX and any(
+        fact.state is not FactState.REJECTED
+        for fact in await uow.document_facts.of_document(after.id)
+    ):
+        # Confirmed with its facts: the person took what the sources found, unless they
+        # decided about them before (the first decision stands).
+        verdicts.append(
+            FieldVerdict(
+                document_id=after.id,
+                field=FACTS,
+                verdict=Verdict.TAKEN,
+                decided_at=now,
+                decision=decision,
+            )
+        )
+    if decision is Decision.INBOX and any(
+        relation.origin is RelationOrigin.LEKTO
+        and relation.state is RelationState.SET
+        and relation.newer == after.id
+        for relation in await uow.document_relations.of_document(after.id)
+    ):
+        # Confirmed with the relations Lekto set for it: taken likewise. A suggestion stays the
+        # person's to decide (accepted or rejected, a verdict of its own).
+        verdicts.append(
+            FieldVerdict(
+                document_id=after.id,
+                field=RELATIONS,
+                verdict=Verdict.TAKEN,
+                decided_at=now,
+                decision=decision,
+            )
+        )
     await uow.processing_facts.add_verdicts(verdicts)
 
 

@@ -16,6 +16,7 @@
 	import type { FieldDefinition, MasterData } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
+	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
 
 	type DataType = components['schemas']['FieldType'];
 
@@ -138,7 +139,7 @@
 	deleteDescription={m.master_delete_confirm()}
 	{tabs}
 	bind:tab
-	class="h-[min(46.25rem,calc(100dvh-2rem))] sm:max-w-[37.5rem]"
+	class="h-[min(46.25rem,calc(100dvh-2rem))]"
 >
 	{#if tab === 'general'}
 		<Field.Field>
@@ -149,7 +150,7 @@
 				<div class="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
 					<span id="field-def-key-label">{m.field_def_key()}:</span>
 					<code
-						class="rounded-md bg-secondary px-1.5 py-0.5 font-mono text-[0.8125rem] break-all text-foreground"
+						class="rounded-md bg-secondary px-1.5 py-0.5 font-mono text-meta break-all text-foreground"
 						aria-labelledby="field-def-key-label">{`field.${initial.key}`}</code
 					>
 					<InfoHint text={m.field_def_key_hint()} about={m.field_def_key()} />
@@ -226,12 +227,11 @@
 							global === every && 'border-primary bg-primary/10 hover:bg-primary/10'
 						)}
 					>
-						<input
+						<ChoiceBox
 							type="radio"
 							name="field-def-scope"
 							checked={global === every}
 							onchange={() => (global = every)}
-							class="size-4 shrink-0 accent-primary"
 						/>
 						{every ? m.field_def_scope_global() : m.field_def_scope_some()}
 					</label>

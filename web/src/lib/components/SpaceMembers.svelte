@@ -20,6 +20,8 @@
 	} from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
+	import IconButton from '#lib/components/IconButton.svelte';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 
 	type Role = components['schemas']['SpaceRole'];
 
@@ -81,6 +83,9 @@
 		}
 	}
 
+	// Removing a member asks first (web/DESIGN.md, "Destructive actions").
+	let removing = $state<(typeof space.members)[number] | null>(null);
+
 	async function remove(id: string) {
 		busy = true;
 		try {
@@ -100,7 +105,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-w-lg">
+	<Dialog.Content size="md">
 		<Dialog.Header>
 			<Dialog.Title>{m.members_title({ name: label })}</Dialog.Title>
 			<Dialog.Description>
@@ -116,19 +121,17 @@
 				<li class="flex items-center gap-2">
 					<span class="min-w-0 flex-1 truncate">{userLabel(member)}</span>
 					{#if fixed(member)}
-						<Badge variant="secondary">{m.space_role_edit()}</Badge>
+						<Badge variant="note">{m.space_role_edit()}</Badge>
 					{:else if !member.active}
 						<!-- A deactivated member takes no new role; an editor removes them. -->
-						<Badge variant="outline">{m.user_inactive()}</Badge>
-						<Button
-							variant="ghost"
-							size="icon"
+						<Badge variant="muted">{m.user_inactive()}</Badge>
+						<IconButton
 							disabled={busy}
-							aria-label={m.members_remove({ name: userLabel(member) })}
-							onclick={() => remove(member.user_id)}
+							label={m.members_remove({ name: userLabel(member) })}
+							onclick={() => (removing = member)}
 						>
 							<X aria-hidden="true" />
-						</Button>
+						</IconButton>
 					{:else}
 						<Select
 							aria-label={m.members_role_of({ name: name(member.user_id) })}
@@ -138,15 +141,13 @@
 							onchange={(value) => set(member.user_id, value as Role)}
 							class="h-10 w-40"
 						/>
-						<Button
-							variant="ghost"
-							size="icon"
+						<IconButton
 							disabled={busy}
-							aria-label={m.members_remove({ name: name(member.user_id) })}
-							onclick={() => remove(member.user_id)}
+							label={m.members_remove({ name: name(member.user_id) })}
+							onclick={() => (removing = member)}
 						>
 							<X aria-hidden="true" />
-						</Button>
+						</IconButton>
 					{/if}
 				</li>
 			{/each}
@@ -183,3 +184,13 @@
 		{/if}
 	</Dialog.Content>
 </Dialog.Root>
+
+<ConfirmDialog
+	bind:open={() => removing !== null, (next) => !next && (removing = null)}
+	title={m.members_remove({ name: removing ? userLabel(removing) : '' })}
+	description={m.members_remove_confirm()}
+	confirmLabel={m.members_remove_do()}
+	onconfirm={async () => {
+		if (removing) await remove(removing.user_id);
+	}}
+/>

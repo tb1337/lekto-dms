@@ -102,7 +102,8 @@ describe('the user a number belongs to', () => {
 			m.identifier_kind_tax_id(),
 			m.identifier_kind_social_security_number(),
 			m.identifier_kind_health_insurance_number(),
-			m.identifier_kind_email_address()
+			m.identifier_kind_email_address(),
+			m.identifier_kind_child_benefit_number()
 		]);
 	});
 });

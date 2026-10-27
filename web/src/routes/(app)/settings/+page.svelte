@@ -7,6 +7,7 @@
 	import type { components } from '#lib/api/schema.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import PasswordCard from '#lib/components/PasswordCard.svelte';
+	import InfoHint from '#lib/components/InfoHint.svelte';
 	import ProfileForm from '#lib/components/ProfileForm.svelte';
 	import TokensCard from '#lib/components/TokensCard.svelte';
 	import TotpCard from '#lib/components/TotpCard.svelte';
@@ -19,6 +20,9 @@
 	import { oidcErrorMessage } from '#lib/oidc-errors.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
+	import PageHeader from '#lib/components/page/PageHeader.svelte';
+	import Loading from '#lib/components/Loading.svelte';
+	import LoadProblem from '#lib/components/LoadProblem.svelte';
 
 	type Me = components['schemas']['Me'];
 	type Oidc = components['schemas']['OidcInfo'];
@@ -77,20 +81,17 @@
 
 <svelte:head><title>{m.nav_settings()} · {m.app_name()}</title></svelte:head>
 
-<div class="mx-auto flex w-full max-w-3xl flex-col gap-6">
-	<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_settings()}</h1>
+<div class="flex flex-col gap-6">
+	<PageHeader title={m.nav_settings()} />
 
 	{#if linkError}
 		<Alert.Root variant="caution"><Alert.Description>{linkError}</Alert.Description></Alert.Root>
 	{/if}
 
 	{#if problem}
-		<div class="flex flex-col items-start gap-3">
-			<p class="text-destructive">{problem}</p>
-			<Button variant="outline" onclick={load}>{m.retry()}</Button>
-		</div>
+		<LoadProblem {problem} onretry={load} />
 	{:else if me === null}
-		<p class="text-muted-foreground">{m.loading()}</p>
+		<Loading />
 	{:else}
 		<Card.Root>
 			<Card.Header>
@@ -103,7 +104,10 @@
 
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>{m.profile_title()}</Card.Title>
+				<Card.Title class="flex items-center gap-1">
+					{m.profile_title()}
+					<InfoHint text={m.profile_own_hint()} about={m.profile_title()} />
+				</Card.Title>
 			</Card.Header>
 			<Card.Content>
 				<ProfileForm onsaved={saved} />

@@ -202,6 +202,8 @@ describe('saving', () => {
 		render(WithDialogs);
 		masterDataDialogs.open('document-types');
 		await user.type(await screen.findByLabelText(m.field_name()), 'Rechnung');
+		// A type others refer to by a number (#145).
+		await user.click(screen.getByRole('checkbox', { name: m.master_relation_target() }));
 		await user.click(screen.getByRole('button', { name: m.create() }));
 		await waitFor(() => expect(fetchMock.mock.calls.some(([r]) => r.method === 'POST')).toBe(true));
 		const changing = fetchMock.mock.calls
@@ -214,7 +216,11 @@ describe('saving', () => {
 		const post = changing.find(
 			(request) => request.method === 'POST' && request.url.endsWith('/document-types')
 		)!;
-		expect(await post.clone().json()).toMatchObject({ name: 'Rechnung', fields: [] });
+		expect(await post.clone().json()).toMatchObject({
+			name: 'Rechnung',
+			fields: [],
+			relation_target: true
+		});
 	});
 });
 

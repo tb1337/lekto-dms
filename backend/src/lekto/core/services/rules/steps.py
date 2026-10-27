@@ -24,6 +24,7 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 
+from lekto.core.domain.document_facts import DocumentFact
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.fields import FieldDefinition
@@ -49,6 +50,7 @@ from lekto.core.ports.patterns import PatternMatcher
 from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services._templates import document_json, webhook_values
+from lekto.core.services.relations import referred_types
 from lekto.core.services.rules.running import (
     PatternKey,
     Prepared,
@@ -276,7 +278,7 @@ class Walker:
         state = await self._after(match, actions, steps)
         request = TaskRequest(
             document=await document_json(self.uow, state, self.link_base),
-            values=await webhook_values(self.uow, state, self.link_base),
+            values=await webhook_values(self.uow, state, self.link_base, self.prepared.codes),
             rule={"id": str(rule.id), "name": rule.definition.name},
             steps=dict(steps),
         )
@@ -353,9 +355,11 @@ class Walker:
         return state
 
     async def _facts(self, rule: Rule, state: Document, steps: Mapping[str, JsonValue]) -> Facts:
-        patterns, _ = await field_patterns(self.matcher, [rule], state)
+        patterns, _ = await field_patterns(self.matcher, [rule], state, self.context.kept_facts)
         return Facts.of(
             state,
+            kept_facts=self.context.kept_facts,
+            referred_types=self.context.referred_types.get(rule.current.created_by, ()),
             text=self.prepared.text,
             patterns={**self.prepared.patterns, **patterns},
             unverified=self.origin.unverified,
@@ -405,6 +409,7 @@ async def run_rules(
     origin: Provenance,
     definitions: Mapping[FieldId, FieldDefinition],
     before: tuple[Document, Mapping[PatternKey, bool]] | None = None,
+    kept_before: Sequence[DocumentFact] | None = None,
     locked: Collection[str] = (),
     accept_conflicts: bool = False,
     applier: UserId | None = None,
@@ -414,16 +419,20 @@ async def run_rules(
 ) -> RuleRun:
     """Evaluate `rules` on the document, walk the steps of those that match and plan their
     change (nothing is applied). `before`: for a change, the state before it and its field
-    pattern results; only rules that become true with the change act. `applier`: who applies
+    pattern results (`kept_before`: the facts before it, where a person decided one; else the
+    facts are as now); only rules that become true with the change act. `applier`: who applies
     the rules to existing documents. `book`: what the tasks of the node's run brought, on
     arrival; without it, no step asks (`link_base`: where consumers answer)."""
-    patterns, problems = await field_patterns(matcher, rules, document)
+    kept = tuple(await uow.document_facts.of_document(document.id))
+    patterns, problems = await field_patterns(matcher, rules, document, kept)
     loaded = await taxonomy(uow, [document, *([] if before is None else [before[0]])], rules)
-    now_facts = facts(document, prepared, patterns, origin, loaded.taxonomy)
+    referred = await referred_types(uow, document, {rule.current.created_by for rule in rules})
+    now_facts = facts(document, prepared, patterns, origin, loaded.taxonomy, kept)
     before_facts = None
     if before is not None:
-        before_facts = facts(before[0], prepared, before[1], origin, loaded.taxonomy)
-    matched = matches(rules, now_facts, definitions, before=before_facts)
+        earlier = kept if kept_before is None else tuple(kept_before)
+        before_facts = facts(before[0], prepared, before[1], origin, loaded.taxonomy, earlier)
+    matched = matches(rules, now_facts, definitions, before=before_facts, referred=referred)
     context = await situation(
         uow,
         mode=mode,
@@ -438,6 +447,9 @@ async def run_rules(
         accept_conflicts=accept_conflicts,
         loaded=loaded,
         applier=applier,
+        kept_facts=kept,
+        codes=prepared.codes,
+        referred_types=referred,
     )
     walker = Walker(
         uow,

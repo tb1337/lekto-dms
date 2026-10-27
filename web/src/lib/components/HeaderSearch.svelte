@@ -7,6 +7,7 @@
 	import { openLens } from '#lib/open-lens.svelte.ts';
 	import { warmSearch } from '#lib/meaning-search.ts';
 	import { cn } from '#lib/utils.ts';
+	import { FIELD_FRAME } from '#lib/components/ui/field-look.ts';
 
 	// The search field of the header: Enter searches the documents with the words (and, in the
 	// document view, the filters already set, and its lens, which it names); `/` jumps here from
@@ -47,14 +48,7 @@
 
 <svelte:window onkeydown={keydown} />
 
-<form
-	role="search"
-	onsubmit={submit}
-	class={cn(
-		'flex h-10 items-center gap-2 rounded-full border border-input bg-background pr-1.5 pl-3.5 focus-within:border-ring',
-		className
-	)}
->
+<form role="search" onsubmit={submit} class={cn(FIELD_FRAME, 'h-10 pr-1.5 pl-3.5', className)}>
 	<SearchIcon class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 	<input
 		bind:this={input}
@@ -68,7 +62,7 @@
 		class="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
 	/>
 	<kbd
-		class="rounded-md border bg-card px-1.5 font-mono text-[11px] leading-5 text-muted-foreground"
+		class="rounded-md border bg-card px-1.5 font-mono text-micro leading-5 text-muted-foreground"
 		aria-hidden="true">/</kbd
 	>
 </form>

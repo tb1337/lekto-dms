@@ -16,6 +16,7 @@ Who may do what:
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 
+from lekto.core.domain.codes import Code
 from lekto.core.domain.errors import (
     ConflictError,
     MissingValueError,
@@ -24,11 +25,12 @@ from lekto.core.domain.errors import (
     SpaceWriteDeniedError,
     ValidationError,
 )
-from lekto.core.domain.fields import FieldDefinition, FieldType
+from lekto.core.domain.fields import FieldDefinition, FieldValue, read_written
 from lekto.core.domain.ids import (
     DocumentId,
     DocumentTypeId,
     EventId,
+    FieldId,
     RuleId,
     SpaceId,
     UserId,
@@ -38,6 +40,7 @@ from lekto.core.domain.permissions import space_role
 from lekto.core.domain.reasons import Action, ReasonCode, because
 from lekto.core.domain.rules import (
     MAX_TEXT,
+    TEMPLATE_MARKUP,
     AskWebhook,
     ForceReview,
     Rule,
@@ -47,6 +50,7 @@ from lekto.core.domain.rules import (
     SetField,
     SetTitle,
     check_fields,
+    is_template,
 )
 from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.templates import (
@@ -63,11 +67,13 @@ from lekto.core.domain.templates import uses_field as field_used
 from lekto.core.domain.users import User
 from lekto.core.domain.webhooks import MAX_BODY_TEMPLATE, TEST_EVENT, rendered_body
 from lekto.core.ports.clock import Clock
+from lekto.core.ports.object_store import ObjectStore
 from lekto.core.ports.patterns import PatternMatcher
 from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import (
     admin_only,
+    check_rule_facts,
     field_definitions,
     load_actor,
     load_lister,
@@ -75,6 +81,7 @@ from lekto.core.services._access import (
 )
 from lekto.core.services._tags import tag_tree
 from lekto.core.services._templates import document_values, event_values, webhook_values
+from lekto.core.services.objects import load_codes
 
 
 @dataclass(frozen=True)
@@ -83,13 +90,17 @@ class TemplatePreview:
     (whitespace collapsed, as in a title; a webhook's body as it is), or the missing value or
     the error that stops it.
     `values`: what the document has, each value as a template writes it (by its path, such as
-    `field.la_brutto`); None without a document."""
+    `field.la_brutto`); None without a document.
+    `read`: for a field's template, the value the rendered text gives the field; `unreadable` if
+    it gives none (the action would set nothing)."""
 
     used: tuple[str, ...] = ()
     rendered: str | None = None
     missing: str | None = None
     error: str | None = None
     values: Mapping[str, str] | None = None
+    read: FieldValue | None = None
+    unreadable: bool = False
 
 
 class RuleService:
@@ -101,13 +112,16 @@ class RuleService:
         patterns: PatternMatcher,
         *,
         link_base: str | None = None,
+        store: ObjectStore | None = None,
     ) -> None:
-        """`link_base` (`LEKTO_PUBLIC_URL`): the link to a document a webhook's template sees."""
+        """`link_base` (`LEKTO_PUBLIC_URL`): the link to a document a webhook's template sees;
+        `store`: where the codes on its pages are (`facts.girocode` in a preview)."""
         self._uow = uow
         self._clock = clock
         self._templates = templates
         self._patterns = patterns
         self._link_base = link_base
+        self._store = store
 
     async def list_rules(
         self,
@@ -184,6 +198,7 @@ class RuleService:
             if not enabled:
                 rule.disable(self._clock.now())
             await check_references(uow, rule.definition, author=user)
+            check_rule_facts(user, rule.definition)
             check_patterns(self._patterns, rule.definition)
             await check_templates(uow, self._templates, rule.definition)
             self._check_asks(rule.definition)
@@ -199,10 +214,14 @@ class RuleService:
         document: DocumentId | None = None,
         document_type: DocumentTypeId | None = None,
         webhook: bool = False,
+        field: FieldId | None = None,
     ) -> TemplatePreview:
         """`template` checked (syntax, values; the fields of `document_type`, or of the
         document's type, else all) and rendered with a document the caller may read, as it
         is, with the document's values whatever the template. Nothing is stored.
+
+        `field`: the template sets this field (a rule's action): what it renders is read as the
+        field's type has it (`read`, `unreadable`), with a document or, using no value, without.
 
         `webhook`: the template of a webhook's body (`webhooks.BodyFormat.TEMPLATE`): it sees
         `event` (here a `webhook.test`), `document_id`, `lane` and `link` too, is rendered as
@@ -218,12 +237,16 @@ class RuleService:
                 await uow.document_types.get(kind)
             fields = await uow.fields.list_all()
             applying = [item for item in fields if kind is None or item.applies_to(kind)]
+            target = None if field is None or webhook else await uow.fields.get(field)
+            codes: tuple[Code, ...] = ()
+            if found is not None and self._store is not None and "fact" in template:
+                codes = await load_codes(self._store, found.id) or ()
             if found is None:
                 values = None
             elif webhook:
-                values = await webhook_values(uow, found, self._link_base)
+                values = await webhook_values(uow, found, self._link_base, codes)
             else:
-                values = await document_values(uow, found, kind, applying)
+                values = await document_values(uow, found, kind, applying, codes)
         written = None if values is None else self._written(values)
         try:
             used = self._templates.check(template)
@@ -236,8 +259,9 @@ class RuleService:
         unknown = unknown_values(used, {item.key for item in applying}, names)
         if unknown:
             return TemplatePreview(used=paths, error=f"unknown value {unknown[0]}", values=written)
-        if values is None:
+        if values is None and (target is None or used):
             return TemplatePreview(used=paths)
+        values = values or {}
         if webhook:
             values |= event_values(EventId(new_id()), TEST_EVENT, self._clock.now())
         try:
@@ -249,7 +273,21 @@ class RuleService:
             return TemplatePreview(used=paths, missing=missing.path, values=written)
         except (ValidationError, ValueError) as invalid:
             return TemplatePreview(used=paths, error=str(invalid), values=written)
-        return TemplatePreview(used=paths, rendered=rendered, values=written)
+        if target is None or not rendered:
+            return TemplatePreview(used=paths, rendered=rendered, values=written)
+        read = read_written(
+            target,
+            text,
+            self._templates.writing,
+            received=None if found is None else found.created_at.date(),
+        )
+        return TemplatePreview(
+            used=paths,
+            rendered=rendered,
+            values=written,
+            read=read,
+            unreadable=read is None,
+        )
 
     def _written(self, values: Mapping[str, TemplateValue]) -> dict[str, str]:
         """Each of a document's values as a template writes it."""
@@ -287,6 +325,7 @@ class RuleService:
                 place = await _place(uow, user, scope, space)
                 rule.change(definition, user.id, self._clock.now(), scope=scope, space_id=place)
             await check_references(uow, definition, author=user)
+            check_rule_facts(user, definition)
             check_patterns(self._patterns, definition)
             await check_templates(uow, self._templates, definition)
             self._check_asks(definition)
@@ -388,8 +427,8 @@ def check_patterns(patterns: PatternMatcher, definition: RuleDefinition) -> None
 async def check_templates(
     uow: UnitOfWork, templates: TemplateRenderer, definition: RuleDefinition
 ) -> None:
-    """The templates of the actions (title, text field, review reason) are valid and use
-    values a template has (ValidationError naming the action)."""
+    """The templates of the actions (title, field, review reason) are valid and use values a
+    template has (ValidationError naming the action)."""
     fields = await uow.fields.list_all()
     keys = {field.key for field in fields}
     for index, template in action_templates(definition, fields):
@@ -412,39 +451,39 @@ async def check_templates(
 
 
 def action_templates(
-    definition: RuleDefinition, fields: Iterable[FieldDefinition]
+    definition: RuleDefinition, fields: Iterable[FieldDefinition] | None = None
 ) -> list[tuple[int, str]]:
-    """The templates among the actions, with their place: a title, the value of a text field,
-    a review's reason."""
-    texts = {field.id for field in fields if field.data_type is FieldType.TEXT}
+    """The templates among the actions, with their place: a title, a field's value given as
+    text, a review's reason. With `fields`, a choice field's value that is one of its options is
+    no template (`rules.is_template`)."""
+    by_id = None if fields is None else {field.id: field for field in fields}
     found: list[tuple[int, str]] = []
     for index, action in enumerate(definition.actions):
         match action:
             case SetTitle(template=template) | ForceReview(reason=template):
                 found.append((index, template))
-            case SetField(field_id=field, value=str() as value) if field in texts:
-                found.append((index, value))
+            case SetField(field_id=field, value=str() as value):
+                definition_of = None if by_id is None else by_id.get(field)
+                if definition_of is None or is_template(definition_of, value):
+                    found.append((index, value))
     return found
 
 
-def uses_field(
-    templates: TemplateRenderer,
-    definition: RuleDefinition,
-    fields: Iterable[FieldDefinition],
-    key: str,
-) -> bool:
-    """Whether a template of the definition uses the field with `key`."""
-    return any(
-        field_used(templates.check(template), key)
-        for _, template in action_templates(definition, fields)
-    )
+def uses_field(templates: TemplateRenderer, definition: RuleDefinition, key: str) -> bool:
+    """Whether a template of the definition uses the field with `key`; one that is no valid
+    template (a fixed value stored before every type took one) uses none."""
+    for _, template in action_templates(definition):
+        try:
+            if field_used(templates.check(template), key):
+                return True
+        except ValidationError:
+            continue
+    return False
 
 
-def renamed_field(
-    definition: RuleDefinition, fields: Iterable[FieldDefinition], old: str, new: str
-) -> RuleDefinition:
-    """The definition with `field.<old>` written `field.<new>` in its templates."""
-    texts = {field.id for field in fields if field.data_type is FieldType.TEXT}
+def renamed_field(definition: RuleDefinition, old: str, new: str) -> RuleDefinition:
+    """The definition with `field.<old>` written `field.<new>` in its templates; a field's value
+    without markup is a fixed one and stays (a link may hold `field.betrag`)."""
     actions = []
     for action in definition.actions:
         match action:
@@ -452,7 +491,7 @@ def renamed_field(
                 action = replace(action, template=rename_field_key(template, old, new))
             case ForceReview(reason=reason):
                 action = replace(action, reason=rename_field_key(reason, old, new))
-            case SetField(field_id=field, value=str() as value) if field in texts:
+            case SetField(value=str() as value) if TEMPLATE_MARKUP.search(value):
                 action = replace(action, value=rename_field_key(value, old, new))
         actions.append(action)
     return replace(definition, actions=tuple(actions))

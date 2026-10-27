@@ -496,20 +496,33 @@ def test_field_condition_value_must_fit(
     ("data_type", "value", "fits"),
     [
         (FieldType.AMOUNT, {"amount": "12.50", "currency": "EUR"}, True),
-        (FieldType.AMOUNT, "12.50", False),
+        (FieldType.AMOUNT, {"amount": "zwölf", "currency": "EUR"}, False),
+        (FieldType.AMOUNT, "12.50", True),
+        (FieldType.AMOUNT, "zwölf Euro", False),
         (FieldType.NUMBER, "7", True),
         (FieldType.NUMBER, "seven", False),
         (FieldType.DATE, "2026-03-31", True),
-        (FieldType.DATE, "31.03.2026", False),
+        (FieldType.DATE, "31.03.2026", True),
+        (FieldType.DATE, "31.02.2026", False),
         (FieldType.CHOICE, "yearly", True),
         (FieldType.CHOICE, "weekly", False),
         (FieldType.BOOLEAN, False, True),
+        (FieldType.BOOLEAN, "ja", True),
+        (FieldType.BOOLEAN, "vielleicht", False),
         (FieldType.TEXT, " ", False),
         (FieldType.PERIOD, {"start": "2026-09-01", "end": "2026-09-30"}, True),
-        (FieldType.PERIOD, "September 2026", False),
+        (FieldType.PERIOD, "September 2026", True),
+        (FieldType.PERIOD, "September", False),
+        (FieldType.LINK, "https://example.org/a", True),
+        (FieldType.LINK, "example.org", False),
+        # A template is checked where the rule is saved, with the renderer.
+        (FieldType.NUMBER, "{{ steps.erp.count }}", True),
+        (FieldType.DATE, "{% if field.x %}{{ field.x }}{% endif %}", True),
     ],
 )
 def test_set_field_value_must_fit(data_type: FieldType, value: JsonValue, fits: bool) -> None:
+    """Text is a template for every type; without markup it writes itself and must be readable
+    as the field's type has it (`fields.read_written`)."""
     choices = ("monthly", "yearly") if data_type is FieldType.CHOICE else ()
     attr = field(data_type, choices)
     rule = definition(SetField(attr.id, value))

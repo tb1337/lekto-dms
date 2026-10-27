@@ -9,7 +9,12 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from lekto.core.domain.identifiers.base import IdentifierKind
-from lekto.core.domain.identifiers.identifier import MAX_IDENTIFIERS, Identifier, IdentifierSource
+from lekto.core.domain.identifiers.identifier import (
+    MAX_IDENTIFIERS,
+    Identifier,
+    IdentifierSource,
+    related_keys,
+)
 from lekto.core.domain.identifiers.reading import of_person
 from lekto.core.domain.identifiers.registry import CONTACT_KINDS, NAMING_KINDS
 from lekto.core.domain.ids import ContactId, SpaceId, TagId, UserId
@@ -38,7 +43,8 @@ def mine_identifiers(
 ) -> Mapping[ContactId, list[Identifier]]:
     """The identifiers to learn from confirmed documents: a value that stands in at least
     `LEARN_FROM` documents, all with the same contact. A document without a contact counts as
-    another contact. `taken` (entered by hand or rejected anywhere) is never learned, nor what
+    another contact. `taken` (entered by hand or rejected anywhere, with the numbers it is the
+    same as: `related_keys`) is never learned, nor what
     is one of the persons' values `personal` (`of_person`: also a customer number that stands
     in a social security number). A learned value points to a topic if all its documents carry
     that one; otherwise to none. It notes the spaces its documents lie in (`learned_in`); a
@@ -49,7 +55,7 @@ def mine_identifiers(
     for document in documents:
         for key in document.found:
             holders[key].append(document)
-    skip = set(taken)
+    skip = {related for key in taken for related in related_keys(key)}
     persons = list(personal)
     learned: dict[ContactId, list[Identifier]] = defaultdict(list)
     for (kind, value), held in sorted(holders.items()):

@@ -1,6 +1,10 @@
 <script lang="ts">
 	// The legacy build runs in browsers without the newest JavaScript features.
-	import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+	import type {
+		PDFDocumentLoadingTask,
+		PDFDocumentProxy,
+		RenderTask
+	} from 'pdfjs-dist/legacy/build/pdf.mjs';
 	import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 	import { onDestroy, onMount, type Snippet } from 'svelte';
 	import { apiFetch } from '#lib/api/fetch.ts';
@@ -33,7 +37,12 @@
 		onpage?: (current: number, total: number) => void;
 	} = $props();
 
-	pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+	/** PDF.js on demand (about half a megabyte), so the page around the viewer does not wait for it. */
+	async function library() {
+		const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+		pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+		return pdfjs;
+	}
 
 	/** PDF points to CSS pixels: 100 % is a page's printed size. */
 	const POINT = 96 / 72;
@@ -44,12 +53,12 @@
 	let sizes = $state<{ width: number; height: number }[]>([]);
 	let loading = $state(true);
 	let problem = $state<string | null>(null);
-	let doc: pdfjs.PDFDocumentProxy | null = null;
-	let loadingTask: pdfjs.PDFDocumentLoadingTask | null = null;
+	let doc: PDFDocumentProxy | null = null;
+	let loadingTask: PDFDocumentLoadingTask | null = null;
 	let destroyed = false;
 	// Plain bookkeeping, nothing in the markup reads these.
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const tasks = new Map<number, pdfjs.RenderTask>();
+	const tasks = new Map<number, RenderTask>();
 	// The width in CSS pixels and the device pixel ratio each page was last drawn for.
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
 	const drawn = new Map<number, string>();
@@ -57,6 +66,10 @@
 	async function open() {
 		loading = true;
 		problem = null;
+		// PDF.js loads while the file is on its way.
+		const loaded = library();
+		// Reported where it is awaited; when the file fails first, it is no unhandled rejection.
+		loaded.catch(() => {});
 		try {
 			// The first source that exists: the archive PDF, else the original.
 			let response: Response | null = null;
@@ -71,6 +84,7 @@
 			}
 			if (!response) throw new Error(m.pdf_missing());
 			const data = new Uint8Array(await response.arrayBuffer());
+			const pdfjs = await loaded;
 			// The viewer may have closed while the file was on its way: then no document is opened
 			// (it would never be destroyed), and one that finished opening meanwhile is dropped.
 			if (destroyed) return;

@@ -5,9 +5,9 @@ import random
 from collections.abc import Callable
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import Column, Integer, MetaData, Table, Text, func, select
 
-from lekto.adapters.outbound.sql import Database
+from lekto.adapters.outbound.sql import Database, SqlWakeup
 from lekto.adapters.outbound.sql import tables as t
 from lekto.adapters.outbound.sql.unit_of_work import SqlOutbox
 from lekto.core.domain.errors import ConcurrencyError
@@ -15,7 +15,9 @@ from lekto.core.domain.events import DomainEvent
 from lekto.core.domain.users import User
 from lekto.core.ports.event_bus import EventBus
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
+from lekto.core.ports.wakeup import Channel, Signal, Wakeup
 from tests import builders
+from tests.api import until
 from tests.contracts.event_bus import EventBusContract, Recorder, publish, received
 from tests.contracts.identity import IdentityRepositoriesContract
 from tests.contracts.inbox import InboxRepositoryContract
@@ -25,8 +27,17 @@ from tests.contracts.processing_facts import ProcessingFactsContract
 from tests.contracts.rules import RuleRepositoriesContract
 from tests.contracts.tasks import TaskRepositoryContract
 from tests.contracts.unit_of_work import UnitOfWorkContract
+from tests.contracts.wakeup import NOT, SOON, WakeupContract
 from tests.contracts.webhooks import WebhookRepositoryContract
 from tests.sql_suite import MigrationSuite, SqlAdapterSuite
+
+pg_stat_activity = Table(
+    "pg_stat_activity",
+    MetaData(),
+    Column("pid", Integer),
+    Column("datname", Text),
+    Column("application_name", Text),
+)
 
 
 class TestPostgresUnitOfWork(UnitOfWorkContract):
@@ -67,6 +78,14 @@ class TestPostgresLensRepository(LensRepositoryContract):
 
 class TestPostgresEventBus(EventBusContract):
     pass
+
+
+class TestPostgresWakeup(WakeupContract):
+    """The listener connects in the background: a test waits for it before it signals."""
+
+    async def ready(self, wakeup: Wakeup, signal: Signal) -> None:
+        await until(lambda: signal.live, what="the listener")
+        await signal.wait(NOT)
 
 
 class TestPostgresAdapter(SqlAdapterSuite):
@@ -199,3 +218,29 @@ async def test_a_deadlock_is_a_concurrency_error(uow_factory: UnitOfWorkFactory)
     )
     assert [type(result) for result in results].count(ConcurrencyError) == 1
     assert results.count(None) == 1
+
+
+async def test_the_listener_connects_again_and_misses_nothing(
+    database: Database, uow_factory: UnitOfWorkFactory
+) -> None:
+    """A commit while the listening connection is down is looked at once it is up again."""
+    wakeup = SqlWakeup(database)
+    signal = wakeup.subscribe(Channel.JOBS)
+    await until(lambda: signal.live, what="the listener")
+    await signal.wait(NOT)
+    async with database.engine.connect() as connection:
+        terminated = await connection.execute(
+            select(func.pg_terminate_backend(pg_stat_activity.c.pid)).where(
+                pg_stat_activity.c.application_name == "lekto listener",
+                # Only this test's listener: other test processes have their own databases.
+                pg_stat_activity.c.datname == func.current_database(),
+            )
+        )
+        assert [row[0] for row in terminated] == [True]
+    await until(lambda: not signal.live, what="the connection to end")
+    async with uow_factory() as uow:
+        await uow.jobs.enqueue("test", {}, run_at=builders.NOW)
+        await uow.commit()
+    await until(lambda: signal.live, what="the listener to connect again", timeout=10)
+    assert await signal.wait(SOON)
+    await wakeup.aclose()

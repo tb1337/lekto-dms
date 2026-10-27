@@ -11,16 +11,18 @@ import pytest
 
 from lekto.adapters.inbound.worker import Worker
 from lekto.adapters.outbound.memory import MemoryEventBus, MemorySearchIndex
+from lekto.adapters.outbound.memory.unit_of_work import MemoryJobQueue
 from lekto.composition.container import Container, Services, build_memory_container
 from lekto.composition.container import build_services as build_all_services
 from lekto.core.domain.documents import Document
 from lekto.core.domain.events import DocumentReceived, DomainEvent, LaneChanged
-from lekto.core.domain.jobs import Job
+from lekto.core.domain.ids import JobId
+from lekto.core.domain.jobs import Job, JobStatus
 from lekto.core.domain.pipeline import Lane, Node, NodeResult
 from lekto.core.domain.users import Role, User
 from lekto.core.services._jobs import NODE_JOB
 from lekto.core.services.indexing import SUBSCRIBER
-from lekto.core.services.maintenance import CLEANUP_JOB
+from lekto.core.services.maintenance import CLEANUP_JOB, REMOVE_FILES_JOB
 from tests import builders
 from tests.api import until
 from tests.builders import DEFAULT_SETTINGS, SAMPLES, incoming
@@ -40,6 +42,9 @@ def worker(
         pipeline=services.pipeline,
         maintenance=services.maintenance,
         event_bus=container.event_bus,
+        unit_of_work=container.unit_of_work,
+        clock=container.clock,
+        wakeup=container.wakeup,
         concurrency=2,
         poll_interval=FAST,
         dispatch_interval=FAST,
@@ -227,6 +232,11 @@ async def test_jobs_still_running_after_the_timeout_are_released() -> None:
 async def test_a_failing_loop_keeps_running(monkeypatch: pytest.MonkeyPatch) -> None:
     container = build_memory_container()
     services = build_services(container)
+    user = await owner(container)
+    await services.pipeline.receive(
+        user.id, incoming((SAMPLES / "scan.pdf").read_bytes()), filename="a.pdf"
+    )
+    container.event_bus.subscribe("test", _ignore)  # without a subscriber nothing is due
     calls = 0
     original = MemoryEventBus.dispatch
 
@@ -240,6 +250,111 @@ async def test_a_failing_loop_keeps_running(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(MemoryEventBus, "dispatch", flaky)
     async with running(worker(container, services)):
         await until(lambda: calls >= 2)
+
+
+async def _ignore(event: DomainEvent) -> None:
+    pass
+
+
+async def enqueue_removal(container: Container, run_at: timedelta) -> JobId:
+    """A `documents.remove_files` job with an empty payload: the maintenance fails it as
+    invalid as soon as it runs, which is what these tests look for."""
+    async with container.unit_of_work() as uow:
+        job = await uow.jobs.enqueue(REMOVE_FILES_JOB, {}, run_at=container.clock.now() + run_at)
+        await uow.commit()
+    assert job is not None
+    return job
+
+
+async def status(container: Container, job: JobId) -> JobStatus:
+    async with container.unit_of_work() as uow:
+        return (await uow.jobs.get(job)).status
+
+
+async def finished(container: Container, job: JobId) -> bool:
+    return (await status(container, job)) is JobStatus.FAILED
+
+
+def counting_claims(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    claims = [0]
+    original = MemoryJobQueue.claim
+
+    async def claim(self: MemoryJobQueue, **kwargs: Any) -> Job | None:
+        claims[0] += 1
+        return await original(self, **kwargs)
+
+    monkeypatch.setattr(MemoryJobQueue, "claim", claim)
+    return claims
+
+
+async def test_a_job_due_later_runs_on_time_without_polling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    container = build_memory_container()
+    claims = counting_claims(monkeypatch)
+    async with running(worker(container, build_services(container))):
+        await asyncio.sleep(0.1)  # the cleanup of the start is done
+        job = await enqueue_removal(container, timedelta(milliseconds=300))
+        await asyncio.sleep(0.2)
+        assert await status(container, job) is JobStatus.QUEUED, "not before it is due"
+        await until(lambda: finished(container, job), timeout=2)
+        before = claims[0]
+        await asyncio.sleep(0.3)
+        assert claims[0] == before, "an idle worker claims nothing"
+    # Two rounds of two loops, each up to two claims per service in the chain: far fewer than
+    # polling every 10 ms for 600 ms would make.
+    assert claims[0] < 20
+
+
+async def test_an_expired_lease_is_taken_up_again() -> None:
+    container = build_memory_container()
+    job = await enqueue_removal(container, timedelta(0))
+    async with container.unit_of_work() as uow:
+        claimed = await uow.jobs.claim(now=container.clock.now(), lease=timedelta(milliseconds=300))
+        await uow.commit()
+    assert claimed is not None and claimed.id == job
+    async with running(worker(container, build_services(container))):
+        await asyncio.sleep(0.1)
+        assert await status(container, job) is JobStatus.RUNNING, "held by its lease"
+        await until(lambda: finished(container, job), timeout=3)
+    async with container.unit_of_work() as uow:
+        assert (await uow.jobs.get(job)).attempts == 2
+
+
+async def test_a_due_job_nobody_claims_is_not_polled_at_once(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Not expected to happen; if it does, the coordinator must not spin."""
+    container = build_memory_container()
+    await enqueue_removal(container, timedelta(0))
+    claims = counting_claims(monkeypatch)
+    looks = 0
+    original = MemoryJobQueue.next_due
+
+    async def next_due(self: MemoryJobQueue, **kwargs: Any) -> Any:
+        nonlocal looks
+        looks += 1
+        return await original(self, **kwargs)
+
+    async def nothing(self: MemoryJobQueue, **kwargs: Any) -> None:
+        claims[0] += 1
+        return None
+
+    monkeypatch.setattr(MemoryJobQueue, "next_due", next_due)
+    monkeypatch.setattr(MemoryJobQueue, "claim", nothing)
+    async with running(worker(container, build_services(container))):
+        await asyncio.sleep(0.3)
+    assert looks <= 40, "looked again after the poll interval, not at once"
+    assert "due jobs were not claimed" in caplog.text
+
+
+async def test_stop_while_waiting_returns_at_once() -> None:
+    container = build_memory_container()
+    service = worker(container, build_services(container))
+    task = asyncio.create_task(service.run())
+    await asyncio.sleep(0.2)  # the cleanup of the start is done; the loops wait
+    service.stop()
+    await asyncio.wait_for(task, timeout=0.5)
 
 
 async def test_stop_before_start_returns_at_once() -> None:

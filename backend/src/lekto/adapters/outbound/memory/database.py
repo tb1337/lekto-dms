@@ -24,6 +24,7 @@ from lekto.core.domain.relations import Relation
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import User
 from lekto.core.domain.validation import name_key
+from lekto.core.ports.wakeup import Channel
 
 
 @dataclass(frozen=True)
@@ -183,3 +184,5 @@ class MemoryDatabase:
     # What processing facts keep: the first runs, the verdicts by document and field.
     first_runs: dict[DocumentId, FirstRun] = field(default_factory=dict)
     verdicts: dict[tuple[DocumentId, str], FieldVerdict] = field(default_factory=dict)
+    # Told what a commit queued (a channel, and the job's kind on `JOBS`): see `MemoryWakeup`.
+    listeners: list[Callable[[Channel, str | None], None]] = field(default_factory=list)

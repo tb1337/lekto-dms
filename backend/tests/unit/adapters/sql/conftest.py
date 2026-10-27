@@ -4,13 +4,20 @@ from pathlib import Path
 
 import pytest
 
-from lekto.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory, migrate
+from lekto.adapters.outbound.sql import (
+    Database,
+    SqlEventBus,
+    SqlUnitOfWorkFactory,
+    SqlWakeup,
+    migrate,
+)
 from lekto.core.domain.jobs import RetryPolicy
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.event_bus import EventBus
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from tests import builders
 from tests.contracts.event_bus import EventBusFactory
+from tests.contracts.wakeup import WakeupFactory
 
 
 @pytest.fixture(scope="session")
@@ -55,6 +62,11 @@ def event_bus_factory(database: Database) -> EventBusFactory:
         return SqlEventBus(database, clock=clock, retry=retry)
 
     return create
+
+
+@pytest.fixture
+def wakeup_factory(database: Database) -> WakeupFactory:
+    return lambda: SqlWakeup(database)
 
 
 @pytest.fixture

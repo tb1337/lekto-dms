@@ -13,6 +13,7 @@ from lekto.core.domain.errors import (
 )
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.ports.event_bus import EventBus
+from lekto.core.ports.wakeup import Wakeup
 from lekto.core.services.auth import AuthService
 from lekto.core.services.automation import AutomationService
 from lekto.core.services.classifier import ClassifierService
@@ -66,6 +67,7 @@ class ApiContext:
     jobs: JobsService
     automation: AutomationService
     event_bus: EventBus
+    wakeup: Wakeup
     health_checks: Mapping[str, HealthCheck]
     max_upload_size: int
     max_request_size: int  # every other request body

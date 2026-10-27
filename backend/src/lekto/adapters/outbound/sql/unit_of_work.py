@@ -49,6 +49,7 @@ from lekto.adapters.outbound.sql.transaction import Transaction
 from lekto.adapters.outbound.sql.users import SqlProfileRepository, SqlUserRepository
 from lekto.adapters.outbound.sql.webhooks import SqlWebhookRepository
 from lekto.core.domain.events import DomainEvent
+from lekto.core.ports.wakeup import Channel
 
 # Key of the Postgres advisory lock that orders commits with events ("lekto:ob").
 OUTBOX_LOCK_KEY = 0x6C65_6B74_6F3A_6F62
@@ -86,6 +87,7 @@ class SqlOutbox:
                 for event in self.pending
             ],
         )
+        self._tx.signal(Channel.EVENTS)
         self.pending = []
 
 

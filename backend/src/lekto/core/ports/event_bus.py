@@ -47,6 +47,12 @@ class EventBus(Protocol):
         failed before and are due again; returns the number of successful deliveries."""
         ...
 
+    async def due_in(self) -> timedelta | None:
+        """How long until `dispatch` has something to deliver to this bus's subscribers: zero
+        while an event waits that a subscriber has not handled yet, else until the earliest
+        failed event is due again, else None. Nothing is delivered."""
+        ...
+
     async def purge(self, *, before: datetime) -> int:
         """Remove events recorded before `before` that every subscription has handled (delivered
         or given up); returns how many. Without subscriptions, every such event counts as

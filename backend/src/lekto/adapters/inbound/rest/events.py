@@ -2,7 +2,8 @@
 classifier, and for a searcher that the meaning of their query is ready
 (`search.meaning_ready`, from the search of this process, not the event bus: `deliver`).
 
-`EventHub` subscribes to the event bus (subscriber `api.sse`, dispatched by the API process)
+`EventHub` subscribes to the event bus (subscriber `api.sse`, dispatched by the API process
+with `waiting.dispatch_events`)
 and hands each document event to the open streams of the users who may read the document at
 that moment, and `classifier.trained` to every stream that does not follow one document
 (every user sees the classifier on the page "System", Tobi 24.10.2026). Events are pushed only
@@ -26,7 +27,6 @@ from typing import Any
 
 from fastapi.encoders import jsonable_encoder
 
-from lekto.adapters.inbound.backoff import backoff
 from lekto.core.domain.events import (
     ClassifierTrained,
     DocumentDeleted,
@@ -172,19 +172,3 @@ def message(event: DomainEvent) -> dict[str, Any]:
     }
     payload: dict[str, Any] = jsonable_encoder({"type": event.type, **fields})
     return payload
-
-
-async def dispatch_forever(bus: EventBus, interval: timedelta) -> None:
-    """Deliver outbox events to this process's subscribers until cancelled."""
-    failures = 0
-    while True:
-        try:
-            delivered = await bus.dispatch()
-        except Exception:
-            failures += 1
-            log.exception("event dispatch failed", extra={"failures": failures})
-            await asyncio.sleep(backoff(interval, failures).total_seconds())
-            continue
-        failures = 0
-        if delivered == 0:
-            await asyncio.sleep(interval.total_seconds())

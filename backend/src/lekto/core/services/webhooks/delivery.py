@@ -113,6 +113,9 @@ only writing its outcome (less than `WORK_LEASE_MARGIN` of the jobs that move fi
 
 
 class WebhookDeliveryService:
+    job_kinds = (DELIVER_JOB,)
+    """The kinds of jobs `run_next_job` runs."""
+
     def __init__(
         self,
         uow: UnitOfWorkFactory,

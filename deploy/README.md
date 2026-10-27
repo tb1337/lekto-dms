@@ -107,6 +107,7 @@ container (`MEILI_MASTER_KEY`).
 | `LEKTO_UPLOAD_MAX_SIZE` | 100 MiB | the proxy's body limit must allow it |
 | `LEKTO_UI_DIR` | `/opt/lekto/ui` | the web UI's files; unset it to serve the API only |
 | `LEKTO_WORKER_CONCURRENCY`, `LEKTO_WORKER_SHUTDOWN_TIMEOUT` | 2, 30 s | jobs at the same time (OCR shares the CPU cores among them); see [Stopping](#stopping) |
+| `LEKTO_WORKER_POLL_INTERVAL`, `LEKTO_EVENTS_POLL_INTERVAL` | 1 s, 1 s | how often the worker looks for jobs and both services for events while no signal reaches them; see [Idle](#idle) |
 | `LEKTO_MCP_ENABLED`, `LEKTO_MCP_TEXT_MAX` | `true`, 20000 | the MCP endpoint and the characters one `get_text` returns |
 | `LEKTO_WEBHOOKS_PER_USER` | 20 | webhooks per user |
 | `LEKTO_WEBHOOK_TIMEOUT`, `_MAX_ATTEMPTS`, `_RETRY_DELAY` | 10 s, 10, 30 s | per attempt; attempts per event; first delay, doubling up to one hour |
@@ -192,6 +193,21 @@ All services write to stdout/stderr of the container (`docker compose logs lekto
 default; the health check's own requests are left out of the access log. s6's own messages (`s6-rc: info: …`) are there as well. If an init service fails (invalid
 configuration, failed migration), the container stops with exit code 1 and the reason is the last
 thing in the log.
+
+## Idle
+
+Worker and API do not poll the database for work. A commit that queues a job or events wakes
+them: on Postgres through `LISTEN`/`NOTIFY` (a job starts within about 100 ms of its commit), on
+SQLite within the same process. A loop that has nothing to do waits until the next job is due, or
+for a signal, and looks at the queue once a minute in any case; an idle installation on Postgres
+costs about six trivial statements a minute. Where no signal reaches a loop it polls instead,
+starting at `LEKTO_WORKER_POLL_INTERVAL` (jobs) or `LEKTO_EVENTS_POLL_INTERVAL` (events) and
+waiting longer after every idle round, up to 5 s: on SQLite the API and the worker are separate
+processes, so a job queued by the API starts within 5 s there (at once while the worker is busy).
+
+`LISTEN` needs a connection to Postgres itself. Through a connection pooler in transaction
+pooling (PgBouncer, PgCat) the notifications never arrive, and jobs and events start only at the
+once-a-minute look: connect Lekto directly or use session pooling.
 
 ## Stopping
 

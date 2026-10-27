@@ -114,6 +114,7 @@ from lekto.core.ports.repository import (
     FacetRow,
     FilterView,
 )
+from lekto.core.ports.wakeup import Channel
 
 
 class MemoryUnitOfWork:
@@ -128,6 +129,7 @@ class MemoryUnitOfWork:
         self._jobs: dict[JobId, Job] = {}
         self._job_base: dict[JobId, Job | None] = {}
         self._purged_jobs: set[JobId] = set()
+        self._signals: set[tuple[Channel, str | None]] = set()  # sent after the commit
         self._held: asyncio.Lock | None = None
         # The inbox's marks this unit wrote; None removes one.
         self._seen: dict[SeenKey, SeenMark | None] = {}
@@ -227,6 +229,9 @@ class MemoryUnitOfWork:
         for id in self._purged_jobs:
             self._db.jobs.pop(id, None)
         self._closed = True
+        for channel, kind in sorted(self._signals, key=lambda signal: (signal[0], signal[1] or "")):
+            for listener in self._db.listeners:
+                listener(channel, kind)
 
     def _commit_inbox(self, removed: set[UUID]) -> None:
         """Apply the inbox's marks; those of removed documents go with them."""
@@ -749,7 +754,10 @@ class MemoryOutbox:
 
     async def add(self, events: Iterable[DomainEvent]) -> None:
         self._uow._check_open()
+        events = list(events)
         self._uow._events.extend(events)
+        if events:
+            self._uow._signals.add((Channel.EVENTS, None))
 
 
 class MemoryJobQueue:
@@ -785,25 +793,13 @@ class MemoryJobQueue:
             attempts=0,
             run_at=require_utc(run_at, "run_at"),
         )
-        self._write(job)
+        self._write(job, queued=True)
         return job.id
 
     async def claim(
         self, *, now: datetime, lease: timedelta, kinds: Collection[str] | None = None
     ) -> Job | None:
-        due = [
-            job
-            for job in self._all()
-            if (kinds is None or job.kind in kinds)
-            and (
-                (job.status is JobStatus.QUEUED and job.run_at <= now)
-                or (
-                    job.status is JobStatus.RUNNING
-                    and job.locked_until is not None
-                    and job.locked_until <= now
-                )
-            )
-        ]
+        due = [job for job in self._all() if (at := _due_at(job, kinds)) is not None and at <= now]
         if not due:
             return None
         job = min(due, key=lambda job: (job.run_at, job.id))
@@ -817,6 +813,10 @@ class MemoryJobQueue:
         )
         self._write(claimed)
         return copy.deepcopy(claimed)
+
+    async def next_due(self, *, kinds: Collection[str] | None = None) -> datetime | None:
+        times = [due for job in self._all() if (due := _due_at(job, kinds)) is not None]
+        return min(times, default=None)
 
     async def extend(self, job: Job, *, until: datetime) -> None:
         current = await self._claimed(job)
@@ -843,7 +843,8 @@ class MemoryJobQueue:
                 run_at=require_utc(run_at, "run_at"),
                 locked_until=None,
                 last_error=error,
-            )
+            ),
+            queued=True,
         )
 
     async def release(self, job: Job, *, run_at: datetime, error: str) -> None:
@@ -856,7 +857,8 @@ class MemoryJobQueue:
                 run_at=require_utc(run_at, "run_at"),
                 locked_until=None,
                 last_error=error,
-            )
+            ),
+            queued=True,
         )
 
     async def fail(self, job: Job, *, now: datetime, error: str) -> None:
@@ -890,7 +892,7 @@ class MemoryJobQueue:
             finished_at=None,
             result=None,
         )
-        self._write(queued)
+        self._write(queued, queued=True)
         return copy.deepcopy(queued)
 
     async def overview(self, *, now: datetime) -> JobOverview:
@@ -974,11 +976,26 @@ class MemoryJobQueue:
         jobs = {**self._uow._db.jobs, **self._uow._jobs}
         return [job for id, job in jobs.items() if id not in self._uow._purged_jobs]
 
-    def _write(self, job: Job) -> None:
+    def _write(self, job: Job, *, queued: bool = False) -> None:
+        """`queued`: the job becomes queued, which the commit signals (`Wakeup`)."""
         self._uow._check_open()
         if job.id not in self._uow._job_base:
             self._uow._job_base[job.id] = self._uow._db.jobs.get(job.id)
         self._uow._jobs[job.id] = job
+        if queued:
+            self._uow._signals.add((Channel.JOBS, job.kind))
+
+
+def _due_at(job: Job, kinds: Collection[str] | None) -> datetime | None:
+    """When `claim` finds the job: a queued job at `run_at`, a running one when its lease
+    ends; None for a finished job or one of another kind."""
+    if kinds is not None and job.kind not in kinds:
+        return None
+    if job.status is JobStatus.QUEUED:
+        return job.run_at
+    if job.status is JobStatus.RUNNING:
+        return job.locked_until
+    return None
 
 
 class MemoryUnitOfWorkFactory:

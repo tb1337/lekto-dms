@@ -205,6 +205,7 @@ forbidden_modules = [
 module = [
     "aioboto3.*",
     "aiobotocore.*",
+    "asyncpg.*",
     "authlib.*",
     "botocore.*",
     "pypdfium2.*",

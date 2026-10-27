@@ -69,6 +69,12 @@ _FAILURE_RETENTION = max(ACCOUNT_THROTTLE.window, SOURCE_THROTTLE.window)
 
 
 class MaintenanceService:
+    job_kinds = (
+        CLEANUP_JOB,
+        REMOVE_FILES_JOB,
+    )
+    """The kinds of jobs `run_next_job` runs."""
+
     def __init__(
         self,
         uow: UnitOfWorkFactory,

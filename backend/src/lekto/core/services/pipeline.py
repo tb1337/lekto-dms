@@ -236,6 +236,15 @@ class IncomingFile:
 
 
 class PipelineService:
+    job_kinds = (
+        NODE_JOB,
+        CATCH_UP_JOB,
+        REPARSE_JOB,
+        FACTS_JOB,
+        RELATE_JOB,
+    )
+    """The kinds of jobs `run_next_job` runs."""
+
     def __init__(
         self,
         uow: UnitOfWorkFactory,

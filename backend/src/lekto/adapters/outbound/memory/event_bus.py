@@ -7,7 +7,7 @@ resumes existing subscriptions. Purged events keep their positions; they are onl
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from lekto.adapters.outbound.memory.database import MemoryDatabase, Retry, SubscriptionState
 from lekto.core.domain.jobs import RetryPolicy
@@ -44,6 +44,16 @@ class MemoryEventBus:
                 state = self._db.subscriptions[name]
                 delivered += await self._deliver(name, handler, state, limit)
             return delivered
+
+    async def due_in(self) -> timedelta | None:
+        times: list[datetime] = []
+        for name in self._handlers:
+            state = self._db.subscriptions[name]
+            if state.cursor < len(self._db.outbox):
+                return timedelta(0)
+            times.extend(retry.due for retry in state.retries)
+        due = min(times, default=None)
+        return None if due is None else max(due - self._now(), timedelta(0))
 
     async def purge(self, *, before: datetime) -> int:
         async with self._lock:

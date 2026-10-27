@@ -42,6 +42,7 @@ from lekto.adapters.outbound.memory import (
     MemoryObjectStore,
     MemorySearchIndex,
     MemoryUnitOfWorkFactory,
+    MemoryWakeup,
 )
 from lekto.adapters.outbound.ocrmypdf import OcrmypdfEngine
 from lekto.adapters.outbound.ocrmypdf.vision import VisionSettings
@@ -53,7 +54,7 @@ from lekto.adapters.outbound.pillow import PillowImageNormaliser
 from lekto.adapters.outbound.regex import RegexPatternMatcher
 from lekto.adapters.outbound.s3 import S3ObjectStore
 from lekto.adapters.outbound.sklearn import SklearnClassifier
-from lekto.adapters.outbound.sql import SqlEventBus, SqlUnitOfWorkFactory
+from lekto.adapters.outbound.sql import SqlEventBus, SqlUnitOfWorkFactory, SqlWakeup
 from lekto.adapters.outbound.system import SystemClock
 from lekto.adapters.outbound.webhooks import HttpWebhookSender
 from lekto.adapters.outbound.zxing import ZxingCodeReader
@@ -82,6 +83,7 @@ from lekto.core.ports.patterns import PatternMatcher
 from lekto.core.ports.search_index import SearchIndex
 from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
+from lekto.core.ports.wakeup import Wakeup
 from lekto.core.ports.webhook_sender import WebhookSender
 from lekto.core.services.auth import AuthService, SessionPolicy
 from lekto.core.services.automation import AutomationService
@@ -162,16 +164,24 @@ class Persistence:
 
     unit_of_work: UnitOfWorkFactory
     event_bus: EventBus
+    wakeup: Wakeup
     close: Closer
 
 
 def sql_persistence(settings: Settings) -> Persistence:
     """SQLite or Postgres, per `LEKTO_DB_TYPE`; the schema must be migrated."""
     database = open_database(settings)
+    wakeup = SqlWakeup(database)
+
+    async def close() -> None:
+        await wakeup.aclose()
+        await database.dispose()
+
     return Persistence(
         unit_of_work=SqlUnitOfWorkFactory(database),
         event_bus=SqlEventBus(database, retry=event_retry_of(settings)),
-        close=database.dispose,
+        wakeup=wakeup,
+        close=close,
     )
 
 
@@ -340,6 +350,7 @@ class Container:
 
     unit_of_work: UnitOfWorkFactory
     event_bus: EventBus
+    wakeup: Wakeup
     object_store: ObjectStore
     clock: Clock
     ocr: Ocr
@@ -406,6 +417,7 @@ def build_container(settings: Settings) -> Container:
     return Container(
         unit_of_work=persistence.unit_of_work,
         event_bus=persistence.event_bus,
+        wakeup=persistence.wakeup,
         clock=SystemClock(),
         object_store=object_store,
         ocr=_select("ocr", "ocrmypdf", OCR_ENGINES, settings),
@@ -453,6 +465,7 @@ def build_memory_container(
     return Container(
         unit_of_work=MemoryUnitOfWorkFactory(database),
         event_bus=MemoryEventBus(database, retry=event_retry_of(settings)),
+        wakeup=MemoryWakeup(database),
         object_store=MemoryObjectStore(),
         clock=clock or SystemClock(),
         ocr=FakeOcr(),

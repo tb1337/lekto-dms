@@ -1,5 +1,5 @@
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -43,6 +43,13 @@ async def claim(
 async def get(uow_factory: UnitOfWorkFactory, job: JobId) -> Job:
     async with uow_factory() as uow:
         return await uow.jobs.get(job)
+
+
+async def next_due(
+    uow_factory: UnitOfWorkFactory, kinds: list[str] | None = None
+) -> datetime | None:
+    async with uow_factory() as uow:
+        return await uow.jobs.next_due(kinds=kinds)
 
 
 class JobQueueContract:
@@ -119,6 +126,31 @@ class JobQueueContract:
         job = await claim(uow_factory, at=timedelta(seconds=1), kinds=["pipeline.node"])
         assert job is not None and job.id == node
         assert await claim(uow_factory, at=timedelta(seconds=1), kinds=["pipeline.node"]) is None
+
+    async def test_next_due_is_when_a_claim_would_find_a_job(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        assert await next_due(uow_factory) is None
+        later = await enqueue(uow_factory, "b", run_at=timedelta(hours=2))
+        assert await next_due(uow_factory) == NOW + timedelta(hours=2)
+        assert await next_due(uow_factory, kinds=["a"]) is None
+        soon = await enqueue(uow_factory, "a", run_at=timedelta(minutes=5))
+        assert await next_due(uow_factory) == NOW + timedelta(minutes=5)
+        assert await next_due(uow_factory, kinds=["b"]) == NOW + timedelta(hours=2)
+        # A running job is found again when its lease ends.
+        claimed = await claim(uow_factory, at=timedelta(minutes=5))
+        assert claimed is not None and claimed.id == soon
+        assert await next_due(uow_factory) == NOW + timedelta(minutes=5) + LEASE
+        async with uow_factory() as uow:
+            await uow.jobs.complete(claimed, now=NOW + timedelta(minutes=6))
+            await uow.commit()
+        assert await next_due(uow_factory) == NOW + timedelta(hours=2)
+        async with uow_factory() as uow:
+            claimed = await uow.jobs.claim(now=NOW + timedelta(hours=2), lease=LEASE)
+            assert claimed is not None and claimed.id == later
+            await uow.jobs.fail(claimed, now=NOW + timedelta(hours=2), error="no")
+            await uow.commit()
+        assert await next_due(uow_factory) is None, "finished jobs are never due"
 
     async def test_claim_without_commit_is_undone(self, uow_factory: UnitOfWorkFactory) -> None:
         id = await enqueue(uow_factory)

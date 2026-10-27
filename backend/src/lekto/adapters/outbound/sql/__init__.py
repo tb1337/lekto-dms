@@ -9,6 +9,7 @@ from lekto.adapters.outbound.sql.database import Database
 from lekto.adapters.outbound.sql.event_bus import SqlEventBus
 from lekto.adapters.outbound.sql.migrations import SchemaState, migrate, schema_state
 from lekto.adapters.outbound.sql.unit_of_work import SqlUnitOfWork, SqlUnitOfWorkFactory
+from lekto.adapters.outbound.sql.wakeup import SqlWakeup
 
 __all__ = [
     "Database",
@@ -16,6 +17,7 @@ __all__ = [
     "SqlEventBus",
     "SqlUnitOfWork",
     "SqlUnitOfWorkFactory",
+    "SqlWakeup",
     "migrate",
     "schema_state",
 ]

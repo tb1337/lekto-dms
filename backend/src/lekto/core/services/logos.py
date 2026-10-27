@@ -78,6 +78,9 @@ class StoredLogo:
 
 
 class LogoService:
+    job_kinds = (LOGO_JOB,)
+    """The kinds of jobs `run_next_job` runs."""
+
     def __init__(
         self,
         uow: UnitOfWorkFactory,

@@ -30,6 +30,7 @@ from lekto.adapters.outbound.memory import (
     MemoryObjectStore,
     MemorySearchIndex,
     MemoryUnitOfWorkFactory,
+    MemoryWakeup,
 )
 from lekto.core.domain.errors import EmbeddingsError, LanguageModelError
 from lekto.core.domain.jobs import RetryPolicy
@@ -71,6 +72,7 @@ from tests.contracts.rules import RuleRepositoriesContract
 from tests.contracts.search_index import DIMENSIONS, SearchIndexContract
 from tests.contracts.tasks import TaskRepositoryContract
 from tests.contracts.unit_of_work import UnitOfWorkContract
+from tests.contracts.wakeup import WakeupContract, WakeupFactory
 from tests.contracts.webhooks import WebhookRepositoryContract
 from tests.service_suite import ServicesOverPersistence
 
@@ -93,6 +95,11 @@ def event_bus_factory(database: MemoryDatabase) -> EventBusFactory:
         return MemoryEventBus(database, clock=clock, retry=retry)
 
     return create
+
+
+@pytest.fixture
+def wakeup_factory(database: MemoryDatabase) -> WakeupFactory:
+    return lambda: MemoryWakeup(database)
 
 
 @pytest.fixture
@@ -142,6 +149,10 @@ class TestMemoryJobQueue(JobQueueContract):
 
 
 class TestMemoryEventBus(EventBusContract):
+    pass
+
+
+class TestMemoryWakeup(WakeupContract):
     pass
 
 

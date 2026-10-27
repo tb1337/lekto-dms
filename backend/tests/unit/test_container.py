@@ -452,10 +452,8 @@ def test_fetching_logos_follows_the_logo_fetcher() -> None:
     off = build_services(build_memory_container())
     assert not off.logos.fetching
     assert not off.master_data.fetch_logos
-    assert off.classifier is not None and not off.classifier.fetch_logos
     on = build_services(replace(build_memory_container(), logo_fetcher=FakeLogoFetcher()))
     assert on.logos.fetching and on.master_data.fetch_logos
-    assert on.classifier is not None and on.classifier.fetch_logos
 
 
 def test_the_services_are_tuned_by_the_settings() -> None:

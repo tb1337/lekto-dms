@@ -10,9 +10,10 @@ the row's version check there, on SQL before the file is touched (and holds the 
 commit), and the step starts again on the new state (`_jobs.retrying`).
 
 Fetching (with a `LogoFetcher`, `LEKTO_LOGO_FETCH`) runs as the job `contacts.logo`, queued
-when a contact without a logo, or with a fetched one, gets a domain among its identifiers
-(entered by hand, learned by training or attached from a document: `queue_logo_fetch`), when an
-admin asks (`request_fetch`) and for every contact without one (`request_all`, the command
+when a contact without a logo, or with a fetched one, gets a domain entered among its
+identifiers (by hand, attached from a document or a learned one taken over: `queue_logo_fetch`;
+a domain training learned is not asked until someone confirms it), when an admin asks
+(`request_fetch`) and for every contact without one (`request_all`, the command
 `fetch-logos`). An uploaded logo is never replaced. The domains whose fetch found nothing are
 noted (`Contact.logo_failure`); they are tried again only when an admin asks. A job that runs
 while fetching is off ends at once, with a note.
@@ -164,7 +165,7 @@ class LogoService:
         """Admins only: fetch the contact's logo from its website now, trying its domains in
         turn, also one whose fetch failed before; a logo found replaces a fetched one.
         LogoFetchDisabledError without fetching; ConflictError while it has an uploaded logo;
-        ValidationError without a domain among its identifiers."""
+        ValidationError without a domain entered among its identifiers."""
         async with self._uow() as uow:
             await require_admin(uow, actor, Action.CHANGE_MASTER_DATA)
             if self._fetcher is None:
@@ -173,7 +174,9 @@ class LogoService:
             if contact.logo is not None and contact.logo.source is LogoSource.UPLOADED:
                 raise ConflictError(because(ReasonCode.LOGO_UPLOADED, contact=contact.name))
             if not contact.domains:
-                raise ValidationError(f"'{contact.name}' has no domain among its identifiers")
+                raise ValidationError(
+                    f"'{contact.name}' has no domain entered among its identifiers"
+                )
             await _enqueue(uow, contact.id, None, self._clock.now())
             await uow.commit()
 

@@ -137,7 +137,8 @@ and give each line's box in pixels (measured with Claude Sonnet 5.5 through Open
 Besides the endpoints configured above (language model, embeddings, vision model, identity
 provider, S3, webhooks of the users), Lekto asks nothing on the internet. Only with
 `LEKTO_LOGO_FETCH=true` (off by default) does the worker fetch the logos of contacts from their
-own websites: the domains among their identifiers, which training also learns from documents.
+own websites: the domains entered among their identifiers (a domain training learned from
+documents is asked only once someone takes it over).
 It goes over HTTPS to public addresses only (no private, loopback, link-local or shared address,
 checked again for every redirect, at most three) and reads at most 1 MB in 10 s per request,
 with the user agent `Lekto/<version>`; a website learns that this Lekto fetched its icon. No

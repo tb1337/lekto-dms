@@ -41,8 +41,8 @@ meant.
 - `relate`: queue finding the relations of every document not being processed: the worker
   relates it with the documents it refers to and those that refer to it (for documents from
   before the node `relate`, and after a document type became a relation target).
-- `fetch-logos`: queue fetching the logo of every contact without one that has a domain among
-  its identifiers (one whose fetch failed is not tried again); the worker asks the websites.
+- `fetch-logos`: queue fetching the logo of every contact without one that has a domain entered
+  among its identifiers (one whose fetch failed is not tried again); the worker asks the websites.
   Needs `LEKTO_LOGO_FETCH=true`.
 - `reparse`: queue reading the text of every document again (after the update to 0.2, which
   reads the text as it is set instead of Docling's Markdown); the worker reads them, and the

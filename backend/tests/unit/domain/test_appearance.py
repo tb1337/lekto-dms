@@ -100,8 +100,9 @@ def test_a_contact_keeps_its_logo_and_the_domains_whose_fetch_failed() -> None:
         [Identifier(IdentifierKind.EMAIL_DOMAIN, "nord.example")],
         rejected=[Identifier(IdentifierKind.EMAIL_DOMAIN, "old-nord.example")],
     )
-    # Entered first, then learned; a rejected one is no website of the contact.
-    assert contact.domains == ["nord.example", "a-nord.example"]
+    # Only one entered: a learned one is not confirmed yet, a rejected one is no website of the
+    # contact.
+    assert contact.domains == ["nord.example"]
     assert contact.identifiers[-1].source is IdentifierSource.REJECTED
 
     contact.note_failed_fetch(["nord.example"], NOW)

@@ -287,7 +287,7 @@ class Settings(BaseSettings):
     # search index with embeddings); 0 turns them off.
     neighbours: Annotated[int, Field(ge=0, le=20)] = 5
 
-    # Logos of contacts: fetched from the contact's own website (its domain among its
+    # Logos of contacts: fetched from the contact's own website (its domain entered among its
     # identifiers) when on. Off, Lekto never asks the web on its own; uploads work either way.
     logo_fetch: bool = False
 

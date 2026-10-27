@@ -324,12 +324,12 @@ class Contact(MasterData):
 
     @property
     def domains(self) -> list[str]:
-        """The domains among the identifiers that count, those entered first: where its website
-        is."""
+        """The domains entered among its identifiers (by hand, attached or a learned one taken
+        over): where its website is. A learned one is not asked until someone confirms it."""
         return [
             item.value
             for item in self.identifiers
-            if item.counts and item.kind is IdentifierKind.EMAIL_DOMAIN
+            if item.source is IdentifierSource.MANUAL and item.kind is IdentifierKind.EMAIL_DOMAIN
         ]
 
     def set_logo(self, logo: ContactLogo) -> None:

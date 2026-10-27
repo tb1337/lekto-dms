@@ -249,7 +249,8 @@ contacts = _simple(
     description=(
         ADMINS_ONLY + " Only with `LEKTO_LOGO_FETCH` (503 otherwise; `GET /pipeline` tells, "
         "`logo_fetch`). The worker fetches the logo of every contact without one that has a "
-        "domain among its identifiers whose fetch has not failed (one that failed is tried "
+        "domain entered among its identifiers (a learned one only once taken over) whose fetch "
+        "has not failed (one that failed is tried "
         "again at the contact, `POST /contacts/{id}/logo/fetch`). A contact queued already is "
         "not queued twice."
     ),
@@ -328,11 +329,12 @@ async def remove_logo(id: UUID, user: CurrentUser, context: Context) -> None:
     summary="Fetch a contact's logo from its website",
     description=(
         ADMINS_ONLY + " Only with `LEKTO_LOGO_FETCH` (503 otherwise; `GET /pipeline` tells, "
-        "`logo_fetch`). The worker asks the website at each of the contact's domains in turn "
+        "`logo_fetch`). The worker asks the website at each of the contact's entered domains "
+        "in turn (a learned one only once taken over) "
         "for its icon (HTTPS to public addresses only), also one whose fetch failed before, "
         "and stores the first that fits in place of a fetched logo; `ContactOut.logo` or "
         "`logo_failure` tell the outcome. 409 while the contact has an uploaded logo (it is "
-        "never replaced), 422 without a domain among its identifiers."
+        "never replaced), 422 without a domain entered among its identifiers."
     ),
     response_class=Response,
     responses={202: {"description": "Queued"}, **problem_responses(401, 403, 404, 409, 422, 503)},

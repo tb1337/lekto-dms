@@ -2102,18 +2102,116 @@ E. **Automatisch verwerfen** (`feature/decision-reject`, `new-feature`; erst nac
 
 **Nebenbei behoben (`bugfix/type-scale-merge`, unter A):** `tailwind-merge` hielt `text-meta` und die anderen Stufen der Schriftskala für Farben; ein Knopf `default` der Größe `sm` verlor dadurch `text-primary-foreground` und schrieb dunkel auf Petrol (im Browser-Check an „Übernehmen“ gesehen). `cn` und die `tv` der UI-Komponenten kennen die Skala jetzt (`lib/tailwind.ts`).
 
+**Zurückgestellt (Tobi, 27.10.2026):** „Decision Modell lassen wir erstmal weg.“ C bis E ruhen, und mit ihnen die Fragen dazu (Speicher auf dem Ollama-Host für nimble, was „Wieder zulassen“ heißt). Die Reihenfolge ist erledigt: A ist vor B gebaut. Gegen Kontoauszüge, die falsche IBANs lehren, steht stattdessen der folgende Abschnitt.
+
+### Inhaber von IBANs und Gläubiger-IDs
+
+Stand: Vorschlag Claude, 27.10.2026, zur Freigabe durch Tobi. Release offen.
+
+**Anlass (Tobi, 27.10.2026):** Auf Kontoauszügen stehen viele IBANs, die nichts mit dem Kontakt (der Bank) zu tun haben. Tobi: „Den Inhaber wirklich bestimmen“, erst als PoC an den Dev-Dokumenten, dann an Prod (nur lesen, nichts ändern). „Wenn das klappt und generisch ist, könnten wir damit arbeiten.“
+
+**Befund (27.10.2026, nur Zahlen):**
+
+- **Das Training lernt aus jeder Kennung im Text, ohne Rolle** (`classifier._identifiers_of`). Eine gelernte Kennung zählt im Urteil als harter Beleg.
+  - Dev: An der Bank sind 11 IBANs gelernt, alle aus Buchungszeilen der Kontoauszüge.
+  - Prod: 85 IBANs sind gelernt; nach heutiger Regel wären 88 lernbar.
+  - Die IBANs auf Lohnabrechnungen (Gehaltskonto, vermögenswirksame Leistungen) wurden am Arbeitgeber gelernt; 5 hat Tobi von Hand verworfen.
+- **Die Fakten kennen keinen Inhaber.** Eine IBAN hat immer die Rolle `contact`, gleich wo sie steht. Der Fakten-Aufruf des Sprachmodells (`facts-1`) fragt IBAN, USt-IdNr. und E-Mail ausdrücklich nicht ab, weil die Muster sie sicher finden.
+- **Die IBAN-Prüfung kennt weder Länder noch Längen**, nur die Prüfsumme. Deshalb gehen auch Gläubiger-Referenzen nach ISO 11649 („RF…“ im Verwendungszweck) und Zeichenfolgen mit „NR“ als IBAN durch: 12 Stellen in Prod.
+- **Prompt-Caching (eingerichtet 27.10.2026):**
+  - LiteLLM setzt die Cache-Marke auf `messages[1]` (das Dokument): `cache_control_injection_points` mit `location: message`, `index: 1`, gesetzt in der UI.
+  - Lekto schickt das Schema mit `LEKTO_LLM_RESPONSE_FORMAT=json_object` hinter die Aufgabe, in Dev und Prod (Prod über Tobis Ansible).
+  - Ein Test mit zwei Anfragen gleichen Anfangs: Die erste schrieb 15.456 Tokens in den Cache, die zweite las sie. Der Fakten-Aufruf zahlt das Dokument damit nur noch zu 10 %.
+  - Vorher standen in Prod bei Lese- und Schreibmengen 0.
+
+**PoC (27.10.2026, nur im Scratchpad, nichts im Repository):**
+
+- **Feste Regel** ohne Dokumenttypen und ohne Banknamen. Lekto prüft je IBAN-Stelle der Reihe nach:
+  1. Klebt die IBAN in einer längeren Zeichenfolge, ist sie keine (Rauschen).
+  2. Profil der Person, eingetragene Kennung oder GiroCode.
+  3. Beschriftung in der eigenen Zeile: „Bankverbindung“, „auf unser Konto“ → Absender; „Ihr Konto“, „Kontoinhaber“ → Person.
+  4. Ein bekannter Name in der Spalte der IBAN (der Text behält die Spalten als Leerraum).
+  5. Der Name einer Person irgendwo im Block, über alle Spalten.
+  6. Ein fremder Name zählt nur in einer Buchungszeile (mit Datum oder Betrag) oder in einer Liste.
+  7. „Überweisung“ oder „Auszahlung“ → Dritter.
+  8. Viele IBANs im Dokument → Liste, also Dritter.
+  9. Unterer Seitenrand → Absender.
+  10. Zweiter Durchgang: Was einmal sicher einer Person gehört, gehört ihr überall.
+
+  Namen von Personen zählen nur mit allen Wörtern (ein Buchstabe OCR-Fehler erlaubt). Login-Namen und einzelne Vornamen zählen nicht.
+- **Dev:** 48 Dokumente, 888 Stellen. Gegen Claudes Durchsicht sind 884 richtig. Die 2 falschen Absender sind beigelegte Bescheide Dritter in einer NK-Abrechnung.
+- **Prod:** 814 von 2105 Dokumenten tragen IBANs, zusammen 4299 Stellen.
+
+  | Inhaber | Stellen |
+  |---|---|
+  | Person | 2787 |
+  | Dritter | 1051 |
+  | Absender | 358 |
+  | unklar | 79 |
+  | Rauschen | 24 |
+
+  - Auf den 3464 Stellen der Kontoauszüge gibt es keinen Absender.
+  - Von 267 Absender-Paaren (Dokument und IBAN) sind nach Durchsicht gut 95 % richtig. Falsch sind beigelegte Rechnungen Dritter, ein Darlehenskonto im Brief eines Autohauses, die Tochterfirma eines Klinikums und der Kopf von Kreditkartenabrechnungen.
+  - **Gegenprobe:** 25 IBANs ordnet die Regel über Buchungszeilen einem bekannten Kontakt zu. 9 davon stehen auch in dessen eigenen Dokumenten als Absender-IBAN, alle 9 beim selben Kontakt.
+  - **Training:** 40 statt 88 IBANs wären lernbar, davon 30 schon heute; 10 kommen neu dazu, weil die Kontoauszüge sie nicht mehr anderen Kontakten zuschreiben.
+  - **Grenzen:** Die Regel ist an genau diesen Daten nachgeschärft, und die Grundwahrheit ist Claudes Durchsicht. Die Beschriftungen sind nur deutsch.
+- **Sprachmodell** (Claude Sonnet 5.5 über LiteLLM, `json_object`, der Aufbau des Fakten-Aufrufs mit einer Aufgabe „Wem gehört jede gelistete Nummer?“):
+  - 14 Dokumente mit 30 Nummern: 13 strittige und klare aus Prod, dazu ein erfundener englischer Brief.
+  - 28 Nummern sind richtig eingeordnet. Die zwei übrigen heißen „unklar“ und „Dritter mit dem Namen der Person“, beides schadet nicht.
+  - Englisch klappt ohne eigene Regeln.
+  - In den strittigen Fällen (Tochterfirma, Finanzierer, Hausmeister) sagt das Modell „Absender“, **nennt aber einen anderen Namen** als den Kontakt des Dokuments. Erst der Abgleich des Namens trennt sie.
+  - Das Modell sieht nur den gekürzten Text: Beigelegte Bescheide und viele Buchungen fehlten dort.
+  - 1,4 bis 6 s und 1.400 bis 5.000 Eingabe-Tokens je Dokument, ohne Cache.
+
+**Entscheidungen (Frage-Antwort-Runde 27.10.2026):**
+
+1. **Der Inhaber wird bestimmt**, nicht nur Kontoauszüge ausgeblendet.
+2. **Das Sprachmodell liefert den Inhaber im Fakten-Aufruf mit**, auf dem gecachten Anfang. Es gibt keinen dritten Aufruf, und der Vorschlags-Aufruf bekommt die Aufgabe nicht.
+3. **Arten:** IBAN und Gläubiger-ID (Vorschlag Claude, Tobi: „Dein Vorschlag“). USt-IdNr. und Domain stehen fast nur beim Absender und bleiben vorerst außen vor.
+4. **Die feste Regel bleibt** als Rückfall: ohne Modell, für Nummern außerhalb des gesendeten Texts, wenn die Antwort fehlt oder nicht passt. Sie bekommt englische Beschriftungen („Bank details“, „Our account“, „Account holder“, „Your account“, „Payee“, „Beneficiary“, „Pay to“, „Remit to“).
+5. **Kein Decision Model** (Tobi: „lassen wir erstmal weg“).
+
+**Vorschlag (zur Freigabe):**
+
+- **Inhaber eines Fakts:** `holder` mit
+  - `sender`, `recipient`, `third_party` oder `unclear`
+  - dem Namen, wie geschrieben
+  - der Herkunft: Modell, Regel oder Person
+
+  Er gilt für IBAN und Gläubiger-ID. Er steht neben der Rolle, die bleibt, wie sie ist.
+- **Wann Lekto dem Modell glaubt:**
+  - Die Nummer ist eine der gelisteten.
+  - Das Zitat steht im Text, so wie Lekto heute Zitate prüft.
+  - Ein genannter Name steht im Text nahe der Nummer.
+
+  Sonst gilt die Regel. Widersprechen sich Modell und Regel bei „Absender“, gilt „unklar“.
+- **Absender heißt: der Kontakt des Dokuments.** Nennt das Modell (oder die Regel) einen Namen, der weder Name noch Alias dieses Kontakts ist, ist der Inhaber ein Dritter mit diesem Namen. Damit fallen Tochterfirma, Finanzierer und Hausmeister richtig.
+- **Training:** Es lernt IBAN und Gläubiger-ID nur aus Fakten mit Inhaber „Absender“; die übrigen Kontakt-Arten wie bisher. Wie heute braucht es zwei bestätigte Dokumente, alle desselben Kontakts. Eine IBAN, die in irgendeinem Dokument einer Person oder einem anderen Kontakt gehört, lernt es nicht.
+- **Urteil:** Eine IBAN oder Gläubiger-ID belegt den Kontakt des Dokuments nur, wenn sie dort nicht einem Dritten oder einer Person gehört. Die IBAN des Vermieters in einer Buchungszeile macht einen Kontoauszug nicht zum Brief des Vermieters.
+- **Offene Kennungen** (Reiter Kennungen): Als „unbekannt“ erscheinen nur noch IBANs und Gläubiger-IDs mit Inhaber „Absender“.
+- **Personen:** Eine IBAN, die sicher einer Person gehört, schlägt Lekto für deren Profil vor (in einem späteren PR, siehe Offen).
+
+**Umsetzung in PRs** (Reihenfolge 1 → 2 → 3 → 4; jeder PR mit den fünf Prüfungen, bei Änderungen der Web-UI auch deren Prüfungen):
+
+1. **IBAN nur mit Land und Länge** (`bugfix/iban-countries`, `bugfix`): Die Prüfung kennt die Länder des IBAN-Registers mit ihrer Länge. „RF…“ (ISO 11649) und andere Zeichenfolgen, deren Prüfsumme zufällig stimmt, sind keine IBAN mehr. Bestehende Fakten bereinigt der nächste Lauf des Faktensignals; ein Nachtrag ist nicht nötig, weil es nur einzelne sind.
+2. **Inhaber nach fester Regel** (`feature/iban-holders`, `new-feature`):
+   - Domäne `core/domain/holders.py`: die Regel aus dem PoC, deutsch und englisch, auf Text und Seitenaufbau (`layout_words`, `TextPlaces`).
+   - `DocumentFact.holder`, Revision 0051 (Spalten `holder`, `holder_name`, `holder_source` in `document_facts`).
+   - Das Faktensignal setzt den Inhaber, die Contract-Suite deckt ihn ab.
+   - Tests mit erfundenen Beispielen: Kontoauszug zweier Aufmachungen, Rechnung mit Bankverbindung im Fuß, Lohnabrechnung, NK-Abrechnung mit Beilage, englischer Brief.
+   - Ein Wartungs-Job „Inhaber bestimmen“ für den Bestand (System › Wartung, wie Codes lesen), nur mit der Regel, ohne Modell.
+   - Web: Die Fakten zeigen den Inhaber.
+3. **Inhaber vom Sprachmodell** (`feature/model-holders`, `new-feature`):
+   - `facts-2`: Lekto gibt die gefundenen IBANs und Gläubiger-IDs mit; die Antwort nennt je Nummer Inhaber, Name und Zitat.
+   - Prüfung und Zusammenführung mit der Regel wie oben.
+   - Neue Prompt-Version mit Bewertung: feste Antworten und ein Lauf mit echtem Modell an höchstens 15 Dokumenten.
+4. **Training, Urteil, offene Kennungen** (`enhancement/learn-sender-ibans`, `enhancement`): Lernen, Beleg und Liste wie oben; ein Training danach nimmt die falsch gelernten IBANs von selbst weg. Beschreibung in `architektur.md` (Ingest-Workflow › Kontakte: Kennungen; Signale).
+
 **Offen für Tobi:**
 
-1. **Speicher auf dem Ollama-Host:** nimble (9,6 GB) und Qwen3-Embedding 4B passen nicht gleichzeitig hinein. Nach jedem Schub muss das Embedding-Modell neu laden, und die erste Suche danach wartet einige Sekunden. Möglichkeiten:
-   - Das hinnehmen; die Schübe kommen nur nach dem Training.
-   - Mehr VRAM für den Host.
-   - tev1 4B, das kleiner ist, aber für Deutsch nicht belegt.
-2. **Was heißt „Wieder zulassen“ (E)?** Möglichkeiten:
-   - Die Kennung wird eingetragen (`manual`).
-   - Sie bleibt gelernt, und das Modell beurteilt sie nicht mehr.
-
-   Vorschlag: Sie bleibt gelernt, und das Modell beurteilt sie nicht mehr, weil die Person nur das Verwerfen zurücknimmt.
-3. **Reihenfolge:** A vor B, weil die Kachel „Kennungen“ die Zahlen aus A braucht. Oder B zuerst mit vier Kacheln, und die Kachel „Kennungen“ kommt mit A?
+1. **Bestand mit Modell?** In Prod tragen 814 Dokumente IBANs. Das Modell könnte sie einmal nachlesen: grob 814 Aufrufe mit 1.400 bis 5.000 Eingabe-Tokens, ohne Cache, weil es Einzelaufrufe sind. Oder nur die Regel, und das Modell erst bei neuen Dokumenten?
+2. **Personen-IBANs fürs Profil vorschlagen:** gleich mit PR 4 oder später?
+3. **Kontakt-IBANs aus Buchungen** (die Gegenprobe zeigte 25): als Vorschlag im Reiter Kennungen anbieten, etwa „aus Kontoauszügen: gehört wohl zu …“? Oder vorerst nicht?
 
 ### M16 – Lesen
 

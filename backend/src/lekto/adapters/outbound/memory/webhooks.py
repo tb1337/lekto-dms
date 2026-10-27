@@ -11,7 +11,7 @@ from uuid import UUID
 from lekto.adapters.outbound.memory.database import WEBHOOK_DELIVERIES, Table
 from lekto.adapters.outbound.memory.rows import _REMOVED, MemoryRepository, _copy
 from lekto.core.domain.errors import NotFoundError
-from lekto.core.domain.ids import DeliveryId, UserId, WebhookId
+from lekto.core.domain.ids import UserId, WebhookId
 from lekto.core.domain.webhooks import DeliveryOutcome, Webhook, WebhookDelivery
 from lekto.core.ports.repository import PAGE_SIZE
 
@@ -74,7 +74,6 @@ class MemoryWebhookRepository(MemoryRepository[WebhookId, Webhook]):
         self,
         webhook: WebhookId,
         *,
-        before: DeliveryId | None = None,
         outcomes: Collection[DeliveryOutcome] | None = None,
         event_type: str | None = None,
         offset: int = 0,
@@ -84,7 +83,6 @@ class MemoryWebhookRepository(MemoryRepository[WebhookId, Webhook]):
             row.item
             for row in self._deliveries._all()
             if row.item.webhook_id == webhook
-            and (before is None or row.id < before)
             and (outcomes is None or row.item.outcome in outcomes)
             and (event_type is None or row.item.event_type == event_type)
         ]

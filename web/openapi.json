@@ -16994,7 +16994,7 @@
           "webhooks"
         ],
         "summary": "The delivery log of a webhook",
-        "description": "Every attempt, newest first: time, event, status, duration, error, and the document as far as the caller may read it. The answer of the receiver is not kept. Old entries are removed after the retention period. Pages go by `before` (the `id` of the last entry of the previous page) or by `offset`; `outcome` and `event_type` narrow the log, `GET /webhooks/{id}/deliveries/summary` counts it. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).",
+        "description": "Every attempt, newest first: time, event, status, duration, error, and the document as far as the caller may read it. The answer of the receiver is not kept. Old entries are removed after the retention period. `outcome` and `event_type` narrow the log; `GET /webhooks/{id}/deliveries/summary` counts it by outcome. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).",
         "operationId": "list_deliveries_api_v1_webhooks__id__deliveries_get",
         "parameters": [
           {
@@ -17006,25 +17006,6 @@
               "format": "uuid",
               "title": "Id"
             }
-          },
-          {
-            "name": "before",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "The `id` of the last entry of the previous page.",
-              "title": "Before"
-            },
-            "description": "The `id` of the last entry of the previous page."
           },
           {
             "name": "outcome",
@@ -17094,11 +17075,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/DeliveryOut"
-                  },
-                  "title": "Response List Deliveries Api V1 Webhooks  Id  Deliveries Get"
+                  "$ref": "#/components/schemas/DeliveryPageOut"
                 }
               }
             }
@@ -22146,8 +22123,7 @@
           "document_hidden": {
             "type": "boolean",
             "title": "Document Hidden",
-            "description": "The event is about a document the caller may not read (or one deleted since).",
-            "default": false
+            "description": "It is about a document the caller may not read (or one deleted since)."
           }
         },
         "type": "object",
@@ -22163,7 +22139,9 @@
           "outcome",
           "status_code",
           "error",
-          "next_attempt_at"
+          "next_attempt_at",
+          "document",
+          "document_hidden"
         ],
         "title": "DeliveryOut"
       },
@@ -22176,6 +22154,41 @@
           "dropped"
         ],
         "title": "DeliveryOutcome"
+      },
+      "DeliveryPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DeliveryOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "How many entries match in all."
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset",
+            "description": "Pass as `offset` for the next page; null on the last page."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "next_offset"
+        ],
+        "title": "DeliveryPageOut"
       },
       "DeliverySummaryOut": {
         "properties": {

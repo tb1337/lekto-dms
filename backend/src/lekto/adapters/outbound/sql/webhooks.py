@@ -97,7 +97,6 @@ class SqlWebhookRepository(SqlRepository[WebhookId, Webhook]):
         self,
         webhook: WebhookId,
         *,
-        before: DeliveryId | None = None,
         outcomes: Collection[DeliveryOutcome] | None = None,
         event_type: str | None = None,
         offset: int = 0,
@@ -105,8 +104,6 @@ class SqlWebhookRepository(SqlRepository[WebhookId, Webhook]):
     ) -> list[WebhookDelivery]:
         table = t.webhook_deliveries
         query = select(table).where(table.c.webhook_id == webhook)
-        if before is not None:
-            query = query.where(table.c.id < before)
         if outcomes is not None:
             query = query.where(table.c.outcome.in_([outcome.value for outcome in outcomes]))
         if event_type is not None:

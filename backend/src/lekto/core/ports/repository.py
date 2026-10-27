@@ -35,7 +35,6 @@ from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import (
     ClassifierModelId,
     ContactId,
-    DeliveryId,
     DocumentId,
     DocumentTypeId,
     FieldId,
@@ -868,14 +867,13 @@ class WebhookRepository(Protocol):
         self,
         webhook: WebhookId,
         *,
-        before: DeliveryId | None = None,
         outcomes: Collection[DeliveryOutcome] | None = None,
         event_type: str | None = None,
         offset: int = 0,
         limit: int = PAGE_SIZE,
     ) -> list[WebhookDelivery]:
-        """The log of a webhook, newest first (by id): the page after `before`, or `offset`
-        entries in; only `outcomes` and `event_type` where given."""
+        """The log of a webhook, newest first (by id), `offset` entries in; only `outcomes`
+        and `event_type` where given."""
         ...
 
     async def delivery_counts(

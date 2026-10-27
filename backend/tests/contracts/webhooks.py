@@ -240,7 +240,7 @@ class WebhookRepositoryContract:
         async with uow_factory() as uow:
             page = await uow.webhooks.deliveries(webhook.id, limit=2)
             assert page == newest_first[:2]
-            after = await uow.webhooks.deliveries(webhook.id, before=page[-1].id, limit=10)
+            after = await uow.webhooks.deliveries(webhook.id, offset=2, limit=10)
             assert after == newest_first[2:]
             assert await uow.webhooks.deliveries(webhook.id) == newest_first
 

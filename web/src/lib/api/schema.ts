@@ -1966,7 +1966,7 @@ export interface paths {
 		};
 		/**
 		 * The delivery log of a webhook
-		 * @description Every attempt, newest first: time, event, status, duration, error, and the document as far as the caller may read it. The answer of the receiver is not kept. Old entries are removed after the retention period. Pages go by `before` (the `id` of the last entry of the previous page) or by `offset`; `outcome` and `event_type` narrow the log, `GET /webhooks/{id}/deliveries/summary` counts it. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).
+		 * @description Every attempt, newest first: time, event, status, duration, error, and the document as far as the caller may read it. The answer of the receiver is not kept. Old entries are removed after the retention period. `outcome` and `event_type` narrow the log; `GET /webhooks/{id}/deliveries/summary` counts it by outcome. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).
 		 */
 		get: operations['list_deliveries_api_v1_webhooks__id__deliveries_get'];
 		put?: never;
@@ -3515,11 +3515,10 @@ export interface components {
 			/** Next Attempt At */
 			next_attempt_at: string | null;
 			/** @description The document of the event, if the caller may read it. */
-			document?: components['schemas']['DeliveryDocumentOut'] | null;
+			document: components['schemas']['DeliveryDocumentOut'] | null;
 			/**
 			 * Document Hidden
-			 * @description The event is about a document the caller may not read (or one deleted since).
-			 * @default false
+			 * @description It is about a document the caller may not read (or one deleted since).
 			 */
 			document_hidden: boolean;
 		};
@@ -3528,6 +3527,21 @@ export interface components {
 		 * @enum {string}
 		 */
 		DeliveryOutcome: 'delivered' | 'retrying' | 'gave_up' | 'dropped';
+		/** DeliveryPageOut */
+		DeliveryPageOut: {
+			/** Items */
+			items: components['schemas']['DeliveryOut'][];
+			/**
+			 * Total
+			 * @description How many entries match in all.
+			 */
+			total: number;
+			/**
+			 * Next Offset
+			 * @description Pass as `offset` for the next page; null on the last page.
+			 */
+			next_offset: number | null;
+		};
 		/** DeliverySummaryOut */
 		DeliverySummaryOut: {
 			/**
@@ -23722,8 +23736,6 @@ export interface operations {
 	list_deliveries_api_v1_webhooks__id__deliveries_get: {
 		parameters: {
 			query?: {
-				/** @description The `id` of the last entry of the previous page. */
-				before?: string | null;
 				/** @description Repeat for several. */
 				outcome?: components['schemas']['DeliveryOutcome'][] | null;
 				event_type?: string | null;
@@ -23744,7 +23756,7 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['DeliveryOut'][];
+					'application/json': components['schemas']['DeliveryPageOut'];
 				};
 			};
 			/** @description Unauthorized */

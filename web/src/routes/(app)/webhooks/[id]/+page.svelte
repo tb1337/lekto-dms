@@ -77,7 +77,7 @@
 		const ask = ++asked;
 		const path = { id };
 		const event_type = eventType || undefined;
-		const [items, found] = await Promise.all([
+		const [found, counts] = await Promise.all([
 			unwrap(
 				api.GET('/api/v1/webhooks/{id}/deliveries', {
 					params: { path, query: { outcome: OUTCOMES[view], event_type, offset, limit } }
@@ -89,8 +89,8 @@
 				})
 			)
 		]);
-		if (ask === asked) summary = found;
-		return { items, total: counted(found, view) };
+		if (ask === asked) summary = counts;
+		return { items: found.items, total: found.total };
 	}, rememberedPageSize('deliveries'));
 
 	function show(next: string) {

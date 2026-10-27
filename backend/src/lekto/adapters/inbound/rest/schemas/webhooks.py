@@ -26,7 +26,11 @@ from lekto.core.domain.webhooks import (
 )
 from lekto.core.services._access import DocumentRef
 from lekto.core.services.webhooks import CreatedWebhook
-from lekto.core.services.webhooks.management import DeliverySummary, DeliveryView
+from lekto.core.services.webhooks.management import (
+    DeliveriesPage,
+    DeliverySummary,
+    DeliveryView,
+)
 
 EVENT_TYPES_HELP = (
     f"Event types: {', '.join(f'`{name}`' for name in event_type_names())}, or `{ALL_EVENTS}` "
@@ -296,11 +300,10 @@ class DeliveryOut(BaseModel):
     error: str | None = Field(description="Why the attempt failed; the answer body is not kept.")
     next_attempt_at: datetime | None
     document: DeliveryDocumentOut | None = Field(
-        default=None, description="The document of the event, if the caller may read it."
+        description="The document of the event, if the caller may read it."
     )
     document_hidden: bool = Field(
-        default=False,
-        description="The event is about a document the caller may not read (or one deleted since).",
+        description="It is about a document the caller may not read (or one deleted since)."
     )
 
     @classmethod
@@ -334,6 +337,23 @@ class DeliveryOut(BaseModel):
                 else DeliveryDocumentOut(id=document.id, title=document.title)
             ),
             document_hidden=hidden,
+        )
+
+
+class DeliveryPageOut(BaseModel):
+    items: list[DeliveryOut]
+    total: int = Field(description="How many entries match in all.")
+    next_offset: int | None = Field(
+        description="Pass as `offset` for the next page; null on the last page."
+    )
+
+    @classmethod
+    def of(cls, page: DeliveriesPage, offset: int) -> "DeliveryPageOut":
+        end = offset + len(page.deliveries)
+        return cls(
+            items=[DeliveryOut.of_view(view) for view in page.deliveries],
+            total=page.total,
+            next_offset=end if page.deliveries and end < page.total else None,
         )
 
 

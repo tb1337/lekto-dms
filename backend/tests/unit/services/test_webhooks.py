@@ -95,7 +95,7 @@ async def test_others_do_not_find_a_webhook_but_admins_read_it(world: World) -> 
         await service.update(other.id, hook.id, name="mine")
     assert await service.list_webhooks(other.id) == []
     assert (await service.get(admin.id, hook.id)).id == hook.id
-    assert await service.deliveries(admin.id, hook.id) == []
+    assert (await service.deliveries(admin.id, hook.id)).deliveries == ()
     assert [webhook.id for webhook in await service.list_webhooks(admin.id)] == [hook.id]
     owned = await service.list_webhooks(admin.id, owner=owner.id)
     assert [webhook.id for webhook in owned] == [hook.id]
@@ -407,7 +407,7 @@ async def test_the_log_names_documents_as_far_as_the_viewer_may_read_them(world:
 
     seen = {
         view.delivery.event_type + str(view.delivery.document_id): view
-        for view in await world.webhooks.deliveries(owner.id, hook.id)
+        for view in (await world.webhooks.deliveries(owner.id, hook.id)).deliveries
     }
     readable = seen[f"document.filed{mine.id}"]
     assert readable.document is not None and readable.document.title == mine.title
@@ -421,14 +421,21 @@ async def test_the_log_names_documents_as_far_as_the_viewer_may_read_them(world:
         True,
         False,
     )
-    as_admin = await world.webhooks.deliveries(admin.id, hook.id, event_type="document.filed")
+    as_admin = (
+        await world.webhooks.deliveries(admin.id, hook.id, event_type="document.filed")
+    ).deliveries
     assert {view.document.title for view in as_admin if view.document} == {mine.title, theirs.title}
 
     problems = await world.webhooks.deliveries(
         owner.id, hook.id, outcomes={DeliveryOutcome.GAVE_UP, DeliveryOutcome.RETRYING}
     )
-    assert {view.delivery.event_type for view in problems} == {"document.filed", "document.deleted"}
-    assert len(await world.webhooks.deliveries(owner.id, hook.id, offset=3)) == 1
+    assert {view.delivery.event_type for view in problems.deliveries} == {
+        "document.filed",
+        "document.deleted",
+    }
+    assert problems.total == 2
+    rest = await world.webhooks.deliveries(owner.id, hook.id, offset=3)
+    assert (len(rest.deliveries), rest.total) == (1, 4)
 
     summary = await world.webhooks.delivery_summary(owner.id, hook.id)
     assert summary.counts == {

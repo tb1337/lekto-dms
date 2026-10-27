@@ -22,7 +22,7 @@ from lekto.core.domain.errors import (
     PermissionDeniedError,
     ValidationError,
 )
-from lekto.core.domain.ids import DeliveryId, UserId, WebhookId, new_id
+from lekto.core.domain.ids import UserId, WebhookId, new_id
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.templates import WEBHOOK_NAMES, unknown_values
 from lekto.core.domain.users import User
@@ -72,6 +72,14 @@ class DeliveryView:
     delivery: WebhookDelivery
     document: DocumentRef | None = None
     document_hidden: bool = False
+
+
+@dataclass(frozen=True)
+class DeliveriesPage:
+    """A page of the log and how many entries match in all."""
+
+    deliveries: tuple[DeliveryView, ...]
+    total: int
 
 
 @dataclass(frozen=True)
@@ -279,29 +287,29 @@ class WebhookService:
         actor: UserId,
         id: WebhookId,
         *,
-        before: DeliveryId | None = None,
         outcomes: Collection[DeliveryOutcome] | None = None,
         event_type: str | None = None,
         offset: int = 0,
         limit: int = PAGE_SIZE,
-    ) -> list[DeliveryView]:
-        """The log of a webhook, newest first: the page after `before`, or `offset` entries
-        in; only `outcomes` and `event_type` where given. Each entry with its document as the
-        caller may see it."""
+    ) -> DeliveriesPage:
+        """The log of a webhook, newest first, `offset` entries in; only `outcomes` and
+        `event_type` where given. Each entry with its document as the caller may see it."""
         limit = max(1, min(limit, PAGE_LIMIT))
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             webhook = await visible_webhook(uow, user, id)
             found = await uow.webhooks.deliveries(
                 webhook.id,
-                before=before,
                 outcomes=outcomes,
                 event_type=event_type,
                 offset=max(0, offset),
                 limit=limit,
             )
+            counts = await uow.webhooks.delivery_counts(webhook.id, event_type=event_type)
             documents = ReadableDocuments(uow, user)
-            return [await _view(delivery, documents) for delivery in found]
+            views = tuple([await _view(delivery, documents) for delivery in found])
+        total = sum(n for outcome, n in counts.items() if outcomes is None or outcome in outcomes)
+        return DeliveriesPage(views, total)
 
     async def delivery_summary(
         self, actor: UserId, id: WebhookId, *, event_type: str | None = None

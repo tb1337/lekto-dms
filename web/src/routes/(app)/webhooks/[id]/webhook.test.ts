@@ -64,29 +64,33 @@ const summary = {
 	kept_since: '2026-10-20T08:00:00Z'
 };
 
+// A page of the log; 77 entries in all unless said otherwise.
+const page = (items: Delivery[], total = 77) => ({ items, total, next_offset: null });
+
 function routes() {
 	return fakeApi({
 		'GET /api/v1/webhooks/hook': () => webhook,
 		'GET /api/v1/webhooks/hook/deliveries/summary': () => summary,
-		'GET /api/v1/webhooks/hook/deliveries': () => [
-			delivery({}),
-			delivery({
-				id: 'd2',
-				event_type: 'document.deleted',
-				attempt: 6,
-				outcome: 'gave_up',
-				status_code: null,
-				error: 'no answer within 10 seconds',
-				document: null,
-				document_hidden: true
-			}),
-			delivery({
-				id: 'd3',
-				event_type: 'webhook.test',
-				document_id: null,
-				document: null
-			})
-		]
+		'GET /api/v1/webhooks/hook/deliveries': () =>
+			page([
+				delivery({}),
+				delivery({
+					id: 'd2',
+					event_type: 'document.deleted',
+					attempt: 6,
+					outcome: 'gave_up',
+					status_code: null,
+					error: 'no answer within 10 seconds',
+					document: null,
+					document_hidden: true
+				}),
+				delivery({
+					id: 'd3',
+					event_type: 'webhook.test',
+					document_id: null,
+					document: null
+				})
+			])
 	});
 }
 
@@ -161,7 +165,7 @@ describe('the page of a webhook', () => {
 				'GET /api/v1/webhooks/hook': () => webhook,
 				'GET /api/v1/webhooks/hook/deliveries/summary': () => summary,
 				'GET /api/v1/webhooks/hook/deliveries': (_request, url) =>
-					url.searchParams.has('outcome') ? [] : [delivery({})]
+					url.searchParams.has('outcome') ? page([], 0) : page([delivery({})], 1)
 			})
 		);
 		render(Page);

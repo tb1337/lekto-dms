@@ -96,7 +96,7 @@ async def test_a_green_document_reaches_the_receiver_signed_after_a_failed_try()
         deliveries = await services.webhooks.deliveries(user.id, created.webhook.id)
         assert [
             (v.delivery.attempt, v.delivery.outcome, v.delivery.status_code)
-            for v in reversed(deliveries)
+            for v in reversed(deliveries.deliveries)
         ] == [
             (1, DeliveryOutcome.RETRYING, 503),
             (2, DeliveryOutcome.DELIVERED, 200),

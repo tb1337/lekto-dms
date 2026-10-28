@@ -80,7 +80,8 @@
 	} from '#lib/listing.ts';
 	import { PageLookup } from '#lib/lookup.svelte.ts';
 	import { openLens } from '#lib/open-lens.svelte.ts';
-	import { PagedList } from '#lib/paging.svelte.ts';
+	import { Pager } from '#lib/paging.svelte.ts';
+	import Pagination from '#lib/components/Pagination.svelte';
 	import { reasonText } from '#lib/reasons.ts';
 	import { SearchNote } from '#lib/search-note.svelte.ts';
 	import { meaningSearch, warmSearch } from '#lib/meaning-search.ts';
@@ -300,7 +301,10 @@
 	const searchNote = new SearchNote();
 	let meaning = $state(false);
 
-	const list = new PagedList<Item>(async (after) => {
+	// One page of documents at a time, 50 to a page as the jobs (Tobi, 29.10.2026); the page
+	// stands in the link (`?page=`). The list counts its documents as the filters do; a search
+	// estimates its hits.
+	const list = new Pager<Item>(async (offset, limit) => {
 		const base = apiQuery(filters, scope.allUsers);
 		if (searching) {
 			const words = query;
@@ -312,33 +316,50 @@
 							q: words,
 							// A search never sorts by a field (`sortOf`).
 							sort: sort as Exclude<Sort, FieldSort>,
-							offset: (after as number | null) ?? 0,
+							offset,
+							limit,
 							semantic_ratio: searchNote.ratio(words)
 						}
 					}
 				})
 			);
-			if (after === null) searchNote.answered(words, data);
+			if (offset === 0) searchNote.answered(words, data);
 			const items = data.items.map((hit) => ({ document: hit.document, snippet: hit.snippet }));
-			return { items, next: data.next_offset, total: data.estimated_total };
+			return { items, total: data.estimated_total };
 		}
-		const data = await unwrap(
-			api.GET('/api/v1/documents', {
-				params: {
-					query: {
-						...base,
-						sort: sort as ListSort,
-						sort_field_id: sortField ?? undefined,
-						cursor: (after as string | null) ?? undefined
+		const [data, counted] = await Promise.all([
+			unwrap(
+				api.GET('/api/v1/documents', {
+					params: {
+						query: {
+							...base,
+							sort: sort as ListSort,
+							sort_field_id: sortField ?? undefined,
+							offset,
+							limit
+						}
 					}
-				}
-			})
-		);
+				})
+			),
+			unwrap(api.GET('/api/v1/documents/count', { params: { query: base } }))
+		]);
 		return {
 			items: data.items.map((document) => ({ document, snippet: [] })),
-			next: data.next_cursor
+			total: counted.total
 		};
-	});
+	}, 50);
+
+	/** The page the link asks for, from 1. */
+	const pageNumber = $derived(Math.max(1, Number(page.url.searchParams.get('page')) || 1));
+
+	/** Show another page: a new entry in the history (`replace`: none, the list changed). */
+	function goToPage(next: number, replace = false) {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
+		const params = new URLSearchParams(page.url.search);
+		if (next > 1) params.set('page', String(next));
+		else params.delete('page');
+		void goto(params.size > 0 ? `?${params}` : page.url.pathname, { replaceState: replace });
+	}
 
 	// How many documents the filters leave: estimated while searching.
 	const shownCount = $derived(searching ? list.total : (facets?.total ?? null));
@@ -352,13 +373,22 @@
 	);
 	const note = $derived(meaning && searching ? searchNote.about(query) : null);
 
-	// Reload when the words, filters or sort change, and after a reconnect of the event stream.
+	// Reload when the words, filters or sort change, and after a reconnect of the event stream;
+	// another page of the same list only loads that page. A change of what the list shows goes
+	// back to its first page.
+	let shownKey: string | null = null;
 	$effect(() => {
-		void page.url.search;
-		void scope.allUsers;
-		void events.generation;
-		void list.reload();
-		void loadFacets();
+		const shown = [...params].filter(([name]) => name !== 'page');
+		const key = `${JSON.stringify(shown)}|${scope.allUsers}|${events.generation}`;
+		const wanted = pageNumber;
+		const before = shownKey;
+		shownKey = key;
+		if (before !== key) void loadFacets();
+		if (before !== null && before !== key && wanted !== 1) {
+			goToPage(1, true);
+			return;
+		}
+		void list.go(wanted);
 	});
 
 	// Again when an admin switches the reach: the spaces of the filter follow it.
@@ -910,13 +940,12 @@ row of filters, on a desktop narrow by the title. -->
 				{#if list.loading && !list.loaded}
 					<Loading />
 				{/if}
-				{#if list.hasMore}
-					<div class="flex justify-center">
-						<Button variant="outline" disabled={list.loading} onclick={() => list.more()}>
-							{m.load_more()}
-						</Button>
-					</div>
-				{/if}
+				<Pagination
+					page={list.page}
+					total={list.total}
+					size={list.size}
+					onchange={(next) => goToPage(next)}
+				/>
 			{/if}
 		</div>
 	</div>

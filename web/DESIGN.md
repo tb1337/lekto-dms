@@ -359,7 +359,8 @@ card, indented to the text of the button (`pl-6`). A whole card that folds is `F
 `ui/table` only. The head is `text-xs font-medium text-muted-foreground`. Numbers align right with
 `tabular-nums`. On the phone a table keeps to the columns that fit; where it is wider, it scrolls
 inside its card, never the page. A list a person reads item by item is a list of rows, not a
-table. Pagination is `Pagination` (50 per page). A table may offer other sizes in a small menu
+table. Pagination is `Pagination` (50 per page); the documents list pages so too, in its grid and
+its list, with the page in the link (`?page=`). A table may offer other sizes in a small menu
 beside the count (`outline`, `sm`; the jobs and the deliveries of a webhook: 25, 50 and 100, 25
 at first); the choice is remembered per table in the browser (`page-size.ts`) and holds wherever
 that table shows. Above such a table, a `Segmented` with counts picks what it shows and a

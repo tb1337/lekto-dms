@@ -123,6 +123,28 @@ describe('the archive page', () => {
 		expect(within(october).queryByText('Lohn')).toBeNull();
 	});
 
+	it('shows one page of 50 at a time, the page in the link', async () => {
+		state.url = new URL('http://lekto/ui/documents?sort=title&page=2');
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({
+				items: [listedOf({ id: 'd51', title: 'Strom', document_date: '2026-10-01' })],
+				next_cursor: null
+			}),
+			'GET /api/v1/documents/count': () => ({ total: 120 })
+		});
+		vi.stubGlobal('fetch', api);
+		render(Page);
+		await screen.findByText('Strom');
+		const listed = calls(api).filter((call) => call.startsWith('GET /api/v1/documents?'));
+		expect(listed.at(-1)).toContain('offset=50');
+		expect(listed.at(-1)).toContain('limit=50');
+		const pages = screen.getByRole('navigation', { name: m.pagination_label() });
+		await userEvent.click(
+			within(pages).getByRole('button', { name: m.pagination_page({ page: '3' }) })
+		);
+		expect(goto).toHaveBeenLastCalledWith('?sort=title&page=3', { replaceState: false });
+	});
+
 	it('stands the documents without headings while sorted by title', async () => {
 		state.url = new URL('http://lekto/ui/documents?sort=title');
 		vi.stubGlobal(

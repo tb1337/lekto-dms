@@ -8,6 +8,7 @@ from uuid import UUID
 import pytest
 
 from lekto.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSource
+from lekto.core.domain.bulk import BulkAction, BulkKind, BulkOperation, BulkStatus
 from lekto.core.domain.classifier import ClassifierModel
 from lekto.core.domain.document_facts import (
     DocumentFact,
@@ -30,6 +31,7 @@ from lekto.core.domain.errors import (
 from lekto.core.domain.fields import FieldDefinition, FieldType, Money, Url
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from lekto.core.domain.ids import (
+    BulkOperationId,
     ContactId,
     DocumentId,
     DocumentTypeId,
@@ -2028,6 +2030,41 @@ class UnitOfWorkContract:
                 await uow.spaces.remove(space.id)
             await uow.users.remove(other.id)  # no membership left
             await uow.commit()
+
+    async def test_bulk_operations_round_trip(self, uow_factory: UnitOfWorkFactory) -> None:
+        """An action on many documents keeps its action, documents and progress, with the
+        reasons of the skipped ones."""
+        owner, _ = await owner_with_space(uow_factory)
+        documents = (DocumentId(new_id()), DocumentId(new_id()), DocumentId(new_id()))
+        tags = frozenset({TagId(new_id())})
+        operation = BulkOperation.create(
+            user_id=owner.id,
+            action=BulkAction(kind=BulkKind.ADD_TAGS, tags=tags),
+            documents=documents,
+            now=NOW,
+        )
+        async with uow_factory() as uow:
+            await uow.bulk_operations.add(operation)
+            await uow.commit()
+        async with uow_factory() as uow:
+            stored = await uow.bulk_operations.get(operation.id)
+            assert (stored.action, stored.documents, stored.status) == (
+                BulkAction(kind=BulkKind.ADD_TAGS, tags=tags),
+                documents,
+                BulkStatus.QUEUED,
+            )
+            stored.record_changed()
+            stored.record_skipped(documents[1], because(ReasonCode.NO_DOCUMENT_TEXT))
+            await uow.bulk_operations.update(stored)
+            await uow.commit()
+        async with uow_factory() as uow:
+            again = await uow.bulk_operations.get(operation.id)
+            assert (again.position, again.changed, again.status) == (2, 1, BulkStatus.RUNNING)
+            assert [(id, reason.code) for id, reason in again.skipped] == [
+                (documents[1], ReasonCode.NO_DOCUMENT_TEXT)
+            ]
+            assert again.remaining == documents[2:]
+            assert await uow.bulk_operations.find(BulkOperationId(new_id())) is None
 
     async def test_profiles_round_trip_and_go_with_their_user(
         self, uow_factory: UnitOfWorkFactory

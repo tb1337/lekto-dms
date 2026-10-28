@@ -609,6 +609,25 @@ rule_applications = Table(
     Column("version", Integer, nullable=False),
 )
 
+# A person's action on many documents at once (`domain.bulk`), worked through in the background.
+bulk_operations = Table(
+    "bulk_operations",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("user_id", Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("action", json_type(), nullable=False),
+    Column("status", Text, nullable=False),
+    Column("documents", json_type(), nullable=False),
+    Column("position", Integer, nullable=False),
+    Column("changed", Integer, nullable=False),
+    Column("unchanged", Integer, nullable=False),
+    Column("skipped", json_type(), nullable=False),
+    Column("error", Text, nullable=True),
+    Column("created_at", UtcDateTime, nullable=False),
+    Column("finished_at", UtcDateTime, nullable=True),
+    Column("version", Integer, nullable=False),
+)
+
 jobs = Table(
     "jobs",
     metadata,

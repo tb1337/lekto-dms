@@ -6,8 +6,9 @@ from uuid import UUID, uuid5
 
 from lekto.adapters.outbound.memory.database import RULE_APPLICATIONS, RULE_VERSIONS, Table
 from lekto.adapters.outbound.memory.rows import _REMOVED, MemoryRepository, _copy
+from lekto.core.domain.bulk import BulkOperation
 from lekto.core.domain.errors import NotFoundError
-from lekto.core.domain.ids import RuleApplicationId, RuleId, SpaceId, UserId
+from lekto.core.domain.ids import BulkOperationId, RuleApplicationId, RuleId, SpaceId, UserId
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.rules import Rule, RuleApplication, RuleScope, RuleVersion
 
@@ -99,4 +100,8 @@ class MemoryRuleRepository(MemoryRepository[RuleId, Rule]):
 
 
 class MemoryRuleApplicationRepository(MemoryRepository[RuleApplicationId, RuleApplication]):
+    pass
+
+
+class MemoryBulkOperationRepository(MemoryRepository[BulkOperationId, BulkOperation]):
     pass

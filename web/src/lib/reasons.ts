@@ -334,6 +334,7 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	rule_asks_on_arrival: entry(m.reason_rule_asks_on_arrival),
 	skip_changed_meanwhile: entry(m.reason_skip_changed_meanwhile),
 	skip_not_available: entry(m.reason_skip_not_available),
+	bulk_too_many: entry(m.reason_bulk_too_many, { max: 'number' }),
 	not_iban: entry(m.reason_not_iban),
 	not_vat_id: entry(m.reason_not_vat_id),
 	not_customer_number: entry(m.reason_not_customer_number),

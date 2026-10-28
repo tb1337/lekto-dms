@@ -20,6 +20,7 @@ from typing import Self
 from sqlalchemy import func, insert, select
 
 from lekto.adapters.outbound.sql import events, tables
+from lekto.adapters.outbound.sql.bulk import SqlBulkOperationRepository
 from lekto.adapters.outbound.sql.classifier_models import SqlClassifierModelRepository
 from lekto.adapters.outbound.sql.database import Database
 from lekto.adapters.outbound.sql.documents import SqlDocumentRepository, SqlProcessingLog
@@ -110,6 +111,7 @@ class SqlUnitOfWork:
         self.inbox = SqlInboxRepository(self._tx, self.documents)
         self.rules = SqlRuleRepository(self._tx)
         self.rule_applications = SqlRuleApplicationRepository(self._tx)
+        self.bulk_operations = SqlBulkOperationRepository(self._tx)
         self.classifier_models = SqlClassifierModelRepository(self._tx)
         self.webhooks = SqlWebhookRepository(self._tx)
         self.tasks = SqlTaskRepository(self._tx)

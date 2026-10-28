@@ -19,6 +19,7 @@ from uuid import UUID
 from lekto.adapters.outbound.memory.classifier_models import MemoryClassifierModelRepository
 from lekto.adapters.outbound.memory.database import (
     API_TOKENS,
+    BULK_OPERATIONS,
     CLASSIFIER_MODELS,
     CONTACTS,
     CREDENTIALS,
@@ -59,6 +60,7 @@ from lekto.adapters.outbound.memory.ordering import Rank, rank
 from lekto.adapters.outbound.memory.processing_facts import MemoryProcessingFacts, VerdictKey
 from lekto.adapters.outbound.memory.rows import _REMOVED, MemoryRepository, _copy
 from lekto.adapters.outbound.memory.rules import (
+    MemoryBulkOperationRepository,
     MemoryRuleApplicationRepository,
     MemoryRuleRepository,
 )
@@ -156,6 +158,7 @@ class MemoryUnitOfWork:
         self.inbox = MemoryInboxRepository(self)
         self.rules = MemoryRuleRepository(self, RULES)
         self.rule_applications = MemoryRuleApplicationRepository(self, RULE_APPLICATIONS)
+        self.bulk_operations = MemoryBulkOperationRepository(self, BULK_OPERATIONS)
         self.classifier_models = MemoryClassifierModelRepository(self, CLASSIFIER_MODELS)
         self.webhooks = MemoryWebhookRepository(self, WEBHOOKS)
         self.tasks = MemoryTaskRepository(self, TASKS)

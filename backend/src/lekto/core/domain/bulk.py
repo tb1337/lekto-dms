@@ -1,0 +1,193 @@
+"""Changing many documents at once (`.idea/umsetzungsplan.md`, "Massenaktionen und Seiten in der
+Dokumentliste"): one action on documents a person selected in the documents list, a page of them
+or all the hits of a search and filters, worked through in the background.
+
+The selection is fixed when the person starts: the documents it names then, at most
+`MAX_DOCUMENTS`. Each document then goes through the same change a person makes on one (rights,
+change rules, events, decisions), one transaction each; one that cannot be changed is skipped
+with its reason, and the others go on.
+"""
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import StrEnum
+from typing import Self
+from uuid import UUID
+
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.ids import (
+    BulkOperationId,
+    ContactId,
+    DocumentId,
+    DocumentTypeId,
+    SpaceId,
+    TagId,
+    UserId,
+    new_id,
+)
+from lekto.core.domain.json_value import JsonObject, JsonValue, as_list, as_text
+from lekto.core.domain.pipeline import Node
+from lekto.core.domain.reasons import Reason, ReasonCode, because
+from lekto.core.domain.validation import require_utc
+
+MAX_DOCUMENTS = 10_000
+"""Documents one action changes at most."""
+
+MAX_IDS = 500
+"""Documents a selection names one by one at most (a page or a few pages)."""
+
+
+class BulkKind(StrEnum):
+    ADD_TAGS = "add_tags"
+    REMOVE_TAGS = "remove_tags"
+    SET_CONTACT = "set_contact"
+    SET_DOCUMENT_TYPE = "set_document_type"
+    SET_TOPIC = "set_topic"
+    MOVE = "move"
+    CONFIRM = "confirm"
+    REPROCESS = "reprocess"
+    DELETE = "delete"
+
+
+TAG_KINDS = frozenset({BulkKind.ADD_TAGS, BulkKind.REMOVE_TAGS})
+SET_KINDS = frozenset({BulkKind.SET_CONTACT, BulkKind.SET_DOCUMENT_TYPE, BulkKind.SET_TOPIC})
+
+
+@dataclass(frozen=True)
+class BulkAction:
+    """What to do to each document: `tags` to add or remove; a contact, type or topic to set
+    (None: to clear); the space to move into; the node to process again from."""
+
+    kind: BulkKind
+    tags: frozenset[TagId] = frozenset()
+    contact: ContactId | None = None
+    document_type: DocumentTypeId | None = None
+    topic: TagId | None = None
+    space: SpaceId | None = None
+    node: Node | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind in TAG_KINDS and not self.tags:
+            raise ValidationError("name the tags to add or remove")
+        if self.kind is BulkKind.MOVE and self.space is None:
+            raise ValidationError("name the space to move into")
+        if self.kind is BulkKind.REPROCESS and (self.node is None or self.node is Node.RECEIVE):
+            raise ValidationError("name the step to process again from")
+
+    def to_json(self) -> JsonObject:
+        tags: list[JsonValue] = [str(tag) for tag in sorted(self.tags)]
+        return {
+            "kind": self.kind.value,
+            "tags": tags,
+            "contact": None if self.contact is None else str(self.contact),
+            "document_type": None if self.document_type is None else str(self.document_type),
+            "topic": None if self.topic is None else str(self.topic),
+            "space": None if self.space is None else str(self.space),
+            "node": None if self.node is None else self.node.value,
+        }
+
+    @classmethod
+    def from_json(cls, data: JsonValue) -> "BulkAction":
+        if not isinstance(data, dict):
+            raise ValidationError("an action is an object")
+
+        def uuid(name: str) -> UUID | None:
+            value = as_text(data.get(name))
+            return None if value is None else UUID(value)
+
+        contact, document_type, topic, space = (
+            uuid(name) for name in ("contact", "document_type", "topic", "space")
+        )
+        node = as_text(data.get("node"))
+        return cls(
+            kind=BulkKind(str(data.get("kind"))),
+            tags=frozenset(TagId(UUID(str(tag))) for tag in as_list(data.get("tags"))),
+            contact=None if contact is None else ContactId(contact),
+            document_type=None if document_type is None else DocumentTypeId(document_type),
+            topic=None if topic is None else TagId(topic),
+            space=None if space is None else SpaceId(space),
+            node=None if node is None else Node(node),
+        )
+
+
+class BulkStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+
+
+@dataclass(kw_only=True)
+class BulkOperation:
+    """A person's action on the documents they selected, worked through in the background.
+    `position`: how many of `documents` are done; `changed` of them changed, `unchanged` were as
+    the action wants them already, `skipped` left as they were, each with why."""
+
+    id: BulkOperationId
+    user_id: UserId
+    action: BulkAction
+    documents: tuple[DocumentId, ...]
+    status: BulkStatus = BulkStatus.QUEUED
+    position: int = 0
+    changed: int = 0
+    unchanged: int = 0
+    skipped: list[tuple[DocumentId, Reason]] = field(default_factory=list)
+    error: str | None = None
+    created_at: datetime
+    finished_at: datetime | None = None
+    version: int = 1
+
+    def __post_init__(self) -> None:
+        if not self.documents:
+            raise ValidationError("select at least one document")
+        if len(self.documents) > MAX_DOCUMENTS:
+            raise ValidationError(because(ReasonCode.BULK_TOO_MANY, max=MAX_DOCUMENTS))
+        if len(set(self.documents)) != len(self.documents):
+            raise ValidationError("a document is selected twice")
+        self.created_at = require_utc(self.created_at, "created_at")
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        user_id: UserId,
+        action: BulkAction,
+        documents: tuple[DocumentId, ...],
+        now: datetime,
+    ) -> Self:
+        return cls(
+            id=BulkOperationId(new_id()),
+            user_id=user_id,
+            action=action,
+            documents=documents,
+            created_at=now,
+        )
+
+    @property
+    def remaining(self) -> tuple[DocumentId, ...]:
+        return self.documents[self.position :]
+
+    @property
+    def finished(self) -> bool:
+        return self.status in (BulkStatus.DONE, BulkStatus.FAILED)
+
+    def record_changed(self) -> None:
+        self.changed += 1
+        self._next()
+
+    def record_unchanged(self) -> None:
+        self.unchanged += 1
+        self._next()
+
+    def record_skipped(self, document: DocumentId, reason: Reason) -> None:
+        self.skipped.append((document, reason))
+        self._next()
+
+    def _next(self) -> None:
+        self.position += 1
+        self.status = BulkStatus.RUNNING
+
+    def finish(self, now: datetime, error: str | None = None) -> None:
+        self.status = BulkStatus.FAILED if error else BulkStatus.DONE
+        self.error = error
+        self.finished_at = require_utc(now, "finished_at")

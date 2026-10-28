@@ -25,6 +25,7 @@ from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
+from lekto.core.domain.bulk import BulkOperation
 from lekto.core.domain.classifier import ClassifierModel
 from lekto.core.domain.document_facts import DocumentFact, FactCriterion
 from lekto.core.domain.documents import Channel, Document, Sha256
@@ -33,6 +34,7 @@ from lekto.core.domain.fields import FieldDefinition, sort_value
 from lekto.core.domain.first_runs import FieldVerdict, FirstRun, Verdict
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import (
+    BulkOperationId,
     ClassifierModelId,
     ContactId,
     DocumentId,
@@ -782,6 +784,18 @@ class RuleApplicationRepository(Protocol):
     async def add(self, application: RuleApplication) -> None: ...
 
     async def update(self, application: RuleApplication) -> None: ...
+
+
+class BulkOperationRepository(Protocol):
+    """Actions on many documents at once (`BulkOperation`)."""
+
+    async def get(self, id: BulkOperationId) -> BulkOperation: ...
+
+    async def find(self, id: BulkOperationId) -> BulkOperation | None: ...
+
+    async def add(self, operation: BulkOperation) -> None: ...
+
+    async def update(self, operation: BulkOperation) -> None: ...
 
 
 class ClassifierModelRepository(Protocol):

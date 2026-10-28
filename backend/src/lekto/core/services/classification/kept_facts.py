@@ -96,9 +96,9 @@ def merged_facts(
     checked_holders = [(item, checked_holder(text.text, item, listed)) for item in told or ()]
     model = {item[0]: item[1] for _, item in checked_holders if not isinstance(item, Reason)}
     found = [
-        replace(fact, holder=held)
-        if (held := merged_holder((holders or {}).get(fact.key), model.get(fact.key)))
-        else fact
+        fact
+        if (held := merged_holder((holders or {}).get(fact.key), model.get(fact.key))) is None
+        else replace(fact, holder=held)
         for fact in patterns
     ]
     told_report: JsonObject = {

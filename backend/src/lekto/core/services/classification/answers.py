@@ -558,7 +558,7 @@ def parse_holders(content: str) -> list[ReadHolder]:
                 kind=kind.strip(),
                 value=value.strip()[:_EVIDENCE_LENGTH],
                 holder=holder.strip(),
-                name=one_line(name)[:_EVIDENCE_LENGTH].strip() or None if name else None,
+                name=(one_line(name)[:_EVIDENCE_LENGTH].strip() or None) if name else None,
                 evidence=evidence[:_EVIDENCE_LENGTH] if evidence else None,
             )
         )

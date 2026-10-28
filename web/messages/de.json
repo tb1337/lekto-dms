@@ -2599,7 +2599,7 @@
 	"bulk_delete": "Löschen …",
 	"bulk_documents_one": "1 Dokument",
 	"bulk_documents": "{count} Dokumente",
-	"bulk_hint": "Für {documents}: die, die Du bearbeiten darfst. Die übrigen werden übersprungen und im Ergebnis genannt.",
+	"bulk_hint": "Gilt für {documents}. Was Du nicht bearbeiten darfst, wird übersprungen und im Ergebnis genannt.",
 	"bulk_tags_title": "Tags ändern",
 	"bulk_add": "Hinzufügen",
 	"bulk_remove": "Entfernen",

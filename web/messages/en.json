@@ -2599,7 +2599,7 @@
 	"bulk_delete": "Delete …",
 	"bulk_documents_one": "1 document",
 	"bulk_documents": "{count} documents",
-	"bulk_hint": "For {documents}: those you may edit. The others are skipped and named in the result.",
+	"bulk_hint": "For {documents}. What you may not edit is skipped and named in the result.",
 	"bulk_tags_title": "Change tags",
 	"bulk_add": "Add",
 	"bulk_remove": "Remove",

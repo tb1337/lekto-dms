@@ -1,5 +1,7 @@
 """Whose an IBAN or a creditor ID is where it stands (`domain.holders`), on invented documents."""
 
+import pytest
+
 from lekto.core.domain.document_facts import (
     Holder,
     HolderKind,
@@ -10,12 +12,16 @@ from lekto.core.domain.holders import (
     FOOT,
     Parties,
     Place,
+    ReadHolder,
+    checked_holder,
     foreign,
     held_by,
     holder_at,
     holders,
+    merged_holder,
 )
 from lekto.core.domain.identifiers import IdentifierKind, Key, identifiers_in
+from lekto.core.domain.reasons import Reason, ReasonCode
 
 IBAN, CREDITOR = IdentifierKind.IBAN, IdentifierKind.CREDITOR_ID
 OWN = "DE02120300000000202051"  # Max Nord's
@@ -223,3 +229,78 @@ def test_a_named_sender_is_the_contact_only_by_its_names() -> None:
 def test_a_known_name_outside_a_booking_is_the_sender_s() -> None:
     text = f"Stadtwerke Musterstadt GmbH   IBAN {spaced(UTILITY)}\n"
     assert kinds(holders_of(text)) == {UTILITY: (HolderKind.SENDER, "Stadtwerke Musterstadt GmbH")}
+
+
+# --- the holders the language model tells (`facts-2`) -----------------------------------------
+
+STATEMENT = f"""Beispielbank   Kontoauszug 10/2026
+02.10.2026   Lastschrift   Stadtwerke Musterstadt   {spaced(UTILITY)}   -45,00 EUR
+"""
+LISTED = [(IBAN, UTILITY)]
+
+
+def told(**changes: str | None) -> ReadHolder:
+    given: dict[str, str | None] = {
+        "kind": "iban",
+        "value": spaced(UTILITY),
+        "holder": "third_party",
+        "name": "Stadtwerke Musterstadt",
+        "evidence": f"Lastschrift   Stadtwerke Musterstadt   {spaced(UTILITY)}",
+    }
+    given.update(changes)
+    return ReadHolder(**given)  # type: ignore[arg-type]
+
+
+def test_a_holder_the_model_tells_is_checked() -> None:
+    assert checked_holder(STATEMENT, told(), LISTED) == (
+        (IBAN, UTILITY),
+        Holder(HolderKind.THIRD_PARTY, HolderSource.MODEL, "Stadtwerke Musterstadt"),
+    )
+    assert checked_holder(STATEMENT, told(name=None), LISTED) == (
+        (IBAN, UTILITY),
+        Holder(HolderKind.THIRD_PARTY, HolderSource.MODEL),
+    )
+
+
+@pytest.mark.parametrize(
+    ("changes", "code"),
+    [
+        ({"value": LONDON}, ReasonCode.HOLDER_NOT_LISTED),  # not asked about
+        ({"kind": "vat_id"}, ReasonCode.HOLDER_NOT_LISTED),
+        ({"holder": "owner"}, ReasonCode.HOLDER_KIND_UNKNOWN),
+        ({"evidence": None}, ReasonCode.QUOTE_MISSING),
+        ({"evidence": "Überweisung an Stadtwerke"}, ReasonCode.QUOTE_NOT_IN_TEXT),
+        ({"evidence": "Kontoauszug 10/2026"}, ReasonCode.QUOTE_WITHOUT_VALUE),
+        ({"name": "Hausverwaltung Ost"}, ReasonCode.HOLDER_NAME_NOT_NEAR),  # invented
+    ],
+)
+def test_a_holder_the_model_tells_that_does_not_pass(
+    changes: dict[str, str | None], code: ReasonCode
+) -> None:
+    refused = checked_holder(STATEMENT, told(**changes), LISTED)
+    assert isinstance(refused, Reason) and refused.code is code
+
+
+def test_rule_and_model_together() -> None:
+    def holder(kind: HolderKind, source: HolderSource = HolderSource.RULE) -> Holder:
+        return Holder(kind, source)
+
+    model = holder(HolderKind.THIRD_PARTY, HolderSource.MODEL)
+    assert merged_holder(holder(HolderKind.RECIPIENT), None) == holder(HolderKind.RECIPIENT)
+    assert merged_holder(None, model) == model
+    assert merged_holder(holder(HolderKind.UNCLEAR), model) == model
+    # The model cannot tell: the rule's stands.
+    unclear = holder(HolderKind.UNCLEAR, HolderSource.MODEL)
+    assert merged_holder(holder(HolderKind.RECIPIENT), unclear) == holder(HolderKind.RECIPIENT)
+    assert merged_holder(None, unclear) == unclear
+    assert merged_holder(holder(HolderKind.RECIPIENT), model) == model  # not about the sender
+    # One says the sender's, the other another's: unclear.
+    assert merged_holder(holder(HolderKind.SENDER), model) == holder(
+        HolderKind.UNCLEAR, HolderSource.MODEL
+    )
+    sender = holder(HolderKind.SENDER, HolderSource.MODEL)
+    assert merged_holder(holder(HolderKind.THIRD_PARTY), sender) == holder(
+        HolderKind.UNCLEAR, HolderSource.MODEL
+    )
+    # What the model told before is no rule's.
+    assert merged_holder(sender, model) == model

@@ -37,9 +37,12 @@ from lekto.core.domain.document_facts import (
     HolderKind,
     HolderSource,
 )
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.evidence import contains, normalise
 from lekto.core.domain.facts import identifier_spans
-from lekto.core.domain.identifiers import Key
+from lekto.core.domain.identifiers import Key, normalise_identifier, type_of
 from lekto.core.domain.names import match_key
+from lekto.core.domain.reasons import Reason, ReasonCode, because
 
 _DATE = r"\d{1,2}\.\d{1,2}\.\d{2,4}|\d{1,2}/\d{1,2}/\d{2,4}|\d{4}-\d{2}-\d{2}"
 _AMOUNT = r"[-+]?\d[\d.]*,\d{2}|[-+]?\d{1,3}(?:,\d{3})*\.\d{2}"
@@ -59,9 +62,10 @@ _ADDRESS = re.compile(
     re.IGNORECASE,
 )
 _KINDS_OF_BOOKING = re.compile(
-    r"^\s*(lastschriften?|gutschriften?|belastungen?|überweisung(en)?|uberweisung(en)?|dauerauftr"
-    r"|zahlungseingang|zahlungsausgang|umsätze|buchungen?|direct\s+debits?|credits?|debits?"
-    r"|transfers?|standing\s+orders?|payments?|transactions?)\b",
+    r"^\s*(lastschrift(en)?|gutschrift(en)?|belastung(en)?|überweisung(en)?|uberweisung(en)?"
+    r"|dauerauftr\w*|zahlungseingang|zahlungsausgang|umsätze|buchung(en)?|miete|gehalt|lohn"
+    r"|direct\s+debits?"
+    r"|credits?|debits?|transfers?|standing\s+orders?|payments?|transactions?|rent|salary)\b",
     re.IGNORECASE,
 )
 _SENDER = re.compile(
@@ -86,8 +90,9 @@ _LABEL = re.compile(
 )
 _WORD = re.compile(r"[a-z]{3,}")
 _ANOTHER_NUMBER = re.compile(r"\b[A-Z]{2}\d{2}[ A-Z0-9]{12,}")
-_COLUMN = re.compile(r"\S+(?: {1,2}\S+)*")
-_COLUMNS = re.compile(r"\s{3,}")
+# A column: words apart by one or two spaces; columns apart by three spaces or a table's `|`.
+_COLUMN = re.compile(r"[^\s|]+(?: {1,2}[^\s|]+)*")
+_COLUMNS = re.compile(r"\s{3,}|\s*\|\s*")
 
 LIST = 6
 """Numbers of a kind from which a document lists them (a statement's payees)."""
@@ -221,7 +226,7 @@ def _at(place: Place, parties: Parties) -> tuple[HolderKind, str | None]:
             return HolderKind.RECIPIENT, None
     for name, booking in beside:
         if booking or listed:  # a booking's party, or a party of a list
-            return HolderKind.THIRD_PARTY, name
+            return HolderKind.THIRD_PARTY, name or None
     context = " ".join([*reversed(place.above[:2]), line])
     if _RECIPIENT.search(context):
         return HolderKind.RECIPIENT, None
@@ -238,22 +243,34 @@ def _at(place: Place, parties: Parties) -> tuple[HolderKind, str | None]:
 
 def _names_beside(place: Place) -> list[tuple[str, bool]]:
     """The names a number stands with, each with whether it stands in a booking: just before
-    it on its line, then the lines above it in its column (up to three, not past another
-    number), without kinds of booking, banks, addresses, labels and sentences."""
+    it on its line, then (unless its line is a booking) the lines above it in its column (up
+    to three, not past another number), without a kind of booking before it, banks,
+    addresses, labels and sentences. A kind of booking alone is an empty name (of a booking,
+    where its line is one)."""
     head = place.line[: place.column]
     label = _LABEL.search(head)
     start = label.start() if label else place.column
     head = head[:start].strip()
     head = _COLUMNS.split(head)[-1] if head else ""
-    candidates = [(head, place.line)] + [(_segment(raw, start), raw) for raw in place.above]
+    candidates = [(head, place.line)]
+    # Above a booking stand other bookings: their names are not this number's.
+    if not _BOOKING.search(place.line):
+        candidates += [(_segment(raw, start), raw) for raw in place.above]
     found = []
     for index, (text, raw) in enumerate(candidates):
         if index > 0 and _ANOTHER_NUMBER.search(text):
             break
         text = _NAME_END.split(text.strip())[0].strip(" :;,.«»„\"'")
+        # "Lastschrift Stadtwerke …" in one column: the name after the kind of booking; the
+        # kind alone still makes the number a booking's party, without a name.
+        kind = _KINDS_OF_BOOKING.match(text)
+        text = text[kind.end() :].strip(" :;,.-") if kind else text
+        if kind and not _WORD.search(match_key(text)):
+            found.append(("", _BOOKING.search(raw) is not None))
+            continue
         if not _WORD.search(match_key(text)):
             continue
-        if _KINDS_OF_BOOKING.search(text) or _BANK.search(text) or _ADDRESS.search(text):
+        if _BANK.search(text) or _ADDRESS.search(text):
             continue
         if _SENDER.search(text) or _RECIPIENT.search(text) or _TARGET.search(text):
             continue
@@ -330,3 +347,75 @@ def _close(a: str, b: str) -> bool:
         return sum(x != y for x, y in zip(a, b, strict=True)) <= 1
     short, long = sorted((a, b), key=len)
     return any(long[:i] + long[i + 1 :] == short for i in range(len(long)))
+
+
+# --- the holders the language model tells (`facts-2`) -----------------------------------------
+
+NEAR = 400
+"""Characters around a number within which the holder's name the model gives must stand."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class ReadHolder:
+    """A holder as the language model tells it, unchecked: the number's kind and value as
+    listed, the holder, its name as written and the passage that shows it."""
+
+    kind: str
+    value: str
+    holder: str
+    name: str | None = None
+    evidence: str | None = None
+
+
+def checked_holder(
+    text: str, read: ReadHolder, listed: Collection[Key]
+) -> tuple[Key, Holder] | Reason:
+    """The holder `read` tells, checked: of one of the `listed` numbers, a holder Lekto knows,
+    a passage of the text that shows the number (`QUOTE_*`), and a name that stands in the text
+    near one of the number's places (`NEAR`). Why not, otherwise."""
+    number = next((kind for kind in HOLDER_KINDS if kind.value == read.kind), None)
+    if number is None:
+        return because(ReasonCode.HOLDER_NOT_LISTED, value=read.value)
+    try:
+        key = (number, normalise_identifier(number, read.value))
+    except ValidationError as error:
+        return error.reason
+    if key not in listed:
+        return because(ReasonCode.HOLDER_NOT_LISTED, value=read.value)
+    try:
+        kind = HolderKind(read.holder)
+    except ValueError:
+        return because(ReasonCode.HOLDER_KIND_UNKNOWN, holder=read.holder)
+    evidence = (read.evidence or "").strip()
+    if not evidence:
+        return because(ReasonCode.QUOTE_MISSING)
+    if not contains(normalise(text), evidence):
+        return because(ReasonCode.QUOTE_NOT_IN_TEXT)
+    if re.search(type_of(key[0]).written(key[1]), evidence, re.IGNORECASE) is None:
+        return because(ReasonCode.QUOTE_WITHOUT_VALUE)
+    name = (read.name or "").strip() or None
+    if name is not None:
+        near = [
+            text[max(0, span.start - NEAR) : span.end + NEAR]
+            for span in identifier_spans(text, *key)
+        ]
+        if not any(contains(normalise(around), name) for around in near):
+            return because(ReasonCode.HOLDER_NAME_NOT_NEAR, name=name)
+    return key, Holder(kind, HolderSource.MODEL, name)
+
+
+def merged_holder(rule: Holder | None, model: Holder | None) -> Holder | None:
+    """The holder of a number from the rule's and the model's: the model's, unless one of them
+    says the sender's and the other a person's or a third party's (then unclear), or the model
+    cannot tell (then the rule's). A holder the model told before (kept with the facts) is no
+    rule's."""
+    if model is None:
+        return rule
+    if model.kind is HolderKind.UNCLEAR and rule is not None and rule.source is HolderSource.RULE:
+        return rule
+    if rule is None or rule.source is HolderSource.MODEL:
+        return model
+    told = {rule.kind, model.kind} - {HolderKind.UNCLEAR}
+    if HolderKind.SENDER in told and len(told) > 1:
+        return Holder(HolderKind.UNCLEAR, HolderSource.MODEL)
+    return model

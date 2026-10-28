@@ -1,8 +1,10 @@
 <script lang="ts">
+	import Check from '@lucide/svelte/icons/check';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import Loading from '#lib/components/Loading.svelte';
@@ -15,6 +17,7 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
+	import * as Tooltip from '#lib/components/ui/tooltip/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { shown } from '#lib/facts.ts';
 	import { formatDate, formatNumber } from '#lib/i18n.ts';
@@ -42,12 +45,19 @@
 	// suggested for a contact or a person's profile (Tobi, 28.10.2026), the most documents first. Narrowed by where they are open, their kind and the page's search. Rows
 	// are chosen with their box for "Übernehmen" and "Verwerfen" on many at once (the selection
 	// bar above the list, at the bottom on a phone); the value opens one with where it stands.
+	// Where its documents tell, a row says what they recommend, and why on hover (Tobi,
+	// 29.10.2026); "Empfohlen" shows those alone, and "Empfohlene übernehmen" confirms every one
+	// recommended to confirm, over all pages, after asking. Rejecting is never done at once.
 	let { query = '' }: { query?: string } = $props();
 
 	type Source = '' | OpenIdentifier['source'];
 	const SIZE = 50;
 
 	let source = $state<Source>('');
+	let onlyRecommended = $state(false);
+	let recommended = $state(0);
+	let toConfirm = $state(0);
+	let asking = $state(false);
 	let kind = $state('');
 	let counts = $state<OpenPage['counts']>({ learned: 0, unknown: 0, suggested: 0 });
 	let kinds = $state<OpenPage['kinds']>({});
@@ -64,6 +74,7 @@
 						source: source || undefined,
 						kind: (kind || undefined) as IdentifierKind | undefined,
 						q: query.trim() || undefined,
+						recommended: onlyRecommended || undefined,
 						offset,
 						limit
 					}
@@ -72,6 +83,8 @@
 		);
 		counts = found.counts;
 		kinds = found.kinds;
+		recommended = found.recommended;
+		toConfirm = found.to_confirm;
 		return { items: found.items, total: found.total };
 	}, SIZE);
 
@@ -94,8 +107,33 @@
 	const anyKinds = $derived(Object.keys(kinds).length > 0);
 
 	function show(next: string) {
-		source = next as Source;
+		onlyRecommended = next === 'recommended';
+		source = onlyRecommended ? '' : (next as Source);
 		void list.reload();
+	}
+
+	async function confirmRecommended() {
+		const outcomes = await unwrap(api.POST('/api/v1/identifiers/open/recommended'));
+		report('confirm', outcomes);
+		chosen = {};
+		await list.refresh();
+	}
+
+	/** What decisions did, as toasts: how many were done, and why the others were not. */
+	function report(action: OpenAction, outcomes: Awaited<ReturnType<typeof decide>>) {
+		const done = outcomes.filter((outcome) => outcome.done).length;
+		const failed = outcomes.filter((outcome) => !outcome.done);
+		if (done > 0) {
+			toast.success(
+				action === 'confirm'
+					? m.open_confirmed({ count: formatNumber(done) })
+					: m.open_rejected({ count: formatNumber(done) })
+			);
+		}
+		const first = failed[0]?.reason;
+		if (first) {
+			toast.error(m.open_failed({ count: formatNumber(failed.length), reason: reasonText(first) }));
+		}
 	}
 
 	function narrow(next: string) {
@@ -131,22 +169,7 @@
 				value: item.value,
 				action
 			}));
-			const outcomes = await decide(decisions);
-			const done = outcomes.filter((outcome) => outcome.done).length;
-			const failed = outcomes.filter((outcome) => !outcome.done);
-			if (done > 0) {
-				toast.success(
-					action === 'confirm'
-						? m.open_confirmed({ count: formatNumber(done) })
-						: m.open_rejected({ count: formatNumber(done) })
-				);
-			}
-			const first = failed[0]?.reason;
-			if (first) {
-				toast.error(
-					m.open_failed({ count: formatNumber(failed.length), reason: reasonText(first) })
-				);
-			}
+			report(action, await decide(decisions));
 			chosen = {};
 			await list.refresh();
 		} catch (error) {
@@ -197,6 +220,28 @@
 	{/if}
 {/snippet}
 
+<!-- What its documents recommend, why on hover. -->
+{#snippet advice(item: OpenIdentifier)}
+	{@const advised = item.recommendation}
+	{#if advised}
+		<Tooltip.Root>
+			<Tooltip.Trigger>
+				{#snippet child({ props })}
+					<span {...props} class="w-fit rounded-full">
+						<Badge variant={advised.action === 'confirm' ? 'green' : 'muted'}>
+							{advised.action === 'confirm' ? m.open_advise_confirm() : m.open_advise_reject()}
+							<span class="sr-only">: {reasonText(advised.reason)}</span>
+						</Badge>
+					</span>
+				{/snippet}
+			</Tooltip.Trigger>
+			<Tooltip.Content>{reasonText(advised.reason)}</Tooltip.Content>
+		</Tooltip.Root>
+	{:else}
+		<span class="text-sm text-muted-foreground" aria-label={m.open_advise_none()}>–</span>
+	{/if}
+{/snippet}
+
 {#snippet bar()}
 	<div
 		class={cn(
@@ -239,7 +284,7 @@
 	<div class="flex flex-wrap items-center justify-between gap-3">
 		<Segmented
 			label={m.open_source()}
-			value={source}
+			value={onlyRecommended ? 'recommended' : source}
 			onchange={show}
 			options={[
 				{ value: '', label: m.open_all(), count: formatNumber(openTotal(counts)) },
@@ -249,24 +294,33 @@
 					value: 'suggested',
 					label: m.open_suggestions(),
 					count: formatNumber(counts.suggested)
-				}
+				},
+				{ value: 'recommended', label: m.open_recommended(), count: formatNumber(recommended) }
 			]}
 		/>
-		{#if anyKinds || kind}
-			<Select
-				aria-label={m.open_kind()}
-				class="w-auto min-w-48"
-				value={kind}
-				onchange={narrow}
-				options={[
-					{ value: '', label: m.open_kind_any() },
-					...Object.entries(kinds).map(([value, count]) => ({
-						value,
-						label: `${kindLabel(value as IdentifierKind)} (${formatNumber(count ?? 0)})`
-					}))
-				]}
-			/>
-		{/if}
+		<div class="flex flex-wrap items-center gap-2">
+			{#if anyKinds || kind}
+				<Select
+					aria-label={m.open_kind()}
+					class="w-auto min-w-48"
+					value={kind}
+					onchange={narrow}
+					options={[
+						{ value: '', label: m.open_kind_any() },
+						...Object.entries(kinds).map(([value, count]) => ({
+							value,
+							label: `${kindLabel(value as IdentifierKind)} (${formatNumber(count ?? 0)})`
+						}))
+					]}
+				/>
+			{/if}
+			{#if toConfirm > 0}
+				<Button variant="outline" onclick={() => (asking = true)}>
+					<Check aria-hidden="true" />
+					{m.open_confirm_recommended({ count: formatNumber(toConfirm) })}
+				</Button>
+			{/if}
+		</div>
 	</div>
 
 	{#if selection.length > 0 && !phone.current}{@render bar()}{/if}
@@ -293,12 +347,13 @@
 					<span>{m.open_select_all()}</span>
 				{:else}
 					<span
-						class="grid flex-1 grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_minmax(0,1.2fr)_6.5rem] gap-3"
+						class="grid flex-1 grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_minmax(0,1.2fr)_6.5rem_10rem] gap-3"
 					>
 						<span>{m.open_column_identifier()}</span>
 						<span>{source === 'suggested' ? m.open_column_target() : m.open_column_contact()}</span>
 						<span>{m.open_column_documents()}</span>
 						<span>{m.open_source()}</span>
+						<span>{m.open_column_advice()}</span>
 					</span>
 				{/if}
 			</div>
@@ -334,10 +389,11 @@
 										item.documents
 									)}
 								</span>
+								{#if item.recommendation}{@render advice(item)}{/if}
 							</div>
 						{:else}
 							<div
-								class="grid flex-1 grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_minmax(0,1.2fr)_6.5rem] items-center gap-3"
+								class="grid flex-1 grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_minmax(0,1.2fr)_6.5rem_10rem] items-center gap-3"
 							>
 								<div class="flex min-w-0 flex-col">
 									<span class="text-xs text-muted-foreground">{kindLabel(item.kind)}</span>
@@ -377,6 +433,7 @@
 									{/if}
 								</div>
 								<span>{@render sourceBadge(item)}</span>
+								{@render advice(item)}
 							</div>
 						{/if}
 					</li>
@@ -395,3 +452,12 @@
 </div>
 
 <OpenIdentifierDialog bind:open={dialog} item={opened} ondecided={decided} />
+
+<ConfirmDialog
+	bind:open={asking}
+	title={m.open_confirm_recommended_title({ count: formatNumber(toConfirm) })}
+	description={m.open_confirm_recommended_hint()}
+	confirmLabel={m.open_confirm_recommended_do({ count: formatNumber(toConfirm) })}
+	destructive={false}
+	onconfirm={confirmRecommended}
+/>

@@ -365,6 +365,15 @@ how far the search reaches). Each action but "Bestätigen" opens a `FormDialog` 
 and where documents were skipped, "Details" opens them with their reasons. The mode stays after
 an action and when the filters change (the choice is let go) until the person ends it.
 
+**A recommendation** (the open identifiers, Tobi 29.10.2026): where the data tell what to do with
+an item, its row says so in a column of its own as a `Badge`, `green` for "Übernehmen empfohlen",
+`muted` for "Verwerfen empfohlen", "–" where nothing is recommended; why stands in its tooltip,
+for a screen reader inside the badge, and in the item's dialog beside the badge. A value of the
+`Segmented` above the list ("Empfohlen", with its count) shows the recommended alone. Taking
+every recommendation at once is an `outline` button beside the filters with the count ("Empfohlene
+übernehmen (9)"), over all pages, after a `ConfirmDialog` that names the count and why; only for
+what keeps its way back (confirming), never for rejecting.
+
 **A folded group** (the numbers of third parties among the facts, Tobi 28.10.2026): rows that
 belong to a card but rarely matter fold away at its end. Above them a line (`border-t`), then
 one `button` the width of the card, at least 44 px: a `ChevronRight` (`muted-foreground`)

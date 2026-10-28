@@ -22,6 +22,7 @@
 		targetName
 	} from '#lib/open-identifiers.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { reasonText } from '#lib/reasons.ts';
 
 	// An open identifier opened from the list (web/DESIGN.md, "Lists": the title opens it):
 	// where it is open, where it stands in its newest documents (the text around it, the value
@@ -126,6 +127,16 @@
 	alternative={{ label: m.open_reject(), action: () => run('reject') }}
 >
 	{#if item}
+		{#if item.recommendation}
+			<p class="flex flex-wrap items-center gap-2 text-meta">
+				<Badge variant={item.recommendation.action === 'confirm' ? 'green' : 'muted'}>
+					{item.recommendation.action === 'confirm'
+						? m.open_advise_confirm()
+						: m.open_advise_reject()}
+				</Badge>
+				<span class="text-muted-foreground">{reasonText(item.recommendation.reason)}</span>
+			</p>
+		{/if}
 		{#if item.source === 'unknown' && item.contacts.length > 1}
 			<div class="flex flex-col gap-2">
 				<Label for="open-contact">{m.open_contact_label()}</Label>

@@ -16,7 +16,11 @@ const CUSTOMER = {
 	source: 'learned',
 	contacts: [UTILITY],
 	documents: 4,
-	last: '2026-10-12'
+	last: '2026-10-12',
+	recommendation: {
+		action: 'confirm',
+		reason: { code: 'recommend_confirm', params: { count: 4, name: 'Stadtwerke Nord' } }
+	}
 };
 const IBAN = {
 	kind: 'iban',
@@ -41,6 +45,7 @@ const SUGGESTION = {
 
 const fetchMock = vi.fn<(request: Request) => Promise<Response>>();
 let decisions: unknown[] = [];
+let confirmedRecommended = 0;
 
 function json(body: unknown, status = 200) {
 	return new Response(JSON.stringify(body), {
@@ -57,20 +62,27 @@ beforeEach(() => {
 		csrf_token: 'token'
 	});
 	decisions = [];
+	confirmedRecommended = 0;
 	fetchMock.mockReset();
 	fetchMock.mockImplementation(async (request) => {
 		const url = new URL(request.url);
 		if (request.method === 'GET' && url.pathname === '/api/v1/identifiers/open') {
 			const source = url.searchParams.get('source');
+			const advised = url.searchParams.get('recommended') === 'true';
 			const items =
 				source === 'suggested'
 					? [SUGGESTION]
-					: [IBAN, CUSTOMER].filter((item) => !source || item.source === source);
+					: [IBAN, CUSTOMER].filter(
+							(item) =>
+								(!source || item.source === source) && (!advised || 'recommendation' in item)
+						);
 			return json({
 				items,
 				total: items.length,
 				counts: { learned: 1, unknown: 1, suggested: 1 },
-				kinds: { customer_number: 1, iban: 1 }
+				kinds: { customer_number: 1, iban: 1 },
+				recommended: 1,
+				to_confirm: confirmedRecommended > 0 ? 0 : 1
 			});
 		}
 		if (request.method === 'GET' && url.pathname === '/api/v1/identifiers/open/detail') {
@@ -86,6 +98,10 @@ beforeEach(() => {
 					}
 				]
 			});
+		}
+		if (request.method === 'POST' && url.pathname === '/api/v1/identifiers/open/recommended') {
+			confirmedRecommended += 1;
+			return json([{ kind: CUSTOMER.kind, value: CUSTOMER.value, done: true, reason: null }]);
 		}
 		if (request.method === 'POST' && url.pathname === '/api/v1/identifiers/open/decisions') {
 			const body = (await request.json()) as { decisions: { kind: string; value: string }[] };
@@ -126,6 +142,46 @@ describe('IdentifiersPanel', () => {
 			name: m.open_documents({ count: '4' })
 		});
 		expect(documents.getAttribute('href')).toContain('fact=customer_number%3A20047718%3A');
+	});
+
+	it('says what the documents recommend, why, and shows the recommended alone', async () => {
+		const user = userEvent.setup();
+		render(IdentifiersPanel);
+		const list = await screen.findByRole('list', { name: m.master_identifiers() });
+		const [iban, customer] = within(list).getAllByRole('listitem');
+		expect(customer.textContent).toContain(m.open_advise_confirm());
+		// The reason, for a screen reader beside the badge and on hover.
+		expect(customer.textContent).toContain('Stadtwerke Nord');
+		expect(within(iban).getByLabelText(m.open_advise_none())).toBeTruthy();
+		await user.click(screen.getByRole('button', { name: new RegExp(`^${m.open_recommended()}`) }));
+		await vi.waitFor(() => {
+			const last = fetchMock.mock.calls.at(-1)?.[0];
+			expect(new URL(last!.url).searchParams.get('recommended')).toBe('true');
+		});
+		const shown = await screen.findByRole('list', { name: m.master_identifiers() });
+		await vi.waitFor(() => expect(within(shown).getAllByRole('listitem')).toHaveLength(1));
+	});
+
+	it('confirms every recommended one at once, after asking with their number', async () => {
+		const user = userEvent.setup();
+		render(IdentifiersPanel);
+		const button = await screen.findByRole('button', {
+			name: m.open_confirm_recommended({ count: '1' })
+		});
+		await user.click(button);
+		const dialog = await screen.findByRole('alertdialog', {
+			name: m.open_confirm_recommended_title({ count: '1' })
+		});
+		await user.click(
+			within(dialog).getByRole('button', { name: m.open_confirm_recommended_do({ count: '1' }) })
+		);
+		await vi.waitFor(() => expect(confirmedRecommended).toBe(1));
+		await vi.waitFor(() =>
+			expect(
+				screen.queryByRole('button', { name: m.open_confirm_recommended({ count: '1' }) })
+			).toBeNull()
+		);
+		expect(decisions).toEqual([]); // none one by one
 	});
 
 	it('loads the list once, and again for other words', async () => {

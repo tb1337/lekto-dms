@@ -2328,6 +2328,8 @@ Stand: freigegeben (offene Punkte 9 und 10, Tobi 29.10.2026: „ok“; Antworten
 
 **PRs:**
 1. `feature/identifier-recommendations` (`new-feature`): Empfehlung, Sammelaktion, Badges, Filter.
+
+**Umgesetzt PR 1 (29.10.2026):** wie geplant. Die Zahl bei „Empfohlen“ zählt wie die Herkunftszahlen ohne die gewählte Herkunft; die Zahl im Knopf zählt alle, die die Sammelaktion übernimmt (ohne Filter und Suche). Eine Nummer eines anderen Kontakts zählt gegen eine Kennung nur, wo dieser sie als seine hält (die IBAN der Stadtwerke in den Buchungen eines Kontoauszugs nicht). Der Grund steht im Tooltip, für Screenreader im Badge und im Dialog der Kennung.
 2. `feature/holder-evaluation` (`new-feature`): Auswertung unter System.
 
 **Fragen:**

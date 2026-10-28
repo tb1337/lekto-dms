@@ -9,7 +9,8 @@ from lekto.adapters.outbound.memory.processing import FAKE_PDF
 from lekto.core.domain.codes import Code
 from lekto.core.domain.document_facts import FactOrigin, FactRole
 from lekto.core.domain.documents import Document
-from lekto.core.domain.identifiers import Identifier, IdentifierKind
+from lekto.core.domain.facts import MOST
+from lekto.core.domain.identifiers import Identifier, IdentifierKind, iban_valid
 from lekto.core.domain.ids import ContactId
 from lekto.core.domain.master_data import Contact
 from lekto.core.domain.pipeline import Node
@@ -193,3 +194,29 @@ async def test_the_report_lists_the_document_s_numbers(world: World) -> None:
     ]
     assert text[report.numbers[1].spans[0].start : report.numbers[1].spans[0].end] == "4711"
     assert [item.kind for item in report.facts.identifiers] == [IdentifierKind.CUSTOMER_NUMBER]
+
+
+def an_iban(account: int) -> str:
+    """A German IBAN of `account` with its check digits."""
+    body = f"37040044{account:010d}"
+    return next(
+        f"DE{digits:02d}{body}" for digits in range(100) if iban_valid(f"DE{digits:02d}{body}")
+    )
+
+
+async def test_the_report_lists_every_identifier_of_a_long_statement(world: World) -> None:
+    """A bank statement shows more IBANs than the facts signal reports (`MOST`): the report
+    lists them all among the identifiers, none as a fact it does not find."""
+    owner = await world.user(role=Role.ADMIN)
+    ibans = [an_iban(account) for account in range(1, MOST + 6)]
+    text = "Kontoauszug\n" + "".join(
+        f"02.10.2026   Lastschrift   {iban}   -1,00 EUR\n" for iban in ibans
+    )
+    document = await stored(world, owner, text)
+    result = await facts(world, document, FakeCodeReader([]))
+    async with world.uow() as uow:
+        await result.apply(uow, await uow.documents.get(document.id), builders.NOW)
+        await uow.commit()
+    report = await world.documents.facts(owner.id, document.id)
+    assert sorted(item.value for item in report.facts.identifiers) == sorted(ibans)
+    assert report.decided == ()

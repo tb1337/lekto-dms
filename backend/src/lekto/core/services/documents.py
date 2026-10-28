@@ -418,7 +418,8 @@ class DocumentService:
         pages = await load_layout(store, id)
 
         def found() -> tuple[Facts, tuple[DocumentNumber, ...], tuple[DocumentNumber, ...]]:
-            facts = facts_in(text, contacts, codes or (), persons=persons, places=True)
+            # All of them: the facts beyond the signal's limit would show as none it found.
+            facts = facts_in(text, contacts, codes or (), persons=persons, places=True, most=None)
             numbers = tuple(
                 DocumentNumber(fact, identifier_spans(text, fact.kind, fact.value))
                 for fact in stored.values()

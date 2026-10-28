@@ -47,7 +47,7 @@ from lekto.core.domain.profiles import Person
 from lekto.core.domain.text_places import TextPlaces
 
 MOST = 20
-"""Names and identifiers reported, each."""
+"""Names and identifiers the facts signal reports, each."""
 _SPANS = 20  # places of one fact in the text
 # How a folded name may be written: `ae` as `ä` or `ae`, and so on.
 _SPELLINGS = {plain: f"(?:{letter}|{plain})" for letter, plain in {**UMLAUTS, "ß": "ss"}.items()}
@@ -133,9 +133,11 @@ def facts_in(
     *,
     persons: Sequence[Person] = (),
     places: bool = False,
+    most: int | None = MOST,
 ) -> Facts:
     """The facts of `text` and of the `codes` on its pages, the `persons` among them; with
-    `places`, their spans."""
+    `places`, their spans. Up to `most` names, identifiers of contacts and unknown ones each
+    (None: all of them: a bank statement shows dozens of IBANs)."""
     text_key = match_key(text)
     payees = [match_key(giro.name) for code in codes if (giro := giro_code(code.text))]
     named: list[NamedContact] = []
@@ -197,8 +199,8 @@ def facts_in(
     known = [item for item in found if item.contact_id is not None]
     unknown = [item for item in found if item.contact_id is None]
     return Facts(
-        named=tuple(named[:MOST]),
-        identifiers=(*known[:MOST], *unknown[:MOST]),
+        named=tuple(named[:most]),
+        identifiers=(*known[:most], *unknown[:most]),
         persons=found_persons,
     )
 

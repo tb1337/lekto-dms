@@ -2475,6 +2475,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/automation/holders': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The holders against the decisions at the contacts
+		 * @description Admins only. Each identifier a person confirmed or rejected at a contact that confirmed documents of that contact show: per kind with a holder, how often the rule's holder there agreed with the decision, and how often it said the contact's where the person rejected (training learns it) or someone else's where they confirmed; and the same for the recommendation of the open identifiers, over every kind. Kept for a minute.
+		 */
+		get: operations['holders_api_v1_automation_holders_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/health': {
 		parameters: {
 			query?: never;
@@ -5405,6 +5425,35 @@ export interface components {
 		 * @enum {string}
 		 */
 		HolderKind: 'sender' | 'recipient' | 'third_party' | 'unclear';
+		/** HolderKindOut */
+		HolderKindOut: {
+			/**
+			 * Right
+			 * @description Said the contact's and confirmed, or foreign and rejected.
+			 */
+			right: number;
+			/**
+			 * Learned Rejected
+			 * @description Said the contact's (or: confirm), the person rejected: training learns it.
+			 */
+			learned_rejected: number;
+			/**
+			 * Refused Confirmed
+			 * @description Said foreign (or: reject), the person confirmed.
+			 */
+			refused_confirmed: number;
+			/**
+			 * Unclear
+			 * @description Said neither (for the recommendation: none).
+			 */
+			unclear: number;
+			/**
+			 * Unread
+			 * @description Read before its kind had a holder (`read-facts` sets it).
+			 */
+			unread: number;
+			kind: components['schemas']['IdentifierKind'];
+		};
 		/**
 		 * HolderOut
 		 * @description Whose an IBAN or a creditor ID is where it stands.
@@ -5426,6 +5475,16 @@ export interface components {
 		 * @enum {string}
 		 */
 		HolderSource: 'rule' | 'model';
+		/** HoldersOut */
+		HoldersOut: {
+			/**
+			 * Kinds
+			 * @description The rule's holders, per kind with a holder.
+			 */
+			kinds: components['schemas']['HolderKindOut'][];
+			/** @description The open list's recommendation, every kind. */
+			recommendation: components['schemas']['TallyOut'];
+		};
 		/** IdentifierFoundOut */
 		IdentifierFoundOut: {
 			kind: components['schemas']['IdentifierKind'];
@@ -9429,6 +9488,37 @@ export interface components {
 		 * @enum {string}
 		 */
 		TagScope: 'document' | 'contact' | 'document_type' | 'topic';
+		/**
+		 * TallyOut
+		 * @description How a measure fared against the decisions at the contacts.
+		 */
+		TallyOut: {
+			/**
+			 * Right
+			 * @description Said the contact's and confirmed, or foreign and rejected.
+			 */
+			right: number;
+			/**
+			 * Learned Rejected
+			 * @description Said the contact's (or: confirm), the person rejected: training learns it.
+			 */
+			learned_rejected: number;
+			/**
+			 * Refused Confirmed
+			 * @description Said foreign (or: reject), the person confirmed.
+			 */
+			refused_confirmed: number;
+			/**
+			 * Unclear
+			 * @description Said neither (for the recommendation: none).
+			 */
+			unclear: number;
+			/**
+			 * Unread
+			 * @description Read before its kind had a holder (`read-facts` sets it).
+			 */
+			unread: number;
+		};
 		/**
 		 * TemplatePreviewIn
 		 * @example {
@@ -27151,6 +27241,77 @@ export interface operations {
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
 					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	holders_api_v1_automation_holders_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HoldersOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

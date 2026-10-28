@@ -385,7 +385,8 @@ card, indented to the text of the button (`pl-6`). A whole card that folds is `F
 ### Tables
 
 `ui/table` only. The head is `text-xs font-medium text-muted-foreground`. Numbers align right with
-`tabular-nums`. On the phone a table keeps to the columns that fit; where it is wider, it scrolls
+`tabular-nums`. A count of mistakes is `text-lane-red-foreground` above nought, `muted` at nought;
+a count of what went right may name its whole (`29 von 29`, the share in `muted`). On the phone a table keeps to the columns that fit; where it is wider, it scrolls
 inside its card, never the page. A list a person reads item by item is a list of rows, not a
 table. Pagination is `Pagination` (50 per page); the documents list pages so too, in its grid and
 its list, with the page in the link (`?page=`), and offers 25, 50 and 100 (50 at first). A table may offer other sizes in a small menu

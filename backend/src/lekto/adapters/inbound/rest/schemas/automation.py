@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 
 from lekto.core.domain.documents import Channel
 from lekto.core.domain.first_runs import Verdict
+from lekto.core.domain.holder_evaluation import HolderEvaluation, Tally
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.pipeline import Lane, Node
 from lekto.core.services.automation import (
     AutomationReport,
@@ -182,3 +184,45 @@ def _lanes(lanes: Mapping[Lane, int]) -> LanesOut:
 
 def _ms(value: timedelta | None) -> float | None:
     return None if value is None else round(value.total_seconds() * 1000, 1)
+
+
+class TallyOut(BaseModel):
+    """How a measure fared against the decisions at the contacts."""
+
+    right: int = Field(description="Said the contact's and confirmed, or foreign and rejected.")
+    learned_rejected: int = Field(
+        description="Said the contact's (or: confirm), the person rejected: training learns it."
+    )
+    refused_confirmed: int = Field(description="Said foreign (or: reject), the person confirmed.")
+    unclear: int = Field(description="Said neither (for the recommendation: none).")
+    unread: int = Field(description="Read before its kind had a holder (`read-facts` sets it).")
+
+    @classmethod
+    def of(cls, tally: Tally) -> "TallyOut":
+        return cls(
+            right=tally.right,
+            learned_rejected=tally.learned_rejected,
+            refused_confirmed=tally.refused_confirmed,
+            unclear=tally.unclear,
+            unread=tally.unread,
+        )
+
+
+class HolderKindOut(TallyOut):
+    kind: IdentifierKind
+
+    @classmethod
+    def of_kind(cls, kind: IdentifierKind, tally: Tally) -> "HolderKindOut":
+        return cls(kind=kind, **TallyOut.of(tally).model_dump())
+
+
+class HoldersOut(BaseModel):
+    kinds: list[HolderKindOut] = Field(description="The rule's holders, per kind with a holder.")
+    recommendation: TallyOut = Field(description="The open list's recommendation, every kind.")
+
+    @classmethod
+    def of(cls, evaluation: HolderEvaluation) -> "HoldersOut":
+        return cls(
+            kinds=[HolderKindOut.of_kind(kind, tally) for kind, tally in evaluation.kinds.items()],
+            recommendation=TallyOut.of(evaluation.recommendation),
+        )

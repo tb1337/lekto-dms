@@ -2640,5 +2640,17 @@
 	"reason_recommend_confirm": "In {count} confirmed documents of “{name}”, at no other contact.",
 	"reason_recommend_confirm_named": "{count} documents name “{name}” as its holder.",
 	"reason_recommend_reject_foreign": "In {count} documents of “{name}” it is someone else’s.",
-	"reason_recommend_reject_contacts": "In documents of {count} contacts."
+	"reason_recommend_reject_contacts": "In documents of {count} contacts.",
+	"holders_title": "Holders against your decisions",
+	"holders_info": "Counted is each identifier you confirmed or rejected at a contact that confirmed documents of that contact show. The rule says “the contact’s” where it is the contact’s there once or more and no one else’s, “foreign” where someone else holds it there. The recommendation counts for every kind, as if training had learned the identifier at the contact.",
+	"holders_hint": "Identifiers you confirmed or rejected at a contact, against what the rule says in the confirmed documents of that contact.",
+	"holders_kind": "Kind",
+	"holders_right": "Right",
+	"holders_of": "of {count}",
+	"holders_learned_rejected": "Learned, you reject",
+	"holders_refused_confirmed": "Foreign, you confirm",
+	"holders_unclear": "Unclear",
+	"holders_unread": "No holder yet",
+	"holders_recommendation": "Recommendation",
+	"holders_footnote": "“Right”: the contact’s and confirmed, or foreign and rejected. For the recommendation, “Unclear” means none. Identifiers without a holder come from documents read before their kind had one: “Read facts again” sets it."
 }

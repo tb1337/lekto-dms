@@ -21090,6 +21090,84 @@
         ]
       }
     },
+    "/api/v1/automation/holders": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "The holders against the decisions at the contacts",
+        "description": "Admins only. Each identifier a person confirmed or rejected at a contact that confirmed documents of that contact show: per kind with a holder, how often the rule's holder there agreed with the decision, and how often it said the contact's where the person rejected (training learns it) or someone else's where they confirmed; and the same for the recommendation of the open identifiers, over every kind. Kept for a minute.",
+        "operationId": "holders_api_v1_automation_holders_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HoldersOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "tags": [
@@ -27158,6 +27236,48 @@
         "title": "HolderKind",
         "description": "Whose a number is where it stands (`domain.holders`)."
       },
+      "HolderKindOut": {
+        "properties": {
+          "right": {
+            "type": "integer",
+            "title": "Right",
+            "description": "Said the contact's and confirmed, or foreign and rejected."
+          },
+          "learned_rejected": {
+            "type": "integer",
+            "title": "Learned Rejected",
+            "description": "Said the contact's (or: confirm), the person rejected: training learns it."
+          },
+          "refused_confirmed": {
+            "type": "integer",
+            "title": "Refused Confirmed",
+            "description": "Said foreign (or: reject), the person confirmed."
+          },
+          "unclear": {
+            "type": "integer",
+            "title": "Unclear",
+            "description": "Said neither (for the recommendation: none)."
+          },
+          "unread": {
+            "type": "integer",
+            "title": "Unread",
+            "description": "Read before its kind had a holder (`read-facts` sets it)."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          }
+        },
+        "type": "object",
+        "required": [
+          "right",
+          "learned_rejected",
+          "refused_confirmed",
+          "unclear",
+          "unread",
+          "kind"
+        ],
+        "title": "HolderKindOut"
+      },
       "HolderOut": {
         "properties": {
           "kind": {
@@ -27198,6 +27318,28 @@
         ],
         "title": "HolderSource",
         "description": "Who told the holder."
+      },
+      "HoldersOut": {
+        "properties": {
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/HolderKindOut"
+            },
+            "type": "array",
+            "title": "Kinds",
+            "description": "The rule's holders, per kind with a holder."
+          },
+          "recommendation": {
+            "$ref": "#/components/schemas/TallyOut",
+            "description": "The open list's recommendation, every kind."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kinds",
+          "recommendation"
+        ],
+        "title": "HoldersOut"
       },
       "IdentifierFoundOut": {
         "properties": {
@@ -34973,6 +35115,45 @@
         ],
         "title": "TagScope",
         "description": "What a tag describes, fixed when it is made: a document (`document`, as tags were\nbefore 0.3), contacts (`contact`: a contact group, \"insurance\"), document types\n(`document_type`: a type group, \"invoice\" over \"medical bill\") or what a document is about\nwith its contact (`topic`: \"work\", \"health insurance\"; a global catalogue, enabled at\ncontacts, at most one per document). Names are unique per scope."
+      },
+      "TallyOut": {
+        "properties": {
+          "right": {
+            "type": "integer",
+            "title": "Right",
+            "description": "Said the contact's and confirmed, or foreign and rejected."
+          },
+          "learned_rejected": {
+            "type": "integer",
+            "title": "Learned Rejected",
+            "description": "Said the contact's (or: confirm), the person rejected: training learns it."
+          },
+          "refused_confirmed": {
+            "type": "integer",
+            "title": "Refused Confirmed",
+            "description": "Said foreign (or: reject), the person confirmed."
+          },
+          "unclear": {
+            "type": "integer",
+            "title": "Unclear",
+            "description": "Said neither (for the recommendation: none)."
+          },
+          "unread": {
+            "type": "integer",
+            "title": "Unread",
+            "description": "Read before its kind had a holder (`read-facts` sets it)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "right",
+          "learned_rejected",
+          "refused_confirmed",
+          "unclear",
+          "unread"
+        ],
+        "title": "TallyOut",
+        "description": "How a measure fared against the decisions at the contacts."
       },
       "TemplatePreviewIn": {
         "properties": {

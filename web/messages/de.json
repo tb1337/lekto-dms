@@ -2640,5 +2640,17 @@
 	"reason_recommend_confirm": "In {count} bestätigten Dokumenten von „{name}“, bei keinem anderen Kontakt.",
 	"reason_recommend_confirm_named": "{count} Dokumente nennen „{name}“ als Inhaber.",
 	"reason_recommend_reject_foreign": "In {count} Dokumenten von „{name}“ gehört sie jemand anderem.",
-	"reason_recommend_reject_contacts": "In Dokumenten von {count} Kontakten."
+	"reason_recommend_reject_contacts": "In Dokumenten von {count} Kontakten.",
+	"holders_title": "Inhaber an Deinen Entscheidungen",
+	"holders_info": "Gezählt wird jede Kennung, die Du bei einem Kontakt übernommen oder verworfen hast und die in bestätigten Dokumenten dieses Kontakts steht. Die Regel sagt „des Kontakts“, wo sie ihm dort mindestens einmal und nirgends einem anderen gehört, „fremd“, wo sie dort jemand anderem gehört. Die Empfehlung gilt für jede Art, als hätte das Training die Kennung beim Kontakt gelernt.",
+	"holders_hint": "Kennungen, die Du bei einem Kontakt übernommen oder verworfen hast, gegen das, was die Regel in den bestätigten Dokumenten dieses Kontakts sagt.",
+	"holders_kind": "Art",
+	"holders_right": "Stimmt",
+	"holders_of": "von {count}",
+	"holders_learned_rejected": "Gelernt, Du verwirfst",
+	"holders_refused_confirmed": "Fremd, Du übernimmst",
+	"holders_unclear": "Unklar",
+	"holders_unread": "Noch ohne Inhaber",
+	"holders_recommendation": "Empfehlung",
+	"holders_footnote": "„Stimmt“: dem Kontakt und übernommen, oder fremd und verworfen. Bei der Empfehlung heißt „Unklar“: keine Empfehlung. Kennungen ohne Inhaber stammen aus Dokumenten, die gelesen wurden, bevor ihre Art einen hatte: „Fakten neu lesen“ setzt ihn."
 }

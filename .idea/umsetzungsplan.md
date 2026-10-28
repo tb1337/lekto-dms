@@ -2330,6 +2330,8 @@ Stand: freigegeben (offene Punkte 9 und 10, Tobi 29.10.2026: „ok“; Antworten
 1. `feature/identifier-recommendations` (`new-feature`): Empfehlung, Sammelaktion, Badges, Filter.
 
 **Umgesetzt PR 1 (29.10.2026):** wie geplant. Die Zahl bei „Empfohlen“ zählt wie die Herkunftszahlen ohne die gewählte Herkunft; die Zahl im Knopf zählt alle, die die Sammelaktion übernimmt (ohne Filter und Suche). Eine Nummer eines anderen Kontakts zählt gegen eine Kennung nur, wo dieser sie als seine hält (die IBAN der Stadtwerke in den Buchungen eines Kontoauszugs nicht). Der Grund steht im Tooltip, für Screenreader im Badge und im Dialog der Kennung.
+
+**Umgesetzt PR 2 (29.10.2026):** `domain.holder_evaluation` zählt je Art mit Inhaber und für die Empfehlung (über `open_identifiers.recommendation_for`, als hätte das Training die Kennung beim Kontakt gelernt); `GET /automation/holders` (Admins, eine Minute gehalten); Karte `HolderEvaluationCard` unter System › Automatisierung, nur für Admins, Arten in fester Reihenfolge (IBAN, Gläubiger-ID, USt-IdNr., Domain), die Empfehlung zuletzt. Bei der Empfehlung heißt „Unklar“: keine Empfehlung (statt „–“ im Mock gezählt).
 2. `feature/holder-evaluation` (`new-feature`): Auswertung unter System.
 
 **Fragen:**

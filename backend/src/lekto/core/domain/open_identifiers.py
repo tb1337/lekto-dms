@@ -216,6 +216,18 @@ def _suggested(
     return found
 
 
+def recommendation_for(
+    contact: Contact, key: Key, sightings: Sequence[Sighting], contacts: Sequence[Contact]
+) -> Recommended | None:
+    """What the documents recommend for `key` at `contact` as if training had learned it
+    there (`_recommended`): the measure of the recommendation against a person's decision
+    (`domain.holder_evaluation`). `sightings`: those of `key`, at any contact."""
+    item = _open(key, OpenSource.LEARNED, (contact.id,), sightings)
+    names = {each.id: each.names() for each in contacts}
+    labels = {each.id: each.name for each in contacts}
+    return _recommended(item, names, labels)
+
+
 def _recommended(
     item: OpenIdentifier, names: Mapping[ContactId, list[str]], labels: Mapping[ContactId, str]
 ) -> Recommended | None:

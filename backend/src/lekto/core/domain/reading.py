@@ -79,6 +79,13 @@ READING_VERSION = 1
 
 _LEADER = re.compile(r"[.\u00b7\u2026_\-\u2013\u2014]{3,}")  # dots, dashes, underscores
 
+DIGIT_LEADER = 5
+"""The fewest characters of a leader read as digits (`read_from_dots`)."""
+
+_DOT_LIKE = frozenset("01.,:")
+"""What Tesseract reads the dots of a leader as: ones, zeros and the marks themselves."""
+_DOT_RUN = re.compile(r"0{4,}|1{4,}")
+
 NO_TEXT_REASON = because(ReasonCode.NO_TEXT).text
 """Why the parse node fails a document without any text, in English (also in entries written
 before reasons had codes)."""
@@ -129,12 +136,13 @@ class ReadWord:
 def is_noise(word: ReadWord, typical_size: float | None = None) -> bool:
     """Whether a word is noise, neither content nor a sign of a broken scan: fewer than half
     of its characters letters or digits (table rules, marks); a dot, dash or underscore leader
-    (`Datum..........`), also one read as letters (a box lower than `FLAT_WORD` of its line);
-    one or two characters without a digit (stray marks read as `gy`, `TI`, `j`); or in a line
-    under `SMALL_LINE` of the page's `typical_size` (a letterhead)."""
+    (`Datum..........`), also one read as letters (a box lower than `FLAT_WORD` of its line) or
+    as digits (`read_from_dots`); one or two characters without a digit (stray marks read as
+    `gy`, `TI`, `j`); or in a line under `SMALL_LINE` of the page's `typical_size` (a
+    letterhead)."""
     text = word.text.strip()
     letters = sum(char.isalnum() for char in text)
-    if not text or 2 * letters < len(text) or _LEADER.search(text):
+    if not text or 2 * letters < len(text) or _LEADER.search(text) or read_from_dots(word):
         return True
     if len(text) <= 2 and not any(char.isdigit() for char in text):
         return True
@@ -143,6 +151,23 @@ def is_noise(word: ReadWord, typical_size: float | None = None) -> bool:
     return (
         typical_size is not None and word.size is not None and word.size < SMALL_LINE * typical_size
     )
+
+
+def read_from_dots(word: ReadWord) -> bool:
+    """Whether a word is a dot leader Tesseract read as digits (`11111`, `02.00.0000.`; Tobi,
+    29.10.2026): read unsure, at least `DIGIT_LEADER` characters, four in five of them ones,
+    zeros, dots, commas or colons, at most two different digits, and four ones or four zeros in
+    a row. Most such words keep the low box of the dots (`FLAT_WORD`); this takes those whose
+    box specks made high. An unsure date (`01.01.2020`: three digits), an amount (`1.000,00`:
+    three zeros in a row) or a masked number (`0000`: too short) stays content."""
+    text = word.text.strip()
+    if not word.unsure or len(text) < DIGIT_LEADER:
+        return False
+    if 5 * sum(char in _DOT_LIKE for char in text) < 4 * len(text):
+        return False
+    if len({char for char in text if char.isdigit()}) > 2:
+        return False
+    return _DOT_RUN.search(text) is not None
 
 
 def content_words(words: Sequence[ReadWord]) -> list[ReadWord]:
@@ -164,7 +189,8 @@ def beside_leaders(words: Sequence[ReadWord]) -> set[int]:
     their line, within `LEADER_GAP` of a line's height (Tobi, 19.10.2026): Tesseract reads a
     label beside its dots unsure (`Krankenkasse` 38 % before `................`) though the
     label is clean, so such a word is neither content nor unsure. A leader is a word that is
-    one (`Datum...........`, `—............`) or was read from one (a flat box, `FLAT_WORD`)."""
+    one (`Datum...........`, `—............`) or was read from one (a flat box, `FLAT_WORD`;
+    digits, `read_from_dots`)."""
     beside: set[int] = set()
     for index, word in enumerate(words):
         if not _is_leader(word):
@@ -176,7 +202,7 @@ def beside_leaders(words: Sequence[ReadWord]) -> set[int]:
 
 
 def _is_leader(word: ReadWord) -> bool:
-    if _LEADER.search(word.text.strip()):
+    if _LEADER.search(word.text.strip()) or read_from_dots(word):
         return True
     return (
         word.box is not None and word.size is not None and word.box.height < FLAT_WORD * word.size

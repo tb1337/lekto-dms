@@ -791,7 +791,10 @@ which takes two conditions; the document date follows the same rules:
   word with fewer than half of its characters letters or digits (rules, marks), a dot, dash or
   underscore leader (`Datum..........`), also one Tesseract read as letters (`«oso:`, `see`,
   `EEE`: a box under 35 % of its line's height, where a word of small letters still has the
-  x-height), one or two characters without a digit (stray marks read as `gy`, `TI`, `j`), a
+  x-height) or as digits where specks made its box high (`11111`, `02.00.0000.`: read unsure,
+  at least five characters, four in five of them ones, zeros, dots, commas or colons, at most
+  two different digits, four ones or four zeros in a row; an unsure date or amount stays
+  content), one or two characters without a digit (stray marks read as `gy`, `TI`, `j`), a
   word right beside a leader on its line, within a line's height (Tesseract reads a clean
   label beside its dots unsure, `Krankenkasse` at 38 %), and the words of a line under 60 % of the page's typical line height (hOCR `x_size`, the median
   over the words: a letterhead's small print; lines of the body font lie up to a fifth apart,

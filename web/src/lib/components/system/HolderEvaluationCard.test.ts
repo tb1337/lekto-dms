@@ -26,6 +26,8 @@ describe('the holders against the decisions', () => {
 						{ kind: 'creditor_id', ...tally({ right: 2, unclear: 1 }) },
 						{ kind: 'email_domain', ...tally({ unread: 15 }) },
 						{ kind: 'iban', ...tally({ right: 29 }) },
+						// A kind this build does not know stands after the known ones, as it comes.
+						{ kind: 'lei', ...tally({ unread: 1 }) },
 						{ kind: 'vat_id', ...tally({ unread: 3 }) }
 					],
 					recommendation: tally({ right: 40, learned_rejected: 3, unclear: 25 })
@@ -40,10 +42,11 @@ describe('the holders against the decisions', () => {
 			kindLabel('creditor_id'),
 			kindLabel('vat_id'),
 			kindLabel('email_domain'),
+			'lei',
 			m.holders_recommendation()
 		]);
 		expect(rows[0].textContent).toContain(m.holders_of({ count: '29' }));
-		const cells = within(rows[4]).getAllByRole('cell');
+		const cells = within(rows[5]).getAllByRole('cell');
 		expect(cells[1].textContent).toContain(m.holders_of({ count: '43' }));
 		expect(cells[2].className).toContain('text-lane-red-foreground');
 		expect(cells[3].className).not.toContain('text-lane-red-foreground');

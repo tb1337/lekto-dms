@@ -11,7 +11,7 @@
 	import * as Table from '#lib/components/ui/table/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { formatNumber } from '#lib/i18n.ts';
-	import { kindLabel, type IdentifierKind } from '#lib/identifiers.ts';
+	import { labelOfKind, type IdentifierKind } from '#lib/identifiers.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
 
@@ -37,9 +37,15 @@
 	}
 	onMount(() => void load());
 
-	const rows = $derived(
-		holders ? ORDER.flatMap((kind) => holders?.kinds.find((item) => item.kind === kind) ?? []) : []
-	);
+	// The kinds in a fixed order; one the API adds stands after them, as it comes.
+	const rows = $derived.by(() => {
+		if (!holders) return [];
+		const ordered = ORDER.flatMap(
+			(kind) => holders?.kinds.find((item) => item.kind === kind) ?? []
+		);
+		const rest = holders.kinds.filter((item) => !ORDER.includes(item.kind));
+		return [...ordered, ...rest];
+	});
 
 	function told(tally: Tally): number {
 		return tally.right + tally.learned_rejected + tally.refused_confirmed;
@@ -104,7 +110,7 @@
 				</Table.Header>
 				<Table.Body>
 					{#each rows as item (item.kind)}
-						{@render row(kindLabel(item.kind), item, false)}
+						{@render row(labelOfKind(item.kind), item, false)}
 					{/each}
 					{@render row(m.holders_recommendation(), holders.recommendation, true)}
 				</Table.Body>

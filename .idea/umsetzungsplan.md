@@ -2255,6 +2255,41 @@ Stand: Vorschlag Claude, 27.10.2026, zur Freigabe durch Tobi. Release offen.
 
 Reihenfolge: Name des Jobs, 4a, 4b, 4c, dann PR 3.
 
+### Inhaber von USt-IdNr. und E-Mail-Domains
+
+Stand: freigegeben (offener Punkt 7, Tobi 29.10.2026: „ok“; Fragen 1–3: „Alle 3 Punkte: ja“).
+
+**Anlass:** Wie bei IBAN und Gläubiger-ID lernt das Training heute jede USt-IdNr. und jede E-Mail-Domain eines Dokuments für seinen Kontakt, auch die eines Dritten (Konzernmutter, Zahlungsdienst, Portal, Dienstleister „im Auftrag von“).
+
+**Gemessen in Dev (29.10.2026, nur lesend):**
+- E-Mail-Domains: 32 in 18 Dokumenten, in 9 davon zwei oder mehr. Nur 12 der 32 passen zum Namen des Dokumentkontakts. An Kontakten von Hand eingetragen: 8, davon passen 7 zum Namen. Verworfen: 7, keine davon passt zum Namen. Keine Freemail-Domain, keine Adresse eines Nutzers.
+- USt-IdNr.: 16 in 9 Dokumenten, in 7 davon zwei oder mehr (4 verschiedene). Ein „Ihre/unsere USt-IdNr.“ steht nirgends davor. Eine verworfen.
+
+**Vorschlag:**
+- **Kern:** `HOLDER_KINDS` bekommt `vat_id` und `email_domain`. Die Inhaber laufen damit durch alles, was es für IBANs schon gibt: Training lernt nur die des Absenders, das Urteil vergleicht nur diese, die offene Liste klappt Nummern Dritter ein, das Faktenfeld zeigt den Inhaber mit Quelle („laut Regel“).
+- **Regel USt-IdNr.** (`domain.holders`, wie bei IBANs, je Stelle):
+  - ein Label auf der Zeile oder darüber: „Ihre USt-IdNr.“/„your VAT“ → Empfänger, „unsere USt-IdNr.“/„our VAT“ → Absender;
+  - ein bekannter Name daneben oder in ihrem Block (Fußzeile „Muster GmbH · USt-IdNr. DE…“): der Kontakt unter diesem Namen, also Absender, wenn es der Dokumentkontakt ist, sonst Dritter;
+  - steht im Dokument nur eine, ist es die des Absenders (wie heute);
+  - sonst unklar.
+- **Regel E-Mail-Domain** (über den Namen, nicht über die Stelle):
+  - passt die Domain zum Namen oder einem Alias des Dokumentkontakts (ein Wort des Namens steckt im Domainnamen, `stadtwerke-nordheim.de` zu „Stadtwerke Nordheim GmbH“) oder trägt der Kontakt sie schon → Absender;
+  - passt sie zu einem anderen bekannten Kontakt → Dritter unter dessen Namen;
+  - die Domain einer E-Mail-Adresse, deren Teil vor dem @ einen Nutzer nennt, oder eine Domain aus dem Profil eines Nutzers → Empfänger;
+  - eine Freemail-Domain (gmx.de, web.de, gmail.com, t-online.de, outlook.com, icloud.com, posteo.de, mailbox.org und wenige mehr) ist nie die eines Kontakts → unklar;
+  - sonst unklar: nicht gelernt, im Reiter Kennungen als Vorschlag.
+  - Auf Dev hätte das alle 7 verworfenen Domains vom Lernen ferngehalten und 7 der 8 von Hand eingetragenen gelernt; die achte käme als Vorschlag.
+- **Modell:** Der Fakten-Aufruf (facts-2) fragt die Inhaber vorerst weiter nur für IBANs und Gläubiger-IDs. Für USt-IdNr. und Domains reicht nach der Messung die Regel; mehr Fragen kosten Token je Dokument.
+- **Bestand:** Keine Schemaänderung (die Spalten `holder*` sind allgemein). „Fakten neu lesen“ setzt die Inhaber im Bestand; danach trainieren. Beides stößt Tobi an.
+- **Auswertung:** Der synthetische Satz bekommt Fälle mit zwei USt-IdNr. (Absender und Konzernmutter) und mit fremden Domains (Zahlungsdienst, Portal) samt erwartetem Inhaber.
+
+**PRs:** einer, `feature/holders-vat-domain` (`enhancement`).
+
+**Fragen:**
+1. Domain über den Namen: Reicht „ein Wort des Namens im Domainnamen“ (Wörter ab drei Buchstaben, ohne Rechtsform)? Vorschlag: ja; was nicht passt, wird Vorschlag, nicht gelernt.
+2. Das Modell fragt die Inhaber von USt-IdNr. und Domains vorerst nicht. Vorschlag: so lassen, nach dem Release an Deinen Entscheidungen messen (Punkt 10).
+3. Freemail-Domains nie als Domain eines Kontakts. Vorschlag: ja, als feste Liste im Code.
+
 ### Massenaktionen und Seiten in der Dokumentliste
 
 Stand: freigegeben (Tobi, 29.10.2026; offene Punkte 13 und 13.3). Mock: Leinwand „Lekto Übersicht und Kennungen“, Abschnitt „13 · Massenaktionen“.

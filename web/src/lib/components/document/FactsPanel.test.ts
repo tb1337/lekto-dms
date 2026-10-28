@@ -343,7 +343,11 @@ describe('FactsPanel', () => {
 		expect(screen.getByText('DE17 1005 0000 0123 4567 89')).toBeTruthy();
 		expect(
 			screen.getByText(
-				m.facts_holder_named({ holder: m.fact_holder_third_party(), name: 'Hausverwaltung Ost' })
+				m.facts_holder_named({
+					holder: m.fact_holder_third_party(),
+					name: 'Hausverwaltung Ost',
+					source: m.fact_holder_source_rule()
+				})
 			)
 		).toBeTruthy();
 	});

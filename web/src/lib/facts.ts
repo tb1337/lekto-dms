@@ -122,13 +122,19 @@ const HOLDER_LABELS: Record<Holder['kind'], () => string> = {
 	unclear: m.fact_holder_unclear
 };
 
-/** Whose an IBAN or a creditor ID is, in words, with the name the document gives
- * ("Inhaber: Dritter · Stadtwerke"). */
+const HOLDER_SOURCES: Record<Holder['source'], () => string> = {
+	rule: m.fact_holder_source_rule,
+	model: m.fact_holder_source_model
+};
+
+/** Whose an IBAN or a creditor ID is, in words, with the name the document gives and who told
+ * it ("Inhaber: Dritter · Stadtwerke · laut Sprachmodell"). */
 export function holderLabel(holder: Holder): string {
 	const kind = HOLDER_LABELS[holder.kind]();
+	const source = HOLDER_SOURCES[holder.source]();
 	return holder.name
-		? m.facts_holder_named({ holder: kind, name: holder.name })
-		: m.facts_holder({ holder: kind });
+		? m.facts_holder_named({ holder: kind, name: holder.name, source })
+		: m.facts_holder({ holder: kind, source });
 }
 
 /** How surely the document names a person, in words. */

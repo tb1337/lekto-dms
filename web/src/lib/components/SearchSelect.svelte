@@ -131,7 +131,7 @@
 {#snippet list(row: string)}
 	<Command.Root shouldFilter={false} class="min-h-0 flex-1">
 		<Command.Input bind:value={query} placeholder={searchLabel} aria-label={searchLabel} />
-		<Command.List class={cn(phone.current && 'max-h-none flex-1 px-2 pb-4')}>
+		<Command.List class={cn(phone.current && 'max-h-none flex-1 px-2 pt-2 pb-4')}>
 			<Command.Empty class="py-4 text-center text-sm text-muted-foreground">
 				{m.assignment_none_found()}
 			</Command.Empty>
@@ -171,9 +171,12 @@
 		onclick: () => (open = true)
 	})}
 	<Dialog.Root bind:open onOpenChange={(next) => next || (query = '')}>
+		<!-- Nothing takes the focus when it opens: the keyboard waits for a tap, and the close
+		     button shows no tooltip. -->
 		<Dialog.Content
 			size="md"
 			showCloseButton={false}
+			onOpenAutoFocus={(event) => event.preventDefault()}
 			class="top-auto bottom-0 left-0 flex h-[85dvh] max-h-[85dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl rounded-b-none p-0 data-[state=open]:slide-in-from-bottom-10"
 		>
 			<span class="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-border" aria-hidden="true"

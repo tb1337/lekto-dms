@@ -58,7 +58,7 @@
 		<Table.Cell class={cn(strong && 'font-semibold')}>{label}</Table.Cell>
 		<Table.Cell class="text-right tabular-nums">
 			{#if of > 0}
-				<span class="font-medium text-lane-green-foreground">{formatNumber(tally.right)}</span>
+				<span class="font-medium">{formatNumber(tally.right)}</span>
 				<span class="text-muted-foreground">{m.holders_of({ count: formatNumber(of) })}</span>
 			{:else}
 				<span class="text-muted-foreground">–</span>

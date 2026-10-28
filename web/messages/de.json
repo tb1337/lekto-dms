@@ -2589,7 +2589,6 @@
 	"bulk_capped": " Die Suche reicht höchstens {count} Treffer weit.",
 	"bulk_limit": "Alle Treffer auf einmal gehen bis {max}: grenze die Filter weiter ein.",
 	"bulk_select_all": "Alle {count} Treffer auswählen",
-	"bulk_clear": "Auswahl aufheben",
 	"bulk_type": "Typ",
 	"bulk_more": "Mehr",
 	"bulk_set_topic": "Thema setzen …",
@@ -2624,5 +2623,9 @@
 	"bulk_unknown_document": "Nicht verfügbar",
 	"bulk_failed": "Die Aktion wurde abgebrochen.",
 	"bulk_select_page": "Diese Seite auswählen",
-	"bulk_select_document": "„{title}“ auswählen"
+	"bulk_select_document": "„{title}“ auswählen",
+	"bulk_mode": "Auswählen",
+	"bulk_mode_end": "Auswahlmodus beenden",
+	"bulk_select_none": "Keine auswählen",
+	"bulk_tap_hint": "Tippe Dokumente an, um sie auszuwählen."
 }

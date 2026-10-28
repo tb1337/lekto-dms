@@ -2280,6 +2280,8 @@ Stand: freigegeben (Tobi, 29.10.2026; offene Punkte 13 und 13.3). Mock: Leinwand
 
 **Umgesetzt (Abweichungen im Detail):** Die Tags dazu und weg sind eine Aktion `change_tags` (`add_tag_ids`, `remove_tag_ids`), wie der Dialog sie mit seinen zwei Listen anlegt; ein Dialog, ein Vorgang. Die Auswahl löst der Aufruf auf, nicht der Job: `POST /documents/bulk` sagt so gleich, wenn sie leer ist oder mehr als 10.000 Dokumente trifft (422 `bulk_too_many`), und die Antwort nennt die Zahl. Ein Dokument, das schon so ist, bleibt unberührt (eine Änderung würde es bestätigen) und zählt als „schon so“; eines in Verarbeitung wird übersprungen, außer beim Löschen.
 
+**Auswahlmodus und Seitengröße (Tobi, 29.10.2026, nach dem ersten Test):** Die Kästchen über der ersten Seite gefielen nicht. Wie in Home Assistant schaltet erst ein Knopf neben der Sortierung den Auswahlmodus ein; dann tragen Karten und Zeilen ihr Kästchen (im Kopf der Karte), ein Tipp wählt, und die Leiste steht da: X, „Auswählen ▾“ (diese Seite, alle Treffer, keine, Modus beenden), Zahl, Aktionen. Mock: Leinwand, Abschnitt „13 · Auswahlmodus“, freigegeben. Die Dokumentliste bietet 25, 50 und 100 je Seite (Vorgabe 50), gemerkt je Tabelle; 200 erwogen und vorerst nicht (die Suche liefert höchstens 100 je Aufruf).
+
 **Fragen, die beantwortet sind:**
 1. Sollen Massenaktionen auch für Nicht-Admins gehen (für Dokumente, die sie bearbeiten dürfen)? Vorschlag: ja.
 2. Neu verarbeiten ab welchem Schritt? Vorschlag: wie der Knopf am Dokument, der Schritt im Dialog wählbar (voreingestellt der erste, die Texterkennung); ab „Sprachmodell“ kostet es je Dokument zwei Modellaufrufe, der Dialog sagt das bei mehr als 15 Dokumenten.

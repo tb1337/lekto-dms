@@ -14,6 +14,9 @@
 
 <script lang="ts">
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
+	import X from '@lucide/svelte/icons/x';
+	import IconButton from '#lib/components/IconButton.svelte';
 	import { onDestroy } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
@@ -43,10 +46,10 @@
 	type Action = components['schemas']['BulkActionIn'];
 	type ReprocessNode = components['schemas']['ReprocessNode'];
 
-	// The selection bar of the documents list (web/DESIGN.md, "Choosing many"): how many are
-	// chosen, "Alle N Treffer auswählen" once the whole page is, "Auswahl aufheben" and the
-	// actions (Tags, Kontakt, Typ, and under "Mehr" Thema, Space, Bestätigen, Neu verarbeiten,
-	// Löschen). Each action but confirming opens its dialog; deleting and reprocessing name the
+	// The bar of the selection mode of the documents list (web/DESIGN.md, "Choosing many"): an
+	// X that ends the mode, "Auswählen" (a menu: this page, all N hits, none, end the mode), how
+	// many are chosen, and the actions, pale while none is (Tags, Kontakt, Typ, and under "Mehr"
+	// Thema, Space, Bestätigen, Neu verarbeiten, Löschen). Each action but confirming opens its dialog; deleting and reprocessing name the
 	// exact count. The action runs in the background (`POST /documents/bulk`): the bar shows how
 	// far it has come and a toast what it did, with the skipped ones behind "Details".
 	let {
@@ -57,8 +60,10 @@
 		capped,
 		selection,
 		lookup,
+		onpage,
 		onall,
 		onclear,
+		onend,
 		ondone,
 		busy = $bindable(false)
 	}: {
@@ -66,7 +71,7 @@
 		count: number;
 		/** Every hit of the search and filters is chosen, not ids. */
 		all: boolean;
-		/** The hits to offer "Alle N Treffer auswählen" for (the whole page is chosen). */
+		/** The hits to offer "Alle N Treffer auswählen" for (more than the page shows). */
 		offerAll: number | null;
 		/** More hits than one action takes: the most it takes. */
 		limit: number | null;
@@ -74,8 +79,12 @@
 		capped: number | null;
 		selection: () => BulkSelection;
 		lookup: Lookup | null;
+		onpage: () => void;
 		onall: () => void;
+		/** Choose none. */
 		onclear: () => void;
+		/** End the selection mode. */
+		onend: () => void;
 		/** The action has ended: the list loads again. */
 		ondone: () => void;
 		/** An action runs: the bar stays until it ends. */
@@ -206,16 +215,25 @@
 	class={cn(
 		'flex flex-wrap items-center gap-x-3 gap-y-2',
 		phone.current
-			? 'sticky bottom-0 z-10 -mx-4 border-t bg-card px-4 pt-3 pb-4'
-			: 'sticky top-20 z-10 rounded-2xl border bg-panel py-2 pr-2 pl-4'
+			? 'sticky bottom-0 z-10 -mx-4 border-t bg-card px-4 pt-2 pb-4'
+			: 'sticky top-20 z-10 rounded-2xl border bg-panel py-1.5 pr-2 pl-1.5'
 	)}
 	role="region"
 	aria-label={m.bulk_selected({ count: formatNumber(count) })}
 	aria-busy={busy}
 >
-	<span class="font-medium">{m.bulk_selected({ count: formatNumber(count) })}</span>
+	<IconButton label={m.bulk_mode_end()} onclick={onend}>
+		<X aria-hidden="true" />
+	</IconButton>
+	{#if !phone.current}{@render chooser()}{/if}
+	<span class={cn('font-medium', phone.current && 'flex-1')}>
+		{m.bulk_selected({ count: formatNumber(count) })}
+	</span>
+	{#if phone.current && !running}{@render chooser()}{/if}
 	{#if running}
-		<span class="flex min-w-0 flex-1 items-center gap-3 text-meta text-muted-foreground">
+		<span
+			class="flex min-w-0 flex-1 items-center gap-3 text-meta text-muted-foreground max-sm:basis-full"
+		>
 			<Progress
 				value={running.done}
 				max={Math.max(running.total, 1)}
@@ -230,25 +248,28 @@
 			</span>
 		</span>
 	{:else}
-		<span class="text-meta text-muted-foreground max-sm:order-last max-sm:basis-full sm:flex-1">
+		<span class="text-meta text-muted-foreground max-sm:hidden sm:flex-1">
 			{#if all}
 				{m.bulk_all_hits()}
 				{#if capped !== null}{m.bulk_capped({ count: formatNumber(capped) })}{/if}
+			{:else if count === 0}
+				{m.bulk_tap_hint()}
 			{:else if limit !== null}
 				{m.bulk_limit({ max: formatNumber(limit) })}
-			{:else if offerAll !== null}
-				<Button variant="link" size="inline" onclick={onall}>
-					{m.bulk_select_all({ count: formatNumber(offerAll) })}
-				</Button>
 			{/if}
 		</span>
-		<Button variant="ghost" size="sm" onclick={onclear}>{m.bulk_clear()}</Button>
 		<div class={cn('flex gap-2', phone.current && 'grid flex-1 basis-full grid-cols-4')}>
-			<Button variant="outline" size="sm" onclick={open('tags')}>{m.field_tags()}</Button>
-			<Button variant="outline" size="sm" onclick={open('contact')}>{m.field_contact()}</Button>
-			<Button variant="outline" size="sm" onclick={open('type')}>{m.bulk_type()}</Button>
+			<Button variant="outline" size="sm" disabled={count === 0} onclick={open('tags')}>
+				{m.field_tags()}
+			</Button>
+			<Button variant="outline" size="sm" disabled={count === 0} onclick={open('contact')}>
+				{m.field_contact()}
+			</Button>
+			<Button variant="outline" size="sm" disabled={count === 0} onclick={open('type')}>
+				{m.bulk_type()}
+			</Button>
 			<DropdownMenu.Root>
-				<DropdownMenu.Trigger>
+				<DropdownMenu.Trigger disabled={count === 0}>
 					{#snippet child({ props })}
 						<Button {...props} variant="outline" size="sm">
 							{m.bulk_more()}
@@ -270,6 +291,34 @@
 		</div>
 	{/if}
 </div>
+
+<!-- What to choose at once: the page, every hit, none; and the end of the mode. -->
+{#snippet chooser()}
+	<DropdownMenu.Root>
+		<DropdownMenu.Trigger disabled={running !== null}>
+			{#snippet child({ props })}
+				<Button {...props} variant="outline" size="sm">
+					<ListChecks aria-hidden="true" />
+					{m.bulk_mode()}
+					<ChevronDown aria-hidden="true" />
+				</Button>
+			{/snippet}
+		</DropdownMenu.Trigger>
+		<DropdownMenu.Content align={phone.current ? 'end' : 'start'} class="w-64">
+			<DropdownMenu.Item onSelect={onpage}>{m.bulk_select_page()}</DropdownMenu.Item>
+			{#if offerAll !== null}
+				<DropdownMenu.Item onSelect={onall}>
+					{m.bulk_select_all({ count: formatNumber(offerAll) })}
+				</DropdownMenu.Item>
+			{/if}
+			<DropdownMenu.Item disabled={count === 0} onSelect={onclear}>
+				{m.bulk_select_none()}
+			</DropdownMenu.Item>
+			<DropdownMenu.Separator />
+			<DropdownMenu.Item onSelect={onend}>{m.bulk_mode_end()}</DropdownMenu.Item>
+		</DropdownMenu.Content>
+	</DropdownMenu.Root>
+{/snippet}
 
 {#if lookup}
 	<FormDialog

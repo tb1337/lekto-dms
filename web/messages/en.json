@@ -2589,7 +2589,6 @@
 	"bulk_capped": " The search reaches at most {count} hits.",
 	"bulk_limit": "All hits at once go up to {max}: narrow the filters further.",
 	"bulk_select_all": "Select all {count} hits",
-	"bulk_clear": "Clear selection",
 	"bulk_type": "Type",
 	"bulk_more": "More",
 	"bulk_set_topic": "Set topic …",
@@ -2624,5 +2623,9 @@
 	"bulk_unknown_document": "Not available",
 	"bulk_failed": "The action was stopped.",
 	"bulk_select_page": "Select this page",
-	"bulk_select_document": "Select “{title}”"
+	"bulk_select_document": "Select “{title}”",
+	"bulk_mode": "Select",
+	"bulk_mode_end": "End selection mode",
+	"bulk_select_none": "Select none",
+	"bulk_tap_hint": "Tap documents to select them."
 }

@@ -26,8 +26,8 @@
 	// (with its icon) and date, and the shown topic, tags and groups of contact and type in one
 	// line, "+n" for the rest. For admins the space of a document in a space they are no member
 	// of; `children` adds a line; `fields`, the fields of a lens, stand below a line. With
-	// `onchoose` its box for actions on many stands at the top left of the page (as glass), and
-	// a chosen card has `bg-panel`.
+	// `onchoose` (the selection mode of the list) the card is no link but the label of its box,
+	// which starts its head: a tap chooses it; a chosen card has `bg-panel` and a primary edge.
 	let {
 		document,
 		lookup,
@@ -80,11 +80,15 @@
 	<Card.Root
 		size="flush"
 		class={cn(
-			'relative flex h-full min-w-0 flex-col overflow-hidden transition-colors has-[>a:hover]:border-primary',
-			chosen && 'bg-panel'
+			'relative flex h-full min-w-0 flex-col overflow-hidden transition-colors has-[>a:hover]:border-primary has-[>label:hover]:border-primary',
+			chosen && 'border-primary bg-panel ring-1 ring-primary'
 		)}
 	>
-		<a {href} class="group flex min-w-0 flex-1 flex-col text-sm">
+		<svelte:element
+			this={onchoose ? 'label' : 'a'}
+			href={onchoose ? undefined : href}
+			class={cn('group flex min-w-0 flex-1 flex-col text-sm', onchoose && 'cursor-pointer')}
+		>
 			<div
 				class={cn(
 					'flex h-10 shrink-0 items-center gap-2 border-b px-3 text-muted-foreground',
@@ -92,6 +96,13 @@
 				)}
 				title={contact?.name}
 			>
+				{#if onchoose}
+					<ChoiceBox
+						checked={chosen}
+						aria-label={m.bulk_select_document({ title: document.title })}
+						onchange={(event) => onchoose(event.currentTarget.checked)}
+					/>
+				{/if}
 				{#if contact}
 					<ContactAvatar {contact} size="xs" />
 					<span class="min-w-0 truncate">{contact.name}</span>
@@ -111,7 +122,10 @@
 			</div>
 			<div class="flex min-w-0 flex-1 flex-col gap-1 p-3">
 				<span
-					class="line-clamp-2 leading-snug font-semibold break-words hyphens-auto group-hover:underline"
+					class={cn(
+						'line-clamp-2 leading-snug font-semibold break-words hyphens-auto',
+						!onchoose && 'group-hover:underline'
+					)}
 				>
 					{document.title}
 				</span>
@@ -152,20 +166,9 @@
 			{#if fields.length > 0}
 				<div class="mx-3 border-t py-2.5"><CardFields lines={fields} /></div>
 			{/if}
-		</a>
+		</svelte:element>
 	</Card.Root>
 	{#if document.in_inbox}
 		<InboxMark id={document.id} badge class="absolute top-2 right-2 z-10" />
-	{/if}
-	{#if onchoose}
-		<span
-			class="mark-glass absolute top-12 left-2 z-10 grid size-7 place-items-center rounded-lg bg-card/80"
-		>
-			<ChoiceBox
-				checked={chosen}
-				aria-label={m.bulk_select_document({ title: document.title })}
-				onchange={(event) => onchoose(event.currentTarget.checked)}
-			/>
-		</span>
 	{/if}
 </div>

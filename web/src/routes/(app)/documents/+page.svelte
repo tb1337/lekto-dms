@@ -8,6 +8,7 @@
 	import StreamView from '#lib/components/documents/StreamView.svelte';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import Info from '@lucide/svelte/icons/info';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import X from '@lucide/svelte/icons/x';
 	import { onMount, tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
@@ -24,7 +25,6 @@
 	import DocumentCard from '#lib/components/DocumentCard.svelte';
 	import DocumentRow from '#lib/components/DocumentRow.svelte';
 	import DocumentsBulkBar, { type BulkSelection } from '#lib/components/DocumentsBulkBar.svelte';
-	import { Choice } from '#lib/components/ui/choice/index.ts';
 	import { phone } from '#lib/phone.svelte.ts';
 	import FilterPanel from '#lib/components/FilterPanel.svelte';
 	import InboxMark from '#lib/components/InboxMark.svelte';
@@ -84,6 +84,7 @@
 	import { PageLookup } from '#lib/lookup.svelte.ts';
 	import { openLens } from '#lib/open-lens.svelte.ts';
 	import { Pager } from '#lib/paging.svelte.ts';
+	import { rememberedPageSize } from '#lib/page-size.ts';
 	import Pagination from '#lib/components/Pagination.svelte';
 	import { reasonText } from '#lib/reasons.ts';
 	import { SearchNote } from '#lib/search-note.svelte.ts';
@@ -304,8 +305,8 @@
 	const searchNote = new SearchNote();
 	let meaning = $state(false);
 
-	// One page of documents at a time, 50 to a page as the jobs (Tobi, 29.10.2026); the page
-	// stands in the link (`?page=`). The list counts its documents as the filters do; a search
+	// One page of documents at a time, 50 to a page or as chosen and remembered (25, 50, 100;
+	// Tobi, 29.10.2026); the page stands in the link (`?page=`). The list counts its documents as the filters do; a search
 	// estimates its hits.
 	const list = new Pager<Item>(async (offset, limit) => {
 		const base = apiQuery(filters, scope.allUsers);
@@ -350,7 +351,7 @@
 			items: data.items.map((document) => ({ document, snippet: [] })),
 			total: counted.total
 		};
-	}, 50);
+	}, rememberedPageSize('documents'));
 
 	/** The page the link asks for, from 1. */
 	const pageNumber = $derived(Math.max(1, Number(page.url.searchParams.get('page')) || 1));
@@ -364,25 +365,34 @@
 		void goto(params.size > 0 ? `?${params}` : page.url.pathname, { replaceState: replace });
 	}
 
+	/** Show `size` documents per page, on the page that holds the first one shown so far. */
+	function resize(size: number) {
+		const next = Math.floor(((pageNumber - 1) * list.size) / size) + 1;
+		list.size = size;
+		if (next === pageNumber) void list.go(next);
+		else goToPage(next, true);
+	}
+
 	// How many documents the filters leave: estimated while searching.
 	const shownCount = $derived(searching ? list.total : (facets?.total ?? null));
 
-	// Documents chosen for an action on many (web/DESIGN.md, "Choosing many"): by id across the
-	// pages, or every hit of the search and filters (`allHits`), offered once a whole page is
-	// chosen. What the list shows changing lets go of them.
+	// Documents chosen for an action on many (web/DESIGN.md, "Choosing many"), in the selection
+	// mode the button beside the sort turns on (as Home Assistant has it, Tobi 29.10.2026): by id
+	// across the pages, or every hit of the search and filters (`allHits`). What the list shows
+	// changing lets go of them; the mode stays until the person ends it.
 	const MAX_DOCUMENTS = 10_000; // one action at most, as the API takes it
 	const MAX_HITS = 1_000; // the search reaches no further
+	let selecting = $state(false);
 	let chosen = $state<string[]>([]);
 	let allHits = $state(false);
 	let bulkBusy = $state(false);
 	const pageIds = $derived(list.items.map((item) => item.document.id));
 	const isChosen = (id: string) => allHits || chosen.includes(id);
-	const pageChosen = $derived(pageIds.length > 0 && pageIds.every(isChosen));
 	const hits = $derived(
 		list.total === null ? null : searching ? Math.min(list.total, MAX_HITS) : list.total
 	);
 	const chosenCount = $derived(allHits ? (hits ?? 0) : chosen.length);
-	const beyondPage = $derived(pageChosen && !allHits && hits !== null && hits > pageIds.length);
+	const beyondPage = $derived(!allHits && hits !== null && hits > pageIds.length);
 
 	function choose(id: string, on: boolean) {
 		if (allHits) {
@@ -394,18 +404,19 @@
 		chosen = on ? [...chosen, id] : chosen.filter((item) => item !== id);
 	}
 
-	function choosePage(on: boolean) {
-		if (on) {
-			chosen = [...new Set([...chosen, ...pageIds])];
-			return;
-		}
-		allHits = false;
-		chosen = chosen.filter((item) => !pageIds.includes(item));
+	function choosePage() {
+		if (allHits) return;
+		chosen = [...new Set([...chosen, ...pageIds])];
 	}
 
 	function letGo() {
 		chosen = [];
 		allHits = false;
+	}
+
+	function endSelecting() {
+		selecting = false;
+		letGo();
 	}
 
 	function selection(): BulkSelection {
@@ -671,17 +682,31 @@ row of filters, on a desktop narrow by the title. -->
 	/>
 {/snippet}
 
+{#snippet selectButton(compact: boolean)}
+	<IconButton
+		variant="outline"
+		class={cn(compact && 'size-11 shrink-0', selecting && 'border-primary bg-panel text-primary')}
+		label={m.bulk_mode()}
+		aria-pressed={selecting}
+		onclick={() => (selecting ? endSelecting() : (selecting = true))}
+	>
+		<ListChecks aria-hidden="true" />
+	</IconButton>
+{/snippet}
+
 {#snippet bulkBar()}
 	<DocumentsBulkBar
 		count={chosenCount}
 		all={allHits}
 		offerAll={beyondPage && hits !== null && (searching || hits <= MAX_DOCUMENTS) ? hits : null}
-		limit={beyondPage && !searching && hits !== null && hits > MAX_DOCUMENTS ? MAX_DOCUMENTS : null}
+		limit={!allHits && !searching && hits !== null && hits > MAX_DOCUMENTS ? MAX_DOCUMENTS : null}
 		capped={allHits && searching && list.total !== null && list.total > MAX_HITS ? MAX_HITS : null}
 		{selection}
 		{lookup}
+		onpage={choosePage}
 		onall={() => (allHits = true)}
 		onclear={letGo}
+		onend={endSelecting}
 		ondone={bulkDone}
 		bind:busy={bulkBusy}
 	/>
@@ -736,7 +761,7 @@ row of filters, on a desktop narrow by the title. -->
 			<div class="ml-auto flex items-center gap-2">
 				<div class="hidden items-center gap-2 lg:flex">
 					{@render searchForm(true)}
-					{#if !streaming}{@render sortMenu(false)}{/if}
+					{#if !streaming}{@render sortMenu(false)}{@render selectButton(false)}{/if}
 					<Segmented
 						names="hidden"
 						label={m.layout_label()}
@@ -842,7 +867,7 @@ row of filters, on a desktop narrow by the title. -->
 							</Sheet.Footer>
 						</Sheet.Content>
 					</Sheet.Root>
-					{#if !streaming}{@render sortMenu(true)}{/if}
+					{#if !streaming}{@render sortMenu(true)}{@render selectButton(true)}{/if}
 					<!-- The layout as a menu that shows the current one, as the sort beside it. -->
 					<DropdownMenu.Root>
 						<DropdownMenu.Trigger>
@@ -964,14 +989,7 @@ row of filters, on a desktop narrow by the title. -->
 					{/snippet}
 				</EmptyNote>
 			{:else}
-				{#if (chosenCount > 0 || bulkBusy) && !phone.current}{@render bulkBar()}{/if}
-				<Choice
-					checked={pageChosen}
-					class="-mb-3 text-muted-foreground"
-					onchange={(event) => choosePage(event.currentTarget.checked)}
-				>
-					{m.bulk_select_page()}
-				</Choice>
+				{#if (selecting || bulkBusy) && !phone.current}{@render bulkBar()}{/if}
 				<div class="flex flex-col gap-6" aria-busy={list.loading}>
 					{#each groups as group (group.key)}
 						<section class="flex flex-col gap-3" aria-label={group.label ?? undefined}>
@@ -1003,8 +1021,8 @@ row of filters, on a desktop narrow by the title. -->
 												document={item.document}
 												{lookup}
 												fields={linesOf(item)}
-												chosen={isChosen(item.document.id)}
-												onchoose={(on) => choose(item.document.id, on)}
+												chosen={selecting && isChosen(item.document.id)}
+												onchoose={selecting ? (on) => choose(item.document.id, on) : undefined}
 											>
 												{@render snippetLine(item)}
 											</DocumentCard>
@@ -1019,8 +1037,8 @@ row of filters, on a desktop narrow by the title. -->
 												document={item.document}
 												{lookup}
 												fields={linesOf(item)}
-												chosen={isChosen(item.document.id)}
-												onchoose={(on) => choose(item.document.id, on)}
+												chosen={selecting && isChosen(item.document.id)}
+												onchoose={selecting ? (on) => choose(item.document.id, on) : undefined}
 											>
 												{@render snippetLine(item)}
 												{#snippet aside()}
@@ -1041,9 +1059,11 @@ row of filters, on a desktop narrow by the title. -->
 					page={list.page}
 					total={list.total}
 					size={list.size}
+					table="documents"
 					onchange={(next) => goToPage(next)}
+					onsize={resize}
 				/>
-				{#if (chosenCount > 0 || bulkBusy) && phone.current}{@render bulkBar()}{/if}
+				{#if (selecting || bulkBusy) && phone.current}{@render bulkBar()}{/if}
 			{/if}
 		</div>
 	</div>

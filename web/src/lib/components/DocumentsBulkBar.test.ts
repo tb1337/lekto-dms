@@ -33,8 +33,10 @@ function renderBar(count: number) {
 		capped: null,
 		selection: () => ({ ids: ['d1'], query: {} }),
 		lookup: { contacts: [], documentTypes: [], tags: [], fields: [], spaces: [], users: [] },
+		onpage: vi.fn(),
 		onall: vi.fn(),
 		onclear: vi.fn(),
+		onend: vi.fn(),
 		ondone: vi.fn()
 	});
 }

@@ -346,17 +346,24 @@ primary `default` last), all `sm`. On desktop it stands above the list in a `rou
 (`bg-card`, a line above), its two actions sharing the width. One item is still decided in its
 dialog, opened from its title: the actions stay out of the row.
 
-The documents list chooses so too (Tobi, 29.10.2026): a box starts each row, and on a card it
-stands at the top left of the first page as a glass mark (`.mark-glass`, the one thing besides
-the page count that covers the page); above the list `Choice` "Diese Seite auswählen" takes the
-head's place. Once the whole page is chosen, the bar offers "Alle N Treffer auswählen" as a
-`link` button: then the choice is the search and filters, not ids, and the bar says so (with
-words, how far the search reaches). Its actions are "Tags", "Kontakt", "Typ" and "Mehr" (a menu:
-Thema, Space, Bestätigen, Neu verarbeiten, and after a separator Löschen in `destructive`); on
-the phone the four share the width. Each but "Bestätigen" opens a `FormDialog` (deleting: a
+The documents list chooses in a **selection mode** (as Home Assistant has it, Tobi 29.10.2026):
+outside it the cards and rows carry no box and no bar shows. A button with `ListChecks`
+(`outline`, "Auswählen", `aria-pressed`) beside the sort turns it on and off; on the phone it
+stands in the row of filters. In the mode a card or row is the label of its box instead of a
+link: the box starts the card's head (the first page stays clear) or the row, a tap anywhere
+chooses it, and a chosen one has `bg-panel` with a primary edge. The bar shows from the start
+of the mode: an X that ends it, "Auswählen" (`outline`, a menu: "Diese Seite auswählen", "Alle N
+Treffer auswählen" where there are more than the page, "Keine auswählen", and after a separator
+"Auswahlmodus beenden"), how many are chosen, a hint while none is, and the actions, disabled
+while none is chosen: "Tags", "Kontakt", "Typ" and "Mehr" (a menu: Thema, Space, Bestätigen,
+Neu verarbeiten, and after a separator Löschen in `destructive`). On the phone the bar sits at
+the bottom: X, the count and "Auswählen" above, the four actions sharing the width below. With
+all hits chosen the choice is the search and filters, not ids, and the bar says so (with words,
+how far the search reaches). Each action but "Bestätigen" opens a `FormDialog` (deleting: a
 `ConfirmDialog` naming the count). While the action runs in the background, the bar shows a
 `Progress` with "412 von 1.234 …" in place of its actions; at the end a toast says what it did,
-and where documents were skipped, "Details" opens them with their reasons.
+and where documents were skipped, "Details" opens them with their reasons. The mode stays after
+an action and when the filters change (the choice is let go) until the person ends it.
 
 **A folded group** (the numbers of third parties among the facts, Tobi 28.10.2026): rows that
 belong to a card but rarely matter fold away at its end. Above them a line (`border-t`), then
@@ -372,9 +379,9 @@ card, indented to the text of the button (`pl-6`). A whole card that folds is `F
 `tabular-nums`. On the phone a table keeps to the columns that fit; where it is wider, it scrolls
 inside its card, never the page. A list a person reads item by item is a list of rows, not a
 table. Pagination is `Pagination` (50 per page); the documents list pages so too, in its grid and
-its list, with the page in the link (`?page=`). A table may offer other sizes in a small menu
+its list, with the page in the link (`?page=`), and offers 25, 50 and 100 (50 at first). A table may offer other sizes in a small menu
 beside the count (`outline`, `sm`; the jobs and the deliveries of a webhook: 25, 50 and 100, 25
-at first); the choice is remembered per table in the browser (`page-size.ts`) and holds wherever
+at first; the documents: the same, 50 at first); the choice is remembered per table in the browser (`page-size.ts`) and holds wherever
 that table shows. Above such a table, a `Segmented` with counts picks what it shows and a
 `Select` narrows it to a kind (the jobs by state and kind, the deliveries by outcome and event).
 

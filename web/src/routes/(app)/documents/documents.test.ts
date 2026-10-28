@@ -145,7 +145,7 @@ describe('the archive page', () => {
 		expect(goto).toHaveBeenLastCalledWith('?sort=title&page=3', { replaceState: false });
 	});
 
-	it('chooses the page, then every hit, and confirms them all in the background', async () => {
+	it('chooses in the selection mode: the page, then every hit, and confirms them all', async () => {
 		const sent: unknown[] = [];
 		const operation = {
 			id: 'op-1',
@@ -181,17 +181,30 @@ describe('the archive page', () => {
 		vi.stubGlobal('fetch', api);
 		render(Page);
 		await screen.findByText('Strom');
-		expect(screen.queryByRole('region', { name: m.bulk_selected({ count: '2' }) })).toBeNull();
+		// Outside the mode: no boxes, no bar, the cards are links.
+		expect(
+			screen.queryByRole('checkbox', { name: m.bulk_select_document({ title: 'Gas' }) })
+		).toBeNull();
+		const mode = screen.getAllByRole('button', { name: m.bulk_mode() })[0];
+		await userEvent.click(mode);
+		expect(mode.getAttribute('aria-pressed')).toBe('true');
+		const empty = screen.getByRole('region', { name: m.bulk_selected({ count: '0' }) });
+		expect(empty.textContent).toContain(m.bulk_tap_hint());
+		expect(
+			within(empty).getByRole('button', { name: m.field_tags() }).hasAttribute('disabled')
+		).toBe(true);
 
-		await userEvent.click(screen.getByRole('checkbox', { name: m.bulk_select_page() }));
-		const bar = screen.getByRole('region', { name: m.bulk_selected({ count: '2' }) });
+		const choose = async (item: string) => {
+			const bar = screen.getByRole('region', { name: /ausgewählt|selected/ });
+			const chooser = within(bar).getByRole('button', { name: m.bulk_mode() });
+			await fireEvent.pointerDown(chooser, { button: 0, pointerType: 'mouse' });
+			await userEvent.click(await screen.findByRole('menuitem', { name: item }));
+		};
+		await choose(m.bulk_select_page());
+		screen.getByRole('region', { name: m.bulk_selected({ count: '2' }) });
 		const gas = screen.getByRole('checkbox', { name: m.bulk_select_document({ title: 'Gas' }) });
 		expect((gas as HTMLInputElement).checked).toBe(true);
-		await userEvent.click(
-			within(bar).getByRole('button', {
-				name: m.bulk_select_all({ count: formatNumber(120) })
-			})
-		);
+		await choose(m.bulk_select_all({ count: formatNumber(120) }));
 		const all = screen.getByRole('region', { name: m.bulk_selected({ count: formatNumber(120) }) });
 		expect(all.textContent).toContain(m.bulk_all_hits());
 
@@ -213,11 +226,16 @@ describe('the archive page', () => {
 				).toBeNull(),
 			{ timeout: 3000 }
 		);
-		const page = screen.getByRole('checkbox', { name: m.bulk_select_page() });
-		expect((page as HTMLInputElement).checked).toBe(false);
+		// The mode stays: nothing chosen any more.
+		screen.getByRole('region', { name: m.bulk_selected({ count: '0' }) });
+		await choose(m.bulk_mode_end());
+		expect(screen.queryByRole('region', { name: m.bulk_selected({ count: '0' }) })).toBeNull();
+		expect(
+			screen.queryByRole('checkbox', { name: m.bulk_select_document({ title: 'Gas' }) })
+		).toBeNull();
 	});
 
-	it('deletes chosen documents by id after asking with their number', async () => {
+	it('chooses a document by a tap on it, and deletes after asking with the number', async () => {
 		const sent: unknown[] = [];
 		const api = fakeApi({
 			'GET /api/v1/documents': () => ({
@@ -232,12 +250,11 @@ describe('the archive page', () => {
 		});
 		vi.stubGlobal('fetch', api);
 		render(Page);
-		await userEvent.click(
-			await screen.findByRole('checkbox', { name: m.bulk_select_document({ title: 'Gas' }) })
-		);
+		await screen.findByText('Gas');
+		await userEvent.click(screen.getAllByRole('button', { name: m.bulk_mode() })[0]);
+		// In the mode the card is the label of its box: a tap on its title chooses it.
+		await userEvent.click(screen.getByText('Gas'));
 		const bar = screen.getByRole('region', { name: m.bulk_selected({ count: '1' }) });
-		// The whole page is not chosen: nothing beyond it is offered.
-		expect(within(bar).queryByRole('button', { name: /120|2 Treffer/ })).toBeNull();
 		await fireEvent.pointerDown(within(bar).getByRole('button', { name: m.bulk_more() }), {
 			button: 0,
 			pointerType: 'mouse'
@@ -250,6 +267,30 @@ describe('the archive page', () => {
 		await vi.waitFor(() =>
 			expect(sent).toEqual([{ document_ids: ['d2'], action: { kind: 'delete' } }])
 		);
+	});
+
+	it('offers 25, 50 or 100 to a page, remembered for the documents alone', async () => {
+		localStorage.setItem('lekto.page-size.jobs', '100');
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({
+				items: [listedOf({ id: 'd1', title: 'Strom', document_date: '2026-10-01' })],
+				next_cursor: null
+			}),
+			'GET /api/v1/documents/count': () => ({ total: 120 })
+		});
+		vi.stubGlobal('fetch', api);
+		render(Page);
+		await screen.findByText('Strom');
+		const listed = () => calls(api).filter((call) => call.startsWith('GET /api/v1/documents?'));
+		expect(listed().at(-1)).toContain('limit=50');
+		const size = screen.getByRole('button', { name: m.pagination_size({ size: '50' }) });
+		await fireEvent.pointerDown(size, { button: 0, pointerType: 'mouse' });
+		await userEvent.click(
+			await screen.findByRole('menuitemradio', { name: m.pagination_size({ size: '25' }) })
+		);
+		await vi.waitFor(() => expect(listed().at(-1)).toContain('limit=25'));
+		expect(localStorage.getItem('lekto.page-size.documents')).toBe('25');
+		expect(localStorage.getItem('lekto.page-size.jobs')).toBe('100');
 	});
 
 	it('stands the documents without headings while sorted by title', async () => {

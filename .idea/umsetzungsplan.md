@@ -2213,11 +2213,37 @@ Stand: Vorschlag Claude, 27.10.2026, zur Freigabe durch Tobi. Release offen.
    - Neue Prompt-Version mit Bewertung: feste Antworten und ein Lauf mit echtem Modell an höchstens 15 Dokumenten.
 4. **Training, Urteil, offene Kennungen** (`enhancement/learn-sender-ibans`, `enhancement`): Lernen, Beleg und Liste wie oben; ein Training danach nimmt die falsch gelernten IBANs von selbst weg. Beschreibung in `architektur.md` (Ingest-Workflow › Kontakte: Kennungen; Signale).
 
-**Offen für Tobi:**
+**Antworten (Tobi, 28.10.2026):**
 
-1. **Bestand mit Modell?** In Prod tragen 814 Dokumente IBANs. Das Modell könnte sie einmal nachlesen: grob 814 Aufrufe mit 1.400 bis 5.000 Eingabe-Tokens, ohne Cache, weil es Einzelaufrufe sind. Oder nur die Regel, und das Modell erst bei neuen Dokumenten?
-2. **Personen-IBANs fürs Profil vorschlagen:** gleich mit PR 4 oder später?
-3. **Kontakt-IBANs aus Buchungen** (die Gegenprobe zeigte 25): als Vorschlag im Reiter Kennungen anbieten, etwa „aus Kontoauszügen: gehört wohl zu …“? Oder vorerst nicht?
+1. **Bestand:** Vorerst nur Dev, Prod spielt noch keine Rolle. Den Bestand füllt die Regel über den Job, der die Fakten neu liest; das Modell liest erst neue Dokumente (PR 3).
+2. **Personen-IBANs fürs Profil:** gleich mit PR 4.
+3. **Kontakt-IBANs aus Buchungen:** ja, als Vorschlag im Reiter Kennungen.
+4. **Reihenfolge:** erst PR 4, dann PR 3.
+5. „Codes lesen“ bekommt einen besseren Namen (Vorschlag unten).
+6.–8. Die Vorgaben aus PR 2 gelten (Absender mit Namen, ein Inhaber je Nummer, entschiedene Fakten behalten ihren Inhaber).
+9. **Fakten-Bereich:** IBANs und Gläubiger-IDs Dritter eingeklappt.
+10. **Inhaber korrigieren:** als Issue (#182), später bewerten.
+11. Die privaten Prod-Daten des PoC sind gelöscht.
+
+**PR 4, aufgeteilt (Vorschlag Claude, zur Freigabe):**
+
+- **4a Lernen und Urteil** (`enhancement/learn-sender-ibans`, `enhancement`), nur Backend:
+  - Ein Inhaber „Absender“ zählt für einen Kontakt nur, wenn kein Name genannt ist oder der Name dessen Name oder ein Alias ist; sonst ist er ein Dritter (`domain.holders`, eine Funktion für alle drei Nutzer).
+  - **Training:** Eine IBAN oder Gläubiger-ID zählt in einem bestätigten Dokument nur, wenn sie dort dem Absender gehört oder unklar ist. Gehört sie in irgendeinem bestätigten Dokument einer Person oder einem Dritten, lernt das Training sie nicht (wie heute ein Wert einer Person). Ohne Inhaber (der Fakt ist von vor 0.8 und noch nicht neu gelesen) bleibt es wie bisher. Ein Training danach nimmt falsch gelernte IBANs von selbst weg.
+  - **Urteil:** Das Faktensignal nennt eine IBAN oder Gläubiger-ID eines Kontakts nur als Beleg für ihn, wenn sie im Dokument nicht einer Person oder einem Dritten gehört.
+  - **Offene Kennungen:** Als „unbekannt“ erscheinen IBANs und Gläubiger-IDs nur, wo sie dem Absender gehören (oder unklar sind).
+  - Prüfen in Dev: wie viele IBANs das Training heute lernt und wie viele danach (Zahlen, keine Werte).
+- **4b Vorschläge im Reiter Kennungen** (`feature/identifier-suggestions`, `new-feature`), mit Mock vorher:
+  - Eine dritte Herkunft „vorgeschlagen“ neben „gelernt“ und „unbekannt“, nur für Admins wie der Reiter.
+  - **Person:** eine IBAN, die in bestätigten Dokumenten dem Empfänger gehört und deren genannter Name eine Person trifft (ohne Namen: das Dokument liegt im persönlichen Space genau einer Person). „Übernehmen“ trägt sie in deren Profil ein (Admins dürfen Profile mit Sitzung ändern), „Verwerfen“ merkt sie als verworfen.
+  - **Kontakt:** eine IBAN oder Gläubiger-ID, deren genannter Name einen anderen bekannten Kontakt trifft (die Miete beim Vermieter auf dem Kontoauszug). „Übernehmen“ trägt sie dort von Hand ein, „Verwerfen“ verwirft sie dort.
+  - Fundstellen im Dialog wie bisher; die Zeile nennt, wem sie wohl gehört.
+  - Offen bis zur Umsetzung: wo eine verworfene Personen-IBAN steht (im Profil gibt es kein „verworfen“; Vorschlag: eine Liste verworfener Vorschläge am Nutzer).
+- **4c Fakten-Bereich** (`enhancement/facts-third-parties`, `enhancement`), mit Mock hell und dunkel, neues Muster in `web/DESIGN.md`:
+  - IBANs und Gläubiger-IDs Dritter stehen unter den übrigen Kennungen eingeklappt: eine Zeile „9 Nummern Dritter“ mit Pfeil, aufgeklappt die Zeilen wie heute (mit Inhaber). Eine Person, die sie eben aufklappte, sieht sie offen, bis sie das Dokument verlässt.
+- **Name des Jobs** (`enhancement/read-facts`, `enhancement`, vor 4a): „Codes lesen“ liest nicht nur die Codes, sondern alle Fakten eines Dokuments neu (Codes der Seiten, Muster im Text, Inhaber). Vorschlag: **„Fakten neu lesen“** / „Read facts again“, Befehl `lekto read-facts`, `POST /pipeline/read-facts`, Aktion `READ_FACTS_ALL`, VS-Code-Task und Dokumentation mit; ohne Rückwärtskompatibilität.
+
+Reihenfolge: Name des Jobs, 4a, 4b, 4c, dann PR 3.
 
 ### M16 – Lesen
 

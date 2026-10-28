@@ -2292,6 +2292,50 @@ Stand: freigegeben (offener Punkt 7, Tobi 29.10.2026: „ok“; Fragen 1–3: �
 2. Das Modell fragt die Inhaber von USt-IdNr. und Domains vorerst nicht. Vorschlag: so lassen, nach dem Release an Deinen Entscheidungen messen (Punkt 10).
 3. Freemail-Domains nie als Domain eines Kontakts. Vorschlag: ja, als feste Liste im Code.
 
+### Empfehlungen im Reiter Kennungen und laufende Auswertung der Inhaber
+
+Stand: freigegeben (offene Punkte 9 und 10, Tobi 29.10.2026: „ok“; Antworten unten: „Alles wie empfohlen“). Baut auf „Inhaber von USt-IdNr. und E-Mail-Domains“ (#203) auf.
+
+**Anlass:** Im Reiter Kennungen entscheidet Tobi jede offene Kennung einzeln, obwohl die Daten bei vielen schon sagen, wie es ausgeht (Inhaber, Rolle, in wie vielen Dokumenten welcher Kontakte). Und ob die Inhaber stimmen, misst bisher nur der synthetische Satz, nicht Tobis echte Entscheidungen. Statt eines eigenen Entscheidungsmodells (`evaluate-decisions`, Punkt 6: vorerst nicht) also eine Empfehlung aus den eigenen Daten und eine laufende Messung.
+
+**Vorschlag 9, Empfehlung je offener Kennung** (`domain.open_identifiers`, ohne Modell):
+- **„Übernehmen empfohlen“**, alles muss gelten:
+  - die Kennung steht in mindestens zwei bestätigten Dokumenten ihres Kontakts (`RECOMMEND_FROM` = 2);
+  - sie steht in keinem bestätigten Dokument eines anderen Kontakts;
+  - bei einer Art mit Inhaber gehört sie in jedem dieser Dokumente dem Kontakt (Absender);
+  - ihre Rolle ist die eines Kontakts (`contact`, `target`), nicht `own`, `thread`, `refers` (Rechnungs- und Aktenzeichen wechseln je Dokument).
+- **„Verwerfen empfohlen“** (nur eine gelernte, die beim Kontakt steht): bei einer Art mit Inhaber gehört sie in einem bestätigten Dokument ihres Kontakts einem anderen (Empfänger, Dritter), oder sie steht in Dokumenten von zwei oder mehr Kontakten (die Gläubiger-ID eines Zahlungsdienstes). Gemessen besser als „in keinem die des Kontakts“: 29 so, alle 29 verworfen; die alte Regel hätte eine übernommene erfasst.
+- Sonst keine Empfehlung: Tobi entscheidet wie heute.
+- Ein Vorschlag (Inhaber nennt einen anderen Kontakt oder eine Person) ist „übernehmen empfohlen“, wenn zwei oder mehr Dokumente denselben nennen.
+- Jede Empfehlung nennt ihren Grund in Worten („in 5 Dokumenten von Stadtwerke Musterstadt, jedes Mal ihre“; „in Dokumenten von 3 Kontakten“). Er steht in der API als `recommendation` mit `reasons`.
+- **Sammelaktion:** „Empfohlene übernehmen (N)“ übernimmt alle offenen mit „übernehmen empfohlen“, über alle Seiten, ein Aufruf (`POST /identifiers/open/recommended`, Admins). Verworfen wird nie gesammelt, nur einzeln oder über die Auswahl wie heute.
+- **Web:** In jeder Zeile ein Badge „Übernehmen empfohlen“ (`lane-green`-Schema der Chips) bzw. „Verwerfen empfohlen“ (`muted`), der Grund im Tooltip und im Dialog der Kennung; im `Segmented` über der Liste ein vierter Wert „Empfohlen“ mit Zahl; der Knopf der Sammelaktion rechts daneben (`outline`), mit Rückfrage und genauer Zahl.
+
+**Vorschlag 10, laufende Auswertung an Tobis Entscheidungen:**
+- **Gemessen** wird jede Kennung einer Art mit Inhaber (IBAN, Gläubiger-ID, USt-IdNr., Domain), die bei einem Kontakt entschieden ist: von Hand eingetragen oder übernommen (`manual`) gegen verworfen (`rejected`), soweit sie in bestätigten Dokumenten dieses Kontakts steht.
+- Die Regel „sagt Kontakt“, wo sie dort mindestens einmal dem Kontakt und nirgends einem anderen gehört; sonst „sagt fremd“.
+- Daraus vier Zahlen je Art:
+  - stimmt: Kontakt und übernommen, fremd und verworfen;
+  - hätte gelernt, was Du verworfen hast;
+  - hätte abgelehnt, was Du übernommen hast.
+- Dazu dieselbe Messung für die Empfehlung aus 9: Wie oft hätte sie Deine Entscheidung getroffen, wie oft das Gegenteil empfohlen?
+- **Wo:** System › Automatisierung, eine Karte „Inhaber und Empfehlungen an Deinen Entscheidungen“ mit einer kleinen Tabelle je Art, berechnet beim Aufruf wie die anderen Zahlen dort (gemeinsamer Minutencache). Nur Admins.
+- **Kein neuer Speicher:** Die Entscheidungen stehen schon bei den Kontakten (`source`), die Inhaber bei den Fakten. Was schon vor den Inhabern entschieden war, zählt mit; das ist gewollt, es ist Tobis Urteil.
+
+**Gemessen in Dev (29.10.2026, nur lesend), 68 entschiedene Kennungen (16 übernommen, 52 verworfen):** In nur einem Dokument ihres Kontakts: 17 verworfen, 1 übernommen. Ab zwei Dokumenten (nur bei diesem Kontakt, kein fremder Inhaber): 11 übernommen, 4 verworfen (eine Domain, mit #203 künftig unklar; zwei Kundennummern, eine Mandatsreferenz); ab drei 9 zu 3, ab sechs 8 zu 2. Auswertung heute: IBAN 29 Mal fremd und verworfen; Gläubiger-ID 2 fremd und verworfen, 1 unklar und übernommen; USt-IdNr. und Domains noch ohne Inhaber (bis „Fakten neu lesen“).
+
+**Antworten (Tobi, 29.10.2026, „Alles wie empfohlen“):** 1. ab zwei Dokumenten; 2. Sammelaktion nur zum Übernehmen (ein verworfenes verschwindet und wird nie wieder gelernt, ein falsch übernommenes sieht man beim Kontakt); 3. Auswertung unter System › Automatisierung, je Art mit „unklar“ getrennt, dazu die Empfehlung; 4. Mock vor dem Bauen. Verwerfen-Regel wie oben neu gemessen.
+
+**PRs:**
+1. `feature/identifier-recommendations` (`new-feature`): Empfehlung, Sammelaktion, Badges, Filter.
+2. `feature/holder-evaluation` (`new-feature`): Auswertung unter System.
+
+**Fragen:**
+1. Ab zwei Dokumenten „übernehmen empfohlen“? Vorschlag: ja (`RECOMMEND_FROM` = 2); eine Kennung aus nur einem Dokument bleibt ohne Empfehlung.
+2. Die Sammelaktion nur für „übernehmen“, nie „verwerfen“? Vorschlag: ja, verwerfen bleibt eine Einzelentscheidung.
+3. Die Auswertung unter System › Automatisierung, nicht im Reiter Kennungen? Vorschlag: ja, sie misst die Automatik.
+4. Vor dem Bauen ein Mock (Badges, Filter, Sammelaktion, Karte; hell und dunkel)? Vorschlag: ja.
+
 ### Massenaktionen und Seiten in der Dokumentliste
 
 Stand: freigegeben (Tobi, 29.10.2026; offene Punkte 13 und 13.3). Mock: Leinwand „Lekto Übersicht und Kennungen“, Abschnitt „13 · Massenaktionen“.

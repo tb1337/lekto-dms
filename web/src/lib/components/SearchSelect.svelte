@@ -16,8 +16,8 @@
 	import X from '@lucide/svelte/icons/x';
 	import type { Snippet } from 'svelte';
 	import IconButton from '#lib/components/IconButton.svelte';
+	import PhoneSheet from '#lib/components/PhoneSheet.svelte';
 	import * as Command from '#lib/components/ui/command/index.ts';
-	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import * as Popover from '#lib/components/ui/popover/index.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { phone } from '#lib/phone.svelte.ts';
@@ -31,7 +31,7 @@
 	// a search over label and hint, "none" first while nothing is typed. With `create` (admins)
 	// a search that names nothing offers "„…“ anlegen …": the choice gives way to `create`'s
 	// dialog, and the one it makes is chosen. A popover on wider screens; on a phone a sheet from
-	// the bottom named `title`, with rows a finger hits (Tobi, 29.10.2026).
+	// the bottom (`PhoneSheet`) named `title`, with rows a finger hits (Tobi, 28.10.2026).
 	let {
 		value = $bindable(''),
 		options,
@@ -170,32 +170,20 @@
 		'aria-expanded': open,
 		onclick: () => (open = true)
 	})}
-	<Dialog.Root bind:open onOpenChange={(next) => next || (query = '')}>
-		<!-- Nothing takes the focus when it opens: the keyboard waits for a tap, and the close
-		     button shows no tooltip. -->
-		<Dialog.Content
-			size="md"
-			showCloseButton={false}
-			onOpenAutoFocus={(event) => event.preventDefault()}
-			class="top-auto bottom-0 left-0 flex h-[85dvh] max-h-[85dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl rounded-b-none p-0 data-[state=open]:slide-in-from-bottom-10"
-		>
-			<span class="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-border" aria-hidden="true"
-			></span>
-			<div class="flex shrink-0 items-center justify-between gap-2 py-2 pr-2 pl-4">
-				<Dialog.Title class="text-base font-semibold">{title}</Dialog.Title>
-				<IconButton
-					label={m.close()}
-					onclick={() => {
-						query = '';
-						open = false;
-					}}
-				>
-					<X aria-hidden="true" />
-				</IconButton>
-			</div>
-			{@render list('min-h-12 rounded-xl px-3')}
-		</Dialog.Content>
-	</Dialog.Root>
+	<PhoneSheet bind:open {title} onOpenChange={(next) => next || (query = '')}>
+		{#snippet close()}
+			<IconButton
+				label={m.close()}
+				onclick={() => {
+					query = '';
+					open = false;
+				}}
+			>
+				<X aria-hidden="true" />
+			</IconButton>
+		{/snippet}
+		{@render list('min-h-12 rounded-xl px-3')}
+	</PhoneSheet>
 {:else}
 	<Popover.Root bind:open onOpenChange={(next) => next || (query = '')}>
 		<Popover.Trigger>

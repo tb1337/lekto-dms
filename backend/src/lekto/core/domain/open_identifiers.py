@@ -41,7 +41,7 @@ REACH = 120
 class OpenSource(StrEnum):
     LEARNED = "learned"
     UNKNOWN = "unknown"
-    SUGGESTED = "suggested"  # an IBAN or a creditor ID a document names as another's
+    SUGGESTED = "suggested"  # a number with a holder a document names as another's
 
 
 class Recommendation(StrEnum):

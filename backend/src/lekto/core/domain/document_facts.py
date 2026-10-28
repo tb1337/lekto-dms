@@ -8,9 +8,9 @@ code. Its role says what it is to the document (`FactRole`): the same number is 
 own on the invoice and a reference on the reminder. The role follows the kind (`role_of`)
 unless the language model read the fact (`with_read`).
 
-An IBAN or a creditor ID also has its holder (`Holder`): whose account or whose collection it
-is where it stands, the sender's, the recipient's or another party's. A bank statement names
-the payees' IBANs beside its own.
+An IBAN, a creditor ID, a VAT ID or an e-mail domain also has its holder (`Holder`,
+`HOLDER_KINDS`): whose it is where it stands, the sender's, the recipient's or another party's.
+A bank statement names the payees' IBANs beside its own.
 
 A document keeps one fact per kind and value. The facts the sources find (patterns in the text,
 codes on the pages, the language model) are replaced when either signal stores them again; a
@@ -199,7 +199,7 @@ class DocumentFact:
         if self.position is not None and self.position < 0:
             raise ValidationError("a fact's position is a character of the text")
         if self.holder is not None and self.kind not in HOLDER_KINDS:
-            raise ValidationError("only an IBAN or a creditor ID has a holder")
+            raise ValidationError("only an IBAN, a creditor ID, a VAT ID or a domain has a holder")
         if self.written is not None:
             object.__setattr__(self, "written", self.written[:MAX_WRITTEN])
 

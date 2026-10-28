@@ -111,7 +111,8 @@ async def render_pages(user: CurrentUser, context: Context) -> QueuedOut:
     description=(
         ADMINS_ONLY + " The worker reads the facts of every document whose text was read and "
         "that is not being processed again: the codes on its pages and the identifiers its "
-        "text shows, with whose an IBAN or a creditor ID is. For documents from before an "
+        "text shows, with whose an IBAN, a creditor ID, a VAT ID or a domain is. For documents "
+        "from before an "
         "update that reads facts differently. A document queued already is not queued twice."
     ),
     response_model=QueuedOut,

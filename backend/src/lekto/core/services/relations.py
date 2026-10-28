@@ -5,7 +5,9 @@ Only who reads both documents sees a relation. Who edits the newer and reads the
 by hand, accepts a suggestion or removes one: a relation Lekto made is rejected then (so it is
 not suggested again), one a person set goes. The first decision about the relations of a document
 (the newer one) is a verdict on them (`first_runs.RELATIONS`): added, accepted, or corrected.
-No event goes out for relations yet (`bezuege.md`, decision 20)."""
+A relation that is set, changes or goes tells both of its documents (`relation_events`:
+`document.updated` with `relations`, to whoever may read both; the run over the stock sends
+none)."""
 
 from collections.abc import Collection, Iterable
 from dataclasses import dataclass, replace

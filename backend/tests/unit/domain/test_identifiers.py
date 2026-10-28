@@ -54,6 +54,8 @@ Ihre Adresse: max.nord@gmail.com
     ("kind", "raw", "value"),
     [
         (IBAN, "de89 3704 0044 0532 0130 00", THEIR_IBAN),
+        (IBAN, "NO93 8601 1117 947", "NO9386011117947"),  # the shortest
+        (IBAN, "MT84 MALT 0110 0001 2345 MTLC AST0 01S", "MT84MALT011000012345MTLCAST001S"),
         (VAT, "DE 123 456 789", "DE123456789"),
         (VAT, "ATU12345678", "ATU12345678"),
         (CUSTOMER, "K-778.81/2", "K778812"),
@@ -73,6 +75,10 @@ def test_identifiers_are_normalised(kind: IdentifierKind, raw: str, value: str) 
     ("kind", "raw"),
     [
         (IBAN, "DE89 3704 0044 0532 0130 01"),  # check sum
+        # The check sum fits, but the length or the country does not.
+        (IBAN, "DE54 3704 0044 0532 0130 001"),
+        (IBAN, "RF18 5390 0754 7034"),  # a creditor reference (ISO 11649)
+        (IBAN, "NR03 1234 5678 9012"),
         (VAT, "DE12345"),
         (CUSTOMER, "Musterkunde"),  # no digit
         (CUSTOMER, "12"),
@@ -118,6 +124,22 @@ def test_an_iban_however_it_is_grouped(text: str) -> None:
 @pytest.mark.parametrize("text", ["de 12 Seiten 2026 bis 2030", "DE 89 3704 0044 0532 0130 01"])
 def test_no_iban_without_its_check_sum(text: str) -> None:
     assert IBAN not in {kind for kind, _ in identifiers_in(text)}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Verwendungszweck RF18 5390 0754 7034",  # a creditor reference
+        "Vertrags-NR03 1234 5678 9012",
+        "Konto DE54 3704 0044 0532 0130 001",  # one place too many
+    ],
+)
+def test_no_iban_without_its_country_and_length(text: str) -> None:
+    assert IBAN not in {kind for kind, _ in identifiers_in(text)}
+
+
+def test_an_iban_ends_where_its_country_says() -> None:
+    assert identifiers_in("IBAN DE89 3704 0044 0532 0130 00 1234 Sparkasse") == {(IBAN, THEIR_IBAN)}
 
 
 @pytest.mark.parametrize(

@@ -21,6 +21,7 @@ export type Strength = FoundPerson['strength'];
 export type FactRole = components['schemas']['FactRole'];
 export type FactState = components['schemas']['FactState'];
 export type FactOrigin = components['schemas']['FactOrigin'];
+export type Holder = components['schemas']['HolderOut'];
 type FactDecisionIn = components['schemas']['FactDecisionIn'];
 /** A person's decision about a fact (`POST /documents/{id}/facts/decisions`), with what the
  * action needs only. */
@@ -112,6 +113,28 @@ const ROLE_LABELS: Record<FactRole, () => string> = {
 /** What a fact is to the document, in words ("points to the contact"). */
 export function roleLabel(role: FactRole): string {
 	return ROLE_LABELS[role]();
+}
+
+const HOLDER_LABELS: Record<Holder['kind'], () => string> = {
+	sender: m.fact_holder_sender,
+	recipient: m.fact_holder_recipient,
+	third_party: m.fact_holder_third_party,
+	unclear: m.fact_holder_unclear
+};
+
+const HOLDER_SOURCES: Record<Holder['source'], () => string> = {
+	rule: m.fact_holder_source_rule,
+	model: m.fact_holder_source_model
+};
+
+/** Whose an IBAN or a creditor ID is, in words, with the name the document gives and who told
+ * it ("Inhaber: Dritter · Stadtwerke · laut Sprachmodell"). */
+export function holderLabel(holder: Holder): string {
+	const kind = HOLDER_LABELS[holder.kind]();
+	const source = HOLDER_SOURCES[holder.source]();
+	return holder.name
+		? m.facts_holder_named({ holder: kind, name: holder.name, source })
+		: m.facts_holder({ holder: kind, source });
 }
 
 /** How surely the document names a person, in words. */
@@ -262,19 +285,25 @@ export function codeSpans(facts: Facts, code: CodeFacts): Span[] {
 }
 
 /** The facts in groups: those of the document's contact, those of other contacts, those of
- * none. */
+ * none, and the IBANs and creditor IDs of third parties. */
 export function grouped(facts: Facts): {
 	own: (NamedContact | FoundIdentifier)[];
 	others: (NamedContact | FoundIdentifier)[];
 	unknown: FoundIdentifier[];
+	third: FoundIdentifier[];
 } {
 	const mine = (contact: string | null | undefined) =>
 		contact !== null && contact !== undefined && contact === facts.contact_id;
-	const known = [...facts.named, ...facts.identifiers.filter((item) => item.contact_id)];
+	// An IBAN or a creditor ID of a third party (a payee in a booking) belongs to none of the
+	// groups: it is folded away below them.
+	const third = facts.identifiers.filter((item) => item.holder?.kind === 'third_party');
+	const identifiers = facts.identifiers.filter((item) => !third.includes(item));
+	const known = [...facts.named, ...identifiers.filter((item) => item.contact_id)];
 	return {
 		own: known.filter((item) => mine(item.contact_id)),
 		others: known.filter((item) => !mine(item.contact_id)),
-		unknown: facts.identifiers.filter((item) => !item.contact_id)
+		unknown: identifiers.filter((item) => !item.contact_id),
+		third
 	};
 }
 
@@ -286,7 +315,8 @@ export function factCounts(facts: Facts): { evidence: number; unknown: number; c
 		entries.filter((entry) => !('state' in entry) || entry.state !== 'rejected').length;
 	return {
 		evidence: kept(groups.own),
-		unknown: kept(groups.unknown),
+		// One rejected at a contact is known not to be its: no hint.
+		unknown: kept(groups.unknown.filter((item) => !item.rejected_at)),
 		codes: facts.codes?.length ?? 0
 	};
 }

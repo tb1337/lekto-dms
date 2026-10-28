@@ -82,6 +82,9 @@ class Summary:
     # Facts the documents have beyond those expected, of the kinds a case expects (one the model
     # made up, or found where nothing is expected).
     facts_beyond: list[str] = field(default_factory=list)
+    holders_expected: int = 0  # holders the cases that score them expect
+    holders_right: int = 0  # of those, the document's facts have
+    holders_missed: list[str] = field(default_factory=list)  # the others, with what it has
     relations_expected: int = 0  # relations the cases expect
     relations_found: int = 0  # of those, the documents have (set or suggested)
     relations_set: int = 0  # of those, set
@@ -172,6 +175,15 @@ def summarise(results: Sequence[CaseResult], *, fake: bool) -> Summary:
                 f"{case.name}: {kind.value} {value} {role.value}"
                 for kind, value, role in sorted(result.facts)
                 if kind in kinds and (kind, value) not in expected_keys
+            ]
+        if expected.holders is not None:
+            summary.holders_expected += len(expected.holders)
+            summary.holders_right += len(expected.holders & result.holders)
+            held = {(kind, value): holder for kind, value, holder in result.holders}
+            summary.holders_missed += [
+                f"{case.name}: {kind.value} {value} {holder.value} "
+                f"({held[(kind, value)].value if (kind, value) in held else 'none'})"
+                for kind, value, holder in sorted(expected.holders - result.holders)
             ]
         related = {name: state for name, state in result.relations}
         summary.relations_expected += len(expected.relations)
@@ -308,6 +320,13 @@ def render(runs: Mapping[Run, Sequence[CaseResult]], info: RunInfo) -> str:
             lines.append(
                 f"Facts ({_RUN_TITLES[run]}): {item.facts_right} of {item.facts_expected} "
                 f"expected with their role{missed}{beyond}."
+            )
+    for run, item in summaries.items():
+        if item.holders_expected:
+            missed = f": {'; '.join(item.holders_missed)}" if item.holders_missed else ""
+            lines.append(
+                f"Holders ({_RUN_TITLES[run]}): {item.holders_right} of {item.holders_expected} "
+                f"numbers with the holder expected{missed}."
             )
     for run, item in summaries.items():
         if item.relations_expected or item.relations_beyond:

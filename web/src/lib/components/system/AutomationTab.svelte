@@ -19,6 +19,8 @@
 	import { monthLabel } from '#lib/system.ts';
 	import { cn } from '#lib/utils.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
+	import HolderEvaluationCard from '#lib/components/system/HolderEvaluationCard.svelte';
+	import { session } from '#lib/session.svelte.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
 	import Chip from '#lib/components/Chip.svelte';
@@ -624,4 +626,5 @@
 			</Card.Root>
 		{/if}
 	{/if}
+	{#if session.isAdmin}<HolderEvaluationCard />{/if}
 </div>

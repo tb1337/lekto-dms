@@ -8,6 +8,7 @@ from uuid import UUID
 import pytest
 
 from lekto.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSource
+from lekto.core.domain.bulk import BulkAction, BulkKind, BulkOperation, BulkStatus
 from lekto.core.domain.classifier import ClassifierModel
 from lekto.core.domain.document_facts import (
     DocumentFact,
@@ -15,6 +16,9 @@ from lekto.core.domain.document_facts import (
     FactOrigin,
     FactRole,
     FactState,
+    Holder,
+    HolderKind,
+    HolderSource,
     role_of,
 )
 from lekto.core.domain.documents import Document, DocumentChanges
@@ -27,6 +31,7 @@ from lekto.core.domain.errors import (
 from lekto.core.domain.fields import FieldDefinition, FieldType, Money, Url
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from lekto.core.domain.ids import (
+    BulkOperationId,
     ContactId,
     DocumentId,
     DocumentTypeId,
@@ -1024,11 +1029,53 @@ class UnitOfWorkContract:
                 customer: frozenset({utility.id})
             }
 
+    async def test_document_facts_tell_where_they_stand_confirmed(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """Only confirmed documents with a contact, facts not rejected, of the kinds asked; a
+        document without a date is dated by the day it came; the owner of the personal space it
+        lies in."""
+        owner, space = await owner_with_space(uow_factory)
+        utility = Contact.create(name="Stadtwerke", now=NOW)
+        iban = (IdentifierKind.IBAN, "DE02120300000000202051")
+        invoice = (IdentifierKind.INVOICE_NUMBER, "R-4711")
+        vat = (IdentifierKind.VAT_ID, "DE312456789")
+        documents = [builders.processed(owner, space) for _ in range(4)]
+        for document in documents:
+            document.contact_id = utility.id
+        documents[0].document_date = date(2026, 9, 30)
+        documents[3].contact_id = None
+        for document in (documents[0], documents[1], documents[3]):
+            document.mark_confirmed(NOW)
+        async with uow_factory() as uow:
+            await uow.contacts.add(utility)
+            for document in documents:
+                await uow.documents.add(document)
+                await uow.document_facts.replace_found(
+                    document.id, [found(*iban), found(*invoice), found(*vat, position=40)]
+                )
+            await uow.document_facts.decide(
+                documents[1].id, replace(found(*vat, position=40), state=FactState.REJECTED)
+            )
+            await uow.commit()
+        async with uow_factory() as uow:
+            seen = await uow.document_facts.sightings([IdentifierKind.IBAN, IdentifierKind.VAT_ID])
+            assert await uow.document_facts.sightings([]) == []
+        assert sorted((item.document, item.fact.key) for item in seen) == sorted(
+            [(documents[0].id, iban), (documents[0].id, vat), (documents[1].id, iban)]
+        )
+        assert {item.contact for item in seen} == {utility.id}
+        assert {item.owner for item in seen} == {owner.id}  # their personal space
+        dated = {item.document: item.dated for item in seen}
+        assert dated[documents[0].id] == date(2026, 9, 30)
+        assert dated[documents[1].id] == documents[1].created_at.date()
+        assert next(item.fact for item in seen if item.fact.key == vat).position == 40
+
     async def test_document_facts_keep_what_they_are_and_a_person_s_decision(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
-        """A fact keeps its role, origins, as written and position; the facts found again
-        replace those found before, but not what a person decided."""
+        """A fact keeps its role, origins, as written, position and holder; the facts found
+        again replace those found before, but not what a person decided."""
         owner, space = await owner_with_space(uow_factory)
         document = builders.processed(owner, space)
         iban = DocumentFact(
@@ -1038,6 +1085,7 @@ class UnitOfWorkContract:
             origins=frozenset({FactOrigin.PATTERN, FactOrigin.CODE}),
             written="DE02 1203 0000 0000 2020 51",
             position=120,
+            holder=Holder(HolderKind.THIRD_PARTY, HolderSource.RULE, "Stadtwerke Musterstadt"),
         )
         vat = found(IdentifierKind.VAT_ID, "DE312456789", position=40)
         coded = found(IdentifierKind.CUSTOMER_NUMBER, "777", position=None)
@@ -1417,6 +1465,13 @@ class UnitOfWorkContract:
             everything = await query(owner.id, DocumentFilter(), limit=100)
             all_ids = [d.id for d in [*documents, processing]]
             assert [d.id for d in everything] == sorted(all_ids, reverse=True)
+            # Pages by number: skip so many, in the same order.
+            second = await query(owner.id, DocumentFilter(), limit=3, offset=3)
+            assert [d.id for d in second] == [d.id for d in everything[3:6]]
+            assert await query(owner.id, DocumentFilter(), limit=3, offset=99) == []
+            assert [
+                d.id for d in await uow.documents.query(DocumentFilter(), limit=2, offset=1)
+            ] == [d.id for d in everything[1:3]]
             by_contact = DocumentFilter(contacts=frozenset({contact.id}))
             assert set(ids(await query(owner.id, by_contact, limit=9))) == {0, 2, 4}
             by_type = DocumentFilter(document_types=frozenset({invoice.id}))
@@ -1862,6 +1917,13 @@ class UnitOfWorkContract:
             assert len(await rows(by_contact, None)) == 2  # every document
             in_september = DocumentFilter(document_dates=Period.month(2026, 9))
             assert await rows(in_september, owner.id) == [first]
+            # Counted alone: the same documents as the rows.
+            count = uow.documents.count
+            assert await count(DocumentFilter(), owner.id) == 2
+            assert await count(DocumentFilter(), None) == 3
+            assert await count(by_contact, owner.id) == 1
+            assert await count(by_contact, None) == 2
+            assert await count(in_september, owner.id) == 1
 
     async def test_removing_a_document_removes_its_processing_log(
         self, uow_factory: UnitOfWorkFactory
@@ -1976,6 +2038,41 @@ class UnitOfWorkContract:
             await uow.users.remove(other.id)  # no membership left
             await uow.commit()
 
+    async def test_bulk_operations_round_trip(self, uow_factory: UnitOfWorkFactory) -> None:
+        """An action on many documents keeps its action, documents and progress, with the
+        reasons of the skipped ones."""
+        owner, _ = await owner_with_space(uow_factory)
+        documents = (DocumentId(new_id()), DocumentId(new_id()), DocumentId(new_id()))
+        tags = frozenset({TagId(new_id())})
+        operation = BulkOperation.create(
+            user_id=owner.id,
+            action=BulkAction(kind=BulkKind.CHANGE_TAGS, add=tags),
+            documents=documents,
+            now=NOW,
+        )
+        async with uow_factory() as uow:
+            await uow.bulk_operations.add(operation)
+            await uow.commit()
+        async with uow_factory() as uow:
+            stored = await uow.bulk_operations.get(operation.id)
+            assert (stored.action, stored.documents, stored.status) == (
+                BulkAction(kind=BulkKind.CHANGE_TAGS, add=tags),
+                documents,
+                BulkStatus.QUEUED,
+            )
+            stored.record_changed()
+            stored.record_skipped(documents[1], because(ReasonCode.NO_DOCUMENT_TEXT))
+            await uow.bulk_operations.update(stored)
+            await uow.commit()
+        async with uow_factory() as uow:
+            again = await uow.bulk_operations.get(operation.id)
+            assert (again.position, again.changed, again.status) == (2, 1, BulkStatus.RUNNING)
+            assert [(id, reason.code) for id, reason in again.skipped] == [
+                (documents[1], ReasonCode.NO_DOCUMENT_TEXT)
+            ]
+            assert again.remaining == documents[2:]
+            assert await uow.bulk_operations.find(BulkOperationId(new_id())) is None
+
     async def test_profiles_round_trip_and_go_with_their_user(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
@@ -1989,6 +2086,7 @@ class UnitOfWorkContract:
             birth_date=date(1980, 6, 15),
             email="anna@mail.example",
             identifiers=[Identifier(IdentifierKind.TAX_ID, "12345678911"), iban],
+            declined=[Identifier(IdentifierKind.IBAN, "DE02120300000000202051")],
             version=1,
         )
         contact = Contact.create(name="Insurer", now=NOW)
@@ -2010,6 +2108,9 @@ class UnitOfWorkContract:
                 (IdentifierKind.TAX_ID, "12345678911"),
                 iban.key,
             }
+            assert [item.key for item in stored.declined] == [
+                (IdentifierKind.IBAN, "DE02120300000000202051")
+            ]
             assert (await uow.contacts.get(contact.id)).identifiers[0].user_id == anna.id
             stored.aliases = ["Anna Muster"]
             stored.birth_date = None

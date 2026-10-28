@@ -16,7 +16,13 @@ from lekto.adapters.outbound.memory.processing import FAKE_PDF
 from lekto.adapters.outbound.ocrmypdf.hocr import hocr_words
 from lekto.adapters.outbound.regex import RegexPatternMatcher
 from lekto.core.domain.classification import TITLE, FieldCheck, checks_from_json, field_key
-from lekto.core.domain.document_facts import FactOrigin, FactRole
+from lekto.core.domain.document_facts import (
+    FactOrigin,
+    FactRole,
+    Holder,
+    HolderKind,
+    HolderSource,
+)
 from lekto.core.domain.documents import UNSET, Document, DocumentChanges
 from lekto.core.domain.errors import LanguageModelError
 from lekto.core.domain.events import DocumentFiled
@@ -174,7 +180,7 @@ def extraction(**values: Any) -> JsonObject:
 
 
 def model(*answers: JsonObject | str, facts: JsonObject | str | None = None) -> FakeLanguageModel:
-    """Answers in turn; the last one again and again. The request for the facts (`facts-1`)
+    """Answers in turn; the last one again and again. The request for the facts (`facts-2`)
     it answers with `facts`, by default with none."""
     remaining = list(answers)
 
@@ -332,7 +338,7 @@ async def test_the_signal_asks_for_the_proposal_and_the_facts(world: World) -> N
         {"prompt": None, "completion": None, "request": "facts", "usage": {}},
     ]
     assert output(result)["facts"] == []
-    assert result.input["facts_prompt"] == "facts-1"
+    assert result.input["facts_prompt"] == "facts-2"
     assert output(result)["answer"] == proposal()
     kept = output(result)["proposal"]
     assert kept["sender"] == {"value": "Stadtwerke Musterstadt GmbH", "evidence": None}
@@ -2097,6 +2103,80 @@ async def test_the_model_s_facts_join_the_patterns_whichever_signal_stores_first
     stored_last = Node.SIGNAL_FACTS if model_first else Node.SIGNAL_LLM
     report = log[stored_last].result.output["read_facts"]
     assert isinstance(report, dict) and report["taken"] == 1
+
+
+@pytest.mark.parametrize("model_first", [False, True])
+async def test_the_holder_of_an_iban_stays_whichever_signal_stores_last(
+    world: World, model_first: bool
+) -> None:
+    """The facts signal tells whose an IBAN is (`domain.holders`); the model's signal, which
+    reads no pages, keeps it."""
+    await seed(world)
+    document = await document_with(world, f"{INVOICE}\nUnsere Bankverbindung: IBAN {IBAN}\n")
+    signal = LlmSignal(
+        world.uow, world.object_store, model(proposal(), facts=REFERS), world.clock, policy_with()
+    )
+    facts = FactsSignal(world.uow, world.object_store)
+    steps: list[tuple[Node, Any]] = [(Node.SIGNAL_LLM, signal), (Node.SIGNAL_FACTS, facts)]
+    for node, step in steps if model_first else reversed(steps):
+        await record(
+            world, document, node, await stored_result(world, document, await step.run(document))
+        )
+    async with world.uow() as uow:
+        kept = {fact.value: fact for fact in await uow.document_facts.of_document(document.id)}
+    assert kept[IBAN.replace(" ", "")].holder == Holder(HolderKind.SENDER, HolderSource.RULE)
+    assert kept["R20260815"].holder is None  # an invoice number has none
+
+
+@pytest.mark.parametrize(
+    ("told", "kept"),
+    [
+        # The model agrees: its holder, with the name it gives.
+        (
+            {"holder": "sender", "name": "Stadtwerke Musterstadt GmbH"},
+            Holder(HolderKind.SENDER, HolderSource.MODEL, "Stadtwerke Musterstadt GmbH"),
+        ),
+        # The rule says the sender's, the model another's: unclear.
+        ({"holder": "third_party", "name": None}, Holder(HolderKind.UNCLEAR, HolderSource.MODEL)),
+        # A name the text does not show near the number: the rule holds.
+        (
+            {"holder": "third_party", "name": "Hausverwaltung Ost"},
+            Holder(HolderKind.SENDER, HolderSource.RULE),
+        ),
+    ],
+)
+@pytest.mark.parametrize("model_first", [False, True])
+async def test_the_holder_the_model_tells_joins_the_rule_s(
+    world: World, told: JsonObject, kept: Holder, model_first: bool
+) -> None:
+    """The facts call asks whose the IBAN is (`facts-2`); what passes its check is merged with
+    the rule's holder, whichever signal stores last."""
+    await seed(world)
+    text = f"# Stadtwerke Musterstadt GmbH\nRechnung\n\nUnsere Bankverbindung: IBAN {IBAN}\n"
+    document = await document_with(world, text)
+    answer: JsonObject = {
+        "facts": [],
+        "holders": [
+            {
+                "kind": "iban",
+                "value": IBAN,
+                "evidence": f"Unsere Bankverbindung: IBAN {IBAN}",
+                **told,
+            }
+        ],
+    }
+    signal = LlmSignal(
+        world.uow, world.object_store, model(proposal(), facts=answer), world.clock, policy_with()
+    )
+    facts = FactsSignal(world.uow, world.object_store)
+    steps: list[tuple[Node, Any]] = [(Node.SIGNAL_FACTS, facts), (Node.SIGNAL_LLM, signal)]
+    for node, step in reversed(steps) if model_first else steps:
+        await record(
+            world, document, node, await stored_result(world, document, await step.run(document))
+        )
+    async with world.uow() as uow:
+        stored = {fact.value: fact for fact in await uow.document_facts.of_document(document.id)}
+    assert stored[IBAN.replace(" ", "")].holder == kept
 
 
 def test_the_facts_signal_does_not_wait_for_the_model() -> None:

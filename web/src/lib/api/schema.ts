@@ -796,6 +796,106 @@ export interface paths {
 		patch: operations['change_field_api_v1_fields__id__patch'];
 		trace?: never;
 	};
+	'/api/v1/identifiers/open': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The open identifiers
+		 * @description Admins only. Open are the identifiers no person has confirmed: those training learned at a contact (`learned`), and those of a contact's kind that confirmed documents with a contact show but no contact has, entered, learned or rejected (`unknown`). A person's value (a user's profile) is never open. The most documents first, then the newest. `q` finds words in the value (with or without spaces), as written or in a contact's name; `recommended` keeps those whose documents recommend confirming or rejecting them (`recommendation`).
+		 */
+		get: operations['open_identifiers_api_v1_identifiers_open_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/identifiers/open/summary': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * How many identifiers are open
+		 * @description Admins only. Open are the identifiers no person has confirmed: those training learned at a contact (`learned`), and those of a contact's kind that confirmed documents with a contact show but no contact has, entered, learned or rejected (`unknown`). A person's value (a user's profile) is never open.
+		 */
+		get: operations['open_summary_api_v1_identifiers_open_summary_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/identifiers/open/detail': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * An open identifier and where it stands
+		 * @description Admins only. The open identifier of `kind` and `value` (normalised, as the list gives it) and where it stands in its five newest documents. 404 if it is not open.
+		 */
+		get: operations['open_detail_api_v1_identifiers_open_detail_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/identifiers/open/decisions': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Confirm or reject open identifiers
+		 * @description Admins only. Each decision is a change of its contact on its own: confirming enters the identifier there by hand (a learned one keeps its topic and user), rejecting takes a learned one out or notes an unknown one rejected, so training does not learn it again. One that cannot be done (no longer open, the contact unclear, another contact has it entered) says why in its outcome; the others are done all the same. In the order given.
+		 */
+		post: operations['decide_open_api_v1_identifiers_open_decisions_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/identifiers/open/recommended': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Confirm the open identifiers their documents recommend
+		 * @description Admins only. Confirms every open identifier whose `recommendation` is `confirm` (`to_confirm` of the list), each as a decision `confirm` of `POST /decisions`: one that cannot be done says why in its outcome, the others are done all the same. Never rejects. A suggestion for a person's profile needs a session.
+		 */
+		post: operations['confirm_recommended_api_v1_identifiers_open_recommended_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/spaces': {
 		parameters: {
 			query?: never;
@@ -1145,6 +1245,46 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/documents/bulk': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Change many documents at once
+		 * @description Does one action to the selected documents in the background; follow it at `GET /documents/bulk/{id}`. The selection: `document_ids` (at most 500), or every document the query parameters find, as `GET /documents` (at most 10000, more: 422) or with `q` as `GET /documents/search` (the hits it reaches, at most 1000); it is fixed now. Each document goes through the same change as one by hand, rights included: one the caller may not edit, one being processed (except to delete it) or one that changed meanwhile is skipped with the reason, one that is as the action wants it already stays as it is. A tag, contact, type, topic or space the action names that does not exist: 404. Admins act on every user's documents with `all_users` (others: 403).
+		 */
+		post: operations['start_bulk_api_v1_documents_bulk_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/documents/bulk/{id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Progress of a change of many documents
+		 * @description For the user who started it and admins.
+		 */
+		get: operations['get_bulk_api_v1_documents_bulk__id__get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/documents/stream': {
 		parameters: {
 			query?: never;
@@ -1243,6 +1383,26 @@ export interface paths {
 		 * @description Stores the file and starts processing in the background, in the uploader's personal space unless `space_id` names another. The file is hashed while it is received; every file exists once per installation, so one that lies in Lekto already is rejected with 409, naming the document if the caller may read it (otherwise it lies in a space they cannot see). Follow the progress at `status_url` or with `GET /events`.
 		 */
 		post: operations['upload_api_v1_documents_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/documents/count': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * How many documents match a filter
+		 * @description How many documents within the caller's reach match the filter (the parameters of `GET /documents`), as `/facets` counts its total: for the lenses in the sidebar. Admins count every document with `all_users` (others: 403).
+		 */
+		get: operations['count_documents_api_v1_documents_count_get'];
+		put?: never;
+		post?: never;
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -1841,7 +2001,7 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
-	'/api/v1/pipeline/read-codes': {
+	'/api/v1/pipeline/read-facts': {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -1851,10 +2011,10 @@ export interface paths {
 		get?: never;
 		put?: never;
 		/**
-		 * Read the codes of every document
-		 * @description Admins only. The worker reads the codes on the pages of every document whose text was read and that is not being processed, and keeps the identifiers it shows: for documents from before codes were read. A document queued already is not queued twice.
+		 * Read the facts of every document again
+		 * @description Admins only. The worker reads the facts of every document whose text was read and that is not being processed again: the codes on its pages and the identifiers its text shows, with whose an IBAN, a creditor ID, a VAT ID or a domain is. For documents from before an update that reads facts differently. A document queued already is not queued twice.
 		 */
-		post: operations['read_codes_api_v1_pipeline_read_codes_post'];
+		post: operations['read_facts_api_v1_pipeline_read_facts_post'];
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -2307,6 +2467,26 @@ export interface paths {
 		 * @description Per field and signal (language model, classifier, similar documents, facts in the text), how often the signal's best value was the one a person decided at their first decision on the field, and how often another. For the documents of the channels given (by default `web` and `api`: migrated documents bring the metadata of the source system) and the period (30 days, the current month and the eleven before it, or all time; the history by month reaches back five years at most); the whole system's numbers, naming no document. Counted again at most once a minute.
 		 */
 		get: operations['signals_api_v1_automation_signals_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/automation/holders': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The holders against the decisions at the contacts
+		 * @description Admins only. Each identifier a person confirmed or rejected at a contact that confirmed documents of that contact show: per kind with a holder, how often the rule's holder there agreed with the decision, and how often it said the contact's where the person rejected (training learns it) or someone else's where they confirmed; and the same for the recommendation of the open identifiers, over every kind. Kept for a minute.
+		 */
+		get: operations['holders_api_v1_automation_holders_get'];
 		put?: never;
 		post?: never;
 		delete?: never;
@@ -2883,6 +3063,135 @@ export interface components {
 			/** Height */
 			height: number;
 		};
+		/**
+		 * BulkActionIn
+		 * @example {
+		 *       "add_tag_ids": [
+		 *         "01a1828b-ef26-720c-9e95-ab5d2f4396cf"
+		 *       ],
+		 *       "kind": "change_tags"
+		 *     }
+		 */
+		BulkActionIn: {
+			kind: components['schemas']['BulkKind'];
+			/**
+			 * Add Tag Ids
+			 * @description `change_tags`: the tags to add.
+			 */
+			add_tag_ids?: string[];
+			/**
+			 * Remove Tag Ids
+			 * @description `change_tags`: the tags to remove.
+			 */
+			remove_tag_ids?: string[];
+			/**
+			 * Contact Id
+			 * @description `set_contact`; none: clear it.
+			 */
+			contact_id?: string | null;
+			/**
+			 * Document Type Id
+			 * @description `set_document_type`; none: clear it.
+			 */
+			document_type_id?: string | null;
+			/**
+			 * Topic Id
+			 * @description `set_topic`; none: clear it.
+			 */
+			topic_id?: string | null;
+			/**
+			 * Space Id
+			 * @description `move`: the space to move into.
+			 */
+			space_id?: string | null;
+			/** @description `reprocess`: process again from this node on. */
+			from_node?: components['schemas']['ReprocessNode'] | null;
+		};
+		/**
+		 * BulkKind
+		 * @enum {string}
+		 */
+		BulkKind:
+			| 'change_tags'
+			| 'set_contact'
+			| 'set_document_type'
+			| 'set_topic'
+			| 'move'
+			| 'confirm'
+			| 'reprocess'
+			| 'delete';
+		/** BulkOperationOut */
+		BulkOperationOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			kind: components['schemas']['BulkKind'];
+			status: components['schemas']['BulkStatus'];
+			/**
+			 * Total
+			 * @description Selected documents.
+			 */
+			total: number;
+			/**
+			 * Done
+			 * @description Documents worked through so far.
+			 */
+			done: number;
+			/** Changed */
+			changed: number;
+			/**
+			 * Unchanged
+			 * @description Were as the action wants them already.
+			 */
+			unchanged: number;
+			/**
+			 * Skipped
+			 * @description Left as they were: not writable, being processed, gone, ...
+			 */
+			skipped: components['schemas']['SkippedOut'][];
+			/** Error */
+			error: string | null;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/** Finished At */
+			finished_at: string | null;
+		};
+		/**
+		 * BulkRequest
+		 * @example {
+		 *       "action": {
+		 *         "kind": "move",
+		 *         "space_id": "01a1828b-ef25-76fd-a18a-9b056a79818d"
+		 *       },
+		 *       "document_ids": [
+		 *         "01a1828b-ef26-720c-9e95-ab5d2f4396cf"
+		 *       ]
+		 *     }
+		 * @example {
+		 *       "action": {
+		 *         "from_node": "ocr",
+		 *         "kind": "reprocess"
+		 *       }
+		 *     }
+		 */
+		BulkRequest: {
+			/**
+			 * Document Ids
+			 * @description The documents one by one. Without: every document the query parameters find (the filter of `GET /documents`, with `q` the hits of the search).
+			 */
+			document_ids?: string[] | null;
+			action: components['schemas']['BulkActionIn'];
+		};
+		/**
+		 * BulkStatus
+		 * @enum {string}
+		 */
+		BulkStatus: 'queued' | 'running' | 'done' | 'failed';
 		/**
 		 * Cadence
 		 * @enum {string}
@@ -3741,6 +4050,14 @@ export interface components {
 			 */
 			rules?: components['schemas']['RuleReportOut'][] | null;
 		};
+		/** DocumentCountOut */
+		DocumentCountOut: {
+			/**
+			 * Total
+			 * @description Documents that match the filter.
+			 */
+			total: number;
+		};
 		/**
 		 * DocumentDetails
 		 * @description A document's metadata and processing state, with the caller's access.
@@ -4301,6 +4618,18 @@ export interface components {
 			/** @description Body `full` only; null when the document is gone (`document.deleted`). */
 			document?: components['schemas']['SentDocument'] | null;
 		};
+		/** ExcerptOut */
+		ExcerptOut: {
+			/** Before */
+			before: string;
+			/**
+			 * Match
+			 * @description The identifier as it stands in the text.
+			 */
+			match: string;
+			/** After */
+			after: string;
+		};
 		/**
 		 * ExchangeNode
 		 * @enum {string}
@@ -4534,7 +4863,7 @@ export interface components {
 			identifiers: components['schemas']['FoundIdentifierOut'][];
 			/**
 			 * Codes
-			 * @description The codes on the pages; null while they are not read (`read-codes`).
+			 * @description The codes on the pages; null while they are not read (`read-facts`).
 			 */
 			codes: components['schemas']['CodeOut'][] | null;
 			/**
@@ -4959,6 +5288,13 @@ export interface components {
 			 */
 			kept: boolean;
 			/**
+			 * Rejected At
+			 * @description The contact it is rejected at (a person said it is not theirs): it backs no contact; `contact_id` is null then.
+			 */
+			rejected_at?: string | null;
+			/** @description Whose an IBAN, a creditor ID, a VAT ID or an e-mail domain is; null for other kinds and until the facts signal ran again after 0.8 (`read-facts`). */
+			holder?: components['schemas']['HolderOut'] | null;
+			/**
 			 * Other Contacts
 			 * @description For admins: on the confirmed documents of how many contacts other than the document's it stands (the IBAN of one's own account stands on many); null for others.
 			 */
@@ -5082,6 +5418,72 @@ export interface components {
 			checks: {
 				[key: string]: 'ok' | 'failed';
 			};
+		};
+		/**
+		 * HolderKind
+		 * @description Whose a number is where it stands (`domain.holders`).
+		 * @enum {string}
+		 */
+		HolderKind: 'sender' | 'recipient' | 'third_party' | 'unclear';
+		/** HolderKindOut */
+		HolderKindOut: {
+			/**
+			 * Right
+			 * @description Said the contact's and confirmed, or foreign and rejected.
+			 */
+			right: number;
+			/**
+			 * Learned Rejected
+			 * @description Said the contact's (or: confirm), the person rejected: training learns it.
+			 */
+			learned_rejected: number;
+			/**
+			 * Refused Confirmed
+			 * @description Said foreign (or: reject), the person confirmed.
+			 */
+			refused_confirmed: number;
+			/**
+			 * Unclear
+			 * @description Said neither (for the recommendation: none).
+			 */
+			unclear: number;
+			/**
+			 * Unread
+			 * @description Read before its kind had a holder (`read-facts` sets it).
+			 */
+			unread: number;
+			kind: components['schemas']['IdentifierKind'];
+		};
+		/**
+		 * HolderOut
+		 * @description Whose an IBAN, a creditor ID, a VAT ID or an e-mail domain is where it stands.
+		 */
+		HolderOut: {
+			/** @description `sender`: the document's sender (its contact, if `name` is none or its name or an alias), `recipient`: a person it is addressed to, `third_party`: another party (a payee in a booking, a party of a list), `unclear`. */
+			kind: components['schemas']['HolderKind'];
+			/**
+			 * Name
+			 * @description The holder's name as the document writes it, if any.
+			 */
+			name: string | null;
+			/** @description Who told it: `rule` or `model`. */
+			source: components['schemas']['HolderSource'];
+		};
+		/**
+		 * HolderSource
+		 * @description Who told the holder.
+		 * @enum {string}
+		 */
+		HolderSource: 'rule' | 'model';
+		/** HoldersOut */
+		HoldersOut: {
+			/**
+			 * Kinds
+			 * @description The rule's holders, per kind with a holder.
+			 */
+			kinds: components['schemas']['HolderKindOut'][];
+			/** @description The open list's recommendation, every kind. */
+			recommendation: components['schemas']['TallyOut'];
 		};
 		/** IdentifierFoundOut */
 		IdentifierFoundOut: {
@@ -6579,6 +6981,111 @@ export interface components {
 			display_name: string | null;
 		};
 		/**
+		 * OpenAction
+		 * @enum {string}
+		 */
+		OpenAction: 'confirm' | 'reject';
+		/** OpenContactOut */
+		OpenContactOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Name */
+			name: string;
+		};
+		/** OpenCountsOut */
+		OpenCountsOut: {
+			/** Learned */
+			learned: number;
+			/** Unknown */
+			unknown: number;
+			/** Suggested */
+			suggested: number;
+		};
+		/** OpenDecisionIn */
+		OpenDecisionIn: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @description Normalised, as the list gives it.
+			 */
+			value: string;
+			/** @description `confirm`: enter it at the contact by hand, or a person's suggestion in their profile; `reject`: training does not learn it again, and a learned one no longer counts; a person's suggestion is noted as declined in their profile. A person's suggestion needs a session. */
+			action: components['schemas']['OpenAction'];
+			/**
+			 * Contact Id
+			 * @description Where; without one, the learned one's contact or the one contact its documents name (to confirm one whose documents name several, give it).
+			 */
+			contact_id?: string | null;
+		};
+		/**
+		 * OpenDecisionsIn
+		 * @example {
+		 *       "decisions": [
+		 *         {
+		 *           "action": "confirm",
+		 *           "kind": "customer_number",
+		 *           "value": "20047718"
+		 *         },
+		 *         {
+		 *           "action": "reject",
+		 *           "kind": "iban",
+		 *           "value": "DE02120300000000202051"
+		 *         }
+		 *       ]
+		 *     }
+		 */
+		OpenDecisionsIn: {
+			/** Decisions */
+			decisions: components['schemas']['OpenDecisionIn'][];
+		};
+		/** OpenDetailOut */
+		OpenDetailOut: {
+			identifier: components['schemas']['OpenIdentifierOut'];
+			/**
+			 * Places
+			 * @description Where it stands in its newest documents (5).
+			 */
+			places: components['schemas']['PlaceOut'][];
+		};
+		/**
+		 * OpenIdentifierOut
+		 * @description An identifier no person has confirmed.
+		 */
+		OpenIdentifierOut: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @description Normalised, as Lekto compares it.
+			 */
+			value: string;
+			/**
+			 * Written
+			 * @description As the newest of its documents writes it.
+			 */
+			written: string;
+			/** @description `learned`: training found it at `contacts[0]`; `unknown`: it stands in confirmed documents but at no contact, `contacts` are their contacts, the one with most documents first; `suggested`: a number with a holder (an IBAN, a creditor ID, a VAT ID, an e-mail domain) its documents name as another's, the contact's in `contacts[0]` or the person's in `person`. */
+			source: components['schemas']['OpenSource'];
+			/** Contacts */
+			contacts: components['schemas']['OpenContactOut'][];
+			/** @description A suggestion for this person's profile. */
+			person?: components['schemas']['OpenPersonOut'] | null;
+			/**
+			 * Documents
+			 * @description Confirmed documents that show it.
+			 */
+			documents: number;
+			/**
+			 * Last
+			 * @description The date of the newest of them.
+			 */
+			last: string | null;
+			/** @description What its documents recommend; none where they do not tell. */
+			recommendation?: components['schemas']['RecommendationOut'] | null;
+		};
+		/**
 		 * OpenNodeOut
 		 * @description A node that was uncertain or failed, with the fields left to decide.
 		 */
@@ -6601,6 +7108,54 @@ export interface components {
 			 */
 			fields: components['schemas']['FieldCheckOut'][];
 		};
+		/** OpenPageOut */
+		OpenPageOut: {
+			/** Items */
+			items: components['schemas']['OpenIdentifierOut'][];
+			/**
+			 * Total
+			 * @description How many match the filters.
+			 */
+			total: number;
+			/** @description How many match under each source (not `source`). */
+			counts: components['schemas']['OpenCountsOut'];
+			/**
+			 * Kinds
+			 * @description How many match of each kind (not `kind`).
+			 */
+			kinds: {
+				[key: string]: number;
+			};
+			/**
+			 * Recommended
+			 * @description How many have a recommendation, counted as `counts` (not `source`, not `recommended`).
+			 */
+			recommended: number;
+			/**
+			 * To Confirm
+			 * @description How many of them have one to confirm: what `POST /recommended` confirms (of every source and kind, without `q`).
+			 */
+			to_confirm: number;
+		};
+		/** OpenPersonOut */
+		OpenPersonOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 * @description The user.
+			 */
+			id: string;
+			/**
+			 * Name
+			 * @description Their display name.
+			 */
+			name: string;
+		};
+		/**
+		 * OpenSource
+		 * @enum {string}
+		 */
+		OpenSource: 'learned' | 'unknown' | 'suggested';
 		/**
 		 * Operator
 		 * @enum {string}
@@ -6612,6 +7167,16 @@ export interface components {
 		 * @enum {string}
 		 */
 		Outcome: 'ok' | 'uncertain' | 'failed';
+		/** OutcomeOut */
+		OutcomeOut: {
+			kind: components['schemas']['IdentifierKind'];
+			/** Value */
+			value: string;
+			/** Done */
+			done: boolean;
+			/** @description Why it was not done. */
+			reason: components['schemas']['ReasonOut'] | null;
+		};
 		/** PageReadingOut */
 		PageReadingOut: {
 			/**
@@ -6798,6 +7363,24 @@ export interface components {
 			 * @description Whether the search takes the meaning into account besides the words (a search index and embeddings are set up): only then does a client say how a search searched (`mode`, `reason`) and warm the model (`POST /documents/search/warm`).
 			 */
 			meaning_search: boolean;
+		};
+		/** PlaceOut */
+		PlaceOut: {
+			/**
+			 * Document Id
+			 * Format: uuid
+			 */
+			document_id: string;
+			/** Title */
+			title: string;
+			/**
+			 * Date
+			 * Format: date
+			 */
+			date: string;
+			role: components['schemas']['FactRole'];
+			/** @description The text around it, where the document has text and the fact a position. */
+			excerpt: components['schemas']['ExcerptOut'] | null;
 		};
 		/** Processing */
 		Processing: {
@@ -7263,6 +7846,8 @@ export interface components {
 			| 'rule_asks_on_arrival'
 			| 'skip_changed_meanwhile'
 			| 'skip_not_available'
+			| 'bulk_too_many'
+			| 'bulk_ids_and_filter'
 			| 'not_iban'
 			| 'not_vat_id'
 			| 'not_customer_number'
@@ -7270,6 +7855,9 @@ export interface components {
 			| 'fact_kind_unknown'
 			| 'fact_not_in_text'
 			| 'fact_not_asked'
+			| 'holder_not_listed'
+			| 'holder_kind_unknown'
+			| 'holder_name_not_near'
 			| 'fact_criterion_empty'
 			| 'rule_fact_of_person'
 			| 'relation_exists'
@@ -7304,6 +7892,13 @@ export interface components {
 			| 'contact_too_many_identifiers'
 			| 'only_numbers_name_users'
 			| 'identifier_taken'
+			| 'identifier_entered'
+			| 'identifier_not_open'
+			| 'identifier_contact_unclear'
+			| 'recommend_confirm'
+			| 'recommend_confirm_named'
+			| 'recommend_reject_foreign'
+			| 'recommend_reject_contacts'
 			| 'title_pattern_too_long'
 			| 'description_too_long'
 			| 'title_pattern_unknown'
@@ -7391,6 +7986,22 @@ export interface components {
 			 * @description Among a node's reasons: the built-in field it is about (`contact`, `document_type`, `topic`, `tags`, `document_date`, `title`, `space`, `review`).
 			 */
 			field?: string | null;
+		};
+		/**
+		 * Recommendation
+		 * @description What the documents recommend doing with an open identifier (`_recommended`).
+		 * @enum {string}
+		 */
+		Recommendation: 'confirm' | 'reject';
+		/**
+		 * RecommendationOut
+		 * @description What its confirmed documents recommend doing with an open identifier.
+		 */
+		RecommendationOut: {
+			/** @description `confirm`: it stands in two or more confirmed documents of its contact, at no other contact, and (of a kind with a holder) is its contact's in each; `reject` (a learned one): a document of its contact gives it someone else, or other contacts hold it as theirs. */
+			action: components['schemas']['Recommendation'];
+			/** @description Why, with its code. */
+			reason: components['schemas']['ReasonOut'];
 		};
 		/**
 		 * RecoveryCodes
@@ -8878,6 +9489,37 @@ export interface components {
 		 * @enum {string}
 		 */
 		TagScope: 'document' | 'contact' | 'document_type' | 'topic';
+		/**
+		 * TallyOut
+		 * @description How a measure fared against the decisions at the contacts.
+		 */
+		TallyOut: {
+			/**
+			 * Right
+			 * @description Said the contact's and confirmed, or foreign and rejected.
+			 */
+			right: number;
+			/**
+			 * Learned Rejected
+			 * @description Said the contact's (or: confirm), the person rejected: training learns it.
+			 */
+			learned_rejected: number;
+			/**
+			 * Refused Confirmed
+			 * @description Said foreign (or: reject), the person confirmed.
+			 */
+			refused_confirmed: number;
+			/**
+			 * Unclear
+			 * @description Said neither (for the recommendation: none).
+			 */
+			unclear: number;
+			/**
+			 * Unread
+			 * @description Read before its kind had a holder (`read-facts` sets it).
+			 */
+			unread: number;
+		};
 		/**
 		 * TemplatePreviewIn
 		 * @example {
@@ -16091,6 +16733,460 @@ export interface operations {
 			};
 		};
 	};
+	open_identifiers_api_v1_identifiers_open_get: {
+		parameters: {
+			query?: {
+				source?: components['schemas']['OpenSource'] | null;
+				kind?: components['schemas']['IdentifierKind'] | null;
+				q?: string | null;
+				recommended?: boolean;
+				offset?: number;
+				limit?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['OpenPageOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	open_summary_api_v1_identifiers_open_summary_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['OpenCountsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	open_detail_api_v1_identifiers_open_detail_get: {
+		parameters: {
+			query: {
+				kind: components['schemas']['IdentifierKind'];
+				value: string;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['OpenDetailOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	decide_open_api_v1_identifiers_open_decisions_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['OpenDecisionsIn'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['OutcomeOut'][];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	confirm_recommended_api_v1_identifiers_open_recommended_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['OutcomeOut'][];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
 	list_spaces_api_v1_spaces_get: {
 		parameters: {
 			query?: {
@@ -18761,6 +19857,257 @@ export interface operations {
 			};
 		};
 	};
+	start_bulk_api_v1_documents_bulk_post: {
+		parameters: {
+			query?: {
+				/** @description Words of the search. */
+				q?: string | null;
+				/** @description Every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+				contact_id?: string[] | null;
+				document_type_id?: string[] | null;
+				tag_id?: string[] | null;
+				space_id?: string[] | null;
+				lane?: components['schemas']['LaneFilter'][] | null;
+				field_id?: string | null;
+				contact_group_id?: string[] | null;
+				document_type_group_id?: string[] | null;
+				topic_id?: string[] | null;
+				document_date_from?: string | null;
+				document_date_to?: string | null;
+				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				fact?: string[] | null;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['BulkRequest'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['BulkOperationOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Service Unavailable",
+					 *       "status": 503,
+					 *       "detail": "database: unreachable"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	get_bulk_api_v1_documents_bulk__id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['BulkOperationOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
 	stream_api_v1_documents_stream_get: {
 		parameters: {
 			query?: {
@@ -19119,6 +20466,8 @@ export interface operations {
 				limit?: number;
 				/** @description `next_cursor`. */
 				cursor?: string | null;
+				/** @description Skip so many documents (pages by number); with `cursor`, after it. */
+				offset?: number;
 				/** @description Every user's documents instead of the caller's reach (admins). */
 				all_users?: boolean;
 				contact_id?: string[] | null;
@@ -19387,6 +20736,110 @@ export interface operations {
 					 *       "title": "Unsupported Media Type",
 					 *       "status": 415,
 					 *       "detail": "unsupported file type"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	count_documents_api_v1_documents_count_get: {
+		parameters: {
+			query?: {
+				/** @description Every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+				contact_id?: string[] | null;
+				document_type_id?: string[] | null;
+				tag_id?: string[] | null;
+				space_id?: string[] | null;
+				lane?: components['schemas']['LaneFilter'][] | null;
+				field_id?: string | null;
+				contact_group_id?: string[] | null;
+				document_type_group_id?: string[] | null;
+				topic_id?: string[] | null;
+				document_date_from?: string | null;
+				document_date_to?: string | null;
+				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				fact?: string[] | null;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DocumentCountOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -22812,7 +24265,7 @@ export interface operations {
 			};
 		};
 	};
-	read_codes_api_v1_pipeline_read_codes_post: {
+	read_facts_api_v1_pipeline_read_facts_post: {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -25806,6 +27259,77 @@ export interface operations {
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
 					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	holders_api_v1_automation_holders_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HoldersOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

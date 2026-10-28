@@ -24,6 +24,10 @@ def _lane(value: str | None) -> Lane | None:
 
 _FIELDS: dict[str, tuple[Callable[[Any], JsonValue], Callable[[Any], object]]] = {
     "document_id": (str, lambda value: DocumentId(UUID(value))),
+    "related": (
+        lambda related: None if related is None else str(related),
+        lambda value: None if value is None else DocumentId(UUID(value)),
+    ),
     "readers": (
         lambda readers: [str(reader) for reader in readers],
         lambda value: tuple(UserId(UUID(reader)) for reader in value),

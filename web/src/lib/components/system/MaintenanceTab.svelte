@@ -71,11 +71,11 @@
 		},
 		{
 			key: 'codes',
-			name: m.maintenance_codes_name(),
-			info: m.maintenance_codes_info(),
-			confirm: m.maintenance_codes_confirm(),
+			name: m.maintenance_facts_name(),
+			info: m.maintenance_facts_info(),
+			confirm: m.maintenance_facts_confirm(),
 			kind: 'pipeline.facts',
-			queue: async () => (await unwrap(api.POST('/api/v1/pipeline/read-codes'))).queued,
+			queue: async () => (await unwrap(api.POST('/api/v1/pipeline/read-facts'))).queued,
 			queued: documents
 		},
 		{

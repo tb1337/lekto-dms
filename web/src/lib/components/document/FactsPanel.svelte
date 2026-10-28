@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Check from '@lucide/svelte/icons/check';
+	import FoldedGroup from '#lib/components/FoldedGroup.svelte';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -25,6 +26,7 @@
 		codeSpans,
 		evidenceLabel,
 		grouped,
+		holderLabel,
 		identifierKey,
 		roleLabel,
 		shown,
@@ -41,7 +43,7 @@
 		type NamedContact,
 		type Span
 	} from '#lib/facts.ts';
-	import { formatMoney } from '#lib/i18n.ts';
+	import { formatMoney, formatNumber } from '#lib/i18n.ts';
 	import { IDENTIFIER_KINDS, kindLabel } from '#lib/identifiers.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
@@ -100,6 +102,9 @@
 	let busy = $state(false);
 	// The fact a person decides about (its entry's id), and whether they add one (#145 PR 6).
 	let deciding = $state<string | null>(null);
+	// The numbers of third parties fold away (Tobi, 28.10.2026); opened, they stay open while
+	// the document is shown.
+	let thirdOpen = $state(false);
 	let adding = $state(false);
 	// A click keeps a mark: the text scrolls to it (also when the entry was marked already).
 	let reveal = false;
@@ -381,6 +386,14 @@
 				{#if identifier && stateLabel(identifier.state)}
 					<span class="text-xs text-muted-foreground">{stateLabel(identifier.state)}</span>
 				{/if}
+				{#if identifier?.holder}
+					<span class="text-xs text-muted-foreground">{holderLabel(identifier.holder)}</span>
+				{/if}
+				{#if identifier?.rejected_at}
+					<span class="text-xs text-muted-foreground">
+						{m.facts_rejected_at({ contact: contactOf(identifier.rejected_at)?.name ?? '…' })}
+					</span>
+				{/if}
 				{#if identifier?.topic_id && topicName(identifier.topic_id)}
 					<span class="text-xs text-muted-foreground">
 						{m.facts_topic({ topic: topicName(identifier.topic_id) ?? '' })}
@@ -395,7 +408,7 @@
 			{#if identifier && facts.editable && identifier.kept}
 				{@render decideButton(id, identifier)}
 			{/if}
-			{#if identifier && !identifier.contact_id && admin && identifier.state !== 'rejected'}
+			{#if identifier && !identifier.contact_id && !identifier.rejected_at && admin && identifier.state !== 'rejected'}
 				<!-- Only the pin: the label would repeat on every line. -->
 				<IconButton
 					variant="outline"
@@ -510,7 +523,7 @@
 				>{phone.current ? m.facts_hint_phone() : m.facts_hint()}</span
 			>
 		</div>
-		{#if groups.own.length + groups.others.length + groups.unknown.length === 0}
+		{#if groups.own.length + groups.others.length + groups.unknown.length + groups.third.length === 0}
 			<p class="px-1 py-2 text-sm text-muted-foreground">{m.facts_none()}</p>
 		{/if}
 		{#if groups.own.length > 0}
@@ -537,6 +550,20 @@
 			{#each groups.unknown as entry (entryId(entry))}
 				{@render entryRow(entry, null)}
 			{/each}
+		{/if}
+		{#if groups.third.length > 0}
+			<FoldedGroup
+				bind:open={thirdOpen}
+				class="mt-3"
+				count={groups.third.length === 1
+					? m.facts_third_one()
+					: m.facts_third({ count: formatNumber(groups.third.length) })}
+				hint={m.facts_third_hint()}
+			>
+				{#each groups.third as entry (entryId(entry))}
+					{@render entryRow(entry, entry.contact_id)}
+				{/each}
+			</FoldedGroup>
 		{/if}
 	</Card.Root>
 

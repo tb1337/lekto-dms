@@ -9,6 +9,7 @@
 	import { cn } from '#lib/utils.ts';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import { describeError } from '#lib/errors.ts';
 
 	// A short form in a dialog (a space, a webhook, a code, a token): its title, the fields
 	// (`children`, told the error for `aria-invalid`), what the API answered below them, and
@@ -27,6 +28,7 @@
 		ondelete,
 		deleteTitle = '',
 		deleteDescription = '',
+		alternative,
 		children: fields
 	}: {
 		open?: boolean;
@@ -43,10 +45,33 @@
 		ondelete?: () => Promise<void>;
 		deleteTitle?: string;
 		deleteDescription?: string;
+		/** A second way to finish, at the start of the footer, without asking (an open
+		 * identifier: rejecting it beside confirming it). */
+		alternative?: { label: string; action: () => Promise<void> };
 		children: Snippet<[string | null]>;
 	} = $props();
 
 	let confirming = $state(false);
+	let altBusy = $state(false);
+	let altError = $state<string | null>(null);
+
+	$effect(() => {
+		if (open) altError = null;
+	});
+
+	async function runAlternative() {
+		if (!alternative || altBusy) return;
+		altBusy = true;
+		altError = null;
+		try {
+			await alternative.action();
+			open = false;
+		} catch (problem) {
+			altError = describeError(problem);
+		} finally {
+			altBusy = false;
+		}
+	}
 </script>
 
 <Dialog.Root bind:open>
@@ -96,12 +121,23 @@
 					<div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain p-4">
 						{#if description}<p class="text-sm text-muted-foreground">{description}</p>{/if}
 						{@render fields(error)}
-						{#if error}<Field.Error>{error}</Field.Error>{/if}
+						{#if error ?? altError}<Field.Error>{error ?? altError}</Field.Error>{/if}
+						{#if alternative}
+							<Button
+								type="button"
+								variant="outline"
+								class="mt-2"
+								disabled={busy || altBusy}
+								onclick={runAlternative}
+							>
+								{alternative.label}
+							</Button>
+						{/if}
 						{#if ondelete}
 							<Button
 								type="button"
 								variant="outline"
-								class="mt-2 h-11 text-destructive"
+								class="mt-2 text-destructive"
 								onclick={() => (confirming = true)}
 							>
 								<Trash2 aria-hidden="true" />
@@ -115,8 +151,19 @@
 						{#if description}<Dialog.Description>{description}</Dialog.Description>{/if}
 					</Dialog.Header>
 					{@render fields(error)}
-					{#if error}<Field.Error>{error}</Field.Error>{/if}
+					{#if error ?? altError}<Field.Error>{error ?? altError}</Field.Error>{/if}
 					<Dialog.Footer>
+						{#if alternative}
+							<Button
+								type="button"
+								variant="outline"
+								class="sm:mr-auto"
+								disabled={busy || altBusy}
+								onclick={runAlternative}
+							>
+								{alternative.label}
+							</Button>
+						{/if}
 						{#if ondelete}
 							<Button
 								type="button"
@@ -135,7 +182,7 @@
 						<Button
 							type="submit"
 							variant={destructive ? 'destructive' : 'default'}
-							disabled={busy || disabled}
+							disabled={busy || altBusy || disabled}
 						>
 							{submitLabel}
 						</Button>

@@ -7117,6 +7117,599 @@
         ]
       }
     },
+    "/api/v1/identifiers/open": {
+      "get": {
+        "tags": [
+          "identifiers"
+        ],
+        "summary": "The open identifiers",
+        "description": "Admins only. Open are the identifiers no person has confirmed: those training learned at a contact (`learned`), and those of a contact's kind that confirmed documents with a contact show but no contact has, entered, learned or rejected (`unknown`). A person's value (a user's profile) is never open. The most documents first, then the newest. `q` finds words in the value (with or without spaces), as written or in a contact's name; `recommended` keeps those whose documents recommend confirming or rejecting them (`recommendation`).",
+        "operationId": "open_identifiers_api_v1_identifiers_open_get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OpenSource"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/IdentifierKind"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "recommended",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Recommended"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 0,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenPageOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/identifiers/open/summary": {
+      "get": {
+        "tags": [
+          "identifiers"
+        ],
+        "summary": "How many identifiers are open",
+        "description": "Admins only. Open are the identifiers no person has confirmed: those training learned at a contact (`learned`), and those of a contact's kind that confirmed documents with a contact show but no contact has, entered, learned or rejected (`unknown`). A person's value (a user's profile) is never open.",
+        "operationId": "open_summary_api_v1_identifiers_open_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenCountsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/identifiers/open/detail": {
+      "get": {
+        "tags": [
+          "identifiers"
+        ],
+        "summary": "An open identifier and where it stands",
+        "description": "Admins only. The open identifier of `kind` and `value` (normalised, as the list gives it) and where it stands in its five newest documents. 404 if it is not open.",
+        "operationId": "open_detail_api_v1_identifiers_open_detail_get",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/IdentifierKind"
+            }
+          },
+          {
+            "name": "value",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "title": "Value"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenDetailOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/identifiers/open/decisions": {
+      "post": {
+        "tags": [
+          "identifiers"
+        ],
+        "summary": "Confirm or reject open identifiers",
+        "description": "Admins only. Each decision is a change of its contact on its own: confirming enters the identifier there by hand (a learned one keeps its topic and user), rejecting takes a learned one out or notes an unknown one rejected, so training does not learn it again. One that cannot be done (no longer open, the contact unclear, another contact has it entered) says why in its outcome; the others are done all the same. In the order given.",
+        "operationId": "decide_open_api_v1_identifiers_open_decisions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenDecisionsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OutcomeOut"
+                  },
+                  "type": "array",
+                  "title": "Response Decide Open Api V1 Identifiers Open Decisions Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "the request body is larger than 1048576 bytes"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/identifiers/open/recommended": {
+      "post": {
+        "tags": [
+          "identifiers"
+        ],
+        "summary": "Confirm the open identifiers their documents recommend",
+        "description": "Admins only. Confirms every open identifier whose `recommendation` is `confirm` (`to_confirm` of the list), each as a decision `confirm` of `POST /decisions`: one that cannot be done says why in its outcome, the others are done all the same. Never rejects. A suggestion for a person's profile needs a session.",
+        "operationId": "confirm_recommended_api_v1_identifiers_open_recommended_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OutcomeOut"
+                  },
+                  "type": "array",
+                  "title": "Response Confirm Recommended Api V1 Identifiers Open Recommended Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/spaces": {
       "get": {
         "tags": [
@@ -10464,6 +11057,538 @@
         ]
       }
     },
+    "/api/v1/documents/bulk": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Change many documents at once",
+        "description": "Does one action to the selected documents in the background; follow it at `GET /documents/bulk/{id}`. The selection: `document_ids` (at most 500), or every document the query parameters find, as `GET /documents` (at most 10000, more: 422) or with `q` as `GET /documents/search` (the hits it reaches, at most 1000); it is fixed now. Each document goes through the same change as one by hand, rights included: one the caller may not edit, one being processed (except to delete it) or one that changed meanwhile is skipped with the reason, one that is as the action wants it already stays as it is. A tag, contact, type, topic or space the action names that does not exist: 404. Admins act on every user's documents with `all_users` (others: 403).",
+        "operationId": "start_bulk_api_v1_documents_bulk_post",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Words of the search.",
+              "title": "Q"
+            },
+            "description": "Words of the search."
+          },
+          {
+            "name": "all_users",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Every user's documents instead of the caller's reach (admins).",
+              "default": false,
+              "title": "All Users"
+            },
+            "description": "Every user's documents instead of the caller's reach (admins)."
+          },
+          {
+            "name": "contact_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Id"
+            }
+          },
+          {
+            "name": "document_type_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Type Id"
+            }
+          },
+          {
+            "name": "tag_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag Id"
+            }
+          },
+          {
+            "name": "space_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Space Id"
+            }
+          },
+          {
+            "name": "lane",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LaneFilter"
+                  },
+                  "maxItems": 4
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lane"
+            }
+          },
+          {
+            "name": "field_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Field Id"
+            }
+          },
+          {
+            "name": "contact_group_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Group Id"
+            }
+          },
+          {
+            "name": "document_type_group_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Type Group Id"
+            }
+          },
+          {
+            "name": "topic_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic Id"
+            }
+          },
+          {
+            "name": "document_date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Date From"
+            }
+          },
+          {
+            "name": "document_date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Date To"
+            }
+          },
+          {
+            "name": "fact",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 5
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none.",
+              "title": "Fact"
+            },
+            "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkOperationOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "database: unreachable"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "the request body is larger than 1048576 bytes"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/documents/bulk/{id}": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Progress of a change of many documents",
+        "description": "For the user who started it and admins.",
+        "operationId": "get_bulk_api_v1_documents_bulk__id__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkOperationOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/documents/stream": {
       "get": {
         "tags": [
@@ -11369,6 +12494,19 @@
             "description": "`next_cursor`."
           },
           {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Skip so many documents (pages by number); with `cursor`, after it.",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Skip so many documents (pages by number); with `cursor`, after it."
+          },
+          {
             "name": "all_users",
             "in": "query",
             "required": false,
@@ -11628,6 +12766,354 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DocumentPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/documents/count": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "How many documents match a filter",
+        "description": "How many documents within the caller's reach match the filter (the parameters of `GET /documents`), as `/facets` counts its total: for the lenses in the sidebar. Admins count every document with `all_users` (others: 403).",
+        "operationId": "count_documents_api_v1_documents_count_get",
+        "parameters": [
+          {
+            "name": "all_users",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Every user's documents instead of the caller's reach (admins).",
+              "default": false,
+              "title": "All Users"
+            },
+            "description": "Every user's documents instead of the caller's reach (admins)."
+          },
+          {
+            "name": "contact_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Id"
+            }
+          },
+          {
+            "name": "document_type_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Type Id"
+            }
+          },
+          {
+            "name": "tag_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag Id"
+            }
+          },
+          {
+            "name": "space_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Space Id"
+            }
+          },
+          {
+            "name": "lane",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LaneFilter"
+                  },
+                  "maxItems": 4
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lane"
+            }
+          },
+          {
+            "name": "field_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Field Id"
+            }
+          },
+          {
+            "name": "contact_group_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Group Id"
+            }
+          },
+          {
+            "name": "document_type_group_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Type Group Id"
+            }
+          },
+          {
+            "name": "topic_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic Id"
+            }
+          },
+          {
+            "name": "document_date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Date From"
+            }
+          },
+          {
+            "name": "document_date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Date To"
+            }
+          },
+          {
+            "name": "fact",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 5
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none.",
+              "title": "Fact"
+            },
+            "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentCountOut"
                 }
               }
             }
@@ -15908,14 +17394,14 @@
         ]
       }
     },
-    "/api/v1/pipeline/read-codes": {
+    "/api/v1/pipeline/read-facts": {
       "post": {
         "tags": [
           "pipeline"
         ],
-        "summary": "Read the codes of every document",
-        "description": "Admins only. The worker reads the codes on the pages of every document whose text was read and that is not being processed, and keeps the identifiers it shows: for documents from before codes were read. A document queued already is not queued twice.",
-        "operationId": "read_codes_api_v1_pipeline_read_codes_post",
+        "summary": "Read the facts of every document again",
+        "description": "Admins only. The worker reads the facts of every document whose text was read and that is not being processed again: the codes on its pages and the identifiers its text shows, with whose an IBAN, a creditor ID, a VAT ID or a domain is. For documents from before an update that reads facts differently. A document queued already is not queued twice.",
+        "operationId": "read_facts_api_v1_pipeline_read_facts_post",
         "responses": {
           "202": {
             "description": "Successful Response",
@@ -19620,6 +21106,84 @@
         ]
       }
     },
+    "/api/v1/automation/holders": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "The holders against the decisions at the contacts",
+        "description": "Admins only. Each identifier a person confirmed or rejected at a contact that confirmed documents of that contact show: per kind with a holder, how often the rule's holder there agreed with the decision, and how often it said the contact's where the person rejected (training learns it) or someone else's where they confirmed; and the same for the recommendation of the open identifiers, over every kind. Kept for a minute.",
+        "operationId": "holders_api_v1_automation_holders_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HoldersOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "tags": [
@@ -20886,6 +22450,266 @@
         ],
         "title": "BoxOut",
         "description": "A rectangle on the page as shown (rotation applied), in fractions of its width and\nheight from the top left corner."
+      },
+      "BulkActionIn": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/BulkKind"
+          },
+          "add_tag_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Add Tag Ids",
+            "description": "`change_tags`: the tags to add."
+          },
+          "remove_tag_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Remove Tag Ids",
+            "description": "`change_tags`: the tags to remove."
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id",
+            "description": "`set_contact`; none: clear it."
+          },
+          "document_type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Type Id",
+            "description": "`set_document_type`; none: clear it."
+          },
+          "topic_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic Id",
+            "description": "`set_topic`; none: clear it."
+          },
+          "space_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Space Id",
+            "description": "`move`: the space to move into."
+          },
+          "from_node": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReprocessNode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`reprocess`: process again from this node on."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "BulkActionIn",
+        "examples": [
+          {
+            "add_tag_ids": [
+              "01a1828b-ef26-720c-9e95-ab5d2f4396cf"
+            ],
+            "kind": "change_tags"
+          }
+        ]
+      },
+      "BulkKind": {
+        "type": "string",
+        "enum": [
+          "change_tags",
+          "set_contact",
+          "set_document_type",
+          "set_topic",
+          "move",
+          "confirm",
+          "reprocess",
+          "delete"
+        ],
+        "title": "BulkKind"
+      },
+      "BulkOperationOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/BulkKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BulkStatus"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Selected documents."
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done",
+            "description": "Documents worked through so far."
+          },
+          "changed": {
+            "type": "integer",
+            "title": "Changed"
+          },
+          "unchanged": {
+            "type": "integer",
+            "title": "Unchanged",
+            "description": "Were as the action wants them already."
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/SkippedOut"
+            },
+            "type": "array",
+            "title": "Skipped",
+            "description": "Left as they were: not writable, being processed, gone, ..."
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "total",
+          "done",
+          "changed",
+          "unchanged",
+          "skipped",
+          "error",
+          "created_at",
+          "finished_at"
+        ],
+        "title": "BulkOperationOut"
+      },
+      "BulkRequest": {
+        "properties": {
+          "document_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array",
+                "maxItems": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Ids",
+            "description": "The documents one by one. Without: every document the query parameters find (the filter of `GET /documents`, with `q` the hits of the search)."
+          },
+          "action": {
+            "$ref": "#/components/schemas/BulkActionIn"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "BulkRequest",
+        "examples": [
+          {
+            "action": {
+              "kind": "move",
+              "space_id": "01a1828b-ef25-76fd-a18a-9b056a79818d"
+            },
+            "document_ids": [
+              "01a1828b-ef26-720c-9e95-ab5d2f4396cf"
+            ]
+          },
+          {
+            "action": {
+              "from_node": "ocr",
+              "kind": "reprocess"
+            }
+          }
+        ]
+      },
+      "BulkStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed"
+        ],
+        "title": "BulkStatus"
       },
       "Cadence": {
         "type": "string",
@@ -22571,6 +24395,20 @@
           }
         ]
       },
+      "DocumentCountOut": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Documents that match the filter."
+          }
+        },
+        "type": "object",
+        "required": [
+          "total"
+        ],
+        "title": "DocumentCountOut"
+      },
       "DocumentDetails": {
         "properties": {
           "id": {
@@ -23764,6 +25602,30 @@
         "title": "EventBody",
         "description": "An event (body `thin`), with the document for body `full`."
       },
+      "ExcerptOut": {
+        "properties": {
+          "before": {
+            "type": "string",
+            "title": "Before"
+          },
+          "match": {
+            "type": "string",
+            "title": "Match",
+            "description": "The identifier as it stands in the text."
+          },
+          "after": {
+            "type": "string",
+            "title": "After"
+          }
+        },
+        "type": "object",
+        "required": [
+          "before",
+          "match",
+          "after"
+        ],
+        "title": "ExcerptOut"
+      },
       "ExchangeNode": {
         "type": "string",
         "enum": [
@@ -24152,7 +26014,7 @@
               }
             ],
             "title": "Codes",
-            "description": "The codes on the pages; null while they are not read (`read-codes`)."
+            "description": "The codes on the pages; null while they are not read (`read-facts`)."
           },
           "numbers": {
             "items": {
@@ -25071,6 +26933,30 @@
             "description": "Whether the document keeps it as a fact (a person decides about it); not before the facts signal ran.",
             "default": false
           },
+          "rejected_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejected At",
+            "description": "The contact it is rejected at (a person said it is not theirs): it backs no contact; `contact_id` is null then."
+          },
+          "holder": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HolderOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whose an IBAN, a creditor ID, a VAT ID or an e-mail domain is; null for other kinds and until the facts signal ran again after 0.8 (`read-facts`)."
+          },
           "other_contacts": {
             "anyOf": [
               {
@@ -25354,6 +27240,122 @@
           "checks"
         ],
         "title": "Health"
+      },
+      "HolderKind": {
+        "type": "string",
+        "enum": [
+          "sender",
+          "recipient",
+          "third_party",
+          "unclear"
+        ],
+        "title": "HolderKind",
+        "description": "Whose a number is where it stands (`domain.holders`)."
+      },
+      "HolderKindOut": {
+        "properties": {
+          "right": {
+            "type": "integer",
+            "title": "Right",
+            "description": "Said the contact's and confirmed, or foreign and rejected."
+          },
+          "learned_rejected": {
+            "type": "integer",
+            "title": "Learned Rejected",
+            "description": "Said the contact's (or: confirm), the person rejected: training learns it."
+          },
+          "refused_confirmed": {
+            "type": "integer",
+            "title": "Refused Confirmed",
+            "description": "Said foreign (or: reject), the person confirmed."
+          },
+          "unclear": {
+            "type": "integer",
+            "title": "Unclear",
+            "description": "Said neither (for the recommendation: none)."
+          },
+          "unread": {
+            "type": "integer",
+            "title": "Unread",
+            "description": "Read before its kind had a holder (`read-facts` sets it)."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          }
+        },
+        "type": "object",
+        "required": [
+          "right",
+          "learned_rejected",
+          "refused_confirmed",
+          "unclear",
+          "unread",
+          "kind"
+        ],
+        "title": "HolderKindOut"
+      },
+      "HolderOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/HolderKind",
+            "description": "`sender`: the document's sender (its contact, if `name` is none or its name or an alias), `recipient`: a person it is addressed to, `third_party`: another party (a payee in a booking, a party of a list), `unclear`."
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "The holder's name as the document writes it, if any."
+          },
+          "source": {
+            "$ref": "#/components/schemas/HolderSource",
+            "description": "Who told it: `rule` or `model`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "name",
+          "source"
+        ],
+        "title": "HolderOut",
+        "description": "Whose an IBAN, a creditor ID, a VAT ID or an e-mail domain is where it stands."
+      },
+      "HolderSource": {
+        "type": "string",
+        "enum": [
+          "rule",
+          "model"
+        ],
+        "title": "HolderSource",
+        "description": "Who told the holder."
+      },
+      "HoldersOut": {
+        "properties": {
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/HolderKindOut"
+            },
+            "type": "array",
+            "title": "Kinds",
+            "description": "The rule's holders, per kind with a holder."
+          },
+          "recommendation": {
+            "$ref": "#/components/schemas/TallyOut",
+            "description": "The open list's recommendation, every kind."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kinds",
+          "recommendation"
+        ],
+        "title": "HoldersOut"
       },
       "IdentifierFoundOut": {
         "properties": {
@@ -28370,6 +30372,227 @@
         ],
         "title": "OidcInfo"
       },
+      "OpenAction": {
+        "type": "string",
+        "enum": [
+          "confirm",
+          "reject"
+        ],
+        "title": "OpenAction"
+      },
+      "OpenContactOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "OpenContactOut"
+      },
+      "OpenCountsOut": {
+        "properties": {
+          "learned": {
+            "type": "integer",
+            "title": "Learned"
+          },
+          "unknown": {
+            "type": "integer",
+            "title": "Unknown"
+          },
+          "suggested": {
+            "type": "integer",
+            "title": "Suggested"
+          }
+        },
+        "type": "object",
+        "required": [
+          "learned",
+          "unknown",
+          "suggested"
+        ],
+        "title": "OpenCountsOut"
+      },
+      "OpenDecisionIn": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "Normalised, as the list gives it."
+          },
+          "action": {
+            "$ref": "#/components/schemas/OpenAction",
+            "description": "`confirm`: enter it at the contact by hand, or a person's suggestion in their profile; `reject`: training does not learn it again, and a learned one no longer counts; a person's suggestion is noted as declined in their profile. A person's suggestion needs a session."
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id",
+            "description": "Where; without one, the learned one's contact or the one contact its documents name (to confirm one whose documents name several, give it)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value",
+          "action"
+        ],
+        "title": "OpenDecisionIn"
+      },
+      "OpenDecisionsIn": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/OpenDecisionIn"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Decisions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decisions"
+        ],
+        "title": "OpenDecisionsIn",
+        "examples": [
+          {
+            "decisions": [
+              {
+                "action": "confirm",
+                "kind": "customer_number",
+                "value": "20047718"
+              },
+              {
+                "action": "reject",
+                "kind": "iban",
+                "value": "DE02120300000000202051"
+              }
+            ]
+          }
+        ]
+      },
+      "OpenDetailOut": {
+        "properties": {
+          "identifier": {
+            "$ref": "#/components/schemas/OpenIdentifierOut"
+          },
+          "places": {
+            "items": {
+              "$ref": "#/components/schemas/PlaceOut"
+            },
+            "type": "array",
+            "title": "Places",
+            "description": "Where it stands in its newest documents (5)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "identifier",
+          "places"
+        ],
+        "title": "OpenDetailOut"
+      },
+      "OpenIdentifierOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "Normalised, as Lekto compares it."
+          },
+          "written": {
+            "type": "string",
+            "title": "Written",
+            "description": "As the newest of its documents writes it."
+          },
+          "source": {
+            "$ref": "#/components/schemas/OpenSource",
+            "description": "`learned`: training found it at `contacts[0]`; `unknown`: it stands in confirmed documents but at no contact, `contacts` are their contacts, the one with most documents first; `suggested`: a number with a holder (an IBAN, a creditor ID, a VAT ID, an e-mail domain) its documents name as another's, the contact's in `contacts[0]` or the person's in `person`."
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/OpenContactOut"
+            },
+            "type": "array",
+            "title": "Contacts"
+          },
+          "person": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpenPersonOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A suggestion for this person's profile."
+          },
+          "documents": {
+            "type": "integer",
+            "title": "Documents",
+            "description": "Confirmed documents that show it."
+          },
+          "last": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last",
+            "description": "The date of the newest of them."
+          },
+          "recommendation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecommendationOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What its documents recommend; none where they do not tell."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value",
+          "written",
+          "source",
+          "contacts",
+          "documents",
+          "last"
+        ],
+        "title": "OpenIdentifierOut",
+        "description": "An identifier no person has confirmed."
+      },
       "OpenNodeOut": {
         "properties": {
           "node": {
@@ -28417,6 +30640,87 @@
         "title": "OpenNodeOut",
         "description": "A node that was uncertain or failed, with the fields left to decide."
       },
+      "OpenPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OpenIdentifierOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "How many match the filters."
+          },
+          "counts": {
+            "$ref": "#/components/schemas/OpenCountsOut",
+            "description": "How many match under each source (not `source`)."
+          },
+          "kinds": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/IdentifierKind"
+            },
+            "type": "object",
+            "title": "Kinds",
+            "description": "How many match of each kind (not `kind`)."
+          },
+          "recommended": {
+            "type": "integer",
+            "title": "Recommended",
+            "description": "How many have a recommendation, counted as `counts` (not `source`, not `recommended`)."
+          },
+          "to_confirm": {
+            "type": "integer",
+            "title": "To Confirm",
+            "description": "How many of them have one to confirm: what `POST /recommended` confirms (of every source and kind, without `q`)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "counts",
+          "kinds",
+          "recommended",
+          "to_confirm"
+        ],
+        "title": "OpenPageOut"
+      },
+      "OpenPersonOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The user."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Their display name."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "OpenPersonOut"
+      },
+      "OpenSource": {
+        "type": "string",
+        "enum": [
+          "learned",
+          "unknown",
+          "suggested"
+        ],
+        "title": "OpenSource"
+      },
       "Operator": {
         "type": "string",
         "enum": [
@@ -28440,6 +30744,40 @@
           "failed"
         ],
         "title": "Outcome"
+      },
+      "OutcomeOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "done": {
+            "type": "boolean",
+            "title": "Done"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReasonOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why it was not done."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value",
+          "done",
+          "reason"
+        ],
+        "title": "OutcomeOut"
       },
       "PageReadingOut": {
         "properties": {
@@ -28734,6 +31072,47 @@
             }
           }
         ]
+      },
+      "PlaceOut": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "role": {
+            "$ref": "#/components/schemas/FactRole"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExcerptOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The text around it, where the document has text and the fact a position."
+          }
+        },
+        "type": "object",
+        "required": [
+          "document_id",
+          "title",
+          "date",
+          "role",
+          "excerpt"
+        ],
+        "title": "PlaceOut"
       },
       "Processing": {
         "properties": {
@@ -29373,6 +31752,8 @@
           "rule_asks_on_arrival",
           "skip_changed_meanwhile",
           "skip_not_available",
+          "bulk_too_many",
+          "bulk_ids_and_filter",
           "not_iban",
           "not_vat_id",
           "not_customer_number",
@@ -29380,6 +31761,9 @@
           "fact_kind_unknown",
           "fact_not_in_text",
           "fact_not_asked",
+          "holder_not_listed",
+          "holder_kind_unknown",
+          "holder_name_not_near",
           "fact_criterion_empty",
           "rule_fact_of_person",
           "relation_exists",
@@ -29414,6 +31798,13 @@
           "contact_too_many_identifiers",
           "only_numbers_name_users",
           "identifier_taken",
+          "identifier_entered",
+          "identifier_not_open",
+          "identifier_contact_unclear",
+          "recommend_confirm",
+          "recommend_confirm_named",
+          "recommend_reject_foreign",
+          "recommend_reject_contacts",
           "title_pattern_too_long",
           "description_too_long",
           "title_pattern_unknown",
@@ -29530,6 +31921,34 @@
         ],
         "title": "ReasonOut",
         "description": "A reason with its code: a client translates `code` with `params`; the English text\nstands beside it (`reason`). The codes, their parameters and how each parameter is written\nare in the OpenAPI document (`x-reasons`). `text` is a reason as written: by a person, or\nfrom before reasons had codes (its `params` hold the `text`)."
+      },
+      "Recommendation": {
+        "type": "string",
+        "enum": [
+          "confirm",
+          "reject"
+        ],
+        "title": "Recommendation",
+        "description": "What the documents recommend doing with an open identifier (`_recommended`)."
+      },
+      "RecommendationOut": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/Recommendation",
+            "description": "`confirm`: it stands in two or more confirmed documents of its contact, at no other contact, and (of a kind with a holder) is its contact's in each; `reject` (a learned one): a document of its contact gives it someone else, or other contacts hold it as theirs."
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ReasonOut",
+            "description": "Why, with its code."
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "reason"
+        ],
+        "title": "RecommendationOut",
+        "description": "What its confirmed documents recommend doing with an open identifier."
       },
       "RecoveryCodes": {
         "properties": {
@@ -32714,6 +35133,45 @@
         "title": "TagScope",
         "description": "What a tag describes, fixed when it is made: a document (`document`, as tags were\nbefore 0.3), contacts (`contact`: a contact group, \"insurance\"), document types\n(`document_type`: a type group, \"invoice\" over \"medical bill\") or what a document is about\nwith its contact (`topic`: \"work\", \"health insurance\"; a global catalogue, enabled at\ncontacts, at most one per document). Names are unique per scope."
       },
+      "TallyOut": {
+        "properties": {
+          "right": {
+            "type": "integer",
+            "title": "Right",
+            "description": "Said the contact's and confirmed, or foreign and rejected."
+          },
+          "learned_rejected": {
+            "type": "integer",
+            "title": "Learned Rejected",
+            "description": "Said the contact's (or: confirm), the person rejected: training learns it."
+          },
+          "refused_confirmed": {
+            "type": "integer",
+            "title": "Refused Confirmed",
+            "description": "Said foreign (or: reject), the person confirmed."
+          },
+          "unclear": {
+            "type": "integer",
+            "title": "Unclear",
+            "description": "Said neither (for the recommendation: none)."
+          },
+          "unread": {
+            "type": "integer",
+            "title": "Unread",
+            "description": "Read before its kind had a holder (`read-facts` sets it)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "right",
+          "learned_rejected",
+          "refused_confirmed",
+          "unclear",
+          "unread"
+        ],
+        "title": "TallyOut",
+        "description": "How a measure fared against the decisions at the contacts."
+      },
       "TemplatePreviewIn": {
         "properties": {
           "template": {
@@ -35010,6 +37468,10 @@
     },
     "skip_changed_meanwhile": {},
     "skip_not_available": {},
+    "bulk_too_many": {
+      "max": "number"
+    },
+    "bulk_ids_and_filter": {},
     "not_iban": {
       "value": "text"
     },
@@ -35032,6 +37494,15 @@
     "fact_not_asked": {
       "kind": "text",
       "role": "text"
+    },
+    "holder_not_listed": {
+      "value": "text"
+    },
+    "holder_kind_unknown": {
+      "holder": "text"
+    },
+    "holder_name_not_near": {
+      "name": "text"
     },
     "fact_criterion_empty": {},
     "rule_fact_of_person": {},
@@ -35112,6 +37583,30 @@
     "only_numbers_name_users": {},
     "identifier_taken": {
       "value": "text"
+    },
+    "identifier_entered": {
+      "value": "text"
+    },
+    "identifier_not_open": {
+      "value": "text"
+    },
+    "identifier_contact_unclear": {
+      "value": "text"
+    },
+    "recommend_confirm": {
+      "count": "number",
+      "name": "text"
+    },
+    "recommend_confirm_named": {
+      "count": "number",
+      "name": "text"
+    },
+    "recommend_reject_foreign": {
+      "count": "number",
+      "name": "text"
+    },
+    "recommend_reject_contacts": {
+      "count": "number"
     },
     "title_pattern_too_long": {
       "max": "number"

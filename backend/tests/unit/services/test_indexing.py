@@ -800,7 +800,7 @@ async def test_a_person_s_decision_about_a_fact_reaches_the_index(setup: Setup) 
 
 
 async def test_the_facts_read_outside_processing_reach_the_index(setup: Setup) -> None:
-    """`read-codes` keeps a GiroCode's IBAN as a fact: the index takes it in at once."""
+    """`read-facts` keeps a GiroCode's IBAN as a fact: the index takes it in at once."""
     owner = await setup.world.user()
     document = await setup.document(owner, "Stromrechnung mit Überweisungsträger")
     await setup.world.object_store.put(

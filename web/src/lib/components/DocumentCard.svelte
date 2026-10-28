@@ -17,6 +17,7 @@
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
+	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
 
 	// One document as a card of the grid, "sender on top" (web/DESIGN.md, "Document card"): its
 	// contact (logo or initials) in a head of one line, so that the first pages of a row stand
@@ -24,19 +25,25 @@
 	// 4:3 from the top, with only the page count on it (as glass); then the title, bold, type
 	// (with its icon) and date, and the shown topic, tags and groups of contact and type in one
 	// line, "+n" for the rest. For admins the space of a document in a space they are no member
-	// of; `children` adds a line; `fields`, the fields of a lens, stand below a line.
+	// of; `children` adds a line; `fields`, the fields of a lens, stand below a line. With
+	// `onchoose` (the selection mode of the list) the card is no link but the label of its box,
+	// which starts its head: a tap chooses it; a chosen card has `bg-panel` and a primary edge.
 	let {
 		document,
 		lookup,
 		href = `${BASE}/documents/${document.id}`,
 		children,
-		fields = []
+		fields = [],
+		chosen = false,
+		onchoose
 	}: {
 		document: components['schemas']['ListedDocument'];
 		lookup: Lookup | null;
 		href?: string;
 		children?: Snippet;
 		fields?: readonly CardLine[];
+		chosen?: boolean;
+		onchoose?: (chosen: boolean) => void;
 	} = $props();
 
 	// By the indexes of the lists: one card of many must not scan them on every render.
@@ -72,9 +79,16 @@
 <div class="relative h-full min-w-0">
 	<Card.Root
 		size="flush"
-		class="relative flex h-full min-w-0 flex-col overflow-hidden transition-colors has-[>a:hover]:border-primary"
+		class={cn(
+			'relative flex h-full min-w-0 flex-col overflow-hidden transition-colors has-[>a:hover]:border-primary has-[>label:hover]:border-primary',
+			chosen && 'border-primary bg-panel'
+		)}
 	>
-		<a {href} class="group flex min-w-0 flex-1 flex-col text-sm">
+		<svelte:element
+			this={onchoose ? 'label' : 'a'}
+			href={onchoose ? undefined : href}
+			class={cn('group flex min-w-0 flex-1 flex-col text-sm', onchoose && 'cursor-pointer')}
+		>
 			<div
 				class={cn(
 					'flex h-10 shrink-0 items-center gap-2 border-b px-3 text-muted-foreground',
@@ -82,6 +96,13 @@
 				)}
 				title={contact?.name}
 			>
+				{#if onchoose}
+					<ChoiceBox
+						checked={chosen}
+						aria-label={m.bulk_select_document({ title: document.title })}
+						onchange={(event) => onchoose(event.currentTarget.checked)}
+					/>
+				{/if}
 				{#if contact}
 					<ContactAvatar {contact} size="xs" />
 					<span class="min-w-0 truncate">{contact.name}</span>
@@ -101,7 +122,10 @@
 			</div>
 			<div class="flex min-w-0 flex-1 flex-col gap-1 p-3">
 				<span
-					class="line-clamp-2 leading-snug font-semibold break-words hyphens-auto group-hover:underline"
+					class={cn(
+						'line-clamp-2 leading-snug font-semibold break-words hyphens-auto',
+						!onchoose && 'group-hover:underline'
+					)}
 				>
 					{document.title}
 				</span>
@@ -142,7 +166,7 @@
 			{#if fields.length > 0}
 				<div class="mx-3 border-t py-2.5"><CardFields lines={fields} /></div>
 			{/if}
-		</a>
+		</svelte:element>
 	</Card.Root>
 	{#if document.in_inbox}
 		<InboxMark id={document.id} badge class="absolute top-2 right-2 z-10" />

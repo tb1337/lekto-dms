@@ -1,5 +1,5 @@
 {
-  "description": "Invoice whose letterhead is a logo: the sender's name is not in the text, only its identifiers (VAT ID, customer number, IBAN, mail domain). Cold, nothing knows them; trained, the identifiers learned from the corpus and the classifier name the mail-order company.",
+  "description": "Invoice whose letterhead is a logo: the sender's name is not in the text, only its identifiers (VAT ID, customer number, IBAN, mail domain). Cold, nothing knows them; trained, the identifiers learned from the corpus and the classifier name the mail-order company. It also names a payment service, a customer portal and its parent company's VAT ID: only its own VAT ID and the domain that carries its name are the sender's (holders of VAT IDs and e-mail domains).",
   "expected": {
     "lane": "green",
     "lanes": {
@@ -18,7 +18,15 @@
       },
       "Rechnungsnummer": "VB-552871",
       "Kundennummer": "88 77 66"
-    }
+    },
+    "holders": [
+      {"kind": "iban", "value": "DE08200411110003456789", "holder": "sender"},
+      {"kind": "vat_id", "value": "DE276543210", "holder": "sender"},
+      {"kind": "vat_id", "value": "DE136695976", "holder": "unclear"},
+      {"kind": "email_domain", "value": "bergmann-versand.de", "holder": "sender"},
+      {"kind": "email_domain", "value": "paypal.de", "holder": "unclear"},
+      {"kind": "email_domain", "value": "mein-versandportal.de", "holder": "unclear"}
+    ]
   },
   "fake": {
     "classification": {
@@ -54,6 +62,9 @@
         "evidence": "Kundennummer: 88 77 66",
         "label": "Kundennummer"
       }
-    }
+    },
+    "holders": [
+      {"kind": "iban", "value": "DE08200411110003456789", "holder": "sender", "name": null, "evidence": "Bitte überweisen Sie den Betrag innerhalb von 14 Tagen auf IBAN DE08 2004 1111 0003 4567 89."}
+    ]
   }
 }

@@ -130,6 +130,12 @@ class EventBusContract:
                 handed_over=False,
             ),
             DocumentUpdated(document_id=document, occurred_at=NOW, fields=("title", "fields")),
+            DocumentUpdated(
+                document_id=document,
+                occurred_at=NOW,
+                fields=("relations",),
+                related=DocumentId(new_id()),
+            ),
             DocumentDeleted(document_id=document, occurred_at=NOW),
             DocumentDeleted(
                 document_id=document,

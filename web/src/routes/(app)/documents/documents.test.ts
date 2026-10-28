@@ -1,7 +1,9 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
+import { POLL } from '#lib/bulk.svelte.ts';
+import { usageLabel } from '#lib/components/UsageCount.svelte';
 import { events } from '#lib/events.svelte.ts';
 import { formatDate } from '#lib/i18n.ts';
 import { forgetMeaningSearch } from '#lib/meaning-search.ts';
@@ -13,6 +15,7 @@ import {
 	rememberedFilters
 } from '#lib/listing.ts';
 import { NO_FILTERS } from '#lib/filters.ts';
+import { formatNumber } from '#lib/i18n.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
 import { calls, fakeApi, listedOf, OWNER } from '#lib/testing/documents.ts';
@@ -62,6 +65,9 @@ afterEach(() => {
 	localStorage.clear();
 	session.clear();
 	vi.unstubAllGlobals();
+	vi.useRealTimers();
+	// A menu open while the clock was faked leaves this behind.
+	window.document.body.style.pointerEvents = '';
 });
 
 describe('the archive page', () => {
@@ -120,6 +126,207 @@ describe('the archive page', () => {
 		const october = screen.getByRole('region', { name: headings[0] });
 		expect(within(october).getByText('Strom')).toBeTruthy();
 		expect(within(october).queryByText('Lohn')).toBeNull();
+	});
+
+	it('shows one page of 50 at a time, the page in the link', async () => {
+		state.url = new URL('http://lekto/ui/documents?sort=title&page=2');
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({
+				items: [listedOf({ id: 'd51', title: 'Strom', document_date: '2026-10-01' })],
+				next_cursor: null
+			}),
+			'GET /api/v1/documents/count': () => ({ total: 120 })
+		});
+		vi.stubGlobal('fetch', api);
+		render(Page);
+		await screen.findByText('Strom');
+		const listed = calls(api).filter((call) => call.startsWith('GET /api/v1/documents?'));
+		expect(listed.at(-1)).toContain('offset=50');
+		expect(listed.at(-1)).toContain('limit=50');
+		const pages = screen.getByRole('navigation', { name: m.pagination_label() });
+		await userEvent.click(
+			within(pages).getByRole('button', { name: m.pagination_page({ page: '3' }) })
+		);
+		expect(goto).toHaveBeenLastCalledWith('?sort=title&page=3', { replaceState: false });
+	});
+
+	it('loads the page shown again after a reconnect of the event stream, not the first', async () => {
+		state.url = new URL('http://lekto/ui/documents?sort=title&page=2');
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({
+				items: [listedOf({ id: 'd51', title: 'Strom', document_date: '2026-10-01' })],
+				next_cursor: null
+			}),
+			'GET /api/v1/documents/count': () => ({ total: 120 })
+		});
+		vi.stubGlobal('fetch', api);
+		events.useFactory((url) => new FakeSource(url) as unknown as EventSource);
+		events.start(() => {});
+		FakeSource.last.onopen?.();
+		render(Page);
+		await screen.findByText('Strom');
+		const listed = () => calls(api).filter((call) => call.startsWith('GET /api/v1/documents?'));
+		expect(listed()).toHaveLength(1);
+		// The stream opens again after a break: the data shown may be stale.
+		FakeSource.last.onopen?.();
+		await vi.waitFor(() => expect(listed()).toHaveLength(2));
+		expect(listed().at(-1)).toContain('offset=50');
+		expect(goto).not.toHaveBeenCalled();
+		events.stop();
+	});
+
+	// Opens two menus and a dialog and follows a poll: the longest test of the page, longer
+	// while every worker runs one beside it.
+	it('chooses in the selection mode: the page, then every hit, and confirms them all', async () => {
+		// The clock is faked so the poll that follows the action comes at once.
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+		const sent: unknown[] = [];
+		const operation = {
+			id: 'op-1',
+			kind: 'confirm',
+			status: 'queued',
+			total: 120,
+			done: 0,
+			changed: 0,
+			unchanged: 0,
+			skipped: [],
+			error: null,
+			created_at: '2026-10-29T12:00:00Z',
+			finished_at: null
+		};
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({
+				items: [listedOf({ id: 'd1', title: 'Strom' }), listedOf({ id: 'd2', title: 'Gas' })],
+				next_cursor: null
+			}),
+			'GET /api/v1/documents/count': () => ({ total: 120 }),
+			'POST /api/v1/documents/bulk': async (request, url) => {
+				sent.push({ query: url.search, body: await request.json() });
+				return operation;
+			},
+			'GET /api/v1/documents/bulk/op-1': () => ({
+				...operation,
+				status: 'done',
+				done: 120,
+				changed: 118,
+				unchanged: 2
+			})
+		});
+		vi.stubGlobal('fetch', api);
+		render(Page);
+		await screen.findByText('Strom');
+		// Outside the mode: no boxes, no bar, the cards are links.
+		expect(
+			screen.queryByRole('checkbox', { name: m.bulk_select_document({ title: 'Gas' }) })
+		).toBeNull();
+		const mode = screen.getAllByRole('button', { name: m.bulk_mode() })[0];
+		await user.click(mode);
+		expect(mode.getAttribute('aria-pressed')).toBe('true');
+		const empty = screen.getByRole('region', { name: m.selection_selected({ count: '0' }) });
+		expect(empty.textContent).toContain(m.bulk_tap_hint());
+		expect(
+			within(empty).getByRole('button', { name: m.field_tags() }).hasAttribute('disabled')
+		).toBe(true);
+
+		const choose = async (item: string) => {
+			const bar = screen.getByRole('region', { name: /ausgewählt|selected/ });
+			const chooser = within(bar).getByRole('button', { name: m.bulk_mode() });
+			await fireEvent.pointerDown(chooser, { button: 0, pointerType: 'mouse' });
+			await user.click(await screen.findByRole('menuitem', { name: item }));
+		};
+		await choose(m.bulk_select_page());
+		screen.getByRole('region', { name: m.selection_selected({ count: '2' }) });
+		const gas = screen.getByRole('checkbox', { name: m.bulk_select_document({ title: 'Gas' }) });
+		expect((gas as HTMLInputElement).checked).toBe(true);
+		await choose(m.bulk_select_all({ count: formatNumber(120) }));
+		const all = screen.getByRole('region', {
+			name: m.selection_selected({ count: formatNumber(120) })
+		});
+		expect(all.textContent).toContain(m.bulk_all_hits());
+
+		await fireEvent.pointerDown(within(all).getByRole('button', { name: m.bulk_more() }), {
+			button: 0,
+			pointerType: 'mouse'
+		});
+		await user.click(await screen.findByRole('menuitem', { name: m.bulk_confirm() }));
+		await vi.waitFor(() => expect(sent).toHaveLength(1));
+		expect(sent[0]).toEqual({
+			query: '',
+			body: { document_ids: null, action: { kind: 'confirm' } }
+		});
+		// The bar follows the action until it ends; then the choice is let go.
+		await vi.advanceTimersByTimeAsync(POLL);
+		await vi.waitFor(() =>
+			expect(
+				screen.queryByRole('region', { name: m.selection_selected({ count: formatNumber(120) }) })
+			).toBeNull()
+		);
+		// The mode stays: nothing chosen any more.
+		screen.getByRole('region', { name: m.selection_selected({ count: '0' }) });
+		await choose(m.bulk_mode_end());
+		expect(screen.queryByRole('region', { name: m.selection_selected({ count: '0' }) })).toBeNull();
+		expect(
+			screen.queryByRole('checkbox', { name: m.bulk_select_document({ title: 'Gas' }) })
+		).toBeNull();
+	}, 15_000);
+
+	it('chooses a document by a tap on it, and deletes after asking with the number', async () => {
+		const sent: unknown[] = [];
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({
+				items: [listedOf({ id: 'd1', title: 'Strom' }), listedOf({ id: 'd2', title: 'Gas' })],
+				next_cursor: null
+			}),
+			'GET /api/v1/documents/count': () => ({ total: 2 }),
+			'POST /api/v1/documents/bulk': async (request) => {
+				sent.push(await request.json());
+				return { id: 'op-2', status: 'queued', total: 1, done: 0, skipped: [] };
+			}
+		});
+		vi.stubGlobal('fetch', api);
+		render(Page);
+		await screen.findByText('Gas');
+		await userEvent.click(screen.getAllByRole('button', { name: m.bulk_mode() })[0]);
+		// In the mode the card is the label of its box: a tap on its title chooses it.
+		await userEvent.click(screen.getByText('Gas'));
+		const bar = screen.getByRole('region', { name: m.selection_selected({ count: '1' }) });
+		await fireEvent.pointerDown(within(bar).getByRole('button', { name: m.bulk_more() }), {
+			button: 0,
+			pointerType: 'mouse'
+		});
+		await userEvent.click(await screen.findByRole('menuitem', { name: m.bulk_delete() }));
+		const dialog = await screen.findByRole('alertdialog', {
+			name: m.bulk_delete_title({ documents: usageLabel(1) })
+		});
+		await userEvent.click(within(dialog).getByRole('button', { name: m.delete_title() }));
+		await vi.waitFor(() =>
+			expect(sent).toEqual([{ document_ids: ['d2'], action: { kind: 'delete' } }])
+		);
+	});
+
+	it('offers 25, 50 or 100 to a page, remembered for the documents alone', async () => {
+		localStorage.setItem('lekto.page-size.jobs', '100');
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({
+				items: [listedOf({ id: 'd1', title: 'Strom', document_date: '2026-10-01' })],
+				next_cursor: null
+			}),
+			'GET /api/v1/documents/count': () => ({ total: 120 })
+		});
+		vi.stubGlobal('fetch', api);
+		render(Page);
+		await screen.findByText('Strom');
+		const listed = () => calls(api).filter((call) => call.startsWith('GET /api/v1/documents?'));
+		expect(listed().at(-1)).toContain('limit=50');
+		const size = screen.getByRole('button', { name: m.pagination_size({ size: '50' }) });
+		await fireEvent.pointerDown(size, { button: 0, pointerType: 'mouse' });
+		await userEvent.click(
+			await screen.findByRole('menuitemradio', { name: m.pagination_size({ size: '25' }) })
+		);
+		await vi.waitFor(() => expect(listed().at(-1)).toContain('limit=25'));
+		expect(localStorage.getItem('lekto.page-size.documents')).toBe('25');
+		expect(localStorage.getItem('lekto.page-size.jobs')).toBe('100');
 	});
 
 	it('stands the documents without headings while sorted by title', async () => {
@@ -233,6 +440,52 @@ describe('the archive page', () => {
 		expect(open.every((link) => link.getAttribute('aria-current') === 'page')).toBe(true);
 		const all = screen.getAllByRole('link', { name: m.lens_all() });
 		expect(all[0].getAttribute('href')).toBe('/ui/documents');
+	});
+
+	it('shows how many documents each lens and all documents show', async () => {
+		state.url = new URL('http://lekto/ui/documents');
+		const lens = (id: string, name: string, query: string | null = null) => ({
+			id,
+			name,
+			position: 0,
+			filter: id === 'l1' ? { tag_ids: ['t1'] } : {},
+			query,
+			sort: null,
+			sort_field_id: null,
+			grouping: 'none',
+			layout: 'grid',
+			card_field_ids: [],
+			due_field_id: null,
+			created_at: '2026-10-20T10:00:00Z',
+			updated_at: '2026-10-20T10:00:00Z'
+		});
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({ items: [], next_cursor: null }),
+			'GET /api/v1/lenses': () => [lens('l1', 'Zu bezahlen'), lens('l2', 'Strom', 'strom')],
+			'GET /api/v1/documents/count': (_request, url) => ({
+				total: url.searchParams.has('tag_id') ? 7 : 1234
+			}),
+			'GET /api/v1/documents/search': () => ({
+				items: [],
+				estimated_total: 12,
+				next_offset: null,
+				semantic: false
+			})
+		});
+		vi.stubGlobal('fetch', api);
+		render(Page);
+		// Beside the list (the phone's chips show no numbers).
+		const texts = (name: RegExp) =>
+			screen.getAllByRole('link', { name }).map((link) => link.textContent ?? '');
+		await vi.waitFor(() =>
+			expect(texts(/Zu bezahlen/).some((text) => text.includes('7'))).toBe(true)
+		);
+		expect(texts(/Strom/).some((text) => text.includes('12'))).toBe(true);
+		const all = new RegExp(m.lens_all());
+		expect(texts(all).some((text) => text.includes(formatNumber(1234)))).toBe(true);
+		// A lens with words counts by the words alone, without the embedding.
+		const searched = calls(api).find((call) => call.startsWith('GET /api/v1/documents/search?'));
+		expect(searched).toContain('semantic_ratio=0');
 	});
 
 	it('groups a lens by its deadline and shows its fields on the cards', async () => {

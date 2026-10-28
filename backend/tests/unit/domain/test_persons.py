@@ -307,3 +307,12 @@ def test_a_person_in_public_form_is_found_by_their_display_name_alone() -> None:
     # Her IBAN shows as unknown: that it is hers is private.
     iban = facts_in("IBAN DE89 3704 0044 0532 0130 00", [], persons=[anna.public()])
     assert [item.key for item in iban.identifiers] == [(IdentifierKind.IBAN, IBAN)]
+
+
+def test_a_profile_declines_only_what_is_not_its_own() -> None:
+    """An IBAN declined once and entered later is the person's: no longer declined."""
+    iban = Identifier(IdentifierKind.IBAN, "DE89370400440532013000")
+    other = Identifier(IdentifierKind.IBAN, "DE02120300000000202051")
+    profile = Profile(id=UserId(new_id()), identifiers=[iban], declined=[iban, other, other])
+    assert profile.declined == [other]
+    assert other.key not in {item.key for item in profile.evidence()}

@@ -107,3 +107,20 @@ async def test_the_signals_hit_rates(api: Api) -> None:
 
 async def test_signed_out_nobody_sees_them(api: Api) -> None:
     assert (await api.client.get(AUTOMATION)).status_code == 401
+
+
+async def test_admins_see_the_holders_against_their_decisions(api: Api) -> None:
+    user, admin = await api.user(), await api.admin()
+    refused = await api.client.get(f"{PREFIX}/automation/holders", headers=auth(user))
+    assert refused.status_code == 403
+    response = await api.client.get(f"{PREFIX}/automation/holders", headers=auth(admin))
+    assert response.status_code == 200, response.text
+    body = response.json()
+    zero = {"right": 0, "learned_rejected": 0, "refused_confirmed": 0, "unclear": 0, "unread": 0}
+    assert [item["kind"] for item in body["kinds"]] == [
+        "creditor_id",
+        "email_domain",
+        "iban",
+        "vat_id",
+    ]
+    assert body["recommendation"] == zero  # nothing decided yet

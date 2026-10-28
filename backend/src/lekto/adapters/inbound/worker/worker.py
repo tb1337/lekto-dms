@@ -40,6 +40,7 @@ from lekto.core.ports.clock import Clock
 from lekto.core.ports.event_bus import EventBus
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from lekto.core.ports.wakeup import Channel, Wakeup
+from lekto.core.services.bulk import BulkService
 from lekto.core.services.classifier import ClassifierService
 from lekto.core.services.indexing import IndexingService
 from lekto.core.services.logos import LogoService
@@ -90,6 +91,7 @@ class Worker:
         shutdown_timeout: timedelta,
         indexing: IndexingService | None = None,
         rules: RuleApplicationService | None = None,
+        bulk: BulkService | None = None,
         webhooks: WebhookDeliveryService | None = None,
         tasks: TaskService | None = None,
         webhook_concurrency: int,
@@ -102,6 +104,7 @@ class Worker:
         self._logos = logos
         self._classifier = classifier
         self._rules = rules
+        self._bulk = bulk
         self._maintenance = maintenance
         self._indexing = indexing
         self._webhooks = webhooks
@@ -237,6 +240,7 @@ class Worker:
             self._pipeline,
             self._indexing,
             self._rules,
+            self._bulk,
             self._master_data,
             self._logos,
             self._classifier,
@@ -256,6 +260,7 @@ class Worker:
             or await self._pipeline.run_next_job()
             or (self._indexing is not None and await self._indexing.run_next_job())
             or (self._rules is not None and await self._rules.run_next_job())
+            or (self._bulk is not None and await self._bulk.run_next_job())
             or (self._master_data is not None and await self._master_data.run_next_job())
             or (self._logos is not None and await self._logos.run_next_job())
             # Training waits for a quiet moment: during a bulk ingest it would be outdated soon.

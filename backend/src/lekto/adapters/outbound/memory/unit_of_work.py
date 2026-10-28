@@ -19,6 +19,7 @@ from uuid import UUID
 from lekto.adapters.outbound.memory.classifier_models import MemoryClassifierModelRepository
 from lekto.adapters.outbound.memory.database import (
     API_TOKENS,
+    BULK_OPERATIONS,
     CLASSIFIER_MODELS,
     CONTACTS,
     CREDENTIALS,
@@ -59,6 +60,7 @@ from lekto.adapters.outbound.memory.ordering import Rank, rank
 from lekto.adapters.outbound.memory.processing_facts import MemoryProcessingFacts, VerdictKey
 from lekto.adapters.outbound.memory.rows import _REMOVED, MemoryRepository, _copy
 from lekto.adapters.outbound.memory.rules import (
+    MemoryBulkOperationRepository,
     MemoryRuleApplicationRepository,
     MemoryRuleRepository,
 )
@@ -96,6 +98,7 @@ from lekto.core.domain.inbox import Confirmation
 from lekto.core.domain.jobs import FinishedJob, Job, JobCount, JobOverview, JobState, JobStatus
 from lekto.core.domain.json_value import JsonObject, JsonValue
 from lekto.core.domain.master_data import Contact, DocumentType, MasterData, Tag, TagScope
+from lekto.core.domain.open_identifiers import Sighting
 from lekto.core.domain.permissions import Reach
 from lekto.core.domain.pipeline import NodeRun
 from lekto.core.domain.profiles import Profile
@@ -155,6 +158,7 @@ class MemoryUnitOfWork:
         self.inbox = MemoryInboxRepository(self)
         self.rules = MemoryRuleRepository(self, RULES)
         self.rule_applications = MemoryRuleApplicationRepository(self, RULE_APPLICATIONS)
+        self.bulk_operations = MemoryBulkOperationRepository(self, BULK_OPERATIONS)
         self.classifier_models = MemoryClassifierModelRepository(self, CLASSIFIER_MODELS)
         self.webhooks = MemoryWebhookRepository(self, WEBHOOKS)
         self.tasks = MemoryTaskRepository(self, TASKS)
@@ -474,9 +478,12 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
         order: DocumentOrder = NEWEST_FIRST,
         after: DocumentPosition | None = None,
         limit: int,
+        offset: int = 0,
     ) -> list[Document]:
         visible = await self.list_visible_to(user)
-        return _query(visible, filter, self._groups(), order=order, after=after, limit=limit)
+        return _query(
+            visible, filter, self._groups(), order=order, after=after, limit=limit, offset=offset
+        )
 
     async def query(
         self,
@@ -485,9 +492,12 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
         order: DocumentOrder = NEWEST_FIRST,
         after: DocumentPosition | None = None,
         limit: int,
+        offset: int = 0,
     ) -> list[Document]:
         every = [_copy(row) for row in self._all()]
-        return _query(every, filter, self._groups(), order=order, after=after, limit=limit)
+        return _query(
+            every, filter, self._groups(), order=order, after=after, limit=limit, offset=offset
+        )
 
     async def facet_rows(self, filter: DocumentFilter, user: UserId | None) -> list[FacetRow]:
         documents = (
@@ -507,6 +517,9 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
             for document in documents
             if filter.matches(groups.view(document))
         ]
+
+    async def count(self, filter: DocumentFilter, user: UserId | None) -> int:
+        return len(await self.facet_rows(filter, user))
 
     def _groups(self) -> "_Groups":
         return _Groups(
@@ -746,6 +759,22 @@ class MemoryDocumentFactRepository:
             for key in wanted & shown:
                 found.setdefault(key, set()).add(document.contact_id)
         return {key: frozenset(contacts) for key, contacts in found.items()}
+
+    async def sightings(self, kinds: Collection[IdentifierKind]) -> list[Sighting]:
+        self._uow._check_open()
+        wanted = set(kinds)
+        seen = []
+        for document in self._uow._rows(DOCUMENTS):
+            if document.confirmed_at is None or document.contact_id is None:
+                continue
+            row = self._uow._row(DOCUMENT_FACTS, document.id)
+            for fact in () if row is _REMOVED else row.facts:
+                if fact.kind in wanted and fact.state is not FactState.REJECTED:
+                    dated = document.document_date or document.created_at.date()
+                    space = self._uow._row(SPACES, document.space_id)
+                    owner = None if space is _REMOVED or space is None else space.personal_of
+                    seen.append(Sighting(document.id, document.contact_id, dated, fact, owner))
+        return seen
 
 
 class MemoryOutbox:
@@ -1035,6 +1064,7 @@ def _query(
     order: DocumentOrder,
     after: DocumentPosition | None,
     limit: int,
+    offset: int = 0,
 ) -> list[Document]:
     matching = [document for document in documents if filter.matches(groups.view(document))]
     ranked = sorted(matching, key=lambda document: _rank(document, order))
@@ -1042,7 +1072,7 @@ def _query(
         # The documents after `after`: its rank is the one it had (the cursor's value).
         mark = _rank_of(after, order)
         ranked = [document for document in ranked if _rank(document, order) > mark]
-    return ranked[:limit]
+    return ranked[offset : offset + limit]
 
 
 def _rank(document: Document, order: DocumentOrder) -> Rank:

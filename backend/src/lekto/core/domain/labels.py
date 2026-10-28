@@ -24,7 +24,7 @@ from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.evidence import DocumentText
 from lekto.core.domain.json_value import JsonObject, JsonValue, as_int, as_list, as_number, as_text
 from lekto.core.domain.locations import Box, Location
-from lekto.core.domain.reading import Placed, value_on_pages, value_words, words_at
+from lekto.core.domain.reading import Placed, value_runs, value_words, words_at
 
 LABEL_LINES = 3
 """How many lines below its label a value may stand in the label's column (Tobi, 19.10.2026)."""
@@ -264,15 +264,16 @@ def value_places[W: Placed](
     shows: Callable[[DocumentText], bool],
 ) -> list[tuple[int, tuple[W, ...]]]:
     """Where a value's words stand: in each place of its quote, the words there that show it
-    (`value_words`); where none of them does (or the quote has no place), where the value stands
-    once on the pages (`value_on_pages`)."""
+    (`value_words`); where none of them does (or the quote has no place), every place the value
+    stands on the pages (`value_runs`; Tobi, 28.10.2026, #55 19.3: an amount in a table and
+    again in a sentence is by its label where either place is)."""
     places = []
     for location in locations:
         found = value_words(words_at(location, pages.get(location.page, ())), shows)
         if found:
             places.append((location.page, found))
-    if not places and (alone := value_on_pages(pages, shows)) is not None:
-        places.append(alone)
+    if not places:
+        places.extend(value_runs(pages, shows))
     return places
 
 

@@ -95,8 +95,11 @@ async def test_names_identifiers_and_codes_with_their_places(facts_api: Api) -> 
     by_value = {item["value"]: item for item in facts["identifiers"]}
     iban = by_value["DE89370400440532013000"]
     assert (iban["contact_id"], iban["in_text"], iban["in_code"]) == (contact_id, True, True)
+    # The GiroCode's payee holds it; other kinds have no holder.
+    assert iban["holder"] == {"kind": "sender", "name": "Lekto Test GmbH", "source": "rule"}
     customer = by_value["20047718"]
     assert customer["contact_id"] is None
+    assert customer["holder"] is None
     assert [TEXT[span["start"] : span["end"]] for span in customer["spans"]] == ["2004-7718"]
     # Where it stands on the page, a box per line: the word on the grid of the parsed text.
     assert customer["spans"][0]["locations"] == [

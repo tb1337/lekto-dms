@@ -123,10 +123,10 @@
 			"problemMatcher": []
 		},
 		{
-			"label": "Lekto: Read codes",
-			"detail": "Queue reading the bar and QR codes of documents from before code reading (read-codes)",
+			"label": "Lekto: Read facts",
+			"detail": "Queue reading the facts of every document again: codes, identifiers, holders (read-facts)",
 			"type": "shell",
-			"command": "cd backend && uv run lekto --env-file ../.devcontainer/dev.local.env read-codes",
+			"command": "cd backend && uv run lekto --env-file ../.devcontainer/dev.local.env read-facts",
 			"problemMatcher": []
 		},
 		{

@@ -418,7 +418,17 @@ class DocumentService:
         pages = await load_layout(store, id)
 
         def found() -> tuple[Facts, tuple[DocumentNumber, ...], tuple[DocumentNumber, ...]]:
-            facts = facts_in(text, contacts, codes or (), persons=persons, places=True)
+            # All of them, also those rejected at a contact: a fact the list leaves out would
+            # show as one the sources do not find.
+            facts = facts_in(
+                text,
+                contacts,
+                codes or (),
+                persons=persons,
+                places=True,
+                most=None,
+                rejected=True,
+            )
             numbers = tuple(
                 DocumentNumber(fact, identifier_spans(text, fact.kind, fact.value))
                 for fact in stored.values()
@@ -536,11 +546,13 @@ class DocumentService:
         *,
         order: DocumentOrder = NEWEST_FIRST,
         after: DocumentId | None = None,
+        offset: int = 0,
         limit: int = PAGE_SIZE,
         all_users: bool = False,
     ) -> list[ListedDocument]:
         """Documents within the caller's reach matching `filter`, in `order` (newest first),
-        after the page ending at the document `after`; with `all_users` (admins only), every
+        after the page ending at the document `after` or from the `offset`-th on (pages by
+        number); with `all_users` (admins only), every
         document. Each is checked against the permission rules once more, and says whether it
         stands open in the caller's inbox (with `all_users`, in every user's). ValidationError
         if `after` is gone or out of reach while the list sorts by another key than the order of
@@ -554,11 +566,11 @@ class DocumentService:
             filter = await expanded(uow, filter)
             if all_users:
                 documents = await uow.documents.query(
-                    filter, order=order, after=position, limit=limit
+                    filter, order=order, after=position, limit=limit, offset=offset
                 )
             else:
                 documents = await uow.documents.query_visible(
-                    actor, filter, order=order, after=position, limit=limit
+                    actor, filter, order=order, after=position, limit=limit, offset=offset
                 )
             spaces: dict[SpaceId, Space] = {}
             readable = []
@@ -651,6 +663,16 @@ class DocumentService:
             if by is CountBy.TAG:
                 return await tag_counts(uow, user)
             return await uow.documents.count_by(by, user)
+
+    async def count(self, actor: UserId, filter: DocumentFilter, *, all_users: bool = False) -> int:
+        """How many documents within the caller's reach (with `all_users`, admins only: every
+        document) match `filter`, counted as `facets` counts its total (a lens in the sidebar)."""
+        async with self._uow() as uow:
+            check_fact_filter(
+                await load_lister(uow, actor, all_users, Action.COUNT_ALL_DOCUMENTS), filter
+            )
+            tree = await tag_tree(uow)
+            return await uow.documents.count(expand(filter, tree), None if all_users else actor)
 
     async def facets(
         self, actor: UserId, filter: DocumentFilter, *, all_users: bool = False

@@ -22,12 +22,14 @@ from lekto.core.domain.reading import (
     content_words,
     gap,
     is_noise,
+    read_from_dots,
     reading_from_json,
     reading_to_json,
     readings_from_json,
     readings_to_json,
     surroundings,
     value_on_pages,
+    value_runs,
     value_words,
     words_at,
 )
@@ -118,6 +120,41 @@ def test_dots_and_rules_read_as_letters_are_noise_by_their_low_box() -> None:
     assert is_noise(ReadWord("EEE", 30, Box(0.3, 0.5, 0.2, 0.004), 0.012))
     assert not is_noise(ReadWord("nur", 96, Box(0.3, 0.5, 0.04, 0.007), 0.012))
     assert not is_noise(ReadWord("see", 47, Box(0.3, 0.5, 0.04, 0.002)))  # no line size
+
+
+@pytest.mark.parametrize(
+    ("text", "confidence", "leader"),
+    [
+        ("11111", 0, True),  # a leader read as ones
+        ("02.00.0000.", 0, True),  # as seen on a speckled scan
+        ("1111.1111", 41, True),
+        ("0000000", 30, True),
+        ("11111", 93, False),  # read sure: a value
+        ("1111", 0, False),  # too short
+        ("0000", 35, False),  # a masked number
+        ("01.01.2020", 20, False),  # an unsure date: three digits
+        ("1.000,00", 20, False),  # an unsure amount: three zeros in a row
+        ("100.000,00", 20, False),
+        ("12345", 10, False),  # a misread number
+        ("Il1111", 10, False),  # letters: not four in five dot-like
+    ],
+)
+def test_a_dot_leader_read_as_digits_is_noise(text: str, confidence: int, leader: bool) -> None:
+    """Tesseract reads the dots of a speckled leader as ones and zeros, unsure."""
+    read = word(text, confidence)
+    assert read_from_dots(read) is leader
+    assert is_noise(read) is leader
+
+
+def test_a_label_beside_a_leader_read_as_digits_is_neither_content_nor_unsure() -> None:
+    """The specks make the box of the dots high: the digits alone tell the leader."""
+    words = [
+        placed("Krankenkasse", 0.1, confidence=0),
+        placed("02.00.0000.", 0.205, confidence=0),
+        placed("Gesundkasse", 0.31),
+    ]
+    assert beside_leaders(words) == {0, 2}
+    assert content_words(words) == []
 
 
 def test_small_print_is_noise_against_the_page_s_typical_line() -> None:
@@ -278,6 +315,9 @@ def test_a_value_without_a_place_is_found_where_it_stands_once() -> None:
 def test_a_value_standing_twice_or_nowhere_is_not_found() -> None:
     twice = {1: line("24.06.2022", "Lohnsteuer"), 2: line("bis", "24.06.2022")}
     assert value_on_pages(twice, shows_date) is None
+    # Every place it stands, for the label check.
+    assert value_runs(twice, shows_date) == [(1, (twice[1][0],)), (2, (twice[2][1],))]
+    assert value_runs({1: line("Datum", "Juni", "2022")}, shows_date) == []
     assert value_on_pages({1: line("Datum", "Juni", "2022")}, shows_date) is None
     assert value_on_pages({}, shows_date) is None
 

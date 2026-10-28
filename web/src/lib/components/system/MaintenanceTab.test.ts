@@ -29,7 +29,7 @@ function routes(logoFetch = true) {
 			meaning_search: false
 		}),
 		'POST /api/v1/pipeline/relate': () => ({ queued: 1284 }),
-		'POST /api/v1/pipeline/read-codes': () => ({ queued: 0 }),
+		'POST /api/v1/pipeline/read-facts': () => ({ queued: 0 }),
 		'POST /api/v1/pipeline/render-pages': () => ({ queued: 1 })
 	});
 }
@@ -78,10 +78,10 @@ describe('the maintenance tab', () => {
 		const success = vi.spyOn(toast, 'success');
 		vi.stubGlobal('fetch', routes());
 		render(MaintenanceTab);
-		const codes = (await screen.findByText(m.maintenance_codes_name())).closest(
+		const facts = (await screen.findByText(m.maintenance_facts_name())).closest(
 			'li'
 		) as HTMLElement;
-		await userEvent.click(within(codes).getByRole('button', { name: m.maintenance_run() }));
+		await userEvent.click(within(facts).getByRole('button', { name: m.maintenance_run() }));
 		const dialog = await screen.findByRole('alertdialog');
 		await userEvent.click(within(dialog).getByRole('button', { name: m.maintenance_run() }));
 		await waitFor(() => expect(success).toHaveBeenCalledWith(m.maintenance_queued_none()));

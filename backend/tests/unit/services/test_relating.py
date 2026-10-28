@@ -7,9 +7,11 @@ import pytest
 
 from lekto.core.domain.document_facts import DocumentFact, FactOrigin, FactRole
 from lekto.core.domain.documents import Document, DocumentChanges
+from lekto.core.domain.events import DocumentUpdated
 from lekto.core.domain.fields import FieldDefinition, FieldType
+from lekto.core.domain.first_runs import RELATIONS
 from lekto.core.domain.identifiers import IdentifierKind
-from lekto.core.domain.ids import ContactId, DocumentTypeId
+from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId
 from lekto.core.domain.master_data import Contact, DocumentType
 from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Node
@@ -19,7 +21,7 @@ from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import User
 from lekto.core.services import relating
 from lekto.core.services.classification.signals import FactsSignal
-from lekto.core.services.relating import RELATE, relate
+from lekto.core.services.relating import RELATE, queue_relate, relate
 from lekto.core.services.relations import RELATIONS_LOCK, RelationService
 from tests import builders
 from tests.unit.services.rules_support import Classifies, definition, rule_world
@@ -285,9 +287,54 @@ async def test_the_node_relates_a_reminder_on_arrival(world: World) -> None:
             "evidence": {"kind": "fact", "fact_kind": "invoice_number", "value": "VB-889911"},
         }
     ]
+    # The node tells both documents.
+    assert told(world) == {(reminder.id, invoice.id), (invoice.id, reminder.id)}
     pipeline = r.pipeline(facts=facts)
     assert await pipeline.request_relations() == 2
     assert await world.drain(pipeline) == 2
+
+
+async def test_the_run_over_the_stock_tells_nobody(world: World) -> None:
+    """`lekto relate` finds relations quietly; the job after a change tells (#145 PR 14)."""
+    r = await rule_world(world)
+    owner = await world.user()
+    facts = FactsSignal(world.uow, world.object_store)
+    invoice = await r.arrive(owner, text="Rechnungsnummer: VB-889911", facts=facts)
+    reminder = await r.arrive(owner, text="Ihre Rechnung Nr. VB-889911 ist offen.", facts=facts)
+    pipeline = r.pipeline(facts=facts)
+
+    async def forget() -> int:
+        async with world.uow() as uow:
+            await uow.document_relations.remove(reminder.id, invoice.id)
+            await uow.commit()
+        return len(world.events())
+
+    before = await forget()
+    assert await pipeline.request_relations() == 2
+    await world.drain(pipeline)
+    assert len(await stored_relations(world, reminder)) == 1
+    assert told(world, since=before) == set()
+
+    before = await forget()
+    async with world.uow() as uow:
+        await queue_relate(uow, reminder.id, NOW)
+        await uow.commit()
+    await world.drain(pipeline)
+    assert told(world, since=before) == {(reminder.id, invoice.id), (invoice.id, reminder.id)}
+
+
+def told(world: World, since: int = 0) -> set[tuple[DocumentId, DocumentId | None]]:
+    """The documents told of a relation since the `since`-th event, each with the other."""
+    return {
+        (event.document_id, event.related)
+        for event in world.events()[since:]
+        if isinstance(event, DocumentUpdated) and event.fields == (RELATIONS,)
+    }
+
+
+async def stored_relations(world: World, document: Document) -> list[Relation]:
+    async with world.uow() as uow:
+        return list(await uow.document_relations.of_document(document.id))
 
 
 async def test_the_rules_of_the_run_see_the_relation(world: World) -> None:

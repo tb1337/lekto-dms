@@ -87,6 +87,7 @@ from lekto.core.ports.wakeup import Wakeup
 from lekto.core.ports.webhook_sender import WebhookSender
 from lekto.core.services.auth import AuthService, SessionPolicy
 from lekto.core.services.automation import AutomationService
+from lekto.core.services.bulk import BulkService
 from lekto.core.services.classification.nodes import (
     ClassificationPolicy,
     FieldsNode,
@@ -112,6 +113,7 @@ from lekto.core.services.maintenance import MaintenanceService
 from lekto.core.services.master_data import MasterDataService
 from lekto.core.services.nodes import OcrNode, PagesNode, ParseNode
 from lekto.core.services.oidc import OidcService
+from lekto.core.services.open_identifiers import OpenIdentifierService
 from lekto.core.services.pipeline import NodeExecutor, PipelineService
 from lekto.core.services.profiles import ProfileService
 from lekto.core.services.relating import RelateNode
@@ -501,9 +503,11 @@ class Services:
     profiles: ProfileService
     spaces: SpaceService
     master_data: MasterDataService
+    open_identifiers: OpenIdentifierService
     logos: LogoService
     rules: RuleService
     rule_applications: RuleApplicationService
+    bulk: BulkService
     webhooks: WebhookService
     webhook_delivery: WebhookDeliveryService
     tasks: TaskService
@@ -748,6 +752,46 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         max_text=settings.rules_max_text,
         pipeline_version=__version__,
     )
+    master_data = MasterDataService(
+        uow,
+        clock,
+        container.templates,
+        index_renames=index is not None,
+        store=store,
+        fetch_logos=container.logo_fetcher is not None,
+    )
+    documents = DocumentService(
+        uow,
+        clock,
+        store,
+        metadata=container.metadata,
+        rules=change_rules,
+    )
+    pipeline = PipelineService(
+        uow,
+        clock,
+        store,
+        executors,
+        pipeline_version=__version__,
+        suggest_contact=settings.contact_suggest_threshold,
+        retry=retry_policy_of(settings),
+        # Longer than any node may take, so a running node never loses its claim.
+        # The model's signal asks the model up to four times (proposal and facts, each once
+        # more after an invalid answer).
+        # The OCR node that reads a document with the vision model extends its claim.
+        lease=node_lease(settings),
+        vision=container.ocr.vision,
+        vision_lease=vision_lease(settings),
+        poor_reading=settings.poor_reading_threshold,
+        facts=facts,
+    )
+    search = (
+        None
+        if index is None
+        else SearchService(
+            uow, index, search_policy_of(settings), embeddings=embeddings, clock=clock
+        )
+    )
     return Services(
         auth=auth,
         oidc=(
@@ -766,14 +810,8 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         users=UserService(uow, clock, container.password_hasher, rules=change_rules),
         profiles=ProfileService(uow, clock),
         spaces=SpaceService(uow, clock),
-        master_data=MasterDataService(
-            uow,
-            clock,
-            container.templates,
-            index_renames=index is not None,
-            store=store,
-            fetch_logos=container.logo_fetcher is not None,
-        ),
+        master_data=master_data,
+        open_identifiers=OpenIdentifierService(uow, store, master_data),
         logos=LogoService(uow, clock, store, container.images, container.logo_fetcher),
         rules=RuleService(
             uow,
@@ -818,32 +856,10 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             max_documents=settings.rules_apply_max_documents,
             pipeline_version=__version__,
         ),
-        documents=DocumentService(
-            uow,
-            clock,
-            store,
-            metadata=container.metadata,
-            rules=change_rules,
-        ),
+        documents=documents,
         inbox=InboxService(uow, clock),
-        pipeline=PipelineService(
-            uow,
-            clock,
-            store,
-            executors,
-            pipeline_version=__version__,
-            suggest_contact=settings.contact_suggest_threshold,
-            retry=retry_policy_of(settings),
-            # Longer than any node may take, so a running node never loses its claim.
-            # The model's signal asks the model up to four times (proposal and facts, each once
-            # more after an invalid answer).
-            # The OCR node that reads a document with the vision model extends its claim.
-            lease=node_lease(settings),
-            vision=container.ocr.vision,
-            vision_lease=vision_lease(settings),
-            poor_reading=settings.poor_reading_threshold,
-            facts=facts,
-        ),
+        pipeline=pipeline,
+        bulk=BulkService(uow, clock, documents, pipeline, search),
         maintenance=MaintenanceService(
             uow,
             clock,
@@ -860,13 +876,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
                 uow, clock, store, index, indexing_policy_of(settings), embeddings=embeddings
             )
         ),
-        search=(
-            None
-            if index is None
-            else SearchService(
-                uow, index, search_policy_of(settings), embeddings=embeddings, clock=clock
-            )
-        ),
+        search=search,
         classifier=classifier,
     )
 

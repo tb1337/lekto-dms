@@ -109,12 +109,14 @@ from lekto.core.services.inbox import (
 from lekto.core.services.master_data import learn_alias
 from lekto.core.services.objects import original_key
 from lekto.core.services.relating import RELATE_JOB, queue_relate, relate
-from lekto.core.services.relations import RELATIONS_LOCK
+from lekto.core.services.relations import RELATIONS_LOCK, relation_events
 from lekto.core.services.rules.running import corrected_fields, person_record, space_choice
 from lekto.core.services.tasks.settling import Delegation, cancel_tasks
 
 log = logging.getLogger(__name__)
 
+QUIET = "quiet"
+"""Key of a relate job's payload: what it finds raises no events (the run over the stock)."""
 CATCH_UP_JOB = "pipeline.catch_up"
 """Job kind of a node skipped in the document's current run that is run afterwards, outside
 processing (`PipelineService.catch_up`); payload: `NodeJob`."""
@@ -122,7 +124,7 @@ REPARSE_JOB = "pipeline.reparse"
 """Job kind of reading a document's text again (`PipelineService.reparse`); payload: `NodeJob`
 of the node `parse`."""
 FACTS_JOB = "pipeline.facts"
-"""Job kind of reading a document's facts outside processing (`read-codes`): the codes on its
+"""Job kind of reading a document's facts outside processing (`read-facts`): the codes on its
 pages and the identifiers it shows; payload: document id. Processing and log stay as they are."""
 
 
@@ -759,10 +761,10 @@ class PipelineService:
             await require_admin(uow, actor, Action.RENDER_PAGES_ALL)
         return await self.catch_up(Node.PAGES)
 
-    async def request_read_codes(self, actor: UserId) -> int:
-        """Admins only: `request_facts` (the command `read-codes`)."""
+    async def request_read_facts(self, actor: UserId) -> int:
+        """Admins only: `request_facts` (the command `read-facts`)."""
         async with self._uow() as uow:
-            await require_admin(uow, actor, Action.READ_CODES_ALL)
+            await require_admin(uow, actor, Action.READ_FACTS_ALL)
         return await self.request_facts()
 
     async def request_relate(self, actor: UserId) -> int:
@@ -789,7 +791,7 @@ class PipelineService:
 
     async def request_facts(self) -> int:
         """Queue reading the facts of every document whose text was read and that is not being
-        processed (the command `read-codes`): the codes on its pages and the identifiers it
+        processed (the command `read-facts`): the codes on its pages and the identifiers it
         shows, for documents from before codes were read. Returns how many were queued; one
         queued already is not queued twice."""
         if self._facts is None:
@@ -993,6 +995,9 @@ class PipelineService:
                 document = await uow.documents.find(document_id)
                 now = self._clock.now()
                 related = None if document is None else await relate(uow, document, now)
+                # The run over the stock (`relate`) tells nobody: it would send thousands.
+                if related is not None and job.payload.get(QUIET) is not True:
+                    await uow.outbox.add(relation_events([*related.made, *related.dropped], now))
                 result: JsonObject = (
                     {}
                     if related is None
@@ -1008,13 +1013,13 @@ class PipelineService:
     async def request_relations(self) -> int:
         """Queue finding the relations of every document that is not being processed (the
         command `relate`): for documents from before the node `relate`, and after a relation
-        target was marked. Returns how many were queued; one queued already is not queued
-        twice."""
+        target was marked. Quietly: what they find raises no events. Returns how many were
+        queued; one queued already is not queued twice."""
 
         def relations(document: Document) -> tuple[JsonObject, str] | None:
             if document.processing.status is ProcessingStatus.PROCESSING:
                 return None
-            return document_payload(document.id), f"{document.id}:relate"
+            return document_payload(document.id) | {QUIET: True}, f"{document.id}:relate"
 
         return await self._queue_each(RELATE_JOB, relations)
 

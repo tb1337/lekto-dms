@@ -8,6 +8,10 @@ code. Its role says what it is to the document (`FactRole`): the same number is 
 own on the invoice and a reference on the reminder. The role follows the kind (`role_of`)
 unless the language model read the fact (`with_read`).
 
+An IBAN, a creditor ID, a VAT ID or an e-mail domain also has its holder (`Holder`,
+`HOLDER_KINDS`): whose it is where it stands, the sender's, the recipient's or another party's.
+A bank statement names the payees' IBANs beside its own.
+
 A document keeps one fact per kind and value. The facts the sources find (patterns in the text,
 codes on the pages, the language model) are replaced when either signal stores them again; a
 person's decision (`FactState`) outlasts it.
@@ -65,6 +69,60 @@ class FactState(StrEnum):
         return self is not FactState.FOUND
 
 
+MAX_WRITTEN = 200
+"""Characters of a fact as written (and of its holder's name) that are kept."""
+
+
+class HolderKind(StrEnum):
+    """Whose a number is where it stands (`domain.holders`)."""
+
+    SENDER = "sender"  # the document's sender: the contact it comes from, if the name fits
+    RECIPIENT = "recipient"  # a person it is addressed to: their own account
+    THIRD_PARTY = "third_party"  # another party: a payee in a booking, a party of a list
+    UNCLEAR = "unclear"  # not to tell
+
+
+class HolderSource(StrEnum):
+    """Who told the holder."""
+
+    RULE = "rule"  # the fixed rule on the text and the pages (`domain.holders`)
+    MODEL = "model"  # the language model
+
+
+@dataclass(frozen=True)
+class Holder:
+    """Whose a fact's number is: its `kind`, the `name` the document gives the holder, as
+    written (None where it gives none), and who told it. A sender that names someone other
+    than the document's contact (neither its name nor an alias) is a third party."""
+
+    kind: HolderKind
+    source: HolderSource
+    name: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.name is not None:
+            object.__setattr__(self, "name", " ".join(self.name.split())[:MAX_WRITTEN] or None)
+
+
+HOLDER_KINDS = frozenset(
+    {
+        IdentifierKind.IBAN,
+        IdentifierKind.CREDITOR_ID,
+        IdentifierKind.VAT_ID,
+        IdentifierKind.EMAIL_DOMAIN,
+    }
+)
+"""The kinds of facts that have a holder: a contact's as often as another's (a VAT ID or an
+e-mail domain since 0.8: a parent company's, a payment service's, a portal's)."""
+
+MODEL_HOLDER_KINDS = frozenset({IdentifierKind.IBAN, IdentifierKind.CREDITOR_ID})
+"""The kinds whose holder the language model is asked for (`facts-2`); the others' the rule
+tells alone (Tobi, 28.10.2026)."""
+
+SURE_HOLDER_KINDS = frozenset({IdentifierKind.EMAIL_DOMAIN})
+"""The kinds training learns for a contact only where the rule tells they are its: a domain
+names its holder, and one that names no one is often another party's (Tobi, 28.10.2026)."""
+
 ROLES: Mapping[IdentifierKind, FactRole] = {
     IdentifierKind.IBAN: FactRole.CONTACT,
     IdentifierKind.VAT_ID: FactRole.CONTACT,
@@ -105,9 +163,6 @@ NUMBER_KINDS = frozenset(
 """The kinds of the numbers a document has of its own, of a strand or of another document it
 refers to: no contact's or person's identifiers (invoice number, file reference)."""
 
-MAX_WRITTEN = 200
-"""Characters of a fact as written that are kept."""
-
 
 def role_of(kind: IdentifierKind) -> FactRole:
     return ROLES[kind]
@@ -125,7 +180,7 @@ class DocumentFact:
     `written`: as the text writes it where it stands first (a person's value the text does not
     show: as they wrote it; None where only a code holds it);
     `position`: the first character there, which orders the facts as the text reads (None:
-    only in a code)."""
+    only in a code); `holder`: whose it is (`HOLDER_KINDS` only; None while none told)."""
 
     kind: IdentifierKind
     value: str
@@ -134,6 +189,7 @@ class DocumentFact:
     written: str | None = None
     position: int | None = None
     state: FactState = FactState.FOUND
+    holder: Holder | None = None
 
     def __post_init__(self) -> None:
         if not self.value:
@@ -142,6 +198,8 @@ class DocumentFact:
             raise ValidationError("a fact comes from somewhere")
         if self.position is not None and self.position < 0:
             raise ValidationError("a fact's position is a character of the text")
+        if self.holder is not None and self.kind not in HOLDER_KINDS:
+            raise ValidationError("only an IBAN, a creditor ID, a VAT ID or a domain has a holder")
         if self.written is not None:
             object.__setattr__(self, "written", self.written[:MAX_WRITTEN])
 

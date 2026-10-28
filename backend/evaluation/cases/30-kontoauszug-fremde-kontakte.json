@@ -1,5 +1,5 @@
 {
-  "description": "Bank statement naming five other contacts, two with their IBAN. Those names are no contradiction; the IBANs stand on statements and on the contacts' own letters, so training learns neither.",
+  "description": "Bank statement naming five other contacts, two with their IBAN. Those names are no contradiction. The two IBANs are third parties' on the statement (bookings, the payee named): no evidence of the bank, and training learns them only at the contacts, from their own letters. The statement's own account is the recipient's.",
   "expected": {
     "lane": "green",
     "contact": "Sparkasse Musterstadt",
@@ -8,7 +8,12 @@
     "document_date": "2026-03-31",
     "fields": {
       "Kontostand": {"amount": "5476.46", "currency": "EUR"}
-    }
+    },
+    "holders": [
+      {"kind": "iban", "value": "DE89370400440532013000", "holder": "recipient"},
+      {"kind": "iban", "value": "DE15250501800009930012", "holder": "third_party"},
+      {"kind": "iban", "value": "DE12250501800004471100", "holder": "third_party"}
+    ]
   },
   "fake": {
     "classification": {
@@ -22,6 +27,11 @@
     },
     "fields": {
       "Kontostand": {"value": "5.476,46 EUR", "evidence": "Neuer Kontostand | 5.476,46 EUR", "label": "Neuer Kontostand"}
-    }
+    },
+    "holders": [
+      {"kind": "iban", "value": "DE89370400440532013000", "holder": "recipient", "name": null, "evidence": "Kontoauszug 3/2026 · IBAN DE89 3704 0044 0532 0130 00 · erstellt am 31.03.2026"},
+      {"kind": "iban", "value": "DE15250501800009930012", "holder": "third_party", "name": "Wohnbau Musterstadt eG", "evidence": "| 03.03. | Miete Wohnbau Musterstadt eG DE15 2505 0180 0009 9300 12 | -870,00 EUR |"},
+      {"kind": "iban", "value": "DE12250501800004471100", "holder": "third_party", "name": "Stadtwerke Musterstadt", "evidence": "| 15.03. | Lastschrift Stadtwerke Musterstadt DE12 2505 0180 0004 4711 00 | -96,10 EUR |"}
+    ]
   }
 }

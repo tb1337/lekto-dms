@@ -31,6 +31,7 @@ from lekto.core.services.lenses import LensService
 from lekto.core.services.logos import LogoService
 from lekto.core.services.master_data import NORMALISE_BATCH, MasterDataService
 from lekto.core.services.oidc import OidcService
+from lekto.core.services.open_identifiers import OpenIdentifierService
 from lekto.core.services.pipeline import NodeExecutor, PipelineService
 from lekto.core.services.spaces import SpaceService
 from lekto.core.services.tasks.desk import TaskDesk
@@ -121,6 +122,10 @@ class World:
             store=self.object_store,
             normalise_batch=self.normalise_batch,
         )
+
+    @property
+    def open_identifiers(self) -> OpenIdentifierService:
+        return OpenIdentifierService(self.uow, self.object_store, self.master_data)
 
     @property
     def logos(self) -> LogoService:

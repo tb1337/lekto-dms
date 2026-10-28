@@ -12,6 +12,7 @@ from lekto.core.ports.identity import (
 )
 from lekto.core.ports.job_queue import JobQueue
 from lekto.core.ports.repository import (
+    BulkOperationRepository,
     ClassifierModelRepository,
     ContactRepository,
     DocumentFactRepository,
@@ -83,6 +84,8 @@ class UnitOfWork(Protocol):
     def rules(self) -> RuleRepository: ...
     @property
     def rule_applications(self) -> RuleApplicationRepository: ...
+    @property
+    def bulk_operations(self) -> BulkOperationRepository: ...
     @property
     def classifier_models(self) -> ClassifierModelRepository: ...
     @property

@@ -327,6 +327,49 @@ describe('FactsPanel', () => {
 		expect(screen.getByText(m.facts_attach_admins())).toBeTruthy();
 	});
 
+	it('folds the numbers of third parties away, with their holders', async () => {
+		const payee = {
+			...FACTS.identifiers[2],
+			value: 'DE17100500000123456789',
+			contact_id: BANK,
+			holder: { kind: 'third_party', name: 'Hausverwaltung Ost', source: 'rule' }
+		} as Facts['identifiers'][number];
+		render(FactsPanel, props({ facts: { ...FACTS, identifiers: [...FACTS.identifiers, payee] } }));
+		const fold = screen.getByRole('button', { name: new RegExp(m.facts_third_one()) });
+		expect(fold.getAttribute('aria-expanded')).toBe('false');
+		expect(screen.queryByText('DE17 1005 0000 0123 4567 89')).toBeNull();
+		await userEvent.click(fold);
+		expect(fold.getAttribute('aria-expanded')).toBe('true');
+		expect(screen.getByText('DE17 1005 0000 0123 4567 89')).toBeTruthy();
+		expect(
+			screen.getByText(
+				m.facts_holder_named({
+					holder: m.fact_holder_third_party(),
+					name: 'Hausverwaltung Ost',
+					source: m.fact_holder_source_rule()
+				})
+			)
+		).toBeTruthy();
+	});
+
+	it('names the contact an identifier is rejected at, with nothing to attach', () => {
+		const rejected = {
+			...FACTS.identifiers[2],
+			rejected_at: BANK,
+			holder: { kind: 'recipient', name: null, source: 'rule' }
+		} as Facts['identifiers'][number];
+		render(
+			FactsPanel,
+			props({ facts: { ...FACTS, identifiers: [FACTS.identifiers[0], rejected] } })
+		);
+		expect(screen.getByText(m.facts_rejected_at({ contact: 'Bank Musterstadt' }))).toBeTruthy();
+		expect(
+			screen.queryByRole('button', {
+				name: m.facts_attach_value({ value: 'DE02 1203 0000 0000 2020 51' })
+			})
+		).toBeNull();
+	});
+
 	it('says when the codes are not read yet', () => {
 		render(FactsPanel, props({ facts: { ...FACTS, codes: null } }));
 		expect(screen.getByText(m.codes_unread())).toBeTruthy();

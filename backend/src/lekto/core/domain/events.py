@@ -123,8 +123,13 @@ class DocumentMoved(DocumentEvent):
 
 @dataclass(frozen=True, kw_only=True)
 class DocumentUpdated(DocumentEvent):
+    """What of the document changed (`fields`). `related`: for a changed relation (`relations`),
+    the other document; only who may read both hears of it. Internal: pushed events and webhook
+    requests do not carry it."""
+
     type: ClassVar[str] = "document.updated"
     fields: tuple[str, ...]
+    related: DocumentId | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

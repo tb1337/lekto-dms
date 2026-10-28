@@ -5,13 +5,15 @@ Two steps, both idempotent and safe to repeat (events arrive at least once):
 1. **Fan-out** (`on_event`, the event bus subscriber `webhooks.fanout`): for an event, queue one
    `webhooks.deliver` job for each active webhook that wants its type and whose owner has the
    document within their reach (`permissions.in_reach`: an admin's webhooks report what the
-   admin reaches as a user, not every document; Tobi, 08.10.2026). The job's dedup key is
+   admin reaches as a user, not every document; Tobi, 08.10.2026), and for a changed relation
+   (`document.updated` with `relations`) its other document too. The job's dedup key is
    `<webhook>:<event>`, so a repeated event adds no second
    job while the first is queued or running. `document.deleted` uses the readers stored in the
    event (the document is gone); `document.filed` is skipped while the document has no lane
    (the pipeline's last `filed` comes after the lane is set).
 2. **Delivery** (`run_next_job`): each attempt checks the rights again against the current
-   state, so a user who lost access in the meantime gets nothing (`dropped`). Then it makes the
+   state, so a user who lost access in the meantime gets nothing (`dropped`); for a changed
+   relation, to both of its documents. Then it makes the
    body (thin, full with the document as it is now, or the webhook's template rendered), signs
    it with the webhook's secret(s) if it has any, sends it with the webhook's own headers,
    writes one delivery log row and settles the job: delivered, repeated later, or given up. A
@@ -54,7 +56,13 @@ from lekto.core.domain.errors import (
     TooManyAttemptsError,
     ValidationError,
 )
-from lekto.core.domain.events import DocumentDeleted, DocumentEvent, DocumentFiled, DomainEvent
+from lekto.core.domain.events import (
+    DocumentDeleted,
+    DocumentEvent,
+    DocumentFiled,
+    DocumentUpdated,
+    DomainEvent,
+)
 from lekto.core.domain.ids import DocumentId, EventId, TaskId, UserId, WebhookId, new_id
 from lekto.core.domain.jobs import Job, RetryPolicy
 from lekto.core.domain.json_value import JsonObject, as_object
@@ -171,6 +179,8 @@ class WebhookDeliveryService:
                     "occurred_at": event.occurred_at.isoformat(),
                     "document_id": str(event.document_id),
                 }
+                if isinstance(event, DocumentUpdated) and event.related is not None:
+                    payload["related_id"] = str(event.related)
                 job = await uow.jobs.enqueue(
                     DELIVER_JOB,
                     payload,
@@ -237,6 +247,8 @@ class WebhookDeliveryService:
             rule = as_object(job.payload.get("rule"))
             raw_task = job.payload.get("task_id")
             task_id = None if raw_task is None else TaskId(UUID(str(raw_task)))
+            raw_related = job.payload.get("related_id")
+            related = None if raw_related is None else DocumentId(UUID(str(raw_related)))
         except (KeyError, TypeError, ValueError) as error:
             await self._jobs.invalid(job, error)
             return
@@ -245,7 +257,7 @@ class WebhookDeliveryService:
                 await self._attempt_task(job, webhook_id, task_id, event_type, document_id)
             else:
                 await self._attempt(
-                    job, webhook_id, event_id, event_type, occurred_at, document_id, rule
+                    job, webhook_id, event_id, event_type, occurred_at, document_id, rule, related
                 )
         except ConcurrencyError:
             lost(job)
@@ -263,6 +275,7 @@ class WebhookDeliveryService:
         occurred_at: datetime,
         document_id: DocumentId | None,
         rule: JsonObject | None = None,
+        related: DocumentId | None = None,
     ) -> None:
         now = self._clock.now()
         async with self._uow() as uow:
@@ -273,6 +286,8 @@ class WebhookDeliveryService:
                 await uow.commit()
                 return
             reason = await _reason_to_drop(uow, webhook, event_type, document_id)
+            if reason is None and related is not None:
+                reason = await _reason_to_drop(uow, webhook, event_type, related)
             body = (
                 None
                 if reason is not None
@@ -699,10 +714,18 @@ async def _owners_who_may_read(
     if isinstance(event, DocumentFiled) and document.lane is None:
         return set()
     space = await uow.spaces.get(document.space_id)
+    # A relation: only who has its other document within reach too.
+    related = None
+    if isinstance(event, DocumentUpdated) and event.related is not None:
+        related = await uow.documents.find(event.related)
+        if related is None:
+            return set()
     allowed: set[UserId] = set()
     for owner in owners:
         user = await uow.users.find(owner)
-        if user is not None and in_reach(user, document, space):
+        if user is None or not in_reach(user, document, space):
+            continue
+        if related is None or await _may_read(uow, user, related):
             allowed.add(owner)
     return allowed
 

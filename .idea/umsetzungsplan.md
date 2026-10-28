@@ -1174,6 +1174,10 @@ Offen: Ob zwei unsichere von 20 reichen sollen (die Schwelle gilt für Seite und
 
 **Ergänzung: Schwelle der Umgebung, Wörter neben Führungen (Entscheidung 11.1/11.2a, 19.10.2026).** Branch `feature/reading-thresholds` von `main`, direkt gebaut. Die Umgebung gilt ab drei von 20 unsicheren Inhaltswörtern als schwach gelesen (`SURROUNDING_POOR`; die Seite bleibt bei `LEKTO_POOR_READING_THRESHOLD`). Ein Wort direkt vor oder nach einer Führung in seiner Zeile (höchstens `LEADER_GAP` = eine Zeilenhöhe Lücke; Führung: Punktreihe im Text oder flache Box) ist weder Inhalt noch unsicher (`beside_leaders`, in `content_words`): Auf dem synthetischen Scan las Tesseract „Krankenkasse“ mit 38 % neben „................“, der Text des Labels sauber. Für den Wert selbst gilt Regel B unverändert. Entschieden ohne Änderung: als Ziffern gelesene Führungen (11.2b) später, der Rat zum VLM folgt der Seite (11.3), in Tabellen zählt die Spalte (11.4).
 
+**Ergänzung: als Ziffern gelesene Führungen (11.2b, offener Punkt 20; Tobi, 28.10.2026: „sollte als Führung erkannt werden“).** Gemessen: In Dev las Tesseract in 14 Dokumenten (31.423 Wörter) keine Führung als Ziffern; nur zwei unsichere Wörter bestehen allein aus 0/1 (ein Datum, eine „0000“). Auf 36 synthetischen Varianten (drei Schriften, Unschärfe, Sprenkel, Drehung, halbe Auflösung) las es Punkte viermal als Ziffern (`...............0.`, 0 %), jedes Mal mit flacher Box (12–13 % der Zeilenhöhe), also schon Rauschen. Für den Rest, dessen Box Sprenkel hoch machen (`02.00.0000.`), gilt die Textregel `read_from_dots`: unsicher, mindestens fünf Zeichen, vier von fünf davon 0, 1, Punkt, Komma oder Doppelpunkt, höchstens zwei verschiedene Ziffern, vier Einsen oder Nullen in Folge. Solch ein Wort ist Rauschen und Führung (die Wörter daneben zählen nicht). Ein unsicheres Datum (`01.01.2020`), ein Betrag (`1.000,00`) oder eine maskierte `0000` bleiben Inhalt.
+
+**#55 Schritt 2, die drei Fragen gemessen (offener Punkt 19; 28.10.2026).** Dev: nur 9 Werte mit Beschriftung (die Prüfung läuft erst seit Schritt 1 mit), synthetischer Satz: 47 Fälle mit festen Antworten. 1. Wert rechts auf der Zeile: Abstand in Dev bis 36 Zeichen, im Satz bis 5, nie eine zweite Beschriftung dazwischen (einmal „EUR“) – keine Änderung. 2. Spaltentoleranz: alle Werte unter ihrer Beschriftung überlappen (Dev 4, Satz 3), die 4 Zeichen wurden nie gebraucht – bleibt. 3. Wert ohne Fundstelle, der mehrmals dasteht: im Satz 11 von 12 unbekannten Beträgen (Tabelle und Satz „Der Gesamtbetrag von … wird eingezogen“). Entscheidung (Tobi: „ich folge deiner Empfehlung“): Die Prüfung nimmt dann jede Stelle (`value_runs`), bei der Beschriftung, wenn eine es ist. Im Satz danach 35 bei der Beschriftung (vorher 24), 2 abseits (unverändert die beiden absichtlich falschen), 35 unbekannt (vorher 46). Die Lesesicherheit bleibt bei „genau einmal“ (`value_on_pages`). Weiter nur aufgezeichnet, nicht durchgesetzt.
+
 #### Nachtrag: Beschriftung beim Wert, Schritt 1 (Issue #55)
 
 Branch `feature/label-check` von `main` (1d578f7), PR gegen `main` mit Label `enhancement`, verweist auf #55, schließt es nicht (Schritt 2 folgt). Entscheidungen Tobis vom 19.10.2026; Regel in `architektur.md` › „Beschriftung beim Wert“. Gebaut:
@@ -1779,7 +1783,7 @@ Stand: Vorschlag Creamy, 25.10.2026, zur Freigabe durch Tobi. Release offen. Sam
 12. **Serien und Erwartet** (`feature/expected`, `new-feature`; nach 3 und 4): Serien aus Kontakt, Typ und Vertrags- oder Kundennummer, mindestens drei Dokumente, Abstand und Streuung aus den Dokumentdaten, nächster Termin, überfällig jenseits der Streuung, beendet nach zwei verpassten Terminen; nichts gespeichert. API `GET /expected` in der Reichweite des Nutzers (`all_users` für Admins), keine Ereignisse. Web: Ansicht „Erwartet“, wie im Mock. MCP: Werkzeug `list_expected`.
 13. **Stream** (`feature/stream`, `new-feature`; nach 9 und 12): Die API liefert für die gefilterten Dokumente Spuren (Serien mit ihrem Bezugsziel am Anfang, Abzweige, „Einzeln“) mit Bezügen und erwarteten Dokumenten; eine Grenze für zu viele Spuren. Darstellung „Stream“ in Dokumentliste und Lens; Einstieg per Klick auf den Kontakt, „Im Stream zeigen“ in der Dokumentansicht.
 
-14. **Bezüge in Webhooks** (`feature/relation-events`, `new-feature`; nach 11 und erst nach dem laufenden Umbau der Webhooks in einer anderen Session): `document.updated` mit `fields: ["relations"]` an beiden Dokumenten eines Bezugs, nur wenn der Empfänger beide Enden lesen darf, nicht beim Lauf `relate` über den Bestand.
+14. **Bezüge in Webhooks** (`feature/relation-events`, `new-feature`; nach 11 und erst nach dem laufenden Umbau der Webhooks in einer anderen Session): `document.updated` mit `fields: ["relations"]` an beiden Dokumenten eines Bezugs, nur wenn der Empfänger beide Enden lesen darf, nicht beim Lauf `relate` über den Bestand. **Gebaut (28.10.2026, Tobi: „okay bauen“):** wie beschrieben, auch für SSE; das andere Ende steht intern im Ereignis (`DocumentUpdated.related`, im Job der Zustellung `related_id`) und wird vor jedem Versuch neu geprüft; der Lauf über den Bestand trägt im Job `quiet`.
 
 *Später:* E-Rechnung als Quelle von Fakten ([Issue #144](https://github.com/tb1337/lekto-dms/issues/144), Priorität niedrig), nach 3 und 4.
 
@@ -1887,6 +1891,489 @@ Stand: Vorschlag Creamy, 25.10.2026, zur Freigabe durch Tobi. Release offen. Sam
 - Review durch einen separaten Agenten (Service-Proben, REST-Proben, Browser auf einer SQLite-Prüfinstanz), behoben in der Nacharbeit: Dokumente mit Bezug nur auf das Bezugsziel (Kündigung, Nachtrag) wurden Ein-Dokument-Ketten statt Abzweige; ein Vertrag stand nur der ersten von zwei Serien voran; die Richtung des Bezugs zum Ziel war egal; Abzweige zählten gegen die 24 Spuren, darüber fielen Spuren und „Einzeln“ weg (jetzt kommen sie zusammengeklappt, „n weitere Spuren“); Dokumente in Verarbeitung fehlten stumm; die Rechteprüfung je Dokument der Liste fehlte; `relations` in der Antwort las niemand. Web: das Raster öffnete am ältesten Monat (jetzt mit dem neuesten Dokumentmonat oder heute am rechten Rand, nicht an einer fernen Erwartung); Monate jenseits von 36 fielen stumm weg, mit ihnen das Bezugsziel (jetzt werden drei und mehr leere Monate zu einer Lücke „…“); `layout=stream` blieb nach dem Umschalten in der URL; das Sortiermenü stand nutzlos im Stream; der Stream lud bei Ereignissen nicht neu; „bezieht sich auf …“ wurde im Zeilenkopf abgeschnitten (jetzt Tooltip, auf dem Handy die Zeile).
 - Geprüft: 4214 Unit- und Integrationstests (383 übersprungen ohne Dienste), 1224 Vitest (Exit 0), Build; Browser hell, dunkel, 375 px, de und en, Tastatur und ARIA-Baum der Tabelle, 27 Serien zusammengeklappt und aufgeklappt, ohne Konsolenfehler.
 - Offen für Tobi: die Grenze (24 offene Spuren, 500 Dokumente), die Lücke ab drei leeren Monaten, der Stream-Link aus den Stammdaten (Entscheidung 15).
+
+### Übersicht und Kennungen mit einem Decision Model
+
+Stand: Vorschlag Claude, 27.10.2026, zur Freigabe durch Tobi. Release offen.
+
+**Anlass (Tobi, 27.10.2026):** Lekto erkennt viele Kennungen, verwalten lassen sie sich aber nur einzeln im Kontakt. Es fehlt eine Oberfläche, die den ganzen Arbeitsvorrat an einer Stelle zeigt: eine Übersicht unter „lekto“, von der aus man in den Posteingang, die Dokumente oder die Liste der zu bestätigenden Kennungen kommt. Das Bestätigen von Kennungen ist mühsame Handarbeit. Ein Decision Model, also ein Modell vom Typ „decision“, soll es smarter machen, den Menschen entlasten und es zunächst besser sichtbar machen.
+
+**Befund (27.10.2026, nur lesend):**
+
+- **Der Arbeitsvorrat liegt verstreut:**
+  - Gelbe, rote und neue Dokumente stehen im Posteingang (`GET /inbox/summary` zählt schon).
+  - Gelernte Kennungen gibt es nur einzeln im Kontakt-Editor.
+  - Unbekannte Kennungen gibt es nur am einzelnen Dokument (Fakten, „anheften“).
+  - Überfällige Dokumente stehen unter „Erwartet“ (Beta, `GET /expected`).
+  - Fehlgeschlagene Jobs und der Worker stehen unter System → Jobs (`GET /jobs/summary`).
+
+  Eine Liste der gelernten und unbekannten Kennungen über alle Kontakte und Dokumente gibt es weder in der API noch in der UI.
+- **Gelernte Kennungen zählen im Urteil als Beleg** (`Identifier.counts`), genau wie eingetragene. Das Bestätigen schaltet nur den Logo-Abruf frei (seit #175). Eine falsche gelernte Kennung schadet dagegen aktiv, etwa die Gläubiger-ID oder IBAN eines Zahlungsdienstleisters. Der größte Hebel ist darum das Verwerfen, nicht das Übernehmen.
+- **Jedes Training ersetzt alle gelernten Kennungen** (`replace_learned_identifiers`). Eine Empfehlung kann deshalb nicht an der Zeile in `contact_identifiers` hängen, sondern braucht eine eigene Tabelle, die nach Art und Wert geführt wird.
+- **Unbekannte Kennungen** sind Fakten (`document_facts`) einer Art aus `CONTACT_KINDS` in bestätigten Dokumenten mit Kontakt, deren Wert kein Kontakt kennt: weder eingetragen noch gelernt noch verworfen. Die Werte einer Person (`of_person`) gehören nicht dazu.
+- **Decision Models** schreiben keinen Text. Sie bekommen einen Zustand (Text oder JSON) und benannte Fragen (`choice`, `noul`, `score`) und liefern je Option eine Wahrscheinlichkeit. Eine Begründung gibt es nicht.
+  - Ollama bedient sie ab 0.35 über `POST /v1/systemone`, neben den gewöhnlichen Modellen. Tobis Ollama läuft mit 0.40.8.
+  - LiteLLM kann den Pfad als Pass-Through-Endpunkt durchreichen.
+  - Grenzen: 64 Fragen je Anfrage, 2 bis 26 Optionen bei `choice`, 64 KiB je Anfrage; nimble hat einen Kontext von 8.192 Tokens.
+- **Probe mit nimble (27.10.2026):** auf Tobis Ollama gezogen (9B, Q8_0, Apache 2.0, Fähigkeit `decision`), vier erfundene Fälle.
+  - Format der Anfrage:
+    - `questions` ist ein Objekt mit dem Namen der Frage als Schlüssel.
+    - Jede Frage hat `type` und `instructions`.
+    - `criteria` sind bei `choice` die Optionen mit Beschreibung, bei `noul` die Schlüssel `"false"` und `"true"`.
+  - Format der Antwort:
+    - je Frage bei `choice`: `choice`, `probabilities` und `confidence`
+    - je Frage bei `noul`: `noul`, die Wahrscheinlichkeit für „wahr“
+    - `usage.input_tokens`
+  - Rund 950 Eingabe-Tokens je Fall, rund 5 s je Anfrage, 17 s beim ersten Laden.
+  - Ergebnisse:
+    - Gläubiger-ID des Absenders: richtig (`contact`, 99,6 %).
+    - IBAN eines Zahlungsdienstleisters: richtig (`third_party`, 96,9 %).
+    - Kundennummer: richtig (`recipient`, 98,8 %).
+    - Ein Datum, das als Vertragsnummer gelesen wurde: falsch, mit 95 % `recipient` statt `noise`.
+
+  Die Konfidenz ist also keine Richtigkeit. Die Auswertung auf echten Daten entscheidet.
+- **Speicher:** nimble belegt 9,6 GB im VRAM und hat Qwen3-Embedding 4B beim Laden verdrängt. Beide passen auf dem Host nicht gleichzeitig hinein.
+
+**Entscheidungen (Frage-Antwort-Runde 27.10.2026):**
+
+1. **Übersicht:**
+   - `/` ist die Übersicht und die Startseite nach der Anmeldung; der Klick auf „lekto“ führt dorthin. Heute leitet `/` auf den Posteingang weiter.
+   - Sie hat keinen eigenen Menüeintrag; der Posteingang bleibt ein Menüeintrag.
+2. **Genau fünf Quellen auf der Übersicht**, je mit Zahl und Zustand und einem Weg zur passenden Seite:
+   - der Posteingang (gelb, rot, neu)
+   - die gelernten Kennungen
+   - die unbekannten Kennungen in Dokumenten
+   - „Erwartet“
+   - fehlgeschlagene Jobs und der Worker
+
+   Keine Kennzahlen zum Stand: Die stehen unter System → Automatisierung.
+3. **Nach Rolle verschieden:** Die Kennungen sieht nur, wer Stammdaten pflegt, also Admins. Bei den Jobs handeln nur Admins.
+4. **„Erwartet“ geht in der Übersicht auf:** Seite und Menüeintrag `/expected` entfallen, ohne Umleitung. Die Übersicht zeigt die überfälligen und die nächsten erwarteten Dokumente selbst. `GET /expected` und MCP `list_expected` bleiben.
+5. **Kennungen sind Stammdaten:** Sie bekommen einen fünften Reiter „Kennungen“ unter Stammdaten.
+   - Er listet alle unbestätigten Kennungen: die gelernten und die unbekannten aus bestätigten Dokumenten.
+   - Nur Arten, die einen Kontakt belegen (`CONTACT_KINDS`), also keine Rechnungs- oder Bestellnummern.
+   - Aktionen: Übernehmen, Verwerfen und an Kontakt heften, einzeln und als Sammelaktion.
+6. **Ein Decision Model mit eigenen Variablen:**
+   - `LEKTO_DECISION_BASE_URL`, `LEKTO_DECISION_MODEL`, `LEKTO_DECISION_API_KEY` (auch `_FILE`) und `LEKTO_DECISION_TIMEOUT`.
+   - Lekto spricht nur `/v1/systemone`. Ob dahinter Ollama, LiteLLM oder ein eigener Server steht, ist Konfiguration.
+   - Ohne Konfiguration gibt es keine Empfehlungen; alles andere läuft wie heute.
+   - Hauptkandidat ist nimble, zum Vergleich tev1.
+7. **Automatisch:**
+   - Nach jedem Training bekommt jede offene Kennung genau einen Job, deren Dokumente sich seit der letzten Beurteilung geändert haben oder die neu ist.
+   - Die Empfehlung wird gespeichert; dazu gibt es „Neu beurteilen“ (Admins).
+8. **Erst empfehlen, dann verwerfen:**
+   - Schritt 1: Das Modell empfiehlt, und Lekto misst.
+   - Schritt 2: Lekto verwirft automatisch oberhalb einer Schwelle, die die Auswertung festgelegt hat. Als Herkunft steht „vom Modell verworfen“, „Wieder zulassen“ bleibt möglich.
+   - Automatisches Übernehmen gibt es zunächst nicht.
+9. **Auswertung vor dem Einschalten:** `lekto evaluate-decisions` läuft auf den Dev-Daten und gibt nur Zahlen aus (Tobi: erlaubt).
+   - Grundwahrheit: eingetragen oder übernommen heißt „seine“, verworfen heißt „nicht seine“.
+10. **Begründung:** Weil das Modell keine gibt, zeigt die Liste, was Lekto ihm gegeben hat: je Dokument die Stelle mit Beschriftung und Rolle.
+
+**Fragen an das Modell** (Vorschlag, nach der Probe angepasst):
+
+- **Zustand als Text:**
+  - der Kontakt mit Name, Aliassen und schon eingetragenen Kennungen
+  - die Kennung mit Art (deutscher Name) und Wert, so wie geschrieben
+  - je Dokument, höchstens fünf, die jüngsten zuerst: Typ, Datum, Rolle des Fakts und die Stelle mit etwa 200 Zeichen Umgebung
+
+  Das bleibt unter 2.000 Tokens. Der Zustand ist Dokumenttext und geht nur an den konfigurierten Endpunkt, wie beim Sprachmodell.
+- **Drei Fragen:**
+  - `real`, `noul`: „Ist das wirklich eine Kennung (nicht falsch gelesen, kein Datum, kein Betrag, kein Teil eines anderen Werts)?“
+
+    Diese Frage ist eigenständig, weil nimble das Datum in der Wahl unter vier Optionen nicht als `noise` erkannte.
+  - `owner`, `choice`: „Wem gehört sie?“ mit `contact` (dem Absender), `recipient` (dem Empfänger, Haushalt oder Mitarbeiter) und `third_party` (Bank, Zahlungsdienstleister, Behörde, Inkasso).
+  - `stable`, `noul`: „Bleibt sie über viele Dokumente gleich?“
+- **Lesart je Art:**
+  - **Übernehmen** empfiehlt Lekto, wenn sie echt und stabil ist und sie gehört:
+    - bei IBAN, USt-IdNr., Gläubiger-ID, Steuernummer, Handelsregister und Domain dem Kontakt (`contact`)
+    - bei Kunden-, Vertrags-, Personal-, Mitglieds-, Policen-, Darlehens- und Zählernummer, Mandatsreferenz und Kennzeichen dem Kontakt oder dem Empfänger
+  - **Verwerfen** empfiehlt Lekto, wenn:
+    - sie nicht echt ist,
+    - sie einem Dritten gehört,
+    - bei einer Art des Absenders der Empfänger der Halter ist (die eigene IBAN), oder
+    - sie nicht stabil ist.
+  - Sonst ist die Empfehlung **unklar**.
+
+  Die Wahrscheinlichkeit der Empfehlung ist das Produkt der beteiligten Antworten. Die Lesart steht im Code des Kerns, mit Tests je Art.
+
+**Umsetzung in PRs** (Reihenfolge Mock → A → B → C → D → E; jeder PR mit den fünf Prüfungen, bei Änderungen der Web-UI auch deren Prüfungen, `web/openapi.json` neu erzeugt, Texte in `web/messages/{en,de}.json`):
+
+0. **Mock** (Artifact, privat), vor A, in hell und dunkel und in Handybreite:
+   - die Übersicht als Admin und als Nutzer, mit leerem und vollem Vorrat
+   - der Reiter „Kennungen“ mit Auswahl, Sammelleiste, Empfehlung und Wahrscheinlichkeit sowie dem Beleg einer Zeile
+
+   Am Handy hat Stammdaten heute vier gleich breite Reiter; für fünf entscheidet der Mock. Was `web/DESIGN.md` nicht abdeckt (Sammelauswahl in Listen, Kacheln der Übersicht), kommt mit dem PR, der es baut, in `web/DESIGN.md`.
+
+A. **Liste der offenen Kennungen** (`feature/open-identifiers`, `new-feature`):
+   - **Kern:** Die Domäne `OpenIdentifier` hält Art, Wert (normalisiert und wie geschrieben), Herkunft (`learned` oder `unknown`), Kontakt und Dokumente.
+     - Bei `learned` ist der Kontakt der Halter.
+     - Bei `unknown` sind es die Kontakte seiner Dokumente; bei mehreren entscheidet die Person beim Heften.
+     - Dazu kommen die Zahl der Dokumente, das erste und letzte Datum und die jüngsten Stellen.
+     - Die Abfrage kommt als neue Methode in den Port der Fakten (SQL über `contact_identifiers` und `document_facts`, Speicher-Adapter, Contract-Suite).
+   - **REST (Admins):**
+     - `GET /identifiers/open` mit Filtern nach Art, Herkunft und Kontakt, Sortierung und Seiten
+     - `GET /identifiers/open/summary` mit den Zahlen je Herkunft, für die Übersicht
+     - `POST /identifiers/open/decisions`: eine Liste von Entscheidungen. `take_over` macht eine gelernte zu `manual`; `reject` macht sie zu `rejected` (eine unbekannte wird beim Kontakt ihres Dokuments verworfen, damit das Training sie nicht lernt); `attach` heftet eine unbekannte an einen Kontakt (`manual`).
+
+     Alle Entscheidungen laufen in einem UnitOfWork mit einem Commit und den Ereignissen der geänderten Kontakte. Ein Wert, den inzwischen ein anderer Kontakt hält, ist ein Konflikt je Zeile, nicht für alle.
+   - Übernehmen holt das Logo wie heute (`queue_logo_fetch`).
+   - **Web:**
+     - Reiter `?tab=identifiers` unter Stammdaten mit Suche und Filtern.
+     - Zeilen mit Art, Wert, Kontakt (Link in den Kontakt-Dialog) und Dokumenten (Link in die Dokumentliste mit dem Wert als Filter).
+     - Auswahl und Sammelleiste wie im Mock.
+     - Ein Kontakt-Dialog mit gelernten Kennungen verlinkt die Liste, gefiltert auf ihn.
+   - **Doku:** `architektur.md` (Datenmodell: Kennungen) und `web/DESIGN.md` (Sammelauswahl).
+
+B. **Übersicht** (`feature/overview`, `new-feature`):
+   - `/` zeigt die Übersicht statt der Umleitung; „lekto“ in der Kopfzeile führt dorthin.
+   - **Kacheln:**
+     - Posteingang mit `GET /inbox/summary`, die schlimmste Lane als Farbe.
+     - Kennungen mit `GET /identifiers/open/summary`, nur für Admins.
+     - Erwartet mit `GET /expected`: überfällig und die nächsten 30 Tage, eine Zeile je Serie, „alle zeigen“ klappt auf.
+     - System mit `GET /jobs/summary`: fehlgeschlagene Jobs und „Worker zuletzt aktiv“; „erneut versuchen“ geht über System → Jobs.
+
+     Kein neuer Sammel-Endpunkt: Jede Kachel fragt, wie ihre Seite es tut, und lädt bei den Ereignissen neu, die ihre Seite schon hört.
+   - `/expected` mit Seite, Test und Menüeintrag entfällt, ebenso die Pille „Beta“.
+   - **Doku:** `architektur.md` (Kopfzeile und Menü, Serien und Erwartet) und `web/DESIGN.md` (Navigation, Übersicht).
+
+C. **Decision Model und Empfehlungen** (`feature/identifier-decisions`, `new-feature`):
+   - **Port** `DecisionModel` (`core/ports/decision.py`): `decide(DecisionRequest) -> DecisionAnswer`.
+     - Die Anfrage hat einen Zustand als Text und benannte Fragen: Art, Anweisung und Kriterien.
+     - Die Antwort hat Wahrscheinlichkeiten je Frage und Option, das Modell und die Eingabe-Tokens.
+     - Bei Fehlern wirft der Port `DecisionModelError`.
+   - **Adapter:**
+     - `adapters/outbound/systemone` mit dem asynchronen HTTP-Client wie `openai_compat`.
+     - ein Speicher-Adapter mit festen Antworten
+     - die Contract-Suite
+   - **Einstellungen:** `LEKTO_DECISION_*` wie in Entscheidung 6, Timeout als Vorgabe eine Minute. `GET /pipeline` meldet `decision` (konfiguriert ja oder nein), damit die UI die Spalte nur dann zeigt.
+   - **Kern:**
+     - `core/domain/identifier_decisions.py` baut den Zustand aus den Fragen oben und liest die Antworten zu einer Empfehlung (`take_over`, `reject`, `unclear`) mit Wahrscheinlichkeit, je Art.
+     - `IdentifierDecisionService` übernimmt das Fragen, Speichern und Einreihen.
+   - **Speicher:** Revision 0051 legt die Tabelle `identifier_decisions` an. Sie hat:
+     - Schlüssel: Art und Wert
+     - Modell und Zeitpunkt
+     - die beurteilten Dokumente (sortierte IDs)
+     - die Antworten (JSON)
+     - Empfehlung und Wahrscheinlichkeit
+     - den Zustand, so wie gesendet (für den Beleg in der UI)
+
+     Eine Entscheidung einer Person löscht die Zeile nicht: D braucht den Vergleich.
+   - **Jobs:**
+     - `identifiers.decide` mit `coalesce_key` je Art und Wert.
+     - Das Training reiht nach dem Commit die neuen oder geänderten Kennungen ein.
+     - „Neu beurteilen“ reiht die markierten ein.
+     - Die Jobs geben Index- und Verarbeitungsjobs den Vorrang. Damit nimble nicht abwechselnd mit dem Embedding-Modell geladen wird, laufen sie nacheinander in einem Schub.
+   - **Protokoll:** Modell, Dauer und Tokens im Log des Jobs.
+   - **Web:**
+     - Spalte „Empfehlung“ im Reiter Kennungen: Übernehmen, Verwerfen oder Unklar, mit Wahrscheinlichkeit, sortier- und filterbar.
+     - Der Beleg der Zeile zeigt den gesendeten Zustand.
+     - Die Sammelaktion „Empfehlung folgen“ wirkt für die markierten Zeilen mit eindeutiger Empfehlung.
+   - **Doku:**
+     - `architektur.md`: Decision Model als vierte Modellrolle, mit Datenfluss und Privatsphäre
+     - `backend/README.md`: Einstellungen
+     - `deploy/README.md`: ausgehende Anfragen
+     - `docker/.env.example`
+     - ein Hinweis zu Ollama ab 0.35 und dem Pass-Through von LiteLLM
+
+D. **Auswertung** (`feature/evaluate-decisions`, `new-feature`):
+   - `lekto evaluate-decisions [--models nimble,tev1] [--output FILE]` fragt jedes Modell für alle Kennungen, die eine Person entschieden hat und die in mindestens einem bestätigten Dokument stehen.
+   - Die Ausgabe enthält nur Zahlen:
+     - je Art und gesamt die Trefferquote der Empfehlung
+     - Fehlverwerfungen und erfasste falsche Kennungen je Schwelle (0,80 bis 0,99)
+     - die Kalibrierung in Stufen
+     - die Dauer je Anfrage
+   - Keine Werte, keine Namen, kein Text.
+   - Das Ergebnis steht hier im Plan und legt die Schwelle für E fest. Läuft auf den Dev-Daten, mit Tobis Zustimmung zum Lauf.
+
+E. **Automatisch verwerfen** (`feature/decision-reject`, `new-feature`; erst nach D und Tobis Freigabe):
+   - Neue Variable `LEKTO_DECISION_REJECT_ABOVE`; ohne Angabe ist das Verwerfen aus.
+   - Darüber verwirft der Job selbst. `contact_identifiers` bekommt `rejected_by` (`model` oder leer).
+   - Die Liste zeigt „vom Modell verworfen“ mit „Wieder zulassen“.
+   - System → Klassifikator zählt, wie viele das Modell verwarf und wie viele davon eine Person wieder zuließ.
+
+**Mock** (27.10.2026): Design-Fläche „Lekto Übersicht und Kennungen“, https://claude.ai/artifact/6Swof93MJVYL5wWiZRo2Xh (Übersicht als Admin hell und dunkel, als Nutzer am Handy; Reiter Kennungen mit Auswahl hell, dunkel, Handy; eine geöffnete Kennung). Tobi (27.10.2026): „Fragen später. Baue 0-B“.
+
+**A gebaut (27.10.2026, `feature/open-identifiers`):**
+
+- Port: `DocumentFactRepository.sightings(kinds)` liefert die Fakten bestätigter Dokumente mit Kontakt (Domäne `Sighting`), SQL und Speicher, Contract-Test. Domäne `core/domain/open_identifiers.py` (`open_identifiers`, `excerpt`), Service `OpenIdentifierService`, neu `MasterDataService.reject_identifier`.
+- Abweichung: Jede Entscheidung ist ein Commit für sich (über `add_identifier` und `reject_identifier`), nicht alle in einem: So trifft ein Konflikt nur seine Zeile, und die Prüfungen der Stammdaten laufen wie beim Kontaktdialog. „Übernehmen“ und „an Kontakt heften“ sind eine Aktion `confirm` (mit oder ohne `contact_id`).
+- Die Abfrage nach Wörtern ersetzt den Filter nach Kontakt (der Name des Kontakts findet seine Kennungen); den Link aus dem Kontaktdialog auf die gefilterte Liste gibt es noch nicht.
+- Neue Gründe `identifier_entered`, `identifier_not_open`, `identifier_contact_unclear`. `FormDialog` hat eine zweite Aktion (`alternative`) vorn im Fuß; `web/DESIGN.md` beschreibt sie und das Muster „Choosing many“.
+- Am Handy scrollen die fünf Reiter der Stammdaten (gleich breit passten sie nicht auf 390 px).
+- Im Browser geprüft (SQLite-Prüfinstanz mit erfundenen Kontakten und Dokumenten): Liste, Auswahl, Übernehmen und Verwerfen im Stapel, Dialog mit Fundstellen, hell, dunkel, 390 px; behoben dabei: Die Liste lud nach jedem Laden neu (`list.loaded` war Abhängigkeit des Such-Effekts).
+
+**B gebaut (27.10.2026, `feature/overview`, auf A):** `/` zeigt die Übersicht (`+page.ts` mit der Umleitung entfällt); Kacheln `InboxTile` (aus dem Zähler der Kopfzeile), `IdentifiersTile` (Admins), `SystemTile` (`GET /jobs/summary` alle 30 s), darunter `ExpectedSection` (Überfällig und Nächste 30 Tage, Später und Beendet auf Wunsch). `/expected`, Menüeintrag und Beta-Pille entfallen; die E2E-Tests warten nach der Anmeldung auf `/ui/`.
+
+**Nebenbei behoben (`bugfix/type-scale-merge`, unter A):** `tailwind-merge` hielt `text-meta` und die anderen Stufen der Schriftskala für Farben; ein Knopf `default` der Größe `sm` verlor dadurch `text-primary-foreground` und schrieb dunkel auf Petrol (im Browser-Check an „Übernehmen“ gesehen). `cn` und die `tv` der UI-Komponenten kennen die Skala jetzt (`lib/tailwind.ts`).
+
+**Zurückgestellt (Tobi, 27.10.2026):** „Decision Modell lassen wir erstmal weg.“ C bis E ruhen, und mit ihnen die Fragen dazu (Speicher auf dem Ollama-Host für nimble, was „Wieder zulassen“ heißt). Die Reihenfolge ist erledigt: A ist vor B gebaut. Gegen Kontoauszüge, die falsche IBANs lehren, steht stattdessen der folgende Abschnitt.
+
+### Inhaber von IBANs und Gläubiger-IDs
+
+Stand: Vorschlag Claude, 27.10.2026, zur Freigabe durch Tobi. Release offen.
+
+**Anlass (Tobi, 27.10.2026):** Auf Kontoauszügen stehen viele IBANs, die nichts mit dem Kontakt (der Bank) zu tun haben. Tobi: „Den Inhaber wirklich bestimmen“, erst als PoC an den Dev-Dokumenten, dann an Prod (nur lesen, nichts ändern). „Wenn das klappt und generisch ist, könnten wir damit arbeiten.“
+
+**Befund (27.10.2026, nur Zahlen):**
+
+- **Das Training lernt aus jeder Kennung im Text, ohne Rolle** (`classifier._identifiers_of`). Eine gelernte Kennung zählt im Urteil als harter Beleg.
+  - Dev: An der Bank sind 11 IBANs gelernt, alle aus Buchungszeilen der Kontoauszüge.
+  - Prod: 85 IBANs sind gelernt; nach heutiger Regel wären 88 lernbar.
+  - Die IBANs auf Lohnabrechnungen (Gehaltskonto, vermögenswirksame Leistungen) wurden am Arbeitgeber gelernt; 5 hat Tobi von Hand verworfen.
+- **Die Fakten kennen keinen Inhaber.** Eine IBAN hat immer die Rolle `contact`, gleich wo sie steht. Der Fakten-Aufruf des Sprachmodells (`facts-1`) fragt IBAN, USt-IdNr. und E-Mail ausdrücklich nicht ab, weil die Muster sie sicher finden.
+- **Die IBAN-Prüfung kennt weder Länder noch Längen**, nur die Prüfsumme. Deshalb gehen auch Gläubiger-Referenzen nach ISO 11649 („RF…“ im Verwendungszweck) und Zeichenfolgen mit „NR“ als IBAN durch: 12 Stellen in Prod.
+- **Prompt-Caching (eingerichtet 27.10.2026):**
+  - LiteLLM setzt die Cache-Marke auf `messages[1]` (das Dokument): `cache_control_injection_points` mit `location: message`, `index: 1`, gesetzt in der UI.
+  - Lekto schickt das Schema mit `LEKTO_LLM_RESPONSE_FORMAT=json_object` hinter die Aufgabe, in Dev und Prod (Prod über Tobis Ansible).
+  - Ein Test mit zwei Anfragen gleichen Anfangs: Die erste schrieb 15.456 Tokens in den Cache, die zweite las sie. Der Fakten-Aufruf zahlt das Dokument damit nur noch zu 10 %.
+  - Vorher standen in Prod bei Lese- und Schreibmengen 0.
+
+**PoC (27.10.2026, nur im Scratchpad, nichts im Repository):**
+
+- **Feste Regel** ohne Dokumenttypen und ohne Banknamen. Lekto prüft je IBAN-Stelle der Reihe nach:
+  1. Klebt die IBAN in einer längeren Zeichenfolge, ist sie keine (Rauschen).
+  2. Profil der Person, eingetragene Kennung oder GiroCode.
+  3. Beschriftung in der eigenen Zeile: „Bankverbindung“, „auf unser Konto“ → Absender; „Ihr Konto“, „Kontoinhaber“ → Person.
+  4. Ein bekannter Name in der Spalte der IBAN (der Text behält die Spalten als Leerraum).
+  5. Der Name einer Person irgendwo im Block, über alle Spalten.
+  6. Ein fremder Name zählt nur in einer Buchungszeile (mit Datum oder Betrag) oder in einer Liste.
+  7. „Überweisung“ oder „Auszahlung“ → Dritter.
+  8. Viele IBANs im Dokument → Liste, also Dritter.
+  9. Unterer Seitenrand → Absender.
+  10. Zweiter Durchgang: Was einmal sicher einer Person gehört, gehört ihr überall.
+
+  Namen von Personen zählen nur mit allen Wörtern (ein Buchstabe OCR-Fehler erlaubt). Login-Namen und einzelne Vornamen zählen nicht.
+- **Dev:** 48 Dokumente, 888 Stellen. Gegen Claudes Durchsicht sind 884 richtig. Die 2 falschen Absender sind beigelegte Bescheide Dritter in einer NK-Abrechnung.
+- **Prod:** 814 von 2105 Dokumenten tragen IBANs, zusammen 4299 Stellen.
+
+  | Inhaber | Stellen |
+  |---|---|
+  | Person | 2787 |
+  | Dritter | 1051 |
+  | Absender | 358 |
+  | unklar | 79 |
+  | Rauschen | 24 |
+
+  - Auf den 3464 Stellen der Kontoauszüge gibt es keinen Absender.
+  - Von 267 Absender-Paaren (Dokument und IBAN) sind nach Durchsicht gut 95 % richtig. Falsch sind beigelegte Rechnungen Dritter, ein Darlehenskonto im Brief eines Autohauses, die Tochterfirma eines Klinikums und der Kopf von Kreditkartenabrechnungen.
+  - **Gegenprobe:** 25 IBANs ordnet die Regel über Buchungszeilen einem bekannten Kontakt zu. 9 davon stehen auch in dessen eigenen Dokumenten als Absender-IBAN, alle 9 beim selben Kontakt.
+  - **Training:** 40 statt 88 IBANs wären lernbar, davon 30 schon heute; 10 kommen neu dazu, weil die Kontoauszüge sie nicht mehr anderen Kontakten zuschreiben.
+  - **Grenzen:** Die Regel ist an genau diesen Daten nachgeschärft, und die Grundwahrheit ist Claudes Durchsicht. Die Beschriftungen sind nur deutsch.
+- **Sprachmodell** (Claude Sonnet 5.5 über LiteLLM, `json_object`, der Aufbau des Fakten-Aufrufs mit einer Aufgabe „Wem gehört jede gelistete Nummer?“):
+  - 14 Dokumente mit 30 Nummern: 13 strittige und klare aus Prod, dazu ein erfundener englischer Brief.
+  - 28 Nummern sind richtig eingeordnet. Die zwei übrigen heißen „unklar“ und „Dritter mit dem Namen der Person“, beides schadet nicht.
+  - Englisch klappt ohne eigene Regeln.
+  - In den strittigen Fällen (Tochterfirma, Finanzierer, Hausmeister) sagt das Modell „Absender“, **nennt aber einen anderen Namen** als den Kontakt des Dokuments. Erst der Abgleich des Namens trennt sie.
+  - Das Modell sieht nur den gekürzten Text: Beigelegte Bescheide und viele Buchungen fehlten dort.
+  - 1,4 bis 6 s und 1.400 bis 5.000 Eingabe-Tokens je Dokument, ohne Cache.
+
+**Entscheidungen (Frage-Antwort-Runde 27.10.2026):**
+
+1. **Der Inhaber wird bestimmt**, nicht nur Kontoauszüge ausgeblendet.
+2. **Das Sprachmodell liefert den Inhaber im Fakten-Aufruf mit**, auf dem gecachten Anfang. Es gibt keinen dritten Aufruf, und der Vorschlags-Aufruf bekommt die Aufgabe nicht.
+3. **Arten:** IBAN und Gläubiger-ID (Vorschlag Claude, Tobi: „Dein Vorschlag“). USt-IdNr. und Domain stehen fast nur beim Absender und bleiben vorerst außen vor.
+4. **Die feste Regel bleibt** als Rückfall: ohne Modell, für Nummern außerhalb des gesendeten Texts, wenn die Antwort fehlt oder nicht passt. Sie bekommt englische Beschriftungen („Bank details“, „Our account“, „Account holder“, „Your account“, „Payee“, „Beneficiary“, „Pay to“, „Remit to“).
+5. **Kein Decision Model** (Tobi: „lassen wir erstmal weg“).
+
+**Vorschlag (zur Freigabe):**
+
+- **Inhaber eines Fakts:** `holder` mit
+  - `sender`, `recipient`, `third_party` oder `unclear`
+  - dem Namen, wie geschrieben
+  - der Herkunft: Modell, Regel oder Person
+
+  Er gilt für IBAN und Gläubiger-ID. Er steht neben der Rolle, die bleibt, wie sie ist.
+- **Wann Lekto dem Modell glaubt:**
+  - Die Nummer ist eine der gelisteten.
+  - Das Zitat steht im Text, so wie Lekto heute Zitate prüft.
+  - Ein genannter Name steht im Text nahe der Nummer.
+
+  Sonst gilt die Regel. Widersprechen sich Modell und Regel bei „Absender“, gilt „unklar“.
+- **Absender heißt: der Kontakt des Dokuments.** Nennt das Modell (oder die Regel) einen Namen, der weder Name noch Alias dieses Kontakts ist, ist der Inhaber ein Dritter mit diesem Namen. Damit fallen Tochterfirma, Finanzierer und Hausmeister richtig.
+- **Training:** Es lernt IBAN und Gläubiger-ID nur aus Fakten mit Inhaber „Absender“; die übrigen Kontakt-Arten wie bisher. Wie heute braucht es zwei bestätigte Dokumente, alle desselben Kontakts. Eine IBAN, die in irgendeinem Dokument einer Person oder einem anderen Kontakt gehört, lernt es nicht.
+- **Urteil:** Eine IBAN oder Gläubiger-ID belegt den Kontakt des Dokuments nur, wenn sie dort nicht einem Dritten oder einer Person gehört. Die IBAN des Vermieters in einer Buchungszeile macht einen Kontoauszug nicht zum Brief des Vermieters.
+- **Offene Kennungen** (Reiter Kennungen): Als „unbekannt“ erscheinen nur noch IBANs und Gläubiger-IDs mit Inhaber „Absender“.
+- **Personen:** Eine IBAN, die sicher einer Person gehört, schlägt Lekto für deren Profil vor (in einem späteren PR, siehe Offen).
+
+**Umsetzung in PRs** (Reihenfolge 1 → 2 → 3 → 4; jeder PR mit den fünf Prüfungen, bei Änderungen der Web-UI auch deren Prüfungen):
+
+1. **IBAN nur mit Land und Länge** (`bugfix/iban-countries`, `bugfix`): Die Prüfung kennt die Länder des IBAN-Registers mit ihrer Länge. „RF…“ (ISO 11649) und andere Zeichenfolgen, deren Prüfsumme zufällig stimmt, sind keine IBAN mehr. Bestehende Fakten bereinigt der nächste Lauf des Faktensignals; ein Nachtrag ist nicht nötig, weil es nur einzelne sind.
+2. **Inhaber nach fester Regel** (`feature/iban-holders`, `new-feature`):
+   - Domäne `core/domain/holders.py`: die Regel aus dem PoC, deutsch und englisch, auf Text und Seitenaufbau (`layout_words`, `TextPlaces`).
+   - `DocumentFact.holder`, Revision 0051 (Spalten `holder`, `holder_name`, `holder_source` in `document_facts`).
+   - Das Faktensignal setzt den Inhaber, die Contract-Suite deckt ihn ab.
+   - Tests mit erfundenen Beispielen: Kontoauszug zweier Aufmachungen, Rechnung mit Bankverbindung im Fuß, Lohnabrechnung, NK-Abrechnung mit Beilage, englischer Brief.
+   - Ein Wartungs-Job „Inhaber bestimmen“ für den Bestand (System › Wartung, wie Codes lesen), nur mit der Regel, ohne Modell.
+   - Web: Die Fakten zeigen den Inhaber.
+   - **Gebaut (28.10.2026):** PR 1 gemergt (#180). PR 2 wie oben, mit diesen Vorgaben von Claude (Tobi bestätigt noch):
+     - Kein eigener Job „Inhaber bestimmen“: „Codes lesen“ (`read-codes`) lässt schon das Faktensignal je Dokument laufen und bestimmt dabei die Inhaber; nur sein Text nennt sie jetzt.
+     - Die Regel kennt den Kontakt des Dokuments nicht: Ein bekannter Kontaktname neben der Nummer heißt „Absender“ mit diesem Namen, auch in einer Buchung; erst wer den Inhaber nutzt (PR 4), gleicht den Namen mit dem Kontakt ab. Eine von Hand eingetragene Kennung zählt in der Regel nicht.
+     - Je Fakt ein Inhaber aus allen Fundstellen: ein Empfänger an einer gilt; Absender und Dritter zugleich heißen unklar.
+     - Das Modellsignal und das Zurücknehmen einer Entscheidung behalten die Inhaber, die schon gehalten sind; ein von einer Person entschiedener Fakt behält den Inhaber von damals.
+     - Gegen die Regel des PoC an dessen Fundstellen: Dev 888 von 888 gleich, Prod 4298 von 4299 (die eine trägt eine englische Beschriftung).
+3. **Inhaber vom Sprachmodell** (`feature/model-holders`, `new-feature`):
+   - `facts-2`: Lekto gibt die gefundenen IBANs und Gläubiger-IDs mit; die Antwort nennt je Nummer Inhaber, Name und Zitat.
+   - Prüfung und Zusammenführung mit der Regel wie oben.
+   - Neue Prompt-Version mit Bewertung: feste Antworten und ein Lauf mit echtem Modell an höchstens 15 Dokumenten.
+   - **Gebaut (28.10.2026):** `facts-2` listet die IBANs und Gläubiger-IDs des gesendeten Texts und fragt je Nummer Inhaber, Name und Zitat (die Beschreibungen der Inhaber aus dem PoC). Geprüft wie oben (Name höchstens 400 Zeichen von der Nummer), zusammengeführt mit der Regel; sagt das Modell „unklar“, gilt die Regel (Vorgabe von Claude nach dem Lauf, Tobi bestätigt noch). Wer zuletzt speichert, führt zusammen, wie bei den Fakten. Bewertung: `expected.holders` und `fake.holders` in fünf Fällen des Bewertungssets (Lohnabrechnungen, Kontoauszug als Tabelle, Rechnung nur mit Kennung); feste Antworten 6 von 6 (kalt) und 7 von 7 (trainiert). Lauf mit echtem Modell (Dev-LiteLLM, 15 Dokumente): die 5 Fälle 7 von 7; 10 Dev-Dokumente mit 58 Nummern, alle beantwortet, 3 Namen nicht nahe der Nummer (die Regel gilt), Modell und Regel einig bei 44 von 55, sonst Regel Empfänger/Modell Dritter (7, vermutlich Überweisungen an andere Personen), Regel Empfänger/Modell unklar (3, jetzt gilt die Regel), Regel unklar/Modell Absender (1). 2 bis 16 s je Aufruf. Die Regel lernte dabei Tabellen (`|` als Spaltengrenze) und eine Buchungsart vor dem Namen („Lastschrift Stadtwerke“); behoben, dass „Lastschrift“, „Gutschrift“, „Belastung“ und „Buchung“ im Singular nie erkannt wurden (Fehler schon im PoC). Dev gegen den PoC weiter 888 von 888.
+4. **Training, Urteil, offene Kennungen** (`enhancement/learn-sender-ibans`, `enhancement`): Lernen, Beleg und Liste wie oben; ein Training danach nimmt die falsch gelernten IBANs von selbst weg. Beschreibung in `architektur.md` (Ingest-Workflow › Kontakte: Kennungen; Signale).
+
+**Antworten (Tobi, 28.10.2026):**
+
+1. **Bestand:** Vorerst nur Dev, Prod spielt noch keine Rolle. Den Bestand füllt die Regel über den Job, der die Fakten neu liest; das Modell liest erst neue Dokumente (PR 3).
+2. **Personen-IBANs fürs Profil:** gleich mit PR 4.
+3. **Kontakt-IBANs aus Buchungen:** ja, als Vorschlag im Reiter Kennungen.
+4. **Reihenfolge:** erst PR 4, dann PR 3.
+5. „Codes lesen“ bekommt einen besseren Namen (Vorschlag unten).
+6.–8. Die Vorgaben aus PR 2 gelten (Absender mit Namen, ein Inhaber je Nummer, entschiedene Fakten behalten ihren Inhaber).
+9. **Fakten-Bereich:** IBANs und Gläubiger-IDs Dritter eingeklappt.
+10. **Inhaber korrigieren:** als Issue (#182), später bewerten.
+11. Die privaten Prod-Daten des PoC sind gelöscht.
+
+**PR 4, aufgeteilt (Vorschlag Claude, zur Freigabe):**
+
+- **4a Lernen und Urteil** (`enhancement/learn-sender-ibans`, `enhancement`), nur Backend:
+  - Ein Inhaber „Absender“ zählt für einen Kontakt nur, wenn kein Name genannt ist oder der Name dessen Name oder ein Alias ist; sonst ist er ein Dritter (`domain.holders`, eine Funktion für alle drei Nutzer).
+  - **Training:** Eine IBAN oder Gläubiger-ID zählt in einem bestätigten Dokument nur, wenn sie dort dem Absender gehört oder unklar ist. Gehört sie in irgendeinem bestätigten Dokument einer Person oder einem Dritten, lernt das Training sie nicht (wie heute ein Wert einer Person). Ohne Inhaber (der Fakt ist von vor 0.8 und noch nicht neu gelesen) bleibt es wie bisher. Ein Training danach nimmt falsch gelernte IBANs von selbst weg.
+  - **Urteil:** Das Faktensignal nennt eine IBAN oder Gläubiger-ID eines Kontakts nur als Beleg für ihn, wenn sie im Dokument nicht einer Person oder einem Dritten gehört.
+  - **Offene Kennungen:** Als „unbekannt“ erscheinen IBANs und Gläubiger-IDs nur, wo sie dem Absender gehören (oder unklar sind).
+  - Prüfen in Dev: wie viele IBANs das Training heute lernt und wie viele danach (Zahlen, keine Werte).
+  - **Gebaut (28.10.2026), Abweichungen (Vorgaben von Claude, Tobi bestätigt noch):**
+    - Zu Antwort 6: Ein bekannter Kontaktname in einer Buchung oder Liste heißt jetzt „Dritter“ mit diesem Namen, nicht „Absender“. Sonst sähe das Urteil die IBAN der Stadtwerke in der Buchung eines Kontoauszugs als Beleg für die Stadtwerke, denn der Name passt zu ihnen. Außerhalb einer Buchung bleibt es „Absender“ mit Namen. Dev gegen die Regel des PoC weiter 888 von 888.
+    - Nicht jede IBAN eines Dritten sperrt das Training, nur die einer Person: Die IBAN des Vermieters in den Buchungen der Kontoauszüge zählt dort nicht, wird aber beim Vermieter gelernt (bisher stand sie bei zwei Kontakten und wurde nie gelernt).
+- **4b Vorschläge im Reiter Kennungen** (`feature/identifier-suggestions`, `new-feature`), mit Mock vorher:
+  - Eine dritte Herkunft „vorgeschlagen“ neben „gelernt“ und „unbekannt“, nur für Admins wie der Reiter.
+  - **Person:** eine IBAN, die in bestätigten Dokumenten dem Empfänger gehört und deren genannter Name eine Person trifft (ohne Namen: das Dokument liegt im persönlichen Space genau einer Person). „Übernehmen“ trägt sie in deren Profil ein (Admins dürfen Profile mit Sitzung ändern), „Verwerfen“ merkt sie als verworfen.
+  - **Kontakt:** eine IBAN oder Gläubiger-ID, deren genannter Name einen anderen bekannten Kontakt trifft (die Miete beim Vermieter auf dem Kontoauszug). „Übernehmen“ trägt sie dort von Hand ein, „Verwerfen“ verwirft sie dort.
+  - Fundstellen im Dialog wie bisher; die Zeile nennt, wem sie wohl gehört.
+  - Offen bis zur Umsetzung: wo eine verworfene Personen-IBAN steht (im Profil gibt es kein „verworfen“; Vorschlag: eine Liste verworfener Vorschläge am Nutzer).
+  - **Gebaut (28.10.2026), Mock von Tobi freigegeben:** verworfene Personen-IBANs stehen in `user_declined_identifiers` (Revision 0052) als `Profile.declined`; sie finden niemanden und werden nicht wieder vorgeschlagen, eine später ins Profil eingetragene fällt dort heraus. Ein Vorschlag nur, wo die IBAN sonst nirgends offen ist (eine unbekannte beim Kontakt ihres Dokuments geht vor). Entscheidungen über Personen brauchen eine Sitzung (wie `PATCH /users/{id}/profile`). Die Übersicht zählt die Vorschläge mit. Keine Spalte „woher“ wie im Mock („Buchungen in Kontoauszügen“): Der Fakt weiß nicht, ob er in einer Buchung stand; der Dialog zeigt die Fundstellen.
+- **4c Fakten-Bereich** (`enhancement/facts-third-parties`, `enhancement`), mit Mock hell und dunkel, neues Muster in `web/DESIGN.md`:
+  - IBANs und Gläubiger-IDs Dritter stehen unter den übrigen Kennungen eingeklappt: eine Zeile „9 Nummern Dritter“ mit Pfeil, aufgeklappt die Zeilen wie heute (mit Inhaber). Eine Person, die sie eben aufklappte, sieht sie offen, bis sie das Dokument verlässt.
+  - **Gebaut (28.10.2026), Mock von Tobi freigegeben:** wie oben; eingeklappt sind die mit Inhaber „Dritter“, auch die eines bekannten Kontakts, auch beim Kontakt des Dokuments (sie belegen ihn nach 4a nicht). Sie zählen im Chip am Kontaktfeld nicht als unbekannt. Muster „A folded group“ in `web/DESIGN.md`.
+- **Name des Jobs** (`enhancement/read-facts`, `enhancement`, vor 4a): „Codes lesen“ liest nicht nur die Codes, sondern alle Fakten eines Dokuments neu (Codes der Seiten, Muster im Text, Inhaber). Vorschlag: **„Fakten neu lesen“** / „Read facts again“, Befehl `lekto read-facts`, `POST /pipeline/read-facts`, Aktion `READ_FACTS_ALL`, VS-Code-Task und Dokumentation mit; ohne Rückwärtskompatibilität.
+
+Reihenfolge: Name des Jobs, 4a, 4b, 4c, dann PR 3.
+
+### Inhaber von USt-IdNr. und E-Mail-Domains
+
+Stand: freigegeben (offener Punkt 7, Tobi 28.10.2026: „ok“; Fragen 1–3: „Alle 3 Punkte: ja“).
+
+**Anlass:** Wie bei IBAN und Gläubiger-ID lernt das Training heute jede USt-IdNr. und jede E-Mail-Domain eines Dokuments für seinen Kontakt, auch die eines Dritten (Konzernmutter, Zahlungsdienst, Portal, Dienstleister „im Auftrag von“).
+
+**Gemessen in Dev (28.10.2026, nur lesend):**
+- E-Mail-Domains: 32 in 18 Dokumenten, in 9 davon zwei oder mehr. Nur 12 der 32 passen zum Namen des Dokumentkontakts. An Kontakten von Hand eingetragen: 8, davon passen 7 zum Namen. Verworfen: 7, keine davon passt zum Namen. Keine Freemail-Domain, keine Adresse eines Nutzers.
+- USt-IdNr.: 16 in 9 Dokumenten, in 7 davon zwei oder mehr (4 verschiedene). Ein „Ihre/unsere USt-IdNr.“ steht nirgends davor. Eine verworfen.
+
+**Vorschlag:**
+- **Kern:** `HOLDER_KINDS` bekommt `vat_id` und `email_domain`. Die Inhaber laufen damit durch alles, was es für IBANs schon gibt: Training lernt nur die des Absenders, das Urteil vergleicht nur diese, die offene Liste klappt Nummern Dritter ein, das Faktenfeld zeigt den Inhaber mit Quelle („laut Regel“).
+- **Regel USt-IdNr.** (`domain.holders`, wie bei IBANs, je Stelle):
+  - ein Label auf der Zeile oder darüber: „Ihre USt-IdNr.“/„your VAT“ → Empfänger, „unsere USt-IdNr.“/„our VAT“ → Absender;
+  - ein bekannter Name daneben oder in ihrem Block (Fußzeile „Muster GmbH · USt-IdNr. DE…“): der Kontakt unter diesem Namen, also Absender, wenn es der Dokumentkontakt ist, sonst Dritter;
+  - steht im Dokument nur eine, ist es die des Absenders (wie heute);
+  - sonst unklar.
+- **Regel E-Mail-Domain** (über den Namen, nicht über die Stelle):
+  - passt die Domain zum Namen oder einem Alias des Dokumentkontakts (ein Wort des Namens steckt im Domainnamen, `stadtwerke-nordheim.de` zu „Stadtwerke Nordheim GmbH“) oder trägt der Kontakt sie schon → Absender;
+  - passt sie zu einem anderen bekannten Kontakt → Dritter unter dessen Namen;
+  - die Domain einer E-Mail-Adresse, deren Teil vor dem @ einen Nutzer nennt, oder eine Domain aus dem Profil eines Nutzers → Empfänger;
+  - eine Freemail-Domain (gmx.de, web.de, gmail.com, t-online.de, outlook.com, icloud.com, posteo.de, mailbox.org und wenige mehr) ist nie die eines Kontakts → unklar;
+  - sonst unklar: nicht gelernt, im Reiter Kennungen als Vorschlag.
+  - Auf Dev hätte das alle 7 verworfenen Domains vom Lernen ferngehalten und 7 der 8 von Hand eingetragenen gelernt; die achte käme als Vorschlag.
+- **Modell:** Der Fakten-Aufruf (facts-2) fragt die Inhaber vorerst weiter nur für IBANs und Gläubiger-IDs. Für USt-IdNr. und Domains reicht nach der Messung die Regel; mehr Fragen kosten Token je Dokument.
+- **Bestand:** Keine Schemaänderung (die Spalten `holder*` sind allgemein). „Fakten neu lesen“ setzt die Inhaber im Bestand; danach trainieren. Beides stößt Tobi an.
+- **Auswertung:** Der synthetische Satz bekommt Fälle mit zwei USt-IdNr. (Absender und Konzernmutter) und mit fremden Domains (Zahlungsdienst, Portal) samt erwartetem Inhaber.
+
+**PRs:** einer, `feature/holders-vat-domain` (`enhancement`).
+
+**Umgesetzt (28.10.2026):** wie vorgeschlagen, dazu zwei Feinheiten aus den Tests: Eine USt-IdNr. ist nie Partei einer Buchung oder Liste (sonst machte „Leistung 120,00 EUR“ darüber sie zur Nummer eines Dritten), und das Label einer Zeile darüber gilt für sie nicht, wenn diese Zeile eine eigene USt-IdNr. trägt („Unsere USt-IdNr. DE…“ über der Nummer der Konzernmutter). Eine Domain wird einer Person nicht als Profilkennung vorgeschlagen (Personen haben keine). Auswertung: Fall 31 nennt jetzt Zahlungsdienst, Kundenportal und Konzernmutter; Inhaber kalt 11 von 11, trainiert 12 von 12.
+
+**Fragen:**
+1. Domain über den Namen: Reicht „ein Wort des Namens im Domainnamen“ (Wörter ab drei Buchstaben, ohne Rechtsform)? Vorschlag: ja; was nicht passt, wird Vorschlag, nicht gelernt.
+2. Das Modell fragt die Inhaber von USt-IdNr. und Domains vorerst nicht. Vorschlag: so lassen, nach dem Release an Deinen Entscheidungen messen (Punkt 10).
+3. Freemail-Domains nie als Domain eines Kontakts. Vorschlag: ja, als feste Liste im Code.
+
+### Empfehlungen im Reiter Kennungen und laufende Auswertung der Inhaber
+
+Stand: freigegeben (offene Punkte 9 und 10, Tobi 28.10.2026: „ok“; Antworten unten: „Alles wie empfohlen“). Baut auf „Inhaber von USt-IdNr. und E-Mail-Domains“ (#203) auf.
+
+**Anlass:** Im Reiter Kennungen entscheidet Tobi jede offene Kennung einzeln, obwohl die Daten bei vielen schon sagen, wie es ausgeht (Inhaber, Rolle, in wie vielen Dokumenten welcher Kontakte). Und ob die Inhaber stimmen, misst bisher nur der synthetische Satz, nicht Tobis echte Entscheidungen. Statt eines eigenen Entscheidungsmodells (`evaluate-decisions`, Punkt 6: vorerst nicht) also eine Empfehlung aus den eigenen Daten und eine laufende Messung.
+
+**Vorschlag 9, Empfehlung je offener Kennung** (`domain.open_identifiers`, ohne Modell):
+- **„Übernehmen empfohlen“**, alles muss gelten:
+  - die Kennung steht in mindestens zwei bestätigten Dokumenten ihres Kontakts (`RECOMMEND_FROM` = 2);
+  - sie steht in keinem bestätigten Dokument eines anderen Kontakts;
+  - bei einer Art mit Inhaber gehört sie in jedem dieser Dokumente dem Kontakt (Absender);
+  - ihre Rolle ist die eines Kontakts (`contact`, `target`), nicht `own`, `thread`, `refers` (Rechnungs- und Aktenzeichen wechseln je Dokument).
+- **„Verwerfen empfohlen“** (nur eine gelernte, die beim Kontakt steht): bei einer Art mit Inhaber gehört sie in einem bestätigten Dokument ihres Kontakts einem anderen (Empfänger, Dritter), oder sie steht in Dokumenten von zwei oder mehr Kontakten (die Gläubiger-ID eines Zahlungsdienstes). Gemessen besser als „in keinem die des Kontakts“: 29 so, alle 29 verworfen; die alte Regel hätte eine übernommene erfasst.
+- Sonst keine Empfehlung: Tobi entscheidet wie heute.
+- Ein Vorschlag (Inhaber nennt einen anderen Kontakt oder eine Person) ist „übernehmen empfohlen“, wenn zwei oder mehr Dokumente denselben nennen.
+- Jede Empfehlung nennt ihren Grund in Worten („in 5 Dokumenten von Stadtwerke Musterstadt, jedes Mal ihre“; „in Dokumenten von 3 Kontakten“). Er steht in der API als `recommendation` mit `reasons`.
+- **Sammelaktion:** „Empfohlene übernehmen (N)“ übernimmt alle offenen mit „übernehmen empfohlen“, über alle Seiten, ein Aufruf (`POST /identifiers/open/recommended`, Admins). Verworfen wird nie gesammelt, nur einzeln oder über die Auswahl wie heute.
+- **Web:** In jeder Zeile ein Badge „Übernehmen empfohlen“ (`lane-green`-Schema der Chips) bzw. „Verwerfen empfohlen“ (`muted`), der Grund im Tooltip und im Dialog der Kennung; im `Segmented` über der Liste ein vierter Wert „Empfohlen“ mit Zahl; der Knopf der Sammelaktion rechts daneben (`outline`), mit Rückfrage und genauer Zahl.
+
+**Vorschlag 10, laufende Auswertung an Tobis Entscheidungen:**
+- **Gemessen** wird jede Kennung einer Art mit Inhaber (IBAN, Gläubiger-ID, USt-IdNr., Domain), die bei einem Kontakt entschieden ist: von Hand eingetragen oder übernommen (`manual`) gegen verworfen (`rejected`), soweit sie in bestätigten Dokumenten dieses Kontakts steht.
+- Die Regel „sagt Kontakt“, wo sie dort mindestens einmal dem Kontakt und nirgends einem anderen gehört; sonst „sagt fremd“.
+- Daraus vier Zahlen je Art:
+  - stimmt: Kontakt und übernommen, fremd und verworfen;
+  - hätte gelernt, was Du verworfen hast;
+  - hätte abgelehnt, was Du übernommen hast.
+- Dazu dieselbe Messung für die Empfehlung aus 9: Wie oft hätte sie Deine Entscheidung getroffen, wie oft das Gegenteil empfohlen?
+- **Wo:** System › Automatisierung, eine Karte „Inhaber und Empfehlungen an Deinen Entscheidungen“ mit einer kleinen Tabelle je Art, berechnet beim Aufruf wie die anderen Zahlen dort (gemeinsamer Minutencache). Nur Admins.
+- **Kein neuer Speicher:** Die Entscheidungen stehen schon bei den Kontakten (`source`), die Inhaber bei den Fakten. Was schon vor den Inhabern entschieden war, zählt mit; das ist gewollt, es ist Tobis Urteil.
+
+**Gemessen in Dev (28.10.2026, nur lesend), 68 entschiedene Kennungen (16 übernommen, 52 verworfen):** In nur einem Dokument ihres Kontakts: 17 verworfen, 1 übernommen. Ab zwei Dokumenten (nur bei diesem Kontakt, kein fremder Inhaber): 11 übernommen, 4 verworfen (eine Domain, mit #203 künftig unklar; zwei Kundennummern, eine Mandatsreferenz); ab drei 9 zu 3, ab sechs 8 zu 2. Auswertung heute: IBAN 29 Mal fremd und verworfen; Gläubiger-ID 2 fremd und verworfen, 1 unklar und übernommen; USt-IdNr. und Domains noch ohne Inhaber (bis „Fakten neu lesen“).
+
+**Antworten (Tobi, 28.10.2026, „Alles wie empfohlen“):** 1. ab zwei Dokumenten; 2. Sammelaktion nur zum Übernehmen (ein verworfenes verschwindet und wird nie wieder gelernt, ein falsch übernommenes sieht man beim Kontakt); 3. Auswertung unter System › Automatisierung, je Art mit „unklar“ getrennt, dazu die Empfehlung; 4. Mock vor dem Bauen. Verwerfen-Regel wie oben neu gemessen.
+
+**PRs:**
+1. `feature/identifier-recommendations` (`new-feature`): Empfehlung, Sammelaktion, Badges, Filter.
+
+**Umgesetzt PR 1 (28.10.2026):** wie geplant. Die Zahl bei „Empfohlen“ zählt wie die Herkunftszahlen ohne die gewählte Herkunft; die Zahl im Knopf zählt alle, die die Sammelaktion übernimmt (ohne Filter und Suche). Eine Nummer eines anderen Kontakts zählt gegen eine Kennung nur, wo dieser sie als seine hält (die IBAN der Stadtwerke in den Buchungen eines Kontoauszugs nicht). Der Grund steht im Tooltip, für Screenreader im Badge und im Dialog der Kennung.
+
+**Umgesetzt PR 2 (28.10.2026):** `domain.holder_evaluation` zählt je Art mit Inhaber und für die Empfehlung (über `open_identifiers.recommendation_for`, als hätte das Training die Kennung beim Kontakt gelernt); `GET /automation/holders` (Admins, eine Minute gehalten); Karte `HolderEvaluationCard` unter System › Automatisierung, nur für Admins, Arten in fester Reihenfolge (IBAN, Gläubiger-ID, USt-IdNr., Domain), die Empfehlung zuletzt. Bei der Empfehlung heißt „Unklar“: keine Empfehlung (statt „–“ im Mock gezählt).
+2. `feature/holder-evaluation` (`new-feature`): Auswertung unter System.
+
+**Fragen:**
+1. Ab zwei Dokumenten „übernehmen empfohlen“? Vorschlag: ja (`RECOMMEND_FROM` = 2); eine Kennung aus nur einem Dokument bleibt ohne Empfehlung.
+2. Die Sammelaktion nur für „übernehmen“, nie „verwerfen“? Vorschlag: ja, verwerfen bleibt eine Einzelentscheidung.
+3. Die Auswertung unter System › Automatisierung, nicht im Reiter Kennungen? Vorschlag: ja, sie misst die Automatik.
+4. Vor dem Bauen ein Mock (Badges, Filter, Sammelaktion, Karte; hell und dunkel)? Vorschlag: ja.
+
+### Massenaktionen und Seiten in der Dokumentliste
+
+Stand: freigegeben (Tobi, 28.10.2026; offene Punkte 13 und 13.3). Mock: Leinwand „Lekto Übersicht und Kennungen“, Abschnitt „13 · Massenaktionen“.
+
+**Anlass (Tobi):** Viele Dokumente auf einmal ändern, wie in Paperless-ngx; dazu Seiten statt „Mehr laden“, wie bei den Jobs.
+
+**Entscheidungen (Tobi, 28.10.2026):**
+1. Aktionen nach Paperless und dem ersten Wurf: Tags dazu und weg, Kontakt, Dokumenttyp, Thema und Space setzen, bestätigen, neu verarbeiten, löschen.
+2. Seiten mit 50 Dokumenten je Seite (`Pagination`), in Liste und Kacheln.
+3. „Alle N Treffer auswählen“ über die Seite hinaus (Empfehlung Claude, Tobi: „ich stimme zu“).
+
+**Vorschlag:**
+
+- **Auswahl:** wie „Choosing many“ in `web/DESIGN.md`: ein Kästchen je Zeile bzw. Kachel und eines im Kopf für die Seite; gewählte haben `bg-panel`. Ist die ganze Seite gewählt, bietet die Leiste „Alle N Treffer auswählen“ an; danach gilt die Auswahl für Suche und Filter, nicht für eine Liste von IDs. Die Leiste klebt oben (am Handy unten) und nennt die Zahl, „Auswahl aufheben“ und die Aktionen: Tags, Kontakt, Typ und „Mehr“ (Thema, Space, bestätigen, neu verarbeiten, löschen).
+- **Dialoge je Aktion:** Tags mit zwei Listen (dazu, weg) wie der Tag-Picker; Kontakt, Typ und Thema mit `SearchSelect` (auch „nicht gesetzt“); Space mit der Auswahl aus „Verschieben“. Löschen und Neu verarbeiten fragen mit der genauen Zahl (`ConfirmDialog`), die anderen nicht.
+- **API:** `POST /documents/bulk` mit `selection` (`ids`, höchstens 500, oder `filter`: dieselben Parameter wie `GET /documents` bzw. die Suche) und `action` (`add_tags`, `remove_tags`, `set_contact`, `set_document_type`, `set_topic`, `move`, `confirm`, `reprocess`, `delete`). Lekto legt einen Job `documents.bulk` an (Antwort 202 mit der ID); `GET /documents/bulk/{id}` sagt, wie weit er ist und was geschah: geändert, übersprungen mit Grund (nur lesbar, in Verarbeitung, schon so), fehlgeschlagen.
+- **Kern:** Der Job ruft je Dokument dieselben Dienste wie eine einzelne Änderung (`DocumentService.update`, `confirm`, `reprocess`, `move`, `delete`), jede in ihrer eigenen Transaktion: Rechte, Ereignisse, Änderungsregeln, Urteile in `field_verdicts` und Training gelten wie bei Hand. Ein Fehler bei einem Dokument stoppt die übrigen nicht. Mit Wörtern der Suche löst der Job die Treffer über den Suchindex auf, ohne Wörter über die Datenbank; Meilisearch liefert höchstens 1.000 Treffer (`MAX_HITS`), mehr gibt es dann nicht, und die Leiste sagt das.
+- **Seiten:** `GET /documents` bekommt `offset` neben `cursor`; die Liste zeigt `Pagination` mit 50 je Seite, die Zahl der Treffer kommt aus den Zählungen der Seitenleiste. Die Seite steht im Link (`?page=`). Die Lenses behalten ihre Sortierung und Gruppierung; eine Gruppe (Monat, Fälligkeit, Typ) kann über eine Seitengrenze gehen.
+- **Web:** `DocumentsBulkBar`, die Dialoge, Kästchen in Zeilen und Kacheln (die Kachel bekommt es oben links, über dem Vorschaubild), Fortschritt in der Leiste („412 von 1.234“), am Ende ein Toast mit dem Ergebnis und, bei übersprungenen, ein Link „Details“.
+- **Muster** in `web/DESIGN.md`: die Leiste der Dokumentliste ist „Choosing many“ mit „alle Treffer“ und Fortschritt.
+
+**PRs** (Reihenfolge):
+1. `feature/documents-pages` (`enhancement`): Seiten statt „Mehr laden“.
+2. `feature/bulk-actions` (`new-feature`): API, Job, Auswahl, Leiste, Dialoge.
+
+**Antworten (Tobi, 28.10.2026):** 1. ja, 2. ja („der Nutzer entscheidet“). Plan freigegeben.
+
+**Umgesetzt (Abweichungen im Detail):** Die Tags dazu und weg sind eine Aktion `change_tags` (`add_tag_ids`, `remove_tag_ids`), wie der Dialog sie mit seinen zwei Listen anlegt; ein Dialog, ein Vorgang. Die Auswahl löst der Aufruf auf, nicht der Job: `POST /documents/bulk` sagt so gleich, wenn sie leer ist oder mehr als 10.000 Dokumente trifft (422 `bulk_too_many`), und die Antwort nennt die Zahl. Ein Dokument, das schon so ist, bleibt unberührt (eine Änderung würde es bestätigen) und zählt als „schon so“; eines in Verarbeitung wird übersprungen, außer beim Löschen.
+
+**Auswahlmodus und Seitengröße (Tobi, 28.10.2026, nach dem ersten Test):** Die Kästchen über der ersten Seite gefielen nicht. Wie in Home Assistant schaltet erst ein Knopf neben der Sortierung den Auswahlmodus ein; dann tragen Karten und Zeilen ihr Kästchen (im Kopf der Karte), ein Tipp wählt, und die Leiste steht da: X, „Auswählen ▾“ (diese Seite, alle Treffer, keine, Modus beenden), Zahl, Aktionen. Mock: Leinwand, Abschnitt „13 · Auswahlmodus“, freigegeben. Die Dokumentliste bietet 25, 50 und 100 je Seite (Vorgabe 50), gemerkt je Tabelle; 200 erwogen und vorerst nicht (die Suche liefert höchstens 100 je Aufruf).
+
+**Fragen, die beantwortet sind:**
+1. Sollen Massenaktionen auch für Nicht-Admins gehen (für Dokumente, die sie bearbeiten dürfen)? Vorschlag: ja.
+2. Neu verarbeiten ab welchem Schritt? Vorschlag: wie der Knopf am Dokument, der Schritt im Dialog wählbar (voreingestellt der erste, die Texterkennung); ab „Sprachmodell“ kostet es je Dokument zwei Modellaufrufe, der Dialog sagt das bei mehr als 15 Dokumenten.
 
 ### M16 – Lesen
 

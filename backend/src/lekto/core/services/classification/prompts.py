@@ -16,15 +16,15 @@ import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from lekto.core.domain.document_facts import FactRole
+from lekto.core.domain.document_facts import FactRole, HolderKind
 from lekto.core.domain.fields import FieldDefinition, FieldType
-from lekto.core.domain.identifiers import IdentifierKind
+from lekto.core.domain.identifiers import IdentifierKind, Key
 from lekto.core.domain.master_data import one_line
 from lekto.core.domain.text import Shortened
 
 EXTRACT_PROMPT = "extract-6"
 PROPOSE_PROMPT = "propose-6"
-FACTS_PROMPT = "facts-1"
+FACTS_PROMPT = "facts-2"
 PROPOSE_SCHEMA = "proposal"
 EXTRACT_SCHEMA = "fields"
 FACTS_SCHEMA = "facts"
@@ -163,7 +163,8 @@ PROPOSE_TASK = "Task: propose the metadata of the document {where} above."
 EXTRACT_TASK = "Task: extract the values of the listed fields from the document {where} above."
 FACTS_TASK = (
     "Task: list the facts of the document {where} above: the numbers and references of the "
-    "listed kinds it shows, each with its role."
+    "listed kinds it shows, each with its role; and for each listed IBAN and creditor ID, "
+    "whose it is."
 )
 """The first line of a task; `{where}` names the document's markers (`document_marker`), so the
 task holds to the real frame, not to one the document's text may forge."""
@@ -369,15 +370,51 @@ the label; the same value once. A number the document names as another's ("Ihre 
 Leave out what is of no listed kind, and amounts, dates and periods that are no reference."""
 
 
-def facts_task(*, marker: str | None = None) -> str:
-    """The task of the facts call: the kinds and roles, then what the answer's facts are."""
+HOLDERS: dict[HolderKind, str] = {
+    HolderKind.SENDER: (
+        "the party the document comes from: its own bank details, where it wants to be paid "
+        "(also when it names a company of its group or a brand of it); on a bank's statement "
+        "the bank itself, never the account the statement is about"
+    ),
+    HolderKind.RECIPIENT: (
+        "the party the document is addressed to: the account a statement is about, the salary "
+        'account on a pay slip, the account a direct debit is taken from ("your account"), '
+        "the addressee's bank details in a form they filled in"
+    ),
+    HolderKind.THIRD_PARTY: (
+        "anyone else: the counterparty of a booking, a payee or creditor the document names "
+        "or forwards (an enclosed bill of another issuer, a collection agency, a lender), "
+        "another person who is not the addressee"
+    ),
+    HolderKind.UNCLEAR: "the document does not tell",
+}
+"""Whose an IBAN or a creditor ID can be (`facts-2`), each with what it means."""
+
+HOLDERS_RULE = """\
+one entry per listed number, in the listed order: its kind and value as listed, its holder, \
+the holder's name as the document writes it next to the number (null if it names none), and \
+the evidence: a short passage that shows the number or who holds it."""
+
+_NUMBER_KINDS = {IdentifierKind.IBAN: "IBAN", IdentifierKind.CREDITOR_ID: "creditor ID"}
+
+
+def facts_task(*, marker: str | None = None, numbers: Sequence[Key] = ()) -> str:
+    """The task of the facts call: the kinds and roles, the IBANs and creditor IDs the patterns
+    read in the text sent (`numbers`) with the holders they can have, then what the answer's
+    facts and holders are."""
     kinds = "\n".join(f"- {kind.value}: {text}" for kind, text in FACT_KINDS.items())
     roles = "\n".join(f"- {role.value}: {text}" for role, text in FACT_ROLES.items())
+    listed = "\n".join(
+        f"- {kind.value} ({_NUMBER_KINDS[kind]}): {value}" for kind, value in numbers
+    )
+    holders = "\n".join(f"- {holder.value}: {text}" for holder, text in HOLDERS.items())
     return "\n\n".join(
         [
             _task_line(FACTS_TASK, marker),
             "Kinds:\n" + kinds,
             "Roles:\n" + roles,
-            _parts({"facts": FACTS_RULE}),
+            "Numbers (as Lekto read them, without spaces):\n" + (listed or "(none)"),
+            "Holders:\n" + holders,
+            _parts({"facts": FACTS_RULE, "holders": HOLDERS_RULE}),
         ]
     )

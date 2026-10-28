@@ -93,6 +93,25 @@ async def test_facts_are_names_and_identifiers_in_the_text(world: World) -> None
     ]
 
 
+async def test_a_payee_s_iban_is_no_evidence_of_its_contact(world: World) -> None:
+    """A bank statement lists the utility's IBAN in a booking: the utility's identifier, but
+    a third party's there, so no evidence that the statement is the utility's."""
+    iban = Identifier.parse(IdentifierKind.IBAN, THEIR_IBAN)
+    utility = Contact.create(name="Stadtwerke Musterstadt", now=builders.NOW, identifiers=[iban])
+    bank = Contact.create(name="Beispielbank", now=builders.NOW)
+    await contacts(world, utility, bank)
+    text = (
+        "Beispielbank   Kontoauszug 10/2026\n"
+        f"02.10.2026   Lastschrift   Stadtwerke Musterstadt   {THEIR_IBAN}   -45,00 EUR\n"
+    )
+    document = await stored(world, await world.user(), text)
+    result = await FactsSignal(world.uow, world.object_store).run(document)
+    assert output(result)["identifiers"] == []
+    assert output(result)["foreign_identifiers"] == [
+        {"contact_id": str(utility.id), "kind": "iban", "value": iban.value}
+    ]
+
+
 async def test_without_text_facts_abstain(world: World) -> None:
     owner = await world.user()
     document = builders.processed(owner, await world.personal_space(owner))

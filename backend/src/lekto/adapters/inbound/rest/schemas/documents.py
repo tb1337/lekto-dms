@@ -307,6 +307,10 @@ class YearCount(BaseModel):
     months: list[MonthCount] = Field(description="Its months with documents, newest first.")
 
 
+class DocumentCountOut(BaseModel):
+    total: int = Field(description="Documents that match the filter.")
+
+
 class DocumentFacetsOut(BaseModel):
     """How many documents of the filter have each value, for the filters of the document view.
     Contacts, types, groups, topics and the period combine as either-or and count without

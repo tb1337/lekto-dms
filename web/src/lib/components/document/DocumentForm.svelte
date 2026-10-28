@@ -773,6 +773,7 @@
 					{#if chosenContact}<ContactAvatar contact={chosenContact} size="md" />{/if}
 					<SearchSelect
 						id="doc-contact"
+						title={m.picker_title_contact()}
 						value={contact}
 						disabled={!editable}
 						options={lookup.contacts.map((entry) => ({
@@ -856,6 +857,7 @@
 					{/if}
 					<SearchSelect
 						id="doc-type"
+						title={m.picker_title_type()}
 						bind:value={documentType}
 						disabled={!editable}
 						options={lookup.documentTypes.map((entry) => ({ value: entry.id, label: entry.name }))}

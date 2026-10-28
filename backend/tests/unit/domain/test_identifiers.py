@@ -13,6 +13,7 @@ from lekto.core.domain.identifiers import (
     Identifier,
     IdentifierKind,
     IdentifierSource,
+    KeyIndex,
     catalog,
     identifiers_from,
     identifiers_in,
@@ -54,6 +55,8 @@ Ihre Adresse: max.nord@gmail.com
     ("kind", "raw", "value"),
     [
         (IBAN, "de89 3704 0044 0532 0130 00", THEIR_IBAN),
+        (IBAN, "NO93 8601 1117 947", "NO9386011117947"),  # the shortest
+        (IBAN, "MT84 MALT 0110 0001 2345 MTLC AST0 01S", "MT84MALT011000012345MTLCAST001S"),
         (VAT, "DE 123 456 789", "DE123456789"),
         (VAT, "ATU12345678", "ATU12345678"),
         (CUSTOMER, "K-778.81/2", "K778812"),
@@ -73,6 +76,10 @@ def test_identifiers_are_normalised(kind: IdentifierKind, raw: str, value: str) 
     ("kind", "raw"),
     [
         (IBAN, "DE89 3704 0044 0532 0130 01"),  # check sum
+        # The check sum fits, but the length or the country does not.
+        (IBAN, "DE54 3704 0044 0532 0130 001"),
+        (IBAN, "RF18 5390 0754 7034"),  # a creditor reference (ISO 11649)
+        (IBAN, "NR03 1234 5678 9012"),
         (VAT, "DE12345"),
         (CUSTOMER, "Musterkunde"),  # no digit
         (CUSTOMER, "12"),
@@ -121,6 +128,22 @@ def test_no_iban_without_its_check_sum(text: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "text",
+    [
+        "Verwendungszweck RF18 5390 0754 7034",  # a creditor reference
+        "Vertrags-NR03 1234 5678 9012",
+        "Konto DE54 3704 0044 0532 0130 001",  # one place too many
+    ],
+)
+def test_no_iban_without_its_country_and_length(text: str) -> None:
+    assert IBAN not in {kind for kind, _ in identifiers_in(text)}
+
+
+def test_an_iban_ends_where_its_country_says() -> None:
+    assert identifiers_in("IBAN DE89 3704 0044 0532 0130 00 1234 Sparkasse") == {(IBAN, THEIR_IBAN)}
+
+
+@pytest.mark.parametrize(
     ("text", "value"),
     [
         (" Personalnummer     : 00012345        Druckdatum    : 15.07.2026", "12345"),
@@ -139,6 +162,34 @@ def test_a_personnel_number_after_its_label(text: str, value: str) -> None:
 def test_no_personnel_number_without_label_or_value() -> None:
     assert identifiers_in("Supers Nr 4711, Nummer 12345") == set()
     assert identifiers_in("Personalnummer: siehe oben; Personalnummer 12") == set()
+
+
+def test_a_key_index_tells_what_a_found_key_is_without_comparing_each() -> None:
+    """`KeyIndex.matching` agrees with `matches`: a customer number is found as a contract
+    number of its value, a domain as its subdomain, nothing else."""
+    domain = Identifier(DOMAIN, "stadtwerke.example")
+    customer = Identifier(CUSTOMER, "4711")
+    iban = Identifier(IdentifierKind.IBAN, "DE02120300000000202051")
+    index = KeyIndex((item, item.value) for item in (domain, customer, iban))
+    found = [
+        (DOMAIN, "stadtwerke.example"),
+        (DOMAIN, "service.stadtwerke.example"),
+        (DOMAIN, "neue-stadtwerke.example"),
+        (CUSTOMER, "4711"),
+        (IdentifierKind.CONTRACT_NUMBER, "4711"),
+        (IdentifierKind.POLICY_NUMBER, "4711"),
+        (CUSTOMER, "47110"),
+        (IdentifierKind.IBAN, "DE02120300000000202051"),
+        (IdentifierKind.CREDITOR_ID, "DE02120300000000202051"),
+    ]
+    for key in found:
+        expected = [item.value for item in (domain, customer, iban) if matches(item, key)]
+        assert index.matching(key) == expected, key
+    assert index.matching((DOMAIN, "example")) == []
+    # A contract number entered as such is not a customer number.
+    contract = KeyIndex([(Identifier(IdentifierKind.CONTRACT_NUMBER, "4711"), "contract")])
+    assert contract.matching((CUSTOMER, "4711")) == []
+    assert contract.matching((IdentifierKind.CONTRACT_NUMBER, "4711")) == ["contract"]
 
 
 def test_a_domain_stands_for_its_subdomains() -> None:

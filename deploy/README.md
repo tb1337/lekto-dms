@@ -397,13 +397,16 @@ An update that changes what the search index holds says so in its release notes;
 that made the pipeline a graph (0.2.0) added the page images: run `lekto render-pages` after
 it, and the worker renders the pages of the documents from before (a document that is being
 processed at that moment keeps its job; run the command again until it reports 0 queued).
-The same update reads bar and QR codes: run `lekto read-codes` after it (and after a
+The same update reads bar and QR codes: run `lekto read-facts` after it (and after a
 `lekto reparse`), and the worker reads the codes of the documents from before and keeps the
 identifiers each one shows; it reads locally, nothing is sent out. A document that is being
 processed at that moment is skipped; run the command again once it is through.
 The update that brought the relations between documents (#145) finds those of new documents;
-run `lekto relate` after it (after `read-codes`), and again after marking a document type as a
+run `lekto relate` after it (after `read-facts`), and again after marking a document type as a
 relation target, and the worker relates the documents from before.
+The update that tells whose an IBAN or a creditor ID is (0.8, revision 0051) does so for new
+documents; run `lekto read-facts` after it, and the worker reads the facts of the documents
+from before again (until 0.8 the command was `read-codes`).
 The same update renamed `LEKTO_STEP_MAX_ATTEMPTS` and `LEKTO_STEP_RETRY_DELAY` to
 `LEKTO_NODE_MAX_ATTEMPTS` and `LEKTO_NODE_RETRY_DELAY`; a container with an old name refuses
 to start and says so.

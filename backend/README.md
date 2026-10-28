@@ -524,13 +524,17 @@ and the space, the fields node reads the fields of the decided type and the titl
   names, per call, the prompt tokens the endpoint took from its cache where it reports them
   (`output.tokens[].cached`: `prompt_tokens_details.cached_tokens`, or
   `cache_read_input_tokens` through LiteLLM); the web UI shows them in the token details.
-  Two limits of the form (review of #149, open with Tobi): system prompt, document and task must
-  fit the model's context together (`LEKTO_LLM_INPUT_BUDGET` is the document's share, the task
-  with its lists comes on top) – Ollama drops older messages whole when a prompt is too long and
-  keeps the last, so the model would get the task without the document, where before the runner
-  cut the one message; and an endpoint whose chat template requires the roles to alternate (some
-  Gemma and Mistral templates under vLLM or llama.cpp with `--jinja`) refuses two user messages
-  in a row.
+  Two limits of the form, of no concern for Claude (through LiteLLM or not) and to keep in mind
+  for a model served directly:
+  - System prompt, document and task must fit the model's context together:
+    `LEKTO_LLM_INPUT_BUDGET` is the document's share in characters, and the task with its lists
+    comes on top. Ollama drops older messages whole when a prompt is too long and keeps the
+    last, so the model would get the task without the document. Give the model a context of at
+    least about a third of the budget in tokens plus 4,000 for the task (Ollama:
+    `OLLAMA_CONTEXT_LENGTH` or the model's `num_ctx`), or lower the budget.
+  - An endpoint whose chat template requires the roles to alternate (some Gemma and Mistral
+    templates under vLLM or llama.cpp with `--jinja`) refuses two user messages in a row.
+    Choose a template that allows it, or a proxy that joins messages of one role.
 - **`signal_classifier`**: TF-IDF of words and word pairs and a logistic regression per target
   (contact, topic, type, each automatic document tag, the space), trained on the confirmed
   documents (`LEKTO_CLASSIFIER`, see Classifier). The space is learned from the documents whose
@@ -787,7 +791,10 @@ which takes two conditions; the document date follows the same rules:
   word with fewer than half of its characters letters or digits (rules, marks), a dot, dash or
   underscore leader (`Datum..........`), also one Tesseract read as letters (`«oso:`, `see`,
   `EEE`: a box under 35 % of its line's height, where a word of small letters still has the
-  x-height), one or two characters without a digit (stray marks read as `gy`, `TI`, `j`), a
+  x-height) or as digits where specks made its box high (`11111`, `02.00.0000.`: read unsure,
+  at least five characters, four in five of them ones, zeros, dots, commas or colons, at most
+  two different digits, four ones or four zeros in a row; an unsure date or amount stays
+  content), one or two characters without a digit (stray marks read as `gy`, `TI`, `j`), a
   word right beside a leader on its line, within a line's height (Tesseract reads a clean
   label beside its dots unsure, `Krankenkasse` at 38 %), and the words of a line under 60 % of the page's typical line height (hOCR `x_size`, the median
   over the words: a letterhead's small print; lines of the body font lie up to a fifth apart,
@@ -829,7 +836,8 @@ above. The label is looked for among the words of the parsed text (`content.json
 document has, digital or scanned), as quotes are located, but as whole words: case and spacing
 evened out, then on letters and digits alone (`Brutto` is not in `Steuerbrutto`; `Gesamtbrutto`
 is in `**Gesamtbrutto:**`). A label over two lines is measured by the line it ends on. The value's words are those at its quote's place that show it, or,
-where it has none, where the value stands just once on the pages. The value stands by its label
+where it has none, every place the value stands on the pages (an amount in a table and again
+in a sentence: by its label where either place is). The value stands by its label
 on the label's line to its right, or below it in its column (overlapping it, or starting within
 four characters of its left edge) within three lines (`LABEL_LINES`); the line (the usual
 distance between the page's lines) and the character (the median width of one) are measured on
@@ -917,7 +925,7 @@ what every model learned and how well, oldest first; training on request is for 
    as they are. The search index then takes up the new texts, which embeds every document anew
    (with an embedding service elsewhere this takes a while: choose the time), and the
    classifier is trained on the new texts afterwards (`train`).
-3. 0.2 reads the bar and QR codes on the pages. `lekto read-codes` has
+3. 0.2 reads the bar and QR codes on the pages. `lekto read-facts` (until 0.8 `read-codes`) has
    the worker read them for the documents from before and keep the identifiers each document
    shows (`document_facts`, until 0047 `document_identifiers`), so that the warning when attaching an identifier counts
    every confirmed document. It reads locally and sends nothing out; nodes, lane and metadata
@@ -925,7 +933,7 @@ what every model learned and how well, oldest first; training on request is for 
    for them. Run it once `reparse` is through, which changes the text the identifiers are read
    from.
 4. The node `relate` (issue #145) finds the relations of new documents; documents from before
-   have it skipped. `lekto relate` has the worker find theirs; run it after `read-codes`, and
+   have it skipped. `lekto relate` has the worker find theirs; run it after `read-facts`, and
    again after marking a document type as a relation target.
 
 **After the update to 0.3.** Revisions 0024 to 0029 run at start; then four things:
@@ -1276,7 +1284,7 @@ and why by words alone where the meaning was to take part (`reason` with a code:
   for `R20260815` finds "R-2026-0815"; a person's numbers are no words of the search). The
   reconciliation writes older entries again and keeps their vectors, since the embedded text
   does not change (no document had a topic before layout 5; the facts are not embedded): no
-  embedding calls. A person's decision about a fact, and the facts `read-codes` keeps outside
+  embedding calls. A person's decision about a fact, and the facts `read-facts` keeps outside
   processing, are a change of the document (`document.updated` with the field `facts`): the
   index takes them in at once.
 - **Sorting.** `sort` comes first among Meilisearch's ranking rules, so relevance breaks ties,
@@ -1438,6 +1446,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /search/reindex` | Rebuild the search index in the background (admins); `202` |
 | `GET /documents` | Readable documents, each with `in_inbox` (it stands open in the caller's inbox); `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), `field`, `-field` (the value of the field `sort_field_id`: a date, a period by its first day, a number, an amount by its value; `422` for other types), documents without a date or value last either way; filters `contact_id`, `document_type_id`, `space_id` (each repeats, one of them must match), `tag_id` (with the tags below it; repeats, all must match), `contact_group_id` and `document_type_group_id` (the document's contact or type in the group or one below it; each repeats, one of them must match), `topic_id` (the topic or one below it; repeats, one of them must match), `document_date_from` and `document_date_to` (the document date lies between them, both days included, either end open; a document without a date does not match; `422` if the end lies before the start), `lane`, `field_id` (a value for the field), `fact` (a fact the document has, none a person rejected, as `kind:value:role`, the value as written, needing its kind and possibly holding colons, any part empty for any: `invoice_number:4711:`, `contract_number::`, `::refers`; repeats, all must match; at most five; a person's facts, by a kind that is a person's alone or by the role `person`, only for admins, `403`, also in a lens), `all_users` (admins); `limit`, `cursor` (`next_cursor` of the page before, an opaque value naming its last document; its sort value is looked up, `422` if that document is gone) |
 | `GET /documents/facets` | Counts for the filters of the document view, with the filters of `GET /documents` and `all_users` (admins): `total`, per contact and type (`id` null: without one), group of contacts and of types, topic and tag (each with the documents of those below it, once), year and its months of the document date (`undated`: without one). Contacts, types, groups, topics and the period combine as either-or and count without their own choice, so each tells what one more would add; tags count with the whole filter |
+| `POST /documents/bulk`, `GET /documents/bulk/{id}` | Change many documents at once in the background (`202`, job `documents.bulk`, 25 documents per job): `action` is `change_tags` (`add_tag_ids`, `remove_tag_ids`), `set_contact`, `set_document_type`, `set_topic` (an id or null), `move` (`space_id`), `confirm`, `reprocess` (`from_node`) or `delete`; the documents are `document_ids` (at most 500) or every one the query parameters find (the filter of `GET /documents`, at most 10,000, more: `422`; with `q` the hits of the search, as far as it reaches). Each goes through the change a person makes on one, in a transaction of its own; one the caller may not edit, one being processed (except to delete it) or one that changed meanwhile is skipped with its reason, one that is as the action wants it already is left alone (`unchanged`). The progress for the caller and admins |
 | `POST /documents` | Upload (multipart: `file`, optional `space_id` (a space the caller edits; default: the uploader's personal space), optional `channel=migration`, `uploaded_by` and `metadata` for admins; otherwise the channel is `web` with a session, `api` with a token); `202` with `id`, `status_url` |
 | `GET/PATCH/DELETE /documents/{id}` | Metadata and state with the caller's access, `channel`, `topic_id` (see Topics); change (editors; the answer has the change rules' `rules` report); delete (editors and admins); `uploaded_by` names who uploaded it, `access` is `read` or `edit` |
 | `POST /documents/{id}/dry-run` | A change as with `PATCH`, with the change rules, nothing stored: the result, the differences and who would see it (`visibility`: the space and its `members`) |
@@ -1554,8 +1563,8 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
   (see Inbox). The same loop runs the removal of a deleted document's files.
 - Pipeline steps go before index jobs: the search index lags behind a bulk ingest and catches
   up when no step is due (the document lists read the database, not the index).
-- Rule applications (`rules.apply`) run 25 documents per job, then queue the next job, so
-  pipeline nodes do not wait behind them.
+- Rule applications (`rules.apply`) and changes of many documents (`documents.bulk`) run 25
+  documents per job, then queue the next job, so pipeline nodes do not wait behind them.
 - After a tag moved, `tags.normalise` leaves what carries it and a tag now above it the one
   below (after rule applications; see Tags); a row changed meanwhile fails the version check,
   and the job runs again (five tries, waiting from a minute, doubling).
@@ -1609,7 +1618,9 @@ checked when the event is queued and again before every attempt, and a user who 
 between gets nothing (the log shows `dropped`). The body carries no lane, so a receiver
 that wants the state of the document fetches it; `document.filed` is not sent while the document
 is still being processed. `document.deleted` goes to those who could read the document
-when it was deleted.
+when it was deleted. A relation that is set, changes or goes (the node `relate`, the job after a person's change,
+a person) sends `document.updated` with `fields: ["relations"]` to both of its documents, and
+only to whoever may read both; `lekto relate` over the stock sends none.
 
 **Rules that send** (`send_webhook`, Tobi, 25.10.2026). A rule sends a request through a webhook
 of whoever saves it (someone else's is not found, `404`); the type is `rule.send`, the body

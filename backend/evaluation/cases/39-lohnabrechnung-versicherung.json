@@ -22,7 +22,10 @@
         "amount": "4250.00",
         "currency": "EUR"
       }
-    }
+    },
+    "holders": [
+      {"kind": "iban", "value": "DE89370400440532013000", "holder": "recipient"}
+    ]
   },
   "fake": {
     "classification": {
@@ -67,6 +70,9 @@
         "evidence": "Gesamtbrutto | 4.250,00 €",
         "label": "Gesamtbrutto"
       }
-    }
+    },
+    "holders": [
+      {"kind": "iban", "value": "DE89370400440532013000", "holder": "recipient", "name": null, "evidence": "Überweisung auf IBAN DE89 3704 0044 0532 0130 00"}
+    ]
   }
 }

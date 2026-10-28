@@ -5,9 +5,12 @@
  * today stays relative.
  */
 
+import { api } from '#lib/api/client.ts';
+import { unwrap } from '#lib/api/call.ts';
 import type { components } from '#lib/api/schema.ts';
 import { factFilter, parseFactFilter } from '#lib/facts.ts';
 import {
+	apiQuery,
 	relativeOf,
 	relativePeriod,
 	writeFilters,
@@ -85,4 +88,26 @@ export function lensDiffers(lens: Lens, params: URLSearchParams, today: Date): b
 	keys.delete('lens');
 	const values = (from: URLSearchParams, key: string) => from.getAll(key).toSorted().join('\n');
 	return [...keys].some((key) => values(wanted, key) !== values(params, key));
+}
+
+/** How many documents a lens shows today (null: all documents): with words, as the search by
+ * words alone estimates them (no embedding for a count); else as the filters count them. */
+export async function lensCount(
+	lens: Lens | null,
+	today: Date,
+	allUsers: boolean
+): Promise<number> {
+	const query = lens
+		? apiQuery(lensFilters(lens, today), allUsers)
+		: { all_users: allUsers || undefined };
+	if (lens?.query) {
+		const found = await unwrap(
+			api.GET('/api/v1/documents/search', {
+				params: { query: { ...query, q: lens.query, limit: 1, semantic_ratio: 0 } }
+			})
+		);
+		return found.estimated_total;
+	}
+	const counted = await unwrap(api.GET('/api/v1/documents/count', { params: { query } }));
+	return counted.total;
 }

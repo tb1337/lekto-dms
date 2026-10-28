@@ -64,10 +64,17 @@ in (the editor's theme holds its colours), and bits-ui's focus trap does not see
 a listener keeps `focusin` from the editor away from it. Component tests get a plain text area in
 place of the editor (`tests/setup.ts`); `codemirror.test.ts` runs the real one.
 
+## Overview
+
+`/` is the overview, reached by the logo (it has no menu entry): tiles with what waits for
+someone, each with the way there (`lib/components/overview`): the inbox by its lanes, for admins
+the open identifiers, and the jobs; below them the documents expected next (`ExpectedSection`;
+the area "Expected" went into it).
+
 ## Inbox
 
-`/ui/inbox` is the start page and the way in: documents are uploaded there only, and
-everything new stands there until a person saw it or decided.
+`/ui/inbox` is the way in: documents are uploaded there only, and everything new stands there
+until a person saw it or decided.
 
 - **Upload:** the button opens `UploadDialog` (files chosen, on a phone through the system's
   picker with camera and photos, or dropped there); it asks for no space and no uploader:
@@ -113,14 +120,21 @@ user menu (`lib/scope.svelte.ts`), kept in this browser too and shown at the ava
 search, the inbox with its counter, rules and the counts at the master data follow it. Every
 `localStorage` access is guarded: without storage the defaults hold.
 
+The list shows one page at a time (`Pagination`, with the page in `?page=`; 25, 50 or 100 to a
+page, 50 at first, remembered in this browser). A button beside the sort turns on a selection
+mode (`DocumentsBulkBar` on `SelectionBar`): documents are chosen by a tap, by page, or every hit
+of the search and filters at once, and changed together in the background
+(`POST /documents/bulk`, followed by `lib/bulk.svelte.ts`): tags, contact, type, topic, space,
+confirm, process again, delete. The bar shows how far the action has come; a toast says what it
+did, and "Details" names the documents it skipped with why.
+
 ## Header
 
 The app's header holds the logo (the favicon's icon before the wordmark, `Logo`), the menu, the
-search, language, theme and the account menu (`AppShell`). The menu has two groups with a line
-between them, for everyone: the work (inbox, documents, expected, spaces) and setting up and
-running Lekto (rules, webhooks, system, and for admins master data and users); `sections.ts`
-holds the groups and who sees an area. "Expected" carries a small "Beta" pill, and the page a
-larger one beside its title that opens a note (`BetaPill`, colour `--beta`). Below `xl` the menu
+search, language, theme and the account menu (`AppShell`). The logo leads to the overview. The
+menu has two groups with a line between them, for everyone: the work (inbox, documents, spaces,
+rules, webhooks) and administering and running Lekto (for admins master data and users, then
+system); `sections.ts` holds the groups and who sees an area. Below `xl` the menu
 is a sheet from the right, opened by the button at the outer right; on a phone (below `sm`) the
 header keeps only the magnifier and that button, and the sheet holds the account as well: name
 and role, for admins the switch to include all users, the navigation, then language and theme as
@@ -129,9 +143,10 @@ theme menus at every width.
 
 ## Master data
 
-`/ui/admin/master-data` (admins) has four tabs in `?tab=`: contacts, document types, tags,
-fields; an unknown one is the first. Each has a search in this browser (`lib/master-search.ts`:
-contacts also by aliases and identifiers) and its button to add. The Tags tab holds every kind
+`/ui/admin/master-data` (admins) has five tabs in `?tab=`: contacts, document types, tags,
+fields, identifiers; an unknown one is the first. Each has a search in this browser
+(`lib/master-search.ts`: contacts also by aliases and identifiers) and, but the identifiers, its
+button to add. The Tags tab holds every kind
 of tag (`TagsPanel`, `lib/tag-kinds.ts`): a filter by kind in `?kind=`, one section per kind
 with its tree, the collapsed sections remembered in this browser, and per tag its usage as a
 link (documents; a contact group's contacts and a type group's types, which the contact and type
@@ -153,6 +168,14 @@ and in its contact, type and topic fields, an admin's search that finds nothing 
 named so offers to create it: the kind's full dialog over the page or the current one, the
 name filled in (`masterDataDialogs.create`, `MasterDataCreate`); what it makes is chosen,
 closing it chooses nothing. Nothing is made from the name alone.
+
+The Identifiers tab (`IdentifiersPanel`, `lib/open-identifiers.ts`) lists the open identifiers
+no person has confirmed: learned at a contact, standing in confirmed documents at no contact, or
+suggested for a contact or a person's profile; a table on a desktop, rows on a phone, narrowed
+by source, kind and the search. Rows are chosen with their box and taken over or rejected many
+at once (`SelectionBar`); one opens its dialog (`OpenIdentifierDialog`) with the places it
+stands in. Where the documents tell, a row carries a recommendation with its reason, and
+"Empfohlene übernehmen" takes every recommended one over after asking.
 
 Icons come from Lucide in the own build, each its own file loaded when it is shown. Chips and
 type icons draw the 170 offered first from a small map (`lib/icons/curated-modules.ts`, which a
@@ -283,6 +306,7 @@ cd web && pnpm gen:api   # writes src/lib/api/schema.ts
 | `src/lib/reasons.ts`           | The API's reasons with codes in the user's language (`reason_<code>` messages)  |
 | `src/lib/periods.ts`           | Periods in ISO 8601 (`2026-Q2`, `2026-W17`), read also in German forms          |
 | `src/lib/listing.ts`           | Sort and grid or list of the document view, remembered in this browser          |
+| `src/lib/bulk.svelte.ts`       | An action on many documents, followed by the page until it ends                 |
 | `src/lib/scope.svelte.ts`      | An admin's choice to include all users, remembered in this browser              |
 | `src/lib/permissions.ts`       | What the UI offers by role in a space: edit, move, hand over, members, rules    |
 | `src/routes`                   | `login`, the app pages in `(app)`; `(app)/dev/components` in development only   |

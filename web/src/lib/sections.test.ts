@@ -25,17 +25,7 @@ describe('SECTIONS', () => {
 
 	it('groups the work before setting up and running, for everyone', () => {
 		const groups = SECTIONS.map((section) => section.group);
-		expect(groups).toEqual([
-			'work',
-			'work',
-			'work',
-			'work',
-			'work',
-			'work',
-			'setup',
-			'setup',
-			'setup'
-		]);
+		expect(groups).toEqual(['work', 'work', 'work', 'work', 'work', 'setup', 'setup', 'setup']);
 		expect(visibleSections(false).map((section) => section.group)).toContain('setup');
 	});
 });

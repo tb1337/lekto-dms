@@ -99,6 +99,15 @@ user_identifiers = Table(
     Index("ix_user_identifiers_kind_value", "kind", "value"),
 )
 
+# Identifiers suggested as a user's that a person declined (`Profile.declined`).
+user_declined_identifiers = Table(
+    "user_declined_identifiers",
+    metadata,
+    Column("user_id", Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("kind", Text, primary_key=True),
+    Column("value", Text, primary_key=True),
+)
+
 spaces = Table(
     "spaces",
     metadata,
@@ -405,6 +414,11 @@ document_facts = Table(
     Column("written", Text, nullable=True),
     Column("position", Integer, nullable=True),
     Column("state", Text, nullable=False, server_default="found"),
+    # Whose a number with a holder is (`document_facts.Holder`, `HOLDER_KINDS`): its kind,
+    # name and source.
+    Column("holder", Text, nullable=True),
+    Column("holder_name", Text, nullable=True),
+    Column("holder_source", Text, nullable=True),
     Index(None, "kind", "value"),
 )
 
@@ -588,6 +602,25 @@ rule_applications = Table(
     Column("accept_conflicts", json_type(), nullable=False),
     Column("position", Integer, nullable=False),
     Column("applied", Integer, nullable=False),
+    Column("unchanged", Integer, nullable=False),
+    Column("skipped", json_type(), nullable=False),
+    Column("error", Text, nullable=True),
+    Column("created_at", UtcDateTime, nullable=False),
+    Column("finished_at", UtcDateTime, nullable=True),
+    Column("version", Integer, nullable=False),
+)
+
+# A person's action on many documents at once (`domain.bulk`), worked through in the background.
+bulk_operations = Table(
+    "bulk_operations",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("user_id", Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("action", json_type(), nullable=False),
+    Column("status", Text, nullable=False),
+    Column("documents", json_type(), nullable=False),
+    Column("position", Integer, nullable=False),
+    Column("changed", Integer, nullable=False),
     Column("unchanged", Integer, nullable=False),
     Column("skipped", json_type(), nullable=False),
     Column("error", Text, nullable=True),

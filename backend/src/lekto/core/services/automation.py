@@ -19,13 +19,16 @@ from typing import Any
 from lekto.core.domain.classification import DOCUMENT_DATE, field_id_of
 from lekto.core.domain.documents import Channel
 from lekto.core.domain.first_runs import FACTS, JUDGED_FIELDS, RELATIONS, Verdict
+from lekto.core.domain.holder_evaluation import HolderEvaluation, evaluate
+from lekto.core.domain.identifiers import CONTACT_KINDS
 from lekto.core.domain.ids import UserId
 from lekto.core.domain.pipeline import NODES, Lane, Node
+from lekto.core.domain.reasons import Action
 from lekto.core.domain.statistics import percentiles
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.repository import FactsScope, LaneCount
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
-from lekto.core.services._access import load_actor
+from lekto.core.services._access import load_actor, require_admin
 from lekto.core.services._kept import Kept
 
 DEFAULT_CHANNELS = frozenset({Channel.WEB, Channel.API})
@@ -233,6 +236,20 @@ class AutomationService:
             return SignalReport(chosen, period, since, tuple(hits))
 
         return await self._kept.get(("signals", chosen, period, str(zone)), count)
+
+    async def holders(self, actor: UserId) -> HolderEvaluation:
+        """The holders and the open list's recommendations against the decisions at the
+        contacts (`domain.holder_evaluation`; admins: it reads the master data)."""
+        async with self._uow() as uow:
+            await require_admin(uow, actor, Action.CHANGE_MASTER_DATA)
+
+        async def count() -> HolderEvaluation:
+            async with self._uow() as uow:
+                contacts = await uow.contacts.list_all()
+                sightings = await uow.document_facts.sightings(CONTACT_KINDS)
+            return evaluate(contacts, sightings)
+
+        return await self._kept.get(("holders",), count)
 
     async def _actor(self, actor: UserId) -> None:
         async with self._uow() as uow:

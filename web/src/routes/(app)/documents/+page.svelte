@@ -8,8 +8,9 @@
 	import StreamView from '#lib/components/documents/StreamView.svelte';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import Info from '@lucide/svelte/icons/info';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import X from '@lucide/svelte/icons/x';
-	import { onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -20,9 +21,15 @@
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
+	import Mark from '#lib/components/Mark.svelte';
 	import ActiveFilters from '#lib/components/ActiveFilters.svelte';
 	import DocumentCard from '#lib/components/DocumentCard.svelte';
 	import DocumentRow from '#lib/components/DocumentRow.svelte';
+	import BulkSkipped from '#lib/components/BulkSkipped.svelte';
+	import DocumentsBulkBar from '#lib/components/DocumentsBulkBar.svelte';
+	import { BulkRun, type BulkSelection } from '#lib/bulk.svelte.ts';
+	import { MAX_DOCUMENTS, MAX_HITS } from '#lib/bulk.ts';
+	import { phone } from '#lib/phone.svelte.ts';
 	import FilterPanel from '#lib/components/FilterPanel.svelte';
 	import InboxMark from '#lib/components/InboxMark.svelte';
 	import LensChanges from '#lib/components/LensChanges.svelte';
@@ -48,7 +55,14 @@
 	import { cardLines } from '#lib/card-fields.ts';
 	import { groupDocuments } from '#lib/grouping.ts';
 	import { latest } from '#lib/latest.ts';
-	import { lensDiffers, lensFilter, lensParams, type Lens, type LensSort } from '#lib/lenses.ts';
+	import {
+		lensCount,
+		lensDiffers,
+		lensFilter,
+		lensParams,
+		type Lens,
+		type LensSort
+	} from '#lib/lenses.ts';
 	import {
 		FIELD_SORTS,
 		LIST_SORTS,
@@ -73,7 +87,9 @@
 	} from '#lib/listing.ts';
 	import { PageLookup } from '#lib/lookup.svelte.ts';
 	import { openLens } from '#lib/open-lens.svelte.ts';
-	import { PagedList } from '#lib/paging.svelte.ts';
+	import { Pager } from '#lib/paging.svelte.ts';
+	import { rememberedPageSize } from '#lib/page-size.ts';
+	import Pagination from '#lib/components/Pagination.svelte';
 	import { reasonText } from '#lib/reasons.ts';
 	import { SearchNote } from '#lib/search-note.svelte.ts';
 	import { meaningSearch, warmSearch } from '#lib/meaning-search.ts';
@@ -252,6 +268,26 @@
 			// Without lenses the documents stand as ever.
 			lenses = [];
 		}
+		void loadLensCounts();
+	}
+
+	// How many documents each lens shows, beside its name; one that cannot be counted shows none.
+	let lensCounts = $state<Record<string, number>>({});
+	const beginLensCounts = latest();
+	async function loadLensCounts() {
+		const current = beginLensCounts();
+		const counted = await Promise.all(
+			[null, ...lenses].map(async (entry) => {
+				try {
+					return [entry?.id ?? 'all', await lensCount(entry, today, scope.allUsers)] as const;
+				} catch {
+					return null;
+				}
+			})
+		);
+		if (current()) {
+			lensCounts = Object.fromEntries(counted.filter((item) => item !== null));
+		}
 	}
 
 	// An answer overtaken by a later request (the filters changed meanwhile) is dropped.
@@ -273,7 +309,10 @@
 	const searchNote = new SearchNote();
 	let meaning = $state(false);
 
-	const list = new PagedList<Item>(async (after) => {
+	// One page of documents at a time, 50 to a page or as chosen and remembered (25, 50, 100;
+	// Tobi, 28.10.2026); the page stands in the link (`?page=`). The list counts its documents as the filters do; a search
+	// estimates its hits.
+	const list = new Pager<Item>(async (offset, limit) => {
 		const base = apiQuery(filters, scope.allUsers);
 		if (searching) {
 			const words = query;
@@ -285,36 +324,119 @@
 							q: words,
 							// A search never sorts by a field (`sortOf`).
 							sort: sort as Exclude<Sort, FieldSort>,
-							offset: (after as number | null) ?? 0,
+							offset,
+							limit,
 							semantic_ratio: searchNote.ratio(words)
 						}
 					}
 				})
 			);
-			if (after === null) searchNote.answered(words, data);
+			if (offset === 0) searchNote.answered(words, data);
 			const items = data.items.map((hit) => ({ document: hit.document, snippet: hit.snippet }));
-			return { items, next: data.next_offset, total: data.estimated_total };
+			return { items, total: data.estimated_total };
 		}
-		const data = await unwrap(
-			api.GET('/api/v1/documents', {
-				params: {
-					query: {
-						...base,
-						sort: sort as ListSort,
-						sort_field_id: sortField ?? undefined,
-						cursor: (after as string | null) ?? undefined
+		const [data, counted] = await Promise.all([
+			unwrap(
+				api.GET('/api/v1/documents', {
+					params: {
+						query: {
+							...base,
+							sort: sort as ListSort,
+							sort_field_id: sortField ?? undefined,
+							offset,
+							limit
+						}
 					}
-				}
-			})
-		);
+				})
+			),
+			unwrap(api.GET('/api/v1/documents/count', { params: { query: base } }))
+		]);
 		return {
 			items: data.items.map((document) => ({ document, snippet: [] })),
-			next: data.next_cursor
+			total: counted.total
 		};
-	});
+	}, rememberedPageSize('documents'));
 
-	// How many documents the filters leave: estimated while searching.
-	const shownCount = $derived(searching ? list.total : (facets?.total ?? null));
+	/** The page the link asks for, from 1. */
+	const pageNumber = $derived(Math.max(1, Number(page.url.searchParams.get('page')) || 1));
+
+	/** Show another page: a new entry in the history (`replace`: none, the list changed). */
+	function goToPage(next: number, replace = false) {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
+		const params = new URLSearchParams(page.url.search);
+		if (next > 1) params.set('page', String(next));
+		else params.delete('page');
+		void goto(params.size > 0 ? `?${params}` : page.url.pathname, { replaceState: replace });
+	}
+
+	/** Show `size` documents per page, on the page that holds the first one shown so far; that
+	 * page goes into the link (`replace`: the list did not change). */
+	async function resize(size: number) {
+		await list.resize(size);
+		if (list.page !== pageNumber) goToPage(list.page, true);
+	}
+
+	// How many documents the filters leave: estimated while searching, unknown until then.
+	const shownCount = $derived(
+		searching ? (list.loaded ? list.total : null) : (facets?.total ?? null)
+	);
+
+	// Documents chosen for an action on many (web/DESIGN.md, "Choosing many"), in the selection
+	// mode the button beside the sort turns on (as Home Assistant has it, Tobi 28.10.2026): by id
+	// across the pages, or every hit of the search and filters (`allHits`). What the list shows
+	// changing lets go of them; the mode stays until the person ends it.
+	let selecting = $state(false);
+	let chosen = $state<string[]>([]);
+	let allHits = $state(false);
+	const pageIds = $derived(list.items.map((item) => item.document.id));
+	const isChosen = (id: string) => allHits || chosen.includes(id);
+	const hits = $derived(
+		!list.loaded ? null : searching ? Math.min(list.total, MAX_HITS) : list.total
+	);
+	const chosenCount = $derived(allHits ? (hits ?? 0) : chosen.length);
+	const beyondPage = $derived(!allHits && hits !== null && hits > pageIds.length);
+
+	function choose(id: string, on: boolean) {
+		if (allHits) {
+			// One taken out of all: the page stays chosen, the rest of the hits not.
+			allHits = false;
+			chosen = pageIds.filter((item) => item !== id);
+			return;
+		}
+		chosen = on ? [...chosen, id] : chosen.filter((item) => item !== id);
+	}
+
+	function choosePage() {
+		if (allHits) return;
+		chosen = [...new Set([...chosen, ...pageIds])];
+	}
+
+	function letGo() {
+		chosen = [];
+		allHits = false;
+	}
+
+	function endSelecting() {
+		selecting = false;
+		letGo();
+	}
+
+	function selection(): BulkSelection {
+		if (!allHits) return { ids: chosen, query: {} };
+		const base = apiQuery(filters, scope.allUsers);
+		return { ids: null, query: searching ? { ...base, q: query } : base };
+	}
+
+	// The action on the choice, followed by the page until it ends, whichever bar shows it.
+	const bulk = new BulkRun(() => {
+		letGo();
+		void list.refresh();
+		void loadFacets();
+		void loadLensCounts();
+	});
+	onDestroy(() => bulk.stop());
+	// The bar shows from the start of the mode, and while an action runs; not in the stream.
+	const showBar = $derived((selecting || bulk.busy) && !streaming);
 
 	// While a search waits for its first page, the hint says when it takes long.
 	$effect(() => searchNote.waiting(meaning && searching && list.loading && !list.loaded));
@@ -325,19 +447,48 @@
 	);
 	const note = $derived(meaning && searching ? searchNote.about(query) : null);
 
-	// Reload when the words, filters or sort change, and after a reconnect of the event stream.
+	// Reload when the words, filters or sort change: what the list shows changed, so the choice
+	// is let go and its first page shows. Another page of the same list only loads that page.
+	// After a reconnect of the event stream the page shown is loaded again as it stands: nobody
+	// is thrown back to the first page by it.
+	let shownKey: string | null = null;
+	let seenGeneration = 0;
 	$effect(() => {
-		void page.url.search;
-		void scope.allUsers;
-		void events.generation;
-		void list.reload();
-		void loadFacets();
+		const shown = [...params].filter(([name]) => name !== 'page');
+		const shownList = `${JSON.stringify(shown)}|${scope.allUsers}`;
+		const generation = events.generation;
+		const wanted = pageNumber;
+		const before = shownKey;
+		const reconnected = before !== null && generation !== seenGeneration;
+		shownKey = shownList;
+		seenGeneration = generation;
+		if (before !== shownList || reconnected) void loadFacets();
+		if (before !== null && before !== shownList) {
+			letGo();
+			if (wanted !== 1) {
+				goToPage(1, true);
+				return;
+			}
+		}
+		// Not tracked: the pager's own state (its page, its size) is read while it loads.
+		untrack(() => {
+			if (before !== null && before === shownList && wanted === list.page) {
+				// The same list on the same page (the link took the page the pager is on, after a
+				// resize): only a reconnect loads it again, as it stands.
+				if (reconnected) void list.refresh();
+				return;
+			}
+			void list.go(wanted);
+		});
 	});
 
 	// Again when an admin switches the reach: the spaces of the filter follow it.
 	onChange(
 		() => scope.allUsers,
-		() => void pageLookup.load()
+		() => {
+			void pageLookup.load();
+			void loadLensCounts();
+		}
 	);
 
 	onMount(() => {
@@ -364,6 +515,7 @@
 		const refresh = coalesced(() => {
 			void list.refresh();
 			void loadFacets();
+			void loadLensCounts();
 			streamVersion += 1;
 		}, 400);
 		const stop = events.subscribe(refresh);
@@ -473,7 +625,7 @@
 		<span class="line-clamp-2 text-sm text-muted-foreground">
 			{#each item.snippet as part, index (index)}
 				{#if part.match}
-					<mark class="rounded bg-lane-yellow px-0.5 text-lane-yellow-foreground">{part.text}</mark>
+					<Mark>{part.text}</Mark>
 				{:else}{part.text}{/if}
 			{/each}
 		</span>
@@ -544,7 +696,37 @@ row of filters, on a desktop narrow by the title. -->
 		href={(entry) => `?${lensParams(entry, today)}`}
 		allHref={page.url.pathname}
 		{changed}
+		counts={lensCounts}
 		onadd={lookup ? () => edit(null) : undefined}
+	/>
+{/snippet}
+
+{#snippet selectButton(compact: boolean)}
+	<IconButton
+		variant="outline"
+		class={cn(compact && 'size-11 shrink-0', selecting && 'border-primary bg-panel text-primary')}
+		label={m.bulk_mode()}
+		aria-pressed={selecting}
+		onclick={() => (selecting ? endSelecting() : (selecting = true))}
+	>
+		<ListChecks aria-hidden="true" />
+	</IconButton>
+{/snippet}
+
+{#snippet bulkBar()}
+	<DocumentsBulkBar
+		count={chosenCount}
+		all={allHits}
+		offerAll={beyondPage && hits !== null && (searching || hits <= MAX_DOCUMENTS) ? hits : null}
+		limit={!allHits && !searching && hits !== null && hits > MAX_DOCUMENTS ? MAX_DOCUMENTS : null}
+		capped={allHits && searching && list.loaded && list.total > MAX_HITS ? MAX_HITS : null}
+		{selection}
+		run={bulk}
+		{lookup}
+		onpage={choosePage}
+		onall={() => (allHits = true)}
+		onclear={letGo}
+		onend={endSelecting}
 	/>
 {/snippet}
 
@@ -585,7 +767,7 @@ row of filters, on a desktop narrow by the title. -->
 				{/if}
 			</IconButton>
 			<PageTitle>{lens?.name ?? m.nav_documents()}</PageTitle>
-			{#if searching && list.total !== null && list.loaded}
+			{#if searching && list.loaded}
 				<p class="text-sm text-muted-foreground" aria-live="polite">
 					{m.search_total({ count: formatNumber(list.total) })}
 				</p>
@@ -597,7 +779,7 @@ row of filters, on a desktop narrow by the title. -->
 			<div class="ml-auto flex items-center gap-2">
 				<div class="hidden items-center gap-2 lg:flex">
 					{@render searchForm(true)}
-					{#if !streaming}{@render sortMenu(false)}{/if}
+					{#if !streaming}{@render sortMenu(false)}{@render selectButton(false)}{/if}
 					<Segmented
 						names="hidden"
 						label={m.layout_label()}
@@ -703,7 +885,7 @@ row of filters, on a desktop narrow by the title. -->
 							</Sheet.Footer>
 						</Sheet.Content>
 					</Sheet.Root>
-					{#if !streaming}{@render sortMenu(true)}{/if}
+					{#if !streaming}{@render sortMenu(true)}{@render selectButton(true)}{/if}
 					<!-- The layout as a menu that shows the current one, as the sort beside it. -->
 					<DropdownMenu.Root>
 						<DropdownMenu.Trigger>
@@ -791,6 +973,7 @@ row of filters, on a desktop narrow by the title. -->
 				</div>
 			{/if}
 
+			{#if showBar && !phone.current}{@render bulkBar()}{/if}
 			{#if streaming}
 				<StreamView query={apiQuery(filters, scope.allUsers)} {lookup} version={streamVersion} />
 			{:else if list.error}
@@ -852,7 +1035,13 @@ row of filters, on a desktop narrow by the title. -->
 								>
 									{#each group.items as item (item.document.id)}
 										<li class="min-w-0">
-											<DocumentCard document={item.document} {lookup} fields={linesOf(item)}>
+											<DocumentCard
+												document={item.document}
+												{lookup}
+												fields={linesOf(item)}
+												chosen={selecting && isChosen(item.document.id)}
+												onchoose={selecting ? (on) => choose(item.document.id, on) : undefined}
+											>
 												{@render snippetLine(item)}
 											</DocumentCard>
 										</li>
@@ -862,7 +1051,13 @@ row of filters, on a desktop narrow by the title. -->
 								<ul class="flex flex-col gap-2">
 									{#each group.items as item (item.document.id)}
 										<li>
-											<DocumentRow document={item.document} {lookup} fields={linesOf(item)}>
+											<DocumentRow
+												document={item.document}
+												{lookup}
+												fields={linesOf(item)}
+												chosen={selecting && isChosen(item.document.id)}
+												onchoose={selecting ? (on) => choose(item.document.id, on) : undefined}
+											>
 												{@render snippetLine(item)}
 												{#snippet aside()}
 													{#if item.document.in_inbox}<InboxMark id={item.document.id} />{/if}
@@ -878,17 +1073,21 @@ row of filters, on a desktop narrow by the title. -->
 				{#if list.loading && !list.loaded}
 					<Loading />
 				{/if}
-				{#if list.hasMore}
-					<div class="flex justify-center">
-						<Button variant="outline" disabled={list.loading} onclick={() => list.more()}>
-							{m.load_more()}
-						</Button>
-					</div>
-				{/if}
+				<Pagination
+					page={list.page}
+					total={list.total}
+					size={list.size}
+					table="documents"
+					onchange={(next) => goToPage(next)}
+					onsize={resize}
+				/>
 			{/if}
+			{#if showBar && phone.current}{@render bulkBar()}{/if}
 		</div>
 	</div>
 </div>
+
+<BulkSkipped operation={bulk.skipped} onclose={() => (bulk.skipped = null)} />
 
 {#if lookup}
 	<LensEditor

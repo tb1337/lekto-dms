@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { m } from '#lib/paraglide/messages.js';
+import { phone } from '#lib/phone.svelte.ts';
 import { choose, selectedValue } from '#lib/testing/select.ts';
 import SearchSelect from './SearchSelect.svelte';
 
@@ -14,6 +15,7 @@ function field(props: Record<string, unknown> = {}) {
 	const onchange = vi.fn();
 	render(SearchSelect, {
 		options: OPTIONS,
+		title: 'Choose a contact',
 		value: 'c2',
 		placeholder: 'none yet',
 		noneLabel: 'No contact',
@@ -23,7 +25,23 @@ function field(props: Record<string, unknown> = {}) {
 	return { onchange, trigger: screen.getByRole('combobox') };
 }
 
+afterEach(() => phone.override(null));
+
 describe('SearchSelect', () => {
+	it('opens as a sheet on a phone, named by its title, and closes on a choice', async () => {
+		phone.override(true);
+		const user = userEvent.setup();
+		const { onchange, trigger } = field();
+		expect(trigger.getAttribute('aria-haspopup')).toBe('dialog');
+		await user.click(trigger);
+		const sheet = await screen.findByRole('dialog', { name: 'Choose a contact' });
+		await user.type(within(sheet).getByLabelText(m.assignment_search()), 'stadt');
+		await user.click(within(sheet).getByRole('option', { name: 'Stadtwerke' }));
+		expect(onchange).toHaveBeenLastCalledWith('c1');
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		expect(trigger.textContent).toContain('Stadtwerke');
+	});
+
 	it('shows the chosen one, finds one by what it is also called, and clears', async () => {
 		const user = userEvent.setup();
 		const { onchange, trigger } = field();

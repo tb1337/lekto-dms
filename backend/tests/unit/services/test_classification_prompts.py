@@ -8,6 +8,7 @@ import pytest
 from lekto.adapters.outbound.memory.language_model import minimal_instance
 from lekto.core.domain.documents import MAX_TITLE
 from lekto.core.domain.fields import FieldDefinition, FieldType
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.text import shorten, weight
 from lekto.core.services.classification.answers import (
     AnswerError,
@@ -18,8 +19,11 @@ from lekto.core.services.classification.answers import (
     field_keys,
     parse_extract,
     parse_facts,
+    parse_holders,
     parse_propose,
     propose_schema,
+    read_holder_from_json,
+    read_holder_to_json,
 )
 from lekto.core.services.classification.prompts import (
     FACT_KINDS,
@@ -389,7 +393,7 @@ def test_every_call_shares_the_system_prompt_and_no_list_is_in_it() -> None:
     assert "evidence:" in SYSTEM and "label:" in SYSTEM
 
 
-# --- the facts with their role (`facts-1`) ----------------------------------------------------
+# --- the facts with their role and the holders (`facts-2`) ------------------------------------
 
 
 def test_the_facts_task_lists_the_kinds_and_roles_a_model_reads() -> None:
@@ -407,7 +411,57 @@ def test_the_facts_task_lists_the_kinds_and_roles_a_model_reads() -> None:
     )
     entry = schema["properties"]["facts"]["items"]
     assert entry["required"] == ["kind", "value", "role", "evidence", "label"]
-    assert minimal_instance(schema) == {"facts": []}
+    holder = schema["properties"]["holders"]["items"]
+    assert holder["required"] == ["kind", "value", "holder", "name", "evidence"]
+    assert holder["properties"]["holder"]["enum"] == [
+        "sender",
+        "recipient",
+        "third_party",
+        "unclear",
+    ]
+    assert minimal_instance(schema) == {"facts": [], "holders": []}
+    assert "Numbers (as Lekto read them, without spaces):\n(none)" in task
+
+
+def test_the_facts_task_lists_the_numbers_whose_holder_it_asks_for() -> None:
+    task = facts_task(
+        marker="document-ab12",
+        numbers=[
+            (IdentifierKind.CREDITOR_ID, "DE98ZZZ09999999999"),
+            (IdentifierKind.IBAN, "DE89370400440532013000"),
+        ],
+    )
+    assert "- creditor_id (creditor ID): DE98ZZZ09999999999" in task
+    assert "- iban (IBAN): DE89370400440532013000" in task
+    assert "- third_party: anyone else" in task
+    assert "- holders: one entry per listed number" in task
+
+
+def test_the_holders_of_an_answer() -> None:
+    content = json.dumps(
+        {
+            "facts": [],
+            "holders": [
+                {
+                    "kind": "iban",
+                    "value": "DE89 3704 0044 0532 0130 00",
+                    "holder": "third_party",
+                    "name": " Stadtwerke\nMusterstadt ",
+                    "evidence": "Lastschrift Stadtwerke Musterstadt DE89 3704",
+                }
+            ],
+        }
+    )
+    (holder,) = parse_holders(content)
+    assert (holder.kind, holder.holder, holder.name) == (
+        "iban",
+        "third_party",
+        "Stadtwerke Musterstadt",
+    )
+    assert read_holder_from_json(read_holder_to_json(holder)) == holder
+    assert parse_holders(json.dumps({"facts": []})) == []  # an answer of `facts-1`
+    with pytest.raises(AnswerError):
+        parse_holders(json.dumps({"facts": [], "holders": [{"kind": "iban", "value": "x"}]}))
 
 
 def test_the_facts_answer_is_strict_about_its_structure() -> None:

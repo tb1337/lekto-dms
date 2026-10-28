@@ -9,10 +9,12 @@ from datetime import timedelta
 import httpx2
 
 from lekto.adapters.inbound.rest import PREFIX, close_event_streams
+from lekto.adapters.inbound.rest.events import EventHub, message
 from lekto.adapters.outbound.memory import FakeEmbeddings
 from lekto.composition.container import build_memory_container, build_services
 from lekto.composition.settings import Settings
-from lekto.core.domain.events import ClassifierTrained
+from lekto.core.domain.events import ClassifierTrained, DocumentUpdated
+from lekto.core.domain.ids import DocumentId, UserId, new_id
 from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.users import Role
 from lekto.core.ports.embeddings import EmbeddingResult
@@ -196,3 +198,31 @@ async def test_the_meaning_of_a_query_reaches_only_its_searcher() -> None:
         assert streams[other.id].events == []
         close_event_streams(app)
         await asyncio.wait_for(asyncio.gather(*tasks), timeout=5)
+
+
+class _Readers:
+    """Stands in for the documents service: who may read which document."""
+
+    def __init__(self, readers: dict[DocumentId, set[UserId]]) -> None:
+        self._readers = readers
+
+    async def filter_readers(self, id: DocumentId, candidates: set[UserId]) -> set[UserId]:
+        return self._readers.get(id, set()) & set(candidates)
+
+    async def active_admins(self, candidates: set[UserId]) -> set[UserId]:
+        return set()
+
+
+async def test_a_relation_reaches_only_who_reads_both_documents() -> None:
+    """The friend reads the invoice, not the reminder that refers to it: the invoice's
+    `document.updated` with `relations` reaches only the owner, without the other end."""
+    owner, friend = UserId(new_id()), UserId(new_id())
+    invoice, reminder = DocumentId(new_id()), DocumentId(new_id())
+    hub = EventHub(_Readers({invoice: {owner, friend}, reminder: {owner}}))  # type: ignore[arg-type]
+    event = DocumentUpdated(
+        document_id=invoice, occurred_at=NOW, fields=("relations",), related=reminder
+    )
+    async with hub.listen(owner) as mine, hub.listen(friend) as theirs:
+        await hub.handle(event)
+        assert (mine.queue.qsize(), theirs.queue.qsize()) == (1, 0)
+    assert "related" not in message(event)

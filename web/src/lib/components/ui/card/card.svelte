@@ -1,5 +1,6 @@
 <script lang="ts" module>
-	import { tv, type VariantProps } from 'tailwind-variants';
+	import type { VariantProps } from 'tailwind-variants';
+	import { tv } from '#lib/tailwind.ts';
 
 	// Every card (web/DESIGN.md, "Cards"): the radius of cards, a hairline border, no shadow; the
 	// layout inside is the caller's (`class`). The size sets the padding: `row` for items of a list, `sm` for dense panels, `md` by default,

@@ -4,7 +4,6 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { documentHref } from '#lib/candidates.ts';
-	import BetaPill from '#lib/components/BetaPill.svelte';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
@@ -13,17 +12,20 @@
 	import { labelOfKind } from '#lib/identifiers.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
-	import PageHeader from '#lib/components/page/PageHeader.svelte';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import Loading from '#lib/components/Loading.svelte';
+	import { Button } from '#lib/components/ui/button/index.ts';
 
 	type Expected = components['schemas']['ExpectedOut'];
 	type State = Expected['state'];
 	type Cadence = Expected['cadence'];
 
-	// The documents expected next (#145): the series among the documents the user reads, in
-	// four sections, each with its rhythm, its spread and its newest document. Only to look at.
+	// The documents expected next (#145) on the overview (Tobi, 27.10.2026; until then a page of
+	// its own): the series among the documents the user reads, the overdue ones and those of the
+	// next 30 days, the later and ended ones on request, each with its rhythm, its spread and its
+	// newest document. Only to look at.
+	let all = $state(false);
 	let found = $state<Expected[] | null>(null);
 	let problem = $state<string | null>(null);
 	let attempt = $state(0);
@@ -74,34 +76,35 @@
 		return `${every} · ${m.expected_spread({ count: String(item.spread_days) })}`;
 	}
 
-	const sections = $derived(
+	const SOON: readonly State[] = ['overdue', 'soon'];
+	const every = $derived(
 		SECTIONS.map((section) => ({
 			...section,
 			items: (found ?? []).filter((item) => item.state === section.state)
 		})).filter((section) => section.items.length > 0)
 	);
+	const sections = $derived(every.filter((section) => all || SOON.includes(section.state)));
+	const hidden = $derived((found ?? []).filter((item) => !SOON.includes(item.state)).length);
 </script>
 
-<svelte:head><title>{m.nav_expected()} · {m.app_name()}</title></svelte:head>
-
-<div class="flex flex-col gap-6">
-	<PageHeader title={m.nav_expected()} subtitle={m.expected_hint()}>
-		{#snippet aside()}
-			<!-- The area is new (Tobi, 26.10.2026): the pill says so and, opened, what that means. -->
-			<BetaPill tip={m.expected_beta_tip()} />
-		{/snippet}
-	</PageHeader>
-
+<section class="flex flex-col gap-3" aria-labelledby="expected-title">
+	<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+		<SectionTitle id="expected-title">{m.nav_expected()}</SectionTitle>
+		<span class="text-meta text-muted-foreground">{m.expected_hint()}</span>
+	</div>
 	{#if problem}
 		<LoadProblem {problem} onretry={() => attempt++} />
 	{:else if !found}
 		<Loading />
 	{:else if found.length === 0}
-		<EmptyNote>{m.expected_none()}</EmptyNote>
+		<EmptyNote compact>{m.expected_none()}</EmptyNote>
 	{:else}
+		{#if sections.length === 0}
+			<p class="text-muted-foreground">{m.overview_expected_nothing_soon()}</p>
+		{/if}
 		{#each sections as section (section.state)}
 			<section class="flex flex-col gap-2" aria-labelledby="expected-{section.state}">
-				<SectionTitle id="expected-{section.state}">
+				<SectionTitle id="expected-{section.state}" level={3} size="card">
 					{section.title()}
 					<span class="font-normal text-muted-foreground">{section.items.length}</span>
 				</SectionTitle>
@@ -152,5 +155,12 @@
 				</ul>
 			</section>
 		{/each}
+		{#if hidden > 0}
+			<div>
+				<Button variant="link" size="inline" onclick={() => (all = !all)}>
+					{all ? m.overview_expected_less() : m.overview_expected_more({ count: String(hidden) })}
+				</Button>
+			</div>
+		{/if}
 	{/if}
-</div>
+</section>

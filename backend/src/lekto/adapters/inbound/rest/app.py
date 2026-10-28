@@ -16,11 +16,13 @@ from lekto import __version__
 from lekto.adapters.inbound.rest import (
     account,
     automation,
+    bulk,
     classifier,
     documents,
     expected,
     external,
     health,
+    identifiers,
     jobs,
     lenses,
     master_data,
@@ -182,11 +184,13 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
         account.router,
         users.router,
         *master_data.ROUTERS,
+        identifiers.router,
         spaces.router,
         rules.router,
         rules.applications,
         rules.templates,
         search.router,  # before documents: `/documents/search` is no document id
+        bulk.router,  # likewise `/documents/bulk`
         stream.router,  # likewise `/documents/stream`
         classifier.router,
         documents.router,

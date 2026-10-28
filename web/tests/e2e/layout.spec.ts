@@ -8,9 +8,9 @@ const ADMIN = process.env.LEKTO_ADMIN_USERNAME ?? 'admin';
 const ADMIN_PASSWORD = process.env.LEKTO_ADMIN_PASSWORD ?? '';
 
 const PATHS = [
+	'/ui/',
 	'/ui/inbox',
 	'/ui/documents',
-	'/ui/expected',
 	'/ui/spaces',
 	'/ui/rules',
 	'/ui/rules/new',
@@ -18,6 +18,7 @@ const PATHS = [
 	'/ui/webhooks/new',
 	'/ui/system',
 	'/ui/admin/master-data',
+	'/ui/admin/master-data?tab=identifiers',
 	'/ui/admin/users',
 	'/ui/settings'
 ];
@@ -102,7 +103,7 @@ for (const size of WIDTHS) {
 		await page.getByLabel('Username').fill(ADMIN);
 		await page.getByLabel('Password').fill(ADMIN_PASSWORD);
 		await page.getByRole('button', { name: 'Sign in' }).click();
-		await page.waitForURL('**/ui/inbox');
+		await page.waitForURL('**/ui/');
 
 		const findings: string[] = [];
 		for (const path of PATHS) {

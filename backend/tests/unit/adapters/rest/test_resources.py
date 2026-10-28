@@ -254,6 +254,24 @@ async def test_counts_for_the_filters_of_the_documents(api: Api) -> None:
     )
     assert everyone.status_code == 403
 
+    # Just the number, as a lens in the sidebar shows it.
+    async def count(**params: Any) -> Any:
+        response = await api.client.get(
+            f"{PREFIX}/documents/count", params=params, headers=auth(owner)
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    assert await count() == {"total": 3}
+    assert await count(contact_id=nord["id"]) == {"total": 2}
+    assert await count(document_date_from="2026-01-01", document_date_to="2026-12-31") == {
+        "total": 1
+    }
+    refused = await api.client.get(
+        f"{PREFIX}/documents/count", params={"all_users": True}, headers=auth(owner)
+    )
+    assert refused.status_code == 403
+
 
 async def test_master_data_with_their_document_counts(api: Api) -> None:
     admin, owner = await api.admin(), await api.user()

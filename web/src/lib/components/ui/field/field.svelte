@@ -1,5 +1,6 @@
 <script lang="ts" module>
-	import { tv, type VariantProps } from 'tailwind-variants';
+	import type { VariantProps } from 'tailwind-variants';
+	import { tv } from '#lib/tailwind.ts';
 
 	export const fieldVariants = tv({
 		base: 'data-[invalid=true]:text-destructive gap-2 group/field flex w-full',

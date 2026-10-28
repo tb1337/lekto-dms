@@ -310,6 +310,8 @@ class ReasonCode(StrEnum):
     RULE_ASKS_ON_ARRIVAL = "rule_asks_on_arrival"
     SKIP_CHANGED_MEANWHILE = "skip_changed_meanwhile"
     SKIP_NOT_AVAILABLE = "skip_not_available"
+    BULK_TOO_MANY = "bulk_too_many"
+    BULK_IDS_AND_FILTER = "bulk_ids_and_filter"
     # value checks a person meets in the UI
     NOT_IBAN = "not_iban"
     NOT_VAT_ID = "not_vat_id"
@@ -318,6 +320,9 @@ class ReasonCode(StrEnum):
     FACT_KIND_UNKNOWN = "fact_kind_unknown"
     FACT_NOT_IN_TEXT = "fact_not_in_text"
     FACT_NOT_ASKED = "fact_not_asked"
+    HOLDER_NOT_LISTED = "holder_not_listed"
+    HOLDER_KIND_UNKNOWN = "holder_kind_unknown"
+    HOLDER_NAME_NOT_NEAR = "holder_name_not_near"
     FACT_CRITERION_EMPTY = "fact_criterion_empty"
     RULE_FACT_OF_PERSON = "rule_fact_of_person"
     RELATION_EXISTS = "relation_exists"
@@ -352,6 +357,13 @@ class ReasonCode(StrEnum):
     CONTACT_TOO_MANY_IDENTIFIERS = "contact_too_many_identifiers"
     ONLY_NUMBERS_NAME_USERS = "only_numbers_name_users"
     IDENTIFIER_TAKEN = "identifier_taken"
+    IDENTIFIER_ENTERED = "identifier_entered"
+    IDENTIFIER_NOT_OPEN = "identifier_not_open"
+    IDENTIFIER_CONTACT_UNCLEAR = "identifier_contact_unclear"
+    RECOMMEND_CONFIRM = "recommend_confirm"
+    RECOMMEND_CONFIRM_NAMED = "recommend_confirm_named"
+    RECOMMEND_REJECT_FOREIGN = "recommend_reject_foreign"
+    RECOMMEND_REJECT_CONTACTS = "recommend_reject_contacts"
     TITLE_PATTERN_TOO_LONG = "title_pattern_too_long"
     DESCRIPTION_TOO_LONG = "description_too_long"
     TITLE_PATTERN_UNKNOWN = "title_pattern_unknown"
@@ -773,11 +785,16 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ),
     ReasonCode.SKIP_CHANGED_MEANWHILE: "changed meanwhile; not applied",
     ReasonCode.SKIP_NOT_AVAILABLE: "not available",
+    ReasonCode.BULK_TOO_MANY: "at most {max:number} documents at once",
+    ReasonCode.BULK_IDS_AND_FILTER: "name the documents or give a filter, not both",
     ReasonCode.NOT_IBAN: "'{value}' is not a valid IBAN",
     ReasonCode.NOT_VAT_ID: "'{value}' is not a VAT number",
     ReasonCode.FACT_KIND_UNKNOWN: "'{kind}' is no kind of fact Lekto knows",
     ReasonCode.FACT_NOT_IN_TEXT: "'{value}' does not appear in the text",
     ReasonCode.FACT_NOT_ASKED: "a fact '{kind}' in the role '{role}' was not asked for",
+    ReasonCode.HOLDER_NOT_LISTED: "'{value}' was not among the numbers asked about",
+    ReasonCode.HOLDER_KIND_UNKNOWN: "'{holder}' is no holder Lekto knows",
+    ReasonCode.HOLDER_NAME_NOT_NEAR: "the name '{name}' does not stand near the number",
     ReasonCode.FACT_CRITERION_EMPTY: (
         "a filter by facts names a kind, a role, or a kind with its value"
     ),
@@ -831,6 +848,19 @@ TEMPLATES: Mapping[ReasonCode, str] = {
         "only a customer or personnel number names the user it belongs to"
     ),
     ReasonCode.IDENTIFIER_TAKEN: "'{value}' is already taken",
+    ReasonCode.IDENTIFIER_ENTERED: "'{value}' is entered at the contact by hand",
+    ReasonCode.IDENTIFIER_NOT_OPEN: "'{value}' is no longer open",
+    ReasonCode.RECOMMEND_CONFIRM: (
+        "in {count:number} confirmed documents of '{name}', with no other contact"
+    ),
+    ReasonCode.RECOMMEND_CONFIRM_NAMED: "{count:number} documents name '{name}' as its holder",
+    ReasonCode.RECOMMEND_REJECT_FOREIGN: (
+        "in {count:number} documents of '{name}' it is someone else's"
+    ),
+    ReasonCode.RECOMMEND_REJECT_CONTACTS: "in documents of {count:number} contacts",
+    ReasonCode.IDENTIFIER_CONTACT_UNCLEAR: (
+        "'{value}' stands in documents of several contacts: choose the contact"
+    ),
     ReasonCode.TITLE_PATTERN_TOO_LONG: "a title pattern is at most {max:number} characters",
     ReasonCode.DESCRIPTION_TOO_LONG: "description must not be longer than {max:number} characters",
     ReasonCode.TITLE_PATTERN_UNKNOWN: (
@@ -932,7 +962,7 @@ class Action(StrEnum):
     REPARSE_ALL = "reparse_all"
     RELATE_ALL = "relate_all"
     RENDER_PAGES_ALL = "render_pages_all"
-    READ_CODES_ALL = "read_codes_all"
+    READ_FACTS_ALL = "read_facts_all"
     FETCH_LOGOS_ALL = "fetch_logos_all"
     MAKE_GLOBAL_RULES = "make_global_rules"
     CHANGE_GLOBAL_RULES = "change_global_rules"
@@ -966,7 +996,7 @@ ACTIONS: Mapping[Action, str] = {
     Action.REPARSE_ALL: "read the text of all documents again",
     Action.RELATE_ALL: "find the relations of all documents again",
     Action.RENDER_PAGES_ALL: "render the missing page images",
-    Action.READ_CODES_ALL: "read the codes of all documents",
+    Action.READ_FACTS_ALL: "read the facts of all documents again",
     Action.FETCH_LOGOS_ALL: "fetch the missing logos",
     Action.MAKE_GLOBAL_RULES: "make global rules",
     Action.CHANGE_GLOBAL_RULES: "change global rules",

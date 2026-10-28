@@ -5,15 +5,18 @@ Only who reads both documents sees a relation. Who edits the newer and reads the
 by hand, accepts a suggestion or removes one: a relation Lekto made is rejected then (so it is
 not suggested again), one a person set goes. The first decision about the relations of a document
 (the newer one) is a verdict on them (`first_runs.RELATIONS`): added, accepted, or corrected.
-No event goes out for relations yet (`bezuege.md`, decision 20)."""
+A relation that is set, changes or goes tells both of its documents (`relation_events`:
+`document.updated` with `relations`, to whoever may read both; the run over the stock sends
+none)."""
 
-from collections.abc import Collection
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import ConflictError, NotFoundError
+from lekto.core.domain.events import DocumentUpdated
 from lekto.core.domain.first_runs import RELATIONS, Decision, FieldVerdict, Verdict
 from lekto.core.domain.ids import DocumentId, DocumentTypeId, UserId
 from lekto.core.domain.permissions import can_edit_document, can_read_document
@@ -112,6 +115,7 @@ class RelationService:
             )
             await uow.document_relations.put(relation)
             await _verdict(uow, newer, Verdict.ACCEPTED if accepting else Verdict.ADDED, now)
+            await uow.outbox.add(relation_events([relation], now))
             await uow.commit()
 
     async def unrelate(self, actor: UserId, id: DocumentId, other: DocumentId) -> None:
@@ -137,6 +141,7 @@ class RelationService:
                 await _verdict(uow, newer, Verdict.CORRECTED, now)
             else:
                 await uow.document_relations.remove(known.newer, known.older)
+            await uow.outbox.add(relation_events([known], now))
             await uow.commit()
 
 
@@ -163,6 +168,20 @@ async def referred_types(
             if user is not None and can_read_document(user, other, space)
         )
     return found
+
+
+def relation_events(relations: Iterable[Relation], now: datetime) -> list[DocumentUpdated]:
+    """`document.updated` with `relations` for both documents of each relation that changed,
+    each naming the other (`related`): only who may read both hears of it."""
+    pairs = dict.fromkeys(
+        (end, other)
+        for relation in relations
+        for end, other in ((relation.newer, relation.older), (relation.older, relation.newer))
+    )
+    return [
+        DocumentUpdated(document_id=end, occurred_at=now, fields=(RELATIONS,), related=other)
+        for end, other in pairs
+    ]
 
 
 async def find_pair(uow: UnitOfWork, first: DocumentId, second: DocumentId) -> Relation | None:

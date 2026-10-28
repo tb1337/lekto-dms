@@ -26,6 +26,7 @@ from lekto.adapters.inbound.evaluation.cases import (
     EvaluationSet,
     Expected,
     ExpectedFact,
+    ExpectedHolder,
     MasterDataSpec,
     Run,
     TrainingDocument,
@@ -143,6 +144,7 @@ class CaseResult:
     by_hand: frozenset[str] = frozenset()  # fields set by hand only: no model checks, not scored
     topic: str | None = None
     facts: frozenset[ExpectedFact] = frozenset()  # the document's facts (none rejected)
+    holders: frozenset[ExpectedHolder] = frozenset()  # whose its numbers with a holder are
     # The documents it is related with, either way (by case name; one of the training corpus as
     # `corpus`), with the relation's state.
     relations: frozenset[tuple[str, str]] = frozenset()
@@ -409,8 +411,13 @@ async def _run(
         for fact in stored.values()
         if fact.state is not FactState.REJECTED
     )
+    holders = frozenset(
+        (fact.kind, fact.value, fact.holder.kind)
+        for fact in stored.values()
+        if fact.holder is not None and fact.state is not FactState.REJECTED
+    )
     result = _result(case, received, document, log, master, seconds)
-    return replace(result, run=environment.run, facts=facts)
+    return replace(result, run=environment.run, facts=facts, holders=holders)
 
 
 async def _corrected(

@@ -8,8 +8,9 @@ from pydantic import AfterValidator
 
 from lekto.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from lekto.adapters.inbound.rest.context import Context
+from lekto.adapters.inbound.rest.params import ADMINS_ONLY
 from lekto.adapters.inbound.rest.problems import problem_responses
-from lekto.adapters.inbound.rest.schemas.automation import AutomationOut, SignalsOut
+from lekto.adapters.inbound.rest.schemas.automation import AutomationOut, HoldersOut, SignalsOut
 from lekto.core.domain.documents import Channel
 from lekto.core.services.automation import DEFAULT_CHANNELS, Period
 
@@ -95,3 +96,21 @@ async def signals(
         user, channels=channels_of(channel), period=period, zone=ZoneInfo(tz)
     )
     return SignalsOut.of(report)
+
+
+@router.get(
+    "/holders",
+    summary="The holders against the decisions at the contacts",
+    description=(
+        ADMINS_ONLY + " Each identifier a person confirmed or rejected at a contact that "
+        "confirmed documents of that contact show: per kind with a holder, how often the rule's "
+        "holder there agreed with the decision, and how often it said the contact's where the "
+        "person rejected (training learns it) or someone else's where they confirmed; and the "
+        "same for the recommendation of the open identifiers, over every kind. Kept for a "
+        "minute."
+    ),
+    response_model=HoldersOut,
+    responses=problem_responses(401, 403),
+)
+async def holders(user: CurrentUser, context: Context) -> HoldersOut:
+    return HoldersOut.of(await context.automation.holders(user))

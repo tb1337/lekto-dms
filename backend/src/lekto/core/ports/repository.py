@@ -25,6 +25,7 @@ from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
+from lekto.core.domain.bulk import BulkOperation
 from lekto.core.domain.classifier import ClassifierModel
 from lekto.core.domain.document_facts import DocumentFact, FactCriterion
 from lekto.core.domain.documents import Channel, Document, Sha256
@@ -33,6 +34,7 @@ from lekto.core.domain.fields import FieldDefinition, sort_value
 from lekto.core.domain.first_runs import FieldVerdict, FirstRun, Verdict
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import (
+    BulkOperationId,
     ClassifierModelId,
     ContactId,
     DocumentId,
@@ -50,6 +52,7 @@ from lekto.core.domain.ids import (
 from lekto.core.domain.inbox import Confirmation, InboxTab
 from lekto.core.domain.lenses import Lens
 from lekto.core.domain.master_data import Contact, DocumentType, Tag, TagScope
+from lekto.core.domain.open_identifiers import Sighting
 from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane, Node, NodeRun
 from lekto.core.domain.profiles import Profile
@@ -380,9 +383,10 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         order: DocumentOrder = NEWEST_FIRST,
         after: DocumentPosition | None = None,
         limit: int,
+        offset: int = 0,
     ) -> list[Document]:
         """Documents the user may read (as `list_visible_to`) that match `filter`, in `order`,
-        only those after `after` in it, at most `limit`."""
+        only those after `after` in it, skipping the first `offset` of them, at most `limit`."""
         ...
 
     async def query(
@@ -392,6 +396,7 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         order: DocumentOrder = NEWEST_FIRST,
         after: DocumentPosition | None = None,
         limit: int,
+        offset: int = 0,
     ) -> list[Document]:
         """As `query_visible`, over every document (for admins)."""
         ...
@@ -400,6 +405,11 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         """Of each document that matches `filter` and the user may read (as
         `list_visible_to`; None: every document), what its counts look at: contact, type,
         topic, tags, document date. In no order."""
+        ...
+
+    async def count(self, filter: DocumentFilter, user: UserId | None) -> int:
+        """How many documents match `filter` that the user may read (as `list_visible_to`;
+        None: every document): what `facet_rows` would return, counted alone."""
         ...
 
     async def count_by(self, by: CountBy, user: UserId | None) -> dict[UUID, int]:
@@ -518,6 +528,11 @@ class DocumentFactRepository(Protocol):
     ) -> dict[tuple[IdentifierKind, str], frozenset[ContactId]]:
         """For each of `identifiers`, the contacts of the confirmed documents that show it (a
         fact not rejected); one that no confirmed document with a contact shows is left out."""
+        ...
+
+    async def sightings(self, kinds: Collection[IdentifierKind]) -> list[Sighting]:
+        """Every fact of one of `kinds` that a confirmed document with a contact shows (not
+        rejected), in no particular order."""
         ...
 
 
@@ -774,6 +789,18 @@ class RuleApplicationRepository(Protocol):
     async def add(self, application: RuleApplication) -> None: ...
 
     async def update(self, application: RuleApplication) -> None: ...
+
+
+class BulkOperationRepository(Protocol):
+    """Actions on many documents at once (`BulkOperation`)."""
+
+    async def get(self, id: BulkOperationId) -> BulkOperation: ...
+
+    async def find(self, id: BulkOperationId) -> BulkOperation | None: ...
+
+    async def add(self, operation: BulkOperation) -> None: ...
+
+    async def update(self, operation: BulkOperation) -> None: ...
 
 
 class ClassifierModelRepository(Protocol):

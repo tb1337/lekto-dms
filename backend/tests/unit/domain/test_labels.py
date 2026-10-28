@@ -147,7 +147,7 @@ def test_a_value_standing_twice_is_found_by_its_quote_s_place() -> None:
 
 
 def test_a_value_standing_twice_without_its_quote_s_place_is_checked_at_each() -> None:
-    """An amount in a table and again in a sentence (Tobi, 29.10.2026, #55 19.3): by its label
+    """An amount in a table and again in a sentence (Tobi, 28.10.2026, #55 19.3): by its label
     where either place is, apart where neither is."""
     table = "Gesamtbetrag      84,20 €\n\n\n\n\n\nDer Gesamtbetrag von 84,20 € wird eingezogen."
     assert outcome(table, "Gesamtbetrag", value="84.20") is LabelOutcome.BESIDE

@@ -1,5 +1,5 @@
 """The holders and the recommendations against a person's decisions (`.idea/umsetzungsplan.md`,
-"Empfehlungen im Reiter Kennungen und laufende Auswertung der Inhaber", Tobi 29.10.2026): no
+"Empfehlungen im Reiter Kennungen und laufende Auswertung der Inhaber", Tobi 28.10.2026): no
 test set, the identifiers a person confirmed or rejected at a contact.
 
 Measured is each identifier a person decided at a contact (entered or confirmed by hand,

@@ -117,11 +117,11 @@ e-mail domain since 0.8: a parent company's, a payment service's, a portal's).""
 
 MODEL_HOLDER_KINDS = frozenset({IdentifierKind.IBAN, IdentifierKind.CREDITOR_ID})
 """The kinds whose holder the language model is asked for (`facts-2`); the others' the rule
-tells alone (Tobi, 29.10.2026)."""
+tells alone (Tobi, 28.10.2026)."""
 
 SURE_HOLDER_KINDS = frozenset({IdentifierKind.EMAIL_DOMAIN})
 """The kinds training learns for a contact only where the rule tells they are its: a domain
-names its holder, and one that names no one is often another party's (Tobi, 29.10.2026)."""
+names its holder, and one that names no one is often another party's (Tobi, 28.10.2026)."""
 
 ROLES: Mapping[IdentifierKind, FactRole] = {
     IdentifierKind.IBAN: FactRole.CONTACT,

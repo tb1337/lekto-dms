@@ -209,7 +209,7 @@ def test_an_excerpt_shows_the_text_around_on_one_line() -> None:
     assert len(short.before) <= 21 and len(short.after) <= 21
 
 
-# --- recommendations (Tobi, 29.10.2026) ---------------------------------------------------------
+# --- recommendations (Tobi, 28.10.2026) ---------------------------------------------------------
 
 SENDER = Holder(HolderKind.SENDER, HolderSource.RULE)
 THIRD = Holder(HolderKind.THIRD_PARTY, HolderSource.RULE)

@@ -265,7 +265,7 @@ def value_places[W: Placed](
 ) -> list[tuple[int, tuple[W, ...]]]:
     """Where a value's words stand: in each place of its quote, the words there that show it
     (`value_words`); where none of them does (or the quote has no place), every place the value
-    stands on the pages (`value_runs`; Tobi, 29.10.2026, #55 19.3: an amount in a table and
+    stands on the pages (`value_runs`; Tobi, 28.10.2026, #55 19.3: an amount in a table and
     again in a sentence is by its label where either place is)."""
     places = []
     for location in locations:

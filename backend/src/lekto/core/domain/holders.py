@@ -264,7 +264,7 @@ _FILLERS = frozenset({"und", "der", "die", "das", "von", "fuer", "the", "and", "
 
 
 def domain_holder(domain: str, text: str, parties: Parties) -> Holder:
-    """Whose an e-mail domain is, by its name rather than where it stands (Tobi, 29.10.2026):
+    """Whose an e-mail domain is, by its name rather than where it stands (Tobi, 28.10.2026):
     a free mail domain's holder is not to tell (unclear); one of a person (the domain of one of
     their addresses, or of an address in `text` whose part before the @ names them) is the
     recipient's; one a contact carries, or whose name a word of a contact's name stands in

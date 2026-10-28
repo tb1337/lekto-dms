@@ -264,7 +264,7 @@ class OpenIdentifierService:
         self, actor: UserId, *, session: bool = True
     ) -> list[DecisionOutcome]:
         """Confirm every open identifier whose documents recommend it (admins, Tobi
-        29.10.2026), each as `decide` confirms one: at its contact by hand, a suggested one at
+        28.10.2026), each as `decide` confirms one: at its contact by hand, a suggested one at
         the contact or the person its documents name. One that cannot be done says why. Never
         rejects: a rejected one is never learned again and leaves the list unseen."""
         async with self._uow() as uow:

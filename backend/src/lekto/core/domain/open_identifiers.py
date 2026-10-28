@@ -53,7 +53,7 @@ class Recommendation(StrEnum):
 
 RECOMMEND_FROM = 2
 """Confirmed documents of its contact an identifier must stand in to be recommended (Tobi,
-29.10.2026): in dev one that stood in one document was rejected 17 times and confirmed once."""
+28.10.2026): in dev one that stood in one document was rejected 17 times and confirmed once."""
 
 _OF_CONTACTS = frozenset({FactRole.CONTACT, FactRole.TARGET})
 
@@ -231,7 +231,7 @@ def recommendation_for(
 def _recommended(
     item: OpenIdentifier, names: Mapping[ContactId, list[str]], labels: Mapping[ContactId, str]
 ) -> Recommended | None:
-    """What its confirmed documents recommend for an open identifier (Tobi, 29.10.2026), or
+    """What its confirmed documents recommend for an open identifier (Tobi, 28.10.2026), or
     None where they do not tell:
 
     - to confirm one at its contact that stands in `RECOMMEND_FROM` documents of it or more, as

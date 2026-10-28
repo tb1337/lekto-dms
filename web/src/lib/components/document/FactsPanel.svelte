@@ -25,6 +25,7 @@
 		codeSpans,
 		evidenceLabel,
 		grouped,
+		holderLabel,
 		identifierKey,
 		roleLabel,
 		shown,
@@ -380,6 +381,9 @@
 				</span>
 				{#if identifier && stateLabel(identifier.state)}
 					<span class="text-xs text-muted-foreground">{stateLabel(identifier.state)}</span>
+				{/if}
+				{#if identifier?.holder}
+					<span class="text-xs text-muted-foreground">{holderLabel(identifier.holder)}</span>
 				{/if}
 				{#if identifier?.topic_id && topicName(identifier.topic_id)}
 					<span class="text-xs text-muted-foreground">

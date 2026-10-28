@@ -110,9 +110,9 @@ async def render_pages(user: CurrentUser, context: Context) -> QueuedOut:
     summary="Read the codes of every document",
     description=(
         ADMINS_ONLY + " The worker reads the codes on the pages of every document whose text "
-        "was read and that is not being processed, and keeps the identifiers it shows: for "
-        "documents from before codes were read. A document queued already is not queued "
-        "twice."
+        "was read and that is not being processed, and keeps the identifiers it shows with "
+        "whose an IBAN or a creditor ID is: for documents from before codes and holders were "
+        "read. A document queued already is not queued twice."
     ),
     response_model=QueuedOut,
     responses=problem_responses(401, 403),

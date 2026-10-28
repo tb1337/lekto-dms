@@ -1932,7 +1932,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Read the codes of every document
-		 * @description Admins only. The worker reads the codes on the pages of every document whose text was read and that is not being processed, and keeps the identifiers it shows: for documents from before codes were read. A document queued already is not queued twice.
+		 * @description Admins only. The worker reads the codes on the pages of every document whose text was read and that is not being processed, and keeps the identifiers it shows with whose an IBAN or a creditor ID is: for documents from before codes and holders were read. A document queued already is not queued twice.
 		 */
 		post: operations['read_codes_api_v1_pipeline_read_codes_post'];
 		delete?: never;
@@ -5050,6 +5050,8 @@ export interface components {
 			 * @default false
 			 */
 			kept: boolean;
+			/** @description Whose an IBAN or a creditor ID is; null for other kinds and until the facts signal ran again after 0.8 (`read-codes`). */
+			holder?: components['schemas']['HolderOut'] | null;
 			/**
 			 * Other Contacts
 			 * @description For admins: on the confirmed documents of how many contacts other than the document's it stands (the IBAN of one's own account stands on many); null for others.
@@ -5175,6 +5177,33 @@ export interface components {
 				[key: string]: 'ok' | 'failed';
 			};
 		};
+		/**
+		 * HolderKind
+		 * @description Whose a number is where it stands (`domain.holders`).
+		 * @enum {string}
+		 */
+		HolderKind: 'sender' | 'recipient' | 'third_party' | 'unclear';
+		/**
+		 * HolderOut
+		 * @description Whose an IBAN or a creditor ID is where it stands.
+		 */
+		HolderOut: {
+			/** @description `sender`: the document's sender (its contact, if `name` is none or its name or an alias), `recipient`: a person it is addressed to, `third_party`: another party (a payee in a booking, a party of a list), `unclear`. */
+			kind: components['schemas']['HolderKind'];
+			/**
+			 * Name
+			 * @description The holder's name as the document writes it, if any.
+			 */
+			name: string | null;
+			/** @description Who told it: `rule` or `model`. */
+			source: components['schemas']['HolderSource'];
+		};
+		/**
+		 * HolderSource
+		 * @description Who told the holder.
+		 * @enum {string}
+		 */
+		HolderSource: 'rule' | 'model';
 		/** IdentifierFoundOut */
 		IdentifierFoundOut: {
 			kind: components['schemas']['IdentifierKind'];

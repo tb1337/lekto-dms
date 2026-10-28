@@ -16415,7 +16415,7 @@
           "pipeline"
         ],
         "summary": "Read the codes of every document",
-        "description": "Admins only. The worker reads the codes on the pages of every document whose text was read and that is not being processed, and keeps the identifiers it shows: for documents from before codes were read. A document queued already is not queued twice.",
+        "description": "Admins only. The worker reads the codes on the pages of every document whose text was read and that is not being processed, and keeps the identifiers it shows with whose an IBAN or a creditor ID is: for documents from before codes and holders were read. A document queued already is not queued twice.",
         "operationId": "read_codes_api_v1_pipeline_read_codes_post",
         "responses": {
           "202": {
@@ -25596,6 +25596,17 @@
             "description": "Whether the document keeps it as a fact (a person decides about it); not before the facts signal ran.",
             "default": false
           },
+          "holder": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HolderOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whose an IBAN or a creditor ID is; null for other kinds and until the facts signal ran again after 0.8 (`read-codes`)."
+          },
           "other_contacts": {
             "anyOf": [
               {
@@ -25879,6 +25890,58 @@
           "checks"
         ],
         "title": "Health"
+      },
+      "HolderKind": {
+        "type": "string",
+        "enum": [
+          "sender",
+          "recipient",
+          "third_party",
+          "unclear"
+        ],
+        "title": "HolderKind",
+        "description": "Whose a number is where it stands (`domain.holders`)."
+      },
+      "HolderOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/HolderKind",
+            "description": "`sender`: the document's sender (its contact, if `name` is none or its name or an alias), `recipient`: a person it is addressed to, `third_party`: another party (a payee in a booking, a party of a list), `unclear`."
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "The holder's name as the document writes it, if any."
+          },
+          "source": {
+            "$ref": "#/components/schemas/HolderSource",
+            "description": "Who told it: `rule` or `model`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "name",
+          "source"
+        ],
+        "title": "HolderOut",
+        "description": "Whose an IBAN or a creditor ID is where it stands."
+      },
+      "HolderSource": {
+        "type": "string",
+        "enum": [
+          "rule",
+          "model"
+        ],
+        "title": "HolderSource",
+        "description": "Who told the holder."
       },
       "IdentifierFoundOut": {
         "properties": {

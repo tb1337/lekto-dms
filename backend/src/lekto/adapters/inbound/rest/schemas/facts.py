@@ -6,7 +6,15 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from lekto.adapters.inbound.rest.schemas.inbox import BoxOut, LocationOut
 from lekto.adapters.inbound.schemas import MoneyValue
-from lekto.core.domain.document_facts import FactOrigin, FactRole, FactState, role_of
+from lekto.core.domain.document_facts import (
+    FactOrigin,
+    FactRole,
+    FactState,
+    Holder,
+    HolderKind,
+    HolderSource,
+    role_of,
+)
 from lekto.core.domain.facts import FoundIdentifier, Span, Strength
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.services.documents import CodeFacts, DocumentFacts, DocumentNumber
@@ -39,6 +47,26 @@ class NamedContactOut(BaseModel):
     in_text: bool
     in_code: bool = Field(description="The payee of a GiroCode on the pages.")
     spans: list[SpanOut] = Field(description="Where it stands in the text.")
+
+
+class HolderOut(BaseModel):
+    """Whose an IBAN or a creditor ID is where it stands."""
+
+    kind: HolderKind = Field(
+        description=(
+            "`sender`: the document's sender (its contact, if `name` is none or its name or an "
+            "alias), `recipient`: a person it is addressed to, `third_party`: another party "
+            "(a payee in a booking, a party of a list), `unclear`."
+        )
+    )
+    name: str | None = Field(description="The holder's name as the document writes it, if any.")
+    source: HolderSource = Field(description="Who told it: `rule` or `model`.")
+
+    @classmethod
+    def of(cls, holder: Holder | None) -> "HolderOut | None":
+        if holder is None:
+            return None
+        return cls(kind=holder.kind, name=holder.name, source=holder.source)
 
 
 class FoundIdentifierOut(BaseModel):
@@ -75,6 +103,13 @@ class FoundIdentifierOut(BaseModel):
         default=False,
         description="Whether the document keeps it as a fact (a person decides about it); "
         "not before the facts signal ran.",
+    )
+    holder: HolderOut | None = Field(
+        default=None,
+        description=(
+            "Whose an IBAN or a creditor ID is; null for other kinds and until the facts "
+            "signal ran again after 0.8 (`read-codes`)."
+        ),
     )
     other_contacts: int | None = Field(
         description=(
@@ -314,6 +349,7 @@ class FactsOut(BaseModel):
                     origins=_origins(report, item),
                     state=_state(report, item),
                     kept=item.key in report.stored,
+                    holder=HolderOut.of(_holder(report, item)),
                     other_contacts=None if others is None else len(others.get(item.key, ())),
                     other_contact_ids=(
                         None if others is None else sorted(others.get(item.key, frozenset()))
@@ -345,6 +381,11 @@ class FactsOut(BaseModel):
 def _role(report: DocumentFacts, item: FoundIdentifier) -> FactRole:
     kept = report.stored.get(item.key)
     return role_of(item.kind) if kept is None else kept.role
+
+
+def _holder(report: DocumentFacts, item: FoundIdentifier) -> Holder | None:
+    kept = report.stored.get(item.key)
+    return None if kept is None else kept.holder
 
 
 def _state(report: DocumentFacts, item: FoundIdentifier) -> FactState:

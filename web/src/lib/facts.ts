@@ -21,6 +21,7 @@ export type Strength = FoundPerson['strength'];
 export type FactRole = components['schemas']['FactRole'];
 export type FactState = components['schemas']['FactState'];
 export type FactOrigin = components['schemas']['FactOrigin'];
+export type Holder = components['schemas']['HolderOut'];
 type FactDecisionIn = components['schemas']['FactDecisionIn'];
 /** A person's decision about a fact (`POST /documents/{id}/facts/decisions`), with what the
  * action needs only. */
@@ -112,6 +113,22 @@ const ROLE_LABELS: Record<FactRole, () => string> = {
 /** What a fact is to the document, in words ("points to the contact"). */
 export function roleLabel(role: FactRole): string {
 	return ROLE_LABELS[role]();
+}
+
+const HOLDER_LABELS: Record<Holder['kind'], () => string> = {
+	sender: m.fact_holder_sender,
+	recipient: m.fact_holder_recipient,
+	third_party: m.fact_holder_third_party,
+	unclear: m.fact_holder_unclear
+};
+
+/** Whose an IBAN or a creditor ID is, in words, with the name the document gives
+ * ("Inhaber: Dritter · Stadtwerke"). */
+export function holderLabel(holder: Holder): string {
+	const kind = HOLDER_LABELS[holder.kind]();
+	return holder.name
+		? m.facts_holder_named({ holder: kind, name: holder.name })
+		: m.facts_holder({ holder: kind });
 }
 
 /** How surely the document names a person, in words. */

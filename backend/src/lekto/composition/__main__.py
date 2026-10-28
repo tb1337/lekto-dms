@@ -36,8 +36,9 @@ meant.
 - `render-pages`: queue the page images of every document from before the pages node existed
   (its `pages` node is skipped); the worker renders them.
 - `read-codes`: queue reading the facts of every document with a text: the worker reads the
-  codes on its pages and keeps the identifiers it shows (for documents from before codes were
-  read, and for telling on how many contacts' documents an identifier stands).
+  codes on its pages and keeps the identifiers it shows with whose an IBAN or a creditor ID is
+  (for documents from before codes and holders were read, and for telling on how many
+  contacts' documents an identifier stands).
 - `relate`: queue finding the relations of every document not being processed: the worker
   relates it with the documents it refers to and those that refer to it (for documents from
   before the node `relate`, and after a document type became a relation target).

@@ -6,6 +6,7 @@ import {
 	factFilterLabel,
 	parseFactFilter,
 	grouped,
+	holderLabel,
 	inUnits,
 	KIND_ROLES,
 	pageRanges,
@@ -208,6 +209,17 @@ describe('the role of a fact of each kind', () => {
 			'x-fact-roles'
 		];
 		expect(KIND_ROLES).toEqual(roles);
+	});
+});
+
+describe('the holder of a number', () => {
+	it('is told with the name the document gives', () => {
+		expect(holderLabel({ kind: 'third_party', name: 'Stadtwerke', source: 'rule' })).toBe(
+			m.facts_holder_named({ holder: m.fact_holder_third_party(), name: 'Stadtwerke' })
+		);
+		expect(holderLabel({ kind: 'sender', name: null, source: 'rule' })).toBe(
+			m.facts_holder({ holder: m.fact_holder_sender() })
+		);
 	});
 });
 

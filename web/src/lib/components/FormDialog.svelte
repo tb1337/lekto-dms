@@ -126,7 +126,7 @@
 							<Button
 								type="button"
 								variant="outline"
-								class="mt-2 h-11"
+								class="mt-2"
 								disabled={busy || altBusy}
 								onclick={runAlternative}
 							>
@@ -137,7 +137,7 @@
 							<Button
 								type="button"
 								variant="outline"
-								class="mt-2 h-11 text-destructive"
+								class="mt-2 text-destructive"
 								onclick={() => (confirming = true)}
 							>
 								<Trash2 aria-hidden="true" />

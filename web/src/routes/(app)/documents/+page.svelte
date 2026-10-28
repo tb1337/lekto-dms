@@ -21,6 +21,7 @@
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
+	import Mark from '#lib/components/Mark.svelte';
 	import ActiveFilters from '#lib/components/ActiveFilters.svelte';
 	import DocumentCard from '#lib/components/DocumentCard.svelte';
 	import DocumentRow from '#lib/components/DocumentRow.svelte';
@@ -624,7 +625,7 @@
 		<span class="line-clamp-2 text-sm text-muted-foreground">
 			{#each item.snippet as part, index (index)}
 				{#if part.match}
-					<mark class="rounded bg-lane-yellow px-0.5 text-lane-yellow-foreground">{part.text}</mark>
+					<Mark>{part.text}</Mark>
 				{:else}{part.text}{/if}
 			{/each}
 		</span>

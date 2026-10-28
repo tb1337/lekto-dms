@@ -50,7 +50,7 @@
 				{m.bulk_skipped({ count: formatNumber(operation?.skipped.length ?? 0) })}
 			</Dialog.Description>
 		</Dialog.Header>
-		<ul class="flex max-h-[60dvh] flex-col divide-y overflow-y-auto">
+		<ul class="flex max-h-[60vh] flex-col divide-y overflow-y-auto">
 			{#each rows as row (row.document_id)}
 				{@const title = titles[row.document_id]}
 				<li class="flex flex-col gap-0.5 py-2">
@@ -76,7 +76,7 @@
 			</p>
 		{/if}
 		<Dialog.Footer>
-			<Button variant="outline" onclick={onclose}>{m.close()}</Button>
+			<Button onclick={onclose}>{m.close()}</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

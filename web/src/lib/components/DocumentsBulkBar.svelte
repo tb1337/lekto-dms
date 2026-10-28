@@ -6,6 +6,7 @@
 	import IconButton from '#lib/components/IconButton.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import FormDialog from '#lib/components/FormDialog.svelte';
+	import ReprocessFields from '#lib/components/ReprocessFields.svelte';
 	import SearchSelect from '#lib/components/SearchSelect.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import SelectionBar from '#lib/components/SelectionBar.svelte';
@@ -386,20 +387,20 @@
 		disabled={nodes.length === 0}
 		action={() => start({ kind: 'reprocess', from_node: fromNode })}
 	>
-		<Field.Field>
-			<Field.Label for="bulk-node">{m.reprocess_from()}</Field.Label>
-			<Select id="bulk-node" bind:value={fromNode} options={nodes} />
-		</Field.Field>
-		{#if asksModel && count > WARN_ABOVE}
-			<Alert.Root variant="warning">
-				<Alert.Description>
-					{m.bulk_reprocess_model({ calls: formatNumber(count * MODEL_CALLS) })}
-				</Alert.Description>
-			</Alert.Root>
-		{/if}
-		{#if fromNode === 'ocr'}
-			<p class="text-sm text-muted-foreground">{m.bulk_reprocess_vision()}</p>
-		{/if}
+		<ReprocessFields
+			id="bulk-node"
+			{nodes}
+			bind:fromNode
+			note={fromNode === 'ocr' ? m.bulk_reprocess_vision() : null}
+		>
+			{#if asksModel && count > WARN_ABOVE}
+				<Alert.Root variant="warning">
+					<Alert.Description>
+						{m.bulk_reprocess_model({ calls: formatNumber(count * MODEL_CALLS) })}
+					</Alert.Description>
+				</Alert.Root>
+			{/if}
+		</ReprocessFields>
 	</FormDialog>
 {/if}
 

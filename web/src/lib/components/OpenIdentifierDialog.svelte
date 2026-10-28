@@ -7,6 +7,7 @@
 	import FormDialog from '#lib/components/FormDialog.svelte';
 	import Loading from '#lib/components/Loading.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
+	import Mark from '#lib/components/Mark.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
@@ -171,10 +172,7 @@
 							</div>
 							{#if place.excerpt}
 								<p class="rounded-xl bg-surface px-3 py-2 text-meta break-words">
-									{place.excerpt.before}<mark
-										class="rounded-sm bg-lane-yellow px-0.5 text-lane-yellow-foreground"
-										>{place.excerpt.match}</mark
-									>{place.excerpt.after}
+									{place.excerpt.before}<Mark>{place.excerpt.match}</Mark>{place.excerpt.after}
 								</p>
 							{:else}
 								<p class="text-meta text-muted-foreground">{m.open_place_no_text()}</p>

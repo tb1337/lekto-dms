@@ -105,6 +105,7 @@
 	// The numbers of third parties fold away (Tobi, 28.10.2026); opened, they stay open while
 	// the document is shown.
 	let thirdOpen = $state(false);
+	const uid = $props.id();
 	let adding = $state(false);
 	// A click keeps a mark: the text scrolls to it (also when the entry was marked already).
 	let reveal = false;
@@ -557,12 +558,12 @@
 					type="button"
 					class="flex min-h-11 w-full items-center gap-2 rounded-xl px-2.5 text-left hover:bg-panel"
 					aria-expanded={thirdOpen}
-					aria-controls="facts-third"
+					aria-controls="{uid}-third"
 					onclick={() => (thirdOpen = !thirdOpen)}
 				>
 					<ChevronRight
 						class={[
-							'size-4 shrink-0 text-muted-foreground transition-transform',
+							'size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none',
 							thirdOpen && 'rotate-90'
 						]}
 						aria-hidden="true"
@@ -577,7 +578,7 @@
 					</span>
 				</button>
 				{#if thirdOpen}
-					<div id="facts-third" class="flex flex-col pl-6">
+					<div id="{uid}-third" class="flex flex-col pl-6">
 						{#each groups.third as entry (entryId(entry))}
 							{@render entryRow(entry, entry.contact_id)}
 						{/each}

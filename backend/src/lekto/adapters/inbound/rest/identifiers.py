@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query
 
-from lekto.adapters.inbound.rest.auth import PROTECTED, CurrentUser
+from lekto.adapters.inbound.rest.auth import PROTECTED, Authenticated, CurrentUser
 from lekto.adapters.inbound.rest.context import Context
 from lekto.adapters.inbound.rest.params import ADMINS_ONLY
 from lekto.adapters.inbound.rest.problems import problem_responses
@@ -100,9 +100,11 @@ async def open_detail(
     responses=problem_responses(401, 403, 422),
 )
 async def decide_open(
-    body: OpenDecisionsIn, user: CurrentUser, context: Context
+    body: OpenDecisionsIn, principal: Authenticated, context: Context
 ) -> list[OutcomeOut]:
     outcomes = await context.open_identifiers.decide(
-        user, [item.decision() for item in body.decisions]
+        principal.id,
+        [item.decision() for item in body.decisions],
+        session=principal.session is not None,
     )
     return [OutcomeOut.of(outcome) for outcome in outcomes]

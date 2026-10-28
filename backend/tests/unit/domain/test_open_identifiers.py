@@ -11,7 +11,7 @@ from lekto.core.domain.document_facts import (
     role_of,
 )
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
-from lekto.core.domain.ids import ContactId, DocumentId, new_id
+from lekto.core.domain.ids import ContactId, DocumentId, UserId, new_id
 from lekto.core.domain.master_data import Contact
 from lekto.core.domain.open_identifiers import (
     OpenSource,
@@ -19,6 +19,7 @@ from lekto.core.domain.open_identifiers import (
     excerpt,
     open_identifiers,
 )
+from lekto.core.domain.profiles import Person
 from tests.builders import NOW
 
 IBAN = (IdentifierKind.IBAN, "DE02120300000000202051")
@@ -49,8 +50,11 @@ def seen(
     day: int,
     written: str | None = None,
     holder: Holder | None = None,
+    owner: UserId | None = None,
 ) -> Sighting:
-    return Sighting(DocumentId(new_id()), contact, date(2026, 10, day), fact(key, written, holder))
+    return Sighting(
+        DocumentId(new_id()), contact, date(2026, 10, day), fact(key, written, holder), owner
+    )
 
 
 def test_a_learned_one_is_open_with_the_documents_that_show_it() -> None:
@@ -92,8 +96,58 @@ def test_an_iban_is_open_only_where_it_is_its_contact_s() -> None:
     assert (item.contacts, len(item.seen)) == ((utility.id,), 1)
     mine = seen(utility.id, IBAN, 6, holder=Holder(HolderKind.RECIPIENT, HolderSource.RULE))
     assert open_identifiers([utility, bank], [*sightings, mine]) == []
+    # Only in the bank's bookings: no unknown one, but a suggestion for the utility.
     only_payee = [seen(bank.id, IBAN, 3, holder=payee)]
-    assert open_identifiers([utility, bank], only_payee) == []
+    (item,) = open_identifiers([utility, bank], only_payee)
+    assert (item.source, item.contacts) == (OpenSource.SUGGESTED, (utility.id,))
+
+
+def test_a_contact_s_iban_in_another_s_bookings_is_suggested_for_it() -> None:
+    """The bank's statements name the landlord as the payee: suggested for the landlord, the
+    contact the name names; a name of two contacts or of none suggests nothing."""
+    landlord, bank = (Contact.create(name=name, now=NOW) for name in ("Hausverwaltung Ost", "Bank"))
+    payee = Holder(HolderKind.THIRD_PARTY, HolderSource.RULE, "Hausverwaltung Ost")
+    (item,) = open_identifiers(
+        [landlord, bank],
+        [seen(bank.id, IBAN, 3, holder=payee), seen(bank.id, IBAN, 4, holder=payee)],
+    )
+    assert (item.source, item.contacts, item.person, len(item.seen)) == (
+        OpenSource.SUGGESTED,
+        (landlord.id,),
+        None,
+        2,
+    )
+    other = Holder(HolderKind.THIRD_PARTY, HolderSource.RULE, "Hausmeisterdienst Weber")
+    assert open_identifiers([landlord, bank], [seen(bank.id, IBAN, 3, holder=other)]) == []
+    rejected = Contact.create(name="Hausverwaltung Ost", now=NOW)
+    rejected.set_identifiers([], rejected=[Identifier(*IBAN)])
+    assert open_identifiers([rejected, bank], [seen(bank.id, IBAN, 3, holder=payee)]) == []
+
+
+def test_a_recipient_s_iban_is_suggested_for_their_profile() -> None:
+    """Named, for the person it names; unnamed, for the user whose personal space holds the
+    document; not one they declined, nor where the documents point to two people."""
+    bank = Contact.create(name="Bank", now=NOW)
+    max_, lisa = UserId(new_id()), UserId(new_id())
+    persons = [Person(max_, "Max Nord"), Person(lisa, "Lisa Nord", aliases=("Lisa Süd",))]
+    named = Holder(HolderKind.RECIPIENT, HolderSource.RULE, "Max Nord")
+    (item,) = open_identifiers([bank], [seen(bank.id, IBAN, 3, holder=named)], persons=persons)
+    assert (item.source, item.contacts, item.person) == (OpenSource.SUGGESTED, (), max_)
+    yours = Holder(HolderKind.RECIPIENT, HolderSource.RULE)
+    (item,) = open_identifiers(
+        [bank], [seen(bank.id, IBAN, 3, holder=yours, owner=lisa)], persons=persons
+    )
+    assert item.person == lisa
+    both = [seen(bank.id, IBAN, 3, holder=named), seen(bank.id, IBAN, 4, holder=yours, owner=lisa)]
+    assert open_identifiers([bank], both, persons=persons) == []
+    assert (
+        open_identifiers(
+            [bank], [seen(bank.id, IBAN, 3, holder=named)], persons=persons, declined={max_: [IBAN]}
+        )
+        == []
+    )
+    # In a profile already: nothing to suggest.
+    assert open_identifiers([bank], [seen(bank.id, IBAN, 3, holder=named)], [IBAN], persons) == []
 
 
 def test_what_a_contact_or_a_person_has_is_not_open() -> None:

@@ -99,6 +99,15 @@ user_identifiers = Table(
     Index("ix_user_identifiers_kind_value", "kind", "value"),
 )
 
+# Identifiers suggested as a user's that a person declined (`Profile.declined`).
+user_declined_identifiers = Table(
+    "user_declined_identifiers",
+    metadata,
+    Column("user_id", Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("kind", Text, primary_key=True),
+    Column("value", Text, primary_key=True),
+)
+
 spaces = Table(
     "spaces",
     metadata,

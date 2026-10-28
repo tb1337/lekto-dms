@@ -62,17 +62,18 @@ async def test_admins_see_the_open_identifiers(api: Api) -> None:
             "written": "20047718",
             "source": "learned",
             "contacts": [{"id": str(contact.id), "name": "Stadtwerke"}],
+            "person": None,
             "documents": 2,
             "last": builders.NOW.date().isoformat(),
         }
     ]
     assert (page["total"], page["counts"], page["kinds"]) == (
         1,
-        {"learned": 1, "unknown": 1},
+        {"learned": 1, "unknown": 1, "suggested": 0},
         {"customer_number": 1},
     )
     summary = await api.client.get(f"{URL}/summary", headers=auth(admin))
-    assert summary.json() == {"learned": 1, "unknown": 1}
+    assert summary.json() == {"learned": 1, "unknown": 1, "suggested": 0}
 
     detail = await api.client.get(
         f"{URL}/detail", params={"kind": "vat_id", "value": VAT[1]}, headers=auth(admin)

@@ -759,7 +759,9 @@ class MemoryDocumentFactRepository:
             for fact in () if row is _REMOVED else row.facts:
                 if fact.kind in wanted and fact.state is not FactState.REJECTED:
                     dated = document.document_date or document.created_at.date()
-                    seen.append(Sighting(document.id, document.contact_id, dated, fact))
+                    space = self._uow._row(SPACES, document.space_id)
+                    owner = None if space is _REMOVED or space is None else space.personal_of
+                    seen.append(Sighting(document.id, document.contact_id, dated, fact, owner))
         return seen
 
 

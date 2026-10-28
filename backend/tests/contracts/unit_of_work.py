@@ -1031,7 +1031,8 @@ class UnitOfWorkContract:
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
         """Only confirmed documents with a contact, facts not rejected, of the kinds asked; a
-        document without a date is dated by the day it came."""
+        document without a date is dated by the day it came; the owner of the personal space it
+        lies in."""
         owner, space = await owner_with_space(uow_factory)
         utility = Contact.create(name="Stadtwerke", now=NOW)
         iban = (IdentifierKind.IBAN, "DE02120300000000202051")
@@ -1062,6 +1063,7 @@ class UnitOfWorkContract:
             [(documents[0].id, iban), (documents[0].id, vat), (documents[1].id, iban)]
         )
         assert {item.contact for item in seen} == {utility.id}
+        assert {item.owner for item in seen} == {owner.id}  # their personal space
         dated = {item.document: item.dated for item in seen}
         assert dated[documents[0].id] == date(2026, 9, 30)
         assert dated[documents[1].id] == documents[1].created_at.date()
@@ -2033,6 +2035,7 @@ class UnitOfWorkContract:
             birth_date=date(1980, 6, 15),
             email="anna@mail.example",
             identifiers=[Identifier(IdentifierKind.TAX_ID, "12345678911"), iban],
+            declined=[Identifier(IdentifierKind.IBAN, "DE02120300000000202051")],
             version=1,
         )
         contact = Contact.create(name="Insurer", now=NOW)
@@ -2054,6 +2057,9 @@ class UnitOfWorkContract:
                 (IdentifierKind.TAX_ID, "12345678911"),
                 iban.key,
             }
+            assert [item.key for item in stored.declined] == [
+                (IdentifierKind.IBAN, "DE02120300000000202051")
+            ]
             assert (await uow.contacts.get(contact.id)).identifiers[0].user_id == anna.id
             stored.aliases = ["Anna Muster"]
             stored.birth_date = None

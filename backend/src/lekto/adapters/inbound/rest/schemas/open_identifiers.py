@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from lekto.adapters.inbound.schemas import ReasonOut
 from lekto.core.domain.document_facts import FactRole
 from lekto.core.domain.identifiers import IdentifierKind
-from lekto.core.domain.ids import ContactId
+from lekto.core.domain.ids import ContactId, UserId
 from lekto.core.domain.open_identifiers import OpenIdentifier, OpenSource
 from lekto.core.services.open_identifiers import (
     DecisionOutcome,
@@ -29,6 +29,11 @@ class OpenContactOut(BaseModel):
     name: str
 
 
+class OpenPersonOut(BaseModel):
+    id: UUID = Field(description="The user.")
+    name: str = Field(description="Their display name.")
+
+
 class OpenIdentifierOut(BaseModel):
     """An identifier no person has confirmed."""
 
@@ -38,20 +43,32 @@ class OpenIdentifierOut(BaseModel):
     source: OpenSource = Field(
         description="`learned`: training found it at `contacts[0]`; `unknown`: it stands in "
         "confirmed documents but at no contact, `contacts` are their contacts, the one with "
-        "most documents first."
+        "most documents first; `suggested`: an IBAN or a creditor ID its documents name as "
+        "another's, the contact's in `contacts[0]` or the person's in `person`."
     )
     contacts: list[OpenContactOut]
+    person: OpenPersonOut | None = Field(
+        default=None, description="A suggestion for this person's profile."
+    )
     documents: int = Field(description="Confirmed documents that show it.")
     last: date | None = Field(description="The date of the newest of them.")
 
     @classmethod
-    def of(cls, item: OpenIdentifier, names: Mapping[ContactId, str]) -> "OpenIdentifierOut":
+    def of(
+        cls,
+        item: OpenIdentifier,
+        names: Mapping[ContactId, str],
+        persons: Mapping[UserId, str],
+    ) -> "OpenIdentifierOut":
         return cls(
             kind=item.kind,
             value=item.value,
             written=item.written,
             source=item.source,
             contacts=[OpenContactOut(id=id, name=names.get(id, "")) for id in item.contacts],
+            person=None
+            if item.person is None
+            else OpenPersonOut(id=item.person, name=persons.get(item.person, "")),
             documents=len(item.seen),
             last=item.last,
         )
@@ -60,11 +77,14 @@ class OpenIdentifierOut(BaseModel):
 class OpenCountsOut(BaseModel):
     learned: int
     unknown: int
+    suggested: int
 
     @classmethod
     def of(cls, counts: Mapping[OpenSource, int]) -> "OpenCountsOut":
         return cls(
-            learned=counts.get(OpenSource.LEARNED, 0), unknown=counts.get(OpenSource.UNKNOWN, 0)
+            learned=counts.get(OpenSource.LEARNED, 0),
+            unknown=counts.get(OpenSource.UNKNOWN, 0),
+            suggested=counts.get(OpenSource.SUGGESTED, 0),
         )
 
 
@@ -79,7 +99,7 @@ class OpenPageOut(BaseModel):
     @classmethod
     def of(cls, page: OpenPage) -> "OpenPageOut":
         return cls(
-            items=[OpenIdentifierOut.of(item, page.names) for item in page.items],
+            items=[OpenIdentifierOut.of(item, page.names, page.persons) for item in page.items],
             total=page.total,
             counts=OpenCountsOut.of(page.counts),
             kinds=dict(page.kinds),
@@ -122,7 +142,7 @@ class OpenDetailOut(BaseModel):
     @classmethod
     def of(cls, detail: OpenDetail) -> "OpenDetailOut":
         return cls(
-            identifier=OpenIdentifierOut.of(detail.item, detail.names),
+            identifier=OpenIdentifierOut.of(detail.item, detail.names, detail.persons),
             places=[PlaceOut.of(place) for place in detail.places],
         )
 
@@ -131,8 +151,10 @@ class OpenDecisionIn(BaseModel):
     kind: IdentifierKind
     value: str = Field(description="Normalised, as the list gives it.")
     action: OpenAction = Field(
-        description="`confirm`: enter it at the contact by hand; `reject`: training does not "
-        "learn it again, and a learned one no longer counts."
+        description="`confirm`: enter it at the contact by hand, or a person's suggestion in "
+        "their profile; `reject`: training does not learn it again, and a learned one no "
+        "longer counts; a person's suggestion is noted as declined in their profile. A "
+        "person's suggestion needs a session."
     )
     contact_id: UUID | None = Field(
         default=None,

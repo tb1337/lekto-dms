@@ -13,7 +13,9 @@ repositories keep the rule among display names for two requests at once). Aliase
 and need not be unique: a 409 for an alias would tell that it is someone's (they are only weak
 or medium evidence, and a recipient that matches two people names neither). An identifier may
 belong to several users (the IBAN of a joint account), never to a user and a contact
-(`ProfileService`, `MasterDataService`).
+(`ProfileService`, `MasterDataService`). `declined`: identifiers Lekto suggested as the
+person's (the open identifiers) that a person said are not; they find nobody and are not
+suggested again.
 """
 
 from collections.abc import Iterable
@@ -36,6 +38,8 @@ MAX_ALIASES = 10
 """Other names of one person."""
 MAX_PERSON_IDENTIFIERS = 50
 """Identifiers of one person."""
+MAX_DECLINED = 200
+"""Identifiers declined for one person."""
 EARLIEST_BIRTH = date(1900, 1, 1)
 
 
@@ -48,6 +52,7 @@ class Profile:
     birth_date: date | None = None
     email: str | None = None
     identifiers: list[Identifier] = field(default_factory=list)
+    declined: list[Identifier] = field(default_factory=list)
     version: int = 0
 
     def __post_init__(self) -> None:
@@ -59,6 +64,15 @@ class Profile:
         if self.email is not None:
             self.email = normalise_identifier(IdentifierKind.EMAIL_ADDRESS, self.email)
         self.identifiers = _identifiers(self.identifiers)
+        own = {item.key for item in self.identifiers}
+        declined = {
+            item.key: Identifier(item.kind, item.value)
+            for item in self.declined
+            if item.key not in own
+        }
+        self.declined = sorted(declined.values(), key=lambda item: (item.kind.value, item.value))
+        if len(self.declined) > MAX_DECLINED:
+            raise ValidationError(f"at most {MAX_DECLINED} declined identifiers")
 
     @classmethod
     def empty(cls, user: UserId) -> "Profile":

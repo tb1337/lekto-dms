@@ -147,6 +147,7 @@ class ProfileService:
                 birth_date=_kept(changes.birth_date, old.birth_date),
                 email=_kept(changes.email, old.email),
                 identifiers=list(_kept(changes.identifiers, old.identifiers)),
+                declined=old.declined,
                 version=old.version,
             )
             if profile.birth_date is not None and profile.birth_date > self._clock.now().date():

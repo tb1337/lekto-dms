@@ -4,7 +4,15 @@ from collections.abc import Collection
 
 import pytest
 
-from lekto.core.domain.document_facts import DocumentFact, FactOrigin, FactRole, role_of
+from lekto.core.domain.document_facts import (
+    DocumentFact,
+    FactOrigin,
+    FactRole,
+    Holder,
+    HolderKind,
+    HolderSource,
+    role_of,
+)
 from lekto.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from lekto.core.domain.master_data import Contact
@@ -24,9 +32,14 @@ TEXT = "Stadtwerke Nord\nKundennummer 2004 7718\nUSt-IdNr. DE312456789\n"
 
 
 async def confirmed(
-    world: World, owner: User, contact: Contact, keys: Collection[tuple[IdentifierKind, str]]
+    world: World,
+    owner: User,
+    contact: Contact,
+    keys: Collection[tuple[IdentifierKind, str]],
+    holder: Holder | None = None,
 ) -> None:
-    """A confirmed document of `contact` that shows `keys`, with its text."""
+    """A confirmed document of `contact` that shows `keys`, with its text (an IBAN held by
+    `holder`)."""
     space = await world.personal_space(owner)
     document = builders.processed(owner, space)
     document.contact_id = contact.id
@@ -43,6 +56,7 @@ async def confirmed(
                 origins=frozenset({FactOrigin.PATTERN}),
                 written=written,
                 position=None if position < 0 else position,
+                holder=holder if kind is IdentifierKind.IBAN else None,
             )
         )
     async with world.uow() as uow:
@@ -83,7 +97,11 @@ async def test_an_admin_lists_the_open_identifiers(world: World) -> None:
         (VAT, OpenSource.UNKNOWN, 1),
     ]
     assert page.items[0].contacts == (utility.id, bank.id)
-    assert page.counts == {OpenSource.LEARNED: 1, OpenSource.UNKNOWN: 2}
+    assert page.counts == {
+        OpenSource.LEARNED: 1,
+        OpenSource.UNKNOWN: 2,
+        OpenSource.SUGGESTED: 0,
+    }
     assert page.names == {utility.id: "Stadtwerke", bank.id: "Bank"}
 
     learned = await world.open_identifiers.page(admin.id, source=OpenSource.LEARNED)
@@ -172,3 +190,57 @@ async def test_an_identifier_entered_by_hand_is_not_rejected_at_its_contact(worl
     )
     with pytest.raises(ConflictError):
         await world.master_data.reject_identifier(admin.id, contact.id, VAT)
+
+
+async def test_a_suggestion_goes_into_a_profile_or_is_declined_there(world: World) -> None:
+    """The bank's statements name the admin as the holder of an IBAN ("Ihr Konto" in their
+    personal space): confirmed, it is in their profile; declined, it is not suggested again.
+    Neither works with an API token."""
+    admin = await world.user(role=Role.ADMIN)
+    bank = Contact.create(name="Bank", now=NOW)
+    async with world.uow() as uow:
+        await uow.contacts.add(bank)
+        await uow.commit()
+    yours = Holder(HolderKind.RECIPIENT, HolderSource.RULE)
+    await confirmed(world, admin, bank, [IBAN], yours)
+    (item,) = (await world.open_identifiers.page(admin.id)).items
+    assert (item.source, item.person) == (OpenSource.SUGGESTED, admin.id)
+    confirm = OpenDecision(kind=IBAN[0], value=IBAN[1], action=OpenAction.CONFIRM)
+    (outcome,) = await world.open_identifiers.decide(admin.id, [confirm], session=False)
+    assert outcome.error is not None
+    assert outcome.error.code is ReasonCode.SESSION_NEEDED_PROFILE
+    (outcome,) = await world.open_identifiers.decide(admin.id, [confirm])
+    assert outcome.error is None
+    async with world.uow() as uow:
+        profile = await uow.profiles.get(admin.id)
+    assert [item.key for item in profile.identifiers] == [IBAN]
+    assert (await world.open_identifiers.page(admin.id)).items == []
+
+    async with world.uow() as uow:
+        profile.identifiers = []
+        await uow.profiles.update(profile)
+        await uow.commit()
+    reject = OpenDecision(kind=IBAN[0], value=IBAN[1], action=OpenAction.REJECT)
+    (outcome,) = await world.open_identifiers.decide(admin.id, [reject])
+    assert outcome.error is None
+    async with world.uow() as uow:
+        profile = await uow.profiles.get(admin.id)
+    assert ([item.key for item in profile.declined], profile.identifiers) == ([IBAN], [])
+    assert (await world.open_identifiers.page(admin.id)).items == []
+
+
+async def test_a_suggestion_for_a_contact_is_entered_there(world: World) -> None:
+    """The bank's statements name the utility as the payee: confirmed, the utility holds the
+    IBAN entered by hand."""
+    admin, utility, bank = await setting(world)
+    other = await world.user()
+    payee = Holder(HolderKind.THIRD_PARTY, HolderSource.RULE, "Stadtwerke")
+    iban = (IdentifierKind.IBAN, "DE89370400440532013000")
+    await confirmed(world, other, bank, [iban], payee)
+    page = await world.open_identifiers.page(admin.id, source=OpenSource.SUGGESTED)
+    assert [(item.key, item.contacts) for item in page.items] == [(iban, (utility.id,))]
+    assert page.names == {utility.id: "Stadtwerke"}
+    confirm = OpenDecision(kind=iban[0], value=iban[1], action=OpenAction.CONFIRM)
+    (outcome,) = await world.open_identifiers.decide(admin.id, [confirm])
+    assert outcome.error is None
+    assert (await held(world, utility))[iban] == "manual"

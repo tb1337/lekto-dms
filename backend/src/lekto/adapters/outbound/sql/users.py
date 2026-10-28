@@ -67,6 +67,7 @@ class SqlProfileRepository(SqlRepository[UserId, Profile]):
         ids = [row.user_id for row in rows]
         aliases = await self._children(t.user_aliases, "user_id", ids)
         identifiers = await self._children(t.user_identifiers, "user_id", ids)
+        declined = await self._children(t.user_declined_identifiers, "user_id", ids)
         return [
             Profile(
                 id=UserId(row.user_id),
@@ -82,6 +83,10 @@ class SqlProfileRepository(SqlRepository[UserId, Profile]):
                     ),
                     key=lambda item: (item.kind.value, item.value),
                 ),
+                declined=[
+                    Identifier(IdentifierKind(item.kind), item.value)
+                    for item in declined[row.user_id]
+                ],
                 version=row.version,
             )
             for row in rows
@@ -107,7 +112,14 @@ class SqlProfileRepository(SqlRepository[UserId, Profile]):
                 for item in entity.identifiers
             ],
         )
+        await self._insert_many(
+            t.user_declined_identifiers,
+            [
+                {"user_id": entity.id, "kind": item.kind.value, "value": item.value}
+                for item in entity.declined
+            ],
+        )
 
     async def _delete_children(self, ids: list[UUID]) -> None:
-        for table in (t.user_aliases, t.user_identifiers):
+        for table in (t.user_aliases, t.user_identifiers, t.user_declined_identifiers):
             await self._tx.write(delete(table).where(table.c.user_id.in_(ids)))

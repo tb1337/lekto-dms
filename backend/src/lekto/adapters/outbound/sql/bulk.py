@@ -37,19 +37,26 @@ class SqlBulkOperationRepository(SqlRepository[BulkOperationId, BulkOperation]):
         )
 
     def _values(self, entity: BulkOperation) -> Values:
-        skipped: list[JsonValue] = [[str(id), reason.to_json()] for id, reason in entity.skipped]
         return {
             "id": entity.id,
             "user_id": entity.user_id,
             "action": entity.action.to_json(),
-            "status": entity.status.value,
             "documents": [str(id) for id in entity.documents],
+            "created_at": entity.created_at,
+            "version": entity.version,
+            **self._changed(entity),
+        }
+
+    def _changed(self, entity: BulkOperation) -> Values:
+        """How far the operation is: the action and its documents (up to `MAX_DOCUMENTS` ids)
+        are written once, not again with each document done."""
+        skipped: list[JsonValue] = [[str(id), reason.to_json()] for id, reason in entity.skipped]
+        return {
+            "status": entity.status.value,
             "position": entity.position,
             "changed": entity.changed,
             "unchanged": entity.unchanged,
             "skipped": skipped,
             "error": entity.error,
-            "created_at": entity.created_at,
             "finished_at": entity.finished_at,
-            "version": entity.version,
         }

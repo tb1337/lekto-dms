@@ -1256,7 +1256,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Change many documents at once
-		 * @description Does one action to the selected documents in the background; follow it at `GET /documents/bulk/{id}`. The selection: `document_ids` (at most 500), or every document the query parameters find, as `GET /documents` (at most 10000, more: 422) or with `q` as `GET /documents/search` (the hits it reaches, at most 1000); it is fixed now. Each document goes through the same change as one by hand, rights included: one the caller may not edit, one being processed (except to delete it) or one that changed meanwhile is skipped with the reason, one that is as the action wants it already stays as it is. Admins act on every user's documents with `all_users` (others: 403).
+		 * @description Does one action to the selected documents in the background; follow it at `GET /documents/bulk/{id}`. The selection: `document_ids` (at most 500), or every document the query parameters find, as `GET /documents` (at most 10000, more: 422) or with `q` as `GET /documents/search` (the hits it reaches, at most 1000); it is fixed now. Each document goes through the same change as one by hand, rights included: one the caller may not edit, one being processed (except to delete it) or one that changed meanwhile is skipped with the reason, one that is as the action wants it already stays as it is. A tag, contact, type, topic or space the action names that does not exist: 404. Admins act on every user's documents with `all_users` (others: 403).
 		 */
 		post: operations['start_bulk_api_v1_documents_bulk_post'];
 		delete?: never;
@@ -2012,7 +2012,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Read the facts of every document again
-		 * @description Admins only. The worker reads the facts of every document whose text was read and that is not being processed again: the codes on its pages and the identifiers its text shows, with whose an IBAN or a creditor ID is. For documents from before an update that reads facts differently. A document queued already is not queued twice.
+		 * @description Admins only. The worker reads the facts of every document whose text was read and that is not being processed again: the codes on its pages and the identifiers its text shows, with whose an IBAN, a creditor ID, a VAT ID or a domain is. For documents from before an update that reads facts differently. A document queued already is not queued twice.
 		 */
 		post: operations['read_facts_api_v1_pipeline_read_facts_post'];
 		delete?: never;
@@ -5292,7 +5292,7 @@ export interface components {
 			 * @description The contact it is rejected at (a person said it is not theirs): it backs no contact; `contact_id` is null then.
 			 */
 			rejected_at?: string | null;
-			/** @description Whose an IBAN or a creditor ID is; null for other kinds and until the facts signal ran again after 0.8 (`read-facts`). */
+			/** @description Whose an IBAN, a creditor ID, a VAT ID or an e-mail domain is; null for other kinds and until the facts signal ran again after 0.8 (`read-facts`). */
 			holder?: components['schemas']['HolderOut'] | null;
 			/**
 			 * Other Contacts
@@ -5456,7 +5456,7 @@ export interface components {
 		};
 		/**
 		 * HolderOut
-		 * @description Whose an IBAN or a creditor ID is where it stands.
+		 * @description Whose an IBAN, a creditor ID, a VAT ID or an e-mail domain is where it stands.
 		 */
 		HolderOut: {
 			/** @description `sender`: the document's sender (its contact, if `name` is none or its name or an alias), `recipient`: a person it is addressed to, `third_party`: another party (a payee in a booking, a party of a list), `unclear`. */
@@ -7066,7 +7066,7 @@ export interface components {
 			 * @description As the newest of its documents writes it.
 			 */
 			written: string;
-			/** @description `learned`: training found it at `contacts[0]`; `unknown`: it stands in confirmed documents but at no contact, `contacts` are their contacts, the one with most documents first; `suggested`: an IBAN or a creditor ID its documents name as another's, the contact's in `contacts[0]` or the person's in `person`. */
+			/** @description `learned`: training found it at `contacts[0]`; `unknown`: it stands in confirmed documents but at no contact, `contacts` are their contacts, the one with most documents first; `suggested`: a number with a holder (an IBAN, a creditor ID, a VAT ID, an e-mail domain) its documents name as another's, the contact's in `contacts[0]` or the person's in `person`. */
 			source: components['schemas']['OpenSource'];
 			/** Contacts */
 			contacts: components['schemas']['OpenContactOut'][];
@@ -7847,6 +7847,7 @@ export interface components {
 			| 'skip_changed_meanwhile'
 			| 'skip_not_available'
 			| 'bulk_too_many'
+			| 'bulk_ids_and_filter'
 			| 'not_iban'
 			| 'not_vat_id'
 			| 'not_customer_number'
@@ -19925,6 +19926,23 @@ export interface operations {
 					 *       "title": "Forbidden",
 					 *       "status": 403,
 					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

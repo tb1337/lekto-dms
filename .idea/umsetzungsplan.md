@@ -2201,6 +2201,12 @@ Stand: Vorschlag Claude, 27.10.2026, zur Freigabe durch Tobi. Release offen.
    - Tests mit erfundenen Beispielen: Kontoauszug zweier Aufmachungen, Rechnung mit Bankverbindung im Fuß, Lohnabrechnung, NK-Abrechnung mit Beilage, englischer Brief.
    - Ein Wartungs-Job „Inhaber bestimmen“ für den Bestand (System › Wartung, wie Codes lesen), nur mit der Regel, ohne Modell.
    - Web: Die Fakten zeigen den Inhaber.
+   - **Gebaut (28.10.2026):** PR 1 gemergt (#180). PR 2 wie oben, mit diesen Vorgaben von Claude (Tobi bestätigt noch):
+     - Kein eigener Job „Inhaber bestimmen“: „Codes lesen“ (`read-codes`) lässt schon das Faktensignal je Dokument laufen und bestimmt dabei die Inhaber; nur sein Text nennt sie jetzt.
+     - Die Regel kennt den Kontakt des Dokuments nicht: Ein bekannter Kontaktname neben der Nummer heißt „Absender“ mit diesem Namen, auch in einer Buchung; erst wer den Inhaber nutzt (PR 4), gleicht den Namen mit dem Kontakt ab. Eine von Hand eingetragene Kennung zählt in der Regel nicht.
+     - Je Fakt ein Inhaber aus allen Fundstellen: ein Empfänger an einer gilt; Absender und Dritter zugleich heißen unklar.
+     - Das Modellsignal und das Zurücknehmen einer Entscheidung behalten die Inhaber, die schon gehalten sind; ein von einer Person entschiedener Fakt behält den Inhaber von damals.
+     - Gegen die Regel des PoC an dessen Fundstellen: Dev 888 von 888 gleich, Prod 4298 von 4299 (die eine trägt eine englische Beschriftung).
 3. **Inhaber vom Sprachmodell** (`feature/model-holders`, `new-feature`):
    - `facts-2`: Lekto gibt die gefundenen IBANs und Gläubiger-IDs mit; die Antwort nennt je Nummer Inhaber, Name und Zitat.
    - Prüfung und Zusammenführung mit der Regel wie oben.

@@ -238,6 +238,10 @@ divider.
   `<input type="date">`, which follows the browser language. `PeriodInput` handles periods.
 - **Tags of every kind:** `TagPicker`. One field with the chosen chips and a dashed "+ …" chip. The
   choice opens as a popover on desktop and as a sheet from the bottom on the phone.
+- **One of many by searching** (contact, document type, topic): `SearchSelect`, looking like a
+  `Select`. A popover on desktop; on the phone a sheet from the bottom named by its `title`
+  ("Kontakt wählen"), with a close button and rows of 48 px; a choice closes it (Tobi,
+  29.10.2026).
 - **Free values as chips** (other spellings, other names): `ChipInput`.
 
 ### Checkboxes, radios, switches
@@ -363,14 +367,14 @@ that table shows. Above such a table, a `Segmented` with counts picks what it sh
 
 ### Dialogs, sheets, editors
 
-| Need                                                         | Component                      | Desktop                          | Phone                                                                                                                 |
-| ------------------------------------------------------------ | ------------------------------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Ask before a destructive action                              | `ConfirmDialog` (alert dialog) | centred, `size="md"`             | centred with gutter                                                                                                   |
-| A short form (space, token, code, move, reprocess, new user) | `FormDialog`                   | centred, `size` `sm`/`md`/`lg`   | full screen with the editor bar                                                                                       |
-| An editor of master data, lenses                             | `EditorShell`                  | dialog with sticky head and foot | full screen with the editor bar                                                                                       |
-| A secret shown once                                          | `SecretDialog`                 | centred, `size="md"`             | centred with gutter                                                                                                   |
-| A choice from many (tags, facets)                            | popover / `TagPickerDialog`    | popover or dialog                | sheet from the bottom                                                                                                 |
-| Filters                                                      | sidebar                        | sidebar                          | sheet from the bottom, title and close fixed on top, "Zurücksetzen" and "Ergebnisse anzeigen (N)" fixed at the bottom |
+| Need                                                         | Component                                   | Desktop                          | Phone                                                                                                                 |
+| ------------------------------------------------------------ | ------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Ask before a destructive action                              | `ConfirmDialog` (alert dialog)              | centred, `size="md"`             | centred with gutter                                                                                                   |
+| A short form (space, token, code, move, reprocess, new user) | `FormDialog`                                | centred, `size` `sm`/`md`/`lg`   | full screen with the editor bar                                                                                       |
+| An editor of master data, lenses                             | `EditorShell`                               | dialog with sticky head and foot | full screen with the editor bar                                                                                       |
+| A secret shown once                                          | `SecretDialog`                              | centred, `size="md"`             | centred with gutter                                                                                                   |
+| A choice from many (tags, facets; contact, type, topic)      | popover / `TagPickerDialog`, `SearchSelect` | popover or dialog                | sheet from the bottom (`SearchSelect`: its `title`, a close button, rows of 48 px; a choice closes it)                |
+| Filters                                                      | sidebar                                     | sidebar                          | sheet from the bottom, title and close fixed on top, "Zurücksetzen" and "Ergebnisse anzeigen (N)" fixed at the bottom |
 
 - **Widths** come from the `size` prop (`sm` 384 px, `md` 512 px, `lg` 672 px, `xl` 768 px).
   A `class="max-w-*"` on dialog content is not used.

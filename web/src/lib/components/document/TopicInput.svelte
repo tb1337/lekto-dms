@@ -58,6 +58,7 @@
 
 <SearchSelect
 	{id}
+	title={m.picker_title_topic()}
 	bind:value
 	{disabled}
 	{placeholder}

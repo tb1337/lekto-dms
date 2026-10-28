@@ -145,7 +145,7 @@ class OpenIdentifierService:
         of a contact or a person, and with `recommended` only those with a recommendation."""
         async with self._uow() as uow:
             await require_admin(uow, actor, Action.CHANGE_MASTER_DATA)
-            found, names, persons = await _open(uow)
+            found, names, persons, _ = await _open(uow)
         to_confirm = len([item for item in found if _to_confirm(item)])
         if words is not None and words.strip():
             found = [item for item in found if _matches(item, words, names, persons)]
@@ -188,7 +188,7 @@ class OpenIdentifierService:
         documents; NotFoundError if it is not open."""
         async with self._uow() as uow:
             await require_admin(uow, actor, Action.CHANGE_MASTER_DATA)
-            found, names, persons = await _open(uow)
+            found, names, persons, _ = await _open(uow)
             item = next((each for each in found if each.key == (kind, value)), None)
             if item is None:
                 raise NotFoundError(
@@ -236,13 +236,7 @@ class OpenIdentifierService:
         decision about a person's suggestion needs a `session`."""
         async with self._uow() as uow:
             await require_admin(uow, actor, Action.CHANGE_MASTER_DATA)
-            found, _, _ = await _open(uow)
-            learned = {
-                item.key: item
-                for contact in await uow.contacts.list_all()
-                for item in contact.identifiers
-                if item.source is IdentifierSource.LEARNED
-            }
+            found, _, _, learned = await _open(uow)
         open = {item.key: item for item in found}
         outcomes = []
         for decision in decisions:
@@ -269,7 +263,7 @@ class OpenIdentifierService:
         rejects: a rejected one is never learned again and leaves the list unseen."""
         async with self._uow() as uow:
             await require_admin(uow, actor, Action.CHANGE_MASTER_DATA)
-            found, _, _ = await _open(uow)
+            found, _, _, _ = await _open(uow)
         decisions = [
             OpenDecision(kind=item.kind, value=item.value, action=OpenAction.CONFIRM)
             for item in found
@@ -305,7 +299,9 @@ class OpenIdentifierService:
         if decision.action is OpenAction.REJECT:
             await self._master_data.reject_identifier(actor, contact, decision.key)
             return
-        held = learned.get(decision.key)
+        # A learned one keeps its topic and user at its own contact; another contact's topics
+        # and users are not its.
+        held = learned.get(decision.key) if contact in item.contacts else None
         entered = Identifier(
             kind,
             value,
@@ -348,20 +344,30 @@ class OpenIdentifierService:
             else:
                 await uow.profiles.update(profile)
             await uow.commit()
+    learned = {
+        item.key: item
+        for contact in contacts
+        for item in contact.identifiers
+        if item.source is IdentifierSource.LEARNED
+    }
 
 
 async def _open(
     uow: UnitOfWork,
-) -> tuple[list[OpenIdentifier], dict[ContactId, str], dict[UserId, str]]:
+) -> tuple[list[OpenIdentifier], dict[ContactId, str], dict[UserId, str], dict[Key, Identifier]]:
+    """The open identifiers, the names of the contacts and the persons, and the identifiers
+    training learned by key (each at one contact)."""
     contacts = await uow.contacts.list_all()
     sightings = await uow.document_facts.sightings(CONTACT_KINDS)
     personal = await person_identifiers(uow)
     persons = await matching_persons(uow)
-    declined = {profile.id: [item.key for item in profile.declined]
-                for profile in await uow.profiles.list_all()}  # fmt: skip
+    declined = {
+        profile.id: [item.key for item in profile.declined]
+        for profile in await uow.profiles.list_all()
+    }
     names = {contact.id: contact.name for contact in contacts}
     found = open_identifiers(contacts, sightings, personal, persons, declined)
-    return found, names, {person.user_id: person.display_name or "" for person in persons}
+    return found, names, {person.user_id: person.display_name or "" for person in persons}, learned
 
 
 def _to_confirm(item: OpenIdentifier) -> bool:

@@ -183,6 +183,31 @@ async def test_a_learned_one_is_rejected_or_moved_by_its_contact(world: World) -
         )
 
 
+async def test_a_learned_one_moved_to_another_contact_leaves_its_user(world: World) -> None:
+    """The topic and the user a learned identifier points to are its own contact's: entered
+    at another contact, it points to neither."""
+    admin, utility, bank = await setting(world)
+    user = await world.user()
+    async with world.uow() as uow:
+        stored = await uow.contacts.get(utility.id)
+        stored.set_learned([Identifier(*CUSTOMER, IdentifierSource.LEARNED, user_id=user.id)])
+        await uow.contacts.update(stored)
+        await uow.commit()
+    (outcome,) = await world.open_identifiers.decide(
+        admin.id,
+        [
+            OpenDecision(
+                kind=CUSTOMER[0], value=CUSTOMER[1], action=OpenAction.CONFIRM, contact=bank.id
+            )
+        ],
+    )
+    assert outcome.error is None
+    async with world.uow() as uow:
+        (entered,) = (await uow.contacts.get(bank.id)).identifiers
+    assert (entered.key, entered.source) == (CUSTOMER, IdentifierSource.MANUAL)
+    assert (entered.topic_id, entered.user_id) == (None, None)
+
+
 async def test_an_identifier_entered_by_hand_is_not_rejected_at_its_contact(world: World) -> None:
     admin = await world.user(role=Role.ADMIN)
     contact = await world.master_data.create_contact(

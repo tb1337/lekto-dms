@@ -9,6 +9,12 @@ import { m } from '#lib/paraglide/messages.js';
 
 type Operation = components['schemas']['BulkOperationOut'];
 
+/** The most documents one action takes, as the API takes it (mirrors `MAX_DOCUMENTS` in
+ * `backend/src/lekto/core/domain/bulk.py`). */
+export const MAX_DOCUMENTS = 10_000;
+/** The most hits a search by words reaches (mirrors `MAX_HITS` in
+ * `backend/src/lekto/core/ports/search_index.py`). */
+export const MAX_HITS = 1_000;
 /** Calls of the language model per document from its step on: the proposal and the facts. */
 export const MODEL_CALLS = 2;
 /** Documents above which reprocessing from the model's step says what it costs. */

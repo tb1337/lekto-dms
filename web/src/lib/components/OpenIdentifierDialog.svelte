@@ -159,7 +159,7 @@
 						<Card.Root as="li" size="sm" class="flex flex-col gap-2">
 							<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
 								<a
-									class="min-w-0 flex-1 font-medium text-brand hover:underline"
+									class="inline-flex min-h-6 min-w-0 flex-1 items-center font-medium text-brand hover:underline max-sm:min-h-11"
 									href={`${BASE}/documents/${place.document_id}`}>{place.title}</a
 								>
 								<span class="text-meta text-muted-foreground tabular-nums">

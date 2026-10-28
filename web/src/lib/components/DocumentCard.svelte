@@ -81,7 +81,7 @@
 		size="flush"
 		class={cn(
 			'relative flex h-full min-w-0 flex-col overflow-hidden transition-colors has-[>a:hover]:border-primary has-[>label:hover]:border-primary',
-			chosen && 'border-primary bg-panel ring-1 ring-primary'
+			chosen && 'border-primary bg-panel'
 		)}
 	>
 		<svelte:element

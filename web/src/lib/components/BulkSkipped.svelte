@@ -55,7 +55,10 @@
 				{@const title = titles[row.document_id]}
 				<li class="flex flex-col gap-0.5 py-2">
 					{#if title}
-						<a href="{BASE}/documents/{row.document_id}" class="font-medium hover:underline">
+						<a
+							href="{BASE}/documents/{row.document_id}"
+							class="inline-flex min-h-6 items-center self-start font-medium hover:underline max-sm:min-h-11"
+						>
 							{title}
 						</a>
 					{:else}

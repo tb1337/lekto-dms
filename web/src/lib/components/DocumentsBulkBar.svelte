@@ -10,6 +10,7 @@
 	import Select from '#lib/components/Select.svelte';
 	import SelectionBar from '#lib/components/SelectionBar.svelte';
 	import TagPicker from '#lib/components/TagPicker.svelte';
+	import * as Alert from '#lib/components/ui/alert/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
@@ -390,9 +391,11 @@
 			<Select id="bulk-node" bind:value={fromNode} options={nodes} />
 		</Field.Field>
 		{#if asksModel && count > WARN_ABOVE}
-			<p class="text-sm text-lane-yellow-foreground">
-				{m.bulk_reprocess_model({ calls: formatNumber(count * MODEL_CALLS) })}
-			</p>
+			<Alert.Root variant="warning">
+				<Alert.Description>
+					{m.bulk_reprocess_model({ calls: formatNumber(count * MODEL_CALLS) })}
+				</Alert.Description>
+			</Alert.Root>
 		{/if}
 		{#if fromNode === 'ocr'}
 			<p class="text-sm text-muted-foreground">{m.bulk_reprocess_vision()}</p>

@@ -27,6 +27,7 @@
 	import BulkSkipped from '#lib/components/BulkSkipped.svelte';
 	import DocumentsBulkBar from '#lib/components/DocumentsBulkBar.svelte';
 	import { BulkRun, type BulkSelection } from '#lib/bulk.svelte.ts';
+	import { MAX_DOCUMENTS, MAX_HITS } from '#lib/bulk.ts';
 	import { phone } from '#lib/phone.svelte.ts';
 	import FilterPanel from '#lib/components/FilterPanel.svelte';
 	import InboxMark from '#lib/components/InboxMark.svelte';
@@ -367,30 +368,29 @@
 		void goto(params.size > 0 ? `?${params}` : page.url.pathname, { replaceState: replace });
 	}
 
-	/** Show `size` documents per page, on the page that holds the first one shown so far. */
-	function resize(size: number) {
-		const next = Math.floor(((pageNumber - 1) * list.size) / size) + 1;
-		list.size = size;
-		if (next === pageNumber) void list.go(next);
-		else goToPage(next, true);
+	/** Show `size` documents per page, on the page that holds the first one shown so far; that
+	 * page goes into the link (`replace`: the list did not change). */
+	async function resize(size: number) {
+		await list.resize(size);
+		if (list.page !== pageNumber) goToPage(list.page, true);
 	}
 
-	// How many documents the filters leave: estimated while searching.
-	const shownCount = $derived(searching ? list.total : (facets?.total ?? null));
+	// How many documents the filters leave: estimated while searching, unknown until then.
+	const shownCount = $derived(
+		searching ? (list.loaded ? list.total : null) : (facets?.total ?? null)
+	);
 
 	// Documents chosen for an action on many (web/DESIGN.md, "Choosing many"), in the selection
 	// mode the button beside the sort turns on (as Home Assistant has it, Tobi 29.10.2026): by id
 	// across the pages, or every hit of the search and filters (`allHits`). What the list shows
 	// changing lets go of them; the mode stays until the person ends it.
-	const MAX_DOCUMENTS = 10_000; // one action at most, as the API takes it
-	const MAX_HITS = 1_000; // the search reaches no further
 	let selecting = $state(false);
 	let chosen = $state<string[]>([]);
 	let allHits = $state(false);
 	const pageIds = $derived(list.items.map((item) => item.document.id));
 	const isChosen = (id: string) => allHits || chosen.includes(id);
 	const hits = $derived(
-		list.total === null ? null : searching ? Math.min(list.total, MAX_HITS) : list.total
+		!list.loaded ? null : searching ? Math.min(list.total, MAX_HITS) : list.total
 	);
 	const chosenCount = $derived(allHits ? (hits ?? 0) : chosen.length);
 	const beyondPage = $derived(!allHits && hits !== null && hits > pageIds.length);
@@ -471,8 +471,13 @@
 		}
 		// Not tracked: the pager's own state (its page, its size) is read while it loads.
 		untrack(() => {
-			if (reconnected && before === shownList && wanted === list.page) void list.refresh();
-			else void list.go(wanted);
+			if (before !== null && before === shownList && wanted === list.page) {
+				// The same list on the same page (the link took the page the pager is on, after a
+				// resize): only a reconnect loads it again, as it stands.
+				if (reconnected) void list.refresh();
+				return;
+			}
+			void list.go(wanted);
 		});
 	});
 
@@ -713,7 +718,7 @@ row of filters, on a desktop narrow by the title. -->
 		all={allHits}
 		offerAll={beyondPage && hits !== null && (searching || hits <= MAX_DOCUMENTS) ? hits : null}
 		limit={!allHits && !searching && hits !== null && hits > MAX_DOCUMENTS ? MAX_DOCUMENTS : null}
-		capped={allHits && searching && list.total !== null && list.total > MAX_HITS ? MAX_HITS : null}
+		capped={allHits && searching && list.loaded && list.total > MAX_HITS ? MAX_HITS : null}
 		{selection}
 		run={bulk}
 		{lookup}
@@ -761,7 +766,7 @@ row of filters, on a desktop narrow by the title. -->
 				{/if}
 			</IconButton>
 			<PageTitle>{lens?.name ?? m.nav_documents()}</PageTitle>
-			{#if searching && list.total !== null && list.loaded}
+			{#if searching && list.loaded}
 				<p class="text-sm text-muted-foreground" aria-live="polite">
 					{m.search_total({ count: formatNumber(list.total) })}
 				</p>

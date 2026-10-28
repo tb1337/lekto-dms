@@ -59,7 +59,7 @@
 	size="flush"
 	class={cn(
 		'flex items-center gap-3 p-3 transition-colors has-[>a:hover]:border-primary has-[>label:hover]:border-primary',
-		chosen && 'border-primary bg-panel ring-1 ring-primary'
+		chosen && 'border-primary bg-panel'
 	)}
 >
 	<svelte:element

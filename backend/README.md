@@ -524,13 +524,17 @@ and the space, the fields node reads the fields of the decided type and the titl
   names, per call, the prompt tokens the endpoint took from its cache where it reports them
   (`output.tokens[].cached`: `prompt_tokens_details.cached_tokens`, or
   `cache_read_input_tokens` through LiteLLM); the web UI shows them in the token details.
-  Two limits of the form (review of #149, open with Tobi): system prompt, document and task must
-  fit the model's context together (`LEKTO_LLM_INPUT_BUDGET` is the document's share, the task
-  with its lists comes on top) – Ollama drops older messages whole when a prompt is too long and
-  keeps the last, so the model would get the task without the document, where before the runner
-  cut the one message; and an endpoint whose chat template requires the roles to alternate (some
-  Gemma and Mistral templates under vLLM or llama.cpp with `--jinja`) refuses two user messages
-  in a row.
+  Two limits of the form, of no concern for Claude (through LiteLLM or not) and to keep in mind
+  for a model served directly:
+  - System prompt, document and task must fit the model's context together:
+    `LEKTO_LLM_INPUT_BUDGET` is the document's share in characters, and the task with its lists
+    comes on top. Ollama drops older messages whole when a prompt is too long and keeps the
+    last, so the model would get the task without the document. Give the model a context of at
+    least about a third of the budget in tokens plus 4,000 for the task (Ollama:
+    `OLLAMA_CONTEXT_LENGTH` or the model's `num_ctx`), or lower the budget.
+  - An endpoint whose chat template requires the roles to alternate (some Gemma and Mistral
+    templates under vLLM or llama.cpp with `--jinja`) refuses two user messages in a row.
+    Choose a template that allows it, or a proxy that joins messages of one role.
 - **`signal_classifier`**: TF-IDF of words and word pairs and a logistic regression per target
   (contact, topic, type, each automatic document tag, the space), trained on the confirmed
   documents (`LEKTO_CLASSIFIER`, see Classifier). The space is learned from the documents whose

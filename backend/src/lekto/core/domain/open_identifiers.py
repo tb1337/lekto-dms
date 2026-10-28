@@ -2,7 +2,9 @@
 no person has confirmed yet, across all contacts and documents. A learned one stands at a contact
 (training found it); an unknown one stands in confirmed documents of a contact's kind
 (`CONTACT_KINDS`) but at no contact, neither entered, learned nor rejected. A person's value (a
-user's profile, `of_person`) and a free mail domain are never open."""
+user's profile, `of_person`) and a free mail domain are never open, nor an IBAN or a creditor ID
+a person holds in any document; one counts only in the documents where it is their contact's
+(`domain.holders`: not a payee's on a bank statement)."""
 
 import re
 from collections import Counter, defaultdict
@@ -11,7 +13,8 @@ from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
 
-from lekto.core.domain.document_facts import DocumentFact
+from lekto.core.domain.document_facts import DocumentFact, HolderKind
+from lekto.core.domain.holders import foreign
 from lekto.core.domain.identifiers import (
     CONTACT_KINDS,
     FREE_MAIL,
@@ -87,13 +90,20 @@ def open_identifiers(
             shown = [item for key, items in by_key.items() if matches(identifier, key)
                      for item in items]  # fmt: skip
             found.append(_open(identifier.key, OpenSource.LEARNED, (contact.id,), shown))
+    names = {contact.id: contact.names() for contact in contacts}
     for key, items in by_key.items():
         kind, value = key
         if (
             any(matches(identifier, key) for identifier in stated)
             or of_person(key, personal)
             or (kind is IdentifierKind.EMAIL_DOMAIN and value in FREE_MAIL)
+            or any(_held(item, HolderKind.RECIPIENT) for item in items)
         ):
+            continue
+        # An IBAN or a creditor ID counts only where it is its contact's (`domain.holders`):
+        # not a payee's on a bank statement.
+        items = [item for item in items if not foreign(item.fact.holder, names[item.contact])]
+        if not items:
             continue
         counts = Counter(item.contact for item in items)
         owners = tuple(sorted(counts, key=lambda contact: (-counts[contact], str(contact))))
@@ -107,6 +117,10 @@ def open_identifiers(
             item.value,
         ),
     )
+
+
+def _held(item: Sighting, kind: HolderKind) -> bool:
+    return item.fact.holder is not None and item.fact.holder.kind is kind
 
 
 def _open(

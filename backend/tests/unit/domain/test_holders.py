@@ -6,7 +6,15 @@ from lekto.core.domain.document_facts import (
     HolderSource,
     found_facts,
 )
-from lekto.core.domain.holders import FOOT, Parties, Place, holder_at, holders
+from lekto.core.domain.holders import (
+    FOOT,
+    Parties,
+    Place,
+    foreign,
+    held_by,
+    holder_at,
+    holders,
+)
 from lekto.core.domain.identifiers import IdentifierKind, Key, identifiers_in
 
 IBAN, CREDITOR = IdentifierKind.IBAN, IdentifierKind.CREDITOR_ID
@@ -59,10 +67,9 @@ Buchungstag   Vorgang                                  Betrag
 """
     assert kinds(holders_of(text)) == {
         OWN: (HolderKind.RECIPIENT, None),
-        # A contact's name beside it: its holder's, the statement's contact or not.
-        UTILITY: (HolderKind.SENDER, "Stadtwerke Musterstadt"),
-        LANDLORD: (HolderKind.SENDER, "Hausverwaltung Ost"),
-        # An unknown name counts in a booking: another party's.
+        # A name in a booking, known or not: another party's.
+        UTILITY: (HolderKind.THIRD_PARTY, "Stadtwerke Musterstadt"),
+        LANDLORD: (HolderKind.THIRD_PARTY, "Hausverwaltung Ost"),
         CARETAKER: (HolderKind.THIRD_PARTY, "Hausmeisterdienst Weber"),
     }
 
@@ -196,3 +203,23 @@ def test_names_of_persons_and_contacts() -> None:
     assert parties.contact("Stadtwerke Musterstadt GmbH")
     assert parties.contact("Stadtwerke Musterstsdt")  # a letter off in a long word (OCR)
     assert not parties.contact("Stadtwerke Nordstadt")
+
+
+def test_a_named_sender_is_the_contact_only_by_its_names() -> None:
+    utility = ["Stadtwerke Musterstadt GmbH", "SWM"]
+    named = Holder(HolderKind.SENDER, HolderSource.RULE, "Stadtwerke Musterstadt")
+    assert held_by(named, utility) is HolderKind.SENDER
+    # The bank's statement names the utility as the payee: not the bank's.
+    assert held_by(named, ["Beispielbank"]) is HolderKind.THIRD_PARTY
+    assert foreign(named, ["Beispielbank"])
+    assert held_by(Holder(HolderKind.SENDER, HolderSource.RULE), ["Beispielbank"]) is (
+        HolderKind.SENDER
+    )
+    assert foreign(Holder(HolderKind.RECIPIENT, HolderSource.RULE), utility)
+    assert not foreign(Holder(HolderKind.UNCLEAR, HolderSource.RULE), utility)
+    assert held_by(None, utility) is None and not foreign(None, utility)  # read before 0.8
+
+
+def test_a_known_name_outside_a_booking_is_the_sender_s() -> None:
+    text = f"Stadtwerke Musterstadt GmbH   IBAN {spaced(UTILITY)}\n"
+    assert kinds(holders_of(text)) == {UTILITY: (HolderKind.SENDER, "Stadtwerke Musterstadt GmbH")}

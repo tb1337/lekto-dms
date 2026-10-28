@@ -9,10 +9,11 @@ stands on its page. The first rule that applies tells (`_at`):
 - a label on its line tells: "unser Konto", "bank details" the sender's; "Ihr Konto",
   "account holder" the recipient's;
 - a known name beside it (before it on its line, or above it in its column) is its holder's: a
-  person's is the recipient's, a contact's the sender's under that name;
+  person's is the recipient's, a contact's the sender's under that name, or another party's
+  where it stands in a booking (a line with a date or an amount) or in a list of numbers;
 - a person's name anywhere in its block (the account holder at the foot of a statement);
-- an unknown name beside it counts only in a booking (a line with a date or an amount) or in a
-  list of numbers: another party's under that name;
+- an unknown name beside it counts only in a booking or in a list: another party's under that
+  name;
 - a label in the lines above: the recipient's, where money goes (the payee's: another
   party's), or the sender's;
 - one of a list is another party's, one at the foot of a page the sender's.
@@ -169,6 +170,26 @@ def holders(
     return found
 
 
+def held_by(holder: Holder | None, names: Iterable[str]) -> HolderKind | None:
+    """Whose a number is to the contact of `names` (its name and aliases; none: no contact): a
+    sender that names someone else is a third party. None without a holder."""
+    if holder is None:
+        return None
+    if (
+        holder.kind is HolderKind.SENDER
+        and holder.name
+        and not Parties(contact_names=names).contact(holder.name)
+    ):
+        return HolderKind.THIRD_PARTY
+    return holder.kind
+
+
+def foreign(holder: Holder | None, names: Iterable[str]) -> bool:
+    """Whether a number belongs to someone other than the contact of `names`: a person or a
+    third party (`held_by`). A number without a holder (read before 0.8) is not."""
+    return held_by(holder, names) in (HolderKind.RECIPIENT, HolderKind.THIRD_PARTY)
+
+
 def holder_at(place: Place, parties: Parties) -> Holder:
     """The holder of the number at `place`, by the first rule that applies."""
     kind, name = _at(place, parties)
@@ -184,18 +205,20 @@ def _at(place: Place, parties: Parties) -> tuple[HolderKind, str | None]:
     if _RECIPIENT.search(line):
         return HolderKind.RECIPIENT, None
     beside = _names_beside(place)
-    for name, _ in beside:
+    listed = place.numbers >= LIST
+    for name, booking in beside:
         if parties.person(name):
             return HolderKind.RECIPIENT, name
         if parties.contact(name):
-            return HolderKind.SENDER, name
+            # A party of a booking or of a list is not the document's sender.
+            kind = HolderKind.THIRD_PARTY if booking or listed else HolderKind.SENDER
+            return kind, name
     # A person's name anywhere in its block, in any column: the account holder's name and
     # address beside the IBAN at the foot of a statement. (A contact's name there may be
     # another booking's or the bank's: only beside it.)
     for raw in (line, *place.above):
         if any(parties.person(part) for part in _COLUMNS.split(raw.strip())):
             return HolderKind.RECIPIENT, None
-    listed = place.numbers >= LIST
     for name, booking in beside:
         if booking or listed:  # a booking's party, or a party of a list
             return HolderKind.THIRD_PARTY, name

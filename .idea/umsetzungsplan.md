@@ -2233,6 +2233,9 @@ Stand: Vorschlag Claude, 27.10.2026, zur Freigabe durch Tobi. Release offen.
   - **Urteil:** Das Faktensignal nennt eine IBAN oder Gläubiger-ID eines Kontakts nur als Beleg für ihn, wenn sie im Dokument nicht einer Person oder einem Dritten gehört.
   - **Offene Kennungen:** Als „unbekannt“ erscheinen IBANs und Gläubiger-IDs nur, wo sie dem Absender gehören (oder unklar sind).
   - Prüfen in Dev: wie viele IBANs das Training heute lernt und wie viele danach (Zahlen, keine Werte).
+  - **Gebaut (28.10.2026), Abweichungen (Vorgaben von Claude, Tobi bestätigt noch):**
+    - Zu Antwort 6: Ein bekannter Kontaktname in einer Buchung oder Liste heißt jetzt „Dritter“ mit diesem Namen, nicht „Absender“. Sonst sähe das Urteil die IBAN der Stadtwerke in der Buchung eines Kontoauszugs als Beleg für die Stadtwerke, denn der Name passt zu ihnen. Außerhalb einer Buchung bleibt es „Absender“ mit Namen. Dev gegen die Regel des PoC weiter 888 von 888.
+    - Nicht jede IBAN eines Dritten sperrt das Training, nur die einer Person: Die IBAN des Vermieters in den Buchungen der Kontoauszüge zählt dort nicht, wird aber beim Vermieter gelernt (bisher stand sie bei zwei Kontakten und wurde nie gelernt).
 - **4b Vorschläge im Reiter Kennungen** (`feature/identifier-suggestions`, `new-feature`), mit Mock vorher:
   - Eine dritte Herkunft „vorgeschlagen“ neben „gelernt“ und „unbekannt“, nur für Admins wie der Reiter.
   - **Person:** eine IBAN, die in bestätigten Dokumenten dem Empfänger gehört und deren genannter Name eine Person trifft (ohne Namen: das Dokument liegt im persönlichen Space genau einer Person). „Übernehmen“ trägt sie in deren Profil ein (Admins dürfen Profile mit Sitzung ändern), „Verwerfen“ merkt sie als verworfen.

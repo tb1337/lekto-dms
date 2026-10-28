@@ -10,7 +10,15 @@ import pytest
 
 from lekto.adapters.outbound.memory import FakeClassifier
 from lekto.core.domain.classifier import KEPT_MODELS
-from lekto.core.domain.document_facts import DocumentFact, FactOrigin, FactRole, FactState
+from lekto.core.domain.document_facts import (
+    DocumentFact,
+    FactOrigin,
+    FactRole,
+    FactState,
+    Holder,
+    HolderKind,
+    HolderSource,
+)
 from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
 from lekto.core.domain.events import ClassifierTrained
@@ -117,6 +125,57 @@ async def test_a_persons_own_number_is_never_a_contacts(world: World) -> None:
         await uow.commit()
     model = await service(world).train()
     assert model.summary["learned_identifiers"] == 0
+    async with world.uow() as uow:
+        assert (await uow.contacts.get(utility.id)).identifiers == []
+
+
+async def keep_iban(world: World, document: Document, value: str, holder: Holder) -> None:
+    """The document keeps the IBAN `value` as a fact with its `holder`."""
+    async with world.uow() as uow:
+        await uow.document_facts.replace_found(
+            document.id,
+            [
+                DocumentFact(
+                    kind=IdentifierKind.IBAN,
+                    value=value.replace(" ", ""),
+                    role=FactRole.CONTACT,
+                    origins=frozenset({FactOrigin.PATTERN}),
+                    position=0,
+                    holder=holder,
+                )
+            ],
+        )
+        await uow.commit()
+
+
+async def test_an_iban_counts_only_where_it_is_its_contact_s(world: World) -> None:
+    """The bank's statements list the utility's IBAN in their bookings: it is a third party's
+    there and does not count for the bank, so training learns it at the utility. Before the
+    holders it stood at two contacts and was never learned."""
+    owner, utility, bank = await corpus(world)
+    payee = Holder(HolderKind.SENDER, HolderSource.RULE, "Stadtwerke")
+    for number in range(2):
+        statement = await confirmed(
+            world,
+            owner,
+            bank,
+            f"Beispielbank Kontoauszug {number} Lastschrift Stadtwerke {THEIR_IBAN}",
+        )
+        await keep_iban(world, statement, THEIR_IBAN, payee)
+    await service(world).train()
+    async with world.uow() as uow:
+        learned = [item.key for item in (await uow.contacts.get(utility.id)).identifiers]
+        assert learned == [(IdentifierKind.IBAN, THEIR_IBAN.replace(" ", ""))]
+        assert (await uow.contacts.get(bank.id)).identifiers == []
+
+
+async def test_an_iban_a_person_holds_is_never_learned(world: World) -> None:
+    """On one of the utility's bills its IBAN is the customer's own ("Ihr Konto"): a person's,
+    never learned."""
+    owner, utility, _ = await corpus(world)
+    bill = await confirmed(world, owner, utility, f"Stadtwerke Rechnung Ihr Konto {THEIR_IBAN}")
+    await keep_iban(world, bill, THEIR_IBAN, Holder(HolderKind.RECIPIENT, HolderSource.RULE))
+    await service(world).train()
     async with world.uow() as uow:
         assert (await uow.contacts.get(utility.id)).identifiers == []
 

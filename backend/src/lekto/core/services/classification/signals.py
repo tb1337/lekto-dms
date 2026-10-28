@@ -45,7 +45,7 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.facts import NAME, Strength, facts_in
-from lekto.core.domain.holders import Parties, holders
+from lekto.core.domain.holders import Parties, foreign, holders
 from lekto.core.domain.identifiers import IdentifierKind, Key
 from lekto.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId, UserId
 from lekto.core.domain.json_value import (
@@ -183,6 +183,20 @@ class FactsSignal:
         held = await asyncio.to_thread(
             facts_holders, text, facts, contacts, persons, codes or (), pages
         )
+        # An IBAN or a creditor ID of a person or a third party is no evidence of its contact
+        # here: a payee's IBAN on a bank statement (`domain.holders`).
+        names = {str(contact.id): contact.names() for contact in contacts}
+        evidence, elsewhere = [], []
+        for item in as_list(output.get("identifiers")):
+            key = _identifier_key(item)
+            contact = (as_object(item) or {}).get("contact_id")
+            if key is not None and foreign(held.get(key), names.get(str(contact), ())):
+                elsewhere.append(item)
+            else:
+                evidence.append(item)
+        if elsewhere:
+            output["identifiers"] = evidence
+            output["foreign_identifiers"] = elsewhere
         result = NodeResult(outcome=Outcome.OK, model_version=FACTS, output=output)
         return FactsResult(result, facts, read, frozenset(in_codes), held)
 

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from lekto.core.domain.classifier import KEPT_MODELS, OWN_SPACE, ClassifierModel
-from lekto.core.domain.document_facts import FactState
+from lekto.core.domain.document_facts import FactState, HolderKind
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import (
     ClassifierError,
@@ -24,6 +24,7 @@ from lekto.core.domain.errors import (
 )
 from lekto.core.domain.events import ClassifierTrained
 from lekto.core.domain.facts import Strength, persons_in
+from lekto.core.domain.holders import foreign
 from lekto.core.domain.identifiers import (
     Confirmed,
     Identifier,
@@ -107,6 +108,10 @@ class _Example:
     # identifiers, what they added or corrected is.
     rejected: frozenset[tuple[IdentifierKind, str]] = frozenset()
     decided: frozenset[tuple[IdentifierKind, str]] = frozenset()
+    # Its IBANs and creditor IDs of someone other than its contact, and of a person among them
+    # (`domain.holders`).
+    foreign: frozenset[tuple[IdentifierKind, str]] = frozenset()
+    personal: frozenset[tuple[IdentifierKind, str]] = frozenset()
 
 
 class ClassifierService:
@@ -320,6 +325,7 @@ class ClassifierService:
             targets = {tag.id for tag in tags if tag.is_target}
             topics = {tag.id for tag in tags if tag.is_topic_target}
             spaces = {space.id: space for space in await uow.spaces.list_all()}
+            names = {contact.id: contact.names() for contact in await uow.contacts.list_all()}
         documents = [
             document
             async for page in document_pages(self._uow, DocumentFilter(labelled=True))
@@ -348,19 +354,30 @@ class ClassifierService:
             )
             space = spaces.get(document.space_id)
             owner = None if space is None else space.personal_of
-            facts = kept.get(document.id, [])
+            facts = [
+                fact for fact in kept.get(document.id, []) if fact.state is not FactState.REJECTED
+            ]
+            own = names.get(document.contact_id, ()) if document.contact_id else ()
             examples.append(
                 _Example(
                     document,
                     example,
                     owner,
                     rejected=frozenset(
-                        fact.key for fact in facts if fact.state is FactState.REJECTED
+                        fact.key
+                        for fact in kept.get(document.id, [])
+                        if fact.state is FactState.REJECTED
                     ),
                     decided=frozenset(
                         fact.key
                         for fact in facts
                         if fact.state in (FactState.ADDED, FactState.CORRECTED)
+                    ),
+                    foreign=frozenset(fact.key for fact in facts if foreign(fact.holder, own)),
+                    personal=frozenset(
+                        fact.key
+                        for fact in facts
+                        if fact.holder is not None and fact.holder.kind is HolderKind.RECIPIENT
                     ),
                 )
             )
@@ -477,6 +494,8 @@ def _identifiers_of(
                 frozenset(found),
                 item.document.space_id,
                 frozenset(whose),
+                item.foreign,
+                item.personal,
             )
         )
     return confirmed

@@ -2,7 +2,14 @@
 
 from datetime import date
 
-from lekto.core.domain.document_facts import DocumentFact, FactOrigin, role_of
+from lekto.core.domain.document_facts import (
+    DocumentFact,
+    FactOrigin,
+    Holder,
+    HolderKind,
+    HolderSource,
+    role_of,
+)
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from lekto.core.domain.ids import ContactId, DocumentId, new_id
 from lekto.core.domain.master_data import Contact
@@ -21,7 +28,9 @@ CONTRACT = (IdentifierKind.CONTRACT_NUMBER, "20047718")
 INVOICE = (IdentifierKind.INVOICE_NUMBER, "R-4711")
 
 
-def fact(key: tuple[IdentifierKind, str], written: str | None = None) -> DocumentFact:
+def fact(
+    key: tuple[IdentifierKind, str], written: str | None = None, holder: Holder | None = None
+) -> DocumentFact:
     kind, value = key
     return DocumentFact(
         kind=kind,
@@ -30,13 +39,18 @@ def fact(key: tuple[IdentifierKind, str], written: str | None = None) -> Documen
         origins=frozenset({FactOrigin.PATTERN}),
         written=written,
         position=0,
+        holder=holder,
     )
 
 
 def seen(
-    contact: ContactId, key: tuple[IdentifierKind, str], day: int, written: str | None = None
+    contact: ContactId,
+    key: tuple[IdentifierKind, str],
+    day: int,
+    written: str | None = None,
+    holder: Holder | None = None,
 ) -> Sighting:
-    return Sighting(DocumentId(new_id()), contact, date(2026, 10, day), fact(key, written))
+    return Sighting(DocumentId(new_id()), contact, date(2026, 10, day), fact(key, written, holder))
 
 
 def test_a_learned_one_is_open_with_the_documents_that_show_it() -> None:
@@ -62,6 +76,24 @@ def test_an_unknown_one_is_open_with_the_contacts_of_its_documents() -> None:
     assert (item.key, item.source) == (VAT, OpenSource.UNKNOWN)
     assert item.contacts == (utility.id, bank.id)  # most documents first
     assert (len(item.seen), item.written) == (3, VAT[1])
+
+
+def test_an_iban_is_open_only_where_it_is_its_contact_s() -> None:
+    """The bank's statements name the utility as the payee of an IBAN: it is open at the
+    utility, with its own bill only; one a person holds anywhere is not open."""
+    utility, bank = (Contact.create(name=name, now=NOW) for name in ("Stadtwerke", "Bank"))
+    payee = Holder(HolderKind.SENDER, HolderSource.RULE, "Stadtwerke")
+    sightings = [
+        seen(bank.id, IBAN, 3, holder=payee),
+        seen(bank.id, IBAN, 4, holder=Holder(HolderKind.THIRD_PARTY, HolderSource.RULE)),
+        seen(utility.id, IBAN, 5, holder=payee),
+    ]
+    (item,) = open_identifiers([utility, bank], sightings)
+    assert (item.contacts, len(item.seen)) == ((utility.id,), 1)
+    mine = seen(utility.id, IBAN, 6, holder=Holder(HolderKind.RECIPIENT, HolderSource.RULE))
+    assert open_identifiers([utility, bank], [*sightings, mine]) == []
+    only_payee = [seen(bank.id, IBAN, 3, holder=payee)]
+    assert open_identifiers([utility, bank], only_payee) == []
 
 
 def test_what_a_contact_or_a_person_has_is_not_open() -> None:

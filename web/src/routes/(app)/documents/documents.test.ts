@@ -145,6 +145,31 @@ describe('the archive page', () => {
 		expect(goto).toHaveBeenLastCalledWith('?sort=title&page=3', { replaceState: false });
 	});
 
+	it('loads the page shown again after a reconnect of the event stream, not the first', async () => {
+		state.url = new URL('http://lekto/ui/documents?sort=title&page=2');
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({
+				items: [listedOf({ id: 'd51', title: 'Strom', document_date: '2026-10-01' })],
+				next_cursor: null
+			}),
+			'GET /api/v1/documents/count': () => ({ total: 120 })
+		});
+		vi.stubGlobal('fetch', api);
+		events.useFactory((url) => new FakeSource(url) as unknown as EventSource);
+		events.start(() => {});
+		FakeSource.last.onopen?.();
+		render(Page);
+		await screen.findByText('Strom');
+		const listed = () => calls(api).filter((call) => call.startsWith('GET /api/v1/documents?'));
+		expect(listed()).toHaveLength(1);
+		// The stream opens again after a break: the data shown may be stale.
+		FakeSource.last.onopen?.();
+		await vi.waitFor(() => expect(listed()).toHaveLength(2));
+		expect(listed().at(-1)).toContain('offset=50');
+		expect(goto).not.toHaveBeenCalled();
+		events.stop();
+	});
+
 	it('chooses in the selection mode: the page, then every hit, and confirms them all', async () => {
 		const sent: unknown[] = [];
 		const operation = {

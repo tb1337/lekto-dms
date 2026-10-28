@@ -21,13 +21,19 @@
 
 	const SHOWN = 50;
 	let titles = $state<Record<string, string | null>>({});
+	// Each document is asked for once: noted before its answer, so that an answer arriving (it
+	// writes `titles`) does not have the rows still waiting asked for again. Not reactive: the
+	// effect that fills it must not run again for it.
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	const asked = new Set<string>();
 
 	const rows = $derived(operation?.skipped.slice(0, SHOWN) ?? []);
 	const more = $derived(Math.max(0, (operation?.skipped.length ?? 0) - SHOWN));
 
 	$effect(() => {
-		const wanted = rows.map((row) => row.document_id).filter((id) => !(id in titles));
-		for (const id of wanted) {
+		for (const { document_id: id } of rows) {
+			if (asked.has(id)) continue;
+			asked.add(id);
 			void api
 				.GET('/api/v1/documents/{id}', { params: { path: { id } } })
 				.then(({ data }) => (titles[id] = data?.title ?? null))

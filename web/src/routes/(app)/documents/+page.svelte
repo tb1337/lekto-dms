@@ -10,7 +10,7 @@
 	import Info from '@lucide/svelte/icons/info';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import X from '@lucide/svelte/icons/x';
-	import { onDestroy, onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -446,26 +446,34 @@
 	);
 	const note = $derived(meaning && searching ? searchNote.about(query) : null);
 
-	// Reload when the words, filters or sort change, and after a reconnect of the event stream;
-	// another page of the same list only loads that page. A change of what the list shows goes
-	// back to its first page.
+	// Reload when the words, filters or sort change: what the list shows changed, so the choice
+	// is let go and its first page shows. Another page of the same list only loads that page.
+	// After a reconnect of the event stream the page shown is loaded again as it stands: nobody
+	// is thrown back to the first page by it.
 	let shownKey: string | null = null;
-	let chosenKey: string | null = null;
+	let seenGeneration = 0;
 	$effect(() => {
 		const shown = [...params].filter(([name]) => name !== 'page');
 		const shownList = `${JSON.stringify(shown)}|${scope.allUsers}`;
-		const key = `${shownList}|${events.generation}`;
+		const generation = events.generation;
 		const wanted = pageNumber;
 		const before = shownKey;
-		shownKey = key;
-		if (chosenKey !== null && chosenKey !== shownList) letGo();
-		chosenKey = shownList;
-		if (before !== key) void loadFacets();
-		if (before !== null && before !== key && wanted !== 1) {
-			goToPage(1, true);
-			return;
+		const reconnected = before !== null && generation !== seenGeneration;
+		shownKey = shownList;
+		seenGeneration = generation;
+		if (before !== shownList || reconnected) void loadFacets();
+		if (before !== null && before !== shownList) {
+			letGo();
+			if (wanted !== 1) {
+				goToPage(1, true);
+				return;
+			}
 		}
-		void list.go(wanted);
+		// Not tracked: the pager's own state (its page, its size) is read while it loads.
+		untrack(() => {
+			if (reconnected && before === shownList && wanted === list.page) void list.refresh();
+			else void list.go(wanted);
+		});
 	});
 
 	// Again when an admin switches the reach: the spaces of the filter follow it.

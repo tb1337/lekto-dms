@@ -1,4 +1,5 @@
 <script lang="ts">
+	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import LayoutGrid from '@lucide/svelte/icons/layout-grid';
 	import List from '@lucide/svelte/icons/list';
 	import Pencil from '@lucide/svelte/icons/pencil';
@@ -9,12 +10,18 @@
 	import Chip from '#lib/components/Chip.svelte';
 	import DateInput from '#lib/components/DateInput.svelte';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
+	import FoldedGroup from '#lib/components/FoldedGroup.svelte';
+	import FormDialog from '#lib/components/FormDialog.svelte';
 	import IconButton from '#lib/components/IconButton.svelte';
 	import InfoTip from '#lib/components/InfoTip.svelte';
 	import LaneBadge from '#lib/components/LaneBadge.svelte';
 	import Loading from '#lib/components/Loading.svelte';
+	import Figure from '#lib/components/overview/Figure.svelte';
+	import Tile from '#lib/components/overview/Tile.svelte';
+	import SearchSelect from '#lib/components/SearchSelect.svelte';
 	import Segmented from '#lib/components/Segmented.svelte';
 	import Select from '#lib/components/Select.svelte';
+	import SelectionBar from '#lib/components/SelectionBar.svelte';
 	import TabBar from '#lib/components/TabBar.svelte';
 	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
 	import PageHeader from '#lib/components/page/PageHeader.svelte';
@@ -61,9 +68,16 @@
 	let picked = $state('one');
 	let day = $state('2026-10-26');
 	let view = $state('grid');
+	let contact = $state('c1');
+	let folded = $state(false);
+	let formOpen = $state(false);
 	const options = [
 		{ value: 'one', label: `${m.dev_sample_option()} 1` },
 		{ value: 'two', label: `${m.dev_sample_option()} 2` }
+	];
+	const CONTACTS = [
+		{ value: 'c1', label: 'Stadtwerke Nord' },
+		{ value: 'c2', label: 'Hausverwaltung Ost', keywords: 'HVO' }
 	];
 </script>
 
@@ -125,6 +139,11 @@
 			<LaneBadge lane="red" />
 			<LaneBadge lane={null} />
 		</div>
+		<!-- A recommendation goes without an icon: its words tell. -->
+		<div class="flex flex-wrap items-center gap-2">
+			<Badge variant="green">{m.open_advise_confirm()}</Badge>
+			<Badge variant="muted">{m.open_advise_reject()}</Badge>
+		</div>
 		<div class="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
 			{#each [1, 2, 3] as const as level (level)}
 				<span class="flex items-center gap-2">{level} <VolumeMeter {level} /></span>
@@ -164,6 +183,17 @@
 		<Field.Field>
 			<Field.Label for="sample-select">{m.dev_sample_option()}</Field.Label>
 			<Select id="sample-select" {options} bind:value={picked} />
+		</Field.Field>
+		<Field.Field>
+			<Field.Label for="sample-search">{m.dev_sample_search_select()}</Field.Label>
+			<SearchSelect
+				id="sample-search"
+				title={m.dev_sample_search_select()}
+				bind:value={contact}
+				options={CONTACTS}
+				placeholder={m.value_unset()}
+				noneLabel={m.value_unset()}
+			/>
 		</Field.Field>
 		<Field.Field>
 			<Field.Label for="sample-date">{m.dev_sample_table_date()}</Field.Label>
@@ -235,6 +265,47 @@
 				</Card.Root>
 			{/each}
 		</div>
+		<Card.Root size="sm" class="flex max-w-xl flex-col gap-1">
+			<p class="px-1 text-sm">{m.dev_sample_text()}</p>
+			<FoldedGroup
+				bind:open={folded}
+				class="mt-1"
+				count={m.dev_sample_folded_count()}
+				hint={m.dev_sample_folded_hint()}
+			>
+				<p class="py-1 text-sm text-muted-foreground">{m.dev_sample_text()}</p>
+				<p class="py-1 text-sm text-muted-foreground">{m.dev_sample_text()}</p>
+			</FoldedGroup>
+		</Card.Root>
+	</section>
+
+	<section class="flex flex-col gap-3" aria-labelledby="dev-selection">
+		<SectionTitle id="dev-selection">{m.dev_section_selection()}</SectionTitle>
+		<SelectionBar count={m.selection_selected({ count: '3' })}>
+			{#snippet hint()}{m.dev_sample_hint()}{/snippet}
+			{#snippet trail()}
+				<Button variant="ghost" size="sm">{m.dev_sample_secondary()}</Button>
+			{/snippet}
+			{#snippet actions()}
+				<Button variant="outline" size="sm">{m.dev_sample_button()}</Button>
+				<Button size="sm">{m.dev_sample_button()}</Button>
+			{/snippet}
+		</SelectionBar>
+	</section>
+
+	<section class="flex flex-col gap-3" aria-labelledby="dev-tiles">
+		<SectionTitle id="dev-tiles">{m.dev_section_tiles()}</SectionTitle>
+		<div class="grid gap-4 sm:grid-cols-2">
+			<Tile
+				title={m.dev_sample_tile()}
+				icon={InboxIcon}
+				href="#dev-tiles"
+				go={m.dev_sample_tile_go()}
+			>
+				<Figure count={12} label={m.overview_open()} />
+				<p class="text-meta text-muted-foreground">{m.dev_sample_text()}</p>
+			</Tile>
+		</div>
 	</section>
 
 	<section class="flex flex-col gap-4" aria-labelledby="dev-states">
@@ -281,10 +352,26 @@
 					</Dialog.Content>
 				</Dialog.Root>
 			{/each}
+			<Button variant="outline" onclick={() => (formOpen = true)}>
+				{m.dev_sample_open_form()}
+			</Button>
 			<Button variant="outline" onclick={() => toast.success(m.dev_sample_toast())}>
 				{m.dev_sample_show_toast()}
 			</Button>
 		</div>
+		<FormDialog
+			bind:open={formOpen}
+			title={m.dev_sample_dialog_title()}
+			description={m.dev_sample_dialog_text()}
+			submitLabel={m.dev_sample_button()}
+			action={async () => {}}
+			alternative={{ label: m.dev_sample_alternative(), action: async () => {} }}
+		>
+			<Field.Field>
+				<Field.Label for="sample-form">{m.dev_sample_input()}</Field.Label>
+				<Input id="sample-form" />
+			</Field.Field>
+		</FormDialog>
 	</section>
 
 	<section class="flex flex-col gap-3" aria-labelledby="dev-data">

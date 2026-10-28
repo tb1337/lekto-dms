@@ -7,6 +7,8 @@ name: Release
 # builds on a runner of its own and is pushed by digest, then one manifest per image gets the
 # tags (`.github/scripts/image_tags.py`: the version, `beta` or `stable`, `latest`).
 # By hand (`workflow_dispatch`) the images of a published release are built again.
+# Last, a published release whose `lekto` image got `latest` tells the homelab
+# (tb1337/homelab-ansible) its version by `repository_dispatch`; the homelab enters and deploys it.
 
 # yamllint disable-line rule:truthy
 on:
@@ -176,3 +178,45 @@ jobs:
             echo "### \`$IMAGE\`"
             for tag in $TAGS; do echo "- \`$IMAGE:$tag\`"; done
           } >> "$GITHUB_STEP_SUMMARY"
+
+  homelab:
+    name: 🏠 Homelab
+    needs: [tags, publish]
+    # Only a published release that is the newest (`latest`): a release of an older line or a
+    # release built again by hand would set the homelab back.
+    if: github.event_name == 'release' && contains(format(' {0} ', needs.tags.outputs.tags), ' latest ')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    env:
+      VERSION: ${{ needs.tags.outputs.version }}
+    steps:
+      - name: 🔍 Check the version
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::$VERSION is no version the homelab accepts"
+            exit 1
+          fi
+      - name: 📣 Tell the homelab
+        # The homelab's workflow is active only once it is on its default branch; until then a
+        # failed dispatch must not mark the release red.
+        continue-on-error: true
+        env:
+          TOKEN: ${{ secrets.HOMELAB_DISPATCH_TOKEN }}
+        run: |
+          body=$(jq -nc --arg version "$VERSION" \
+            '{event_type: "lekto-release", client_payload: {version: $version}}')
+          # The token goes to curl on stdin, never on a command line.
+          status=$(printf 'Authorization: Bearer %s\n' "$TOKEN" | curl -sS -X POST \
+            -H @- \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            --data "$body" \
+            -o /tmp/response -w '%{http_code}' \
+            https://api.github.com/repos/tb1337/homelab-ansible/dispatches)
+          if [ "$status" != "204" ]; then
+            echo "::error::The homelab answered HTTP $status"
+            cat /tmp/response
+            exit 1
+          fi
+          echo "The homelab deploys $VERSION" >> "$GITHUB_STEP_SUMMARY"

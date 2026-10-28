@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
@@ -143,6 +143,113 @@ describe('the archive page', () => {
 			within(pages).getByRole('button', { name: m.pagination_page({ page: '3' }) })
 		);
 		expect(goto).toHaveBeenLastCalledWith('?sort=title&page=3', { replaceState: false });
+	});
+
+	it('chooses the page, then every hit, and confirms them all in the background', async () => {
+		const sent: unknown[] = [];
+		const operation = {
+			id: 'op-1',
+			kind: 'confirm',
+			status: 'queued',
+			total: 120,
+			done: 0,
+			changed: 0,
+			unchanged: 0,
+			skipped: [],
+			error: null,
+			created_at: '2026-10-29T12:00:00Z',
+			finished_at: null
+		};
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({
+				items: [listedOf({ id: 'd1', title: 'Strom' }), listedOf({ id: 'd2', title: 'Gas' })],
+				next_cursor: null
+			}),
+			'GET /api/v1/documents/count': () => ({ total: 120 }),
+			'POST /api/v1/documents/bulk': async (request, url) => {
+				sent.push({ query: url.search, body: await request.json() });
+				return operation;
+			},
+			'GET /api/v1/documents/bulk/op-1': () => ({
+				...operation,
+				status: 'done',
+				done: 120,
+				changed: 118,
+				unchanged: 2
+			})
+		});
+		vi.stubGlobal('fetch', api);
+		render(Page);
+		await screen.findByText('Strom');
+		expect(screen.queryByRole('region', { name: m.bulk_selected({ count: '2' }) })).toBeNull();
+
+		await userEvent.click(screen.getByRole('checkbox', { name: m.bulk_select_page() }));
+		const bar = screen.getByRole('region', { name: m.bulk_selected({ count: '2' }) });
+		const gas = screen.getByRole('checkbox', { name: m.bulk_select_document({ title: 'Gas' }) });
+		expect((gas as HTMLInputElement).checked).toBe(true);
+		await userEvent.click(
+			within(bar).getByRole('button', {
+				name: m.bulk_select_all({ count: formatNumber(120) })
+			})
+		);
+		const all = screen.getByRole('region', { name: m.bulk_selected({ count: formatNumber(120) }) });
+		expect(all.textContent).toContain(m.bulk_all_hits());
+
+		await fireEvent.pointerDown(within(all).getByRole('button', { name: m.bulk_more() }), {
+			button: 0,
+			pointerType: 'mouse'
+		});
+		await userEvent.click(await screen.findByRole('menuitem', { name: m.bulk_confirm() }));
+		await vi.waitFor(() => expect(sent).toHaveLength(1));
+		expect(sent[0]).toEqual({
+			query: '',
+			body: { document_ids: null, action: { kind: 'confirm' } }
+		});
+		// The bar follows the action until it ends; then the choice is let go.
+		await vi.waitFor(
+			() =>
+				expect(
+					screen.queryByRole('region', { name: m.bulk_selected({ count: formatNumber(120) }) })
+				).toBeNull(),
+			{ timeout: 3000 }
+		);
+		const page = screen.getByRole('checkbox', { name: m.bulk_select_page() });
+		expect((page as HTMLInputElement).checked).toBe(false);
+	});
+
+	it('deletes chosen documents by id after asking with their number', async () => {
+		const sent: unknown[] = [];
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({
+				items: [listedOf({ id: 'd1', title: 'Strom' }), listedOf({ id: 'd2', title: 'Gas' })],
+				next_cursor: null
+			}),
+			'GET /api/v1/documents/count': () => ({ total: 2 }),
+			'POST /api/v1/documents/bulk': async (request) => {
+				sent.push(await request.json());
+				return { id: 'op-2', status: 'queued', total: 1, done: 0, skipped: [] };
+			}
+		});
+		vi.stubGlobal('fetch', api);
+		render(Page);
+		await userEvent.click(
+			await screen.findByRole('checkbox', { name: m.bulk_select_document({ title: 'Gas' }) })
+		);
+		const bar = screen.getByRole('region', { name: m.bulk_selected({ count: '1' }) });
+		// The whole page is not chosen: nothing beyond it is offered.
+		expect(within(bar).queryByRole('button', { name: /120|2 Treffer/ })).toBeNull();
+		await fireEvent.pointerDown(within(bar).getByRole('button', { name: m.bulk_more() }), {
+			button: 0,
+			pointerType: 'mouse'
+		});
+		await userEvent.click(await screen.findByRole('menuitem', { name: m.bulk_delete() }));
+		const dialog = await screen.findByRole('alertdialog', {
+			name: m.bulk_delete_title({ documents: m.bulk_documents_one() })
+		});
+		await userEvent.click(within(dialog).getByRole('button', { name: m.delete_title() }));
+		await vi.waitFor(() =>
+			expect(sent).toEqual([{ document_ids: ['d2'], action: { kind: 'delete' } }])
+		);
 	});
 
 	it('stands the documents without headings while sorted by title', async () => {

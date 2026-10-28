@@ -346,6 +346,18 @@ primary `default` last), all `sm`. On desktop it stands above the list in a `rou
 (`bg-card`, a line above), its two actions sharing the width. One item is still decided in its
 dialog, opened from its title: the actions stay out of the row.
 
+The documents list chooses so too (Tobi, 29.10.2026): a box starts each row, and on a card it
+stands at the top left of the first page as a glass mark (`.mark-glass`, the one thing besides
+the page count that covers the page); above the list `Choice` "Diese Seite auswählen" takes the
+head's place. Once the whole page is chosen, the bar offers "Alle N Treffer auswählen" as a
+`link` button: then the choice is the search and filters, not ids, and the bar says so (with
+words, how far the search reaches). Its actions are "Tags", "Kontakt", "Typ" and "Mehr" (a menu:
+Thema, Space, Bestätigen, Neu verarbeiten, and after a separator Löschen in `destructive`); on
+the phone the four share the width. Each but "Bestätigen" opens a `FormDialog` (deleting: a
+`ConfirmDialog` naming the count). While the action runs in the background, the bar shows a
+`Progress` with "412 von 1.234 …" in place of its actions; at the end a toast says what it did,
+and where documents were skipped, "Details" opens them with their reasons.
+
 **A folded group** (the numbers of third parties among the facts, Tobi 28.10.2026): rows that
 belong to a card but rarely matter fold away at its end. Above them a line (`border-t`), then
 one `button` the width of the card, at least 44 px: a `ChevronRight` (`muted-foreground`)

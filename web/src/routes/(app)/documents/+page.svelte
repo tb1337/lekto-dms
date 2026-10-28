@@ -23,6 +23,9 @@
 	import ActiveFilters from '#lib/components/ActiveFilters.svelte';
 	import DocumentCard from '#lib/components/DocumentCard.svelte';
 	import DocumentRow from '#lib/components/DocumentRow.svelte';
+	import DocumentsBulkBar, { type BulkSelection } from '#lib/components/DocumentsBulkBar.svelte';
+	import { Choice } from '#lib/components/ui/choice/index.ts';
+	import { phone } from '#lib/phone.svelte.ts';
 	import FilterPanel from '#lib/components/FilterPanel.svelte';
 	import InboxMark from '#lib/components/InboxMark.svelte';
 	import LensChanges from '#lib/components/LensChanges.svelte';
@@ -364,6 +367,60 @@
 	// How many documents the filters leave: estimated while searching.
 	const shownCount = $derived(searching ? list.total : (facets?.total ?? null));
 
+	// Documents chosen for an action on many (web/DESIGN.md, "Choosing many"): by id across the
+	// pages, or every hit of the search and filters (`allHits`), offered once a whole page is
+	// chosen. What the list shows changing lets go of them.
+	const MAX_DOCUMENTS = 10_000; // one action at most, as the API takes it
+	const MAX_HITS = 1_000; // the search reaches no further
+	let chosen = $state<string[]>([]);
+	let allHits = $state(false);
+	let bulkBusy = $state(false);
+	const pageIds = $derived(list.items.map((item) => item.document.id));
+	const isChosen = (id: string) => allHits || chosen.includes(id);
+	const pageChosen = $derived(pageIds.length > 0 && pageIds.every(isChosen));
+	const hits = $derived(
+		list.total === null ? null : searching ? Math.min(list.total, MAX_HITS) : list.total
+	);
+	const chosenCount = $derived(allHits ? (hits ?? 0) : chosen.length);
+	const beyondPage = $derived(pageChosen && !allHits && hits !== null && hits > pageIds.length);
+
+	function choose(id: string, on: boolean) {
+		if (allHits) {
+			// One taken out of all: the page stays chosen, the rest of the hits not.
+			allHits = false;
+			chosen = pageIds.filter((item) => item !== id);
+			return;
+		}
+		chosen = on ? [...chosen, id] : chosen.filter((item) => item !== id);
+	}
+
+	function choosePage(on: boolean) {
+		if (on) {
+			chosen = [...new Set([...chosen, ...pageIds])];
+			return;
+		}
+		allHits = false;
+		chosen = chosen.filter((item) => !pageIds.includes(item));
+	}
+
+	function letGo() {
+		chosen = [];
+		allHits = false;
+	}
+
+	function selection(): BulkSelection {
+		if (!allHits) return { ids: chosen, query: {} };
+		const base = apiQuery(filters, scope.allUsers);
+		return { ids: null, query: searching ? { ...base, q: query } : base };
+	}
+
+	function bulkDone() {
+		letGo();
+		void list.refresh();
+		void loadFacets();
+		void loadLensCounts();
+	}
+
 	// While a search waits for its first page, the hint says when it takes long.
 	$effect(() => searchNote.waiting(meaning && searching && list.loading && !list.loaded));
 	// The index is not reachable: the list without words still works.
@@ -377,12 +434,16 @@
 	// another page of the same list only loads that page. A change of what the list shows goes
 	// back to its first page.
 	let shownKey: string | null = null;
+	let chosenKey: string | null = null;
 	$effect(() => {
 		const shown = [...params].filter(([name]) => name !== 'page');
-		const key = `${JSON.stringify(shown)}|${scope.allUsers}|${events.generation}`;
+		const shownList = `${JSON.stringify(shown)}|${scope.allUsers}`;
+		const key = `${shownList}|${events.generation}`;
 		const wanted = pageNumber;
 		const before = shownKey;
 		shownKey = key;
+		if (chosenKey !== null && chosenKey !== shownList) letGo();
+		chosenKey = shownList;
 		if (before !== key) void loadFacets();
 		if (before !== null && before !== key && wanted !== 1) {
 			goToPage(1, true);
@@ -607,6 +668,22 @@ row of filters, on a desktop narrow by the title. -->
 		{changed}
 		counts={lensCounts}
 		onadd={lookup ? () => edit(null) : undefined}
+	/>
+{/snippet}
+
+{#snippet bulkBar()}
+	<DocumentsBulkBar
+		count={chosenCount}
+		all={allHits}
+		offerAll={beyondPage && hits !== null && (searching || hits <= MAX_DOCUMENTS) ? hits : null}
+		limit={beyondPage && !searching && hits !== null && hits > MAX_DOCUMENTS ? MAX_DOCUMENTS : null}
+		capped={allHits && searching && list.total !== null && list.total > MAX_HITS ? MAX_HITS : null}
+		{selection}
+		{lookup}
+		onall={() => (allHits = true)}
+		onclear={letGo}
+		ondone={bulkDone}
+		bind:busy={bulkBusy}
 	/>
 {/snippet}
 
@@ -887,6 +964,14 @@ row of filters, on a desktop narrow by the title. -->
 					{/snippet}
 				</EmptyNote>
 			{:else}
+				{#if (chosenCount > 0 || bulkBusy) && !phone.current}{@render bulkBar()}{/if}
+				<Choice
+					checked={pageChosen}
+					class="-mb-3 text-muted-foreground"
+					onchange={(event) => choosePage(event.currentTarget.checked)}
+				>
+					{m.bulk_select_page()}
+				</Choice>
 				<div class="flex flex-col gap-6" aria-busy={list.loading}>
 					{#each groups as group (group.key)}
 						<section class="flex flex-col gap-3" aria-label={group.label ?? undefined}>
@@ -914,7 +999,13 @@ row of filters, on a desktop narrow by the title. -->
 								>
 									{#each group.items as item (item.document.id)}
 										<li class="min-w-0">
-											<DocumentCard document={item.document} {lookup} fields={linesOf(item)}>
+											<DocumentCard
+												document={item.document}
+												{lookup}
+												fields={linesOf(item)}
+												chosen={isChosen(item.document.id)}
+												onchoose={(on) => choose(item.document.id, on)}
+											>
 												{@render snippetLine(item)}
 											</DocumentCard>
 										</li>
@@ -924,7 +1015,13 @@ row of filters, on a desktop narrow by the title. -->
 								<ul class="flex flex-col gap-2">
 									{#each group.items as item (item.document.id)}
 										<li>
-											<DocumentRow document={item.document} {lookup} fields={linesOf(item)}>
+											<DocumentRow
+												document={item.document}
+												{lookup}
+												fields={linesOf(item)}
+												chosen={isChosen(item.document.id)}
+												onchoose={(on) => choose(item.document.id, on)}
+											>
 												{@render snippetLine(item)}
 												{#snippet aside()}
 													{#if item.document.in_inbox}<InboxMark id={item.document.id} />{/if}
@@ -946,6 +1043,7 @@ row of filters, on a desktop narrow by the title. -->
 					size={list.size}
 					onchange={(next) => goToPage(next)}
 				/>
+				{#if (chosenCount > 0 || bulkBusy) && phone.current}{@render bulkBar()}{/if}
 			{/if}
 		</div>
 	</div>

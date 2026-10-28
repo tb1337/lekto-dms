@@ -17,6 +17,7 @@
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
+	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
 
 	// One document as a card of the grid, "sender on top" (web/DESIGN.md, "Document card"): its
 	// contact (logo or initials) in a head of one line, so that the first pages of a row stand
@@ -24,19 +25,25 @@
 	// 4:3 from the top, with only the page count on it (as glass); then the title, bold, type
 	// (with its icon) and date, and the shown topic, tags and groups of contact and type in one
 	// line, "+n" for the rest. For admins the space of a document in a space they are no member
-	// of; `children` adds a line; `fields`, the fields of a lens, stand below a line.
+	// of; `children` adds a line; `fields`, the fields of a lens, stand below a line. With
+	// `onchoose` its box for actions on many stands at the top left of the page (as glass), and
+	// a chosen card has `bg-panel`.
 	let {
 		document,
 		lookup,
 		href = `${BASE}/documents/${document.id}`,
 		children,
-		fields = []
+		fields = [],
+		chosen = false,
+		onchoose
 	}: {
 		document: components['schemas']['ListedDocument'];
 		lookup: Lookup | null;
 		href?: string;
 		children?: Snippet;
 		fields?: readonly CardLine[];
+		chosen?: boolean;
+		onchoose?: (chosen: boolean) => void;
 	} = $props();
 
 	// By the indexes of the lists: one card of many must not scan them on every render.
@@ -72,7 +79,10 @@
 <div class="relative h-full min-w-0">
 	<Card.Root
 		size="flush"
-		class="relative flex h-full min-w-0 flex-col overflow-hidden transition-colors has-[>a:hover]:border-primary"
+		class={cn(
+			'relative flex h-full min-w-0 flex-col overflow-hidden transition-colors has-[>a:hover]:border-primary',
+			chosen && 'bg-panel'
+		)}
 	>
 		<a {href} class="group flex min-w-0 flex-1 flex-col text-sm">
 			<div
@@ -146,5 +156,16 @@
 	</Card.Root>
 	{#if document.in_inbox}
 		<InboxMark id={document.id} badge class="absolute top-2 right-2 z-10" />
+	{/if}
+	{#if onchoose}
+		<span
+			class="mark-glass absolute top-12 left-2 z-10 grid size-7 place-items-center rounded-lg bg-card/80"
+		>
+			<ChoiceBox
+				checked={chosen}
+				aria-label={m.bulk_select_document({ title: document.title })}
+				onchange={(event) => onchoose(event.currentTarget.checked)}
+			/>
+		</span>
 	{/if}
 </div>

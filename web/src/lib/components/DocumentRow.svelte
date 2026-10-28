@@ -12,18 +12,24 @@
 	import { byId, foreignSpace, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
+	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
+	import { m } from '#lib/paraglide/messages.js';
+	import { cn } from '#lib/utils.ts';
 
 	// One document in a list: preview, title, contact (with its logo or initials) and type
 	// (with its icon) each with its shown groups, date, its shown tags, for admins the space of
 	// a document in a space they are no member of. `children` adds a line, `fields` the fields of a lens;
-	// `aside` stands at the end of the row, beside its link (a button, a link of its own).
+	// `aside` stands at the end of the row, beside its link (a button, a link of its own). With
+	// `onchoose` its box for actions on many starts the row, and a chosen row has `bg-panel`.
 	let {
 		document,
 		lookup,
 		href = `${BASE}/documents/${document.id}`,
 		children,
 		fields = [],
-		aside
+		aside,
+		chosen = false,
+		onchoose
 	}: {
 		document: components['schemas']['DocumentDetails'];
 		lookup: Lookup | null;
@@ -31,6 +37,8 @@
 		children?: Snippet;
 		fields?: readonly CardLine[];
 		aside?: Snippet;
+		chosen?: boolean;
+		onchoose?: (chosen: boolean) => void;
 	} = $props();
 
 	// By the indexes of the lists: one card of many must not scan them on every render.
@@ -48,8 +56,18 @@
 
 <Card.Root
 	size="flush"
-	class="flex items-center gap-3 p-3 transition-colors has-[>a:hover]:border-primary"
+	class={cn(
+		'flex items-center gap-3 p-3 transition-colors has-[>a:hover]:border-primary',
+		chosen && 'bg-panel'
+	)}
 >
+	{#if onchoose}
+		<ChoiceBox
+			checked={chosen}
+			aria-label={m.bulk_select_document({ title: document.title })}
+			onchange={(event) => onchoose(event.currentTarget.checked)}
+		/>
+	{/if}
 	<a {href} class="flex min-w-0 flex-1 items-center gap-4 rounded-lg">
 		<DocumentThumb
 			id={document.id}

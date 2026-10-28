@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
+import { POLL } from '#lib/bulk.svelte.ts';
 import { usageLabel } from '#lib/components/UsageCount.svelte';
 import { events } from '#lib/events.svelte.ts';
 import { formatDate } from '#lib/i18n.ts';
@@ -64,6 +65,9 @@ afterEach(() => {
 	localStorage.clear();
 	session.clear();
 	vi.unstubAllGlobals();
+	vi.useRealTimers();
+	// A menu open while the clock was faked leaves this behind.
+	window.document.body.style.pointerEvents = '';
 });
 
 describe('the archive page', () => {
@@ -171,7 +175,12 @@ describe('the archive page', () => {
 		events.stop();
 	});
 
+	// Opens two menus and a dialog and follows a poll: the longest test of the page, longer
+	// while every worker runs one beside it.
 	it('chooses in the selection mode: the page, then every hit, and confirms them all', async () => {
+		// The clock is faked so the poll that follows the action comes at once.
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 		const sent: unknown[] = [];
 		const operation = {
 			id: 'op-1',
@@ -212,7 +221,7 @@ describe('the archive page', () => {
 			screen.queryByRole('checkbox', { name: m.bulk_select_document({ title: 'Gas' }) })
 		).toBeNull();
 		const mode = screen.getAllByRole('button', { name: m.bulk_mode() })[0];
-		await userEvent.click(mode);
+		await user.click(mode);
 		expect(mode.getAttribute('aria-pressed')).toBe('true');
 		const empty = screen.getByRole('region', { name: m.selection_selected({ count: '0' }) });
 		expect(empty.textContent).toContain(m.bulk_tap_hint());
@@ -224,7 +233,7 @@ describe('the archive page', () => {
 			const bar = screen.getByRole('region', { name: /ausgewählt|selected/ });
 			const chooser = within(bar).getByRole('button', { name: m.bulk_mode() });
 			await fireEvent.pointerDown(chooser, { button: 0, pointerType: 'mouse' });
-			await userEvent.click(await screen.findByRole('menuitem', { name: item }));
+			await user.click(await screen.findByRole('menuitem', { name: item }));
 		};
 		await choose(m.bulk_select_page());
 		screen.getByRole('region', { name: m.selection_selected({ count: '2' }) });
@@ -240,19 +249,18 @@ describe('the archive page', () => {
 			button: 0,
 			pointerType: 'mouse'
 		});
-		await userEvent.click(await screen.findByRole('menuitem', { name: m.bulk_confirm() }));
+		await user.click(await screen.findByRole('menuitem', { name: m.bulk_confirm() }));
 		await vi.waitFor(() => expect(sent).toHaveLength(1));
 		expect(sent[0]).toEqual({
 			query: '',
 			body: { document_ids: null, action: { kind: 'confirm' } }
 		});
 		// The bar follows the action until it ends; then the choice is let go.
-		await vi.waitFor(
-			() =>
-				expect(
-					screen.queryByRole('region', { name: m.selection_selected({ count: formatNumber(120) }) })
-				).toBeNull(),
-			{ timeout: 3000 }
+		await vi.advanceTimersByTimeAsync(POLL);
+		await vi.waitFor(() =>
+			expect(
+				screen.queryByRole('region', { name: m.selection_selected({ count: formatNumber(120) }) })
+			).toBeNull()
 		);
 		// The mode stays: nothing chosen any more.
 		screen.getByRole('region', { name: m.selection_selected({ count: '0' }) });
@@ -261,7 +269,7 @@ describe('the archive page', () => {
 		expect(
 			screen.queryByRole('checkbox', { name: m.bulk_select_document({ title: 'Gas' }) })
 		).toBeNull();
-	});
+	}, 15_000);
 
 	it('chooses a document by a tap on it, and deletes after asking with the number', async () => {
 		const sent: unknown[] = [];

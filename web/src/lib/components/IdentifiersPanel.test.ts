@@ -135,6 +135,7 @@ afterEach(() => {
 	phone.override(null);
 	session.clear();
 	vi.unstubAllGlobals();
+	vi.useRealTimers();
 	window.document.body.style.pointerEvents = '';
 });
 
@@ -226,15 +227,18 @@ describe('IdentifiersPanel', () => {
 	});
 
 	it('loads the list once, and again for other words', async () => {
+		// The clock is faked so the wait after the last key passes at once.
+		vi.useFakeTimers({ shouldAdvanceTime: true });
 		const { rerender } = render(IdentifiersPanel);
 		await rows();
-		await new Promise((resolve) => setTimeout(resolve, 600));
+		await vi.advanceTimersByTimeAsync(600);
 		const lists = () =>
 			fetchMock.mock.calls.filter(
 				([request]) => new URL(request.url).pathname === '/api/v1/identifiers/open'
 			);
 		expect(lists()).toHaveLength(1);
 		await rerender({ query: 'nord' });
+		await vi.advanceTimersByTimeAsync(250);
 		await vi.waitFor(() => expect(lists()).toHaveLength(2));
 		expect(new URL(lists()[1][0].url).searchParams.get('q')).toBe('nord');
 	});

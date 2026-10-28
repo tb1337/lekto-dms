@@ -339,6 +339,7 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	recommend_reject_foreign: entry(m.reason_recommend_reject_foreign, { count: 'number' }),
 	recommend_reject_contacts: entry(m.reason_recommend_reject_contacts, { count: 'number' }),
 	bulk_too_many: entry(m.reason_bulk_too_many, { max: 'number' }),
+	bulk_ids_and_filter: entry(m.reason_bulk_ids_and_filter),
 	not_iban: entry(m.reason_not_iban),
 	not_vat_id: entry(m.reason_not_vat_id),
 	not_customer_number: entry(m.reason_not_customer_number),

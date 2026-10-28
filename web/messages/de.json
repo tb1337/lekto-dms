@@ -2392,6 +2392,7 @@
 	"reason_skip_changed_meanwhile": "inzwischen geändert; nicht angewendet",
 	"reason_skip_not_available": "nicht verfügbar",
 	"reason_bulk_too_many": "Höchstens {max} Dokumente auf einmal.",
+	"reason_bulk_ids_and_filter": "Nenne die Dokumente oder gib einen Filter an, nicht beides.",
 	"reason_not_iban": "„{value}“ ist keine gültige IBAN.",
 	"reason_not_vat_id": "„{value}“ ist keine USt-IdNr.",
 	"reason_not_customer_number": "„{value}“ ist keine Kundennummer (4 bis 30 Buchstaben und Ziffern, mindestens eine Ziffer).",

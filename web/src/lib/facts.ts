@@ -309,7 +309,8 @@ export function factCounts(facts: Facts): { evidence: number; unknown: number; c
 		entries.filter((entry) => !('state' in entry) || entry.state !== 'rejected').length;
 	return {
 		evidence: kept(groups.own),
-		unknown: kept(groups.unknown),
+		// One rejected at a contact is known not to be its: no hint.
+		unknown: kept(groups.unknown.filter((item) => !item.rejected_at)),
 		codes: facts.codes?.length ?? 0
 	};
 }

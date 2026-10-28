@@ -418,8 +418,17 @@ class DocumentService:
         pages = await load_layout(store, id)
 
         def found() -> tuple[Facts, tuple[DocumentNumber, ...], tuple[DocumentNumber, ...]]:
-            # All of them: the facts beyond the signal's limit would show as none it found.
-            facts = facts_in(text, contacts, codes or (), persons=persons, places=True, most=None)
+            # All of them, also those rejected at a contact: a fact the list leaves out would
+            # show as one the sources do not find.
+            facts = facts_in(
+                text,
+                contacts,
+                codes or (),
+                persons=persons,
+                places=True,
+                most=None,
+                rejected=True,
+            )
             numbers = tuple(
                 DocumentNumber(fact, identifier_spans(text, fact.kind, fact.value))
                 for fact in stored.values()

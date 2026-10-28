@@ -104,6 +104,13 @@ class FoundIdentifierOut(BaseModel):
         description="Whether the document keeps it as a fact (a person decides about it); "
         "not before the facts signal ran.",
     )
+    rejected_at: UUID | None = Field(
+        default=None,
+        description=(
+            "The contact it is rejected at (a person said it is not theirs): it backs no "
+            "contact; `contact_id` is null then."
+        ),
+    )
     holder: HolderOut | None = Field(
         default=None,
         description=(
@@ -349,6 +356,7 @@ class FactsOut(BaseModel):
                     origins=_origins(report, item),
                     state=_state(report, item),
                     kept=item.key in report.stored,
+                    rejected_at=item.rejected_at,
                     holder=HolderOut.of(_holder(report, item)),
                     other_contacts=None if others is None else len(others.get(item.key, ())),
                     other_contact_ids=(

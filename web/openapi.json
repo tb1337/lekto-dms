@@ -25596,6 +25596,19 @@
             "description": "Whether the document keeps it as a fact (a person decides about it); not before the facts signal ran.",
             "default": false
           },
+          "rejected_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejected At",
+            "description": "The contact it is rejected at (a person said it is not theirs): it backs no contact; `contact_id` is null then."
+          },
           "holder": {
             "anyOf": [
               {

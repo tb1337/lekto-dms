@@ -389,6 +389,11 @@
 				{#if identifier?.holder}
 					<span class="text-xs text-muted-foreground">{holderLabel(identifier.holder)}</span>
 				{/if}
+				{#if identifier?.rejected_at}
+					<span class="text-xs text-muted-foreground">
+						{m.facts_rejected_at({ contact: contactOf(identifier.rejected_at)?.name ?? '…' })}
+					</span>
+				{/if}
 				{#if identifier?.topic_id && topicName(identifier.topic_id)}
 					<span class="text-xs text-muted-foreground">
 						{m.facts_topic({ topic: topicName(identifier.topic_id) ?? '' })}
@@ -403,7 +408,7 @@
 			{#if identifier && facts.editable && identifier.kept}
 				{@render decideButton(id, identifier)}
 			{/if}
-			{#if identifier && !identifier.contact_id && admin && identifier.state !== 'rejected'}
+			{#if identifier && !identifier.contact_id && !identifier.rejected_at && admin && identifier.state !== 'rejected'}
 				<!-- Only the pin: the label would repeat on every line. -->
 				<IconButton
 					variant="outline"

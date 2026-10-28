@@ -220,3 +220,24 @@ async def test_the_report_lists_every_identifier_of_a_long_statement(world: Worl
     report = await world.documents.facts(owner.id, document.id)
     assert sorted(item.value for item in report.facts.identifiers) == sorted(ibans)
     assert report.decided == ()
+
+
+async def test_the_report_shows_an_identifier_rejected_at_a_contact(world: World) -> None:
+    """An IBAN rejected at the bank stays among the identifiers, marked where, backing no
+    contact: not a further fact the sources do not find."""
+    owner = await world.user(role=Role.ADMIN)
+    bank = Contact.create(name="Beispielbank", now=builders.NOW)
+    bank.set_identifiers([], rejected=[Identifier.parse(IdentifierKind.IBAN, OWN_IBAN)])
+    await contacts(world, bank)
+    document = await stored(world, owner, TEXT)
+    result = await facts(world, document, FakeCodeReader([]))
+    async with world.uow() as uow:
+        await result.apply(uow, await uow.documents.get(document.id), builders.NOW)
+        await uow.commit()
+    report = await world.documents.facts(owner.id, document.id)
+    (iban,) = [item for item in report.facts.identifiers if item.value == OWN_IBAN]
+    assert (iban.contact_id, iban.rejected_at) == (None, bank.id)
+    assert report.decided == ()
+    # The signal's evidence still leaves it out.
+    assert result.output["identifiers"] == []
+    assert OWN_IBAN not in str(result.output["unknown_identifiers"])

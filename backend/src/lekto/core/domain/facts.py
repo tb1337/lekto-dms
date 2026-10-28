@@ -84,6 +84,7 @@ class FoundIdentifier:
     in_code: bool
     spans: tuple[Span, ...] = ()
     topic_id: TagId | None = None  # the contact's topic it points to, if any
+    rejected_at: ContactId | None = None  # a contact it is rejected at: no evidence of any
 
     @property
     def key(self) -> Key:
@@ -134,10 +135,13 @@ def facts_in(
     persons: Sequence[Person] = (),
     places: bool = False,
     most: int | None = MOST,
+    rejected: bool = False,
 ) -> Facts:
     """The facts of `text` and of the `codes` on its pages, the `persons` among them; with
     `places`, their spans. Up to `most` names, identifiers of contacts and unknown ones each
-    (None: all of them: a bank statement shows dozens of IBANs)."""
+    (None: all of them: a bank statement shows dozens of IBANs). An identifier rejected at a
+    contact is no evidence: left out, or with `rejected` among the unknown ones, marked
+    (`FoundIdentifier.rejected_at`)."""
     text_key = match_key(text)
     payees = [match_key(giro.name) for code in codes if (giro := giro_code(code.text))]
     named: list[NamedContact] = []
@@ -165,7 +169,7 @@ def facts_in(
         in_codes |= code_identifiers(code)
     owners: dict[Key, ContactId] = {}
     topics: dict[Key, TagId | None] = {}
-    rejected: set[Key] = set()
+    refused: dict[Key, ContactId] = {}
     for contact in contacts:
         for identifier in contact.identifiers:
             for key in in_text | in_codes:
@@ -175,7 +179,7 @@ def facts_in(
                             owners[key] = contact.id
                             topics[key] = identifier.topic_id
                     else:
-                        rejected.add(key)
+                        refused.setdefault(key, contact.id)
     numbers = [item for contact in contacts for item in contact.evidence() if item.user_id]
     found_persons = _persons(text, text_key, in_text | in_codes, numbers, persons, places=places)
     personal = {key for person in persons for item in person.identifiers for key in [item.key]}
@@ -188,12 +192,16 @@ def facts_in(
             in_code=(kind, value) in in_codes,
             spans=identifier_spans(text, kind, value) if places else (),
             topic_id=topics.get((kind, value)),
+            rejected_at=None if (kind, value) in owners else refused.get((kind, value)),
         )
         for kind, value in sorted(in_text | in_codes, key=lambda key: (key[0].value, key[1]))
         if kind in CONTACT_KINDS
         and (
             (kind, value) in owners
-            or ((kind, value) not in rejected and not of_person((kind, value), personal))
+            or (
+                ((kind, value) not in refused or rejected)
+                and not of_person((kind, value), personal)
+            )
         )
     ]
     known = [item for item in found if item.contact_id is not None]

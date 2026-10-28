@@ -1997,6 +1997,7 @@
 	"facts_third_one": "1 number of a third party",
 	"facts_third": "{count} numbers of third parties",
 	"facts_third_hint": "IBANs and creditor IDs of others, for example in bookings",
+	"facts_rejected_at": "Rejected at {contact}",
 	"facts_unknown_hint": "Attach one as an identifier, and Lekto knows the contact by it.",
 	"facts_attach_admins": "Admins attach identifiers (they are master data).",
 	"facts_other_contacts_one": "Stands on documents of another contact too.",

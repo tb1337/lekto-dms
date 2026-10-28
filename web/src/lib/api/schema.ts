@@ -5050,6 +5050,11 @@ export interface components {
 			 * @default false
 			 */
 			kept: boolean;
+			/**
+			 * Rejected At
+			 * @description The contact it is rejected at (a person said it is not theirs): it backs no contact; `contact_id` is null then.
+			 */
+			rejected_at?: string | null;
 			/** @description Whose an IBAN or a creditor ID is; null for other kinds and until the facts signal ran again after 0.8 (`read-facts`). */
 			holder?: components['schemas']['HolderOut'] | null;
 			/**

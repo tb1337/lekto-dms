@@ -348,6 +348,24 @@ describe('FactsPanel', () => {
 		).toBeTruthy();
 	});
 
+	it('names the contact an identifier is rejected at, with nothing to attach', () => {
+		const rejected = {
+			...FACTS.identifiers[2],
+			rejected_at: BANK,
+			holder: { kind: 'recipient', name: null, source: 'rule' }
+		} as Facts['identifiers'][number];
+		render(
+			FactsPanel,
+			props({ facts: { ...FACTS, identifiers: [FACTS.identifiers[0], rejected] } })
+		);
+		expect(screen.getByText(m.facts_rejected_at({ contact: 'Bank Musterstadt' }))).toBeTruthy();
+		expect(
+			screen.queryByRole('button', {
+				name: m.facts_attach_value({ value: 'DE02 1203 0000 0000 2020 51' })
+			})
+		).toBeNull();
+	});
+
 	it('says when the codes are not read yet', () => {
 		render(FactsPanel, props({ facts: { ...FACTS, codes: null } }));
 		expect(screen.getByText(m.codes_unread())).toBeTruthy();

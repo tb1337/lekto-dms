@@ -156,6 +156,17 @@ describe('facts', () => {
 		expect(factCounts(facts)).toEqual({ evidence: 2, unknown: 0, codes: 1 });
 	});
 
+	it('counts no identifier rejected at a contact as unknown', () => {
+		const facts = {
+			...FACTS,
+			identifiers: FACTS.identifiers.map((item) =>
+				item.contact_id ? item : { ...item, rejected_at: 'contact-9' }
+			)
+		};
+		expect(grouped(facts).unknown).toHaveLength(1);
+		expect(factCounts(facts)).toEqual({ evidence: 2, unknown: 0, codes: 1 });
+	});
+
 	it('shows an IBAN in groups of four', () => {
 		expect(shown({ kind: 'iban', value: 'DE89370400440532013000' })).toBe(
 			'DE89 3704 0044 0532 0130 00'

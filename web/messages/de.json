@@ -1997,6 +1997,7 @@
 	"facts_third_one": "1 Nummer eines Dritten",
 	"facts_third": "{count} Nummern Dritter",
 	"facts_third_hint": "IBANs und Gläubiger-IDs anderer, etwa in Buchungen",
+	"facts_rejected_at": "Bei {contact} verworfen",
 	"facts_unknown_hint": "Als Kennung anheften, dann erkennt Lekto den Kontakt daran.",
 	"facts_attach_admins": "Anheften dürfen Admins (Kennungen sind Stammdaten).",
 	"facts_other_contacts_one": "Steht auch auf Dokumenten eines anderen Kontakts.",

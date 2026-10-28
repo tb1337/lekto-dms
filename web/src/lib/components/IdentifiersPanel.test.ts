@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { usageLabel } from '#lib/components/UsageCount.svelte';
 import { m } from '#lib/paraglide/messages.js';
 import { phone } from '#lib/phone.svelte.ts';
 import { session } from '#lib/session.svelte.ts';
@@ -154,7 +155,7 @@ describe('IdentifiersPanel', () => {
 		expect(found[1].textContent).toContain(UTILITY.name);
 		expect(found[1].textContent).toContain(m.open_learned());
 		const documents = within(found[1]).getByRole('link', {
-			name: m.open_documents({ count: '4' })
+			name: usageLabel(4)
 		});
 		expect(documents.getAttribute('href')).toContain('fact=customer_number%3A20047718%3A');
 		// The logo comes from the contacts, which the list does not carry.

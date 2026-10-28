@@ -15,6 +15,7 @@
 	import Segmented from '#lib/components/Segmented.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import SelectionBar from '#lib/components/SelectionBar.svelte';
+	import { usageLabel } from '#lib/components/UsageCount.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
@@ -217,7 +218,7 @@
 	}
 
 	function documentsText(count: number): string {
-		return count === 1 ? m.open_documents_one() : m.open_documents({ count: formatNumber(count) });
+		return usageLabel(count);
 	}
 
 	function contactText(item: OpenIdentifier): string {

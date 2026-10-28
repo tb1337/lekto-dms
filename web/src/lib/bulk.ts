@@ -4,6 +4,7 @@
  */
 
 import type { components } from '#lib/api/schema.ts';
+import { usageLabel } from '#lib/components/UsageCount.svelte';
 import { formatNumber } from '#lib/i18n.ts';
 import { m } from '#lib/paraglide/messages.js';
 
@@ -20,9 +21,9 @@ export const MODEL_CALLS = 2;
 /** Documents above which reprocessing from the model's step says what it costs. */
 export const WARN_ABOVE = 15;
 
-/** "1 Dokument", "1.234 Dokumente". */
+/** "1 Dokument", "1.234 Dokumente", as the master data count theirs. */
 export function bulkDocuments(count: number): string {
-	return count === 1 ? m.bulk_documents_one() : m.bulk_documents({ count: formatNumber(count) });
+	return usageLabel(count);
 }
 
 /** What an action did: changed, and those that were so already. */

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
+import { usageLabel } from '#lib/components/UsageCount.svelte';
 import { events } from '#lib/events.svelte.ts';
 import { formatDate } from '#lib/i18n.ts';
 import { forgetMeaningSearch } from '#lib/meaning-search.ts';
@@ -288,7 +289,7 @@ describe('the archive page', () => {
 		});
 		await userEvent.click(await screen.findByRole('menuitem', { name: m.bulk_delete() }));
 		const dialog = await screen.findByRole('alertdialog', {
-			name: m.bulk_delete_title({ documents: m.bulk_documents_one() })
+			name: m.bulk_delete_title({ documents: usageLabel(1) })
 		});
 		await userEvent.click(within(dialog).getByRole('button', { name: m.delete_title() }));
 		await vi.waitFor(() =>

@@ -279,19 +279,25 @@ export function codeSpans(facts: Facts, code: CodeFacts): Span[] {
 }
 
 /** The facts in groups: those of the document's contact, those of other contacts, those of
- * none. */
+ * none, and the IBANs and creditor IDs of third parties. */
 export function grouped(facts: Facts): {
 	own: (NamedContact | FoundIdentifier)[];
 	others: (NamedContact | FoundIdentifier)[];
 	unknown: FoundIdentifier[];
+	third: FoundIdentifier[];
 } {
 	const mine = (contact: string | null | undefined) =>
 		contact !== null && contact !== undefined && contact === facts.contact_id;
-	const known = [...facts.named, ...facts.identifiers.filter((item) => item.contact_id)];
+	// An IBAN or a creditor ID of a third party (a payee in a booking) belongs to none of the
+	// groups: it is folded away below them.
+	const third = facts.identifiers.filter((item) => item.holder?.kind === 'third_party');
+	const identifiers = facts.identifiers.filter((item) => !third.includes(item));
+	const known = [...facts.named, ...identifiers.filter((item) => item.contact_id)];
 	return {
 		own: known.filter((item) => mine(item.contact_id)),
 		others: known.filter((item) => !mine(item.contact_id)),
-		unknown: facts.identifiers.filter((item) => !item.contact_id)
+		unknown: identifiers.filter((item) => !item.contact_id),
+		third
 	};
 }
 

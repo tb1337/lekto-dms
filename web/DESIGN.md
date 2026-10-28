@@ -342,6 +342,14 @@ primary `default` last), all `sm`. On desktop it stands above the list in a `rou
 (`bg-card`, a line above), its two actions sharing the width. One item is still decided in its
 dialog, opened from its title: the actions stay out of the row.
 
+**A folded group** (the numbers of third parties among the facts, Tobi 28.10.2026): rows that
+belong to a card but rarely matter fold away at its end. Above them a line (`border-t`), then
+one `button` the width of the card, at least 44 px: a `ChevronRight` (`muted-foreground`)
+turned down when open, the count in words (`text-sm font-medium`) and below it what they are
+(`text-xs text-muted-foreground`); `aria-expanded` and `aria-controls`. Closed at first; opened,
+it stays open while the page shows the same thing. The rows inside look as elsewhere in the
+card, indented to the text of the button (`pl-6`). A whole card that folds is `FilterSection`.
+
 ### Tables
 
 `ui/table` only. The head is `text-xs font-medium text-muted-foreground`. Numbers align right with

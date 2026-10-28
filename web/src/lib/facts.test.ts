@@ -141,6 +141,21 @@ describe('facts', () => {
 		expect(factCounts(FACTS)).toEqual({ evidence: 2, unknown: 1, codes: 1 });
 	});
 
+	it('sets the numbers of third parties apart, counted nowhere', () => {
+		const payee = {
+			...FACTS.identifiers.find((item) => !item.contact_id)!,
+			holder: { kind: 'third_party' as const, name: null, source: 'rule' as const }
+		};
+		const facts = {
+			...FACTS,
+			identifiers: FACTS.identifiers.map((item) => (item.value === payee.value ? payee : item))
+		};
+		const groups = grouped(facts);
+		expect(groups.third.map((item) => item.value)).toEqual([payee.value]);
+		expect(groups.unknown).toEqual([]);
+		expect(factCounts(facts)).toEqual({ evidence: 2, unknown: 0, codes: 1 });
+	});
+
 	it('shows an IBAN in groups of four', () => {
 		expect(shown({ kind: 'iban', value: 'DE89370400440532013000' })).toBe(
 			'DE89 3704 0044 0532 0130 00'

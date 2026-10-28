@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Check from '@lucide/svelte/icons/check';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -42,7 +43,7 @@
 		type NamedContact,
 		type Span
 	} from '#lib/facts.ts';
-	import { formatMoney } from '#lib/i18n.ts';
+	import { formatMoney, formatNumber } from '#lib/i18n.ts';
 	import { IDENTIFIER_KINDS, kindLabel } from '#lib/identifiers.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
@@ -101,6 +102,9 @@
 	let busy = $state(false);
 	// The fact a person decides about (its entry's id), and whether they add one (#145 PR 6).
 	let deciding = $state<string | null>(null);
+	// The numbers of third parties fold away (Tobi, 28.10.2026); opened, they stay open while
+	// the document is shown.
+	let thirdOpen = $state(false);
 	let adding = $state(false);
 	// A click keeps a mark: the text scrolls to it (also when the entry was marked already).
 	let reveal = false;
@@ -514,7 +518,7 @@
 				>{phone.current ? m.facts_hint_phone() : m.facts_hint()}</span
 			>
 		</div>
-		{#if groups.own.length + groups.others.length + groups.unknown.length === 0}
+		{#if groups.own.length + groups.others.length + groups.unknown.length + groups.third.length === 0}
 			<p class="px-1 py-2 text-sm text-muted-foreground">{m.facts_none()}</p>
 		{/if}
 		{#if groups.own.length > 0}
@@ -541,6 +545,40 @@
 			{#each groups.unknown as entry (entryId(entry))}
 				{@render entryRow(entry, null)}
 			{/each}
+		{/if}
+		{#if groups.third.length > 0}
+			<div class="mt-3 border-t pt-1.5">
+				<button
+					type="button"
+					class="flex min-h-11 w-full items-center gap-2 rounded-xl px-2.5 text-left hover:bg-panel"
+					aria-expanded={thirdOpen}
+					aria-controls="facts-third"
+					onclick={() => (thirdOpen = !thirdOpen)}
+				>
+					<ChevronRight
+						class={[
+							'size-4 shrink-0 text-muted-foreground transition-transform',
+							thirdOpen && 'rotate-90'
+						]}
+						aria-hidden="true"
+					/>
+					<span class="flex min-w-0 flex-1 flex-col">
+						<span class="text-sm font-medium">
+							{groups.third.length === 1
+								? m.facts_third_one()
+								: m.facts_third({ count: formatNumber(groups.third.length) })}
+						</span>
+						<span class="text-xs text-muted-foreground">{m.facts_third_hint()}</span>
+					</span>
+				</button>
+				{#if thirdOpen}
+					<div id="facts-third" class="flex flex-col pl-6">
+						{#each groups.third as entry (entryId(entry))}
+							{@render entryRow(entry, entry.contact_id)}
+						{/each}
+					</div>
+				{/if}
+			</div>
 		{/if}
 	</Card.Root>
 

@@ -158,11 +158,7 @@ class ProfileService:
             if display_name != user.display_name:
                 user.display_name = display_name
                 await uow.users.update(user)
-            if stored is None:
-                profile.version = 1
-                await uow.profiles.add(profile)
-            else:
-                await uow.profiles.update(profile)
+            await save_profile(uow, stored, profile)
             contacts = await uow.contacts.list_all()
             if not (
                 isinstance(changes.numbers, Unset) and isinstance(changes.declined_numbers, Unset)
@@ -277,6 +273,15 @@ async def check_username(uow: UnitOfWork, username: str) -> None:
     for other in await uow.users.list_all():
         if other.display_name is not None and name_key(other.display_name) == key:
             raise ConflictError(because(ReasonCode.USERNAME_OF_OTHER, username=username))
+
+
+async def save_profile(uow: UnitOfWork, stored: Profile | None, profile: Profile) -> None:
+    """Store `profile` as the first version, or as the next of `stored`."""
+    if stored is None:
+        profile.version = 1
+        await uow.profiles.add(profile)
+    else:
+        await uow.profiles.update(profile)
 
 
 async def check_person_identifiers(

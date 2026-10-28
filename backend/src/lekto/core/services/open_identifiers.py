@@ -9,7 +9,7 @@ entered the value meanwhile) leaves the others done."""
 
 from collections import Counter
 from collections.abc import Collection, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from enum import StrEnum
 
@@ -45,7 +45,11 @@ from lekto.core.services._access import require_admin
 from lekto.core.services._identifiers import person_identifiers
 from lekto.core.services.master_data import MasterDataService
 from lekto.core.services.objects import load_text
-from lekto.core.services.profiles import check_person_identifiers, matching_persons
+from lekto.core.services.profiles import (
+    check_person_identifiers,
+    matching_persons,
+    save_profile,
+)
 
 PLACES = 5
 """Documents whose places a detail shows, the newest first."""
@@ -318,38 +322,12 @@ class OpenIdentifierService:
             old = stored or Profile.empty(user)
             entered = Identifier(*decision.key)
             if decision.action is OpenAction.CONFIRM:
-                profile = Profile(
-                    id=user,
-                    aliases=old.aliases,
-                    birth_date=old.birth_date,
-                    email=old.email,
-                    identifiers=[*old.identifiers, entered],
-                    declined=old.declined,
-                    version=old.version,
-                )
+                profile = replace(old, identifiers=[*old.identifiers, entered])
                 await check_person_identifiers(uow, profile.evidence(), viewer)
             else:
-                profile = Profile(
-                    id=user,
-                    aliases=old.aliases,
-                    birth_date=old.birth_date,
-                    email=old.email,
-                    identifiers=old.identifiers,
-                    declined=[*old.declined, entered],
-                    version=old.version,
-                )
-            if stored is None:
-                profile.version = 1
-                await uow.profiles.add(profile)
-            else:
-                await uow.profiles.update(profile)
+                profile = replace(old, declined=[*old.declined, entered])
+            await save_profile(uow, stored, profile)
             await uow.commit()
-    learned = {
-        item.key: item
-        for contact in contacts
-        for item in contact.identifiers
-        if item.source is IdentifierSource.LEARNED
-    }
 
 
 async def _open(
@@ -366,6 +344,12 @@ async def _open(
         for profile in await uow.profiles.list_all()
     }
     names = {contact.id: contact.name for contact in contacts}
+    learned = {
+        item.key: item
+        for contact in contacts
+        for item in contact.identifiers
+        if item.source is IdentifierSource.LEARNED
+    }
     found = open_identifiers(contacts, sightings, personal, persons, declined)
     return found, names, {person.user_id: person.display_name or "" for person in persons}, learned
 

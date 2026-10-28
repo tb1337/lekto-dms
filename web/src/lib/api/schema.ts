@@ -805,7 +805,7 @@ export interface paths {
 		};
 		/**
 		 * The open identifiers
-		 * @description Admins only. Open are the identifiers no person has confirmed: those training learned at a contact (`learned`), and those of a contact's kind that confirmed documents with a contact show but no contact has, entered, learned or rejected (`unknown`). A person's value (a user's profile) is never open. The most documents first, then the newest. `q` finds words in the value (with or without spaces), as written or in a contact's name.
+		 * @description Admins only. Open are the identifiers no person has confirmed: those training learned at a contact (`learned`), and those of a contact's kind that confirmed documents with a contact show but no contact has, entered, learned or rejected (`unknown`). A person's value (a user's profile) is never open. The most documents first, then the newest. `q` finds words in the value (with or without spaces), as written or in a contact's name; `recommended` keeps those whose documents recommend confirming or rejecting them (`recommendation`).
 		 */
 		get: operations['open_identifiers_api_v1_identifiers_open_get'];
 		put?: never;
@@ -870,6 +870,26 @@ export interface paths {
 		 * @description Admins only. Each decision is a change of its contact on its own: confirming enters the identifier there by hand (a learned one keeps its topic and user), rejecting takes a learned one out or notes an unknown one rejected, so training does not learn it again. One that cannot be done (no longer open, the contact unclear, another contact has it entered) says why in its outcome; the others are done all the same. In the order given.
 		 */
 		post: operations['decide_open_api_v1_identifiers_open_decisions_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/identifiers/open/recommended': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Confirm the open identifiers their documents recommend
+		 * @description Admins only. Confirms every open identifier whose `recommendation` is `confirm` (`to_confirm` of the list), each as a decision `confirm` of `POST /decisions`: one that cannot be done says why in its outcome, the others are done all the same. Never rejects. A suggestion for a person's profile needs a session.
+		 */
+		post: operations['confirm_recommended_api_v1_identifiers_open_recommended_post'];
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -7003,6 +7023,8 @@ export interface components {
 			 * @description The date of the newest of them.
 			 */
 			last: string | null;
+			/** @description What its documents recommend; none where they do not tell. */
+			recommendation?: components['schemas']['RecommendationOut'] | null;
 		};
 		/**
 		 * OpenNodeOut
@@ -7045,6 +7067,16 @@ export interface components {
 			kinds: {
 				[key: string]: number;
 			};
+			/**
+			 * Recommended
+			 * @description How many have a recommendation, counted as `counts` (not `source`, not `recommended`).
+			 */
+			recommended: number;
+			/**
+			 * To Confirm
+			 * @description How many of them have one to confirm: what `POST /recommended` confirms (of every source and kind, without `q`).
+			 */
+			to_confirm: number;
 		};
 		/** OpenPersonOut */
 		OpenPersonOut: {
@@ -7803,6 +7835,10 @@ export interface components {
 			| 'identifier_entered'
 			| 'identifier_not_open'
 			| 'identifier_contact_unclear'
+			| 'recommend_confirm'
+			| 'recommend_confirm_named'
+			| 'recommend_reject_foreign'
+			| 'recommend_reject_contacts'
 			| 'title_pattern_too_long'
 			| 'description_too_long'
 			| 'title_pattern_unknown'
@@ -7890,6 +7926,22 @@ export interface components {
 			 * @description Among a node's reasons: the built-in field it is about (`contact`, `document_type`, `topic`, `tags`, `document_date`, `title`, `space`, `review`).
 			 */
 			field?: string | null;
+		};
+		/**
+		 * Recommendation
+		 * @description What the documents recommend doing with an open identifier (`_recommended`).
+		 * @enum {string}
+		 */
+		Recommendation: 'confirm' | 'reject';
+		/**
+		 * RecommendationOut
+		 * @description What its confirmed documents recommend doing with an open identifier.
+		 */
+		RecommendationOut: {
+			/** @description `confirm`: it stands in two or more confirmed documents of its contact, at no other contact, and (of a kind with a holder) is its contact's in each; `reject` (a learned one): a document of its contact gives it someone else, or other contacts hold it as theirs. */
+			action: components['schemas']['Recommendation'];
+			/** @description Why, with its code. */
+			reason: components['schemas']['ReasonOut'];
 		};
 		/**
 		 * RecoveryCodes
@@ -16596,6 +16648,7 @@ export interface operations {
 				source?: components['schemas']['OpenSource'] | null;
 				kind?: components['schemas']['IdentifierKind'] | null;
 				q?: string | null;
+				recommended?: boolean;
 				offset?: number;
 				limit?: number;
 			};
@@ -16948,6 +17001,77 @@ export interface operations {
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
 					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	confirm_recommended_api_v1_identifiers_open_recommended_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['OutcomeOut'][];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

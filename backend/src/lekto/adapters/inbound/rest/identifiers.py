@@ -35,7 +35,9 @@ _OPEN = (
     summary="The open identifiers",
     description=(
         ADMINS_ONLY + " " + _OPEN + " The most documents first, then the newest. `q` finds "
-        "words in the value (with or without spaces), as written or in a contact's name."
+        "words in the value (with or without spaces), as written or in a contact's name; "
+        "`recommended` keeps those whose documents recommend confirming or rejecting them "
+        "(`recommendation`)."
     ),
     response_model=OpenPageOut,
     responses=problem_responses(401, 403, 422),
@@ -46,11 +48,18 @@ async def open_identifiers(
     source: OpenSource | None = None,
     kind: IdentifierKind | None = None,
     q: Annotated[str | None, Query(max_length=200)] = None,
+    recommended: bool = False,
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=0, le=PAGE_LIMIT)] = 50,
 ) -> OpenPageOut:
     page = await context.open_identifiers.page(
-        user, source=source, kind=kind, words=q, offset=offset, limit=limit
+        user,
+        source=source,
+        kind=kind,
+        words=q,
+        recommended=recommended,
+        offset=offset,
+        limit=limit,
     )
     return OpenPageOut.of(page)
 
@@ -106,5 +115,24 @@ async def decide_open(
         principal.id,
         [item.decision() for item in body.decisions],
         session=principal.session is not None,
+    )
+    return [OutcomeOut.of(outcome) for outcome in outcomes]
+
+
+@router.post(
+    "/recommended",
+    summary="Confirm the open identifiers their documents recommend",
+    description=(
+        ADMINS_ONLY + " Confirms every open identifier whose `recommendation` is `confirm` "
+        "(`to_confirm` of the list), each as a decision `confirm` of `POST /decisions`: one "
+        "that cannot be done says why in its outcome, the others are done all the same. Never "
+        "rejects. A suggestion for a person's profile needs a session."
+    ),
+    response_model=list[OutcomeOut],
+    responses=problem_responses(401, 403),
+)
+async def confirm_recommended(principal: Authenticated, context: Context) -> list[OutcomeOut]:
+    outcomes = await context.open_identifiers.confirm_recommended(
+        principal.id, session=principal.session is not None
     )
     return [OutcomeOut.of(outcome) for outcome in outcomes]

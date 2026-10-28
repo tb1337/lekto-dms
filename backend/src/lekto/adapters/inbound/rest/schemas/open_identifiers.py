@@ -11,7 +11,12 @@ from lekto.adapters.inbound.schemas import ReasonOut
 from lekto.core.domain.document_facts import FactRole
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import ContactId, UserId
-from lekto.core.domain.open_identifiers import OpenIdentifier, OpenSource
+from lekto.core.domain.open_identifiers import (
+    OpenIdentifier,
+    OpenSource,
+    Recommendation,
+    Recommended,
+)
 from lekto.core.services.open_identifiers import (
     DecisionOutcome,
     OpenAction,
@@ -34,6 +39,22 @@ class OpenPersonOut(BaseModel):
     name: str = Field(description="Their display name.")
 
 
+class RecommendationOut(BaseModel):
+    """What its confirmed documents recommend doing with an open identifier."""
+
+    action: Recommendation = Field(
+        description="`confirm`: it stands in two or more confirmed documents of its contact, at "
+        "no other contact, and (of a kind with a holder) is its contact's in each; `reject` (a "
+        "learned one): a document of its contact gives it someone else, or other contacts "
+        "hold it as theirs."
+    )
+    reason: ReasonOut = Field(description="Why, with its code.")
+
+    @classmethod
+    def of(cls, recommended: Recommended) -> "RecommendationOut":
+        return cls(action=recommended.action, reason=ReasonOut.of(recommended.reason))
+
+
 class OpenIdentifierOut(BaseModel):
     """An identifier no person has confirmed."""
 
@@ -52,6 +73,9 @@ class OpenIdentifierOut(BaseModel):
     )
     documents: int = Field(description="Confirmed documents that show it.")
     last: date | None = Field(description="The date of the newest of them.")
+    recommendation: RecommendationOut | None = Field(
+        default=None, description="What its documents recommend; none where they do not tell."
+    )
 
     @classmethod
     def of(
@@ -71,6 +95,9 @@ class OpenIdentifierOut(BaseModel):
             else OpenPersonOut(id=item.person, name=persons.get(item.person, "")),
             documents=len(item.seen),
             last=item.last,
+            recommendation=None
+            if item.recommended is None
+            else RecommendationOut.of(item.recommended),
         )
 
 
@@ -95,6 +122,14 @@ class OpenPageOut(BaseModel):
     kinds: dict[IdentifierKind, int] = Field(
         description="How many match of each kind (not `kind`)."
     )
+    recommended: int = Field(
+        description="How many have a recommendation, counted as `counts` (not `source`, not "
+        "`recommended`)."
+    )
+    to_confirm: int = Field(
+        description="How many of them have one to confirm: what `POST /recommended` confirms "
+        "(of every source and kind, without `q`)."
+    )
 
     @classmethod
     def of(cls, page: OpenPage) -> "OpenPageOut":
@@ -103,6 +138,8 @@ class OpenPageOut(BaseModel):
             total=page.total,
             counts=OpenCountsOut.of(page.counts),
             kinds=dict(page.kinds),
+            recommended=page.recommended,
+            to_confirm=page.to_confirm,
         )
 
 

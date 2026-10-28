@@ -2627,5 +2627,18 @@
 	"bulk_mode": "Select",
 	"bulk_mode_end": "End selection mode",
 	"bulk_select_none": "Select none",
-	"bulk_tap_hint": "Tap documents to select them."
+	"bulk_tap_hint": "Tap documents to select them.",
+	"open_recommended": "Recommended",
+	"open_column_advice": "Recommendation",
+	"open_advise_confirm": "Confirm recommended",
+	"open_advise_reject": "Reject recommended",
+	"open_advise_none": "No recommendation",
+	"open_confirm_recommended": "Confirm recommended ({count})",
+	"open_confirm_recommended_title": "Confirm {count} identifiers?",
+	"open_confirm_recommended_hint": "Each goes to its contact, as entered by hand, as with “Confirm” in its row. They are recommended because they stand in at least two confirmed documents of their contact, at no other, and are its own each time. What cannot be done is skipped and named.",
+	"open_confirm_recommended_do": "Confirm {count}",
+	"reason_recommend_confirm": "In {count} confirmed documents of “{name}”, at no other contact.",
+	"reason_recommend_confirm_named": "{count} documents name “{name}” as its holder.",
+	"reason_recommend_reject_foreign": "In {count} documents of “{name}” it is someone else’s.",
+	"reason_recommend_reject_contacts": "In documents of {count} contacts."
 }

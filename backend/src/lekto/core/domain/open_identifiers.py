@@ -12,12 +12,12 @@ landlord's IBAN in the bookings of a bank statement, a parent company's VAT ID).
 import re
 from collections import Counter, defaultdict
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from enum import StrEnum
 
-from lekto.core.domain.document_facts import HOLDER_KINDS, DocumentFact, HolderKind
-from lekto.core.domain.holders import Parties, foreign
+from lekto.core.domain.document_facts import HOLDER_KINDS, DocumentFact, FactRole, HolderKind
+from lekto.core.domain.holders import Parties, foreign, held_by
 from lekto.core.domain.identifiers import (
     CONTACT_KINDS,
     FREE_MAIL,
@@ -32,6 +32,7 @@ from lekto.core.domain.identifiers import (
 from lekto.core.domain.ids import ContactId, DocumentId, UserId
 from lekto.core.domain.master_data import Contact
 from lekto.core.domain.profiles import Person
+from lekto.core.domain.reasons import Reason, ReasonCode, because
 
 REACH = 120
 """Characters of text shown before and after an identifier where it stands."""
@@ -41,6 +42,28 @@ class OpenSource(StrEnum):
     LEARNED = "learned"
     UNKNOWN = "unknown"
     SUGGESTED = "suggested"  # an IBAN or a creditor ID a document names as another's
+
+
+class Recommendation(StrEnum):
+    """What the documents recommend doing with an open identifier (`_recommended`)."""
+
+    CONFIRM = "confirm"
+    REJECT = "reject"
+
+
+RECOMMEND_FROM = 2
+"""Confirmed documents of its contact an identifier must stand in to be recommended (Tobi,
+29.10.2026): in dev one that stood in one document was rejected 17 times and confirmed once."""
+
+_OF_CONTACTS = frozenset({FactRole.CONTACT, FactRole.TARGET})
+
+
+@dataclass(frozen=True)
+class Recommended:
+    """A recommendation and why."""
+
+    action: Recommendation
+    reason: Reason
 
 
 @dataclass(frozen=True)
@@ -72,6 +95,7 @@ class OpenIdentifier:
     contacts: tuple[ContactId, ...]
     seen: tuple[Sighting, ...]
     person: UserId | None = None
+    recommended: Recommended | None = None
 
     @property
     def key(self) -> Key:
@@ -128,6 +152,8 @@ def open_identifiers(
         found.append(_open(key, OpenSource.UNKNOWN, owners, items))
     found += _suggested(contacts, by_key, {item.key for item in found}, stated, personal,
                         list(persons), declined or {})  # fmt: skip
+    labels = {contact.id: contact.name for contact in contacts}
+    found = [replace(item, recommended=_recommended(item, names, labels)) for item in found]
     return sorted(
         found,
         key=lambda item: (
@@ -188,6 +214,66 @@ def _suggested(
                 _open(key, OpenSource.SUGGESTED, (targets.pop(),), [item for item, _ in named])
             )
     return found
+
+
+def _recommended(
+    item: OpenIdentifier, names: Mapping[ContactId, list[str]], labels: Mapping[ContactId, str]
+) -> Recommended | None:
+    """What its confirmed documents recommend for an open identifier (Tobi, 29.10.2026), or
+    None where they do not tell:
+
+    - to confirm one at its contact that stands in `RECOMMEND_FROM` documents of it or more, as
+      a contact's or a contract's number (not an invoice's or a file's: they change with each
+      document), at no other contact that holds it as its own, and, of a kind with a holder,
+      its contact's in each of them; a suggested one that as many documents name;
+    - to reject a learned one that a document of its contact gives someone else (a person, a
+      third party: in dev all 29 such were rejected), or that other contacts hold as theirs
+      (a payment service's creditor ID).
+    """
+    documents = {seen.document for seen in item.seen}
+    if item.source is OpenSource.SUGGESTED:
+        if len(documents) < RECOMMEND_FROM:
+            return None
+        named = labels.get(item.contacts[0], "") if item.contacts else ""
+        holder = item.seen[0].fact.holder
+        name = named or (holder.name if holder is not None and holder.name else "")
+        reason = because(ReasonCode.RECOMMEND_CONFIRM_NAMED, count=len(documents), name=name)
+        return Recommended(Recommendation.CONFIRM, reason)
+    if not item.contacts:
+        return None
+    contact = item.contacts[0]
+    own = [seen for seen in item.seen if seen.contact == contact]
+    # Another contact's document counts where it holds the number as its own: the utility's
+    # IBAN among the bookings of a bank statement does not.
+    others = {
+        seen.contact
+        for seen in item.seen
+        if seen.contact != contact and not foreign(seen.fact.holder, names.get(seen.contact, ()))
+    }
+    held = item.kind in HOLDER_KINDS
+    if item.source is OpenSource.LEARNED:
+        elsewhere = {
+            seen.document for seen in own if held and foreign(seen.fact.holder, names[contact])
+        }
+        if elsewhere:
+            reason = because(
+                ReasonCode.RECOMMEND_REJECT_FOREIGN, count=len(elsewhere), name=labels[contact]
+            )
+            return Recommended(Recommendation.REJECT, reason)
+        if others:
+            reason = because(ReasonCode.RECOMMEND_REJECT_CONTACTS, count=len(others) + 1)
+            return Recommended(Recommendation.REJECT, reason)
+    mine = {seen.document for seen in own}
+    if others or len(mine) < RECOMMEND_FROM:
+        return None
+    if any(seen.fact.role not in _OF_CONTACTS for seen in own):
+        return None
+    if held and any(
+        held_by(seen.fact.holder, names[contact]) is not HolderKind.SENDER for seen in own
+    ):
+        return None
+    reason = because(ReasonCode.RECOMMEND_CONFIRM, count=len(mine), name=labels[contact])
+    return Recommended(Recommendation.CONFIRM, reason)
 
 
 def _recipient(item: Sighting, persons: Mapping[UserId, Parties]) -> UserId | None:

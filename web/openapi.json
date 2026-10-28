@@ -7123,7 +7123,7 @@
           "identifiers"
         ],
         "summary": "The open identifiers",
-        "description": "Admins only. Open are the identifiers no person has confirmed: those training learned at a contact (`learned`), and those of a contact's kind that confirmed documents with a contact show but no contact has, entered, learned or rejected (`unknown`). A person's value (a user's profile) is never open. The most documents first, then the newest. `q` finds words in the value (with or without spaces), as written or in a contact's name.",
+        "description": "Admins only. Open are the identifiers no person has confirmed: those training learned at a contact (`learned`), and those of a contact's kind that confirmed documents with a contact show but no contact has, entered, learned or rejected (`unknown`). A person's value (a user's profile) is never open. The most documents first, then the newest. `q` finds words in the value (with or without spaces), as written or in a contact's name; `recommended` keeps those whose documents recommend confirming or rejecting them (`recommendation`).",
         "operationId": "open_identifiers_api_v1_identifiers_open_get",
         "parameters": [
           {
@@ -7173,6 +7173,16 @@
                 }
               ],
               "title": "Q"
+            }
+          },
+          {
+            "name": "recommended",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Recommended"
             }
           },
           {
@@ -7603,6 +7613,88 @@
                   "title": "Content Too Large",
                   "status": 413,
                   "detail": "the request body is larger than 1048576 bytes"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/identifiers/open/recommended": {
+      "post": {
+        "tags": [
+          "identifiers"
+        ],
+        "summary": "Confirm the open identifiers their documents recommend",
+        "description": "Admins only. Confirms every open identifier whose `recommendation` is `confirm` (`to_confirm` of the list), each as a decision `confirm` of `POST /decisions`: one that cannot be done says why in its outcome, the others are done all the same. Never rejects. A suggestion for a person's profile needs a session.",
+        "operationId": "confirm_recommended_api_v1_identifiers_open_recommended_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OutcomeOut"
+                  },
+                  "type": "array",
+                  "title": "Response Confirm Recommended Api V1 Identifiers Open Recommended Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
                 }
               }
             }
@@ -30317,6 +30409,17 @@
             ],
             "title": "Last",
             "description": "The date of the newest of them."
+          },
+          "recommendation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecommendationOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What its documents recommend; none where they do not tell."
           }
         },
         "type": "object",
@@ -30407,6 +30510,16 @@
             "type": "object",
             "title": "Kinds",
             "description": "How many match of each kind (not `kind`)."
+          },
+          "recommended": {
+            "type": "integer",
+            "title": "Recommended",
+            "description": "How many have a recommendation, counted as `counts` (not `source`, not `recommended`)."
+          },
+          "to_confirm": {
+            "type": "integer",
+            "title": "To Confirm",
+            "description": "How many of them have one to confirm: what `POST /recommended` confirms (of every source and kind, without `q`)."
           }
         },
         "type": "object",
@@ -30414,7 +30527,9 @@
           "items",
           "total",
           "counts",
-          "kinds"
+          "kinds",
+          "recommended",
+          "to_confirm"
         ],
         "title": "OpenPageOut"
       },
@@ -31527,6 +31642,10 @@
           "identifier_entered",
           "identifier_not_open",
           "identifier_contact_unclear",
+          "recommend_confirm",
+          "recommend_confirm_named",
+          "recommend_reject_foreign",
+          "recommend_reject_contacts",
           "title_pattern_too_long",
           "description_too_long",
           "title_pattern_unknown",
@@ -31643,6 +31762,34 @@
         ],
         "title": "ReasonOut",
         "description": "A reason with its code: a client translates `code` with `params`; the English text\nstands beside it (`reason`). The codes, their parameters and how each parameter is written\nare in the OpenAPI document (`x-reasons`). `text` is a reason as written: by a person, or\nfrom before reasons had codes (its `params` hold the `text`)."
+      },
+      "Recommendation": {
+        "type": "string",
+        "enum": [
+          "confirm",
+          "reject"
+        ],
+        "title": "Recommendation",
+        "description": "What the documents recommend doing with an open identifier (`_recommended`)."
+      },
+      "RecommendationOut": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/Recommendation",
+            "description": "`confirm`: it stands in two or more confirmed documents of its contact, at no other contact, and (of a kind with a holder) is its contact's in each; `reject` (a learned one): a document of its contact gives it someone else, or other contacts hold it as theirs."
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ReasonOut",
+            "description": "Why, with its code."
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "reason"
+        ],
+        "title": "RecommendationOut",
+        "description": "What its confirmed documents recommend doing with an open identifier."
       },
       "RecoveryCodes": {
         "properties": {
@@ -37246,6 +37393,21 @@
     },
     "identifier_contact_unclear": {
       "value": "text"
+    },
+    "recommend_confirm": {
+      "count": "number",
+      "name": "text"
+    },
+    "recommend_confirm_named": {
+      "count": "number",
+      "name": "text"
+    },
+    "recommend_reject_foreign": {
+      "count": "number",
+      "name": "text"
+    },
+    "recommend_reject_contacts": {
+      "count": "number"
     },
     "title_pattern_too_long": {
       "max": "number"

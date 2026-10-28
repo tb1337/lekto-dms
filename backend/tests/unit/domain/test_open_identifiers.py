@@ -1,10 +1,12 @@
 """The open identifiers: learned at a contact, or standing in confirmed documents at no contact."""
 
+from dataclasses import replace
 from datetime import date
 
 from lekto.core.domain.document_facts import (
     DocumentFact,
     FactOrigin,
+    FactRole,
     Holder,
     HolderKind,
     HolderSource,
@@ -15,11 +17,13 @@ from lekto.core.domain.ids import ContactId, DocumentId, UserId, new_id
 from lekto.core.domain.master_data import Contact
 from lekto.core.domain.open_identifiers import (
     OpenSource,
+    Recommendation,
     Sighting,
     excerpt,
     open_identifiers,
 )
 from lekto.core.domain.profiles import Person
+from lekto.core.domain.reasons import ReasonCode
 from tests.builders import NOW
 
 IBAN = (IdentifierKind.IBAN, "DE02120300000000202051")
@@ -203,3 +207,104 @@ def test_an_excerpt_shows_the_text_around_on_one_line() -> None:
     assert short.before.startswith("…") and short.after.endswith("…")
     assert short.match == "DE312456789"
     assert len(short.before) <= 21 and len(short.after) <= 21
+
+
+# --- recommendations (Tobi, 29.10.2026) ---------------------------------------------------------
+
+SENDER = Holder(HolderKind.SENDER, HolderSource.RULE)
+THIRD = Holder(HolderKind.THIRD_PARTY, HolderSource.RULE)
+
+
+def advice(item: object) -> tuple[Recommendation, ReasonCode] | None:
+    recommended = item.recommended  # type: ignore[attr-defined]
+    return None if recommended is None else (recommended.action, recommended.reason.code)
+
+
+def test_one_in_two_documents_of_its_contact_alone_is_recommended_to_confirm() -> None:
+    utility = Contact.create(name="Stadtwerke", now=NOW)
+    utility.set_learned([Identifier(*CUSTOMER, IdentifierSource.LEARNED)])
+    (one,) = open_identifiers([utility], [seen(utility.id, CUSTOMER, 1)])
+    assert advice(one) is None  # one document tells too little
+    (two,) = open_identifiers(
+        [utility], [seen(utility.id, CUSTOMER, 1), seen(utility.id, CUSTOMER, 2)]
+    )
+    assert advice(two) == (Recommendation.CONFIRM, ReasonCode.RECOMMEND_CONFIRM)
+    assert two.recommended is not None and two.recommended.reason.params == {
+        "count": 2,
+        "name": "Stadtwerke",
+    }
+
+
+def test_a_number_of_a_kind_with_a_holder_needs_its_contact_s_each_time() -> None:
+    utility = Contact.create(name="Stadtwerke", now=NOW)
+    unread = [seen(utility.id, IBAN, 1), seen(utility.id, IBAN, 2)]  # read before holders
+    assert advice(open_identifiers([utility], unread)[0]) is None
+    own = [seen(utility.id, IBAN, 1, holder=SENDER), seen(utility.id, IBAN, 2, holder=SENDER)]
+    assert advice(open_identifiers([utility], own)[0]) == (
+        Recommendation.CONFIRM,
+        ReasonCode.RECOMMEND_CONFIRM,
+    )
+
+
+def test_a_learned_one_someone_else_holds_is_recommended_to_reject() -> None:
+    bank = Contact.create(name="Bank", now=NOW)
+    bank.set_learned([Identifier(*IBAN, IdentifierSource.LEARNED)])
+    payees = [seen(bank.id, IBAN, day, holder=THIRD) for day in (1, 2, 3)]
+    (item,) = open_identifiers([bank], payees)
+    assert advice(item) == (Recommendation.REJECT, ReasonCode.RECOMMEND_REJECT_FOREIGN)
+    assert item.recommended is not None and item.recommended.reason.params["count"] == 3
+
+
+def test_one_other_contacts_hold_as_theirs_is_recommended_to_reject() -> None:
+    shop, other = (Contact.create(name=name, now=NOW) for name in ("Versandhaus", "Portal"))
+    shop.set_learned([Identifier(*VAT, IdentifierSource.LEARNED)])
+    sightings = [
+        seen(shop.id, VAT, 1, holder=SENDER),
+        seen(shop.id, VAT, 2, holder=SENDER),
+        seen(other.id, VAT, 3, holder=SENDER),
+    ]
+    (item,) = open_identifiers([shop, other], sightings)
+    assert advice(item) == (Recommendation.REJECT, ReasonCode.RECOMMEND_REJECT_CONTACTS)
+
+
+def test_a_payee_on_another_s_statement_does_not_count_against_it() -> None:
+    utility, bank = (Contact.create(name=name, now=NOW) for name in ("Stadtwerke", "Bank"))
+    utility.set_learned([Identifier(*IBAN, IdentifierSource.LEARNED)])
+    sightings = [
+        seen(utility.id, IBAN, 1, holder=SENDER),
+        seen(utility.id, IBAN, 2, holder=SENDER),
+        seen(bank.id, IBAN, 3, holder=THIRD),  # a booking on the bank's statement
+    ]
+    (item,) = open_identifiers([utility, bank], sightings)
+    assert advice(item) == (Recommendation.CONFIRM, ReasonCode.RECOMMEND_CONFIRM)
+
+
+def test_no_recommendation_for_a_reference_or_one_of_several_contacts() -> None:
+    utility, bank = (Contact.create(name=name, now=NOW) for name in ("Stadtwerke", "Bank"))
+    referred = [
+        seen(utility.id, CUSTOMER, 1),
+        Sighting(
+            DocumentId(new_id()),
+            utility.id,
+            date(2026, 10, 2),
+            replace(fact(CUSTOMER), role=FactRole.REFERS),
+        ),
+    ]
+    assert advice(open_identifiers([utility], referred)[0]) is None
+    shared = [
+        seen(utility.id, CUSTOMER, 1),
+        seen(utility.id, CUSTOMER, 2),
+        seen(bank.id, CUSTOMER, 3),
+    ]
+    (unknown,) = open_identifiers([utility, bank], shared)
+    assert (unknown.source, advice(unknown)) == (OpenSource.UNKNOWN, None)
+
+
+def test_a_suggestion_two_documents_name_is_recommended() -> None:
+    utility, bank = (Contact.create(name=name, now=NOW) for name in ("Stadtwerke", "Bank"))
+    payee = Holder(HolderKind.SENDER, HolderSource.RULE, "Stadtwerke")
+    (item,) = open_identifiers([utility, bank], [seen(bank.id, IBAN, 3, holder=payee)])
+    assert (item.source, advice(item)) == (OpenSource.SUGGESTED, None)
+    twice = [seen(bank.id, IBAN, 3, holder=payee), seen(bank.id, IBAN, 4, holder=payee)]
+    (item,) = open_identifiers([utility, bank], twice)
+    assert advice(item) == (Recommendation.CONFIRM, ReasonCode.RECOMMEND_CONFIRM_NAMED)

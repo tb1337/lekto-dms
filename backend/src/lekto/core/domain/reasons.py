@@ -359,6 +359,10 @@ class ReasonCode(StrEnum):
     IDENTIFIER_ENTERED = "identifier_entered"
     IDENTIFIER_NOT_OPEN = "identifier_not_open"
     IDENTIFIER_CONTACT_UNCLEAR = "identifier_contact_unclear"
+    RECOMMEND_CONFIRM = "recommend_confirm"
+    RECOMMEND_CONFIRM_NAMED = "recommend_confirm_named"
+    RECOMMEND_REJECT_FOREIGN = "recommend_reject_foreign"
+    RECOMMEND_REJECT_CONTACTS = "recommend_reject_contacts"
     TITLE_PATTERN_TOO_LONG = "title_pattern_too_long"
     DESCRIPTION_TOO_LONG = "description_too_long"
     TITLE_PATTERN_UNKNOWN = "title_pattern_unknown"
@@ -844,6 +848,14 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.IDENTIFIER_TAKEN: "'{value}' is already taken",
     ReasonCode.IDENTIFIER_ENTERED: "'{value}' is entered at the contact by hand",
     ReasonCode.IDENTIFIER_NOT_OPEN: "'{value}' is no longer open",
+    ReasonCode.RECOMMEND_CONFIRM: (
+        "in {count:number} confirmed documents of '{name}', with no other contact"
+    ),
+    ReasonCode.RECOMMEND_CONFIRM_NAMED: "{count:number} documents name '{name}' as its holder",
+    ReasonCode.RECOMMEND_REJECT_FOREIGN: (
+        "in {count:number} documents of '{name}' it is someone else's"
+    ),
+    ReasonCode.RECOMMEND_REJECT_CONTACTS: "in documents of {count:number} contacts",
     ReasonCode.IDENTIFIER_CONTACT_UNCLEAR: (
         "'{value}' stands in documents of several contacts: choose the contact"
     ),

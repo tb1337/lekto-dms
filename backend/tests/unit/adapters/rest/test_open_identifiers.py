@@ -65,6 +65,17 @@ async def test_admins_see_the_open_identifiers(api: Api) -> None:
             "person": None,
             "documents": 2,
             "last": builders.NOW.date().isoformat(),
+            # Two documents of its contact, at no other: confirm it.
+            "recommendation": {
+                "action": "confirm",
+                "reason": {
+                    "code": "recommend_confirm",
+                    "params": {"count": 2, "name": "Stadtwerke"},
+                    "subject": None,
+                    "rule": None,
+                    "field": None,
+                },
+            },
         }
     ]
     assert (page["total"], page["counts"], page["kinds"]) == (
@@ -72,6 +83,8 @@ async def test_admins_see_the_open_identifiers(api: Api) -> None:
         {"learned": 1, "unknown": 1, "suggested": 0},
         {"customer_number": 1},
     )
+    # The VAT ID has no holder yet (read before it had one): no recommendation.
+    assert (page["recommended"], page["to_confirm"]) == (1, 1)
     summary = await api.client.get(f"{URL}/summary", headers=auth(admin))
     assert summary.json() == {"learned": 1, "unknown": 1, "suggested": 0}
 
@@ -116,3 +129,24 @@ async def test_decisions_come_back_one_by_one(api: Api) -> None:
     ]
     empty = await api.client.post(f"{URL}/decisions", json={"decisions": []}, headers=auth(admin))
     assert empty.status_code == 422
+
+
+async def test_the_recommended_are_confirmed_at_once(api: Api) -> None:
+    contact = await seeded(api)
+    admin = await api.admin()
+    only = await api.client.get(URL, params={"recommended": True}, headers=auth(admin))
+    assert [item["value"] for item in only.json()["items"]] == [CUSTOMER[1]]
+    done = await api.client.post(f"{URL}/recommended", headers=auth(admin))
+    assert done.status_code == 200, done.text
+    assert done.json() == [
+        {"kind": "customer_number", "value": CUSTOMER[1], "done": True, "reason": None}
+    ]
+    after = (await api.client.get(URL, headers=auth(admin))).json()
+    assert (after["counts"]["learned"], after["to_confirm"]) == (0, 0)
+    async with api.container.unit_of_work() as uow:
+        stored = await uow.contacts.get(contact.id)
+    assert any(item.value == CUSTOMER[1] and item.source.value == "manual"
+               for item in stored.identifiers)  # fmt: skip
+    user = await api.user()
+    refused = await api.client.post(f"{URL}/recommended", headers=auth(user))
+    assert refused.status_code == 403

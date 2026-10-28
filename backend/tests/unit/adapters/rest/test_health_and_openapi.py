@@ -234,6 +234,7 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
         (f"{PREFIX}/identifiers/open/summary", "get"),
         (f"{PREFIX}/identifiers/open/detail", "get"),
         (f"{PREFIX}/identifiers/open/decisions", "post"),
+        (f"{PREFIX}/identifiers/open/recommended", "post"),
         (f"{PREFIX}/documents/stream", "get"),
         (f"{PREFIX}/documents/{{id}}/relations", "get"),
         (f"{PREFIX}/documents/{{id}}/relations", "post"),

@@ -2627,5 +2627,18 @@
 	"bulk_mode": "Auswählen",
 	"bulk_mode_end": "Auswahlmodus beenden",
 	"bulk_select_none": "Keine auswählen",
-	"bulk_tap_hint": "Tippe Dokumente an, um sie auszuwählen."
+	"bulk_tap_hint": "Tippe Dokumente an, um sie auszuwählen.",
+	"open_recommended": "Empfohlen",
+	"open_column_advice": "Empfehlung",
+	"open_advise_confirm": "Übernehmen empfohlen",
+	"open_advise_reject": "Verwerfen empfohlen",
+	"open_advise_none": "Keine Empfehlung",
+	"open_confirm_recommended": "Empfohlene übernehmen ({count})",
+	"open_confirm_recommended_title": "{count} Kennungen übernehmen?",
+	"open_confirm_recommended_hint": "Jede kommt zu ihrem Kontakt, als von Hand eingetragen, wie mit „Übernehmen“ in ihrer Zeile. Empfohlen sind sie, weil sie in mindestens zwei bestätigten Dokumenten ihres Kontakts stehen, bei keinem anderen, und dort jedes Mal ihm gehören. Was nicht geht, wird übersprungen und genannt.",
+	"open_confirm_recommended_do": "{count} übernehmen",
+	"reason_recommend_confirm": "In {count} bestätigten Dokumenten von „{name}“, bei keinem anderen Kontakt.",
+	"reason_recommend_confirm_named": "{count} Dokumente nennen „{name}“ als Inhaber.",
+	"reason_recommend_reject_foreign": "In {count} Dokumenten von „{name}“ gehört sie jemand anderem.",
+	"reason_recommend_reject_contacts": "In Dokumenten von {count} Kontakten."
 }

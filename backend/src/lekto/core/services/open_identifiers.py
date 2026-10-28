@@ -32,6 +32,7 @@ from lekto.core.domain.open_identifiers import (
     Excerpt,
     OpenIdentifier,
     OpenSource,
+    Recommendation,
     Sighting,
     excerpt,
     open_identifiers,
@@ -84,8 +85,10 @@ class DecisionOutcome:
 @dataclass(frozen=True)
 class OpenPage:
     """A page of the open identifiers after the filters (`total` of them), how many are open
-    under each source and of each kind with the other filters, and the names of the contacts
-    and the persons the page names."""
+    under each source and of each kind with the other filters, how many have a recommendation
+    (`recommended`, counted as the sources are), how many of all have one to confirm
+    (`to_confirm`: what `confirm_recommended` confirms), and the names of the contacts and the
+    persons the page names."""
 
     items: list[OpenIdentifier]
     total: int
@@ -93,6 +96,8 @@ class OpenPage:
     kinds: Mapping[IdentifierKind, int]
     names: Mapping[ContactId, str]
     persons: Mapping[UserId, str]
+    recommended: int = 0
+    to_confirm: int = 0
 
 
 @dataclass(frozen=True)
@@ -131,15 +136,17 @@ class OpenIdentifierService:
         source: OpenSource | None = None,
         kind: IdentifierKind | None = None,
         words: str | None = None,
+        recommended: bool = False,
         offset: int = 0,
         limit: int = 50,
     ) -> OpenPage:
         """The open identifiers (admins), the most documents first: of `source` and `kind` if
-        given, and with `words` in the value (with or without spaces), as written or in the
-        name of a contact or a person."""
+        given, with `words` in the value (with or without spaces), as written or in the name
+        of a contact or a person, and with `recommended` only those with a recommendation."""
         async with self._uow() as uow:
             await require_admin(uow, actor, Action.CHANGE_MASTER_DATA)
             found, names, persons = await _open(uow)
+        to_confirm = len([item for item in found if _to_confirm(item)])
         if words is not None and words.strip():
             found = [item for item in found if _matches(item, words, names, persons)]
         counts = Counter(item.source for item in found if kind is None or item.kind is kind)
@@ -149,6 +156,14 @@ class OpenIdentifierService:
             for item in found
             if (source is None or item.source is source) and (kind is None or item.kind is kind)
         ]
+        # Counted as the sources are, without the choice of a source.
+        advised = sum(
+            1
+            for item in found
+            if item.recommended is not None and (kind is None or item.kind is kind)
+        )
+        if recommended:
+            chosen = [item for item in chosen if item.recommended is not None]
         page = chosen[offset : offset + limit]
         shown = {contact for item in page for contact in item.contacts}
         users = {item.person for item in page if item.person is not None}
@@ -159,6 +174,8 @@ class OpenIdentifierService:
             kinds=dict(sorted(kinds.items())),
             names={id: name for id, name in names.items() if id in shown},
             persons={id: name for id, name in persons.items() if id in users},
+            recommended=advised,
+            to_confirm=to_confirm,
         )
 
     async def summary(self, actor: UserId) -> Mapping[OpenSource, int]:
@@ -243,6 +260,25 @@ class OpenIdentifierService:
                 outcomes.append(DecisionOutcome(kind, value))
         return outcomes
 
+    async def confirm_recommended(
+        self, actor: UserId, *, session: bool = True
+    ) -> list[DecisionOutcome]:
+        """Confirm every open identifier whose documents recommend it (admins, Tobi
+        29.10.2026), each as `decide` confirms one: at its contact by hand, a suggested one at
+        the contact or the person its documents name. One that cannot be done says why. Never
+        rejects: a rejected one is never learned again and leaves the list unseen."""
+        async with self._uow() as uow:
+            await require_admin(uow, actor, Action.CHANGE_MASTER_DATA)
+            found, _, _ = await _open(uow)
+        decisions = [
+            OpenDecision(kind=item.kind, value=item.value, action=OpenAction.CONFIRM)
+            for item in found
+            if _to_confirm(item)
+        ]
+        if not decisions:
+            return []
+        return await self.decide(actor, decisions, session=session)
+
     async def _decide(
         self,
         actor: UserId,
@@ -326,6 +362,11 @@ async def _open(
     names = {contact.id: contact.name for contact in contacts}
     found = open_identifiers(contacts, sightings, personal, persons, declined)
     return found, names, {person.user_id: person.display_name or "" for person in persons}
+
+
+def _to_confirm(item: OpenIdentifier) -> bool:
+    """Whether the documents recommend confirming `item`."""
+    return item.recommended is not None and item.recommended.action is Recommendation.CONFIRM
 
 
 def _compact(text: str) -> str:

@@ -14,6 +14,9 @@ from lekto.core.domain.document_facts import (
     FactOrigin,
     FactRole,
     FactState,
+    Holder,
+    HolderKind,
+    HolderSource,
     check_decided,
     check_found,
     merged,
@@ -156,6 +159,9 @@ def _row(document: DocumentId, fact: DocumentFact) -> dict[str, object]:
         "written": fact.written,
         "position": fact.position,
         "state": fact.state.value,
+        "holder": None if fact.holder is None else fact.holder.kind.value,
+        "holder_name": None if fact.holder is None else fact.holder.name,
+        "holder_source": None if fact.holder is None else fact.holder.source.value,
     }
 
 
@@ -168,4 +174,9 @@ def _fact(row: Row[Any]) -> DocumentFact:
         written=row.written,
         position=row.position,
         state=FactState(row.state),
+        holder=(
+            None
+            if row.holder is None
+            else Holder(HolderKind(row.holder), HolderSource(row.holder_source), row.holder_name)
+        ),
     )

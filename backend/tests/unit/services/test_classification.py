@@ -16,7 +16,13 @@ from lekto.adapters.outbound.memory.processing import FAKE_PDF
 from lekto.adapters.outbound.ocrmypdf.hocr import hocr_words
 from lekto.adapters.outbound.regex import RegexPatternMatcher
 from lekto.core.domain.classification import TITLE, FieldCheck, checks_from_json, field_key
-from lekto.core.domain.document_facts import FactOrigin, FactRole
+from lekto.core.domain.document_facts import (
+    FactOrigin,
+    FactRole,
+    Holder,
+    HolderKind,
+    HolderSource,
+)
 from lekto.core.domain.documents import UNSET, Document, DocumentChanges
 from lekto.core.domain.errors import LanguageModelError
 from lekto.core.domain.events import DocumentFiled
@@ -2097,6 +2103,29 @@ async def test_the_model_s_facts_join_the_patterns_whichever_signal_stores_first
     stored_last = Node.SIGNAL_FACTS if model_first else Node.SIGNAL_LLM
     report = log[stored_last].result.output["read_facts"]
     assert isinstance(report, dict) and report["taken"] == 1
+
+
+@pytest.mark.parametrize("model_first", [False, True])
+async def test_the_holder_of_an_iban_stays_whichever_signal_stores_last(
+    world: World, model_first: bool
+) -> None:
+    """The facts signal tells whose an IBAN is (`domain.holders`); the model's signal, which
+    reads no pages, keeps it."""
+    await seed(world)
+    document = await document_with(world, f"{INVOICE}\nUnsere Bankverbindung: IBAN {IBAN}\n")
+    signal = LlmSignal(
+        world.uow, world.object_store, model(proposal(), facts=REFERS), world.clock, policy_with()
+    )
+    facts = FactsSignal(world.uow, world.object_store)
+    steps: list[tuple[Node, Any]] = [(Node.SIGNAL_LLM, signal), (Node.SIGNAL_FACTS, facts)]
+    for node, step in steps if model_first else reversed(steps):
+        await record(
+            world, document, node, await stored_result(world, document, await step.run(document))
+        )
+    async with world.uow() as uow:
+        kept = {fact.value: fact for fact in await uow.document_facts.of_document(document.id)}
+    assert kept[IBAN.replace(" ", "")].holder == Holder(HolderKind.SENDER, HolderSource.RULE)
+    assert kept["R20260815"].holder is None  # an invoice number has none
 
 
 def test_the_facts_signal_does_not_wait_for_the_model() -> None:

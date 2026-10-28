@@ -18,7 +18,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from uuid import UUID
 
@@ -28,10 +28,12 @@ from lekto.core.domain.codes import (
     code_identifiers,
     codes_from_json,
     codes_to_json,
+    giro_code,
 )
 from lekto.core.domain.document_facts import (
     DocumentFact,
     FactState,
+    Holder,
     ReadFact,
 )
 from lekto.core.domain.documents import Document
@@ -43,7 +45,8 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.facts import NAME, Strength, facts_in
-from lekto.core.domain.identifiers import IdentifierKind
+from lekto.core.domain.holders import Parties, holders
+from lekto.core.domain.identifiers import IdentifierKind, Key
 from lekto.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId, UserId
 from lekto.core.domain.json_value import (
     JsonObject,
@@ -54,6 +57,7 @@ from lekto.core.domain.json_value import (
     as_text,
     as_uuid,
 )
+from lekto.core.domain.labels import LaidWord
 from lekto.core.domain.master_data import Contact
 from lekto.core.domain.permissions import Reach, reach_access
 from lekto.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome, ProcessingHistory
@@ -61,6 +65,7 @@ from lekto.core.domain.profiles import Person
 from lekto.core.domain.reasons import Reason, ReasonCode, because, written
 from lekto.core.domain.search import Visibility
 from lekto.core.domain.spaces import Space
+from lekto.core.domain.text_places import TextPlaces
 from lekto.core.domain.verdict import (
     ClassifierView,
     FactsView,
@@ -81,7 +86,7 @@ from lekto.core.services.classification.kept_facts import READ_FACTS, TextFacts,
 from lekto.core.services.classifier import ClassifierService
 from lekto.core.services.indexing import split_sections
 from lekto.core.services.nodes import ARCHIVE_FILE, work_directory
-from lekto.core.services.objects import archive_key, codes_key, load_text
+from lekto.core.services.objects import archive_key, codes_key, load_layout, load_text
 from lekto.core.services.profiles import matching_persons
 
 log = logging.getLogger(__name__)
@@ -134,9 +139,10 @@ class FactsSignal:
     The codes are read from the archive once (`codes`, without a reader none) and kept beside
     the document (`codes_key`); the OCR node drops them with a new archive. A code that cannot
     be read never fails the signal. The identifiers found are the document's facts, with
-    where they come from (the text's patterns, a code) and the role of their kind
-    (`domain.document_facts`), kept with the result together with the facts the language model
-    read as the log has them then (`kept_facts`; a person's decisions stay)."""
+    where they come from (the text's patterns, a code), the role of their kind
+    (`domain.document_facts`) and whose an IBAN or a creditor ID is (`domain.holders`), kept
+    with the result together with the facts the language model read as the log has them then
+    (`kept_facts`; a person's decisions stay)."""
 
     def __init__(
         self, uow: UnitOfWorkFactory, store: ObjectStore, codes: CodeReader | None = None
@@ -172,8 +178,13 @@ class FactsSignal:
                     if _identifier_key(item) not in refused
                 ]
         read = await TextFacts.read(text)
+        facts = read.found(in_codes)
+        pages = await load_layout(self._store, document.id)
+        held = await asyncio.to_thread(
+            facts_holders, text, facts, contacts, persons, codes or (), pages
+        )
         result = NodeResult(outcome=Outcome.OK, model_version=FACTS, output=output)
-        return FactsResult(result, read.found(in_codes), read, frozenset(in_codes))
+        return FactsResult(result, facts, read, frozenset(in_codes), held)
 
     async def codes(self, document: Document) -> tuple[Code, ...] | None:
         """The codes on the archive's pages, read before or now; None without a reader, an
@@ -217,6 +228,7 @@ class FactsResult:
     facts: tuple[DocumentFact, ...]
     text: TextFacts
     in_codes: frozenset[tuple[IdentifierKind, str]] = frozenset()
+    holders: Mapping[Key, Holder] = field(default_factory=dict)
 
     @property
     def output(self) -> JsonObject:
@@ -225,10 +237,42 @@ class FactsResult:
     async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
         log = await uow.processing_log.list_for(document.id)
         read = model_facts(ProcessingHistory(log).signals())
-        report = await keep_facts(uow, document.id, self.text, read, in_codes=self.in_codes)
+        report = await keep_facts(
+            uow, document.id, self.text, read, in_codes=self.in_codes, holders=self.holders
+        )
         if report is None:
             return self.result
         return replace(self.result, output=self.result.output | {READ_FACTS: report})
+
+
+def facts_holders(
+    text: str,
+    facts: Iterable[DocumentFact],
+    contacts: Sequence[Contact],
+    persons: Sequence[Person],
+    codes: Sequence[Code],
+    pages: Mapping[int, Sequence[LaidWord]],
+) -> dict[Key, Holder]:
+    """Whose the IBANs and creditor IDs of `facts` are (`domain.holders`): the persons by their
+    names and numbers, the contacts by their names and aliases, a GiroCode by its payee, how
+    far down its page a number stands from the words of the parsed text (`pages`)."""
+    parties = Parties(
+        [name for person in persons for name in (person.display_name or "", *person.aliases)],
+        [item.key for person in persons for item in person.identifiers],
+        [name for contact in contacts for name in (contact.name, *contact.aliases)],
+    )
+    places = TextPlaces(text, pages) if pages else None
+
+    def top(start: int, end: int) -> float | None:
+        found = places.locations(start, end) if places is not None else ()
+        return found[0].boxes[0].y if found and found[0].boxes else None
+
+    giro = {
+        (IdentifierKind.IBAN, transfer.iban): transfer.name
+        for transfer in (giro_code(code.text) for code in codes)
+        if transfer is not None
+    }
+    return holders(text, facts, parties, tops=top, codes=giro)
 
 
 def facts_of(

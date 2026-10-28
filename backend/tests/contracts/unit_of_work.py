@@ -15,6 +15,9 @@ from lekto.core.domain.document_facts import (
     FactOrigin,
     FactRole,
     FactState,
+    Holder,
+    HolderKind,
+    HolderSource,
     role_of,
 )
 from lekto.core.domain.documents import Document, DocumentChanges
@@ -1067,8 +1070,8 @@ class UnitOfWorkContract:
     async def test_document_facts_keep_what_they_are_and_a_person_s_decision(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
-        """A fact keeps its role, origins, as written and position; the facts found again
-        replace those found before, but not what a person decided."""
+        """A fact keeps its role, origins, as written, position and holder; the facts found
+        again replace those found before, but not what a person decided."""
         owner, space = await owner_with_space(uow_factory)
         document = builders.processed(owner, space)
         iban = DocumentFact(
@@ -1078,6 +1081,7 @@ class UnitOfWorkContract:
             origins=frozenset({FactOrigin.PATTERN, FactOrigin.CODE}),
             written="DE02 1203 0000 0000 2020 51",
             position=120,
+            holder=Holder(HolderKind.THIRD_PARTY, HolderSource.RULE, "Stadtwerke Musterstadt"),
         )
         vat = found(IdentifierKind.VAT_ID, "DE312456789", position=40)
         coded = found(IdentifierKind.CUSTOMER_NUMBER, "777", position=None)

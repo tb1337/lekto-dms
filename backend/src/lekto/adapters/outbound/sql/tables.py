@@ -405,6 +405,10 @@ document_facts = Table(
     Column("written", Text, nullable=True),
     Column("position", Integer, nullable=True),
     Column("state", Text, nullable=False, server_default="found"),
+    # Whose an IBAN or a creditor ID is (`document_facts.Holder`): its kind, name and source.
+    Column("holder", Text, nullable=True),
+    Column("holder_name", Text, nullable=True),
+    Column("holder_source", Text, nullable=True),
     Index(None, "kind", "value"),
 )
 

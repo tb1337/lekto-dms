@@ -1,18 +1,20 @@
 """Keeping a document's facts (`domain.document_facts`) from both readers: the patterns and
 codes of `signal_facts`, and the facts with their role the language model read in `signal_llm`
 (`facts-1`). The two signals run side by side, so whichever stores its result merges both: the
-facts signal the model's latest facts from the log, the model's signal the codes already kept.
+facts signal the model's latest facts from the log, the model's signal the codes and the holders
+(`domain.holders`) already kept.
 One lock per document keeps two stores from overwriting each other's half; a person's decisions
 stay either way (`DocumentFactRepository.replace_found`)."""
 
 import asyncio
-from collections.abc import Collection, Iterable
-from dataclasses import dataclass
+from collections.abc import Collection, Iterable, Mapping
+from dataclasses import dataclass, replace
 
 from lekto.core.domain.document_facts import (
     DocumentFact,
     FactOrigin,
     FactRole,
+    Holder,
     ReadFact,
     checked_read,
     found_facts,
@@ -78,13 +80,17 @@ def merged_facts(
     in_codes: Collection[Key],
     read: Iterable[ReadFact] | None,
     personal: Collection[Key],
+    holders: Mapping[Key, Holder] | None = None,
 ) -> tuple[list[DocumentFact], JsonObject | None]:
-    """The facts of the patterns and codes, with those the model read that pass their check
-    (`checked_read`: of the kinds and roles it was asked for, none of a person's), and the
-    report of the model's facts (None without them)."""
-    found = text.found(in_codes)
+    """The facts of the patterns and codes, each with its holder of `holders`, with those the
+    model read that pass their check (`checked_read`: of the kinds and roles it was asked for,
+    none of a person's), and the report of the model's facts (None without them)."""
+    found = [
+        replace(fact, holder=held) if (held := (holders or {}).get(fact.key)) else fact
+        for fact in text.found(in_codes)
+    ]
     if read is None:
-        return list(found), None
+        return found, None
     checked = [
         (
             fact,
@@ -111,12 +117,14 @@ async def keep_facts(
     read: Iterable[ReadFact] | None,
     *,
     in_codes: Collection[Key] | None = None,
+    holders: Mapping[Key, Holder] | None = None,
 ) -> JsonObject | None:
     """Keep the document's facts in `uow` (`merged_facts`): `in_codes` the identifiers of its
-    codes (None: those kept already, the model's signal reads no codes). The users' numbers
-    and the person's kinds in the text are a person's. Returns the report of the model's facts."""
+    codes, `holders` whose its numbers are (None: those kept already, the model's signal reads
+    neither codes nor pages). The users' numbers and the person's kinds in the text are a
+    person's. Returns the report of the model's facts."""
     await uow.lock(facts_lock(document))
-    return await refresh_facts(uow, document, text, read, in_codes=in_codes)
+    return await refresh_facts(uow, document, text, read, in_codes=in_codes, holders=holders)
 
 
 async def refresh_facts(
@@ -126,13 +134,17 @@ async def refresh_facts(
     read: Iterable[ReadFact] | None,
     *,
     in_codes: Collection[Key] | None = None,
+    holders: Mapping[Key, Holder] | None = None,
 ) -> JsonObject | None:
     """`keep_facts` in a unit that holds the document's lock (`facts_lock`) already."""
-    if in_codes is None:
+    if in_codes is None or holders is None:
         kept = await uow.document_facts.of_document(document)
-        in_codes = {fact.key for fact in kept if FactOrigin.CODE in fact.origins}
+        if in_codes is None:
+            in_codes = {fact.key for fact in kept if FactOrigin.CODE in fact.origins}
+        if holders is None:
+            holders = {fact.key: fact.holder for fact in kept if fact.holder is not None}
     personal = {key for key in text.in_text if TYPES[key[0]].for_persons}
     personal |= await person_identifiers(uow)
-    facts, report = merged_facts(text, in_codes, read, personal)
+    facts, report = merged_facts(text, in_codes, read, personal, holders)
     await uow.document_facts.replace_found(document, facts)
     return report

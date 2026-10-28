@@ -17,13 +17,18 @@ class BulkActionIn(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
         json_schema_extra={
-            "examples": [{"kind": "add_tags", "tag_ids": ["01a1828b-ef26-720c-9e95-ab5d2f4396cf"]}]
+            "examples": [
+                {"kind": "change_tags", "add_tag_ids": ["01a1828b-ef26-720c-9e95-ab5d2f4396cf"]}
+            ]
         },
     )
 
     kind: BulkKind
-    tag_ids: list[UUID] = Field(
-        default_factory=list, description="`add_tags`, `remove_tags`: the tags.", max_length=50
+    add_tag_ids: list[UUID] = Field(
+        default_factory=list, description="`change_tags`: the tags to add.", max_length=50
+    )
+    remove_tag_ids: list[UUID] = Field(
+        default_factory=list, description="`change_tags`: the tags to remove.", max_length=50
     )
     contact_id: UUID | None = Field(default=None, description="`set_contact`; none: clear it.")
     document_type_id: UUID | None = Field(
@@ -38,7 +43,8 @@ class BulkActionIn(BaseModel):
     def action(self) -> BulkAction:
         return BulkAction(
             kind=self.kind,
-            tags=frozenset(TagId(id) for id in self.tag_ids),
+            add=frozenset(TagId(id) for id in self.add_tag_ids),
+            remove=frozenset(TagId(id) for id in self.remove_tag_ids),
             contact=None if self.contact_id is None else ContactId(self.contact_id),
             document_type=(
                 None if self.document_type_id is None else DocumentTypeId(self.document_type_id)

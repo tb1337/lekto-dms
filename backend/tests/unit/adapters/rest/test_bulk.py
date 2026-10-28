@@ -17,7 +17,7 @@ async def test_tags_are_added_to_the_documents_of_a_filter_and_the_progress_foll
     await upload(api, auth(other), content=unique_pdf("other"))
 
     response = await api.client.post(
-        BULK, json={"action": {"kind": "add_tags", "tag_ids": [tax["id"]]}}, headers=o
+        BULK, json={"action": {"kind": "change_tags", "add_tag_ids": [tax["id"]]}}, headers=o
     )
     assert response.status_code == 202, response.text
     assert (response.json()["status"], response.json()["total"]) == ("queued", 2)
@@ -27,7 +27,7 @@ async def test_tags_are_added_to_the_documents_of_a_filter_and_the_progress_foll
     assert progress.status_code == 200, progress.text
     body = progress.json()
     assert (body["kind"], body["status"], body["done"], body["changed"]) == (
-        "add_tags",
+        "change_tags",
         "done",
         2,
         2,
@@ -70,7 +70,9 @@ async def test_a_bulk_request_is_checked(api: Api) -> None:
         response = await api.client.post(BULK, params=params, json=body, headers=o)
         assert response.status_code == status, response.text
 
-    await refused({}, {"action": {"kind": "add_tags"}})  # which tags?
+    await refused({}, {"action": {"kind": "change_tags"}})  # which tags?
+    same = {"kind": "change_tags", "add_tag_ids": [mine], "remove_tag_ids": [mine]}
+    await refused({}, {"action": same})
     await refused({}, {"action": {"kind": "move"}})  # where to?
     await refused({}, {"action": {"kind": "reprocess", "from_node": "receive"}})
     await refused({"q": "Rechnung"}, {"document_ids": [mine], "action": {"kind": "confirm"}})

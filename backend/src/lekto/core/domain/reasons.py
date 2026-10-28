@@ -780,7 +780,7 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ),
     ReasonCode.SKIP_CHANGED_MEANWHILE: "changed meanwhile; not applied",
     ReasonCode.SKIP_NOT_AVAILABLE: "not available",
-    ReasonCode.BULK_TOO_MANY: "at most {max} documents at once",
+    ReasonCode.BULK_TOO_MANY: "at most {max:number} documents at once",
     ReasonCode.NOT_IBAN: "'{value}' is not a valid IBAN",
     ReasonCode.NOT_VAT_ID: "'{value}' is not a VAT number",
     ReasonCode.FACT_KIND_UNKNOWN: "'{kind}' is no kind of fact Lekto knows",

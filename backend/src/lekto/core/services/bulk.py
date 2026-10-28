@@ -267,10 +267,10 @@ class BulkService:
 def _already(action: BulkAction, document: Document) -> bool:
     """Whether `document` is as `action` wants it (nothing to do)."""
     match action.kind:
-        case BulkKind.ADD_TAGS:
-            return action.tags <= frozenset(document.tag_ids)
-        case BulkKind.REMOVE_TAGS:
-            return not action.tags & document.tag_ids
+        case BulkKind.CHANGE_TAGS:
+            return (
+                action.add <= frozenset(document.tag_ids) and not action.remove & document.tag_ids
+            )
         case BulkKind.SET_CONTACT:
             return document.contact_id == action.contact
         case BulkKind.SET_DOCUMENT_TYPE:
@@ -287,10 +287,10 @@ def _already(action: BulkAction, document: Document) -> bool:
 
 def _changes(action: BulkAction, document: Document) -> DocumentChanges:
     match action.kind:
-        case BulkKind.ADD_TAGS:
-            return DocumentChanges(tag_ids=frozenset(document.tag_ids) | action.tags)
-        case BulkKind.REMOVE_TAGS:
-            return DocumentChanges(tag_ids=frozenset(document.tag_ids) - action.tags)
+        case BulkKind.CHANGE_TAGS:
+            return DocumentChanges(
+                tag_ids=(frozenset(document.tag_ids) | action.add) - action.remove
+            )
         case BulkKind.SET_CONTACT:
             return DocumentChanges(contact_id=action.contact)
         case BulkKind.SET_DOCUMENT_TYPE:

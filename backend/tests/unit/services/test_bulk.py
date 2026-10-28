@@ -94,7 +94,7 @@ async def test_tags_are_added_where_missing_and_the_others_are_skipped_with_why(
     operation = await bulk_service.start(
         owner.id,
         Selection(ids=(first.id, tagged.id, read_only.id, busy.id, gone)),
-        BulkAction(BulkKind.ADD_TAGS, tags=frozenset({tax.id})),
+        BulkAction(BulkKind.CHANGE_TAGS, add=frozenset({tax.id})),
     )
     assert operation.status is BulkStatus.QUEUED
     assert await builders.drain(bulk_service) == 1
@@ -132,7 +132,7 @@ async def test_tags_are_removed_and_contact_type_and_topic_set_or_cleared(world:
     bulk_service = service(r)
 
     for action in (
-        BulkAction(BulkKind.REMOVE_TAGS, tags=frozenset({tax.id})),
+        BulkAction(BulkKind.CHANGE_TAGS, add=frozenset({keep.id}), remove=frozenset({tax.id})),
         BulkAction(BulkKind.SET_CONTACT, contact=None),
     ):
         await bulk_service.start(owner.id, ids(document), action)
@@ -250,7 +250,7 @@ async def test_the_job_hands_back_after_a_batch_and_continues(
     bulk_service = service(r)
 
     operation = await bulk_service.start(
-        owner.id, ids(*documents), BulkAction(BulkKind.ADD_TAGS, tags=frozenset({tax.id}))
+        owner.id, ids(*documents), BulkAction(BulkKind.CHANGE_TAGS, add=frozenset({tax.id}))
     )
 
     assert await builders.drain(bulk_service) == 3

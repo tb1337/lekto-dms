@@ -38,8 +38,7 @@ MAX_IDS = 500
 
 
 class BulkKind(StrEnum):
-    ADD_TAGS = "add_tags"
-    REMOVE_TAGS = "remove_tags"
+    CHANGE_TAGS = "change_tags"
     SET_CONTACT = "set_contact"
     SET_DOCUMENT_TYPE = "set_document_type"
     SET_TOPIC = "set_topic"
@@ -49,17 +48,17 @@ class BulkKind(StrEnum):
     DELETE = "delete"
 
 
-TAG_KINDS = frozenset({BulkKind.ADD_TAGS, BulkKind.REMOVE_TAGS})
 SET_KINDS = frozenset({BulkKind.SET_CONTACT, BulkKind.SET_DOCUMENT_TYPE, BulkKind.SET_TOPIC})
 
 
 @dataclass(frozen=True)
 class BulkAction:
-    """What to do to each document: `tags` to add or remove; a contact, type or topic to set
-    (None: to clear); the space to move into; the node to process again from."""
+    """What to do to each document: the tags to `add` and to `remove`; a contact, type or topic
+    to set (None: to clear); the space to move into; the node to process again from."""
 
     kind: BulkKind
-    tags: frozenset[TagId] = frozenset()
+    add: frozenset[TagId] = frozenset()
+    remove: frozenset[TagId] = frozenset()
     contact: ContactId | None = None
     document_type: DocumentTypeId | None = None
     topic: TagId | None = None
@@ -67,18 +66,22 @@ class BulkAction:
     node: Node | None = None
 
     def __post_init__(self) -> None:
-        if self.kind in TAG_KINDS and not self.tags:
+        if self.kind is BulkKind.CHANGE_TAGS and not (self.add or self.remove):
             raise ValidationError("name the tags to add or remove")
+        if self.add & self.remove:
+            raise ValidationError("a tag is both added and removed")
         if self.kind is BulkKind.MOVE and self.space is None:
             raise ValidationError("name the space to move into")
         if self.kind is BulkKind.REPROCESS and (self.node is None or self.node is Node.RECEIVE):
             raise ValidationError("name the step to process again from")
 
     def to_json(self) -> JsonObject:
-        tags: list[JsonValue] = [str(tag) for tag in sorted(self.tags)]
+        add: list[JsonValue] = [str(tag) for tag in sorted(self.add)]
+        remove: list[JsonValue] = [str(tag) for tag in sorted(self.remove)]
         return {
             "kind": self.kind.value,
-            "tags": tags,
+            "add": add,
+            "remove": remove,
             "contact": None if self.contact is None else str(self.contact),
             "document_type": None if self.document_type is None else str(self.document_type),
             "topic": None if self.topic is None else str(self.topic),
@@ -101,7 +104,8 @@ class BulkAction:
         node = as_text(data.get("node"))
         return cls(
             kind=BulkKind(str(data.get("kind"))),
-            tags=frozenset(TagId(UUID(str(tag))) for tag in as_list(data.get("tags"))),
+            add=frozenset(TagId(UUID(str(tag))) for tag in as_list(data.get("add"))),
+            remove=frozenset(TagId(UUID(str(tag))) for tag in as_list(data.get("remove"))),
             contact=None if contact is None else ContactId(contact),
             document_type=None if document_type is None else DocumentTypeId(document_type),
             topic=None if topic is None else TagId(topic),

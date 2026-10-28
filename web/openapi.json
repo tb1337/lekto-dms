@@ -22270,15 +22270,25 @@
           "kind": {
             "$ref": "#/components/schemas/BulkKind"
           },
-          "tag_ids": {
+          "add_tag_ids": {
             "items": {
               "type": "string",
               "format": "uuid"
             },
             "type": "array",
             "maxItems": 50,
-            "title": "Tag Ids",
-            "description": "`add_tags`, `remove_tags`: the tags."
+            "title": "Add Tag Ids",
+            "description": "`change_tags`: the tags to add."
+          },
+          "remove_tag_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Remove Tag Ids",
+            "description": "`change_tags`: the tags to remove."
           },
           "contact_id": {
             "anyOf": [
@@ -22352,18 +22362,17 @@
         "title": "BulkActionIn",
         "examples": [
           {
-            "kind": "add_tags",
-            "tag_ids": [
+            "add_tag_ids": [
               "01a1828b-ef26-720c-9e95-ab5d2f4396cf"
-            ]
+            ],
+            "kind": "change_tags"
           }
         ]
       },
       "BulkKind": {
         "type": "string",
         "enum": [
-          "add_tags",
-          "remove_tags",
+          "change_tags",
           "set_contact",
           "set_document_type",
           "set_topic",
@@ -37115,7 +37124,7 @@
     "skip_changed_meanwhile": {},
     "skip_not_available": {},
     "bulk_too_many": {
-      "max": "text"
+      "max": "number"
     },
     "not_iban": {
       "value": "text"

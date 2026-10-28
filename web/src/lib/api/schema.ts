@@ -3026,19 +3026,24 @@ export interface components {
 		/**
 		 * BulkActionIn
 		 * @example {
-		 *       "kind": "add_tags",
-		 *       "tag_ids": [
+		 *       "add_tag_ids": [
 		 *         "01a1828b-ef26-720c-9e95-ab5d2f4396cf"
-		 *       ]
+		 *       ],
+		 *       "kind": "change_tags"
 		 *     }
 		 */
 		BulkActionIn: {
 			kind: components['schemas']['BulkKind'];
 			/**
-			 * Tag Ids
-			 * @description `add_tags`, `remove_tags`: the tags.
+			 * Add Tag Ids
+			 * @description `change_tags`: the tags to add.
 			 */
-			tag_ids?: string[];
+			add_tag_ids?: string[];
+			/**
+			 * Remove Tag Ids
+			 * @description `change_tags`: the tags to remove.
+			 */
+			remove_tag_ids?: string[];
 			/**
 			 * Contact Id
 			 * @description `set_contact`; none: clear it.
@@ -3067,8 +3072,7 @@ export interface components {
 		 * @enum {string}
 		 */
 		BulkKind:
-			| 'add_tags'
-			| 'remove_tags'
+			| 'change_tags'
 			| 'set_contact'
 			| 'set_document_type'
 			| 'set_topic'

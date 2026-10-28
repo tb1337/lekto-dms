@@ -2039,7 +2039,7 @@ class UnitOfWorkContract:
         tags = frozenset({TagId(new_id())})
         operation = BulkOperation.create(
             user_id=owner.id,
-            action=BulkAction(kind=BulkKind.ADD_TAGS, tags=tags),
+            action=BulkAction(kind=BulkKind.CHANGE_TAGS, add=tags),
             documents=documents,
             now=NOW,
         )
@@ -2049,7 +2049,7 @@ class UnitOfWorkContract:
         async with uow_factory() as uow:
             stored = await uow.bulk_operations.get(operation.id)
             assert (stored.action, stored.documents, stored.status) == (
-                BulkAction(kind=BulkKind.ADD_TAGS, tags=tags),
+                BulkAction(kind=BulkKind.CHANGE_TAGS, add=tags),
                 documents,
                 BulkStatus.QUEUED,
             )

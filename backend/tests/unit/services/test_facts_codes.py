@@ -1,6 +1,6 @@
 """The codes on a document's pages in the facts: read once from the archive and kept, their
 identifiers and payee as evidence, the identifiers a document shows kept for it, and reading the
-facts of documents from before (`read-codes`)."""
+facts of documents from before (`read-facts`)."""
 
 from pathlib import Path
 

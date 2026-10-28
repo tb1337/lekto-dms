@@ -405,7 +405,7 @@ async def test_only_admins_have_every_text_read_again(world: World) -> None:
 
 
 async def test_only_admins_queue_the_maintenance_over_every_document(world: World) -> None:
-    """The page "System", tab "Maintenance": relate, render-pages and read-codes as an
+    """The page "System", tab "Maintenance": relate, render-pages and read-facts as an
     admin asks; a user may not."""
     owner, document = await receive(world)
     await world.drain()
@@ -419,14 +419,14 @@ async def test_only_admins_queue_the_maintenance_over_every_document(world: Worl
     for request in (
         pipeline.request_relate,
         pipeline.request_render_pages,
-        pipeline.request_read_codes,
+        pipeline.request_read_facts,
     ):
         with pytest.raises(PermissionDeniedError):
             await request(owner.id)
     assert await pipeline.request_relate(admin.id) == 1
     assert await pipeline.request_relate(admin.id) == 0  # queued already
     assert await pipeline.request_render_pages(admin.id) == 1
-    assert await pipeline.request_read_codes(admin.id) == 0  # no code reader in this world
+    assert await pipeline.request_read_facts(admin.id) == 0  # no code reader in this world
     kinds = sorted(
         job.kind for job in world.database.jobs.values() if job.status is JobStatus.QUEUED
     )

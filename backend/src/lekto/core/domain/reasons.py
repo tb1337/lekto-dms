@@ -940,7 +940,7 @@ class Action(StrEnum):
     REPARSE_ALL = "reparse_all"
     RELATE_ALL = "relate_all"
     RENDER_PAGES_ALL = "render_pages_all"
-    READ_CODES_ALL = "read_codes_all"
+    READ_FACTS_ALL = "read_facts_all"
     FETCH_LOGOS_ALL = "fetch_logos_all"
     MAKE_GLOBAL_RULES = "make_global_rules"
     CHANGE_GLOBAL_RULES = "change_global_rules"
@@ -974,7 +974,7 @@ ACTIONS: Mapping[Action, str] = {
     Action.REPARSE_ALL: "read the text of all documents again",
     Action.RELATE_ALL: "find the relations of all documents again",
     Action.RENDER_PAGES_ALL: "render the missing page images",
-    Action.READ_CODES_ALL: "read the codes of all documents",
+    Action.READ_FACTS_ALL: "read the facts of all documents again",
     Action.FETCH_LOGOS_ALL: "fetch the missing logos",
     Action.MAKE_GLOBAL_RULES: "make global rules",
     Action.CHANGE_GLOBAL_RULES: "change global rules",

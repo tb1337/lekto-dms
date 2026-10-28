@@ -6,7 +6,7 @@ from tests.unit.adapters.rest.support import Api
 
 PIPELINE = f"{PREFIX}/pipeline"
 REPARSE = f"{PIPELINE}/reparse"
-MAINTENANCE = [f"{PIPELINE}/{name}" for name in ("relate", "render-pages", "read-codes")]
+MAINTENANCE = [f"{PIPELINE}/{name}" for name in ("relate", "render-pages", "read-facts")]
 
 
 async def test_the_graph_lists_every_node_with_its_needs(api: Api) -> None:

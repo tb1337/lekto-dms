@@ -79,7 +79,7 @@ name without asking.
 | Lekto: UI dev | Vite on <http://localhost:5173/ui/> with `/api` proxied to the API, for UI work with hot reload |
 | Lekto: Rebuild search index | `reindex`: rebuild the search index from database and bucket (after a restore, a model change, or to add vectors) |
 | Lekto: Render page images | `render-pages`: queue the page images of documents from before the pages node; the worker renders them |
-| Lekto: Read codes | `read-codes`: queue reading the bar and QR codes of documents from before code reading; the worker reads them and keeps the identifiers each document shows |
+| Lekto: Read facts | `read-facts`: queue reading the facts of every document again; the worker reads the codes on its pages and the identifiers its text shows, with their holders |
 | Lekto: Relate | `relate`: queue finding the relations of every document not being processed (after the update, after marking a relation target); the worker relates them |
 | Lekto: Paperless migration | A new terminal in `migration/` with the variables of `dev.local.env` (`LEKTO_MIGRATION_*`), showing `lekto-migration --help`; the commands are typed there (see below) |
 

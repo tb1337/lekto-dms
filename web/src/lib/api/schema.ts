@@ -1921,7 +1921,7 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
-	'/api/v1/pipeline/read-codes': {
+	'/api/v1/pipeline/read-facts': {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -1931,10 +1931,10 @@ export interface paths {
 		get?: never;
 		put?: never;
 		/**
-		 * Read the codes of every document
-		 * @description Admins only. The worker reads the codes on the pages of every document whose text was read and that is not being processed, and keeps the identifiers it shows with whose an IBAN or a creditor ID is: for documents from before codes and holders were read. A document queued already is not queued twice.
+		 * Read the facts of every document again
+		 * @description Admins only. The worker reads the facts of every document whose text was read and that is not being processed again: the codes on its pages and the identifiers its text shows, with whose an IBAN or a creditor ID is. For documents from before an update that reads facts differently. A document queued already is not queued twice.
 		 */
-		post: operations['read_codes_api_v1_pipeline_read_codes_post'];
+		post: operations['read_facts_api_v1_pipeline_read_facts_post'];
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -4626,7 +4626,7 @@ export interface components {
 			identifiers: components['schemas']['FoundIdentifierOut'][];
 			/**
 			 * Codes
-			 * @description The codes on the pages; null while they are not read (`read-codes`).
+			 * @description The codes on the pages; null while they are not read (`read-facts`).
 			 */
 			codes: components['schemas']['CodeOut'][] | null;
 			/**
@@ -5050,7 +5050,7 @@ export interface components {
 			 * @default false
 			 */
 			kept: boolean;
-			/** @description Whose an IBAN or a creditor ID is; null for other kinds and until the facts signal ran again after 0.8 (`read-codes`). */
+			/** @description Whose an IBAN or a creditor ID is; null for other kinds and until the facts signal ran again after 0.8 (`read-facts`). */
 			holder?: components['schemas']['HolderOut'] | null;
 			/**
 			 * Other Contacts
@@ -23469,7 +23469,7 @@ export interface operations {
 			};
 		};
 	};
-	read_codes_api_v1_pipeline_read_codes_post: {
+	read_facts_api_v1_pipeline_read_facts_post: {
 		parameters: {
 			query?: never;
 			header?: never;

@@ -122,7 +122,7 @@ REPARSE_JOB = "pipeline.reparse"
 """Job kind of reading a document's text again (`PipelineService.reparse`); payload: `NodeJob`
 of the node `parse`."""
 FACTS_JOB = "pipeline.facts"
-"""Job kind of reading a document's facts outside processing (`read-codes`): the codes on its
+"""Job kind of reading a document's facts outside processing (`read-facts`): the codes on its
 pages and the identifiers it shows; payload: document id. Processing and log stay as they are."""
 
 
@@ -759,10 +759,10 @@ class PipelineService:
             await require_admin(uow, actor, Action.RENDER_PAGES_ALL)
         return await self.catch_up(Node.PAGES)
 
-    async def request_read_codes(self, actor: UserId) -> int:
-        """Admins only: `request_facts` (the command `read-codes`)."""
+    async def request_read_facts(self, actor: UserId) -> int:
+        """Admins only: `request_facts` (the command `read-facts`)."""
         async with self._uow() as uow:
-            await require_admin(uow, actor, Action.READ_CODES_ALL)
+            await require_admin(uow, actor, Action.READ_FACTS_ALL)
         return await self.request_facts()
 
     async def request_relate(self, actor: UserId) -> int:
@@ -789,7 +789,7 @@ class PipelineService:
 
     async def request_facts(self) -> int:
         """Queue reading the facts of every document whose text was read and that is not being
-        processed (the command `read-codes`): the codes on its pages and the identifiers it
+        processed (the command `read-facts`): the codes on its pages and the identifiers it
         shows, for documents from before codes were read. Returns how many were queued; one
         queued already is not queued twice."""
         if self._facts is None:

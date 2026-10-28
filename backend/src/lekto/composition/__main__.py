@@ -1,5 +1,5 @@
 """`lekto [--env-file FILE] [check | migrate | check-schema | api | worker | evaluate |
-evaluate-search | reindex | render-pages | read-codes | relate | fetch-logos | reparse |
+evaluate-search | reindex | render-pages | read-facts | relate | fetch-logos | reparse |
 train]`, the command line of Lekto (`[project.scripts]`; also `python -m lekto.composition`).
 
 The settings come from the `LEKTO_` environment variables, in the image from the container's
@@ -35,10 +35,10 @@ meant.
   with progress. The search keeps working meanwhile. Needs `LEKTO_MEILISEARCH_URL`.
 - `render-pages`: queue the page images of every document from before the pages node existed
   (its `pages` node is skipped); the worker renders them.
-- `read-codes`: queue reading the facts of every document with a text: the worker reads the
-  codes on its pages and keeps the identifiers it shows with whose an IBAN or a creditor ID is
-  (for documents from before codes and holders were read, and for telling on how many
-  contacts' documents an identifier stands).
+- `read-facts`: queue reading the facts of every document with a text again: the worker reads
+  the codes on its pages and the identifiers its text shows, with whose an IBAN or a creditor
+  ID is (after an update that reads facts differently, and for telling on how many contacts'
+  documents an identifier stands).
 - `relate`: queue finding the relations of every document not being processed: the worker
   relates it with the documents it refers to and those that refer to it (for documents from
   before the node `relate`, and after a document type became a relation target).
@@ -68,12 +68,12 @@ import structlog
 from lekto.adapters.inbound.evaluation import EvaluationSetError, Run
 from lekto.adapters.outbound.sql import SchemaState
 from lekto.composition.api import run_api
-from lekto.composition.codes import run_read_codes
 from lekto.composition.database import check_schema, migrate_database
 from lekto.composition.endpoints import external_endpoints
 from lekto.composition.env_file import apply_env_file
 from lekto.composition.errors import ConfigurationError
 from lekto.composition.evaluation import run_evaluation
+from lekto.composition.facts import run_read_facts
 from lekto.composition.logging_setup import configure_logging
 from lekto.composition.logos import run_fetch_logos
 from lekto.composition.pages import run_render_pages
@@ -165,7 +165,7 @@ HELP: Mapping[str, str] = {
     "evaluate-search": "compare embedding models on the evaluation set",
     "reindex": "rebuild the search index, in the foreground",
     "render-pages": "queue the page images of documents from before the pages node",
-    "read-codes": "queue reading the codes on the pages of every document",
+    "read-facts": "queue reading the facts of every document again",
     "relate": "queue finding the relations of every document",
     "fetch-logos": "queue fetching the logos of contacts without one",
     "reparse": "queue reading the text of every document again",
@@ -326,7 +326,7 @@ QUEUES: dict[str, Command] = {
     "render-pages": _queue(
         run_render_pages, counted="documents", failed="queueing the page images failed"
     ),
-    "read-codes": _queue(run_read_codes, counted="documents", failed="queueing the facts failed"),
+    "read-facts": _queue(run_read_facts, counted="documents", failed="queueing the facts failed"),
     "relate": _queue(run_relate, counted="documents", failed="queueing the relations failed"),
     "fetch-logos": _queue(run_fetch_logos, counted="contacts", failed="queueing the logos failed"),
     "reparse": _queue(

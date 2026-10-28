@@ -108,7 +108,7 @@ class FoundIdentifierOut(BaseModel):
         default=None,
         description=(
             "Whose an IBAN or a creditor ID is; null for other kinds and until the facts "
-            "signal ran again after 0.8 (`read-codes`)."
+            "signal ran again after 0.8 (`read-facts`)."
         ),
     )
     other_contacts: int | None = Field(
@@ -285,7 +285,7 @@ class FactsOut(BaseModel):
         description="Those of contacts first, then those of none."
     )
     codes: list[CodeOut] | None = Field(
-        description="The codes on the pages; null while they are not read (`read-codes`)."
+        description="The codes on the pages; null while they are not read (`read-facts`)."
     )
     numbers: list[DocumentNumberOut] = Field(
         default_factory=list,

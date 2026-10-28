@@ -917,7 +917,7 @@ what every model learned and how well, oldest first; training on request is for 
    as they are. The search index then takes up the new texts, which embeds every document anew
    (with an embedding service elsewhere this takes a while: choose the time), and the
    classifier is trained on the new texts afterwards (`train`).
-3. 0.2 reads the bar and QR codes on the pages. `lekto read-codes` has
+3. 0.2 reads the bar and QR codes on the pages. `lekto read-facts` (until 0.8 `read-codes`) has
    the worker read them for the documents from before and keep the identifiers each document
    shows (`document_facts`, until 0047 `document_identifiers`), so that the warning when attaching an identifier counts
    every confirmed document. It reads locally and sends nothing out; nodes, lane and metadata
@@ -925,7 +925,7 @@ what every model learned and how well, oldest first; training on request is for 
    for them. Run it once `reparse` is through, which changes the text the identifiers are read
    from.
 4. The node `relate` (issue #145) finds the relations of new documents; documents from before
-   have it skipped. `lekto relate` has the worker find theirs; run it after `read-codes`, and
+   have it skipped. `lekto relate` has the worker find theirs; run it after `read-facts`, and
    again after marking a document type as a relation target.
 
 **After the update to 0.3.** Revisions 0024 to 0029 run at start; then four things:
@@ -1276,7 +1276,7 @@ and why by words alone where the meaning was to take part (`reason` with a code:
   for `R20260815` finds "R-2026-0815"; a person's numbers are no words of the search). The
   reconciliation writes older entries again and keeps their vectors, since the embedded text
   does not change (no document had a topic before layout 5; the facts are not embedded): no
-  embedding calls. A person's decision about a fact, and the facts `read-codes` keeps outside
+  embedding calls. A person's decision about a fact, and the facts `read-facts` keeps outside
   processing, are a change of the document (`document.updated` with the field `facts`): the
   index takes them in at once.
 - **Sorting.** `sort` comes first among Meilisearch's ranking rules, so relevance breaks ties,

@@ -16409,14 +16409,14 @@
         ]
       }
     },
-    "/api/v1/pipeline/read-codes": {
+    "/api/v1/pipeline/read-facts": {
       "post": {
         "tags": [
           "pipeline"
         ],
-        "summary": "Read the codes of every document",
-        "description": "Admins only. The worker reads the codes on the pages of every document whose text was read and that is not being processed, and keeps the identifiers it shows with whose an IBAN or a creditor ID is: for documents from before codes and holders were read. A document queued already is not queued twice.",
-        "operationId": "read_codes_api_v1_pipeline_read_codes_post",
+        "summary": "Read the facts of every document again",
+        "description": "Admins only. The worker reads the facts of every document whose text was read and that is not being processed again: the codes on its pages and the identifiers its text shows, with whose an IBAN or a creditor ID is. For documents from before an update that reads facts differently. A document queued already is not queued twice.",
+        "operationId": "read_facts_api_v1_pipeline_read_facts_post",
         "responses": {
           "202": {
             "description": "Successful Response",
@@ -24677,7 +24677,7 @@
               }
             ],
             "title": "Codes",
-            "description": "The codes on the pages; null while they are not read (`read-codes`)."
+            "description": "The codes on the pages; null while they are not read (`read-facts`)."
           },
           "numbers": {
             "items": {
@@ -25605,7 +25605,7 @@
                 "type": "null"
               }
             ],
-            "description": "Whose an IBAN or a creditor ID is; null for other kinds and until the facts signal ran again after 0.8 (`read-codes`)."
+            "description": "Whose an IBAN or a creditor ID is; null for other kinds and until the facts signal ran again after 0.8 (`read-facts`)."
           },
           "other_contacts": {
             "anyOf": [

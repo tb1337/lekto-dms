@@ -8,7 +8,7 @@ A bank statement shows the payees' IBANs beside its own, and training learned th
 (`.idea/umsetzungsplan.md`, "Inhaber von IBANs und Gläubiger-IDs"). A fact of either kind gets
 whose it is where it stands: `holder` (sender, recipient, third party, unclear), the name the
 document gives the holder and who told it (`holder_source`: the rule or the language model).
-Existing facts have none until their facts are read again (`read-codes`).
+Existing facts have none until their facts are read again (`read-facts`).
 """
 
 from collections.abc import Sequence

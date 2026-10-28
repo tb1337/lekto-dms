@@ -1,5 +1,5 @@
 """`GET /pipeline`: the graph of nodes a document goes through; `POST /pipeline/reparse`,
-`/relate`, `/render-pages`, `/read-codes`: the maintenance over every document."""
+`/relate`, `/render-pages`, `/read-facts`: the maintenance over every document."""
 
 from fastapi import APIRouter
 
@@ -105,17 +105,17 @@ async def render_pages(user: CurrentUser, context: Context) -> QueuedOut:
 
 
 @router.post(
-    "/pipeline/read-codes",
+    "/pipeline/read-facts",
     status_code=202,
-    summary="Read the codes of every document",
+    summary="Read the facts of every document again",
     description=(
-        ADMINS_ONLY + " The worker reads the codes on the pages of every document whose text "
-        "was read and that is not being processed, and keeps the identifiers it shows with "
-        "whose an IBAN or a creditor ID is: for documents from before codes and holders were "
-        "read. A document queued already is not queued twice."
+        ADMINS_ONLY + " The worker reads the facts of every document whose text was read and "
+        "that is not being processed again: the codes on its pages and the identifiers its "
+        "text shows, with whose an IBAN or a creditor ID is. For documents from before an "
+        "update that reads facts differently. A document queued already is not queued twice."
     ),
     response_model=QueuedOut,
     responses=problem_responses(401, 403),
 )
-async def read_codes(user: CurrentUser, context: Context) -> QueuedOut:
-    return QueuedOut(queued=await context.pipeline.request_read_codes(user))
+async def read_facts(user: CurrentUser, context: Context) -> QueuedOut:
+    return QueuedOut(queued=await context.pipeline.request_read_facts(user))

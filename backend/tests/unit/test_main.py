@@ -123,10 +123,10 @@ def test_render_pages_queues_the_documents_without_page_images(
 def test_read_codes_queues_the_documents_to_read_the_facts_of(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["read-codes"]) == 0
+    assert main(["read-facts"]) == 0
 
     events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
-    assert [e["documents"] for e in events if e["event"] == "read-codes queued"] == [0]
+    assert [e["documents"] for e in events if e["event"] == "read-facts queued"] == [0]
 
 
 @pytest.mark.usefixtures("sqlite_instance")

@@ -49,7 +49,7 @@ function routes(expected: Expected[] = []) {
 	return fakeApi({
 		'GET /api/v1/expected': () => expected,
 		'GET /api/v1/jobs/summary': () => JOBS,
-		'GET /api/v1/identifiers/open/summary': () => ({ learned: 31, unknown: 17 })
+		'GET /api/v1/identifiers/open/summary': () => ({ learned: 31, unknown: 17, suggested: 0 })
 	});
 }
 

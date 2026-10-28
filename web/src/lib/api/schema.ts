@@ -6720,6 +6720,8 @@ export interface components {
 			learned: number;
 			/** Unknown */
 			unknown: number;
+			/** Suggested */
+			suggested: number;
 		};
 		/** OpenDecisionIn */
 		OpenDecisionIn: {
@@ -6729,7 +6731,7 @@ export interface components {
 			 * @description Normalised, as the list gives it.
 			 */
 			value: string;
-			/** @description `confirm`: enter it at the contact by hand; `reject`: training does not learn it again, and a learned one no longer counts. */
+			/** @description `confirm`: enter it at the contact by hand, or a person's suggestion in their profile; `reject`: training does not learn it again, and a learned one no longer counts; a person's suggestion is noted as declined in their profile. A person's suggestion needs a session. */
 			action: components['schemas']['OpenAction'];
 			/**
 			 * Contact Id
@@ -6783,10 +6785,12 @@ export interface components {
 			 * @description As the newest of its documents writes it.
 			 */
 			written: string;
-			/** @description `learned`: training found it at `contacts[0]`; `unknown`: it stands in confirmed documents but at no contact, `contacts` are their contacts, the one with most documents first. */
+			/** @description `learned`: training found it at `contacts[0]`; `unknown`: it stands in confirmed documents but at no contact, `contacts` are their contacts, the one with most documents first; `suggested`: an IBAN or a creditor ID its documents name as another's, the contact's in `contacts[0]` or the person's in `person`. */
 			source: components['schemas']['OpenSource'];
 			/** Contacts */
 			contacts: components['schemas']['OpenContactOut'][];
+			/** @description A suggestion for this person's profile. */
+			person?: components['schemas']['OpenPersonOut'] | null;
 			/**
 			 * Documents
 			 * @description Confirmed documents that show it.
@@ -6840,11 +6844,25 @@ export interface components {
 				[key: string]: number;
 			};
 		};
+		/** OpenPersonOut */
+		OpenPersonOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 * @description The user.
+			 */
+			id: string;
+			/**
+			 * Name
+			 * @description Their display name.
+			 */
+			name: string;
+		};
 		/**
 		 * OpenSource
 		 * @enum {string}
 		 */
-		OpenSource: 'learned' | 'unknown';
+		OpenSource: 'learned' | 'unknown' | 'suggested';
 		/**
 		 * Operator
 		 * @enum {string}

@@ -18,15 +18,17 @@
 		decideOne,
 		type OpenAction,
 		type OpenDetail,
-		type OpenIdentifier
+		type OpenIdentifier,
+		targetName
 	} from '#lib/open-identifiers.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
 	// An open identifier opened from the list (web/DESIGN.md, "Lists": the title opens it):
 	// where it is open, where it stands in its newest documents (the text around it, the value
 	// marked), and the decision. A learned one is decided at its contact; for an unknown one the
-	// person picks among the contacts of its documents. "Übernehmen" is the primary action,
-	// "Verwerfen" the second way out at the start of the footer.
+	// person picks among the contacts of its documents; a suggestion names its contact or the
+	// person whose profile takes it. "Übernehmen" is the primary action, "Verwerfen" the second
+	// way out at the start of the footer.
 	let {
 		open = $bindable(false),
 		item,
@@ -68,9 +70,38 @@
 		if (item.source === 'learned') {
 			return m.open_learned_at({ contact: item.contacts[0]?.name ?? '', count: item.documents });
 		}
+		if (item.source === 'suggested') {
+			const one = item.documents === 1;
+			if (item.person) {
+				const person = item.person.name;
+				return one
+					? m.open_suggested_person_one({ person })
+					: m.open_suggested_person({ person, count: item.documents });
+			}
+			const contact = targetName(item);
+			return one
+				? m.open_suggested_contact_one({ contact })
+				: m.open_suggested_contact({ contact, count: item.documents });
+		}
 		return item.documents === 1
 			? m.open_unknown_in_one()
 			: m.open_unknown_in({ count: item.documents });
+	});
+
+	const submitLabel = $derived.by(() => {
+		if (item?.source !== 'suggested') return m.open_confirm();
+		return item.person
+			? m.open_confirm_profile({ person: item.person.name })
+			: m.open_confirm_at({ contact: targetName(item) });
+	});
+
+	const hint = $derived.by(() => {
+		if (!item) return '';
+		if (item.source === 'learned') return m.open_dialog_hint_learned();
+		if (item.source === 'unknown') return m.open_dialog_hint_unknown();
+		return item.person
+			? m.open_dialog_hint_suggested_person()
+			: m.open_dialog_hint_suggested_contact();
 	});
 
 	async function run(action: OpenAction) {
@@ -89,7 +120,7 @@
 	bind:open
 	{title}
 	{description}
-	submitLabel={m.open_confirm()}
+	{submitLabel}
 	disabled={!item}
 	action={() => run('confirm')}
 	alternative={{ label: m.open_reject(), action: () => run('reject') }}
@@ -140,8 +171,6 @@
 				</ul>
 			{/if}
 		</div>
-		<p class="text-meta text-muted-foreground">
-			{item.source === 'learned' ? m.open_dialog_hint_learned() : m.open_dialog_hint_unknown()}
-		</p>
+		<p class="text-meta text-muted-foreground">{hint}</p>
 	{/if}
 </FormDialog>

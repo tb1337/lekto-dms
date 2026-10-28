@@ -28,6 +28,17 @@ const IBAN = {
 	last: '2026-09-30'
 };
 
+const SUGGESTION = {
+	kind: 'iban',
+	value: 'DE89370400440532013000',
+	written: 'DE89 3704 0044 0532 0130 00',
+	source: 'suggested',
+	contacts: [],
+	person: { id: '0199a6c4-0000-7000-8000-0000000000a1', name: 'Max Nord' },
+	documents: 6,
+	last: '2026-10-31'
+};
+
 const fetchMock = vi.fn<(request: Request) => Promise<Response>>();
 let decisions: unknown[] = [];
 
@@ -51,11 +62,14 @@ beforeEach(() => {
 		const url = new URL(request.url);
 		if (request.method === 'GET' && url.pathname === '/api/v1/identifiers/open') {
 			const source = url.searchParams.get('source');
-			const items = [IBAN, CUSTOMER].filter((item) => !source || item.source === source);
+			const items =
+				source === 'suggested'
+					? [SUGGESTION]
+					: [IBAN, CUSTOMER].filter((item) => !source || item.source === source);
 			return json({
 				items,
 				total: items.length,
-				counts: { learned: 1, unknown: 1 },
+				counts: { learned: 1, unknown: 1, suggested: 1 },
 				kinds: { customer_number: 1, iban: 1 }
 			});
 		}
@@ -178,6 +192,31 @@ describe('IdentifiersPanel', () => {
 			expect(
 				within(screen.getByRole('list', { name: m.master_identifiers() })).getAllByRole('listitem')
 			).toHaveLength(1)
+		);
+	});
+
+	it('shows a suggestion for a profile and takes it over there', async () => {
+		const user = userEvent.setup();
+		render(IdentifiersPanel);
+		await screen.findByRole('list', { name: m.master_identifiers() });
+		await user.click(screen.getByRole('button', { name: new RegExp(`^${m.open_suggestions()}`) }));
+		await vi.waitFor(() => expect(screen.getByText(m.open_column_target())).toBeTruthy());
+		const list = screen.getByRole('list', { name: m.master_identifiers() });
+		const [row] = within(list).getAllByRole('listitem');
+		expect(row.textContent).toContain('Max Nord');
+		expect(row.textContent).toContain(m.open_target_profile());
+		expect(row.textContent).toContain(m.open_suggested());
+		await user.click(
+			within(row).getByRole('button', { name: m.open_open({ value: SUGGESTION.written }) })
+		);
+		const dialog = await screen.findByRole('dialog');
+		await user.click(
+			within(dialog).getByRole('button', { name: m.open_confirm_profile({ person: 'Max Nord' }) })
+		);
+		await vi.waitFor(() =>
+			expect(decisions).toEqual([
+				{ kind: 'iban', value: SUGGESTION.value, action: 'confirm', contact_id: null }
+			])
 		);
 	});
 });

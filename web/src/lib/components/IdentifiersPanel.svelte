@@ -27,7 +27,9 @@
 		type OpenDecision,
 		type OpenIdentifier,
 		type OpenPage,
-		openKey
+		openKey,
+		openTotal,
+		targetName
 	} from '#lib/open-identifiers.ts';
 	import { Pager } from '#lib/paging.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -36,8 +38,8 @@
 	import { cn } from '#lib/utils.ts';
 
 	// The tab "Kennungen" of the master data (Tobi, 27.10.2026): the identifiers no person has
-	// confirmed, learned at a contact or standing in confirmed documents at no contact, the most
-	// documents first. Narrowed by where they are open, their kind and the page's search. Rows
+	// confirmed, learned at a contact, standing in confirmed documents at no contact, or
+	// suggested for a contact or a person's profile (Tobi, 28.10.2026), the most documents first. Narrowed by where they are open, their kind and the page's search. Rows
 	// are chosen with their box for "Übernehmen" and "Verwerfen" on many at once (the selection
 	// bar above the list, at the bottom on a phone); the value opens one with where it stands.
 	let { query = '' }: { query?: string } = $props();
@@ -47,7 +49,7 @@
 
 	let source = $state<Source>('');
 	let kind = $state('');
-	let counts = $state<OpenPage['counts']>({ learned: 0, unknown: 0 });
+	let counts = $state<OpenPage['counts']>({ learned: 0, unknown: 0, suggested: 0 });
 	let kinds = $state<OpenPage['kinds']>({});
 	let chosen = $state<Record<string, OpenIdentifier>>({});
 	let busy = $state(false);
@@ -174,16 +176,25 @@
 	}
 
 	function contactText(item: OpenIdentifier): string {
+		if (item.source === 'suggested') return targetName(item);
 		return item.contacts.length === 1
 			? item.contacts[0].name
 			: m.open_contacts_many({ count: formatNumber(item.contacts.length) });
 	}
+
+	function whereText(item: OpenIdentifier): string {
+		return item.person ? m.open_target_profile() : m.open_target_contact();
+	}
 </script>
 
 {#snippet sourceBadge(item: OpenIdentifier)}
-	<Badge variant={item.source === 'learned' ? 'note' : 'muted'}>
-		{item.source === 'learned' ? m.open_learned() : m.open_unknown()}
-	</Badge>
+	{#if item.source === 'suggested'}
+		<Badge variant="primary">{m.open_suggested()}</Badge>
+	{:else}
+		<Badge variant={item.source === 'learned' ? 'note' : 'muted'}>
+			{item.source === 'learned' ? m.open_learned() : m.open_unknown()}
+		</Badge>
+	{/if}
 {/snippet}
 
 {#snippet bar()}
@@ -231,13 +242,14 @@
 			value={source}
 			onchange={show}
 			options={[
-				{
-					value: '',
-					label: m.open_all(),
-					count: formatNumber(counts.learned + counts.unknown)
-				},
+				{ value: '', label: m.open_all(), count: formatNumber(openTotal(counts)) },
 				{ value: 'learned', label: m.open_learned(), count: formatNumber(counts.learned) },
-				{ value: 'unknown', label: m.open_unknown(), count: formatNumber(counts.unknown) }
+				{ value: 'unknown', label: m.open_unknown(), count: formatNumber(counts.unknown) },
+				{
+					value: 'suggested',
+					label: m.open_suggestions(),
+					count: formatNumber(counts.suggested)
+				}
 			]}
 		/>
 		{#if anyKinds || kind}
@@ -265,7 +277,7 @@
 		<Loading />
 	{:else if list.empty}
 		<EmptyNote compact>
-			{counts.learned + counts.unknown === 0 && !query.trim() ? m.open_none() : m.open_none_found()}
+			{openTotal(counts) === 0 && !query.trim() ? m.open_none() : m.open_none_found()}
 		</EmptyNote>
 	{:else}
 		<Card.Root size="flush" class="overflow-hidden">
@@ -284,7 +296,7 @@
 						class="grid flex-1 grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_minmax(0,1.2fr)_6.5rem] gap-3"
 					>
 						<span>{m.open_column_identifier()}</span>
-						<span>{m.open_column_contact()}</span>
+						<span>{source === 'suggested' ? m.open_column_target() : m.open_column_contact()}</span>
 						<span>{m.open_column_documents()}</span>
 						<span>{m.open_source()}</span>
 					</span>
@@ -318,7 +330,9 @@
 									onclick={() => openItem(item)}>{value}</Button
 								>
 								<span class="text-meta text-muted-foreground">
-									{contactText(item)} · {documentsText(item.documents)}
+									{contactText(item)}{item.source === 'suggested' ? ` (${whereText(item)})` : ''} · {documentsText(
+										item.documents
+									)}
 								</span>
 							</div>
 						{:else}
@@ -336,15 +350,20 @@
 									>
 								</div>
 								<div class="flex min-w-0 items-center gap-2">
-									{#if item.contacts.length === 1}
-										<ContactAvatar contact={{ name: item.contacts[0].name, logo: null }} />
+									{#if item.person || item.contacts.length === 1}
+										<ContactAvatar contact={{ name: contactText(item), logo: null }} />
 									{/if}
-									<span
-										class={cn(
-											'truncate text-sm',
-											item.contacts.length > 1 && 'text-muted-foreground'
-										)}>{contactText(item)}</span
-									>
+									<span class="flex min-w-0 flex-col">
+										<span
+											class={cn(
+												'truncate text-sm',
+												item.contacts.length > 1 && 'text-muted-foreground'
+											)}>{contactText(item)}</span
+										>
+										{#if item.source === 'suggested'}
+											<span class="text-xs text-muted-foreground">{whereText(item)}</span>
+										{/if}
+									</span>
 								</div>
 								<div class="flex flex-col">
 									<a

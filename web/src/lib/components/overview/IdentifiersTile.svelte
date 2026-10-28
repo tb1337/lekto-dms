@@ -9,11 +9,11 @@
 	import { Skeleton } from '#lib/components/ui/skeleton/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { formatNumber } from '#lib/i18n.ts';
-	import { type OpenCounts, openCounts } from '#lib/open-identifiers.ts';
+	import { type OpenCounts, openCounts, openTotal } from '#lib/open-identifiers.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
-	// The open identifiers on the overview (admins): how many no person has confirmed, learned
-	// and unknown, and the way to the tab of master data that decides them.
+	// The open identifiers on the overview (admins): how many no person has confirmed, learned,
+	// unknown and suggested, and the way to the tab of master data that decides them.
 	let counts = $state<OpenCounts | null>(null);
 	let problem = $state<string | null>(null);
 
@@ -42,7 +42,7 @@
 	{:else if !counts}
 		<Skeleton class="h-9 w-24" />
 	{:else}
-		<Figure count={counts.learned + counts.unknown} label={m.overview_identifiers_unconfirmed()} />
+		<Figure count={openTotal(counts)} label={m.overview_identifiers_unconfirmed()} />
 		<ul class="flex flex-wrap gap-1.5">
 			<li>
 				<Badge variant="note"
@@ -54,6 +54,13 @@
 					>{m.overview_identifiers_unknown({ count: formatNumber(counts.unknown) })}</Badge
 				>
 			</li>
+			{#if counts.suggested > 0}
+				<li>
+					<Badge variant="primary"
+						>{m.overview_identifiers_suggested({ count: formatNumber(counts.suggested) })}</Badge
+					>
+				</li>
+			{/if}
 		</ul>
 		<p class="text-meta text-muted-foreground">{m.overview_identifiers_hint()}</p>
 	{/if}

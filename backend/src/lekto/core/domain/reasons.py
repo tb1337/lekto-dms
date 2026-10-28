@@ -311,6 +311,7 @@ class ReasonCode(StrEnum):
     SKIP_CHANGED_MEANWHILE = "skip_changed_meanwhile"
     SKIP_NOT_AVAILABLE = "skip_not_available"
     BULK_TOO_MANY = "bulk_too_many"
+    BULK_IDS_AND_FILTER = "bulk_ids_and_filter"
     # value checks a person meets in the UI
     NOT_IBAN = "not_iban"
     NOT_VAT_ID = "not_vat_id"
@@ -785,6 +786,7 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.SKIP_CHANGED_MEANWHILE: "changed meanwhile; not applied",
     ReasonCode.SKIP_NOT_AVAILABLE: "not available",
     ReasonCode.BULK_TOO_MANY: "at most {max:number} documents at once",
+    ReasonCode.BULK_IDS_AND_FILTER: "name the documents or give a filter, not both",
     ReasonCode.NOT_IBAN: "'{value}' is not a valid IBAN",
     ReasonCode.NOT_VAT_ID: "'{value}' is not a VAT number",
     ReasonCode.FACT_KIND_UNKNOWN: "'{kind}' is no kind of fact Lekto knows",

@@ -8,6 +8,7 @@ change rules, events, decisions), one transaction each; one that cannot be chang
 with its reason, and the others go on.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -36,6 +37,8 @@ MAX_DOCUMENTS = 10_000
 MAX_IDS = 500
 """Documents a selection names one by one at most (a page or a few pages)."""
 
+_FIELDS = ("add", "remove", "contact", "document_type", "topic", "space", "node")
+
 
 class BulkKind(StrEnum):
     CHANGE_TAGS = "change_tags"
@@ -48,7 +51,17 @@ class BulkKind(StrEnum):
     DELETE = "delete"
 
 
-SET_KINDS = frozenset({BulkKind.SET_CONTACT, BulkKind.SET_DOCUMENT_TYPE, BulkKind.SET_TOPIC})
+TAKES: Mapping[BulkKind, frozenset[str]] = {
+    BulkKind.CHANGE_TAGS: frozenset({"add", "remove"}),
+    BulkKind.SET_CONTACT: frozenset({"contact"}),
+    BulkKind.SET_DOCUMENT_TYPE: frozenset({"document_type"}),
+    BulkKind.SET_TOPIC: frozenset({"topic"}),
+    BulkKind.MOVE: frozenset({"space"}),
+    BulkKind.REPROCESS: frozenset({"node"}),
+    BulkKind.CONFIRM: frozenset(),
+    BulkKind.DELETE: frozenset(),
+}
+"""The fields of `BulkAction` each kind of action takes; any other given is a mistake."""
 
 
 @dataclass(frozen=True)
@@ -66,6 +79,9 @@ class BulkAction:
     node: Node | None = None
 
     def __post_init__(self) -> None:
+        given = {name for name in _FIELDS if getattr(self, name)}
+        if stray := given - TAKES[self.kind]:
+            raise ValidationError(f"{self.kind.value} takes no {', '.join(sorted(stray))}")
         if self.kind is BulkKind.CHANGE_TAGS and not (self.add or self.remove):
             raise ValidationError("name the tags to add or remove")
         if self.add & self.remove:

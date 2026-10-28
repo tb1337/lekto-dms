@@ -1,6 +1,7 @@
 """The stream of documents (#145 PR 13, `services.stream`): series lanes with their relation
 target at the start and the expected document, branches, chains and the rest."""
 
+import time
 from datetime import date, datetime
 
 import pytest
@@ -52,6 +53,11 @@ class Scene:
         *,
         processing: bool = False,
     ) -> Document:
+        # Documents sort by arrival, their ids, which are random within a millisecond
+        # (`new_id`): each in a millisecond of its own arrives after the one before.
+        start = time.time_ns() // 1_000_000
+        while time.time_ns() // 1_000_000 == start:
+            pass
         if processing:
             document = builders.document(self.owner, self.space)
         else:

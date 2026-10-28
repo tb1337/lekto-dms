@@ -11,6 +11,14 @@ describe('the page size of a table', () => {
 		expect(localStorage.getItem('lekto.page-size.jobs')).toBe('100');
 	});
 
+	it('is 50 for the documents, and each table keeps its own', () => {
+		expect(rememberedPageSize('documents')).toBe(50);
+		rememberPageSize('jobs', 100);
+		expect(rememberedPageSize('documents')).toBe(50);
+		rememberPageSize('documents', 25);
+		expect([rememberedPageSize('jobs'), rememberedPageSize('documents')]).toEqual([100, 25]);
+	});
+
 	it('forgets the default and ignores a size the table does not offer', () => {
 		rememberPageSize('jobs', 100);
 		rememberPageSize('jobs', DEFAULT_PAGE_SIZES.jobs);

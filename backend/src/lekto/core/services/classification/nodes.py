@@ -30,7 +30,7 @@ from lekto.core.domain.classification import (
     field_key,
     node_reasons,
 )
-from lekto.core.domain.document_facts import ReadFact
+from lekto.core.domain.document_facts import HOLDER_KINDS, ReadFact
 from lekto.core.domain.documents import UNSET, Document, DocumentChanges, Unset
 from lekto.core.domain.errors import (
     LanguageModelError,
@@ -57,6 +57,8 @@ from lekto.core.domain.fields import (
     field_from_json,
     field_to_json,
 )
+from lekto.core.domain.holders import ReadHolder
+from lekto.core.domain.identifiers import identifiers_in
 from lekto.core.domain.ids import ContactId, DocumentId, FieldId, SpaceId, UserId
 from lekto.core.domain.json_value import JsonObject, JsonValue, as_list
 from lekto.core.domain.labels import LabelCheck, LabelOutcome, check_label
@@ -116,9 +118,11 @@ from lekto.core.services.classification.answers import (
     key_ids,
     parse_extract,
     parse_facts,
+    parse_holders,
     parse_propose,
     propose_schema,
     read_fact_to_json,
+    read_holder_to_json,
 )
 from lekto.core.services.classification.external import (
     ExternalCall,
@@ -154,6 +158,7 @@ from lekto.core.services.classification.signals import (
     FACTS_ERROR,
     FACTS_INPUT,
     MODEL_FACTS,
+    MODEL_HOLDERS,
     PROPOSAL,
     abstained,
     abstained_reason,
@@ -493,7 +498,7 @@ class LlmSignal(_ModelStep):
         except _UnfitAnswerError as error:
             return self._unfit(error, input)
         chosen = {key: space.id for key, space in spaces.items()}
-        read, asked, model_read = await self._facts(document, sent, calls)
+        read, asked, model_read, model_told = await self._facts(document, sent, calls)
         output = _answered(answers, answer.raw) | read
         output["tokens"] = [
             *tokens_of(item.usage for item in answers),
@@ -505,38 +510,44 @@ class LlmSignal(_ModelStep):
             input=input | {FACTS_INPUT: FACTS_PROMPT},
             output=output | {PROPOSAL: StoredProposal.of(answer, key_ids(keys), chosen).to_json()},
         )
-        return ModelFactsResult(result, await TextFacts.read(text), model_read)
+        return ModelFactsResult(result, await TextFacts.read(text), model_read, model_told)
 
     async def _facts(
         self, document: Document, sent: Shortened, calls: list[ModelCall]
-    ) -> tuple[JsonObject, list[StructuredAnswer], list[ReadFact] | None]:
-        """The facts with their role the model reads (`facts-1`), a second request on the
-        beginning the first shared (system prompt and document: prompt caching): the output's
-        part, the answers and the facts (None: it read none). What goes wrong is in the output
-        and never fails the signal, also an error that would pass with time (the proposal
-        stands without facts; asking the model again reads them)."""
+    ) -> tuple[JsonObject, list[StructuredAnswer], list[ReadFact] | None, list[ReadHolder] | None]:
+        """The facts with their role the model reads, and whose the IBANs and creditor IDs the
+        patterns read in the text sent are (`facts-2`): a second request on the beginning the
+        first shared (system prompt and document: prompt caching). The output's part, the
+        answers, the facts and the holders (None: it read none). What goes wrong is in the
+        output and never fails the signal, also an error that would pass with time (the
+        proposal stands without facts; asking the model again reads them)."""
+        numbers = sorted(key for key in identifiers_in(sent.text) if key[0] in HOLDER_KINDS)
         try:
-            read, answers = await self._ask(
+            (read, told), answers = await self._ask(
                 document,
                 Node.SIGNAL_LLM,
                 sent,
-                facts_task(marker=document_marker(sent)),
+                facts_task(marker=document_marker(sent), numbers=numbers),
                 facts_schema([kind.value for kind in FACT_KINDS], [r.value for r in FACT_ROLES]),
                 FACTS_SCHEMA,
-                parse_facts,
+                lambda content: (parse_facts(content), parse_holders(content)),
                 calls=calls,
                 request=FACTS_SCHEMA,
             )
         except _UnfitAnswerError as error:
-            return {FACTS_ERROR: str(error)}, error.answers, None
+            return {FACTS_ERROR: str(error)}, error.answers, None, None
         except LanguageModelError as error:
             log.warning(
                 "the language model read no facts: %s",
                 error,
                 extra={"document_id": str(document.id)},
             )
-            return {FACTS_ERROR: str(error)}, [], None
-        return {MODEL_FACTS: [read_fact_to_json(fact) for fact in read]}, answers, read
+            return {FACTS_ERROR: str(error)}, [], None, None
+        output: JsonObject = {
+            MODEL_FACTS: [read_fact_to_json(fact) for fact in read],
+            MODEL_HOLDERS: [read_holder_to_json(holder) for holder in told],
+        }
+        return output, answers, read, told
 
     async def _answered(self, document: Document, text: str, outside: ModelCallState) -> NodeResult:
         """What the webhook's task brought: its proposal, as the model's, or why none."""
@@ -598,16 +609,17 @@ def _listed_spaces(candidates: SpaceCandidates | None) -> dict[str, ListedSpace]
 
 @dataclass(frozen=True)
 class ModelFactsResult:
-    """The language model's proposal, and the facts it read: kept with the facts of the
-    patterns and codes when the result is recorded (`kept_facts`; None: it read none, the facts
-    of an earlier answer go)."""
+    """The language model's proposal, and the facts it read and the holders it told: kept with
+    the facts of the patterns and codes when the result is recorded (`kept_facts`; None: it read
+    none, the facts of an earlier answer go)."""
 
     result: NodeResult
     text: TextFacts
     read: list[ReadFact] | None
+    told: list[ReadHolder] | None = None
 
     async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
-        report = await keep_facts(uow, document.id, self.text, self.read)
+        report = await keep_facts(uow, document.id, self.text, self.read, told=self.told)
         if report is None:
             return self.result
         return replace(self.result, output=self.result.output | {READ_FACTS: report})

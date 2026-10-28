@@ -27,8 +27,11 @@ Layout of a set directory:
   answer of the language model's signal is built; `fields`: proposals by field name
   (`value`, `evidence`, `label`), in that answer as text; `lane`: the lane this answer leads
   to, if not the expected one; `facts`: the entries of the answer to the facts request,
-  `kind`, `value`, `role`, `evidence`, `label`). `expected.facts` (`kind`, `value` as
-  written, `role`) are the facts the document must have, scored where given;
+  `kind`, `value`, `role`, `evidence`, `label`; `holders`: its holders of the listed IBANs and
+  creditor IDs, `kind`, `value`, `holder`, `name`, `evidence`). `expected.facts` (`kind`,
+  `value` as written, `role`) are the facts the document must have, scored where given;
+  `expected.holders` (`kind`, `value`, `holder`) whose its IBANs and creditor IDs are, scored
+  where given;
   `expected.relations` the cases of the run it is related with (either way), by name; a case
   without them expects none. `expected` and
   `fake` may give `lanes` by run where a run differs; `runs` names the runs a case belongs to
@@ -42,7 +45,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from lekto.core.domain.document_facts import FactRole
+from lekto.core.domain.document_facts import FactRole, HolderKind
 from lekto.core.domain.fields import FieldType
 from lekto.core.domain.identifiers import IdentifierKind, normalise_identifier
 from lekto.core.domain.json_value import JsonObject, JsonValue
@@ -123,6 +126,9 @@ class MasterDataSpec:
 type ExpectedFact = tuple[IdentifierKind, str, FactRole]
 """A fact a case's document must have: its kind, its value (normalised) and its role."""
 
+type ExpectedHolder = tuple[IdentifierKind, str, HolderKind]
+"""Whose an IBAN or a creditor ID of a case's document is: its kind, value and holder."""
+
 
 @dataclass(frozen=True)
 class Expected:
@@ -136,6 +142,7 @@ class Expected:
     topic: str | None = None
     space: str | None = None
     facts: frozenset[ExpectedFact] | None = None  # None: the case's facts are not scored
+    holders: frozenset[ExpectedHolder] | None = None  # None: its holders are not scored
     relations: frozenset[str] = frozenset()  # the cases it is related with, by name
 
     def lane_in(self, run: Run) -> Lane:
@@ -149,6 +156,7 @@ class FakeAnswer:
     lane: Lane
     lanes: dict[Run, Lane] = field(default_factory=dict)
     facts: tuple[JsonValue, ...] = ()  # the entries of the answer to the facts request
+    holders: tuple[JsonValue, ...] = ()  # its holders of the listed IBANs and creditor IDs
 
     def lane_in(self, run: Run) -> Lane:
         return self.lanes.get(run, self.lane)
@@ -159,7 +167,7 @@ class FakeAnswer:
         if request.schema_name == PROPOSE_SCHEMA:
             return self._proposal(request.task)
         if request.schema_name == FACTS_SCHEMA:
-            return {"facts": list(self.facts)}
+            return {"facts": list(self.facts), "holders": list(self.holders)}
         keys = dict(_KEY_LINE.findall(request.task))
         empty: JsonObject = {"value": None, "evidence": None, "label": None}
         return {"fields": {key: self.fields.get(name, empty) for key, name in keys.items()}}
@@ -450,6 +458,7 @@ def _case(markdown: Path, master: MasterDataSpec) -> Case:
             topic=expected_data.get("topic"),
             space=expected_data.get("space"),
             facts=_facts(expected_data["facts"]) if "facts" in expected_data else None,
+            holders=(_holders(expected_data["holders"]) if "holders" in expected_data else None),
             relations=frozenset(expected_data.get("relations", ())),
         )
         fake = None
@@ -466,6 +475,7 @@ def _case(markdown: Path, master: MasterDataSpec) -> Case:
                     else dict(expected.lanes)
                 ),
                 facts=tuple(fake_data.get("facts", ())),
+                holders=tuple(fake_data.get("holders", ())),
             )
         case = Case(
             name=name,
@@ -489,6 +499,17 @@ def _facts(items: Any) -> frozenset[ExpectedFact]:
         kind = IdentifierKind(item["kind"])
         facts.add((kind, normalise_identifier(kind, str(item["value"])), FactRole(item["role"])))
     return frozenset(facts)
+
+
+def _holders(items: Any) -> frozenset[ExpectedHolder]:
+    """The holders expected, each with the number's kind, its value and the holder."""
+    holders: set[ExpectedHolder] = set()
+    for item in items:
+        kind = IdentifierKind(item["kind"])
+        holders.add(
+            (kind, normalise_identifier(kind, str(item["value"])), HolderKind(item["holder"]))
+        )
+    return frozenset(holders)
 
 
 def _topic(item: Any) -> tuple[str, str | None]:

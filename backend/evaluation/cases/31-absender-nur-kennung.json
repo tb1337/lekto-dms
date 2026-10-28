@@ -18,7 +18,10 @@
       },
       "Rechnungsnummer": "VB-552871",
       "Kundennummer": "88 77 66"
-    }
+    },
+    "holders": [
+      {"kind": "iban", "value": "DE08200411110003456789", "holder": "sender"}
+    ]
   },
   "fake": {
     "classification": {
@@ -54,6 +57,9 @@
         "evidence": "Kundennummer: 88 77 66",
         "label": "Kundennummer"
       }
-    }
+    },
+    "holders": [
+      {"kind": "iban", "value": "DE08200411110003456789", "holder": "sender", "name": null, "evidence": "Bitte überweisen Sie den Betrag innerhalb von 14 Tagen auf IBAN DE08 2004 1111 0003 4567 89."}
+    ]
   }
 }

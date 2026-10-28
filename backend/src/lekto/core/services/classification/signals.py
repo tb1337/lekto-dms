@@ -45,7 +45,7 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.facts import NAME, Strength, facts_in
-from lekto.core.domain.holders import Parties, foreign, holders
+from lekto.core.domain.holders import Parties, ReadHolder, foreign, holders
 from lekto.core.domain.identifiers import IdentifierKind, Key
 from lekto.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId, UserId
 from lekto.core.domain.json_value import (
@@ -81,7 +81,11 @@ from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.search_index import SearchIndex, SimilarQuery
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._spaces import SpaceCandidates, space_candidates
-from lekto.core.services.classification.answers import StoredProposal, read_fact_from_json
+from lekto.core.services.classification.answers import (
+    StoredProposal,
+    read_fact_from_json,
+    read_holder_from_json,
+)
 from lekto.core.services.classification.kept_facts import READ_FACTS, TextFacts, keep_facts
 from lekto.core.services.classifier import ClassifierService
 from lekto.core.services.indexing import split_sections
@@ -100,6 +104,9 @@ PROPOSAL = "proposal"
 MODEL_FACTS = "facts"
 """Key of the facts with their role the language model read, in the output of `signal_llm`
 (`facts-1`; `document_facts.ReadFact` as JSON, unchecked)."""
+MODEL_HOLDERS = "holders"
+"""Key of the holders of the listed IBANs and creditor IDs the language model told, in the output
+of `signal_llm` (`facts-2`; `holders.ReadHolder` as JSON, unchecked)."""
 FACTS_ERROR = "facts_error"
 """Why the language model read no facts, in the output of `signal_llm`."""
 FACTS_INPUT = "facts_prompt"
@@ -250,9 +257,15 @@ class FactsResult:
 
     async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
         log = await uow.processing_log.list_for(document.id)
-        read = model_facts(ProcessingHistory(log).signals())
+        signals = ProcessingHistory(log).signals()
         report = await keep_facts(
-            uow, document.id, self.text, read, in_codes=self.in_codes, holders=self.holders
+            uow,
+            document.id,
+            self.text,
+            model_facts(signals),
+            in_codes=self.in_codes,
+            holders=self.holders,
+            told=model_holders(signals),
         )
         if report is None:
             return self.result
@@ -580,6 +593,18 @@ def model_facts(entries: Mapping[Node, NodeRun]) -> list[ReadFact] | None:
     if not isinstance(items, list):
         return None
     return [fact for fact in map(read_fact_from_json, items) if fact is not None]
+
+
+def model_holders(entries: Mapping[Node, NodeRun]) -> list[ReadHolder] | None:
+    """The holders the language model told (`facts-2`), unchecked; None if it told none (no
+    model, an answer from before 0.8, or the call went wrong)."""
+    entry = entries.get(Node.SIGNAL_LLM)
+    if entry is None:
+        return None
+    items = entry.result.output.get(MODEL_HOLDERS)
+    if not isinstance(items, list):
+        return None
+    return [holder for holder in map(read_holder_from_json, items) if holder is not None]
 
 
 def model_proposal(entries: Mapping[Node, NodeRun]) -> StoredProposal | None:

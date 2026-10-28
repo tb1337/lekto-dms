@@ -30322,6 +30322,9 @@
           "fact_kind_unknown",
           "fact_not_in_text",
           "fact_not_asked",
+          "holder_not_listed",
+          "holder_kind_unknown",
+          "holder_name_not_near",
           "fact_criterion_empty",
           "rule_fact_of_person",
           "relation_exists",
@@ -35977,6 +35980,15 @@
     "fact_not_asked": {
       "kind": "text",
       "role": "text"
+    },
+    "holder_not_listed": {
+      "value": "text"
+    },
+    "holder_kind_unknown": {
+      "holder": "text"
+    },
+    "holder_name_not_near": {
+      "name": "text"
     },
     "fact_criterion_empty": {},
     "rule_fact_of_person": {},

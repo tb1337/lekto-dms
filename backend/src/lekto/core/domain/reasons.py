@@ -318,6 +318,9 @@ class ReasonCode(StrEnum):
     FACT_KIND_UNKNOWN = "fact_kind_unknown"
     FACT_NOT_IN_TEXT = "fact_not_in_text"
     FACT_NOT_ASKED = "fact_not_asked"
+    HOLDER_NOT_LISTED = "holder_not_listed"
+    HOLDER_KIND_UNKNOWN = "holder_kind_unknown"
+    HOLDER_NAME_NOT_NEAR = "holder_name_not_near"
     FACT_CRITERION_EMPTY = "fact_criterion_empty"
     RULE_FACT_OF_PERSON = "rule_fact_of_person"
     RELATION_EXISTS = "relation_exists"
@@ -781,6 +784,9 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.FACT_KIND_UNKNOWN: "'{kind}' is no kind of fact Lekto knows",
     ReasonCode.FACT_NOT_IN_TEXT: "'{value}' does not appear in the text",
     ReasonCode.FACT_NOT_ASKED: "a fact '{kind}' in the role '{role}' was not asked for",
+    ReasonCode.HOLDER_NOT_LISTED: "'{value}' was not among the numbers asked about",
+    ReasonCode.HOLDER_KIND_UNKNOWN: "'{holder}' is no holder Lekto knows",
+    ReasonCode.HOLDER_NAME_NOT_NEAR: "the name '{name}' does not stand near the number",
     ReasonCode.FACT_CRITERION_EMPTY: (
         "a filter by facts names a kind, a role, or a kind with its value"
     ),

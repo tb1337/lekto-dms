@@ -10,7 +10,10 @@
       "Nettolohn": {"amount": "2987.45", "currency": "EUR"},
       "Bruttolohn": {"amount": "5166.67", "currency": "EUR"},
       "Bezugszeitraum": {"start": "2026-05-01", "end": "2026-05-31"}
-    }
+    },
+    "holders": [
+      {"kind": "iban", "value": "DE89370400440532013000", "holder": "recipient"}
+    ]
   },
   "fake": {
     "classification": {
@@ -29,6 +32,9 @@
         "evidence": "Entgeltabrechnung Mai 2026",
         "label": null
       }
-    }
+    },
+    "holders": [
+      {"kind": "iban", "value": "DE89370400440532013000", "holder": "recipient", "name": null, "evidence": "Überweisung auf IBAN DE89 3704 0044 0532 0130 00"}
+    ]
   }
 }

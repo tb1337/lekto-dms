@@ -20,7 +20,10 @@
         "start": "2026-04-01",
         "end": "2026-04-30"
       }
-    }
+    },
+    "holders": [
+      {"kind": "iban", "value": "DE89370400440532013000", "holder": "recipient"}
+    ]
   },
   "fake": {
     "classification": {
@@ -54,6 +57,9 @@
         "label": null
       }
     },
-    "lane": "yellow"
+    "lane": "yellow",
+    "holders": [
+      {"kind": "iban", "value": "DE89370400440532013000", "holder": "recipient", "name": null, "evidence": "Überweisung auf IBAN DE89 3704 0044 0532 0130 00"}
+    ]
   }
 }

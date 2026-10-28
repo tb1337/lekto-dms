@@ -18,9 +18,10 @@ from dataclasses import dataclass
 from typing import Self
 from uuid import UUID
 
-from lekto.core.domain.document_facts import ReadFact
+from lekto.core.domain.document_facts import HOLDER_KINDS, HolderKind, ReadFact
 from lekto.core.domain.documents import MAX_TITLE
 from lekto.core.domain.fields import FieldDefinition, FieldType
+from lekto.core.domain.holders import ReadHolder
 from lekto.core.domain.ids import FieldId
 from lekto.core.domain.json_value import (
     JsonObject,
@@ -480,7 +481,21 @@ def facts_schema(kinds: Sequence[str], roles: Sequence[str]) -> JsonObject:
             _LABEL: dict(_TEXT_OR_NULL),
         }
     )
-    return _object({"facts": {"type": "array", "items": entry}})
+    holder = _object(
+        {
+            "kind": {"type": "string", "enum": [kind.value for kind in sorted(HOLDER_KINDS)]},
+            "value": {"type": "string"},
+            "holder": {"type": "string", "enum": [kind.value for kind in HolderKind]},
+            "name": dict(_TEXT_OR_NULL),
+            "evidence": dict(_TEXT_OR_NULL),
+        }
+    )
+    return _object(
+        {
+            "facts": {"type": "array", "items": entry},
+            "holders": {"type": "array", "items": holder},
+        }
+    )
 
 
 def parse_facts(content: str) -> list[ReadFact]:
@@ -488,7 +503,7 @@ def parse_facts(content: str) -> list[ReadFact]:
     a kind or role not listed, or without a value, is kept for the check to refuse
     (`document_facts.checked_read`)."""
     data = _load(content)
-    _require_fields(data, ("facts",), "the answer")
+    _require_fields(data, ("facts",), "the answer", optional=("holders",))
     entries = data["facts"]
     if not isinstance(entries, list):
         raise AnswerError("facts: expected a list")
@@ -517,6 +532,64 @@ def parse_facts(content: str) -> list[ReadFact]:
             )
         )
     return facts
+
+
+def parse_holders(content: str) -> list[ReadHolder]:
+    """The holders the facts call tells (`facts-2`), strict about each entry's structure; an
+    answer without them (an earlier prompt) tells none. A holder or number not listed is kept
+    for the check to refuse (`holders.checked_holder`)."""
+    data = _load(content)
+    entries = data.get("holders", [])
+    if not isinstance(entries, list):
+        raise AnswerError("holders: expected a list")
+    holders: list[ReadHolder] = []
+    for index, entry in enumerate(entries):
+        where = f"holders[{index}]"
+        if not isinstance(entry, dict):
+            raise AnswerError(f"{where}: expected an object")
+        _require_fields(entry, ("kind", "value", "holder", "name", "evidence"), where)
+        kind, value, holder = (entry[name] for name in ("kind", "value", "holder"))
+        if not (isinstance(kind, str) and isinstance(value, str) and isinstance(holder, str)):
+            raise AnswerError(f"{where}: kind, value and holder are texts")
+        name = _text_or_null(entry["name"], f"{where}.name")
+        evidence = _text_or_null(entry["evidence"], f"{where}.evidence")
+        holders.append(
+            ReadHolder(
+                kind=kind.strip(),
+                value=value.strip()[:_EVIDENCE_LENGTH],
+                holder=holder.strip(),
+                name=one_line(name)[:_EVIDENCE_LENGTH].strip() or None if name else None,
+                evidence=evidence[:_EVIDENCE_LENGTH] if evidence else None,
+            )
+        )
+    return holders
+
+
+def read_holder_to_json(holder: ReadHolder) -> JsonObject:
+    return {
+        "kind": holder.kind,
+        "value": holder.value,
+        "holder": holder.holder,
+        "name": holder.name,
+        "evidence": holder.evidence,
+    }
+
+
+def read_holder_from_json(data: JsonValue) -> ReadHolder | None:
+    """A holder as the log keeps it; None for what is no such entry."""
+    item = as_object(data)
+    if item is None:
+        return None
+    kind, value, holder = (as_text(item.get(name)) for name in ("kind", "value", "holder"))
+    if kind is None or value is None or holder is None:
+        return None
+    return ReadHolder(
+        kind=kind,
+        value=value,
+        holder=holder,
+        name=as_text(item.get("name")),
+        evidence=as_text(item.get("evidence")),
+    )
 
 
 def read_fact_to_json(fact: ReadFact) -> JsonObject:

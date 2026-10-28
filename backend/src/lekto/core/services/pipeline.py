@@ -109,12 +109,14 @@ from lekto.core.services.inbox import (
 from lekto.core.services.master_data import learn_alias
 from lekto.core.services.objects import original_key
 from lekto.core.services.relating import RELATE_JOB, queue_relate, relate
-from lekto.core.services.relations import RELATIONS_LOCK
+from lekto.core.services.relations import RELATIONS_LOCK, relation_events
 from lekto.core.services.rules.running import corrected_fields, person_record, space_choice
 from lekto.core.services.tasks.settling import Delegation, cancel_tasks
 
 log = logging.getLogger(__name__)
 
+QUIET = "quiet"
+"""Key of a relate job's payload: what it finds raises no events (the run over the stock)."""
 CATCH_UP_JOB = "pipeline.catch_up"
 """Job kind of a node skipped in the document's current run that is run afterwards, outside
 processing (`PipelineService.catch_up`); payload: `NodeJob`."""
@@ -993,6 +995,9 @@ class PipelineService:
                 document = await uow.documents.find(document_id)
                 now = self._clock.now()
                 related = None if document is None else await relate(uow, document, now)
+                # The run over the stock (`relate`) tells nobody: it would send thousands.
+                if related is not None and job.payload.get(QUIET) is not True:
+                    await uow.outbox.add(relation_events([*related.made, *related.dropped], now))
                 result: JsonObject = (
                     {}
                     if related is None
@@ -1008,13 +1013,13 @@ class PipelineService:
     async def request_relations(self) -> int:
         """Queue finding the relations of every document that is not being processed (the
         command `relate`): for documents from before the node `relate`, and after a relation
-        target was marked. Returns how many were queued; one queued already is not queued
-        twice."""
+        target was marked. Quietly: what they find raises no events. Returns how many were
+        queued; one queued already is not queued twice."""
 
         def relations(document: Document) -> tuple[JsonObject, str] | None:
             if document.processing.status is ProcessingStatus.PROCESSING:
                 return None
-            return document_payload(document.id), f"{document.id}:relate"
+            return document_payload(document.id) | {QUIET: True}, f"{document.id}:relate"
 
         return await self._queue_each(RELATE_JOB, relations)
 

@@ -7,6 +7,7 @@ import pytest
 
 from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
+from lekto.core.domain.events import DocumentUpdated
 from lekto.core.domain.first_runs import RELATIONS, Verdict
 from lekto.core.domain.ids import DocumentId, new_id
 from lekto.core.domain.relations import Relation, RelationOrigin, RelationState, ordered
@@ -188,3 +189,29 @@ async def test_a_rejection_outlasts_setting_and_removing_by_hand(world: World) -
     async with world.uow() as uow:
         kept = await uow.document_relations.find(reminder.id, invoice.id)
     assert kept is not None and kept.state is RelationState.REJECTED
+
+
+async def test_a_relation_set_or_removed_tells_both_documents(world: World) -> None:
+    """`document.updated` with `relations` at either end, each naming the other (#145 PR 14)."""
+    owner = await world.user()
+    space = await world.personal_space(owner)
+    original = await stored(world, owner, space, date(2026, 1, 31))
+    correction = await stored(world, owner, space, date(2026, 6, 20))
+    relations = service(world)
+
+    def told() -> set[tuple[DocumentId, DocumentId | None]]:
+        return {
+            (event.document_id, event.related)
+            for event in world.events()
+            if isinstance(event, DocumentUpdated) and event.fields == (RELATIONS,)
+        }
+
+    await relations.relate(owner.id, original.id, correction.id)
+    assert told() == {(correction.id, original.id), (original.id, correction.id)}
+    before = len(world.events())
+    await relations.unrelate(owner.id, correction.id, original.id)
+    removed = [event for event in world.events()[before:] if isinstance(event, DocumentUpdated)]
+    assert {(event.document_id, event.related) for event in removed} == {
+        (correction.id, original.id),
+        (original.id, correction.id),
+    }

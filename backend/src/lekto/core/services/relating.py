@@ -46,7 +46,7 @@ from lekto.core.domain.relations import Relation, RelationOrigin, RelationState,
 from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services._jobs import document_payload
-from lekto.core.services.relations import RELATIONS_LOCK, find_pair
+from lekto.core.services.relations import RELATIONS_LOCK, find_pair, relation_events
 
 RELATE = "relate-1"
 """The version of the recognition, in the log entries of the node."""
@@ -190,6 +190,7 @@ class RelateResult:
     async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
         await uow.lock(RELATIONS_LOCK)
         related = await relate(uow, document, now)
+        await uow.outbox.add(relation_events([*related.made, *related.dropped], now))
         output: JsonObject = {
             "relations": [relation_json(item, document.id) for item in related.made]
         }

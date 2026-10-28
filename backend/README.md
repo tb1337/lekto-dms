@@ -1613,7 +1613,9 @@ checked when the event is queued and again before every attempt, and a user who 
 between gets nothing (the log shows `dropped`). The body carries no lane, so a receiver
 that wants the state of the document fetches it; `document.filed` is not sent while the document
 is still being processed. `document.deleted` goes to those who could read the document
-when it was deleted.
+when it was deleted. A relation that is set, changes or goes (the node `relate`, the job after a person's change,
+a person) sends `document.updated` with `fields: ["relations"]` to both of its documents, and
+only to whoever may read both; `lekto relate` over the stock sends none.
 
 **Rules that send** (`send_webhook`, Tobi, 25.10.2026). A rule sends a request through a webhook
 of whoever saves it (someone else's is not found, `404`); the type is `rule.send`, the body

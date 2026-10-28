@@ -17,6 +17,7 @@ from lekto.core.domain.events import (
     DocumentDeleted,
     DocumentFiled,
     DocumentReceived,
+    DocumentUpdated,
     LaneChanged,
 )
 from lekto.core.domain.fields import FieldDefinition, FieldType, Money
@@ -119,6 +120,56 @@ async def test_only_those_who_may_read_the_document_are_told(world: World) -> No
     assert len(deliveries(world)) == 3
     await service.on_event(lane_changed(yellow))  # not green: owner only
     assert len(deliveries(world)) == 4
+
+
+async def test_a_relation_is_told_only_to_who_reads_both_documents(world: World) -> None:
+    """The friend reads the shared invoice, not the owner's private reminder that refers to it:
+    neither end's `document.updated` with `relations` reaches the friend's webhook, at the
+    fan-out or, after losing access to the other end, at delivery (#145 PR 14)."""
+    owner, friend = await world.user(), await world.user()
+    shared = builders.space(owner, "shared")
+    shared.set_member(friend.id, SpaceRole.READ)
+    async with world.uow() as uow:
+        await uow.spaces.add(shared)
+        await uow.commit()
+    invoice, reminder = await seed(world, owner, shared), await seed(world, owner)
+    service = world.webhook_delivery()
+    mine, _ = await hook(world, owner)
+    await hook(world, friend)
+
+    def related(document: Document, other: Document) -> DocumentUpdated:
+        return DocumentUpdated(
+            occurred_at=NOW, document_id=document.id, fields=("relations",), related=other.id
+        )
+
+    await service.on_event(related(invoice, reminder))
+    await service.on_event(related(reminder, invoice))
+    assert {str(job.payload["webhook_id"]) for job in deliveries(world)} == {str(mine.id)}
+    assert {job.payload["related_id"] for job in deliveries(world)} == {
+        str(reminder.id),
+        str(invoice.id),
+    }
+
+    # A letter in a second shared space refers to the invoice: the friend reads both and is
+    # told, until they lose the invoice's space; the letter they still read.
+    other = builders.space(owner, "other")
+    other.set_member(friend.id, SpaceRole.READ)
+    async with world.uow() as uow:
+        await uow.spaces.add(other)
+        await uow.commit()
+    letter = await seed(world, owner, other)
+    await service.on_event(related(letter, invoice))
+    assert len(deliveries(world)) == 4
+    await world.spaces.remove_member(owner.id, shared.id, friend.id)
+    await run_all(service)
+    (row,) = await log_of(world, friend)
+    assert (row.outcome, row.document_id) == (DeliveryOutcome.DROPPED, letter.id)
+
+
+async def log_of(world: World, user: User) -> list[WebhookDelivery]:
+    async with world.uow() as uow:
+        hooks = [item for item in await uow.webhooks.list_all() if item.owner_id == user.id]
+    return [row for item in hooks for row in await log(world, item)]
 
 
 async def test_an_admins_webhooks_report_their_reach_only(world: World) -> None:

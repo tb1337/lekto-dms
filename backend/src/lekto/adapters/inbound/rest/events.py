@@ -31,6 +31,7 @@ from lekto.core.domain.events import (
     ClassifierTrained,
     DocumentDeleted,
     DocumentEvent,
+    DocumentUpdated,
     DomainEvent,
     SearchMeaningReady,
 )
@@ -125,9 +126,11 @@ class EventHub:
             users = {listener.user for listener in listeners}
             readers = set(event.readers) | await self._documents.active_admins(users)
         else:
-            readers = await self._documents.filter_readers(
-                event.document_id, {listener.user for listener in listeners}
-            )
+            users = {listener.user for listener in listeners}
+            readers = await self._documents.filter_readers(event.document_id, users)
+            if isinstance(event, DocumentUpdated) and event.related is not None:
+                # A relation: only who reads its other document too.
+                readers &= await self._documents.filter_readers(event.related, users)
         for listener in listeners:
             if listener.user in readers:
                 listener.offer(event)
@@ -168,7 +171,7 @@ def message(event: DomainEvent) -> dict[str, Any]:
     fields = {
         field.name: getattr(event, field.name)
         for field in dataclasses.fields(event)
-        if field.name not in ("readers", "user_id")
+        if field.name not in ("readers", "user_id", "related")
     }
     payload: dict[str, Any] = jsonable_encoder({"type": event.type, **fields})
     return payload

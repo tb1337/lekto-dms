@@ -2251,6 +2251,37 @@ Stand: Vorschlag Claude, 27.10.2026, zur Freigabe durch Tobi. Release offen.
 
 Reihenfolge: Name des Jobs, 4a, 4b, 4c, dann PR 3.
 
+### Massenaktionen und Seiten in der Dokumentliste
+
+Stand: freigegeben (Tobi, 29.10.2026; offene Punkte 13 und 13.3). Mock: Leinwand „Lekto Übersicht und Kennungen“, Abschnitt „13 · Massenaktionen“.
+
+**Anlass (Tobi):** Viele Dokumente auf einmal ändern, wie in Paperless-ngx; dazu Seiten statt „Mehr laden“, wie bei den Jobs.
+
+**Entscheidungen (Tobi, 29.10.2026):**
+1. Aktionen nach Paperless und dem ersten Wurf: Tags dazu und weg, Kontakt, Dokumenttyp, Thema und Space setzen, bestätigen, neu verarbeiten, löschen.
+2. Seiten mit 50 Dokumenten je Seite (`Pagination`), in Liste und Kacheln.
+3. „Alle N Treffer auswählen“ über die Seite hinaus (Empfehlung Claude, Tobi: „ich stimme zu“).
+
+**Vorschlag:**
+
+- **Auswahl:** wie „Choosing many“ in `web/DESIGN.md`: ein Kästchen je Zeile bzw. Kachel und eines im Kopf für die Seite; gewählte haben `bg-panel`. Ist die ganze Seite gewählt, bietet die Leiste „Alle N Treffer auswählen“ an; danach gilt die Auswahl für Suche und Filter, nicht für eine Liste von IDs. Die Leiste klebt oben (am Handy unten) und nennt die Zahl, „Auswahl aufheben“ und die Aktionen: Tags, Kontakt, Typ und „Mehr“ (Thema, Space, bestätigen, neu verarbeiten, löschen).
+- **Dialoge je Aktion:** Tags mit zwei Listen (dazu, weg) wie der Tag-Picker; Kontakt, Typ und Thema mit `SearchSelect` (auch „nicht gesetzt“); Space mit der Auswahl aus „Verschieben“. Löschen und Neu verarbeiten fragen mit der genauen Zahl (`ConfirmDialog`), die anderen nicht.
+- **API:** `POST /documents/bulk` mit `selection` (`ids`, höchstens 500, oder `filter`: dieselben Parameter wie `GET /documents` bzw. die Suche) und `action` (`add_tags`, `remove_tags`, `set_contact`, `set_document_type`, `set_topic`, `move`, `confirm`, `reprocess`, `delete`). Lekto legt einen Job `documents.bulk` an (Antwort 202 mit der ID); `GET /documents/bulk/{id}` sagt, wie weit er ist und was geschah: geändert, übersprungen mit Grund (nur lesbar, in Verarbeitung, schon so), fehlgeschlagen.
+- **Kern:** Der Job ruft je Dokument dieselben Dienste wie eine einzelne Änderung (`DocumentService.update`, `confirm`, `reprocess`, `move`, `delete`), jede in ihrer eigenen Transaktion: Rechte, Ereignisse, Änderungsregeln, Urteile in `field_verdicts` und Training gelten wie bei Hand. Ein Fehler bei einem Dokument stoppt die übrigen nicht. Mit Wörtern der Suche löst der Job die Treffer über den Suchindex auf, ohne Wörter über die Datenbank; Meilisearch liefert höchstens 1.000 Treffer (`MAX_HITS`), mehr gibt es dann nicht, und die Leiste sagt das.
+- **Seiten:** `GET /documents` bekommt `offset` neben `cursor`; die Liste zeigt `Pagination` mit 50 je Seite, die Zahl der Treffer kommt aus den Zählungen der Seitenleiste. Die Seite steht im Link (`?page=`). Die Lenses behalten ihre Sortierung und Gruppierung; eine Gruppe (Monat, Fälligkeit, Typ) kann über eine Seitengrenze gehen.
+- **Web:** `DocumentsBulkBar`, die Dialoge, Kästchen in Zeilen und Kacheln (die Kachel bekommt es oben links, über dem Vorschaubild), Fortschritt in der Leiste („412 von 1.234“), am Ende ein Toast mit dem Ergebnis und, bei übersprungenen, ein Link „Details“.
+- **Muster** in `web/DESIGN.md`: die Leiste der Dokumentliste ist „Choosing many“ mit „alle Treffer“ und Fortschritt.
+
+**PRs** (Reihenfolge):
+1. `feature/documents-pages` (`enhancement`): Seiten statt „Mehr laden“.
+2. `feature/bulk-actions` (`new-feature`): API, Job, Auswahl, Leiste, Dialoge.
+
+**Antworten (Tobi, 29.10.2026):** 1. ja, 2. ja („der Nutzer entscheidet“). Plan freigegeben.
+
+**Fragen, die beantwortet sind:**
+1. Sollen Massenaktionen auch für Nicht-Admins gehen (für Dokumente, die sie bearbeiten dürfen)? Vorschlag: ja.
+2. Neu verarbeiten ab welchem Schritt? Vorschlag: wie der Knopf am Dokument, der Schritt im Dialog wählbar (voreingestellt der erste, die Texterkennung); ab „Sprachmodell“ kostet es je Dokument zwei Modellaufrufe, der Dialog sagt das bei mehr als 15 Dokumenten.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

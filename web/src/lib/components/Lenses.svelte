@@ -8,9 +8,10 @@
 	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
 	import IconButton from '#lib/components/IconButton.svelte';
 	import Chip from '#lib/components/Chip.svelte';
+	import { formatNumber } from '#lib/i18n.ts';
 
-	// The user's lenses as links: all documents first, then each lens; `onadd` offers a new one
-	// from the filters. Beside the list a card (`list`), on a phone a row of chips (`chips`).
+	// The user's lenses as links: all documents first, then each lens, each with how many
+	// documents it shows (`counts`, Tobi 29.10.2026); `onadd` offers a new one from the filters. Beside the list a card (`list`), on a phone a row of chips (`chips`).
 	let {
 		lenses,
 		active,
@@ -18,6 +19,7 @@
 		allHref,
 		changed = false,
 		onadd,
+		counts = {},
 		variant = 'list'
 	}: {
 		lenses: readonly Lens[];
@@ -28,6 +30,8 @@
 		/** The open lens differs from what the page shows. */
 		changed?: boolean;
 		onadd?: () => void;
+		/** How many documents each shows, by lens id (`all` for all documents); none: unknown. */
+		counts?: Readonly<Record<string, number>>;
 		variant?: 'list' | 'chips';
 	} = $props();
 
@@ -80,6 +84,11 @@
 							/>
 						{/if}
 						<span class="min-w-0 flex-1 truncate">{entry.name}</span>
+						{#if counts[entry.id ?? 'all'] !== undefined}
+							<span class="text-xs text-muted-foreground tabular-nums">
+								{formatNumber(counts[entry.id ?? 'all'])}
+							</span>
+						{/if}
 						{#if current && changed && entry.id !== null}
 							<span
 								class="size-2 shrink-0 rounded-full bg-lane-yellow-foreground"

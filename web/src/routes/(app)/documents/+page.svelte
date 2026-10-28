@@ -48,7 +48,14 @@
 	import { cardLines } from '#lib/card-fields.ts';
 	import { groupDocuments } from '#lib/grouping.ts';
 	import { latest } from '#lib/latest.ts';
-	import { lensDiffers, lensFilter, lensParams, type Lens, type LensSort } from '#lib/lenses.ts';
+	import {
+		lensCount,
+		lensDiffers,
+		lensFilter,
+		lensParams,
+		type Lens,
+		type LensSort
+	} from '#lib/lenses.ts';
 	import {
 		FIELD_SORTS,
 		LIST_SORTS,
@@ -252,6 +259,26 @@
 			// Without lenses the documents stand as ever.
 			lenses = [];
 		}
+		void loadLensCounts();
+	}
+
+	// How many documents each lens shows, beside its name; one that cannot be counted shows none.
+	let lensCounts = $state<Record<string, number>>({});
+	const beginLensCounts = latest();
+	async function loadLensCounts() {
+		const current = beginLensCounts();
+		const counted = await Promise.all(
+			[null, ...lenses].map(async (entry) => {
+				try {
+					return [entry?.id ?? 'all', await lensCount(entry, today, scope.allUsers)] as const;
+				} catch {
+					return null;
+				}
+			})
+		);
+		if (current()) {
+			lensCounts = Object.fromEntries(counted.filter((item) => item !== null));
+		}
 	}
 
 	// An answer overtaken by a later request (the filters changed meanwhile) is dropped.
@@ -337,7 +364,10 @@
 	// Again when an admin switches the reach: the spaces of the filter follow it.
 	onChange(
 		() => scope.allUsers,
-		() => void pageLookup.load()
+		() => {
+			void pageLookup.load();
+			void loadLensCounts();
+		}
 	);
 
 	onMount(() => {
@@ -364,6 +394,7 @@
 		const refresh = coalesced(() => {
 			void list.refresh();
 			void loadFacets();
+			void loadLensCounts();
 			streamVersion += 1;
 		}, 400);
 		const stop = events.subscribe(refresh);
@@ -544,6 +575,7 @@ row of filters, on a desktop narrow by the title. -->
 		href={(entry) => `?${lensParams(entry, today)}`}
 		allHref={page.url.pathname}
 		{changed}
+		counts={lensCounts}
 		onadd={lookup ? () => edit(null) : undefined}
 	/>
 {/snippet}

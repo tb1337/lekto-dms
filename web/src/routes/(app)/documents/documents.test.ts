@@ -13,6 +13,7 @@ import {
 	rememberedFilters
 } from '#lib/listing.ts';
 import { NO_FILTERS } from '#lib/filters.ts';
+import { formatNumber } from '#lib/i18n.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
 import { calls, fakeApi, listedOf, OWNER } from '#lib/testing/documents.ts';
@@ -233,6 +234,52 @@ describe('the archive page', () => {
 		expect(open.every((link) => link.getAttribute('aria-current') === 'page')).toBe(true);
 		const all = screen.getAllByRole('link', { name: m.lens_all() });
 		expect(all[0].getAttribute('href')).toBe('/ui/documents');
+	});
+
+	it('shows how many documents each lens and all documents show', async () => {
+		state.url = new URL('http://lekto/ui/documents');
+		const lens = (id: string, name: string, query: string | null = null) => ({
+			id,
+			name,
+			position: 0,
+			filter: id === 'l1' ? { tag_ids: ['t1'] } : {},
+			query,
+			sort: null,
+			sort_field_id: null,
+			grouping: 'none',
+			layout: 'grid',
+			card_field_ids: [],
+			due_field_id: null,
+			created_at: '2026-10-20T10:00:00Z',
+			updated_at: '2026-10-20T10:00:00Z'
+		});
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({ items: [], next_cursor: null }),
+			'GET /api/v1/lenses': () => [lens('l1', 'Zu bezahlen'), lens('l2', 'Strom', 'strom')],
+			'GET /api/v1/documents/count': (_request, url) => ({
+				total: url.searchParams.has('tag_id') ? 7 : 1234
+			}),
+			'GET /api/v1/documents/search': () => ({
+				items: [],
+				estimated_total: 12,
+				next_offset: null,
+				semantic: false
+			})
+		});
+		vi.stubGlobal('fetch', api);
+		render(Page);
+		// Beside the list (the phone's chips show no numbers).
+		const texts = (name: RegExp) =>
+			screen.getAllByRole('link', { name }).map((link) => link.textContent ?? '');
+		await vi.waitFor(() =>
+			expect(texts(/Zu bezahlen/).some((text) => text.includes('7'))).toBe(true)
+		);
+		expect(texts(/Strom/).some((text) => text.includes('12'))).toBe(true);
+		const all = new RegExp(m.lens_all());
+		expect(texts(all).some((text) => text.includes(formatNumber(1234)))).toBe(true);
+		// A lens with words counts by the words alone, without the embedding.
+		const searched = calls(api).find((call) => call.startsWith('GET /api/v1/documents/search?'));
+		expect(searched).toContain('semantic_ratio=0');
 	});
 
 	it('groups a lens by its deadline and shows its fields on the cards', async () => {

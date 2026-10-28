@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Check from '@lucide/svelte/icons/check';
-	import { untrack } from 'svelte';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import { onMount, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
@@ -18,11 +19,13 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
+	import * as Table from '#lib/components/ui/table/index.ts';
 	import * as Tooltip from '#lib/components/ui/tooltip/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { shown } from '#lib/facts.ts';
 	import { formatDate, formatNumber } from '#lib/i18n.ts';
 	import { type IdentifierKind, kindLabel } from '#lib/identifiers.ts';
+	import { byId, type Contact } from '#lib/masterdata.svelte.ts';
 	import {
 		confirmable,
 		decide,
@@ -43,12 +46,14 @@
 
 	// The tab "Kennungen" of the master data (Tobi, 27.10.2026): the identifiers no person has
 	// confirmed, learned at a contact, standing in confirmed documents at no contact, or
-	// suggested for a contact or a person's profile (Tobi, 28.10.2026), the most documents first. Narrowed by where they are open, their kind and the page's search. Rows
-	// are chosen with their box for "Übernehmen" and "Verwerfen" on many at once (the selection
-	// bar above the list, at the bottom on a phone); the value opens one with where it stands.
-	// Where its documents tell, a row says what they recommend, and why on hover (Tobi,
-	// 29.10.2026); "Empfohlen" shows those alone, and "Empfohlene übernehmen" confirms every one
-	// recommended to confirm, over all pages, after asking. Rejecting is never done at once.
+	// suggested for a contact or a person's profile (Tobi, 28.10.2026), the most documents first.
+	// Narrowed by where they are open, their kind and the page's search. A table on a desktop
+	// (web/DESIGN.md, "Tables"), rows on a phone. Rows are chosen with their box for "Übernehmen"
+	// and "Verwerfen" on many at once (`SelectionBar`); the value opens one with where it stands,
+	// on a phone the whole row does, or chooses it while some are chosen. Where its documents
+	// tell, a row says what they recommend, and why on hover (Tobi, 28.10.2026); "Empfohlen"
+	// shows those alone, and "Empfohlene übernehmen" confirms every one recommended to confirm,
+	// over all pages, after asking. Rejecting is never done at once.
 	let { query = '' }: { query?: string } = $props();
 
 	type Source = '' | OpenIdentifier['source'];
@@ -66,6 +71,20 @@
 	let busy = $state(false);
 	let opened = $state<OpenIdentifier | null>(null);
 	let dialog = $state(false);
+	// The contacts with their logos, for the avatar of a learned or suggested identifier.
+	let contacts = $state<Contact[]>([]);
+
+	onMount(() => {
+		void loadContacts();
+	});
+
+	async function loadContacts() {
+		try {
+			contacts = await unwrap(api.GET('/api/v1/contacts'));
+		} catch {
+			// Without them the names stand as the list gives them, with initials.
+		}
+	}
 
 	const list = new Pager<OpenIdentifier>(async (offset, limit) => {
 		const found = await unwrap(
@@ -101,6 +120,8 @@
 	});
 
 	const selection = $derived(Object.values(chosen));
+	// While some are chosen, a tap on a phone's row chooses it rather than opening it.
+	const choosing = $derived(selection.length > 0);
 	const skipped = $derived(selection.filter((item) => !confirmable(item)).length);
 	const pageChosen = $derived(
 		list.items.length > 0 && list.items.every((item) => openKey(item) in chosen)
@@ -209,6 +230,13 @@
 	function whereText(item: OpenIdentifier): string {
 		return item.person ? m.open_target_profile() : m.open_target_contact();
 	}
+
+	/** The contact as the master data know it (with its logo), else by the name alone. */
+	function contactOf(item: OpenIdentifier): { name: string; logo?: Contact['logo'] } {
+		const first = item.contacts[0];
+		const known = !item.person && first ? byId(contacts).get(first.id) : undefined;
+		return known ?? { name: contactText(item), logo: null };
+	}
 </script>
 
 {#snippet sourceBadge(item: OpenIdentifier)}
@@ -221,25 +249,30 @@
 	{/if}
 {/snippet}
 
-<!-- What its documents recommend, why on hover. -->
-{#snippet advice(item: OpenIdentifier)}
+<!-- What its documents recommend, the reason for a screen reader inside the badge. -->
+{#snippet adviceBadge(advised: NonNullable<OpenIdentifier['recommendation']>)}
+	<Badge variant={advised.action === 'confirm' ? 'green' : 'muted'}>
+		{advised.action === 'confirm' ? m.open_advise_confirm() : m.open_advise_reject()}
+		<span class="sr-only">: {reasonText(advised.reason)}</span>
+	</Badge>
+{/snippet}
+
+<!-- The recommendation; with `tip` the reason on hover and focus (the trigger is a button so
+     the keyboard reaches it; on a phone the dialog says it beside the badge). -->
+{#snippet advice(item: OpenIdentifier, tip: boolean)}
 	{@const advised = item.recommendation}
-	{#if advised}
+	{#if advised && tip}
 		<Tooltip.Root>
-			<Tooltip.Trigger>
-				{#snippet child({ props })}
-					<span {...props} class="w-fit rounded-full">
-						<Badge variant={advised.action === 'confirm' ? 'green' : 'muted'}>
-							{advised.action === 'confirm' ? m.open_advise_confirm() : m.open_advise_reject()}
-							<span class="sr-only">: {reasonText(advised.reason)}</span>
-						</Badge>
-					</span>
-				{/snippet}
+			<Tooltip.Trigger type="button" class="rounded-full">
+				{@render adviceBadge(advised)}
 			</Tooltip.Trigger>
 			<Tooltip.Content>{reasonText(advised.reason)}</Tooltip.Content>
 		</Tooltip.Root>
+	{:else if advised}
+		{@render adviceBadge(advised)}
 	{:else}
-		<span class="text-sm text-muted-foreground" aria-label={m.open_advise_none()}>–</span>
+		<span class="text-sm text-muted-foreground" aria-hidden="true">–</span>
+		<span class="sr-only">{m.open_advise_none()}</span>
 	{/if}
 {/snippet}
 
@@ -328,112 +361,141 @@
 			{openTotal(counts) === 0 && !query.trim() ? m.open_none() : m.open_none_found()}
 		</EmptyNote>
 	{:else}
-		<Card.Root size="flush" class="overflow-hidden">
-			<div
-				class="flex items-center gap-3 border-b py-2 pr-4 pl-4 text-xs font-medium text-muted-foreground"
-			>
-				<ChoiceBox
-					checked={pageChosen}
-					aria-label={m.open_select_all()}
-					onchange={(event) => togglePage(event.currentTarget.checked)}
-				/>
-				{#if phone.current}
+		{#if phone.current}
+			<Card.Root size="flush" class="overflow-hidden">
+				<div
+					class="flex items-center gap-3 border-b py-2 pr-4 pl-4 text-xs font-medium text-muted-foreground"
+				>
+					<ChoiceBox
+						checked={pageChosen}
+						aria-label={m.open_select_all()}
+						onchange={(event) => togglePage(event.currentTarget.checked)}
+					/>
 					<span>{m.open_select_all()}</span>
-				{:else}
-					<span
-						class="grid flex-1 grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_minmax(0,1.2fr)_6.5rem_10rem] gap-3"
-					>
-						<span>{m.open_column_identifier()}</span>
-						<span>{source === 'suggested' ? m.open_column_target() : m.open_column_contact()}</span>
-						<span>{m.open_column_documents()}</span>
-						<span>{m.open_source()}</span>
-						<span>{m.open_column_advice()}</span>
-					</span>
-				{/if}
-			</div>
-			<ul class="divide-y" aria-label={m.master_identifiers()}>
-				{#each list.items as item (openKey(item))}
-					{@const key = openKey(item)}
-					{@const value = shown(item)}
-					<li
-						class={cn('flex min-h-14 gap-3 py-2.5 pr-4 pl-4', key in chosen && 'bg-panel')}
-						data-row
-					>
-						<ChoiceBox
-							class="mt-1 shrink-0"
-							checked={key in chosen}
-							aria-label={m.open_select({ value })}
-							onchange={(event) => toggle(item, event.currentTarget.checked)}
-						/>
-						{#if phone.current}
-							<div class="flex min-w-0 flex-1 flex-col gap-0.5">
-								<div class="flex items-center justify-between gap-2">
-									<span class="text-xs text-muted-foreground">{kindLabel(item.kind)}</span>
-									{@render sourceBadge(item)}
-								</div>
-								<Button
-									variant="link"
-									size="inline"
-									class="h-auto justify-start p-0 text-left font-mono text-meta break-all whitespace-normal"
-									aria-label={m.open_open({ value })}
-									onclick={() => openItem(item)}>{value}</Button
-								>
-								<span class="text-meta text-muted-foreground">
-									{contactText(item)}{item.source === 'suggested' ? ` (${whereText(item)})` : ''} · {documentsText(
-										item.documents
-									)}
-								</span>
-								{#if item.recommendation}{@render advice(item)}{/if}
-							</div>
-						{:else}
-							<div
-								class="grid flex-1 grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_minmax(0,1.2fr)_6.5rem_10rem] items-center gap-3"
+				</div>
+				<ul class="divide-y" aria-label={m.master_identifiers()}>
+					{#each list.items as item (openKey(item))}
+						{@const key = openKey(item)}
+						{@const value = shown(item)}
+						<li class={cn('flex items-center', key in chosen && 'bg-panel')} data-row>
+							<ChoiceBox
+								class="ml-4 shrink-0"
+								checked={key in chosen}
+								aria-label={m.open_select({ value })}
+								onchange={(event) => toggle(item, event.currentTarget.checked)}
+							/>
+							<!-- The whole row opens the identifier, as the rows of the master data do;
+							     while some are chosen it chooses, as the documents in their mode. -->
+							<button
+								type="button"
+								class="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2.5 pr-3 pl-3 text-left transition-colors hover:bg-panel focus-visible:bg-panel focus-visible:outline-none"
+								aria-label={choosing ? m.open_select({ value }) : m.open_open({ value })}
+								aria-pressed={choosing ? key in chosen : undefined}
+								onclick={() => (choosing ? toggle(item, !(key in chosen)) : openItem(item))}
 							>
-								<div class="flex min-w-0 flex-col">
-									<span class="text-xs text-muted-foreground">{kindLabel(item.kind)}</span>
-									<Button
-										variant="link"
-										size="inline"
-										class="block h-auto max-w-full justify-start truncate p-0 text-left font-mono text-meta"
-										aria-label={m.open_open({ value })}
-										onclick={() => openItem(item)}>{value}</Button
-									>
-								</div>
-								<div class="flex min-w-0 items-center gap-2">
-									{#if item.person || item.contacts.length === 1}
-										<ContactAvatar contact={{ name: contactText(item), logo: null }} />
-									{/if}
+								<span class="flex min-w-0 flex-1 flex-col gap-0.5">
+									<span class="flex items-center justify-between gap-2">
+										<span class="text-xs text-muted-foreground">{kindLabel(item.kind)}</span>
+										{@render sourceBadge(item)}
+									</span>
+									<span class="font-mono text-meta break-all">{value}</span>
+									<span class="text-meta text-muted-foreground">
+										{contactText(item)}{item.source === 'suggested' ? ` (${whereText(item)})` : ''} ·
+										{documentsText(item.documents)}
+									</span>
+									{#if item.recommendation}{@render advice(item, false)}{/if}
+								</span>
+								<ChevronRight class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+							</button>
+						</li>
+					{/each}
+				</ul>
+			</Card.Root>
+		{:else}
+			<Card.Root size="flush" class="overflow-hidden">
+				<Table.Root class="table-fixed" aria-label={m.master_identifiers()}>
+					<Table.Header>
+						<Table.Row>
+							<Table.Head class="w-12 pl-4">
+								<ChoiceBox
+									checked={pageChosen}
+									aria-label={m.open_select_all()}
+									onchange={(event) => togglePage(event.currentTarget.checked)}
+								/>
+							</Table.Head>
+							<Table.Head>{m.open_column_identifier()}</Table.Head>
+							<Table.Head class="w-56">
+								{source === 'suggested' ? m.open_column_target() : m.open_column_contact()}
+							</Table.Head>
+							<Table.Head class="w-36">{m.open_column_documents()}</Table.Head>
+							<Table.Head class="w-28">{m.open_source()}</Table.Head>
+							<Table.Head class="w-48 pr-4">{m.open_column_advice()}</Table.Head>
+						</Table.Row>
+					</Table.Header>
+					<Table.Body>
+						{#each list.items as item (openKey(item))}
+							{@const key = openKey(item)}
+							{@const value = shown(item)}
+							<Table.Row class={cn('h-14', key in chosen && 'bg-panel')} data-row>
+								<Table.Cell class="pl-4">
+									<ChoiceBox
+										checked={key in chosen}
+										aria-label={m.open_select({ value })}
+										onchange={(event) => toggle(item, event.currentTarget.checked)}
+									/>
+								</Table.Cell>
+								<Table.Cell>
 									<span class="flex min-w-0 flex-col">
-										<span
-											class={cn(
-												'truncate text-sm',
-												item.contacts.length > 1 && 'text-muted-foreground'
-											)}>{contactText(item)}</span
+										<span class="text-xs text-muted-foreground">{kindLabel(item.kind)}</span>
+										<Button
+											variant="link"
+											size="inline"
+											class="block h-auto max-w-full justify-start truncate p-0 text-left font-mono text-meta"
+											aria-label={m.open_open({ value })}
+											onclick={() => openItem(item)}>{value}</Button
 										>
-										{#if item.source === 'suggested'}
-											<span class="text-xs text-muted-foreground">{whereText(item)}</span>
+									</span>
+								</Table.Cell>
+								<Table.Cell>
+									<span class="flex min-w-0 items-center gap-2">
+										{#if item.person || item.contacts.length === 1}
+											<ContactAvatar contact={contactOf(item)} />
+										{/if}
+										<span class="flex min-w-0 flex-col">
+											<span
+												class={cn(
+													'truncate text-sm',
+													item.contacts.length > 1 && 'text-muted-foreground'
+												)}>{contactText(item)}</span
+											>
+											{#if item.source === 'suggested'}
+												<span class="truncate text-xs text-muted-foreground">{whereText(item)}</span
+												>
+											{/if}
+										</span>
+									</span>
+								</Table.Cell>
+								<Table.Cell>
+									<span class="flex flex-col items-start">
+										<a
+											class="inline-flex min-h-6 items-center text-sm text-brand tabular-nums hover:underline"
+											href={documentsHref(item)}>{documentsText(item.documents)}</a
+										>
+										{#if item.last}
+											<span class="text-xs text-muted-foreground">
+												{m.open_last({ date: formatDate(item.last) })}
+											</span>
 										{/if}
 									</span>
-								</div>
-								<div class="flex flex-col">
-									<a
-										class="text-sm text-brand tabular-nums hover:underline"
-										href={documentsHref(item)}>{documentsText(item.documents)}</a
-									>
-									{#if item.last}
-										<span class="text-xs text-muted-foreground">
-											{m.open_last({ date: formatDate(item.last) })}
-										</span>
-									{/if}
-								</div>
-								<span>{@render sourceBadge(item)}</span>
-								{@render advice(item)}
-							</div>
-						{/if}
-					</li>
-				{/each}
-			</ul>
-		</Card.Root>
+								</Table.Cell>
+								<Table.Cell>{@render sourceBadge(item)}</Table.Cell>
+								<Table.Cell class="pr-4">{@render advice(item, true)}</Table.Cell>
+							</Table.Row>
+						{/each}
+					</Table.Body>
+				</Table.Root>
+			</Card.Root>
+		{/if}
 		<Pagination
 			page={list.page}
 			total={list.total}

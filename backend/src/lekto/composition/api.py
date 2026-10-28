@@ -81,6 +81,7 @@ def api_context(container: Container, settings: Settings, services: Services) ->
         inbox=services.inbox,
         rules=services.rules,
         rule_applications=services.rule_applications,
+        bulk=services.bulk,
         webhooks=services.webhooks,
         webhook_delivery=services.webhook_delivery,
         tasks=services.tasks,

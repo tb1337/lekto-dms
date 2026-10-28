@@ -1225,6 +1225,46 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/documents/bulk': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Change many documents at once
+		 * @description Does one action to the selected documents in the background; follow it at `GET /documents/bulk/{id}`. The selection: `document_ids` (at most 500), or every document the query parameters find, as `GET /documents` (at most 10000, more: 422) or with `q` as `GET /documents/search` (the hits it reaches, at most 1000); it is fixed now. Each document goes through the same change as one by hand, rights included: one the caller may not edit, one being processed (except to delete it) or one that changed meanwhile is skipped with the reason, one that is as the action wants it already stays as it is. Admins act on every user's documents with `all_users` (others: 403).
+		 */
+		post: operations['start_bulk_api_v1_documents_bulk_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/documents/bulk/{id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Progress of a change of many documents
+		 * @description For the user who started it and admins.
+		 */
+		get: operations['get_bulk_api_v1_documents_bulk__id__get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/documents/stream': {
 		parameters: {
 			query?: never;
@@ -2983,6 +3023,131 @@ export interface components {
 			/** Height */
 			height: number;
 		};
+		/**
+		 * BulkActionIn
+		 * @example {
+		 *       "kind": "add_tags",
+		 *       "tag_ids": [
+		 *         "01a1828b-ef26-720c-9e95-ab5d2f4396cf"
+		 *       ]
+		 *     }
+		 */
+		BulkActionIn: {
+			kind: components['schemas']['BulkKind'];
+			/**
+			 * Tag Ids
+			 * @description `add_tags`, `remove_tags`: the tags.
+			 */
+			tag_ids?: string[];
+			/**
+			 * Contact Id
+			 * @description `set_contact`; none: clear it.
+			 */
+			contact_id?: string | null;
+			/**
+			 * Document Type Id
+			 * @description `set_document_type`; none: clear it.
+			 */
+			document_type_id?: string | null;
+			/**
+			 * Topic Id
+			 * @description `set_topic`; none: clear it.
+			 */
+			topic_id?: string | null;
+			/**
+			 * Space Id
+			 * @description `move`: the space to move into.
+			 */
+			space_id?: string | null;
+			/** @description `reprocess`: process again from this node on. */
+			from_node?: components['schemas']['ReprocessNode'] | null;
+		};
+		/**
+		 * BulkKind
+		 * @enum {string}
+		 */
+		BulkKind:
+			| 'add_tags'
+			| 'remove_tags'
+			| 'set_contact'
+			| 'set_document_type'
+			| 'set_topic'
+			| 'move'
+			| 'confirm'
+			| 'reprocess'
+			| 'delete';
+		/** BulkOperationOut */
+		BulkOperationOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			kind: components['schemas']['BulkKind'];
+			status: components['schemas']['BulkStatus'];
+			/**
+			 * Total
+			 * @description Selected documents.
+			 */
+			total: number;
+			/**
+			 * Done
+			 * @description Documents worked through so far.
+			 */
+			done: number;
+			/** Changed */
+			changed: number;
+			/**
+			 * Unchanged
+			 * @description Were as the action wants them already.
+			 */
+			unchanged: number;
+			/**
+			 * Skipped
+			 * @description Left as they were: not writable, being processed, gone, ...
+			 */
+			skipped: components['schemas']['SkippedOut'][];
+			/** Error */
+			error: string | null;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/** Finished At */
+			finished_at: string | null;
+		};
+		/**
+		 * BulkRequest
+		 * @example {
+		 *       "action": {
+		 *         "kind": "move",
+		 *         "space_id": "01a1828b-ef25-76fd-a18a-9b056a79818d"
+		 *       },
+		 *       "document_ids": [
+		 *         "01a1828b-ef26-720c-9e95-ab5d2f4396cf"
+		 *       ]
+		 *     }
+		 * @example {
+		 *       "action": {
+		 *         "from_node": "ocr",
+		 *         "kind": "reprocess"
+		 *       }
+		 *     }
+		 */
+		BulkRequest: {
+			/**
+			 * Document Ids
+			 * @description The documents one by one. Without: every document the query parameters find (the filter of `GET /documents`, with `q` the hits of the search).
+			 */
+			document_ids?: string[] | null;
+			action: components['schemas']['BulkActionIn'];
+		};
+		/**
+		 * BulkStatus
+		 * @enum {string}
+		 */
+		BulkStatus: 'queued' | 'running' | 'done' | 'failed';
 		/**
 		 * Cadence
 		 * @enum {string}
@@ -7586,6 +7751,7 @@ export interface components {
 			| 'rule_asks_on_arrival'
 			| 'skip_changed_meanwhile'
 			| 'skip_not_available'
+			| 'bulk_too_many'
 			| 'not_iban'
 			| 'not_vat_id'
 			| 'not_customer_number'
@@ -19465,6 +19631,240 @@ export interface operations {
 					 *       "title": "Service Unavailable",
 					 *       "status": 503,
 					 *       "detail": "database: unreachable"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	start_bulk_api_v1_documents_bulk_post: {
+		parameters: {
+			query?: {
+				/** @description Words of the search. */
+				q?: string | null;
+				/** @description Every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+				contact_id?: string[] | null;
+				document_type_id?: string[] | null;
+				tag_id?: string[] | null;
+				space_id?: string[] | null;
+				lane?: components['schemas']['LaneFilter'][] | null;
+				field_id?: string | null;
+				contact_group_id?: string[] | null;
+				document_type_group_id?: string[] | null;
+				topic_id?: string[] | null;
+				document_date_from?: string | null;
+				document_date_to?: string | null;
+				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				fact?: string[] | null;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['BulkRequest'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['BulkOperationOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Service Unavailable",
+					 *       "status": 503,
+					 *       "detail": "database: unreachable"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	get_bulk_api_v1_documents_bulk__id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['BulkOperationOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

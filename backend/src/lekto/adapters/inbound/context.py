@@ -16,6 +16,7 @@ from lekto.core.ports.event_bus import EventBus
 from lekto.core.ports.wakeup import Wakeup
 from lekto.core.services.auth import AuthService
 from lekto.core.services.automation import AutomationService
+from lekto.core.services.bulk import BulkService
 from lekto.core.services.classifier import ClassifierService
 from lekto.core.services.documents import DocumentService
 from lekto.core.services.expected import ExpectedService
@@ -59,6 +60,7 @@ class ApiContext:
     inbox: InboxService
     rules: RuleService
     rule_applications: RuleApplicationService
+    bulk: BulkService
     webhooks: WebhookService
     webhook_delivery: WebhookDeliveryService
     tasks: TaskService

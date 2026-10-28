@@ -47,6 +47,7 @@ def build_worker(container: Container, settings: Settings, services: Services) -
         shutdown_timeout=settings.worker_shutdown_timeout,
         indexing=services.indexing,
         rules=services.rule_applications,
+        bulk=services.bulk,
         webhooks=services.webhook_delivery,
         tasks=services.tasks,
         webhook_concurrency=settings.webhook_concurrency,

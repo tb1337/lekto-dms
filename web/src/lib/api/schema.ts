@@ -19830,6 +19830,8 @@ export interface operations {
 				limit?: number;
 				/** @description `next_cursor`. */
 				cursor?: string | null;
+				/** @description Skip so many documents (pages by number); with `cursor`, after it. */
+				offset?: number;
 				/** @description Every user's documents instead of the caller's reach (admins). */
 				all_users?: boolean;
 				contact_id?: string[] | null;

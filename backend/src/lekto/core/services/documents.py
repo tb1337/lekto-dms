@@ -546,11 +546,13 @@ class DocumentService:
         *,
         order: DocumentOrder = NEWEST_FIRST,
         after: DocumentId | None = None,
+        offset: int = 0,
         limit: int = PAGE_SIZE,
         all_users: bool = False,
     ) -> list[ListedDocument]:
         """Documents within the caller's reach matching `filter`, in `order` (newest first),
-        after the page ending at the document `after`; with `all_users` (admins only), every
+        after the page ending at the document `after` or from the `offset`-th on (pages by
+        number); with `all_users` (admins only), every
         document. Each is checked against the permission rules once more, and says whether it
         stands open in the caller's inbox (with `all_users`, in every user's). ValidationError
         if `after` is gone or out of reach while the list sorts by another key than the order of
@@ -564,11 +566,11 @@ class DocumentService:
             filter = await expanded(uow, filter)
             if all_users:
                 documents = await uow.documents.query(
-                    filter, order=order, after=position, limit=limit
+                    filter, order=order, after=position, limit=limit, offset=offset
                 )
             else:
                 documents = await uow.documents.query_visible(
-                    actor, filter, order=order, after=position, limit=limit
+                    actor, filter, order=order, after=position, limit=limit, offset=offset
                 )
             spaces: dict[SpaceId, Space] = {}
             readable = []

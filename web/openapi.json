@@ -11870,6 +11870,19 @@
             "description": "`next_cursor`."
           },
           {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Skip so many documents (pages by number); with `cursor`, after it.",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Skip so many documents (pages by number); with `cursor`, after it."
+          },
+          {
             "name": "all_users",
             "in": "query",
             "required": false,

@@ -242,6 +242,13 @@ async def list_documents(
     ] = None,
     limit: Annotated[int, Query(ge=1, le=PAGE_LIMIT)] = PAGE_SIZE,
     cursor: Cursor = None,
+    offset: Annotated[
+        int,
+        Query(
+            ge=0,
+            description="Skip so many documents (pages by number); with `cursor`, after it.",
+        ),
+    ] = 0,
     all_users: AllDocuments = False,
 ) -> DocumentPage:
     views = await context.documents.query(
@@ -249,6 +256,7 @@ async def list_documents(
         filter,
         order=sort.order(None if sort_field_id is None else FieldId(sort_field_id)),
         after=decode_cursor(cursor),
+        offset=offset,
         limit=limit,
         all_users=all_users,
     )

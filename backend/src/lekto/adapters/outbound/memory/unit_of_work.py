@@ -475,9 +475,12 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
         order: DocumentOrder = NEWEST_FIRST,
         after: DocumentPosition | None = None,
         limit: int,
+        offset: int = 0,
     ) -> list[Document]:
         visible = await self.list_visible_to(user)
-        return _query(visible, filter, self._groups(), order=order, after=after, limit=limit)
+        return _query(
+            visible, filter, self._groups(), order=order, after=after, limit=limit, offset=offset
+        )
 
     async def query(
         self,
@@ -486,9 +489,12 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
         order: DocumentOrder = NEWEST_FIRST,
         after: DocumentPosition | None = None,
         limit: int,
+        offset: int = 0,
     ) -> list[Document]:
         every = [_copy(row) for row in self._all()]
-        return _query(every, filter, self._groups(), order=order, after=after, limit=limit)
+        return _query(
+            every, filter, self._groups(), order=order, after=after, limit=limit, offset=offset
+        )
 
     async def facet_rows(self, filter: DocumentFilter, user: UserId | None) -> list[FacetRow]:
         documents = (
@@ -1052,6 +1058,7 @@ def _query(
     order: DocumentOrder,
     after: DocumentPosition | None,
     limit: int,
+    offset: int = 0,
 ) -> list[Document]:
     matching = [document for document in documents if filter.matches(groups.view(document))]
     ranked = sorted(matching, key=lambda document: _rank(document, order))
@@ -1059,7 +1066,7 @@ def _query(
         # The documents after `after`: its rank is the one it had (the cursor's value).
         mark = _rank_of(after, order)
         ranked = [document for document in ranked if _rank(document, order) > mark]
-    return ranked[:limit]
+    return ranked[offset : offset + limit]
 
 
 def _rank(document: Document, order: DocumentOrder) -> Rank:

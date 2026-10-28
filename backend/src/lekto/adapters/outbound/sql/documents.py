@@ -114,8 +114,11 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         order: DocumentOrder = NEWEST_FIRST,
         after: DocumentPosition | None = None,
         limit: int,
+        offset: int = 0,
     ) -> list[Document]:
-        return await self._query([visible_to(user)], filter, order=order, after=after, limit=limit)
+        return await self._query(
+            [visible_to(user)], filter, order=order, after=after, limit=limit, offset=offset
+        )
 
     async def query(
         self,
@@ -124,8 +127,9 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         order: DocumentOrder = NEWEST_FIRST,
         after: DocumentPosition | None = None,
         limit: int,
+        offset: int = 0,
     ) -> list[Document]:
-        return await self._query([], filter, order=order, after=after, limit=limit)
+        return await self._query([], filter, order=order, after=after, limit=limit, offset=offset)
 
     async def facet_rows(self, filter: DocumentFilter, user: UserId | None) -> list[FacetRow]:
         documents, tags = t.documents, t.document_tags
@@ -231,6 +235,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         order: DocumentOrder,
         after: DocumentPosition | None,
         limit: int,
+        offset: int = 0,
     ) -> list[Document]:
         documents = t.documents
         numeric = False
@@ -247,7 +252,9 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             criteria.append(behind)
         criteria.extend(_matching(filter))
         rows = (
-            await self._tx.read(select(documents).where(*criteria).order_by(*sorting).limit(limit))
+            await self._tx.read(
+                select(documents).where(*criteria).order_by(*sorting).offset(offset).limit(limit)
+            )
         ).all()
         return await self._entities(rows)
 

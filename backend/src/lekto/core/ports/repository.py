@@ -381,9 +381,10 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         order: DocumentOrder = NEWEST_FIRST,
         after: DocumentPosition | None = None,
         limit: int,
+        offset: int = 0,
     ) -> list[Document]:
         """Documents the user may read (as `list_visible_to`) that match `filter`, in `order`,
-        only those after `after` in it, at most `limit`."""
+        only those after `after` in it, skipping the first `offset` of them, at most `limit`."""
         ...
 
     async def query(
@@ -393,6 +394,7 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         order: DocumentOrder = NEWEST_FIRST,
         after: DocumentPosition | None = None,
         limit: int,
+        offset: int = 0,
     ) -> list[Document]:
         """As `query_visible`, over every document (for admins)."""
         ...

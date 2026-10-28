@@ -1463,6 +1463,13 @@ class UnitOfWorkContract:
             everything = await query(owner.id, DocumentFilter(), limit=100)
             all_ids = [d.id for d in [*documents, processing]]
             assert [d.id for d in everything] == sorted(all_ids, reverse=True)
+            # Pages by number: skip so many, in the same order.
+            second = await query(owner.id, DocumentFilter(), limit=3, offset=3)
+            assert [d.id for d in second] == [d.id for d in everything[3:6]]
+            assert await query(owner.id, DocumentFilter(), limit=3, offset=99) == []
+            assert [
+                d.id for d in await uow.documents.query(DocumentFilter(), limit=2, offset=1)
+            ] == [d.id for d in everything[1:3]]
             by_contact = DocumentFilter(contacts=frozenset({contact.id}))
             assert set(ids(await query(owner.id, by_contact, limit=9))) == {0, 2, 4}
             by_type = DocumentFilter(document_types=frozenset({invoice.id}))

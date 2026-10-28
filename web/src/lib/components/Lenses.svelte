@@ -11,7 +11,7 @@
 	import { formatNumber } from '#lib/i18n.ts';
 
 	// The user's lenses as links: all documents first, then each lens, each with how many
-	// documents it shows (`counts`, Tobi 29.10.2026); `onadd` offers a new one from the filters. Beside the list a card (`list`), on a phone a row of chips (`chips`).
+	// documents it shows (`counts`, Tobi 28.10.2026); `onadd` offers a new one from the filters. Beside the list a card (`list`), on a phone a row of chips (`chips`).
 	let {
 		lenses,
 		active,

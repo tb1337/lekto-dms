@@ -1917,6 +1917,13 @@ class UnitOfWorkContract:
             assert len(await rows(by_contact, None)) == 2  # every document
             in_september = DocumentFilter(document_dates=Period.month(2026, 9))
             assert await rows(in_september, owner.id) == [first]
+            # Counted alone: the same documents as the rows.
+            count = uow.documents.count
+            assert await count(DocumentFilter(), owner.id) == 2
+            assert await count(DocumentFilter(), None) == 3
+            assert await count(by_contact, owner.id) == 1
+            assert await count(by_contact, None) == 2
+            assert await count(in_september, owner.id) == 1
 
     async def test_removing_a_document_removes_its_processing_log(
         self, uow_factory: UnitOfWorkFactory

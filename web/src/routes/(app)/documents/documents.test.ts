@@ -2,6 +2,8 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
+import { POLL } from '#lib/bulk.svelte.ts';
+import { usageLabel } from '#lib/components/UsageCount.svelte';
 import { events } from '#lib/events.svelte.ts';
 import { formatDate } from '#lib/i18n.ts';
 import { forgetMeaningSearch } from '#lib/meaning-search.ts';
@@ -63,6 +65,9 @@ afterEach(() => {
 	localStorage.clear();
 	session.clear();
 	vi.unstubAllGlobals();
+	vi.useRealTimers();
+	// A menu open while the clock was faked leaves this behind.
+	window.document.body.style.pointerEvents = '';
 });
 
 describe('the archive page', () => {
@@ -145,7 +150,37 @@ describe('the archive page', () => {
 		expect(goto).toHaveBeenLastCalledWith('?sort=title&page=3', { replaceState: false });
 	});
 
+	it('loads the page shown again after a reconnect of the event stream, not the first', async () => {
+		state.url = new URL('http://lekto/ui/documents?sort=title&page=2');
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({
+				items: [listedOf({ id: 'd51', title: 'Strom', document_date: '2026-10-01' })],
+				next_cursor: null
+			}),
+			'GET /api/v1/documents/count': () => ({ total: 120 })
+		});
+		vi.stubGlobal('fetch', api);
+		events.useFactory((url) => new FakeSource(url) as unknown as EventSource);
+		events.start(() => {});
+		FakeSource.last.onopen?.();
+		render(Page);
+		await screen.findByText('Strom');
+		const listed = () => calls(api).filter((call) => call.startsWith('GET /api/v1/documents?'));
+		expect(listed()).toHaveLength(1);
+		// The stream opens again after a break: the data shown may be stale.
+		FakeSource.last.onopen?.();
+		await vi.waitFor(() => expect(listed()).toHaveLength(2));
+		expect(listed().at(-1)).toContain('offset=50');
+		expect(goto).not.toHaveBeenCalled();
+		events.stop();
+	});
+
+	// Opens two menus and a dialog and follows a poll: the longest test of the page, longer
+	// while every worker runs one beside it.
 	it('chooses in the selection mode: the page, then every hit, and confirms them all', async () => {
+		// The clock is faked so the poll that follows the action comes at once.
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 		const sent: unknown[] = [];
 		const operation = {
 			id: 'op-1',
@@ -186,9 +221,9 @@ describe('the archive page', () => {
 			screen.queryByRole('checkbox', { name: m.bulk_select_document({ title: 'Gas' }) })
 		).toBeNull();
 		const mode = screen.getAllByRole('button', { name: m.bulk_mode() })[0];
-		await userEvent.click(mode);
+		await user.click(mode);
 		expect(mode.getAttribute('aria-pressed')).toBe('true');
-		const empty = screen.getByRole('region', { name: m.bulk_selected({ count: '0' }) });
+		const empty = screen.getByRole('region', { name: m.selection_selected({ count: '0' }) });
 		expect(empty.textContent).toContain(m.bulk_tap_hint());
 		expect(
 			within(empty).getByRole('button', { name: m.field_tags() }).hasAttribute('disabled')
@@ -198,42 +233,43 @@ describe('the archive page', () => {
 			const bar = screen.getByRole('region', { name: /ausgewählt|selected/ });
 			const chooser = within(bar).getByRole('button', { name: m.bulk_mode() });
 			await fireEvent.pointerDown(chooser, { button: 0, pointerType: 'mouse' });
-			await userEvent.click(await screen.findByRole('menuitem', { name: item }));
+			await user.click(await screen.findByRole('menuitem', { name: item }));
 		};
 		await choose(m.bulk_select_page());
-		screen.getByRole('region', { name: m.bulk_selected({ count: '2' }) });
+		screen.getByRole('region', { name: m.selection_selected({ count: '2' }) });
 		const gas = screen.getByRole('checkbox', { name: m.bulk_select_document({ title: 'Gas' }) });
 		expect((gas as HTMLInputElement).checked).toBe(true);
 		await choose(m.bulk_select_all({ count: formatNumber(120) }));
-		const all = screen.getByRole('region', { name: m.bulk_selected({ count: formatNumber(120) }) });
+		const all = screen.getByRole('region', {
+			name: m.selection_selected({ count: formatNumber(120) })
+		});
 		expect(all.textContent).toContain(m.bulk_all_hits());
 
 		await fireEvent.pointerDown(within(all).getByRole('button', { name: m.bulk_more() }), {
 			button: 0,
 			pointerType: 'mouse'
 		});
-		await userEvent.click(await screen.findByRole('menuitem', { name: m.bulk_confirm() }));
+		await user.click(await screen.findByRole('menuitem', { name: m.bulk_confirm() }));
 		await vi.waitFor(() => expect(sent).toHaveLength(1));
 		expect(sent[0]).toEqual({
 			query: '',
 			body: { document_ids: null, action: { kind: 'confirm' } }
 		});
 		// The bar follows the action until it ends; then the choice is let go.
-		await vi.waitFor(
-			() =>
-				expect(
-					screen.queryByRole('region', { name: m.bulk_selected({ count: formatNumber(120) }) })
-				).toBeNull(),
-			{ timeout: 3000 }
+		await vi.advanceTimersByTimeAsync(POLL);
+		await vi.waitFor(() =>
+			expect(
+				screen.queryByRole('region', { name: m.selection_selected({ count: formatNumber(120) }) })
+			).toBeNull()
 		);
 		// The mode stays: nothing chosen any more.
-		screen.getByRole('region', { name: m.bulk_selected({ count: '0' }) });
+		screen.getByRole('region', { name: m.selection_selected({ count: '0' }) });
 		await choose(m.bulk_mode_end());
-		expect(screen.queryByRole('region', { name: m.bulk_selected({ count: '0' }) })).toBeNull();
+		expect(screen.queryByRole('region', { name: m.selection_selected({ count: '0' }) })).toBeNull();
 		expect(
 			screen.queryByRole('checkbox', { name: m.bulk_select_document({ title: 'Gas' }) })
 		).toBeNull();
-	});
+	}, 15_000);
 
 	it('chooses a document by a tap on it, and deletes after asking with the number', async () => {
 		const sent: unknown[] = [];
@@ -254,14 +290,14 @@ describe('the archive page', () => {
 		await userEvent.click(screen.getAllByRole('button', { name: m.bulk_mode() })[0]);
 		// In the mode the card is the label of its box: a tap on its title chooses it.
 		await userEvent.click(screen.getByText('Gas'));
-		const bar = screen.getByRole('region', { name: m.bulk_selected({ count: '1' }) });
+		const bar = screen.getByRole('region', { name: m.selection_selected({ count: '1' }) });
 		await fireEvent.pointerDown(within(bar).getByRole('button', { name: m.bulk_more() }), {
 			button: 0,
 			pointerType: 'mouse'
 		});
 		await userEvent.click(await screen.findByRole('menuitem', { name: m.bulk_delete() }));
 		const dialog = await screen.findByRole('alertdialog', {
-			name: m.bulk_delete_title({ documents: m.bulk_documents_one() })
+			name: m.bulk_delete_title({ documents: usageLabel(1) })
 		});
 		await userEvent.click(within(dialog).getByRole('button', { name: m.delete_title() }));
 		await vi.waitFor(() =>

@@ -50,7 +50,7 @@ class NamedContactOut(BaseModel):
 
 
 class HolderOut(BaseModel):
-    """Whose an IBAN or a creditor ID is where it stands."""
+    """Whose an IBAN, a creditor ID, a VAT ID or an e-mail domain is where it stands."""
 
     kind: HolderKind = Field(
         description=(
@@ -114,8 +114,8 @@ class FoundIdentifierOut(BaseModel):
     holder: HolderOut | None = Field(
         default=None,
         description=(
-            "Whose an IBAN or a creditor ID is; null for other kinds and until the facts "
-            "signal ran again after 0.8 (`read-facts`)."
+            "Whose an IBAN, a creditor ID, a VAT ID or an e-mail domain is; null for other "
+            "kinds and until the facts signal ran again after 0.8 (`read-facts`)."
         ),
     )
     other_contacts: int | None = Field(

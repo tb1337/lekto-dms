@@ -55,9 +55,6 @@ export default defineConfig({
 		environment: 'jsdom',
 		include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
 		setupFiles: ['./tests/setup.ts'],
-		// A test that renders a dialog and types takes up to a second alone and several times as
-		// long while every worker runs one: the default of 5 s failed a different test each time.
-		testTimeout: 20_000,
 		// The colour tests read the palette's tokens from it (`?raw`).
 		css: { include: [/app\.css/] }
 	}

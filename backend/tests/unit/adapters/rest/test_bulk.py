@@ -74,6 +74,8 @@ async def test_a_bulk_request_is_checked(api: Api) -> None:
     same = {"kind": "change_tags", "add_tag_ids": [mine], "remove_tag_ids": [mine]}
     await refused({}, {"action": same})
     await refused({}, {"action": {"kind": "move"}})  # where to?
+    await refused({}, {"action": {"kind": "move", "space_id": mine, "add_tag_ids": [mine]}})
+    await refused({}, {"action": {"kind": "change_tags", "add_tag_ids": [mine]}}, 404)  # no tag
     await refused({}, {"action": {"kind": "reprocess", "from_node": "receive"}})
     await refused({"q": "Rechnung"}, {"document_ids": [mine], "action": {"kind": "confirm"}})
     await refused({}, {"document_ids": [], "action": {"kind": "confirm"}})

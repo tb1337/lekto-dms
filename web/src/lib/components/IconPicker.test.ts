@@ -42,6 +42,8 @@ describe('IconPicker', () => {
 		expect(screen.getByText(m.icon_none())).toBeTruthy();
 	});
 
+	// Walks the grid of all icons key by key: up to three seconds alone, longer while every
+	// worker runs a test beside it.
 	it('is one tab stop whose arrows move by rows, Enter choosing', async () => {
 		// Six tiles to a row: jsdom lays nothing out.
 		vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
@@ -88,7 +90,7 @@ describe('IconPicker', () => {
 		await user.keyboard('{Control>}{Home}{/Control}{Enter}');
 		expect(screen.getByText(CURATED_NAMES[0])).toBeTruthy();
 		expect(document.activeElement).toBe(screen.getByRole('button', { name: m.icon_choose() }));
-	});
+	}, 15_000);
 
 	it('marks an unknown name with a stand-in', async () => {
 		render(IconPicker, { id: 'icon', value: 'gone-icon' });

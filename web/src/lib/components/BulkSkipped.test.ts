@@ -46,4 +46,37 @@ describe('the skipped documents of an action on many', () => {
 		await vi.waitFor(() => expect(dialog.textContent).toContain(m.bulk_unknown_document()));
 		expect(dialog.textContent).toContain(reasonText(gone));
 	});
+
+	it('asks for each document once, however the answers come in', async () => {
+		const ids = ['d1', 'd2', 'd3', 'd4'];
+		const api = fakeApi(
+			Object.fromEntries(
+				ids.map((id) => [
+					`GET /api/v1/documents/${id}`,
+					() => documentOf({ id, title: `Dokument ${id}` })
+				])
+			)
+		);
+		vi.stubGlobal('fetch', api);
+		render(BulkSkipped, {
+			operation: {
+				id: 'op',
+				kind: 'delete',
+				status: 'done',
+				total: 4,
+				done: 4,
+				changed: 0,
+				unchanged: 0,
+				skipped: ids.map((id) => ({ document_id: id, reason: 'busy', reasons: [] })),
+				error: null,
+				created_at: '2026-10-28T12:00:00Z',
+				finished_at: '2026-10-28T12:00:05Z'
+			},
+			onclose: vi.fn()
+		});
+		const dialog = await screen.findByRole('dialog', { name: m.bulk_details_title() });
+		for (const id of ids) await within(dialog).findByRole('link', { name: `Dokument ${id}` });
+		const asked = api.mock.calls.map(([request]) => new URL(request.url).pathname).sort();
+		expect(asked).toEqual(ids.map((id) => `/api/v1/documents/${id}`));
+	});
 });

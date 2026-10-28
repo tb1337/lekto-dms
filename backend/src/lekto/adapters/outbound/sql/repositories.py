@@ -57,7 +57,7 @@ class SqlRepository[K: UUID, E: Entity[UUID]]:
         result = await self._tx.write(
             update(self.table)
             .where(key == id, self.table.c.version == version)
-            .values({**self._values(entity), "version": version + 1})
+            .values({**self._changed(entity), "version": version + 1})
         )
         if result.rowcount == 0:
             exists = await self._tx.read(select(key).where(key == id))
@@ -67,6 +67,11 @@ class SqlRepository[K: UUID, E: Entity[UUID]]:
         entity.version = version + 1
         await self._delete_children([id])
         await self._write_children(entity)
+
+    def _changed(self, entity: E) -> Values:
+        """The columns `update` writes: all of them, unless a repository keeps a column that
+        never changes after `add` out of it (a large one, written once)."""
+        return self._values(entity)
 
     async def list_all(self) -> list[E]:
         return await self._load(true())

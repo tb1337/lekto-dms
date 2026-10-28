@@ -30,27 +30,27 @@
 				{#if summary.intervene > 0}
 					<li>
 						<Badge variant="red"
-							><OctagonX
-								aria-hidden="true"
-							/>{`${formatNumber(summary.intervene)} ${m.lane_red()}`}</Badge
+							><OctagonX aria-hidden="true" />{m.overview_lane_red({
+								count: formatNumber(summary.intervene)
+							})}</Badge
 						>
 					</li>
 				{/if}
 				{#if summary.review > 0}
 					<li>
 						<Badge variant="yellow"
-							><TriangleAlert
-								aria-hidden="true"
-							/>{`${formatNumber(summary.review)} ${m.lane_yellow()}`}</Badge
+							><TriangleAlert aria-hidden="true" />{m.overview_lane_yellow({
+								count: formatNumber(summary.review)
+							})}</Badge
 						>
 					</li>
 				{/if}
 				{#if summary.new > 0}
 					<li>
 						<Badge variant="green"
-							><CircleCheck
-								aria-hidden="true"
-							/>{`${formatNumber(summary.new)} ${m.inbox_new()}`}</Badge
+							><CircleCheck aria-hidden="true" />{m.overview_lane_new({
+								count: formatNumber(summary.new)
+							})}</Badge
 						>
 					</li>
 				{/if}

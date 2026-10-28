@@ -20,6 +20,7 @@
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import { moveTargets, retryProcessing } from '#lib/components/document/actions.ts';
 	import LaneBadge from '#lib/components/LaneBadge.svelte';
+	import ReprocessFields from '#lib/components/ReprocessFields.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import ProcessingProgress from '#lib/components/ProcessingProgress.svelte';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
@@ -407,22 +408,23 @@
 	submitLabel={withVision ? m.reprocess_with_vision() : m.reprocess_title()}
 	action={reprocess}
 >
-	<Field.Field>
-		<Field.Label for="reprocess-node">{m.reprocess_from()}</Field.Label>
-		<Select id="reprocess-node" bind:value={fromNode} options={nodes} />
-	</Field.Field>
-	{#if askVision && readable && vision}
-		<div class="flex flex-col gap-1.5">
-			<Choice bind:checked={visionAgain} class="font-medium">
-				{m.reprocess_vision_again()}
-			</Choice>
-			<p class="pl-6 text-sm text-muted-foreground">
-				{visionAgain
-					? m.vision_hint({ endpoint: vision.endpoint, model: vision.model })
-					: m.reprocess_vision_lost()}
-			</p>
-		</div>
-	{:else if askVision}
-		<p class="text-sm text-muted-foreground">{m.reprocess_vision_lost()}</p>
-	{/if}
+	<ReprocessFields
+		id="reprocess-node"
+		{nodes}
+		bind:fromNode
+		note={askVision && !(readable && vision) ? m.reprocess_vision_lost() : null}
+	>
+		{#if askVision && readable && vision}
+			<div class="flex flex-col gap-1.5">
+				<Choice bind:checked={visionAgain} class="font-medium">
+					{m.reprocess_vision_again()}
+				</Choice>
+				<p class="pl-6 text-sm text-muted-foreground">
+					{visionAgain
+						? m.vision_hint({ endpoint: vision.endpoint, model: vision.model })
+						: m.reprocess_vision_lost()}
+				</p>
+			</div>
+		{/if}
+	</ReprocessFields>
 </FormDialog>

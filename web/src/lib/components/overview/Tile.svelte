@@ -29,7 +29,7 @@
 	{@render children()}
 	<a
 		{href}
-		class="mt-auto inline-flex min-h-8 items-center gap-1.5 self-start font-medium text-brand hover:underline"
+		class="mt-auto inline-flex min-h-8 items-center gap-1.5 self-start font-medium text-brand hover:underline max-sm:min-h-11"
 	>
 		{go}
 		<ArrowRight class="size-4" aria-hidden="true" />

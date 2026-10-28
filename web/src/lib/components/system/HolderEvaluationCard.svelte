@@ -11,11 +11,11 @@
 	import * as Table from '#lib/components/ui/table/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { formatNumber } from '#lib/i18n.ts';
-	import { kindLabel, type IdentifierKind } from '#lib/identifiers.ts';
+	import { labelOfKind, type IdentifierKind } from '#lib/identifiers.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
 
-	// The holders against the decisions at the contacts (Tobi, 29.10.2026; admins): per kind
+	// The holders against the decisions at the contacts (Tobi, 28.10.2026; admins): per kind
 	// with a holder, how often the rule agreed with what was confirmed or rejected, the two ways
 	// wrong apart (red above nought), the unclear and those read before their kind had a holder;
 	// last the open list's recommendation, over every kind. The API keeps it for a minute.
@@ -37,9 +37,15 @@
 	}
 	onMount(() => void load());
 
-	const rows = $derived(
-		holders ? ORDER.flatMap((kind) => holders?.kinds.find((item) => item.kind === kind) ?? []) : []
-	);
+	// The kinds in a fixed order; one the API adds stands after them, as it comes.
+	const rows = $derived.by(() => {
+		if (!holders) return [];
+		const ordered = ORDER.flatMap(
+			(kind) => holders?.kinds.find((item) => item.kind === kind) ?? []
+		);
+		const rest = holders.kinds.filter((item) => !ORDER.includes(item.kind));
+		return [...ordered, ...rest];
+	});
 
 	function told(tally: Tally): number {
 		return tally.right + tally.learned_rejected + tally.refused_confirmed;
@@ -52,7 +58,7 @@
 		<Table.Cell class={cn(strong && 'font-semibold')}>{label}</Table.Cell>
 		<Table.Cell class="text-right tabular-nums">
 			{#if of > 0}
-				<span class="font-medium text-lane-green-foreground">{formatNumber(tally.right)}</span>
+				<span class="font-medium">{formatNumber(tally.right)}</span>
 				<span class="text-muted-foreground">{m.holders_of({ count: formatNumber(of) })}</span>
 			{:else}
 				<span class="text-muted-foreground">–</span>
@@ -104,7 +110,7 @@
 				</Table.Header>
 				<Table.Body>
 					{#each rows as item (item.kind)}
-						{@render row(kindLabel(item.kind), item, false)}
+						{@render row(labelOfKind(item.kind), item, false)}
 					{/each}
 					{@render row(m.holders_recommendation(), holders.recommendation, true)}
 				</Table.Body>

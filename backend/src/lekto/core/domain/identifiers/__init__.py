@@ -39,6 +39,7 @@ from lekto.core.domain.identifiers.identifier import (
     MAX_IDENTIFIERS,
     Identifier,
     IdentifierSource,
+    KeyIndex,
     matches,
     related_keys,
 )
@@ -79,6 +80,7 @@ __all__ = [
     "IdentifierSource",
     "IdentifierType",
     "Key",
+    "KeyIndex",
     "candidates_in",
     "catalog",
     "health_insurance_number_valid",

@@ -44,12 +44,15 @@
 	const all = $derived(summary ? totals(summary.kinds) : null);
 	const failed = $derived((summary?.kinds ?? []).filter((kind) => kind.failed > 0));
 	const still = $derived(summary ? workersStill(summary) : false);
+	// The line under the badges: when a worker last started a job; "active" before it unless
+	// the badge already says that none takes jobs.
 	const worker = $derived.by(() => {
 		if (!summary) return '';
 		if (!summary.last_started_at) return m.jobs_worker_never();
 		const ago =
 			(new Date(summary.now).getTime() - new Date(summary.last_started_at).getTime()) / 1000;
-		return `${m.jobs_worker_active()} · ${m.jobs_worker_last({ ago: formatDuration(Math.max(0, ago)) })}`;
+		const last = m.jobs_worker_last({ ago: formatDuration(Math.max(0, ago)) });
+		return still ? last : `${m.jobs_worker_active()} · ${last}`;
 	});
 </script>
 
@@ -92,7 +95,7 @@
 			</p>
 		{/if}
 		<p class="text-meta text-muted-foreground">
-			{still ? m.jobs_worker_stale() : worker}
+			{worker}
 			{#if all.due > 0}· {m.overview_jobs_due({ count: formatNumber(all.due) })}{/if}
 		</p>
 	{/if}

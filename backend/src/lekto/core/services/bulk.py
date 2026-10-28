@@ -90,16 +90,20 @@ class BulkService:
     async def start(self, actor: UserId, selection: Selection, action: BulkAction) -> BulkOperation:
         """Resolve the selection and queue the action on its documents. ValidationError for
         an empty selection, too many ids or more than `MAX_DOCUMENTS` documents of a filter;
-        PermissionDeniedError for `all_users` without being an admin; SearchUnavailableError
-        for words without a search index."""
+        NotFoundError for a tag, contact, type, topic or space the action names that does not
+        exist (told once here, not with every document); PermissionDeniedError for
+        `all_users` without being an admin; SearchUnavailableError for words without a search
+        index."""
         documents = await self._resolve(actor, selection)
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
+            await _check_action(uow, action)
+            now = self._clock.now()
             operation = BulkOperation.create(
-                user_id=user.id, action=action, documents=documents, now=self._clock.now()
+                user_id=user.id, action=action, documents=documents, now=now
             )
             await uow.bulk_operations.add(operation)
-            await _enqueue(uow, operation.id, self._clock.now())
+            await _enqueue(uow, operation.id, now)
             await uow.commit()
         return operation
 
@@ -299,6 +303,20 @@ def _changes(action: BulkAction, document: Document) -> DocumentChanges:
             return DocumentChanges(topic_id=action.topic)
         case _:
             raise AssertionError(f"no metadata change: {action.kind}")
+
+
+async def _check_action(uow: UnitOfWork, action: BulkAction) -> None:
+    """NotFoundError for what the action names that does not exist."""
+    for tag in sorted(action.add | action.remove):
+        await uow.tags.get(tag)
+    if action.topic is not None:
+        await uow.tags.get(action.topic)
+    if action.contact is not None:
+        await uow.contacts.get(action.contact)
+    if action.document_type is not None:
+        await uow.document_types.get(action.document_type)
+    if action.space is not None:
+        await uow.spaces.get(action.space)
 
 
 def _operation_id(job: Job) -> BulkOperationId:

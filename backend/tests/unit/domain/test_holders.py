@@ -313,7 +313,7 @@ def test_rule_and_model_together() -> None:
     assert merged_holder(sender, model) == model
 
 
-# --- VAT IDs (Tobi, 29.10.2026) ---------------------------------------------------------------
+# --- VAT IDs (Tobi, 28.10.2026) ---------------------------------------------------------------
 
 OURS_VAT, YOURS_VAT, PARENT_VAT = "DE123456789", "DE811569869", "DE136695976"
 

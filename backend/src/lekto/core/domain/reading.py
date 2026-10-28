@@ -155,7 +155,7 @@ def is_noise(word: ReadWord, typical_size: float | None = None) -> bool:
 
 def read_from_dots(word: ReadWord) -> bool:
     """Whether a word is a dot leader Tesseract read as digits (`11111`, `02.00.0000.`; Tobi,
-    29.10.2026): read unsure, at least `DIGIT_LEADER` characters, four in five of them ones,
+    28.10.2026): read unsure, at least `DIGIT_LEADER` characters, four in five of them ones,
     zeros, dots, commas or colons, at most two different digits, and four ones or four zeros in
     a row. Most such words keep the low box of the dots (`FLAT_WORD`); this takes those whose
     box specks made high. An unsure date (`01.01.2020`: three digits), an amount (`1.000,00`:

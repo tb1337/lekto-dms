@@ -2,11 +2,13 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { formatNumber } from '#lib/i18n.ts';
+import { usageLabel } from '#lib/components/UsageCount.svelte';
 import { NODE_LABELS } from '#lib/node-labels.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { forgetPipeline } from '#lib/pipeline.ts';
 import { choose } from '#lib/testing/select.ts';
 import { fakeApi } from '#lib/testing/documents.ts';
+import { BulkRun } from '#lib/bulk.svelte.ts';
 import DocumentsBulkBar from './DocumentsBulkBar.svelte';
 
 const node = (name: string, requires: string[] = []) => ({ node: name, requires, waits_for: [] });
@@ -25,20 +27,22 @@ afterEach(() => {
 });
 
 function renderBar(count: number) {
-	return render(DocumentsBulkBar, {
+	const run = new BulkRun(vi.fn());
+	const rendered = render(DocumentsBulkBar, {
 		count,
 		all: false,
 		offerAll: null,
 		limit: null,
 		capped: null,
 		selection: () => ({ ids: ['d1'], query: {} }),
+		run,
 		lookup: { contacts: [], documentTypes: [], tags: [], fields: [], spaces: [], users: [] },
 		onpage: vi.fn(),
 		onall: vi.fn(),
 		onclear: vi.fn(),
-		onend: vi.fn(),
-		ondone: vi.fn()
+		onend: vi.fn()
 	});
+	return { ...rendered, run };
 }
 
 describe('the selection bar of the documents', () => {
@@ -59,7 +63,7 @@ describe('the selection bar of the documents', () => {
 		await fireEvent.pointerDown(more, { button: 0, pointerType: 'mouse' });
 		await userEvent.click(await screen.findByRole('menuitem', { name: m.bulk_reprocess() }));
 		const dialog = await screen.findByRole('dialog', {
-			name: m.bulk_reprocess_title({ documents: m.bulk_documents({ count: '40' }) })
+			name: m.bulk_reprocess_title({ documents: usageLabel(40) })
 		});
 		const warning = m.bulk_reprocess_model({ calls: formatNumber(80) });
 		// From the text recognition on, the model is asked too.

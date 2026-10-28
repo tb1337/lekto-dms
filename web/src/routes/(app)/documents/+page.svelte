@@ -10,7 +10,7 @@
 	import Info from '@lucide/svelte/icons/info';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import X from '@lucide/svelte/icons/x';
-	import { onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -21,10 +21,14 @@
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
+	import Mark from '#lib/components/Mark.svelte';
 	import ActiveFilters from '#lib/components/ActiveFilters.svelte';
 	import DocumentCard from '#lib/components/DocumentCard.svelte';
 	import DocumentRow from '#lib/components/DocumentRow.svelte';
-	import DocumentsBulkBar, { type BulkSelection } from '#lib/components/DocumentsBulkBar.svelte';
+	import BulkSkipped from '#lib/components/BulkSkipped.svelte';
+	import DocumentsBulkBar from '#lib/components/DocumentsBulkBar.svelte';
+	import { BulkRun, type BulkSelection } from '#lib/bulk.svelte.ts';
+	import { MAX_DOCUMENTS, MAX_HITS } from '#lib/bulk.ts';
 	import { phone } from '#lib/phone.svelte.ts';
 	import FilterPanel from '#lib/components/FilterPanel.svelte';
 	import InboxMark from '#lib/components/InboxMark.svelte';
@@ -306,7 +310,7 @@
 	let meaning = $state(false);
 
 	// One page of documents at a time, 50 to a page or as chosen and remembered (25, 50, 100;
-	// Tobi, 29.10.2026); the page stands in the link (`?page=`). The list counts its documents as the filters do; a search
+	// Tobi, 28.10.2026); the page stands in the link (`?page=`). The list counts its documents as the filters do; a search
 	// estimates its hits.
 	const list = new Pager<Item>(async (offset, limit) => {
 		const base = apiQuery(filters, scope.allUsers);
@@ -365,31 +369,29 @@
 		void goto(params.size > 0 ? `?${params}` : page.url.pathname, { replaceState: replace });
 	}
 
-	/** Show `size` documents per page, on the page that holds the first one shown so far. */
-	function resize(size: number) {
-		const next = Math.floor(((pageNumber - 1) * list.size) / size) + 1;
-		list.size = size;
-		if (next === pageNumber) void list.go(next);
-		else goToPage(next, true);
+	/** Show `size` documents per page, on the page that holds the first one shown so far; that
+	 * page goes into the link (`replace`: the list did not change). */
+	async function resize(size: number) {
+		await list.resize(size);
+		if (list.page !== pageNumber) goToPage(list.page, true);
 	}
 
-	// How many documents the filters leave: estimated while searching.
-	const shownCount = $derived(searching ? list.total : (facets?.total ?? null));
+	// How many documents the filters leave: estimated while searching, unknown until then.
+	const shownCount = $derived(
+		searching ? (list.loaded ? list.total : null) : (facets?.total ?? null)
+	);
 
 	// Documents chosen for an action on many (web/DESIGN.md, "Choosing many"), in the selection
-	// mode the button beside the sort turns on (as Home Assistant has it, Tobi 29.10.2026): by id
+	// mode the button beside the sort turns on (as Home Assistant has it, Tobi 28.10.2026): by id
 	// across the pages, or every hit of the search and filters (`allHits`). What the list shows
 	// changing lets go of them; the mode stays until the person ends it.
-	const MAX_DOCUMENTS = 10_000; // one action at most, as the API takes it
-	const MAX_HITS = 1_000; // the search reaches no further
 	let selecting = $state(false);
 	let chosen = $state<string[]>([]);
 	let allHits = $state(false);
-	let bulkBusy = $state(false);
 	const pageIds = $derived(list.items.map((item) => item.document.id));
 	const isChosen = (id: string) => allHits || chosen.includes(id);
 	const hits = $derived(
-		list.total === null ? null : searching ? Math.min(list.total, MAX_HITS) : list.total
+		!list.loaded ? null : searching ? Math.min(list.total, MAX_HITS) : list.total
 	);
 	const chosenCount = $derived(allHits ? (hits ?? 0) : chosen.length);
 	const beyondPage = $derived(!allHits && hits !== null && hits > pageIds.length);
@@ -425,12 +427,16 @@
 		return { ids: null, query: searching ? { ...base, q: query } : base };
 	}
 
-	function bulkDone() {
+	// The action on the choice, followed by the page until it ends, whichever bar shows it.
+	const bulk = new BulkRun(() => {
 		letGo();
 		void list.refresh();
 		void loadFacets();
 		void loadLensCounts();
-	}
+	});
+	onDestroy(() => bulk.stop());
+	// The bar shows from the start of the mode, and while an action runs; not in the stream.
+	const showBar = $derived((selecting || bulk.busy) && !streaming);
 
 	// While a search waits for its first page, the hint says when it takes long.
 	$effect(() => searchNote.waiting(meaning && searching && list.loading && !list.loaded));
@@ -441,26 +447,39 @@
 	);
 	const note = $derived(meaning && searching ? searchNote.about(query) : null);
 
-	// Reload when the words, filters or sort change, and after a reconnect of the event stream;
-	// another page of the same list only loads that page. A change of what the list shows goes
-	// back to its first page.
+	// Reload when the words, filters or sort change: what the list shows changed, so the choice
+	// is let go and its first page shows. Another page of the same list only loads that page.
+	// After a reconnect of the event stream the page shown is loaded again as it stands: nobody
+	// is thrown back to the first page by it.
 	let shownKey: string | null = null;
-	let chosenKey: string | null = null;
+	let seenGeneration = 0;
 	$effect(() => {
 		const shown = [...params].filter(([name]) => name !== 'page');
 		const shownList = `${JSON.stringify(shown)}|${scope.allUsers}`;
-		const key = `${shownList}|${events.generation}`;
+		const generation = events.generation;
 		const wanted = pageNumber;
 		const before = shownKey;
-		shownKey = key;
-		if (chosenKey !== null && chosenKey !== shownList) letGo();
-		chosenKey = shownList;
-		if (before !== key) void loadFacets();
-		if (before !== null && before !== key && wanted !== 1) {
-			goToPage(1, true);
-			return;
+		const reconnected = before !== null && generation !== seenGeneration;
+		shownKey = shownList;
+		seenGeneration = generation;
+		if (before !== shownList || reconnected) void loadFacets();
+		if (before !== null && before !== shownList) {
+			letGo();
+			if (wanted !== 1) {
+				goToPage(1, true);
+				return;
+			}
 		}
-		void list.go(wanted);
+		// Not tracked: the pager's own state (its page, its size) is read while it loads.
+		untrack(() => {
+			if (before !== null && before === shownList && wanted === list.page) {
+				// The same list on the same page (the link took the page the pager is on, after a
+				// resize): only a reconnect loads it again, as it stands.
+				if (reconnected) void list.refresh();
+				return;
+			}
+			void list.go(wanted);
+		});
 	});
 
 	// Again when an admin switches the reach: the spaces of the filter follow it.
@@ -606,7 +625,7 @@
 		<span class="line-clamp-2 text-sm text-muted-foreground">
 			{#each item.snippet as part, index (index)}
 				{#if part.match}
-					<mark class="rounded bg-lane-yellow px-0.5 text-lane-yellow-foreground">{part.text}</mark>
+					<Mark>{part.text}</Mark>
 				{:else}{part.text}{/if}
 			{/each}
 		</span>
@@ -700,15 +719,14 @@ row of filters, on a desktop narrow by the title. -->
 		all={allHits}
 		offerAll={beyondPage && hits !== null && (searching || hits <= MAX_DOCUMENTS) ? hits : null}
 		limit={!allHits && !searching && hits !== null && hits > MAX_DOCUMENTS ? MAX_DOCUMENTS : null}
-		capped={allHits && searching && list.total !== null && list.total > MAX_HITS ? MAX_HITS : null}
+		capped={allHits && searching && list.loaded && list.total > MAX_HITS ? MAX_HITS : null}
 		{selection}
+		run={bulk}
 		{lookup}
 		onpage={choosePage}
 		onall={() => (allHits = true)}
 		onclear={letGo}
 		onend={endSelecting}
-		ondone={bulkDone}
-		bind:busy={bulkBusy}
 	/>
 {/snippet}
 
@@ -749,7 +767,7 @@ row of filters, on a desktop narrow by the title. -->
 				{/if}
 			</IconButton>
 			<PageTitle>{lens?.name ?? m.nav_documents()}</PageTitle>
-			{#if searching && list.total !== null && list.loaded}
+			{#if searching && list.loaded}
 				<p class="text-sm text-muted-foreground" aria-live="polite">
 					{m.search_total({ count: formatNumber(list.total) })}
 				</p>
@@ -955,6 +973,7 @@ row of filters, on a desktop narrow by the title. -->
 				</div>
 			{/if}
 
+			{#if showBar && !phone.current}{@render bulkBar()}{/if}
 			{#if streaming}
 				<StreamView query={apiQuery(filters, scope.allUsers)} {lookup} version={streamVersion} />
 			{:else if list.error}
@@ -989,7 +1008,6 @@ row of filters, on a desktop narrow by the title. -->
 					{/snippet}
 				</EmptyNote>
 			{:else}
-				{#if (selecting || bulkBusy) && !phone.current}{@render bulkBar()}{/if}
 				<div class="flex flex-col gap-6" aria-busy={list.loading}>
 					{#each groups as group (group.key)}
 						<section class="flex flex-col gap-3" aria-label={group.label ?? undefined}>
@@ -1063,11 +1081,13 @@ row of filters, on a desktop narrow by the title. -->
 					onchange={(next) => goToPage(next)}
 					onsize={resize}
 				/>
-				{#if (selecting || bulkBusy) && phone.current}{@render bulkBar()}{/if}
 			{/if}
+			{#if showBar && phone.current}{@render bulkBar()}{/if}
 		</div>
 	</div>
 </div>
+
+<BulkSkipped operation={bulk.skipped} onclose={() => (bulk.skipped = null)} />
 
 {#if lookup}
 	<LensEditor

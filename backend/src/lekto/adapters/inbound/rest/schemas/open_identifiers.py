@@ -64,8 +64,9 @@ class OpenIdentifierOut(BaseModel):
     source: OpenSource = Field(
         description="`learned`: training found it at `contacts[0]`; `unknown`: it stands in "
         "confirmed documents but at no contact, `contacts` are their contacts, the one with "
-        "most documents first; `suggested`: an IBAN or a creditor ID its documents name as "
-        "another's, the contact's in `contacts[0]` or the person's in `person`."
+        "most documents first; `suggested`: a number with a holder (an IBAN, a creditor ID, "
+        "a VAT ID, an e-mail domain) its documents name as another's, the contact's in "
+        "`contacts[0]` or the person's in `person`."
     )
     contacts: list[OpenContactOut]
     person: OpenPersonOut | None = Field(

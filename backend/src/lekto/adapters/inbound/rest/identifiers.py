@@ -17,10 +17,9 @@ from lekto.adapters.inbound.rest.schemas.open_identifiers import (
 )
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.open_identifiers import OpenSource
+from lekto.core.ports.repository import PAGE_LIMIT
 
 router = APIRouter(prefix="/identifiers/open", tags=["identifiers"], dependencies=PROTECTED)
-
-PAGE_LIMIT = 200
 
 _OPEN = (
     "Open are the identifiers no person has confirmed: those training learned at a contact "

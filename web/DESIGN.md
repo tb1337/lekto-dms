@@ -53,7 +53,6 @@ A new token needs a value for both modes and that contrast.
 | `border`, `input`                                                         | Lines and field edges                                                                                                                |
 | `lane-green`, `lane-yellow`, `lane-red`, `lane-running` (+ `-foreground`) | Document state (done, review, intervene, processing) and anything that shares its meaning: deadline near or passed, success, failure |
 | `note`, `note-foreground`                                                 | Notes and tips                                                                                                                       |
-| `beta`, `beta-foreground`                                                 | The "Beta" pill only                                                                                                                 |
 | `chart-1` … `chart-5`                                                     | Charts on the page "System" only                                                                                                     |
 | `tpl-*`                                                                   | Liquid template highlighting only                                                                                                    |
 | `mark-edge`, `mark-light`                                                 | The edge of a mark on a page image (`.mark-glass`)                                                                                   |
@@ -84,7 +83,7 @@ The scale is defined in `@theme`. Use these steps only:
 | `text-meta`   | 0.8125rem                | Secondary lines, dense panels (system, processing), small buttons        |
 | `text-xs`     | 0.75rem                  | Captions, badges, the eyebrow                                            |
 | `text-micro`  | 0.6875rem                | Marks on images (page count), counters in pills                          |
-| `text-nano`   | 0.625rem                 | The smallest marks: the raised `BetaPill`, legends of matrices and files |
+| `text-nano`   | 0.625rem                 | The smallest marks: legends of matrices and files, the smallest initials |
 
 - **Eyebrow** (small uppercase label above a group, e.g. "LENSES", "ZEITRAUM"): the `Eyebrow`
   component (`text-xs font-medium uppercase tracking-wide text-muted-foreground`).
@@ -134,7 +133,7 @@ page image use `.mark-glass`; a pinned page of the viewer uses `shadow-pinned`. 
 - **Back link** (optional, detail pages): `BackLink`, above the title. It leads to the list the
   page came from, with that list's state: lens, filters, search and sort.
 - **Title**: `PageTitle`, the `<h1>` in `text-title`, optionally followed by a count or a badge
-  (lane, Beta).
+  (lane).
 - **Subtitle** (optional): one line in `text-sm text-muted-foreground` under the title.
 - **Actions**: right of the title, at its height. The primary action of the page is last
   (rightmost). On the phone, a page action may become an icon button. It keeps its label as
@@ -174,8 +173,6 @@ phone the page scrolls.
   (`LanguageChoices`, `ThemeChoices`, each a `Segmented`), settings, API documentation, sign out. On the phone (below `sm`) the sheet
   holds all of it: the header shows only logo, magnifier and menu button.
 - **Inbox counter:** a badge on the menu entry, coloured by the worst lane it holds.
-- **Beta:** a small `BetaPill`, raised at the menu entry, and a larger one beside the page title
-  that opens its note as an info tip.
 
 ## Components
 
@@ -229,8 +226,10 @@ divider.
 - **Errors:** `Field.Error` under the field, tied to it with `aria-describedby`.
 - **`Select`**: a short, fixed list. On desktop a list in the style of the other pickers, on the
   phone the system's native picker.
-- **`SearchSelect`**: a long list (contact, document type, topic). Admins can create from the
-  search (`CreateOffer`).
+- **`SearchSelect`** (one of many by searching: contact, document type, topic), looking like a
+  `Select`. A popover on desktop; on the phone a sheet from the bottom (`PhoneSheet`) named by
+  its `title` ("Kontakt wählen"), with a close button and rows of 48 px; a choice closes it
+  (Tobi, 28.10.2026). Admins can create from the search (`CreateOffer`).
 - **`SearchField`**: every search input, in pickers, lists and pages alike. The header search and
   the document search are `SearchField`s inside a form.
 - **Dates:** `DateInput` (the bits-ui date picker: day, month and year to type, a calendar
@@ -238,10 +237,6 @@ divider.
   `<input type="date">`, which follows the browser language. `PeriodInput` handles periods.
 - **Tags of every kind:** `TagPicker`. One field with the chosen chips and a dashed "+ …" chip. The
   choice opens as a popover on desktop and as a sheet from the bottom on the phone.
-- **One of many by searching** (contact, document type, topic): `SearchSelect`, looking like a
-  `Select`. A popover on desktop; on the phone a sheet from the bottom named by its `title`
-  ("Kontakt wählen"), with a close button and rows of 48 px; a choice closes it (Tobi,
-  29.10.2026).
 - **Free values as chips** (other spellings, other names): `ChipInput`.
 
 ### Checkboxes, radios, switches
@@ -275,16 +270,16 @@ are pills, topics included. The field a chip stands in names its kind. `TagChips
 `Badge` (`ui/badge`) shows a state or a short fact. It is never a button. Its tones come from
 `tones.ts`, shared with every lane mark:
 
-| Tone                                | Use                                                                                        |
-| ----------------------------------- | ------------------------------------------------------------------------------------------ |
-| `green`, `yellow`, `red`, `running` | Lane and state ("Erledigt", "Prüfen", "Eingreifen", "In Verarbeitung"; "Aktiv"); with icon |
-| `yellow` without icon               | A caveat that matters: "Unsigniert"                                                        |
-| `note`                              | Neutral information with meaning ("Persönlich", scope, kind)                               |
-| `muted`                             | Plain facts ("+3", counts, "Pausiert", read only)                                          |
-| `primary`                           | What is marked as chosen: the current version, a suggestion                                |
-| `outline`                           | A person or an owner; the space of a foreign document                                      |
-| `default`                           | The solid accent; not used on pages so far                                                 |
-| `beta`                              | Through `BetaPill` only                                                                    |
+| Tone                                | Use                                                                                              |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `green`, `yellow`, `red`, `running` | Lane and state ("Erledigt", "Prüfen", "Eingreifen", "In Verarbeitung"; "Aktiv"); with icon       |
+| `yellow` without icon               | A caveat that matters: "Unsigniert"                                                              |
+| `green`, `muted` without icon       | A recommendation ("Übernehmen empfohlen" `green`, "Verwerfen empfohlen" `muted`): its words tell |
+| `note`                              | Neutral information with meaning ("Persönlich", scope, kind)                                     |
+| `muted`                             | Plain facts ("+3", counts, "Pausiert", read only)                                                |
+| `primary`                           | What is marked as chosen: the current version, a suggestion                                      |
+| `outline`                           | A person or an owner; the space of a foreign document                                            |
+| `default`                           | The solid accent; not used on pages so far                                                       |
 
 Sizes: `sm` 20 px (in rows, `text-xs`, the default), `md` 24 px (in headers), `lg` 28 px (the
 lane of a document in its row or head). `LaneBadge` is `Badge` with the lane tone. Hand-built
@@ -339,61 +334,76 @@ not in the row.
 
 **Choosing many** (the open identifiers, Tobi 27.10.2026): a list whose items are decided many
 at once puts a `ChoiceBox` at the start of each row and one in its head that chooses the page.
-A chosen row has `bg-panel`. While something is chosen, a selection bar names how many and what
-an action will leave out, then "Auswahl aufheben" (`ghost`) and the actions (`outline`, the
-primary `default` last), all `sm`. On desktop it stands above the list in a `rounded-2xl`
-`bg-panel` box and sticks to the top; on the phone it sticks to the bottom of the screen
-(`bg-card`, a line above), its two actions sharing the width. One item is still decided in its
-dialog, opened from its title: the actions stay out of the row.
+**The chosen look**, in one place: a chosen row of a table is `bg-panel`; a chosen card or list
+row is `bg-panel` with `border-primary` (a border, no ring). While something is chosen, the
+**selection bar** (`SelectionBar`) names how many and what an action will leave out, then
+"Auswahl aufheben" (`ghost`) and the actions (`outline`, the primary `default` last), all `sm`.
+It has the card look through `cardVariants`: on desktop it stands above the list in `bg-panel`
+and sticks below the header (`top-20`); on the phone it sticks to the bottom of the screen
+(`bg-card`, a line above), the hint as a line of its own and its two actions sharing the width.
+One item is still decided in its dialog, opened from its title: the actions stay out of the
+row. The open identifiers are a `ui/table` on a desktop; on a phone they are rows, and the
+whole row opens the identifier (as the rows of the master data do) or, while some are chosen,
+chooses it.
 
-The documents list chooses in a **selection mode** (as Home Assistant has it, Tobi 29.10.2026):
-outside it the cards and rows carry no box and no bar shows. A button with `ListChecks`
-(`outline`, "Auswählen", `aria-pressed`) beside the sort turns it on and off; on the phone it
-stands in the row of filters. In the mode a card or row is the label of its box instead of a
-link: the box starts the card's head (the first page stays clear) or the row, a tap anywhere
-chooses it, and a chosen one has `bg-panel` with a primary edge. The bar shows from the start
-of the mode: an X that ends it, "Auswählen" (`outline`, a menu: "Diese Seite auswählen", "Alle N
-Treffer auswählen" where there are more than the page, "Keine auswählen", and after a separator
-"Auswahlmodus beenden"), how many are chosen, a hint while none is, and the actions, disabled
-while none is chosen: "Tags", "Kontakt", "Typ" and "Mehr" (a menu: Thema, Space, Bestätigen,
-Neu verarbeiten, and after a separator Löschen in `destructive`). On the phone the bar sits at
-the bottom: X, the count and "Auswählen" above, the four actions sharing the width below. With
-all hits chosen the choice is the search and filters, not ids, and the bar says so (with words,
-how far the search reaches). Each action but "Bestätigen" opens a `FormDialog` (deleting: a
-`ConfirmDialog` naming the count). While the action runs in the background, the bar shows a
+The documents list chooses in a **selection mode** (Tobi 28.10.2026): outside it the cards and
+rows carry no box and no bar shows. A button with `ListChecks` (`outline`, "Auswählen",
+`aria-pressed`) beside the sort turns it on and off; on the phone it stands in the row of
+filters. In the mode a card or row is the label of its box instead of a link: the box starts
+the card's head (the first page stays clear) or the row, a tap anywhere chooses it, and a
+chosen one has the chosen look above. The bar (`SelectionBar`) shows from the start of the
+mode, with no hit too: an X that ends it, "Auswählen" (`outline`, a menu: "Diese Seite
+auswählen", "Alle N Treffer auswählen" where there are more than the page, "Keine auswählen",
+and after a separator "Auswahlmodus beenden"), how many are chosen, a hint while none is, and
+the actions, disabled while none is chosen: "Tags", "Kontakt", "Typ" and "Mehr" (a menu: Thema,
+Space, Bestätigen, Neu verarbeiten, and after a separator Löschen in `destructive`). On the
+phone the bar sits at the bottom: X, the count and "Auswählen" above, the hint as a line of its
+own, the four actions sharing the width below. With all hits chosen the choice is the search
+and filters, not ids, and the bar says so (with words, how far the search reaches). Each action
+but "Bestätigen" opens a `FormDialog` (deleting: a `ConfirmDialog` naming the count). The
+action runs in the background, owned by the page (`BulkRun`), not by the bar: the bar shows a
 `Progress` with "412 von 1.234 …" in place of its actions; at the end a toast says what it did,
 and where documents were skipped, "Details" opens them with their reasons. The mode stays after
 an action and when the filters change (the choice is let go) until the person ends it.
 
-**A recommendation** (the open identifiers, Tobi 29.10.2026): where the data tell what to do with
-an item, its row says so in a column of its own as a `Badge`, `green` for "Übernehmen empfohlen",
-`muted` for "Verwerfen empfohlen", "–" where nothing is recommended; why stands in its tooltip,
-for a screen reader inside the badge, and in the item's dialog beside the badge. A value of the
-`Segmented` above the list ("Empfohlen", with its count) shows the recommended alone. Taking
-every recommendation at once is an `outline` button beside the filters with the count ("Empfohlene
-übernehmen (9)"), over all pages, after a `ConfirmDialog` that names the count and why; only for
-what keeps its way back (confirming), never for rejecting.
+**Pages** (Tobi, 28.10.2026): the documents list pages as a table does, in its grid and its list,
+with `Pagination` and the page in the link (`?page=`); it offers 25, 50 and 100 to a page (50
+at first), remembered as a table's size is. A reconnect of the event stream loads the page
+shown again as it stands; only a change of words, filters, sort or scope goes back to the first
+page.
 
-**A folded group** (the numbers of third parties among the facts, Tobi 28.10.2026): rows that
-belong to a card but rarely matter fold away at its end. Above them a line (`border-t`), then
-one `button` the width of the card, at least 44 px: a `ChevronRight` (`muted-foreground`)
-turned down when open, the count in words (`text-sm font-medium`) and below it what they are
-(`text-xs text-muted-foreground`); `aria-expanded` and `aria-controls`. Closed at first; opened,
-it stays open while the page shows the same thing. The rows inside look as elsewhere in the
-card, indented to the text of the button (`pl-6`). A whole card that folds is `FilterSection`.
+**A recommendation** (the open identifiers, Tobi 28.10.2026): where the data tell what to do with
+an item, its row says so in a column of its own as a `Badge` without an icon (its words tell),
+`green` for "Übernehmen empfohlen", `muted` for "Verwerfen empfohlen", "–" where nothing is
+recommended (said in words to a screen reader); why stands in its tooltip (its trigger takes
+the focus), for a screen reader inside the badge, and in the item's dialog beside the badge. A
+value of the `Segmented` above the list ("Empfohlen", with its count) shows the recommended
+alone. Taking every recommendation at once is an `outline` button beside the filters with the
+count ("Empfohlene übernehmen (9)"), over all pages, after a `ConfirmDialog` that names the
+count and why; only for what keeps its way back (confirming), never for rejecting.
+
+**A folded group** (`FoldedGroup`; the numbers of third parties among the facts, Tobi
+28.10.2026): rows that belong to a card but rarely matter fold away at its end. Above them a
+line (`border-t`), then one `button` the width of the card, at least 44 px: a `ChevronRight`
+(`muted-foreground`) turned down when open (`motion-safe`), the count in words (`text-sm
+font-medium`) and below it what they are (`text-xs text-muted-foreground`); `aria-expanded` and
+`aria-controls`. Closed at first; opened, it stays open while the page shows the same thing. The
+rows inside look as elsewhere in the card, indented to the text of the button (`pl-6`). A whole
+card that folds is `FilterSection`.
 
 ### Tables
 
 `ui/table` only. The head is `text-xs font-medium text-muted-foreground`. Numbers align right with
 `tabular-nums`. A count of mistakes is `text-lane-red-foreground` above nought, `muted` at nought;
-a count of what went right may name its whole (`29 von 29`, the share in `muted`). On the phone a table keeps to the columns that fit; where it is wider, it scrolls
-inside its card, never the page. A list a person reads item by item is a list of rows, not a
-table. Pagination is `Pagination` (50 per page); the documents list pages so too, in its grid and
-its list, with the page in the link (`?page=`), and offers 25, 50 and 100 (50 at first). A table may offer other sizes in a small menu
-beside the count (`outline`, `sm`; the jobs and the deliveries of a webhook: 25, 50 and 100, 25
-at first; the documents: the same, 50 at first); the choice is remembered per table in the browser (`page-size.ts`) and holds wherever
-that table shows. Above such a table, a `Segmented` with counts picks what it shows and a
-`Select` narrows it to a kind (the jobs by state and kind, the deliveries by outcome and event).
+a count of what went right may name its whole (`29 von 29`, the whole in `muted`) and has no
+colour of its own: lane colours mean state. On the phone a table keeps to the columns that fit;
+where it is wider, it scrolls inside its card, never the page. A list a person reads item by
+item is a list of rows, not a table. Pagination is `Pagination`, 50 to a page unless the table
+offers other sizes in a small menu beside the count (`outline`, `sm`): the jobs and the
+deliveries of a webhook 25, 50 and 100, 25 at first; the choice is remembered per table in the
+browser (`page-size.ts`) and holds wherever that table shows. Above such a table, a `Segmented`
+with counts picks what it shows and a `Select` narrows it to a kind (the jobs by state and kind,
+the deliveries by outcome and event). The documents list pages the same way (see [Lists](#lists)).
 
 ### Dialogs, sheets, editors
 
@@ -403,12 +413,16 @@ that table shows. Above such a table, a `Segmented` with counts picks what it sh
 | A short form (space, token, code, move, reprocess, new user) | `FormDialog`                                | centred, `size` `sm`/`md`/`lg`   | full screen with the editor bar                                                                                       |
 | An editor of master data, lenses                             | `EditorShell`                               | dialog with sticky head and foot | full screen with the editor bar                                                                                       |
 | A secret shown once                                          | `SecretDialog`                              | centred, `size="md"`             | centred with gutter                                                                                                   |
-| A choice from many (tags, facets; contact, type, topic)      | popover / `TagPickerDialog`, `SearchSelect` | popover or dialog                | sheet from the bottom (`SearchSelect`: its `title`, a close button, rows of 48 px; a choice closes it)                |
+| A choice from many (tags, facets; contact, type, topic)      | popover / `TagPickerDialog`, `SearchSelect` | popover or dialog                | sheet from the bottom (`PhoneSheet`; `SearchSelect`: see [Fields](#fields))                                           |
 | Filters                                                      | sidebar                                     | sidebar                          | sheet from the bottom, title and close fixed on top, "Zurücksetzen" and "Ergebnisse anzeigen (N)" fixed at the bottom |
 
 - **Widths** come from the `size` prop (`sm` 384 px, `md` 512 px, `lg` 672 px, `xl` 768 px).
   A `class="max-w-*"` on dialog content is not used.
 - **Phone editor bar:** "Abbrechen" · title · "Speichern", fixed on top. The body scrolls.
+- **Sheet from the bottom:** `PhoneSheet`, on `ui/sheet` with `side="bottom"`: a grab handle,
+  the title and its close button (an X, "Fertig") fixed on top, 85 % of the screen high;
+  nothing takes the focus when it opens. The pickers (`SearchSelect`, `TagPickerDialog`) use
+  it; its classes are written nowhere else.
 - **A second way out:** `FormDialog` takes `alternative`, an action that finishes the dialog
   as well, without asking (rejecting an open identifier beside taking it over): `outline` at the
   start of the footer; on the phone below the fields.
@@ -467,6 +481,14 @@ from `sm`, three from `lg` when there are three). A tile is a `Card` (`md`): an 
 counts, badges in their tones (icon and word for a lane), one `text-meta` line of detail, and at
 its foot the way there, a `brand` link with an arrow ("Zum Posteingang"). Badges on a tile are
 not links. While a tile loads it shows a `Skeleton` in the place of the number.
+
+### Lenses
+
+`Lenses` lists the user's lenses as links, "Alle Dokumente" first: beside the documents' filters
+a card under the eyebrow "LENSES" (`list`), on the phone and with the filters collapsed a row
+of chips (`chips`). On a desktop a count in `text-xs text-muted-foreground tabular-nums` stands
+beside each name, "Alle Dokumente" counted too: counted with the list, again on events and on a
+switch of the scope (Tobi, 28.10.2026). The chips show none.
 
 ## States
 

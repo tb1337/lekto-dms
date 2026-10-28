@@ -2,17 +2,19 @@
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import { BASE } from '#lib/base.ts';
+	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
 	import FormDialog from '#lib/components/FormDialog.svelte';
 	import Loading from '#lib/components/Loading.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
+	import Mark from '#lib/components/Mark.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
-	import { Label } from '#lib/components/ui/label/index.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
+	import * as Field from '#lib/components/ui/field/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { roleLabel, shown } from '#lib/facts.ts';
-	import { formatDate } from '#lib/i18n.ts';
+	import { formatDate, formatNumber } from '#lib/i18n.ts';
 	import { kindLabel } from '#lib/identifiers.ts';
 	import {
 		decideOne,
@@ -68,8 +70,9 @@
 	const title = $derived(item ? `${kindLabel(item.kind)} ${shown(item)}` : '');
 	const description = $derived.by(() => {
 		if (!item) return '';
+		const count = formatNumber(item.documents);
 		if (item.source === 'learned') {
-			return m.open_learned_at({ contact: item.contacts[0]?.name ?? '', count: item.documents });
+			return m.open_learned_at({ contact: item.contacts[0]?.name ?? '', count });
 		}
 		if (item.source === 'suggested') {
 			const one = item.documents === 1;
@@ -77,16 +80,14 @@
 				const person = item.person.name;
 				return one
 					? m.open_suggested_person_one({ person })
-					: m.open_suggested_person({ person, count: item.documents });
+					: m.open_suggested_person({ person, count });
 			}
 			const contact = targetName(item);
 			return one
 				? m.open_suggested_contact_one({ contact })
-				: m.open_suggested_contact({ contact, count: item.documents });
+				: m.open_suggested_contact({ contact, count });
 		}
-		return item.documents === 1
-			? m.open_unknown_in_one()
-			: m.open_unknown_in({ count: item.documents });
+		return item.documents === 1 ? m.open_unknown_in_one() : m.open_unknown_in({ count });
 	});
 
 	const submitLabel = $derived.by(() => {
@@ -138,14 +139,14 @@
 			</p>
 		{/if}
 		{#if item.source === 'unknown' && item.contacts.length > 1}
-			<div class="flex flex-col gap-2">
-				<Label for="open-contact">{m.open_contact_label()}</Label>
+			<Field.Field>
+				<Field.Label for="open-contact">{m.open_contact_label()}</Field.Label>
 				<Select
 					id="open-contact"
 					bind:value={contact}
 					options={item.contacts.map((entry) => ({ value: entry.id, label: entry.name }))}
 				/>
-			</div>
+			</Field.Field>
 		{/if}
 		<div class="flex flex-col gap-2">
 			<Eyebrow>{m.open_places()}</Eyebrow>
@@ -153,13 +154,15 @@
 				<LoadProblem {problem} onretry={() => item && load(item)} />
 			{:else if !detail}
 				<Loading />
+			{:else if detail.places.length === 0}
+				<EmptyNote compact>{m.open_places_none()}</EmptyNote>
 			{:else}
 				<ul class="flex flex-col gap-2">
 					{#each detail.places as place (place.document_id)}
 						<Card.Root as="li" size="sm" class="flex flex-col gap-2">
 							<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
 								<a
-									class="min-w-0 flex-1 font-medium text-brand hover:underline"
+									class="inline-flex min-h-6 min-w-0 flex-1 items-center font-medium text-brand hover:underline max-sm:min-h-11"
 									href={`${BASE}/documents/${place.document_id}`}>{place.title}</a
 								>
 								<span class="text-meta text-muted-foreground tabular-nums">
@@ -169,10 +172,7 @@
 							</div>
 							{#if place.excerpt}
 								<p class="rounded-xl bg-surface px-3 py-2 text-meta break-words">
-									{place.excerpt.before}<mark
-										class="rounded-sm bg-lane-yellow px-0.5 text-lane-yellow-foreground"
-										>{place.excerpt.match}</mark
-									>{place.excerpt.after}
+									{place.excerpt.before}<Mark>{place.excerpt.match}</Mark>{place.excerpt.after}
 								</p>
 							{:else}
 								<p class="text-meta text-muted-foreground">{m.open_place_no_text()}</p>

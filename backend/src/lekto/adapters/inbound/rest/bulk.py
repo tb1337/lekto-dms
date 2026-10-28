@@ -13,6 +13,7 @@ from lekto.adapters.inbound.rest.schemas.bulk import BulkOperationOut, BulkReque
 from lekto.core.domain.bulk import MAX_DOCUMENTS, MAX_IDS
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.ids import BulkOperationId, DocumentId
+from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.search_index import MAX_HITS
 from lekto.core.services.bulk import Selection
@@ -32,11 +33,12 @@ router = APIRouter(prefix="/documents/bulk", tags=["documents"], dependencies=PR
         f"reaches, at most {MAX_HITS}); it is fixed now. Each document goes through the same "
         "change as one by hand, rights included: one the caller may not edit, one being "
         "processed (except to delete it) or one that changed meanwhile is skipped with the "
-        "reason, one that is as the action wants it already stays as it is. Admins act on "
+        "reason, one that is as the action wants it already stays as it is. A tag, contact, "
+        "type, topic or space the action names that does not exist: 404. Admins act on "
         "every user's documents with `all_users` (others: 403)."
     ),
     response_model=BulkOperationOut,
-    responses=problem_responses(401, 403, 422, 503),
+    responses=problem_responses(401, 403, 404, 422, 503),
 )
 async def start_bulk(
     body: BulkRequest,
@@ -51,7 +53,7 @@ async def start_bulk(
     all_users: AllDocuments = False,
 ) -> BulkOperationOut:
     if body.document_ids is not None and (q is not None or filter != DocumentFilter()):
-        raise ValidationError("name the documents or give a filter, not both")
+        raise ValidationError(because(ReasonCode.BULK_IDS_AND_FILTER))
     operation = await context.bulk.start(
         user,
         Selection(

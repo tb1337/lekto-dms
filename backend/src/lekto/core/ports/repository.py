@@ -407,6 +407,11 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         topic, tags, document date. In no order."""
         ...
 
+    async def count(self, filter: DocumentFilter, user: UserId | None) -> int:
+        """How many documents match `filter` that the user may read (as `list_visible_to`;
+        None: every document): what `facet_rows` would return, counted alone."""
+        ...
+
     async def count_by(self, by: CountBy, user: UserId | None) -> dict[UUID, int]:
         """How many documents the user may read (as `list_visible_to`; None: every document)
         have each contact, type, topic or tag, or a value for each field. Only ids with

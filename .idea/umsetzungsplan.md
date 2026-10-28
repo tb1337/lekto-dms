@@ -1174,9 +1174,9 @@ Offen: Ob zwei unsichere von 20 reichen sollen (die Schwelle gilt für Seite und
 
 **Ergänzung: Schwelle der Umgebung, Wörter neben Führungen (Entscheidung 11.1/11.2a, 19.10.2026).** Branch `feature/reading-thresholds` von `main`, direkt gebaut. Die Umgebung gilt ab drei von 20 unsicheren Inhaltswörtern als schwach gelesen (`SURROUNDING_POOR`; die Seite bleibt bei `LEKTO_POOR_READING_THRESHOLD`). Ein Wort direkt vor oder nach einer Führung in seiner Zeile (höchstens `LEADER_GAP` = eine Zeilenhöhe Lücke; Führung: Punktreihe im Text oder flache Box) ist weder Inhalt noch unsicher (`beside_leaders`, in `content_words`): Auf dem synthetischen Scan las Tesseract „Krankenkasse“ mit 38 % neben „................“, der Text des Labels sauber. Für den Wert selbst gilt Regel B unverändert. Entschieden ohne Änderung: als Ziffern gelesene Führungen (11.2b) später, der Rat zum VLM folgt der Seite (11.3), in Tabellen zählt die Spalte (11.4).
 
-**Ergänzung: als Ziffern gelesene Führungen (11.2b, offener Punkt 20; Tobi, 29.10.2026: „sollte als Führung erkannt werden“).** Gemessen: In Dev las Tesseract in 14 Dokumenten (31.423 Wörter) keine Führung als Ziffern; nur zwei unsichere Wörter bestehen allein aus 0/1 (ein Datum, eine „0000“). Auf 36 synthetischen Varianten (drei Schriften, Unschärfe, Sprenkel, Drehung, halbe Auflösung) las es Punkte viermal als Ziffern (`...............0.`, 0 %), jedes Mal mit flacher Box (12–13 % der Zeilenhöhe), also schon Rauschen. Für den Rest, dessen Box Sprenkel hoch machen (`02.00.0000.`), gilt die Textregel `read_from_dots`: unsicher, mindestens fünf Zeichen, vier von fünf davon 0, 1, Punkt, Komma oder Doppelpunkt, höchstens zwei verschiedene Ziffern, vier Einsen oder Nullen in Folge. Solch ein Wort ist Rauschen und Führung (die Wörter daneben zählen nicht). Ein unsicheres Datum (`01.01.2020`), ein Betrag (`1.000,00`) oder eine maskierte `0000` bleiben Inhalt.
+**Ergänzung: als Ziffern gelesene Führungen (11.2b, offener Punkt 20; Tobi, 28.10.2026: „sollte als Führung erkannt werden“).** Gemessen: In Dev las Tesseract in 14 Dokumenten (31.423 Wörter) keine Führung als Ziffern; nur zwei unsichere Wörter bestehen allein aus 0/1 (ein Datum, eine „0000“). Auf 36 synthetischen Varianten (drei Schriften, Unschärfe, Sprenkel, Drehung, halbe Auflösung) las es Punkte viermal als Ziffern (`...............0.`, 0 %), jedes Mal mit flacher Box (12–13 % der Zeilenhöhe), also schon Rauschen. Für den Rest, dessen Box Sprenkel hoch machen (`02.00.0000.`), gilt die Textregel `read_from_dots`: unsicher, mindestens fünf Zeichen, vier von fünf davon 0, 1, Punkt, Komma oder Doppelpunkt, höchstens zwei verschiedene Ziffern, vier Einsen oder Nullen in Folge. Solch ein Wort ist Rauschen und Führung (die Wörter daneben zählen nicht). Ein unsicheres Datum (`01.01.2020`), ein Betrag (`1.000,00`) oder eine maskierte `0000` bleiben Inhalt.
 
-**#55 Schritt 2, die drei Fragen gemessen (offener Punkt 19; 29.10.2026).** Dev: nur 9 Werte mit Beschriftung (die Prüfung läuft erst seit Schritt 1 mit), synthetischer Satz: 47 Fälle mit festen Antworten. 1. Wert rechts auf der Zeile: Abstand in Dev bis 36 Zeichen, im Satz bis 5, nie eine zweite Beschriftung dazwischen (einmal „EUR“) – keine Änderung. 2. Spaltentoleranz: alle Werte unter ihrer Beschriftung überlappen (Dev 4, Satz 3), die 4 Zeichen wurden nie gebraucht – bleibt. 3. Wert ohne Fundstelle, der mehrmals dasteht: im Satz 11 von 12 unbekannten Beträgen (Tabelle und Satz „Der Gesamtbetrag von … wird eingezogen“). Entscheidung (Tobi: „ich folge deiner Empfehlung“): Die Prüfung nimmt dann jede Stelle (`value_runs`), bei der Beschriftung, wenn eine es ist. Im Satz danach 35 bei der Beschriftung (vorher 24), 2 abseits (unverändert die beiden absichtlich falschen), 35 unbekannt (vorher 46). Die Lesesicherheit bleibt bei „genau einmal“ (`value_on_pages`). Weiter nur aufgezeichnet, nicht durchgesetzt.
+**#55 Schritt 2, die drei Fragen gemessen (offener Punkt 19; 28.10.2026).** Dev: nur 9 Werte mit Beschriftung (die Prüfung läuft erst seit Schritt 1 mit), synthetischer Satz: 47 Fälle mit festen Antworten. 1. Wert rechts auf der Zeile: Abstand in Dev bis 36 Zeichen, im Satz bis 5, nie eine zweite Beschriftung dazwischen (einmal „EUR“) – keine Änderung. 2. Spaltentoleranz: alle Werte unter ihrer Beschriftung überlappen (Dev 4, Satz 3), die 4 Zeichen wurden nie gebraucht – bleibt. 3. Wert ohne Fundstelle, der mehrmals dasteht: im Satz 11 von 12 unbekannten Beträgen (Tabelle und Satz „Der Gesamtbetrag von … wird eingezogen“). Entscheidung (Tobi: „ich folge deiner Empfehlung“): Die Prüfung nimmt dann jede Stelle (`value_runs`), bei der Beschriftung, wenn eine es ist. Im Satz danach 35 bei der Beschriftung (vorher 24), 2 abseits (unverändert die beiden absichtlich falschen), 35 unbekannt (vorher 46). Die Lesesicherheit bleibt bei „genau einmal“ (`value_on_pages`). Weiter nur aufgezeichnet, nicht durchgesetzt.
 
 #### Nachtrag: Beschriftung beim Wert, Schritt 1 (Issue #55)
 
@@ -1783,7 +1783,7 @@ Stand: Vorschlag Creamy, 25.10.2026, zur Freigabe durch Tobi. Release offen. Sam
 12. **Serien und Erwartet** (`feature/expected`, `new-feature`; nach 3 und 4): Serien aus Kontakt, Typ und Vertrags- oder Kundennummer, mindestens drei Dokumente, Abstand und Streuung aus den Dokumentdaten, nächster Termin, überfällig jenseits der Streuung, beendet nach zwei verpassten Terminen; nichts gespeichert. API `GET /expected` in der Reichweite des Nutzers (`all_users` für Admins), keine Ereignisse. Web: Ansicht „Erwartet“, wie im Mock. MCP: Werkzeug `list_expected`.
 13. **Stream** (`feature/stream`, `new-feature`; nach 9 und 12): Die API liefert für die gefilterten Dokumente Spuren (Serien mit ihrem Bezugsziel am Anfang, Abzweige, „Einzeln“) mit Bezügen und erwarteten Dokumenten; eine Grenze für zu viele Spuren. Darstellung „Stream“ in Dokumentliste und Lens; Einstieg per Klick auf den Kontakt, „Im Stream zeigen“ in der Dokumentansicht.
 
-14. **Bezüge in Webhooks** (`feature/relation-events`, `new-feature`; nach 11 und erst nach dem laufenden Umbau der Webhooks in einer anderen Session): `document.updated` mit `fields: ["relations"]` an beiden Dokumenten eines Bezugs, nur wenn der Empfänger beide Enden lesen darf, nicht beim Lauf `relate` über den Bestand. **Gebaut (29.10.2026, Tobi: „okay bauen“):** wie beschrieben, auch für SSE; das andere Ende steht intern im Ereignis (`DocumentUpdated.related`, im Job der Zustellung `related_id`) und wird vor jedem Versuch neu geprüft; der Lauf über den Bestand trägt im Job `quiet`.
+14. **Bezüge in Webhooks** (`feature/relation-events`, `new-feature`; nach 11 und erst nach dem laufenden Umbau der Webhooks in einer anderen Session): `document.updated` mit `fields: ["relations"]` an beiden Dokumenten eines Bezugs, nur wenn der Empfänger beide Enden lesen darf, nicht beim Lauf `relate` über den Bestand. **Gebaut (28.10.2026, Tobi: „okay bauen“):** wie beschrieben, auch für SSE; das andere Ende steht intern im Ereignis (`DocumentUpdated.related`, im Job der Zustellung `related_id`) und wird vor jedem Versuch neu geprüft; der Lauf über den Bestand trägt im Job `quiet`.
 
 *Später:* E-Rechnung als Quelle von Fakten ([Issue #144](https://github.com/tb1337/lekto-dms/issues/144), Priorität niedrig), nach 3 und 4.
 
@@ -2257,11 +2257,11 @@ Reihenfolge: Name des Jobs, 4a, 4b, 4c, dann PR 3.
 
 ### Inhaber von USt-IdNr. und E-Mail-Domains
 
-Stand: freigegeben (offener Punkt 7, Tobi 29.10.2026: „ok“; Fragen 1–3: „Alle 3 Punkte: ja“).
+Stand: freigegeben (offener Punkt 7, Tobi 28.10.2026: „ok“; Fragen 1–3: „Alle 3 Punkte: ja“).
 
 **Anlass:** Wie bei IBAN und Gläubiger-ID lernt das Training heute jede USt-IdNr. und jede E-Mail-Domain eines Dokuments für seinen Kontakt, auch die eines Dritten (Konzernmutter, Zahlungsdienst, Portal, Dienstleister „im Auftrag von“).
 
-**Gemessen in Dev (29.10.2026, nur lesend):**
+**Gemessen in Dev (28.10.2026, nur lesend):**
 - E-Mail-Domains: 32 in 18 Dokumenten, in 9 davon zwei oder mehr. Nur 12 der 32 passen zum Namen des Dokumentkontakts. An Kontakten von Hand eingetragen: 8, davon passen 7 zum Namen. Verworfen: 7, keine davon passt zum Namen. Keine Freemail-Domain, keine Adresse eines Nutzers.
 - USt-IdNr.: 16 in 9 Dokumenten, in 7 davon zwei oder mehr (4 verschiedene). Ein „Ihre/unsere USt-IdNr.“ steht nirgends davor. Eine verworfen.
 
@@ -2285,7 +2285,7 @@ Stand: freigegeben (offener Punkt 7, Tobi 29.10.2026: „ok“; Fragen 1–3: �
 
 **PRs:** einer, `feature/holders-vat-domain` (`enhancement`).
 
-**Umgesetzt (29.10.2026):** wie vorgeschlagen, dazu zwei Feinheiten aus den Tests: Eine USt-IdNr. ist nie Partei einer Buchung oder Liste (sonst machte „Leistung 120,00 EUR“ darüber sie zur Nummer eines Dritten), und das Label einer Zeile darüber gilt für sie nicht, wenn diese Zeile eine eigene USt-IdNr. trägt („Unsere USt-IdNr. DE…“ über der Nummer der Konzernmutter). Eine Domain wird einer Person nicht als Profilkennung vorgeschlagen (Personen haben keine). Auswertung: Fall 31 nennt jetzt Zahlungsdienst, Kundenportal und Konzernmutter; Inhaber kalt 11 von 11, trainiert 12 von 12.
+**Umgesetzt (28.10.2026):** wie vorgeschlagen, dazu zwei Feinheiten aus den Tests: Eine USt-IdNr. ist nie Partei einer Buchung oder Liste (sonst machte „Leistung 120,00 EUR“ darüber sie zur Nummer eines Dritten), und das Label einer Zeile darüber gilt für sie nicht, wenn diese Zeile eine eigene USt-IdNr. trägt („Unsere USt-IdNr. DE…“ über der Nummer der Konzernmutter). Eine Domain wird einer Person nicht als Profilkennung vorgeschlagen (Personen haben keine). Auswertung: Fall 31 nennt jetzt Zahlungsdienst, Kundenportal und Konzernmutter; Inhaber kalt 11 von 11, trainiert 12 von 12.
 
 **Fragen:**
 1. Domain über den Namen: Reicht „ein Wort des Namens im Domainnamen“ (Wörter ab drei Buchstaben, ohne Rechtsform)? Vorschlag: ja; was nicht passt, wird Vorschlag, nicht gelernt.
@@ -2294,7 +2294,7 @@ Stand: freigegeben (offener Punkt 7, Tobi 29.10.2026: „ok“; Fragen 1–3: �
 
 ### Empfehlungen im Reiter Kennungen und laufende Auswertung der Inhaber
 
-Stand: freigegeben (offene Punkte 9 und 10, Tobi 29.10.2026: „ok“; Antworten unten: „Alles wie empfohlen“). Baut auf „Inhaber von USt-IdNr. und E-Mail-Domains“ (#203) auf.
+Stand: freigegeben (offene Punkte 9 und 10, Tobi 28.10.2026: „ok“; Antworten unten: „Alles wie empfohlen“). Baut auf „Inhaber von USt-IdNr. und E-Mail-Domains“ (#203) auf.
 
 **Anlass:** Im Reiter Kennungen entscheidet Tobi jede offene Kennung einzeln, obwohl die Daten bei vielen schon sagen, wie es ausgeht (Inhaber, Rolle, in wie vielen Dokumenten welcher Kontakte). Und ob die Inhaber stimmen, misst bisher nur der synthetische Satz, nicht Tobis echte Entscheidungen. Statt eines eigenen Entscheidungsmodells (`evaluate-decisions`, Punkt 6: vorerst nicht) also eine Empfehlung aus den eigenen Daten und eine laufende Messung.
 
@@ -2322,16 +2322,16 @@ Stand: freigegeben (offene Punkte 9 und 10, Tobi 29.10.2026: „ok“; Antworten
 - **Wo:** System › Automatisierung, eine Karte „Inhaber und Empfehlungen an Deinen Entscheidungen“ mit einer kleinen Tabelle je Art, berechnet beim Aufruf wie die anderen Zahlen dort (gemeinsamer Minutencache). Nur Admins.
 - **Kein neuer Speicher:** Die Entscheidungen stehen schon bei den Kontakten (`source`), die Inhaber bei den Fakten. Was schon vor den Inhabern entschieden war, zählt mit; das ist gewollt, es ist Tobis Urteil.
 
-**Gemessen in Dev (29.10.2026, nur lesend), 68 entschiedene Kennungen (16 übernommen, 52 verworfen):** In nur einem Dokument ihres Kontakts: 17 verworfen, 1 übernommen. Ab zwei Dokumenten (nur bei diesem Kontakt, kein fremder Inhaber): 11 übernommen, 4 verworfen (eine Domain, mit #203 künftig unklar; zwei Kundennummern, eine Mandatsreferenz); ab drei 9 zu 3, ab sechs 8 zu 2. Auswertung heute: IBAN 29 Mal fremd und verworfen; Gläubiger-ID 2 fremd und verworfen, 1 unklar und übernommen; USt-IdNr. und Domains noch ohne Inhaber (bis „Fakten neu lesen“).
+**Gemessen in Dev (28.10.2026, nur lesend), 68 entschiedene Kennungen (16 übernommen, 52 verworfen):** In nur einem Dokument ihres Kontakts: 17 verworfen, 1 übernommen. Ab zwei Dokumenten (nur bei diesem Kontakt, kein fremder Inhaber): 11 übernommen, 4 verworfen (eine Domain, mit #203 künftig unklar; zwei Kundennummern, eine Mandatsreferenz); ab drei 9 zu 3, ab sechs 8 zu 2. Auswertung heute: IBAN 29 Mal fremd und verworfen; Gläubiger-ID 2 fremd und verworfen, 1 unklar und übernommen; USt-IdNr. und Domains noch ohne Inhaber (bis „Fakten neu lesen“).
 
-**Antworten (Tobi, 29.10.2026, „Alles wie empfohlen“):** 1. ab zwei Dokumenten; 2. Sammelaktion nur zum Übernehmen (ein verworfenes verschwindet und wird nie wieder gelernt, ein falsch übernommenes sieht man beim Kontakt); 3. Auswertung unter System › Automatisierung, je Art mit „unklar“ getrennt, dazu die Empfehlung; 4. Mock vor dem Bauen. Verwerfen-Regel wie oben neu gemessen.
+**Antworten (Tobi, 28.10.2026, „Alles wie empfohlen“):** 1. ab zwei Dokumenten; 2. Sammelaktion nur zum Übernehmen (ein verworfenes verschwindet und wird nie wieder gelernt, ein falsch übernommenes sieht man beim Kontakt); 3. Auswertung unter System › Automatisierung, je Art mit „unklar“ getrennt, dazu die Empfehlung; 4. Mock vor dem Bauen. Verwerfen-Regel wie oben neu gemessen.
 
 **PRs:**
 1. `feature/identifier-recommendations` (`new-feature`): Empfehlung, Sammelaktion, Badges, Filter.
 
-**Umgesetzt PR 1 (29.10.2026):** wie geplant. Die Zahl bei „Empfohlen“ zählt wie die Herkunftszahlen ohne die gewählte Herkunft; die Zahl im Knopf zählt alle, die die Sammelaktion übernimmt (ohne Filter und Suche). Eine Nummer eines anderen Kontakts zählt gegen eine Kennung nur, wo dieser sie als seine hält (die IBAN der Stadtwerke in den Buchungen eines Kontoauszugs nicht). Der Grund steht im Tooltip, für Screenreader im Badge und im Dialog der Kennung.
+**Umgesetzt PR 1 (28.10.2026):** wie geplant. Die Zahl bei „Empfohlen“ zählt wie die Herkunftszahlen ohne die gewählte Herkunft; die Zahl im Knopf zählt alle, die die Sammelaktion übernimmt (ohne Filter und Suche). Eine Nummer eines anderen Kontakts zählt gegen eine Kennung nur, wo dieser sie als seine hält (die IBAN der Stadtwerke in den Buchungen eines Kontoauszugs nicht). Der Grund steht im Tooltip, für Screenreader im Badge und im Dialog der Kennung.
 
-**Umgesetzt PR 2 (29.10.2026):** `domain.holder_evaluation` zählt je Art mit Inhaber und für die Empfehlung (über `open_identifiers.recommendation_for`, als hätte das Training die Kennung beim Kontakt gelernt); `GET /automation/holders` (Admins, eine Minute gehalten); Karte `HolderEvaluationCard` unter System › Automatisierung, nur für Admins, Arten in fester Reihenfolge (IBAN, Gläubiger-ID, USt-IdNr., Domain), die Empfehlung zuletzt. Bei der Empfehlung heißt „Unklar“: keine Empfehlung (statt „–“ im Mock gezählt).
+**Umgesetzt PR 2 (28.10.2026):** `domain.holder_evaluation` zählt je Art mit Inhaber und für die Empfehlung (über `open_identifiers.recommendation_for`, als hätte das Training die Kennung beim Kontakt gelernt); `GET /automation/holders` (Admins, eine Minute gehalten); Karte `HolderEvaluationCard` unter System › Automatisierung, nur für Admins, Arten in fester Reihenfolge (IBAN, Gläubiger-ID, USt-IdNr., Domain), die Empfehlung zuletzt. Bei der Empfehlung heißt „Unklar“: keine Empfehlung (statt „–“ im Mock gezählt).
 2. `feature/holder-evaluation` (`new-feature`): Auswertung unter System.
 
 **Fragen:**
@@ -2342,11 +2342,11 @@ Stand: freigegeben (offene Punkte 9 und 10, Tobi 29.10.2026: „ok“; Antworten
 
 ### Massenaktionen und Seiten in der Dokumentliste
 
-Stand: freigegeben (Tobi, 29.10.2026; offene Punkte 13 und 13.3). Mock: Leinwand „Lekto Übersicht und Kennungen“, Abschnitt „13 · Massenaktionen“.
+Stand: freigegeben (Tobi, 28.10.2026; offene Punkte 13 und 13.3). Mock: Leinwand „Lekto Übersicht und Kennungen“, Abschnitt „13 · Massenaktionen“.
 
 **Anlass (Tobi):** Viele Dokumente auf einmal ändern, wie in Paperless-ngx; dazu Seiten statt „Mehr laden“, wie bei den Jobs.
 
-**Entscheidungen (Tobi, 29.10.2026):**
+**Entscheidungen (Tobi, 28.10.2026):**
 1. Aktionen nach Paperless und dem ersten Wurf: Tags dazu und weg, Kontakt, Dokumenttyp, Thema und Space setzen, bestätigen, neu verarbeiten, löschen.
 2. Seiten mit 50 Dokumenten je Seite (`Pagination`), in Liste und Kacheln.
 3. „Alle N Treffer auswählen“ über die Seite hinaus (Empfehlung Claude, Tobi: „ich stimme zu“).
@@ -2365,11 +2365,11 @@ Stand: freigegeben (Tobi, 29.10.2026; offene Punkte 13 und 13.3). Mock: Leinwand
 1. `feature/documents-pages` (`enhancement`): Seiten statt „Mehr laden“.
 2. `feature/bulk-actions` (`new-feature`): API, Job, Auswahl, Leiste, Dialoge.
 
-**Antworten (Tobi, 29.10.2026):** 1. ja, 2. ja („der Nutzer entscheidet“). Plan freigegeben.
+**Antworten (Tobi, 28.10.2026):** 1. ja, 2. ja („der Nutzer entscheidet“). Plan freigegeben.
 
 **Umgesetzt (Abweichungen im Detail):** Die Tags dazu und weg sind eine Aktion `change_tags` (`add_tag_ids`, `remove_tag_ids`), wie der Dialog sie mit seinen zwei Listen anlegt; ein Dialog, ein Vorgang. Die Auswahl löst der Aufruf auf, nicht der Job: `POST /documents/bulk` sagt so gleich, wenn sie leer ist oder mehr als 10.000 Dokumente trifft (422 `bulk_too_many`), und die Antwort nennt die Zahl. Ein Dokument, das schon so ist, bleibt unberührt (eine Änderung würde es bestätigen) und zählt als „schon so“; eines in Verarbeitung wird übersprungen, außer beim Löschen.
 
-**Auswahlmodus und Seitengröße (Tobi, 29.10.2026, nach dem ersten Test):** Die Kästchen über der ersten Seite gefielen nicht. Wie in Home Assistant schaltet erst ein Knopf neben der Sortierung den Auswahlmodus ein; dann tragen Karten und Zeilen ihr Kästchen (im Kopf der Karte), ein Tipp wählt, und die Leiste steht da: X, „Auswählen ▾“ (diese Seite, alle Treffer, keine, Modus beenden), Zahl, Aktionen. Mock: Leinwand, Abschnitt „13 · Auswahlmodus“, freigegeben. Die Dokumentliste bietet 25, 50 und 100 je Seite (Vorgabe 50), gemerkt je Tabelle; 200 erwogen und vorerst nicht (die Suche liefert höchstens 100 je Aufruf).
+**Auswahlmodus und Seitengröße (Tobi, 28.10.2026, nach dem ersten Test):** Die Kästchen über der ersten Seite gefielen nicht. Wie in Home Assistant schaltet erst ein Knopf neben der Sortierung den Auswahlmodus ein; dann tragen Karten und Zeilen ihr Kästchen (im Kopf der Karte), ein Tipp wählt, und die Leiste steht da: X, „Auswählen ▾“ (diese Seite, alle Treffer, keine, Modus beenden), Zahl, Aktionen. Mock: Leinwand, Abschnitt „13 · Auswahlmodus“, freigegeben. Die Dokumentliste bietet 25, 50 und 100 je Seite (Vorgabe 50), gemerkt je Tabelle; 200 erwogen und vorerst nicht (die Suche liefert höchstens 100 je Aufruf).
 
 **Fragen, die beantwortet sind:**
 1. Sollen Massenaktionen auch für Nicht-Admins gehen (für Dokumente, die sie bearbeiten dürfen)? Vorschlag: ja.

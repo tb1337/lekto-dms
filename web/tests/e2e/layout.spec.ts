@@ -18,6 +18,7 @@ const PATHS = [
 	'/ui/webhooks/new',
 	'/ui/system',
 	'/ui/admin/master-data',
+	'/ui/admin/master-data?tab=identifiers',
 	'/ui/admin/users',
 	'/ui/settings'
 ];

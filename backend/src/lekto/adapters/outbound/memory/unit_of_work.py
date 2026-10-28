@@ -518,6 +518,9 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
             if filter.matches(groups.view(document))
         ]
 
+    async def count(self, filter: DocumentFilter, user: UserId | None) -> int:
+        return len(await self.facet_rows(filter, user))
+
     def _groups(self) -> "_Groups":
         return _Groups(
             {row.id: row.group_ids for row in self._uow._rows(CONTACTS)},

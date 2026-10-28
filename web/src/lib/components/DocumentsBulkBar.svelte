@@ -1,32 +1,17 @@
-<script lang="ts" module>
-	import type { components } from '#lib/api/schema.ts';
-	import type { apiQuery } from '#lib/filters.ts';
-
-	/** The documents an action is for: `ids` one by one, else every hit of `query` (the
-	 * filters, with `q` the words). */
-	export interface BulkSelection {
-		ids: string[] | null;
-		query: Partial<ReturnType<typeof apiQuery>> & { q?: string };
-	}
-
-	export type BulkOperation = components['schemas']['BulkOperationOut'];
-</script>
-
 <script lang="ts">
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import X from '@lucide/svelte/icons/x';
+	import type { components } from '#lib/api/schema.ts';
 	import IconButton from '#lib/components/IconButton.svelte';
-	import { onDestroy } from 'svelte';
-	import { toast } from 'svelte-sonner';
-	import { api } from '#lib/api/client.ts';
-	import { unwrap } from '#lib/api/call.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import FormDialog from '#lib/components/FormDialog.svelte';
+	import ReprocessFields from '#lib/components/ReprocessFields.svelte';
 	import SearchSelect from '#lib/components/SearchSelect.svelte';
 	import Select from '#lib/components/Select.svelte';
+	import SelectionBar from '#lib/components/SelectionBar.svelte';
 	import TagPicker from '#lib/components/TagPicker.svelte';
-	import BulkSkipped from '#lib/components/BulkSkipped.svelte';
+	import * as Alert from '#lib/components/ui/alert/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
@@ -40,18 +25,23 @@
 	import { descendants, pipeline, type GraphNode } from '#lib/pipeline.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { tagOptions } from '#lib/tags.ts';
-	import { cn } from '#lib/utils.ts';
-	import { bulkDocuments, bulkResult, MODEL_CALLS, WARN_ABOVE } from '#lib/bulk.ts';
+	import { bulkDocuments, MODEL_CALLS, WARN_ABOVE } from '#lib/bulk.ts';
+	import {
+		type BulkAction,
+		type BulkOperation,
+		type BulkRun,
+		type BulkSelection
+	} from '#lib/bulk.svelte.ts';
 
-	type Action = components['schemas']['BulkActionIn'];
 	type ReprocessNode = components['schemas']['ReprocessNode'];
 
 	// The bar of the selection mode of the documents list (web/DESIGN.md, "Choosing many"): an
 	// X that ends the mode, "Auswählen" (a menu: this page, all N hits, none, end the mode), how
 	// many are chosen, and the actions, pale while none is (Tags, Kontakt, Typ, and under "Mehr"
-	// Thema, Space, Bestätigen, Neu verarbeiten, Löschen). Each action but confirming opens its dialog; deleting and reprocessing name the
-	// exact count. The action runs in the background (`POST /documents/bulk`): the bar shows how
-	// far it has come and a toast what it did, with the skipped ones behind "Details".
+	// Thema, Space, Bestätigen, Neu verarbeiten, Löschen). Each action but confirming opens its
+	// dialog; deleting and reprocessing name the exact count. The action runs in the background
+	// (`run`, owned by the page: the bar is rendered anew across the phone width): the bar shows
+	// how far it has come in place of its actions.
 	let {
 		count,
 		all,
@@ -59,13 +49,12 @@
 		limit,
 		capped,
 		selection,
+		run,
 		lookup,
 		onpage,
 		onall,
 		onclear,
-		onend,
-		ondone,
-		busy = $bindable(false)
+		onend
 	}: {
 		/** How many documents are chosen. */
 		count: number;
@@ -78,6 +67,8 @@
 		/** The search reaches fewer hits than it found. */
 		capped: number | null;
 		selection: () => BulkSelection;
+		/** The action on the choice as the page follows it. */
+		run: BulkRun;
 		lookup: Lookup | null;
 		onpage: () => void;
 		onall: () => void;
@@ -85,16 +76,9 @@
 		onclear: () => void;
 		/** End the selection mode. */
 		onend: () => void;
-		/** The action has ended: the list loads again. */
-		ondone: () => void;
-		/** An action runs: the bar stays until it ends. */
-		busy?: boolean;
 	} = $props();
 
-	let running = $state<BulkOperation | null>(null);
-	let skipped = $state<BulkOperation | null>(null);
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	onDestroy(() => clearTimeout(timer));
+	const running = $derived(run.operation);
 
 	let dialog = $state<
 		'tags' | 'contact' | 'type' | 'topic' | 'move' | 'reprocess' | 'delete' | null
@@ -140,54 +124,10 @@
 		}
 	}
 
-	/** Start `action` on the selection; the bar follows it until it ends. */
-	async function start(action: Action) {
-		const { ids, query } = selection();
-		const operation = await unwrap(
-			api.POST('/api/v1/documents/bulk', {
-				params: { query: ids ? {} : query },
-				body: { document_ids: ids, action }
-			})
-		);
+	/** Start `action` on the selection; the page follows it until it ends. */
+	async function start(action: BulkAction) {
+		await run.start(selection(), action);
 		dialog = null;
-		running = operation;
-		busy = true;
-		follow(operation.id);
-	}
-
-	function follow(id: string) {
-		timer = setTimeout(async () => {
-			try {
-				const operation = await unwrap(
-					api.GET('/api/v1/documents/bulk/{id}', { params: { path: { id } } })
-				);
-				running = operation;
-				if (operation.status === 'done' || operation.status === 'failed') {
-					finish(operation);
-					return;
-				}
-			} catch {
-				// A hiccup of the connection: ask again.
-			}
-			follow(id);
-		}, 1000);
-	}
-
-	function finish(operation: BulkOperation) {
-		running = null;
-		busy = false;
-		const result = bulkResult(operation);
-		if (operation.status === 'failed') {
-			toast.error(m.bulk_failed(), { description: result });
-		} else if (operation.skipped.length > 0) {
-			toast.warning(result, {
-				description: m.bulk_skipped({ count: formatNumber(operation.skipped.length) }),
-				action: { label: m.bulk_details(), onClick: () => (skipped = operation) }
-			});
-		} else {
-			toast.success(result);
-		}
-		ondone();
 	}
 
 	async function confirmAll() {
@@ -211,86 +151,88 @@
 	});
 </script>
 
-<div
-	class={cn(
-		'flex flex-wrap items-center gap-x-3 gap-y-2',
-		phone.current
-			? 'sticky bottom-0 z-10 -mx-4 border-t bg-card px-4 pt-2 pb-4'
-			: 'sticky top-20 z-10 rounded-2xl border bg-panel py-1.5 pr-2 pl-1.5'
-	)}
-	role="region"
-	aria-label={m.bulk_selected({ count: formatNumber(count) })}
-	aria-busy={busy}
->
+<!-- Before the count: the X that ends the mode and, on a desktop, the chooser. -->
+{#snippet lead()}
 	<IconButton label={m.bulk_mode_end()} onclick={onend}>
 		<X aria-hidden="true" />
 	</IconButton>
 	{#if !phone.current}{@render chooser()}{/if}
-	<span class={cn('font-medium', phone.current && 'flex-1')}>
-		{m.bulk_selected({ count: formatNumber(count) })}
+{/snippet}
+
+<!-- How far the action has come, in place of the hint and the actions. -->
+{#snippet progress(operation: BulkOperation)}
+	{@const running = m.bulk_running({
+		done: formatNumber(operation.done),
+		total: formatNumber(operation.total)
+	})}
+	<span class="flex min-w-0 items-center gap-3">
+		<Progress
+			value={operation.done}
+			max={Math.max(operation.total, 1)}
+			class="max-w-48"
+			aria-label={running}
+		/>
+		<span aria-live="polite">{running}</span>
 	</span>
-	{#if phone.current && !running}{@render chooser()}{/if}
-	{#if running}
-		<span
-			class="flex min-w-0 flex-1 items-center gap-3 text-meta text-muted-foreground max-sm:basis-full"
-		>
-			<Progress
-				value={running.done}
-				max={Math.max(running.total, 1)}
-				class="max-w-48"
-				aria-label={m.bulk_running({
-					done: formatNumber(running.done),
-					total: formatNumber(running.total)
-				})}
-			/>
-			<span aria-live="polite">
-				{m.bulk_running({ done: formatNumber(running.done), total: formatNumber(running.total) })}
-			</span>
-		</span>
-	{:else}
-		<span class="text-meta text-muted-foreground max-sm:hidden sm:flex-1">
-			{#if all}
-				{m.bulk_all_hits()}
-				{#if capped !== null}{m.bulk_capped({ count: formatNumber(capped) })}{/if}
-			{:else if count === 0}
-				{m.bulk_tap_hint()}
-			{:else if limit !== null}
-				{m.bulk_limit({ max: formatNumber(limit) })}
-			{/if}
-		</span>
-		<div class={cn('flex gap-2', phone.current && 'grid flex-1 basis-full grid-cols-4')}>
-			<Button variant="outline" size="sm" disabled={count === 0} onclick={open('tags')}>
-				{m.field_tags()}
-			</Button>
-			<Button variant="outline" size="sm" disabled={count === 0} onclick={open('contact')}>
-				{m.field_contact()}
-			</Button>
-			<Button variant="outline" size="sm" disabled={count === 0} onclick={open('type')}>
-				{m.bulk_type()}
-			</Button>
-			<DropdownMenu.Root>
-				<DropdownMenu.Trigger disabled={count === 0}>
-					{#snippet child({ props })}
-						<Button {...props} variant="outline" size="sm">
-							{m.bulk_more()}
-							<ChevronDown aria-hidden="true" />
-						</Button>
-					{/snippet}
-				</DropdownMenu.Trigger>
-				<DropdownMenu.Content align="end" class="w-56">
-					<DropdownMenu.Item onSelect={open('topic')}>{m.bulk_set_topic()}</DropdownMenu.Item>
-					<DropdownMenu.Item onSelect={open('move')}>{m.bulk_move()}</DropdownMenu.Item>
-					<DropdownMenu.Item onSelect={confirmAll}>{m.bulk_confirm()}</DropdownMenu.Item>
-					<DropdownMenu.Item onSelect={startReprocess}>{m.bulk_reprocess()}</DropdownMenu.Item>
-					<DropdownMenu.Separator />
-					<DropdownMenu.Item variant="destructive" onSelect={open('delete')}>
-						{m.bulk_delete()}
-					</DropdownMenu.Item>
-				</DropdownMenu.Content>
-			</DropdownMenu.Root>
-		</div>
+{/snippet}
+
+<!-- How far the choice reaches, in words. -->
+{#snippet reach()}
+	{#if all && capped !== null}
+		{m.bulk_all_hits_capped({ count: formatNumber(capped) })}
+	{:else if all}
+		{m.bulk_all_hits()}
+	{:else if count === 0}
+		{m.bulk_tap_hint()}
+	{:else if limit !== null}
+		{m.bulk_limit({ max: formatNumber(limit) })}
 	{/if}
-</div>
+{/snippet}
+
+{#snippet actions()}
+	<Button variant="outline" size="sm" disabled={count === 0} onclick={open('tags')}>
+		{m.field_tags()}
+	</Button>
+	<Button variant="outline" size="sm" disabled={count === 0} onclick={open('contact')}>
+		{m.field_contact()}
+	</Button>
+	<Button variant="outline" size="sm" disabled={count === 0} onclick={open('type')}>
+		{m.bulk_type()}
+	</Button>
+	<DropdownMenu.Root>
+		<DropdownMenu.Trigger disabled={count === 0}>
+			{#snippet child({ props })}
+				<Button {...props} variant="outline" size="sm">
+					{m.bulk_more()}
+					<ChevronDown aria-hidden="true" />
+				</Button>
+			{/snippet}
+		</DropdownMenu.Trigger>
+		<DropdownMenu.Content align="end" class="w-56">
+			<DropdownMenu.Item onSelect={open('topic')}>{m.bulk_set_topic()}</DropdownMenu.Item>
+			<DropdownMenu.Item onSelect={open('move')}>{m.bulk_move()}</DropdownMenu.Item>
+			<DropdownMenu.Item onSelect={confirmAll}>{m.bulk_confirm()}</DropdownMenu.Item>
+			<DropdownMenu.Item onSelect={startReprocess}>{m.bulk_reprocess()}</DropdownMenu.Item>
+			<DropdownMenu.Separator />
+			<DropdownMenu.Item variant="destructive" onSelect={open('delete')}>
+				{m.bulk_delete()}
+			</DropdownMenu.Item>
+		</DropdownMenu.Content>
+	</DropdownMenu.Root>
+{/snippet}
+
+{#snippet progressHint()}
+	{#if running}{@render progress(running)}{/if}
+{/snippet}
+
+<SelectionBar
+	count={m.selection_selected({ count: formatNumber(count) })}
+	busy={run.busy}
+	{lead}
+	trail={phone.current && !running ? chooser : undefined}
+	hint={running ? progressHint : all || count === 0 || limit !== null ? reach : undefined}
+	actions={running ? undefined : actions}
+/>
 
 <!-- What to choose at once: the page, every hit, none; and the end of the mode. -->
 {#snippet chooser()}
@@ -445,18 +387,20 @@
 		disabled={nodes.length === 0}
 		action={() => start({ kind: 'reprocess', from_node: fromNode })}
 	>
-		<Field.Field>
-			<Field.Label for="bulk-node">{m.reprocess_from()}</Field.Label>
-			<Select id="bulk-node" bind:value={fromNode} options={nodes} />
-		</Field.Field>
-		{#if asksModel && count > WARN_ABOVE}
-			<p class="text-sm text-lane-yellow-foreground">
-				{m.bulk_reprocess_model({ calls: formatNumber(count * MODEL_CALLS) })}
-			</p>
-		{/if}
-		{#if fromNode === 'ocr'}
-			<p class="text-sm text-muted-foreground">{m.bulk_reprocess_vision()}</p>
-		{/if}
+		<ReprocessFields
+			id="bulk-node"
+			{nodes}
+			bind:fromNode
+			note={fromNode === 'ocr' ? m.bulk_reprocess_vision() : null}
+		>
+			{#if asksModel && count > WARN_ABOVE}
+				<Alert.Root variant="warning">
+					<Alert.Description>
+						{m.bulk_reprocess_model({ calls: formatNumber(count * MODEL_CALLS) })}
+					</Alert.Description>
+				</Alert.Root>
+			{/if}
+		</ReprocessFields>
 	</FormDialog>
 {/if}
 
@@ -467,5 +411,3 @@
 	confirmLabel={m.delete_title()}
 	onconfirm={() => start({ kind: 'delete' })}
 />
-
-<BulkSkipped operation={skipped} onclose={() => (skipped = null)} />

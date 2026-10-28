@@ -120,7 +120,7 @@ def test_render_pages_queues_the_documents_without_page_images(
 
 
 @pytest.mark.usefixtures("sqlite_instance")
-def test_read_codes_queues_the_documents_to_read_the_facts_of(
+def test_read_facts_queues_the_documents_to_read_the_facts_of(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     assert main(["read-facts"]) == 0

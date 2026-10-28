@@ -75,8 +75,9 @@ describe('Übersicht', () => {
 		render(Page);
 		expect(screen.getByRole('heading', { level: 1, name: m.overview_title() })).toBeTruthy();
 		const tile = screen.getByRole('region', { name: m.nav_inbox() });
-		expect(tile.textContent).toContain(`2 ${m.lane_red()}`);
-		expect(tile.textContent).toContain(`7 ${m.lane_yellow()}`);
+		expect(tile.textContent).toContain(m.overview_lane_red({ count: '2' }));
+		expect(tile.textContent).toContain(m.overview_lane_yellow({ count: '7' }));
+		expect(tile.textContent).toContain(m.overview_lane_new({ count: '3' }));
 		expect(tile.textContent).toContain(m.overview_processing({ count: '1' }));
 		expect(within(tile).getByRole('link', { name: m.overview_inbox_go() })).toBeTruthy();
 

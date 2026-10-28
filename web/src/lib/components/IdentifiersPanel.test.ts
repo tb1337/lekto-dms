@@ -1,12 +1,14 @@
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { usageLabel } from '#lib/components/UsageCount.svelte';
 import { m } from '#lib/paraglide/messages.js';
 import { phone } from '#lib/phone.svelte.ts';
 import { session } from '#lib/session.svelte.ts';
 import IdentifiersPanel from './IdentifiersPanel.svelte';
 
 const UTILITY = { id: '0199a6c4-0000-7000-8000-0000000000c1', name: 'Stadtwerke Nord' };
+const LOGO = `/api/v1/contacts/${UTILITY.id}/logo`;
 const BANK = { id: '0199a6c4-0000-7000-8000-0000000000c2', name: 'Bank' };
 
 const CUSTOMER = {
@@ -85,6 +87,15 @@ beforeEach(() => {
 				to_confirm: confirmedRecommended > 0 ? 0 : 1
 			});
 		}
+		if (request.method === 'GET' && url.pathname === '/api/v1/contacts') {
+			return json([
+				{
+					...UTILITY,
+					logo: { url: LOGO, source: 'uploaded', domain: null, stored_at: '2026-10-01T00:00:00Z' }
+				},
+				BANK
+			]);
+		}
 		if (request.method === 'GET' && url.pathname === '/api/v1/identifiers/open/detail') {
 			return json({
 				identifier: CUSTOMER,
@@ -124,42 +135,73 @@ afterEach(() => {
 	phone.override(null);
 	session.clear();
 	vi.unstubAllGlobals();
+	vi.useRealTimers();
 	window.document.body.style.pointerEvents = '';
 });
 
+/** The rows of the table (wider than a phone), its head left out. */
+async function rows() {
+	const table = await screen.findByRole('table', { name: m.master_identifiers() });
+	return within(table).getAllByRole('row').slice(1);
+}
+
 describe('IdentifiersPanel', () => {
-	it('lists the open identifiers with where they are open', async () => {
+	it('lists the open identifiers with where they are open, the contact with its logo', async () => {
 		render(IdentifiersPanel);
-		const list = await screen.findByRole('list', { name: m.master_identifiers() });
-		const rows = within(list).getAllByRole('listitem');
-		expect(rows).toHaveLength(2);
-		expect(rows[0].textContent).toContain('DE02 1203 0000 0000 2020 51');
-		expect(rows[0].textContent).toContain(m.open_contacts_many({ count: '2' }));
-		expect(rows[0].textContent).toContain(m.open_unknown());
-		expect(rows[1].textContent).toContain(UTILITY.name);
-		expect(rows[1].textContent).toContain(m.open_learned());
-		const documents = within(rows[1]).getByRole('link', {
-			name: m.open_documents({ count: '4' })
+		const found = await rows();
+		expect(found).toHaveLength(2);
+		expect(found[0].textContent).toContain('DE02 1203 0000 0000 2020 51');
+		expect(found[0].textContent).toContain(m.open_contacts_many({ count: '2' }));
+		expect(found[0].textContent).toContain(m.open_unknown());
+		expect(found[1].textContent).toContain(UTILITY.name);
+		expect(found[1].textContent).toContain(m.open_learned());
+		const documents = within(found[1]).getByRole('link', {
+			name: usageLabel(4)
 		});
 		expect(documents.getAttribute('href')).toContain('fact=customer_number%3A20047718%3A');
+		// The logo comes from the contacts, which the list does not carry.
+		await vi.waitFor(() => expect(found[1].querySelector('img')?.getAttribute('src')).toBe(LOGO));
+		expect(found[0].querySelector('img')).toBeNull();
+	});
+
+	it('opens one from its whole row on a phone, and chooses it while some are chosen', async () => {
+		phone.override(true);
+		const user = userEvent.setup();
+		render(IdentifiersPanel);
+		await screen.findByRole('list', { name: m.master_identifiers() });
+		const customer = () => screen.getByRole('button', { name: m.open_open({ value: '20047718' }) });
+		expect(customer().textContent).toContain('20047718');
+		await user.click(
+			screen.getByRole('checkbox', { name: m.open_select({ value: IBAN.written }) })
+		);
+		screen.getByRole('region', { name: m.selection_selected({ count: '1' }) });
+		// Chosen: the rows choose, the dialog waits.
+		await user.click(screen.getByRole('button', { name: m.open_select({ value: '20047718' }) }));
+		screen.getByRole('region', { name: m.selection_selected({ count: '2' }) });
+		expect(screen.queryByRole('dialog')).toBeNull();
+		await user.click(screen.getByRole('button', { name: m.open_selection_clear() }));
+		await user.click(customer());
+		expect(await screen.findByRole('dialog')).toBeTruthy();
 	});
 
 	it('says what the documents recommend, why, and shows the recommended alone', async () => {
 		const user = userEvent.setup();
 		render(IdentifiersPanel);
-		const list = await screen.findByRole('list', { name: m.master_identifiers() });
-		const [iban, customer] = within(list).getAllByRole('listitem');
+		const [iban, customer] = await rows();
 		expect(customer.textContent).toContain(m.open_advise_confirm());
-		// The reason, for a screen reader beside the badge and on hover.
+		// The reason, for a screen reader beside the badge and on hover; the badge's trigger
+		// takes the focus.
 		expect(customer.textContent).toContain('Stadtwerke Nord');
-		expect(within(iban).getByLabelText(m.open_advise_none())).toBeTruthy();
+		expect(
+			within(customer).getByRole('button', { name: new RegExp(m.open_advise_confirm()) }).tagName
+		).toBe('BUTTON');
+		expect(within(iban).getByText(m.open_advise_none())).toBeTruthy();
 		await user.click(screen.getByRole('button', { name: new RegExp(`^${m.open_recommended()}`) }));
 		await vi.waitFor(() => {
 			const last = fetchMock.mock.calls.at(-1)?.[0];
 			expect(new URL(last!.url).searchParams.get('recommended')).toBe('true');
 		});
-		const shown = await screen.findByRole('list', { name: m.master_identifiers() });
-		await vi.waitFor(() => expect(within(shown).getAllByRole('listitem')).toHaveLength(1));
+		await vi.waitFor(async () => expect(await rows()).toHaveLength(1));
 	});
 
 	it('confirms every recommended one at once, after asking with their number', async () => {
@@ -185,15 +227,18 @@ describe('IdentifiersPanel', () => {
 	});
 
 	it('loads the list once, and again for other words', async () => {
+		// The clock is faked so the wait after the last key passes at once.
+		vi.useFakeTimers({ shouldAdvanceTime: true });
 		const { rerender } = render(IdentifiersPanel);
-		await screen.findByRole('list', { name: m.master_identifiers() });
-		await new Promise((resolve) => setTimeout(resolve, 600));
+		await rows();
+		await vi.advanceTimersByTimeAsync(600);
 		const lists = () =>
 			fetchMock.mock.calls.filter(
 				([request]) => new URL(request.url).pathname === '/api/v1/identifiers/open'
 			);
 		expect(lists()).toHaveLength(1);
 		await rerender({ query: 'nord' });
+		await vi.advanceTimersByTimeAsync(250);
 		await vi.waitFor(() => expect(lists()).toHaveLength(2));
 		expect(new URL(lists()[1][0].url).searchParams.get('q')).toBe('nord');
 	});
@@ -201,9 +246,9 @@ describe('IdentifiersPanel', () => {
 	it('takes over the chosen ones, leaving out one without a clear contact', async () => {
 		const user = userEvent.setup();
 		render(IdentifiersPanel);
-		await screen.findByRole('list', { name: m.master_identifiers() });
+		await rows();
 		await user.click(screen.getByRole('checkbox', { name: m.open_select_all() }));
-		const bar = screen.getByRole('region', { name: m.open_selected({ count: '2' }) });
+		const bar = screen.getByRole('region', { name: m.selection_selected({ count: '2' }) });
 		expect(bar.textContent).toContain(m.open_skipped_one());
 		await user.click(within(bar).getByRole('button', { name: m.open_confirm() }));
 		await vi.waitFor(() =>
@@ -215,7 +260,7 @@ describe('IdentifiersPanel', () => {
 	it('rejects all the chosen ones', async () => {
 		const user = userEvent.setup();
 		render(IdentifiersPanel);
-		await screen.findByRole('list', { name: m.master_identifiers() });
+		await rows();
 		await user.click(screen.getByRole('checkbox', { name: m.open_select({ value: '20047718' }) }));
 		await user.click(screen.getByRole('button', { name: m.open_reject() }));
 		await vi.waitFor(() =>
@@ -226,7 +271,7 @@ describe('IdentifiersPanel', () => {
 	it('opens one with where it stands and takes it over', async () => {
 		const user = userEvent.setup();
 		render(IdentifiersPanel);
-		await screen.findByRole('list', { name: m.master_identifiers() });
+		await rows();
 		await user.click(screen.getByRole('button', { name: m.open_open({ value: '20047718' }) }));
 		const dialog = await screen.findByRole('dialog');
 		expect(await within(dialog).findByText('2004 7718')).toBeTruthy();
@@ -242,23 +287,18 @@ describe('IdentifiersPanel', () => {
 	it('narrows to the learned ones', async () => {
 		const user = userEvent.setup();
 		render(IdentifiersPanel);
-		await screen.findByRole('list', { name: m.master_identifiers() });
+		await rows();
 		await user.click(screen.getByRole('button', { name: new RegExp(`^${m.open_learned()}`) }));
-		await vi.waitFor(() =>
-			expect(
-				within(screen.getByRole('list', { name: m.master_identifiers() })).getAllByRole('listitem')
-			).toHaveLength(1)
-		);
+		await vi.waitFor(async () => expect(await rows()).toHaveLength(1));
 	});
 
 	it('shows a suggestion for a profile and takes it over there', async () => {
 		const user = userEvent.setup();
 		render(IdentifiersPanel);
-		await screen.findByRole('list', { name: m.master_identifiers() });
+		await rows();
 		await user.click(screen.getByRole('button', { name: new RegExp(`^${m.open_suggestions()}`) }));
 		await vi.waitFor(() => expect(screen.getByText(m.open_column_target())).toBeTruthy());
-		const list = screen.getByRole('list', { name: m.master_identifiers() });
-		const [row] = within(list).getAllByRole('listitem');
+		const [row] = await rows();
 		expect(row.textContent).toContain('Max Nord');
 		expect(row.textContent).toContain(m.open_target_profile());
 		expect(row.textContent).toContain(m.open_suggested());

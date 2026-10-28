@@ -12,7 +12,15 @@ from lekto.core.domain.errors import (
     SearchUnavailableError,
     ValidationError,
 )
-from lekto.core.domain.ids import DocumentId, UserId, new_id
+from lekto.core.domain.ids import (
+    ContactId,
+    DocumentId,
+    DocumentTypeId,
+    SpaceId,
+    TagId,
+    UserId,
+    new_id,
+)
 from lekto.core.domain.pipeline import Lane, Node
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.rules import ForceReview
@@ -145,6 +153,28 @@ async def test_tags_are_removed_and_contact_type_and_topic_set_or_cleared(world:
     )
     await builders.drain(bulk_service)
     assert (await bulk_service.get(owner.id, again.id)).unchanged == 1  # no type before either
+
+
+async def test_what_an_action_names_is_checked_once_when_it_starts(world: World) -> None:
+    """A tag, contact, type, topic or space that does not exist is told at the start, not
+    with every document; what fits its kind is all an action takes."""
+    r = await rule_world(world)
+    owner = await world.user()
+    document = await r.arrive(owner)
+    bulk_service = service(r)
+    for action in (
+        BulkAction(BulkKind.CHANGE_TAGS, add=frozenset({TagId(new_id())})),
+        BulkAction(BulkKind.SET_CONTACT, contact=ContactId(new_id())),
+        BulkAction(BulkKind.SET_DOCUMENT_TYPE, document_type=DocumentTypeId(new_id())),
+        BulkAction(BulkKind.SET_TOPIC, topic=TagId(new_id())),
+        BulkAction(BulkKind.MOVE, space=SpaceId(new_id())),
+    ):
+        with pytest.raises(NotFoundError):
+            await bulk_service.start(owner.id, ids(document), action)
+    with pytest.raises(ValidationError, match="move takes no add"):
+        BulkAction(BulkKind.MOVE, space=SpaceId(new_id()), add=frozenset({TagId(new_id())}))
+    with pytest.raises(ValidationError, match="confirm takes no contact, node"):
+        BulkAction(BulkKind.CONFIRM, contact=ContactId(new_id()), node=Node.OCR)
 
 
 async def test_a_selection_by_filter_takes_what_the_person_reaches(world: World) -> None:

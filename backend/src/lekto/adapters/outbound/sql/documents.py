@@ -166,6 +166,12 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             for row in rows
         ]
 
+    async def count(self, filter: DocumentFilter, user: UserId | None) -> int:
+        documents = t.documents
+        criteria = [*([] if user is None else [visible_to(user)]), *_matching(filter)]
+        statement = select(func.count()).select_from(documents).where(*criteria)
+        return int((await self._tx.read(statement)).scalar_one())
+
     async def count_by(self, by: CountBy, user: UserId | None) -> dict[UUID, int]:
         documents = t.documents
         criteria: list[ColumnElement[bool]] = [] if user is None else [visible_to(user)]

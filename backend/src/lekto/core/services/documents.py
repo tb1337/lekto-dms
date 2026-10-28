@@ -672,10 +672,7 @@ class DocumentService:
                 await load_lister(uow, actor, all_users, Action.COUNT_ALL_DOCUMENTS), filter
             )
             tree = await tag_tree(uow)
-            rows = await uow.documents.facet_rows(
-                expand(filter, tree), None if all_users else actor
-            )
-        return len(rows)
+            return await uow.documents.count(expand(filter, tree), None if all_users else actor)
 
     async def facets(
         self, actor: UserId, filter: DocumentFilter, *, all_users: bool = False

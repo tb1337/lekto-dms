@@ -203,7 +203,7 @@ describe('IdentifiersPanel', () => {
 		render(IdentifiersPanel);
 		await screen.findByRole('list', { name: m.master_identifiers() });
 		await user.click(screen.getByRole('checkbox', { name: m.open_select_all() }));
-		const bar = screen.getByRole('region', { name: m.open_selected({ count: '2' }) });
+		const bar = screen.getByRole('region', { name: m.selection_selected({ count: '2' }) });
 		expect(bar.textContent).toContain(m.open_skipped_one());
 		await user.click(within(bar).getByRole('button', { name: m.open_confirm() }));
 		await vi.waitFor(() =>

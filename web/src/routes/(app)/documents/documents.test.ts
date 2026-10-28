@@ -188,7 +188,7 @@ describe('the archive page', () => {
 		const mode = screen.getAllByRole('button', { name: m.bulk_mode() })[0];
 		await userEvent.click(mode);
 		expect(mode.getAttribute('aria-pressed')).toBe('true');
-		const empty = screen.getByRole('region', { name: m.bulk_selected({ count: '0' }) });
+		const empty = screen.getByRole('region', { name: m.selection_selected({ count: '0' }) });
 		expect(empty.textContent).toContain(m.bulk_tap_hint());
 		expect(
 			within(empty).getByRole('button', { name: m.field_tags() }).hasAttribute('disabled')
@@ -201,11 +201,13 @@ describe('the archive page', () => {
 			await userEvent.click(await screen.findByRole('menuitem', { name: item }));
 		};
 		await choose(m.bulk_select_page());
-		screen.getByRole('region', { name: m.bulk_selected({ count: '2' }) });
+		screen.getByRole('region', { name: m.selection_selected({ count: '2' }) });
 		const gas = screen.getByRole('checkbox', { name: m.bulk_select_document({ title: 'Gas' }) });
 		expect((gas as HTMLInputElement).checked).toBe(true);
 		await choose(m.bulk_select_all({ count: formatNumber(120) }));
-		const all = screen.getByRole('region', { name: m.bulk_selected({ count: formatNumber(120) }) });
+		const all = screen.getByRole('region', {
+			name: m.selection_selected({ count: formatNumber(120) })
+		});
 		expect(all.textContent).toContain(m.bulk_all_hits());
 
 		await fireEvent.pointerDown(within(all).getByRole('button', { name: m.bulk_more() }), {
@@ -222,14 +224,14 @@ describe('the archive page', () => {
 		await vi.waitFor(
 			() =>
 				expect(
-					screen.queryByRole('region', { name: m.bulk_selected({ count: formatNumber(120) }) })
+					screen.queryByRole('region', { name: m.selection_selected({ count: formatNumber(120) }) })
 				).toBeNull(),
 			{ timeout: 3000 }
 		);
 		// The mode stays: nothing chosen any more.
-		screen.getByRole('region', { name: m.bulk_selected({ count: '0' }) });
+		screen.getByRole('region', { name: m.selection_selected({ count: '0' }) });
 		await choose(m.bulk_mode_end());
-		expect(screen.queryByRole('region', { name: m.bulk_selected({ count: '0' }) })).toBeNull();
+		expect(screen.queryByRole('region', { name: m.selection_selected({ count: '0' }) })).toBeNull();
 		expect(
 			screen.queryByRole('checkbox', { name: m.bulk_select_document({ title: 'Gas' }) })
 		).toBeNull();
@@ -254,7 +256,7 @@ describe('the archive page', () => {
 		await userEvent.click(screen.getAllByRole('button', { name: m.bulk_mode() })[0]);
 		// In the mode the card is the label of its box: a tap on its title chooses it.
 		await userEvent.click(screen.getByText('Gas'));
-		const bar = screen.getByRole('region', { name: m.bulk_selected({ count: '1' }) });
+		const bar = screen.getByRole('region', { name: m.selection_selected({ count: '1' }) });
 		await fireEvent.pointerDown(within(bar).getByRole('button', { name: m.bulk_more() }), {
 			button: 0,
 			pointerType: 'mouse'

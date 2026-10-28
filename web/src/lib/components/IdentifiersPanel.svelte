@@ -13,6 +13,7 @@
 	import Pagination from '#lib/components/Pagination.svelte';
 	import Segmented from '#lib/components/Segmented.svelte';
 	import Select from '#lib/components/Select.svelte';
+	import SelectionBar from '#lib/components/SelectionBar.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
@@ -242,29 +243,22 @@
 	{/if}
 {/snippet}
 
+{#snippet skippedHint()}
+	{skipped === 1 ? m.open_skipped_one() : m.open_skipped({ count: formatNumber(skipped) })}
+{/snippet}
+
 {#snippet bar()}
-	<div
-		class={cn(
-			'flex flex-wrap items-center gap-x-3 gap-y-2',
-			phone.current
-				? 'sticky bottom-0 z-10 -mx-4 border-t bg-card px-4 pt-3 pb-4'
-				: cn('rounded-2xl border bg-panel py-2 pr-2 pl-4', 'sticky top-2 z-10')
-		)}
-		role="region"
-		aria-label={m.open_selected({ count: formatNumber(selection.length) })}
+	<SelectionBar
+		count={m.selection_selected({ count: formatNumber(selection.length) })}
+		{busy}
+		hint={skipped > 0 ? skippedHint : undefined}
 	>
-		<span class="font-medium">{m.open_selected({ count: formatNumber(selection.length) })}</span>
-		{#if skipped > 0}
-			<span class="text-meta text-muted-foreground max-sm:order-last max-sm:basis-full sm:flex-1">
-				{skipped === 1 ? m.open_skipped_one() : m.open_skipped({ count: formatNumber(skipped) })}
-			</span>
-		{:else}
-			<span class="flex-1"></span>
-		{/if}
-		<Button variant="ghost" size="sm" disabled={busy} onclick={() => (chosen = {})}>
-			{m.open_selection_clear()}
-		</Button>
-		<div class={cn('flex gap-2', phone.current && 'grid flex-1 basis-full grid-cols-2')}>
+		{#snippet trail()}
+			<Button variant="ghost" size="sm" disabled={busy} onclick={() => (chosen = {})}>
+				{m.open_selection_clear()}
+			</Button>
+		{/snippet}
+		{#snippet actions()}
 			<Button variant="outline" size="sm" disabled={busy} onclick={() => decideChosen('reject')}>
 				{m.open_reject()}
 			</Button>
@@ -275,8 +269,8 @@
 			>
 				{m.open_confirm()}
 			</Button>
-		</div>
-	</div>
+		{/snippet}
+	</SelectionBar>
 {/snippet}
 
 <div class="flex flex-col gap-3">

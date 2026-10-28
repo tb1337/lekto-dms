@@ -45,8 +45,8 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.facts import NAME, Strength, facts_in
-from lekto.core.domain.holders import Parties, ReadHolder, foreign, holders
-from lekto.core.domain.identifiers import IdentifierKind, Key
+from lekto.core.domain.holders import Parties, Party, ReadHolder, foreign, holders
+from lekto.core.domain.identifiers import IdentifierKind, IdentifierSource, Key
 from lekto.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId, UserId
 from lekto.core.domain.json_value import (
     JsonObject,
@@ -280,13 +280,27 @@ def facts_holders(
     codes: Sequence[Code],
     pages: Mapping[int, Sequence[LaidWord]],
 ) -> dict[Key, Holder]:
-    """Whose the IBANs and creditor IDs of `facts` are (`domain.holders`): the persons by their
-    names and numbers, the contacts by their names and aliases, a GiroCode by its payee, how
-    far down its page a number stands from the words of the parsed text (`pages`)."""
+    """Whose the IBANs, creditor IDs, VAT IDs and e-mail domains of `facts` are
+    (`domain.holders`): the persons by their names and numbers, the contacts by their names and
+    aliases (and the domains a person gave them), a GiroCode by its payee, how far down its
+    page a number stands from the words of the parsed text (`pages`)."""
     parties = Parties(
         [name for person in persons for name in (person.display_name or "", *person.aliases)],
         [item.key for person in persons for item in person.identifiers],
         [name for contact in contacts for name in (contact.name, *contact.aliases)],
+        [
+            Party(
+                contact.name,
+                tuple(contact.names()),
+                frozenset(
+                    item.value
+                    for item in contact.identifiers
+                    if item.kind is IdentifierKind.EMAIL_DOMAIN
+                    and item.source is IdentifierSource.MANUAL
+                ),
+            )
+            for contact in contacts
+        ],
     )
     places = TextPlaces(text, pages) if pages else None
 

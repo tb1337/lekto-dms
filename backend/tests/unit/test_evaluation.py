@@ -62,9 +62,10 @@ async def test_the_fixed_answers_give_the_expected_lanes(tmp_path: Path) -> None
     assert "the trained one took over 57 documents of the training corpus first" in text
     assert "## Lanes (trained)" in text
     assert "## Instructions in the document text (cold)" in text
-    # The rule's holders with the model's fixed ones: every one expected (`facts-2`).
-    assert "Holders (cold): 6 of 6 IBANs and creditor IDs with the holder expected." in text
-    assert "Holders (trained): 7 of 7 IBANs and creditor IDs with the holder expected." in text
+    # The rule's holders with the model's fixed ones: every one expected (`facts-2`), the VAT
+    # IDs and e-mail domains of the rule alone.
+    assert "Holders (cold): 11 of 11 numbers with the holder expected." in text
+    assert "Holders (trained): 12 of 12 numbers with the holder expected." in text
 
 
 async def test_the_labels_are_recorded_and_counted_but_enforce_nothing(tmp_path: Path) -> None:

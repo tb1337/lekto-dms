@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import Self
 from uuid import UUID
 
-from lekto.core.domain.document_facts import HOLDER_KINDS, HolderKind, ReadFact
+from lekto.core.domain.document_facts import MODEL_HOLDER_KINDS, HolderKind, ReadFact
 from lekto.core.domain.documents import MAX_TITLE
 from lekto.core.domain.fields import FieldDefinition, FieldType
 from lekto.core.domain.holders import ReadHolder
@@ -483,7 +483,7 @@ def facts_schema(kinds: Sequence[str], roles: Sequence[str]) -> JsonObject:
     )
     holder = _object(
         {
-            "kind": {"type": "string", "enum": [kind.value for kind in sorted(HOLDER_KINDS)]},
+            "kind": {"type": "string", "enum": [kind.value for kind in sorted(MODEL_HOLDER_KINDS)]},
             "value": {"type": "string"},
             "holder": {"type": "string", "enum": [kind.value for kind in HolderKind]},
             "name": dict(_TEXT_OR_NULL),

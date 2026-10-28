@@ -30,7 +30,7 @@ from lekto.core.domain.classification import (
     field_key,
     node_reasons,
 )
-from lekto.core.domain.document_facts import HOLDER_KINDS, ReadFact
+from lekto.core.domain.document_facts import MODEL_HOLDER_KINDS, ReadFact
 from lekto.core.domain.documents import UNSET, Document, DocumentChanges, Unset
 from lekto.core.domain.errors import (
     LanguageModelError,
@@ -521,7 +521,7 @@ class LlmSignal(_ModelStep):
         answers, the facts and the holders (None: it read none). What goes wrong is in the
         output and never fails the signal, also an error that would pass with time (the
         proposal stands without facts; asking the model again reads them)."""
-        numbers = sorted(key for key in identifiers_in(sent.text) if key[0] in HOLDER_KINDS)
+        numbers = sorted(key for key in identifiers_in(sent.text) if key[0] in MODEL_HOLDER_KINDS)
         try:
             (read, told), answers = await self._ask(
                 document,

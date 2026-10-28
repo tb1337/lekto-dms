@@ -1,4 +1,7 @@
-"""Whose an IBAN or a creditor ID is where it stands (`domain.holders`), on invented documents."""
+"""Whose an IBAN, a creditor ID or a VAT ID is where it stands, and whose an e-mail domain is by
+its name (`domain.holders`), on invented documents."""
+
+from dataclasses import replace
 
 import pytest
 
@@ -11,14 +14,18 @@ from lekto.core.domain.document_facts import (
 from lekto.core.domain.holders import (
     FOOT,
     Parties,
+    Party,
     Place,
     ReadHolder,
     checked_holder,
+    domain_holder,
+    domain_owner,
     foreign,
     held_by,
     holder_at,
     holders,
     merged_holder,
+    unlearned,
 )
 from lekto.core.domain.identifiers import IdentifierKind, Key, identifiers_in
 from lekto.core.domain.reasons import Reason, ReasonCode
@@ -304,3 +311,116 @@ def test_rule_and_model_together() -> None:
     )
     # What the model told before is no rule's.
     assert merged_holder(sender, model) == model
+
+
+# --- VAT IDs (Tobi, 29.10.2026) ---------------------------------------------------------------
+
+OURS_VAT, YOURS_VAT, PARENT_VAT = "DE123456789", "DE811569869", "DE136695976"
+
+
+def test_a_vat_id_s_label_tells_whose_it_is() -> None:
+    text = f"""Rechnung 4711
+Ihre USt-IdNr.: {YOURS_VAT}
+Leistung                                   120,00 EUR
+Unsere USt-IdNr.: {OURS_VAT}
+"""
+    assert kinds(holders_of(text)) == {
+        YOURS_VAT: (HolderKind.RECIPIENT, None),
+        OURS_VAT: (HolderKind.SENDER, None),
+    }
+
+
+def test_a_vat_id_beside_a_name_is_that_contact_s() -> None:
+    text = f"""Rechnung 4711
+Leistung                                   120,00 EUR
+
+Stadtwerke Musterstadt GmbH · USt-IdNr. {OURS_VAT}
+Nordwerk AG · USt-IdNr. {PARENT_VAT}
+"""
+    found = kinds(holders_of(text))
+    assert found[OURS_VAT] == (HolderKind.SENDER, "Stadtwerke Musterstadt GmbH ·")
+    assert found[PARENT_VAT][0] is HolderKind.SENDER
+    # To the document's contact, the other company's is a third party's.
+    held = holders_of(text)[(IdentifierKind.VAT_ID, PARENT_VAT)]
+    assert held_by(held, ["Stadtwerke Musterstadt GmbH"]) is HolderKind.THIRD_PARTY
+
+
+def test_a_vat_id_alone_is_the_sender_s_two_unlabelled_are_unclear() -> None:
+    alone = f"Rechnung 4711\nLeistung   120,00 EUR\nUSt-IdNr. {OURS_VAT}\n"
+    assert kinds(holders_of(alone)) == {OURS_VAT: (HolderKind.SENDER, None)}
+    two = f"Rechnung\nUSt-IdNr. {OURS_VAT}\nUSt-IdNr. {PARENT_VAT}\n"
+    assert {kind for kind, _ in kinds(holders_of(two)).values()} == {HolderKind.UNCLEAR}
+    # The label of the line above with its own number is not this one's.
+    under = (
+        f"Rechnung\nUnsere USt-IdNr. {OURS_VAT}\n"
+        f"Eine Gesellschaft der Holding SE · USt-IdNr. {PARENT_VAT}\n"
+    )
+    assert kinds(holders_of(under)) == {
+        OURS_VAT: (HolderKind.SENDER, None),
+        PARENT_VAT: (HolderKind.UNCLEAR, None),
+    }
+    # At the foot of the page, as an IBAN there: the sender's.
+    assert kinds(holders_of(two, foot=frozenset({OURS_VAT})))[OURS_VAT][0] is HolderKind.SENDER
+
+
+# --- e-mail domains: by the name ----------------------------------------------------------------
+
+UTILITY_PARTY = Party(
+    "Stadtwerke Musterstadt GmbH", ("Stadtwerke Musterstadt GmbH", "SWM"), frozenset({"swm.de"})
+)
+DOMAIN_PARTIES = Parties(
+    person_names=["Max Nord"],
+    person_numbers=[(IdentifierKind.EMAIL_ADDRESS, "max@nord-familie.de")],
+    contact_names=["Stadtwerke Musterstadt GmbH", "Hausverwaltung Ost"],
+    contacts=[
+        UTILITY_PARTY,
+        Party("Hausverwaltung Ost", ("Hausverwaltung Ost",)),
+        Party("Stadtwerke Süd", ("Stadtwerke Süd",)),
+    ],
+)
+
+
+@pytest.mark.parametrize(
+    ("domain", "owner"),
+    [
+        ("stadtwerke-musterstadt.de", "Stadtwerke Musterstadt GmbH"),  # most letters
+        ("www.hausverwaltung-ost.de", "Hausverwaltung Ost"),
+        ("swm.de", "Stadtwerke Musterstadt GmbH"),  # a person gave it
+        ("stadtwerke-sued.de", "Stadtwerke Süd"),  # umlauts folded as in the names
+        ("stadtwerke.de", None),  # two contacts as much: not to tell
+        ("paypal.com", None),
+    ],
+)
+def test_a_domain_is_the_contact_s_whose_name_it_carries(domain: str, owner: str | None) -> None:
+    assert domain_owner(domain, DOMAIN_PARTIES.contacts) == owner
+
+
+def test_whose_a_domain_is() -> None:
+    def holder(domain: str, text: str = "") -> tuple[HolderKind, str | None]:
+        found = domain_holder(domain, text, DOMAIN_PARTIES)
+        assert found.source is HolderSource.RULE
+        return found.kind, found.name
+
+    assert holder("stadtwerke-musterstadt.de") == (HolderKind.SENDER, "Stadtwerke Musterstadt GmbH")
+    assert holder("gmx.de") == (HolderKind.UNCLEAR, None)  # a free mail domain: no one's
+    assert holder("nord-familie.de") == (HolderKind.RECIPIENT, None)  # of a person's address
+    assert holder("nordmail.de", "Ihre Adresse: max.nord@nordmail.de") == (
+        HolderKind.RECIPIENT,
+        None,
+    )
+    assert holder("paypal.com", "Zahlung über info@paypal.com") == (HolderKind.UNCLEAR, None)
+    # Another contact's domain on the utility's letter is a third party's.
+    held = domain_holder("hausverwaltung-ost.de", "", DOMAIN_PARTIES)
+    assert held_by(held, ["Stadtwerke Musterstadt GmbH"]) is HolderKind.THIRD_PARTY
+
+
+def test_an_unclear_domain_is_not_learned_an_unclear_iban_is() -> None:
+    unclear = Holder(HolderKind.UNCLEAR, HolderSource.RULE)
+    names = ["Stadtwerke Musterstadt GmbH"]
+    text = f"Zahlung über info@paypal.com auf {spaced(UTILITY)}"
+    facts = {fact.kind: fact for fact in found_facts(text, identifiers_in(text))}
+    domain, iban = facts[IdentifierKind.EMAIL_DOMAIN], facts[IBAN]
+    assert unlearned(replace(domain, holder=unclear), names)
+    assert not unlearned(replace(iban, holder=unclear), names)
+    # Read before 0.8, without a holder: learned as before.
+    assert not unlearned(domain, names)

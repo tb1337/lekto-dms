@@ -12,7 +12,7 @@ from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, replace
 
 from lekto.core.domain.document_facts import (
-    HOLDER_KINDS,
+    MODEL_HOLDER_KINDS,
     DocumentFact,
     FactOrigin,
     FactRole,
@@ -92,7 +92,7 @@ def merged_facts(
     asked for, none of a person's), and the report of the model's facts and holders (None
     without them)."""
     patterns = text.found(in_codes)
-    listed = {fact.key for fact in patterns if fact.key[0] in HOLDER_KINDS}
+    listed = {fact.key for fact in patterns if fact.key[0] in MODEL_HOLDER_KINDS}
     checked_holders = [(item, checked_holder(text.text, item, listed)) for item in told or ()]
     model = {item[0]: item[1] for _, item in checked_holders if not isinstance(item, Reason)}
     found = [

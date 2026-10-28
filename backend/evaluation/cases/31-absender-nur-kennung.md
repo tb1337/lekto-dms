@@ -18,4 +18,7 @@ Artikel 661204: Gartenstuhl klappbar (2 Stück)
 
 Bitte überweisen Sie den Betrag innerhalb von 14 Tagen auf IBAN DE08 2004 1111 0003 4567 89.
 
-USt-IdNr. DE276543210 · kundenservice@bergmann-versand.de
+Zahlung auch über PayPal: zahlung@paypal.de · Ihr Kundenkonto: www.mein-versandportal.de
+
+Unsere USt-IdNr. DE276543210 · kundenservice@bergmann-versand.de
+Eine Gesellschaft der Bergmann Holding SE · USt-IdNr. DE136695976

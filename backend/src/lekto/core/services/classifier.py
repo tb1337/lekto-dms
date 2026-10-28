@@ -24,7 +24,7 @@ from lekto.core.domain.errors import (
 )
 from lekto.core.domain.events import ClassifierTrained
 from lekto.core.domain.facts import Strength, persons_in
-from lekto.core.domain.holders import foreign
+from lekto.core.domain.holders import unlearned
 from lekto.core.domain.identifiers import (
     Confirmed,
     Identifier,
@@ -108,8 +108,8 @@ class _Example:
     # identifiers, what they added or corrected is.
     rejected: frozenset[tuple[IdentifierKind, str]] = frozenset()
     decided: frozenset[tuple[IdentifierKind, str]] = frozenset()
-    # Its IBANs and creditor IDs of someone other than its contact, and of a person among them
-    # (`domain.holders`).
+    # Its numbers of someone other than its contact, or (an e-mail domain) not surely its, and
+    # of a person among them (`domain.holders`).
     foreign: frozenset[tuple[IdentifierKind, str]] = frozenset()
     personal: frozenset[tuple[IdentifierKind, str]] = frozenset()
 
@@ -373,7 +373,7 @@ class ClassifierService:
                         for fact in facts
                         if fact.state in (FactState.ADDED, FactState.CORRECTED)
                     ),
-                    foreign=frozenset(fact.key for fact in facts if foreign(fact.holder, own)),
+                    foreign=frozenset(fact.key for fact in facts if unlearned(fact, own)),
                     personal=frozenset(
                         fact.key
                         for fact in facts

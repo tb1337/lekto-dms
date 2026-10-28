@@ -104,8 +104,24 @@ class Holder:
             object.__setattr__(self, "name", " ".join(self.name.split())[:MAX_WRITTEN] or None)
 
 
-HOLDER_KINDS = frozenset({IdentifierKind.IBAN, IdentifierKind.CREDITOR_ID})
-"""The kinds of facts that have a holder: a contact's as often as another's."""
+HOLDER_KINDS = frozenset(
+    {
+        IdentifierKind.IBAN,
+        IdentifierKind.CREDITOR_ID,
+        IdentifierKind.VAT_ID,
+        IdentifierKind.EMAIL_DOMAIN,
+    }
+)
+"""The kinds of facts that have a holder: a contact's as often as another's (a VAT ID or an
+e-mail domain since 0.8: a parent company's, a payment service's, a portal's)."""
+
+MODEL_HOLDER_KINDS = frozenset({IdentifierKind.IBAN, IdentifierKind.CREDITOR_ID})
+"""The kinds whose holder the language model is asked for (`facts-2`); the others' the rule
+tells alone (Tobi, 29.10.2026)."""
+
+SURE_HOLDER_KINDS = frozenset({IdentifierKind.EMAIL_DOMAIN})
+"""The kinds training learns for a contact only where the rule tells they are its: a domain
+names its holder, and one that names no one is often another party's (Tobi, 29.10.2026)."""
 
 ROLES: Mapping[IdentifierKind, FactRole] = {
     IdentifierKind.IBAN: FactRole.CONTACT,

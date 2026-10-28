@@ -4,9 +4,10 @@ no person has confirmed yet, across all contacts and documents. A learned one st
 (`CONTACT_KINDS`) but at no contact, neither entered, learned nor rejected. A person's value (a
 user's profile, `of_person`) and a free mail domain are never open, nor an IBAN or a creditor ID
 a person holds in any document; one counts only in the documents where it is their contact's
-(`domain.holders`: not a payee's on a bank statement). A suggested one is an IBAN or a creditor
-ID open nowhere else whose holder a document names: for that person's profile, or for that
-contact (the landlord's IBAN in the bookings of a bank statement)."""
+(`domain.holders`: not a payee's on a bank statement). A suggested one is a number with a
+holder (an IBAN, a creditor ID, a VAT ID, an e-mail domain) open nowhere else whose holder a
+document names: for that person's profile (a kind a person has), or for that contact (the
+landlord's IBAN in the bookings of a bank statement, a parent company's VAT ID)."""
 
 import re
 from collections import Counter, defaultdict
@@ -20,6 +21,7 @@ from lekto.core.domain.holders import Parties, foreign
 from lekto.core.domain.identifiers import (
     CONTACT_KINDS,
     FREE_MAIL,
+    PERSON_KINDS,
     Identifier,
     IdentifierKind,
     IdentifierSource,
@@ -146,8 +148,8 @@ def _suggested(
     persons: Sequence[Person],
     declined: Mapping[UserId, Collection[Key]],
 ) -> list[OpenIdentifier]:
-    """The IBANs and creditor IDs open nowhere else whose holder a document names: a person
-    (the recipient's), else another contact than the document's."""
+    """The numbers with a holder open nowhere else whose holder a document names: a person (the
+    recipient's, of a kind a person has), else another contact than the document's."""
     contact_names = {contact.id: Parties(contact_names=contact.names()) for contact in contacts}
     person_names = {
         person.user_id: Parties(person_names=[person.display_name or "", *person.aliases])
@@ -164,6 +166,8 @@ def _suggested(
             continue
         received = [item for item in items if _held(item, HolderKind.RECIPIENT)]
         if received:
+            if key[0] not in PERSON_KINDS:
+                continue  # a person's e-mail domain or VAT ID: no number of their profile
             users = {_recipient(item, person_names) for item in received}
             user = users.pop() if len(users) == 1 else None
             if user is not None and key not in declined.get(user, ()):

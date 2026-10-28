@@ -144,7 +144,7 @@ class CaseResult:
     by_hand: frozenset[str] = frozenset()  # fields set by hand only: no model checks, not scored
     topic: str | None = None
     facts: frozenset[ExpectedFact] = frozenset()  # the document's facts (none rejected)
-    holders: frozenset[ExpectedHolder] = frozenset()  # whose its IBANs and creditor IDs are
+    holders: frozenset[ExpectedHolder] = frozenset()  # whose its numbers with a holder are
     # The documents it is related with, either way (by case name; one of the training corpus as
     # `corpus`), with the relation's state.
     relations: frozenset[tuple[str, str]] = frozenset()

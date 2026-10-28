@@ -326,7 +326,7 @@ def render(runs: Mapping[Run, Sequence[CaseResult]], info: RunInfo) -> str:
             missed = f": {'; '.join(item.holders_missed)}" if item.holders_missed else ""
             lines.append(
                 f"Holders ({_RUN_TITLES[run]}): {item.holders_right} of {item.holders_expected} "
-                f"IBANs and creditor IDs with the holder expected{missed}."
+                f"numbers with the holder expected{missed}."
             )
     for run, item in summaries.items():
         if item.relations_expected or item.relations_beyond:

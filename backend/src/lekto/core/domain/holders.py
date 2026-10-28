@@ -1,6 +1,8 @@
-"""Whose an IBAN or a creditor ID is where it stands (`.idea/umsetzungsplan.md`, "Inhaber von
-IBANs und Gläubiger-IDs"): the fixed rule on the text and the pages, German and English, that
-holds when the language model tells nothing.
+"""Whose an IBAN, a creditor ID or a VAT ID is where it stands (`.idea/umsetzungsplan.md`,
+"Inhaber von IBANs und Gläubiger-IDs", "Inhaber von USt-IdNr. und E-Mail-Domains"): the fixed
+rule on the text and the pages, German and English, that holds when the language model tells
+nothing (it is asked for IBANs and creditor IDs only). Whose an e-mail domain is, its name
+tells (`domain_holder`).
 
 A number's places are read one by one, each from its line, the three lines above and where it
 stands on its page. The first rule that applies tells (`_at`):
@@ -22,7 +24,8 @@ The sender named is the document's contact only where the name is its name or an
 rule does not know the contact, those who use the holder compare (`Holder`). A number's holder
 is that of its places (`holders`): a recipient's at one place is theirs; places that differ
 between sender and another party leave it unclear. A person's own number (their profile) is
-theirs wherever it stands, and the name of a GiroCode that holds one is its holder's.
+theirs wherever it stands, and the name of a GiroCode that holds one is its holder's. A VAT ID
+that stands alone in the document is the sender's where its places tell nothing.
 """
 
 import re
@@ -32,6 +35,8 @@ from dataclasses import dataclass
 
 from lekto.core.domain.document_facts import (
     HOLDER_KINDS,
+    MODEL_HOLDER_KINDS,
+    SURE_HOLDER_KINDS,
     DocumentFact,
     Holder,
     HolderKind,
@@ -40,7 +45,13 @@ from lekto.core.domain.document_facts import (
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.evidence import contains, normalise
 from lekto.core.domain.facts import identifier_spans
-from lekto.core.domain.identifiers import Key, normalise_identifier, type_of
+from lekto.core.domain.identifiers import (
+    FREE_MAIL,
+    IdentifierKind,
+    Key,
+    normalise_identifier,
+    type_of,
+)
 from lekto.core.domain.names import match_key
 from lekto.core.domain.reasons import Reason, ReasonCode, because
 
@@ -68,14 +79,17 @@ _KINDS_OF_BOOKING = re.compile(
     r"|credits?|debits?|transfers?|standing\s+orders?|payments?|transactions?|rent|salary)\b",
     re.IGNORECASE,
 )
+_VAT = r"(ust|umsatzsteuer)[-.\s]*id\w*|vat\b"
 _SENDER = re.compile(
     r"\b(unser(e|em)?\s+(konto|bankverbindung)|bankverbindung|zahlbar\s+an\s+uns|auf\s+unser"
-    r"|our\s+(account|bank\s+details)|bank\s+details|pay(able)?\s+to\s+us|remit\s+to)",
+    r"|our\s+(account|bank\s+details)|bank\s+details|pay(able)?\s+to\s+us|remit\s+to"
+    rf"|unser(e|er)?\s+({_VAT})|our\s+({_VAT}))",
     re.IGNORECASE,
 )
 _RECIPIENT = re.compile(
     r"\b(ihre?[ms]?\s+(kontos?|iban|bankverbindung)|kontoinhaber|von\s+ihrem\s+konto"
-    r"|your\s+(account|iban|bank\s+details)|account\s+holder|from\s+your\s+account)",
+    r"|your\s+(account|iban|bank\s+details)|account\s+holder|from\s+your\s+account"
+    rf"|ihre?r?\s+({_VAT})|your\s+({_VAT}))",
     re.IGNORECASE,
 )
 _TARGET = re.compile(
@@ -86,10 +100,13 @@ _TARGET = re.compile(
 # The label of the number just before it, left out of the name before it.
 _LABEL = re.compile(
     r"(?i)(iban|gläubiger[-\s]*(id(entifikations(nummer)?)?|identifikationsnummer|nr\.?)"
-    r"|creditor[-\s]*(id|identifier)|ci)\s*[:=.]?\s*$"
+    r"|creditor[-\s]*(id|identifier)|ci"
+    r"|(ust|umsatzsteuer)[-.\s]*(id(\.|entifikations)?[-.\s]*(nr|nummer)?|identifikationsnummer)"
+    r"|vat[-\s]*(id|no|number|reg(istration)?[-\s]*(no|number)?)?)\s*[:=.]?\s*$"
 )
 _WORD = re.compile(r"[a-z]{3,}")
 _ANOTHER_NUMBER = re.compile(r"\b[A-Z]{2}\d{2}[ A-Z0-9]{12,}")
+_ANOTHER_VAT = re.compile(r"\b[A-Z]{2} ?\d[\d ]{7,13}\b")
 # A column: words apart by one or two spaces; columns apart by three spaces or a table's `|`.
 _COLUMN = re.compile(r"[^\s|]+(?: {1,2}[^\s|]+)*")
 _COLUMNS = re.compile(r"\s{3,}|\s*\|\s*")
@@ -104,20 +121,33 @@ _ABOVE = 3  # lines above a number that are its block
 _NAME_WORDS = 6  # words a name has at most
 
 
+@dataclass(frozen=True)
+class Party:
+    """A contact as the rule for e-mail domains sees it: its name, all its names (with the
+    aliases) and the domains a person gave it."""
+
+    name: str
+    names: tuple[str, ...]
+    domains: frozenset[str] = frozenset()
+
+
 class Parties:
     """Who a number may belong to: the persons (the users) by their names and their numbers,
-    and the contacts by their names and aliases."""
+    and the contacts by their names and aliases (`contacts`: each on its own, for the e-mail
+    domains)."""
 
     def __init__(
         self,
         person_names: Iterable[str] = (),
         person_numbers: Collection[Key] = (),
         contact_names: Iterable[str] = (),
+        contacts: Iterable[Party] = (),
     ) -> None:
         # A login name or a lone first name names no one: names of two words or more.
         self._persons = [words for words in map(_words, person_names) if len(words) >= 2]
         self._contacts = [words for words in map(_words, contact_names) if words]
         self.person_numbers = frozenset(person_numbers)
+        self.contacts = tuple(contacts)
 
     def person(self, text: str) -> bool:
         """Whether `text` names one of the persons."""
@@ -132,7 +162,9 @@ class Parties:
 class Place:
     """Where a number stands: its `line`, the `column` it starts at there and how it is
     `written`, the lines `above` it (the nearest last), how far down its page it starts (None
-    where the pages are not known) and how many numbers of its kind the document shows."""
+    where the pages are not known), how many numbers of its kind the document shows, and
+    whether it may be a party's of a booking or a list (`booked`: an IBAN or a creditor ID; a
+    VAT ID stands in no booking)."""
 
     line: str
     column: int
@@ -140,6 +172,7 @@ class Place:
     above: tuple[str, ...] = ()
     top: float | None = None
     numbers: int = 1
+    booked: bool = True
 
 
 def holders(
@@ -159,6 +192,9 @@ def holders(
     lines = _Lines(text)
     found: dict[Key, Holder] = {}
     for fact in shown:
+        if fact.kind is IdentifierKind.EMAIL_DOMAIN:
+            found[fact.key] = domain_holder(fact.value, text, parties)
+            continue
         coded = (codes or {}).get(fact.key)
         if fact.key in parties.person_numbers:
             found[fact.key] = Holder(HolderKind.RECIPIENT, HolderSource.RULE)
@@ -167,11 +203,24 @@ def holders(
             found[fact.key] = _named_holder(coded, parties)
             continue
         places = [
-            lines.place(span.start, span.end, tops(span.start, span.end), numbers[fact.kind])
+            lines.place(
+                span.start,
+                span.end,
+                tops(span.start, span.end),
+                numbers[fact.kind],
+                booked=fact.kind is not IdentifierKind.VAT_ID,
+            )
             for span in identifier_spans(text, fact.kind, fact.value)
         ]
         if places:
-            found[fact.key] = _of_places([holder_at(place, parties) for place in places])
+            held = _of_places([holder_at(place, parties) for place in places])
+            if (
+                held.kind is HolderKind.UNCLEAR
+                and fact.kind is IdentifierKind.VAT_ID
+                and numbers[fact.kind] == 1
+            ):
+                held = Holder(HolderKind.SENDER, HolderSource.RULE)  # the only one: the sender's
+            found[fact.key] = held
     return found
 
 
@@ -195,6 +244,79 @@ def foreign(holder: Holder | None, names: Iterable[str]) -> bool:
     return held_by(holder, names) in (HolderKind.RECIPIENT, HolderKind.THIRD_PARTY)
 
 
+def unlearned(fact: DocumentFact, names: Iterable[str]) -> bool:
+    """Whether training leaves `fact` out for the contact of `names`: someone else's
+    (`foreign`), or of `SURE_HOLDER_KINDS` and not surely its (an e-mail domain whose name
+    names no one: offered in the open list, not learned)."""
+    if foreign(fact.holder, names):
+        return True
+    return (
+        fact.kind in SURE_HOLDER_KINDS
+        and fact.holder is not None
+        and fact.holder.kind is HolderKind.UNCLEAR
+    )
+
+
+# --- e-mail domains: whose by the name --------------------------------------------------------
+
+_ADDRESS_AT = re.compile(r"([\w.+-]+)@([\w-]+(?:\.[\w-]+)+)")
+_FILLERS = frozenset({"und", "der", "die", "das", "von", "fuer", "the", "and", "for"})
+
+
+def domain_holder(domain: str, text: str, parties: Parties) -> Holder:
+    """Whose an e-mail domain is, by its name rather than where it stands (Tobi, 29.10.2026):
+    a free mail domain's holder is not to tell (unclear); one of a person (the domain of one of
+    their addresses, or of an address in `text` whose part before the @ names them) is the
+    recipient's; one a contact carries, or whose name a word of a contact's name stands in
+    (`domain_owner`), the sender's under that contact's name (`held_by`: another contact's is
+    a third party's); else unclear."""
+    domain = domain.lower()
+    if domain in FREE_MAIL:
+        return Holder(HolderKind.UNCLEAR, HolderSource.RULE)
+    personal = {
+        value.rpartition("@")[2].lower()
+        for kind, value in parties.person_numbers
+        if kind is IdentifierKind.EMAIL_ADDRESS
+    }
+    if domain in personal:
+        return Holder(HolderKind.RECIPIENT, HolderSource.RULE)
+    for match in _ADDRESS_AT.finditer(text):
+        if match.group(2).lower() == domain and parties.person(
+            re.sub(r"[._+-]+", " ", match.group(1))
+        ):
+            return Holder(HolderKind.RECIPIENT, HolderSource.RULE)
+    owner = domain_owner(domain, parties.contacts)
+    if owner is not None:
+        return Holder(HolderKind.SENDER, HolderSource.RULE, owner)
+    return Holder(HolderKind.UNCLEAR, HolderSource.RULE)
+
+
+def domain_owner(domain: str, contacts: Iterable[Party]) -> str | None:
+    """The name of the contact an e-mail domain is: one a person gave it, else the one with the
+    most letters of its names' words (three letters or more, without legal forms) in the
+    domain's name before its top level (`stadtwerke-nordheim` of `stadtwerke-nordheim.de` for
+    "Stadtwerke Nordheim GmbH"); None where none or two of them do as much."""
+    domain = domain.lower()
+    contacts = list(contacts)
+    for party in contacts:
+        if domain in party.domains:
+            return party.name
+    stem = re.sub(r"[^a-z0-9]", "", domain.removeprefix("www.").rpartition(".")[0])
+    if not stem:
+        return None
+    scores: dict[str, int] = {}
+    for party in contacts:
+        words = {word for name in party.names for word in _WORD.findall(match_key(name))}
+        score = sum(len(word) for word in words - _FILLERS if word in stem)
+        if score:
+            scores[party.name] = max(score, scores.get(party.name, 0))
+    if not scores:
+        return None
+    best = max(scores.values())
+    named = [name for name, score in scores.items() if score == best]
+    return named[0] if len(named) == 1 else None
+
+
 def holder_at(place: Place, parties: Parties) -> Holder:
     """The holder of the number at `place`, by the first rule that applies."""
     kind, name = _at(place, parties)
@@ -209,8 +331,8 @@ def _at(place: Place, parties: Parties) -> tuple[HolderKind, str | None]:
         return HolderKind.SENDER, None
     if _RECIPIENT.search(line):
         return HolderKind.RECIPIENT, None
-    beside = _names_beside(place)
-    listed = place.numbers >= LIST
+    beside = [(name, booking and place.booked) for name, booking in _names_beside(place)]
+    listed = place.numbers >= LIST and place.booked
     for name, booking in beside:
         if parties.person(name):
             return HolderKind.RECIPIENT, name
@@ -227,7 +349,10 @@ def _at(place: Place, parties: Parties) -> tuple[HolderKind, str | None]:
     for name, booking in beside:
         if booking or listed:  # a booking's party, or a party of a list
             return HolderKind.THIRD_PARTY, name or None
-    context = " ".join([*reversed(place.above[:2]), line])
+    # A label above whose line holds a number of its own is that number's (a VAT ID under
+    # "Unsere USt-IdNr. DE…" is not the sender's for it).
+    above = [raw for raw in place.above[:2] if place.booked or not _ANOTHER_VAT.search(raw)]
+    context = " ".join([*reversed(above), line])
     if _RECIPIENT.search(context):
         return HolderKind.RECIPIENT, None
     if _TARGET.search(context):
@@ -315,13 +440,15 @@ class _Lines:
         for line in self._lines:
             self._starts.append(self._starts[-1] + len(line) + 1)
 
-    def place(self, start: int, end: int, top: float | None, numbers: int) -> Place:
+    def place(
+        self, start: int, end: int, top: float | None, numbers: int, *, booked: bool = True
+    ) -> Place:
         index = bisect_right(self._starts, start) - 1
         line = self._lines[index]
         column = start - self._starts[index]
         written = line[column : column + end - start]
         above = tuple(reversed(self._lines[max(0, index - _ABOVE) : index]))
-        return Place(line, column, written, above, top, numbers)
+        return Place(line, column, written, above, top, numbers, booked)
 
 
 def _words(text: str) -> frozenset[str]:
@@ -373,7 +500,7 @@ def checked_holder(
     """The holder `read` tells, checked: of one of the `listed` numbers, a holder Lekto knows,
     a passage of the text that shows the number (`QUOTE_*`), and a name that stands in the text
     near one of the number's places (`NEAR`). Why not, otherwise."""
-    number = next((kind for kind in HOLDER_KINDS if kind.value == read.kind), None)
+    number = next((kind for kind in MODEL_HOLDER_KINDS if kind.value == read.kind), None)
     if number is None:
         return because(ReasonCode.HOLDER_NOT_LISTED, value=read.value)
     try:

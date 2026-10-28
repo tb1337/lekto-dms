@@ -150,6 +150,16 @@ def test_a_recipient_s_iban_is_suggested_for_their_profile() -> None:
     assert open_identifiers([bank], [seen(bank.id, IBAN, 3, holder=named)], [IBAN], persons) == []
 
 
+def test_a_recipient_s_domain_or_vat_id_is_suggested_for_no_profile() -> None:
+    """A person has no e-mail domain or VAT ID among their numbers: nothing to suggest."""
+    bank = Contact.create(name="Bank", now=NOW)
+    max_ = UserId(new_id())
+    named = Holder(HolderKind.RECIPIENT, HolderSource.RULE, "Max Nord")
+    domain = (IdentifierKind.EMAIL_DOMAIN, "nord-familie.example")
+    sightings = [seen(bank.id, domain, 3, holder=named), seen(bank.id, VAT, 4, holder=named)]
+    assert open_identifiers([bank], sightings, persons=[Person(max_, "Max Nord")]) == []
+
+
 def test_what_a_contact_or_a_person_has_is_not_open() -> None:
     utility = Contact.create(
         name="Stadtwerke",

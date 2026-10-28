@@ -2285,6 +2285,8 @@ Stand: freigegeben (offener Punkt 7, Tobi 29.10.2026: „ok“; Fragen 1–3: �
 
 **PRs:** einer, `feature/holders-vat-domain` (`enhancement`).
 
+**Umgesetzt (29.10.2026):** wie vorgeschlagen, dazu zwei Feinheiten aus den Tests: Eine USt-IdNr. ist nie Partei einer Buchung oder Liste (sonst machte „Leistung 120,00 EUR“ darüber sie zur Nummer eines Dritten), und das Label einer Zeile darüber gilt für sie nicht, wenn diese Zeile eine eigene USt-IdNr. trägt („Unsere USt-IdNr. DE…“ über der Nummer der Konzernmutter). Eine Domain wird einer Person nicht als Profilkennung vorgeschlagen (Personen haben keine). Auswertung: Fall 31 nennt jetzt Zahlungsdienst, Kundenportal und Konzernmutter; Inhaber kalt 11 von 11, trainiert 12 von 12.
+
 **Fragen:**
 1. Domain über den Namen: Reicht „ein Wort des Namens im Domainnamen“ (Wörter ab drei Buchstaben, ohne Rechtsform)? Vorschlag: ja; was nicht passt, wird Vorschlag, nicht gelernt.
 2. Das Modell fragt die Inhaber von USt-IdNr. und Domains vorerst nicht. Vorschlag: so lassen, nach dem Release an Deinen Entscheidungen messen (Punkt 10).

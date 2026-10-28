@@ -133,7 +133,8 @@ def test_without_a_label_or_without_words_or_value_nothing_is_checked() -> None:
 def test_a_value_standing_twice_is_found_by_its_quote_s_place() -> None:
     text = "Gehalt            3.980,00 €\n\n\n\n\n\nGesamtbrutto      3.980,00 €"
     pages = pages_of(text)
-    assert outcome(text, "Gesamtbrutto") is LabelOutcome.UNKNOWN  # where is not known
+    # Without a place of its quote, every place counts: one stands by the label.
+    assert outcome(text, "Gesamtbrutto") is LabelOutcome.BESIDE
     lines = len(text.split("\n"))
     first = Location(1, (Box.clamped(0, 0.15 / 60, 28 / 80, 0.85 / 60),))
     last = Location(1, (Box.clamped(0, (lines - 0.85) / 60, 28 / 80, (lines - 0.15) / 60),))
@@ -143,6 +144,15 @@ def test_a_value_standing_twice_is_found_by_its_quote_s_place() -> None:
     assert check_label("Gesamtbrutto", pages, (first, last), amount("3980.00")).outcome is (
         LabelOutcome.BESIDE
     )
+
+
+def test_a_value_standing_twice_without_its_quote_s_place_is_checked_at_each() -> None:
+    """An amount in a table and again in a sentence (Tobi, 29.10.2026, #55 19.3): by its label
+    where either place is, apart where neither is."""
+    table = "Gesamtbetrag      84,20 €\n\n\n\n\n\nDer Gesamtbetrag von 84,20 € wird eingezogen."
+    assert outcome(table, "Gesamtbetrag", value="84.20") is LabelOutcome.BESIDE
+    neither = "Abschlag          84,20 €\n\n\n\n\n\nWir ziehen 84,20 € ein.\n\n\n\n\n\nGesamtbetrag"
+    assert outcome(neither, "Gesamtbetrag", value="84.20") is LabelOutcome.APART
 
 
 def test_the_words_of_the_parsed_text() -> None:

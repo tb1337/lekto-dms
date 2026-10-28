@@ -424,13 +424,12 @@ VALUE_RUN = 4
 out (`24. Juni 2022`) or an amount split by the reading (`1.180, 41`)."""
 
 
-def value_on_pages[W: Placed](
+def value_runs[W: Placed](
     pages: Mapping[int, Sequence[W]], shows: Callable[[DocumentText], bool]
-) -> tuple[int, tuple[W, ...]] | None:
-    """Where a value stands among the words read on the pages, for one whose quote was not
-    found on them: the shortest runs of words in reading order that show it (`shows`, as
-    `value_words`), up to `VALUE_RUN` words; its page and words if it stands at exactly one
-    place, else None (nowhere, or more than once: which one the quote meant is not known)."""
+) -> list[tuple[int, tuple[W, ...]]]:
+    """Every place a value stands among the words read on the pages: the shortest runs of
+    words in reading order that show it (`shows`, as `value_words`), up to `VALUE_RUN` words,
+    each with its page; none where it stands nowhere."""
     for length in range(1, VALUE_RUN + 1):
         found = [
             (page, tuple(words[start : start + length]))
@@ -439,8 +438,18 @@ def value_on_pages[W: Placed](
             if shows(DocumentText(" ".join(word.text for word in words[start : start + length])))
         ]
         if found:
-            return found[0] if len(found) == 1 else None
-    return None
+            return found
+    return []
+
+
+def value_on_pages[W: Placed](
+    pages: Mapping[int, Sequence[W]], shows: Callable[[DocumentText], bool]
+) -> tuple[int, tuple[W, ...]] | None:
+    """Where a value stands among the words read on the pages, for one whose quote was not
+    found on them (`value_runs`): its page and words if it stands at exactly one place, else
+    None (nowhere, or more than once: which one the quote meant is not known)."""
+    found = value_runs(pages, shows)
+    return found[0] if len(found) == 1 else None
 
 
 def gap(first: Box, second: Box, *, line: float, character: float) -> float:

@@ -29,6 +29,7 @@ from lekto.core.domain.reading import (
     readings_to_json,
     surroundings,
     value_on_pages,
+    value_runs,
     value_words,
     words_at,
 )
@@ -314,6 +315,9 @@ def test_a_value_without_a_place_is_found_where_it_stands_once() -> None:
 def test_a_value_standing_twice_or_nowhere_is_not_found() -> None:
     twice = {1: line("24.06.2022", "Lohnsteuer"), 2: line("bis", "24.06.2022")}
     assert value_on_pages(twice, shows_date) is None
+    # Every place it stands, for the label check.
+    assert value_runs(twice, shows_date) == [(1, (twice[1][0],)), (2, (twice[2][1],))]
+    assert value_runs({1: line("Datum", "Juni", "2022")}, shows_date) == []
     assert value_on_pages({1: line("Datum", "Juni", "2022")}, shows_date) is None
     assert value_on_pages({}, shows_date) is None
 

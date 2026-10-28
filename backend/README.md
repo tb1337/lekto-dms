@@ -836,7 +836,8 @@ above. The label is looked for among the words of the parsed text (`content.json
 document has, digital or scanned), as quotes are located, but as whole words: case and spacing
 evened out, then on letters and digits alone (`Brutto` is not in `Steuerbrutto`; `Gesamtbrutto`
 is in `**Gesamtbrutto:**`). A label over two lines is measured by the line it ends on. The value's words are those at its quote's place that show it, or,
-where it has none, where the value stands just once on the pages. The value stands by its label
+where it has none, every place the value stands on the pages (an amount in a table and again
+in a sentence: by its label where either place is). The value stands by its label
 on the label's line to its right, or below it in its column (overlapping it, or starting within
 four characters of its left edge) within three lines (`LABEL_LINES`); the line (the usual
 distance between the page's lines) and the character (the median width of one) are measured on

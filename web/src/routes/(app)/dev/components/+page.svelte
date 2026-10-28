@@ -46,7 +46,7 @@
 		{ title: 'scan_0042.pdf', date: new Date(2026, 9, 8), lane: null }
 	];
 	const BUTTONS = ['default', 'secondary', 'outline', 'ghost', 'destructive', 'link'] as const;
-	const TONES: Tone[] = ['green', 'yellow', 'red', 'running', 'muted', 'note', 'primary', 'beta'];
+	const TONES: Tone[] = ['green', 'yellow', 'red', 'running', 'muted', 'note', 'primary'];
 	const CHIPS = ['neutral', 'outline', 'selected', 'add'] as const;
 	const CARDS = ['row', 'sm', 'md', 'lg'] as const;
 	const DIALOGS = ['sm', 'md', 'lg', 'xl'] as const;

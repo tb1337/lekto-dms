@@ -53,7 +53,6 @@ A new token needs a value for both modes and that contrast.
 | `border`, `input`                                                         | Lines and field edges                                                                                                                |
 | `lane-green`, `lane-yellow`, `lane-red`, `lane-running` (+ `-foreground`) | Document state (done, review, intervene, processing) and anything that shares its meaning: deadline near or passed, success, failure |
 | `note`, `note-foreground`                                                 | Notes and tips                                                                                                                       |
-| `beta`, `beta-foreground`                                                 | The "Beta" pill only                                                                                                                 |
 | `chart-1` … `chart-5`                                                     | Charts on the page "System" only                                                                                                     |
 | `tpl-*`                                                                   | Liquid template highlighting only                                                                                                    |
 | `mark-edge`, `mark-light`                                                 | The edge of a mark on a page image (`.mark-glass`)                                                                                   |
@@ -84,7 +83,7 @@ The scale is defined in `@theme`. Use these steps only:
 | `text-meta`   | 0.8125rem                | Secondary lines, dense panels (system, processing), small buttons        |
 | `text-xs`     | 0.75rem                  | Captions, badges, the eyebrow                                            |
 | `text-micro`  | 0.6875rem                | Marks on images (page count), counters in pills                          |
-| `text-nano`   | 0.625rem                 | The smallest marks: the raised `BetaPill`, legends of matrices and files |
+| `text-nano`   | 0.625rem                 | The smallest marks: legends of matrices and files, the smallest initials |
 
 - **Eyebrow** (small uppercase label above a group, e.g. "LENSES", "ZEITRAUM"): the `Eyebrow`
   component (`text-xs font-medium uppercase tracking-wide text-muted-foreground`).
@@ -134,7 +133,7 @@ page image use `.mark-glass`; a pinned page of the viewer uses `shadow-pinned`. 
 - **Back link** (optional, detail pages): `BackLink`, above the title. It leads to the list the
   page came from, with that list's state: lens, filters, search and sort.
 - **Title**: `PageTitle`, the `<h1>` in `text-title`, optionally followed by a count or a badge
-  (lane, Beta).
+  (lane).
 - **Subtitle** (optional): one line in `text-sm text-muted-foreground` under the title.
 - **Actions**: right of the title, at its height. The primary action of the page is last
   (rightmost). On the phone, a page action may become an icon button. It keeps its label as
@@ -174,8 +173,6 @@ phone the page scrolls.
   (`LanguageChoices`, `ThemeChoices`, each a `Segmented`), settings, API documentation, sign out. On the phone (below `sm`) the sheet
   holds all of it: the header shows only logo, magnifier and menu button.
 - **Inbox counter:** a badge on the menu entry, coloured by the worst lane it holds.
-- **Beta:** a small `BetaPill`, raised at the menu entry, and a larger one beside the page title
-  that opens its note as an info tip.
 
 ## Components
 
@@ -284,7 +281,6 @@ are pills, topics included. The field a chip stands in names its kind. `TagChips
 | `primary`                           | What is marked as chosen: the current version, a suggestion                                |
 | `outline`                           | A person or an owner; the space of a foreign document                                      |
 | `default`                           | The solid accent; not used on pages so far                                                 |
-| `beta`                              | Through `BetaPill` only                                                                    |
 
 Sizes: `sm` 20 px (in rows, `text-xs`, the default), `md` 24 px (in headers), `lg` 28 px (the
 lane of a document in its row or head). `LaneBadge` is `Badge` with the lane tone. Hand-built

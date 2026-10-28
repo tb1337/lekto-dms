@@ -10,7 +10,7 @@
 	// window (Tobi, 20.10.2026). It opens while the mouse is over the button or the box (so links in
 	// it can be followed) and on a click, a tap or Enter; Escape or a click elsewhere closes it.
 	// Opened by hand, the focus goes into the box; on hover it stays where it is. The button is
-	// the info icon, or with `trigger` what stands there (the "Beta" pill), styled by `buttonClass`.
+	// the info icon, or with `trigger` what stands there, styled by `buttonClass`.
 	let {
 		label,
 		id,

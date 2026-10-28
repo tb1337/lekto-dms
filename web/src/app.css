@@ -56,8 +56,6 @@
 	--note-foreground: #1d4f91;
 	/* The "Beta" pill at an area that is new (Tobi, 26.10.2026): pale violet with dark writing,
 	   as the chips are drawn; not the petrol, not a lane. 8.2:1 here, 8.9:1 in the dark. */
-	--beta: #efe9fd;
-	--beta-foreground: #512a9e;
 	/* Charts (the page "System"): the lanes as solid marks, a second line, the pale band of a
 	   90th percentile. */
 	--chart-1: #4a9f66;
@@ -103,8 +101,6 @@
 	--lane-running-foreground: #a2a8a5;
 	--note: #14223a;
 	--note-foreground: #8db8f0;
-	--beta: #261b47;
-	--beta-foreground: #c9b9fa;
 	--chart-1: #5cc486;
 	--chart-2: #e3bb4d;
 	--chart-3: #d4554c;
@@ -181,8 +177,6 @@
 	--color-lane-green-foreground: var(--lane-green-foreground);
 	--color-note: var(--note);
 	--color-note-foreground: var(--note-foreground);
-	--color-beta: var(--beta);
-	--color-beta-foreground: var(--beta-foreground);
 	--color-lane-yellow: var(--lane-yellow);
 	--color-lane-yellow-foreground: var(--lane-yellow-foreground);
 	--color-lane-red: var(--lane-red);

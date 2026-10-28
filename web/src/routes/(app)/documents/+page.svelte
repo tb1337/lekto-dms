@@ -310,7 +310,7 @@
 	let meaning = $state(false);
 
 	// One page of documents at a time, 50 to a page or as chosen and remembered (25, 50, 100;
-	// Tobi, 29.10.2026); the page stands in the link (`?page=`). The list counts its documents as the filters do; a search
+	// Tobi, 28.10.2026); the page stands in the link (`?page=`). The list counts its documents as the filters do; a search
 	// estimates its hits.
 	const list = new Pager<Item>(async (offset, limit) => {
 		const base = apiQuery(filters, scope.allUsers);
@@ -382,7 +382,7 @@
 	);
 
 	// Documents chosen for an action on many (web/DESIGN.md, "Choosing many"), in the selection
-	// mode the button beside the sort turns on (as Home Assistant has it, Tobi 29.10.2026): by id
+	// mode the button beside the sort turns on (as Home Assistant has it, Tobi 28.10.2026): by id
 	// across the pages, or every hit of the search and filters (`allHits`). What the list shows
 	// changing lets go of them; the mode stays until the person ends it.
 	let selecting = $state(false);

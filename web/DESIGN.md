@@ -238,7 +238,7 @@ divider.
 - **One of many by searching** (contact, document type, topic): `SearchSelect`, looking like a
   `Select`. A popover on desktop; on the phone a sheet from the bottom named by its `title`
   ("Kontakt wählen"), with a close button and rows of 48 px; a choice closes it (Tobi,
-  29.10.2026).
+  28.10.2026).
 - **Free values as chips** (other spellings, other names): `ChipInput`.
 
 ### Checkboxes, radios, switches
@@ -342,7 +342,7 @@ primary `default` last), all `sm`. On desktop it stands above the list in a `rou
 (`bg-card`, a line above), its two actions sharing the width. One item is still decided in its
 dialog, opened from its title: the actions stay out of the row.
 
-The documents list chooses in a **selection mode** (as Home Assistant has it, Tobi 29.10.2026):
+The documents list chooses in a **selection mode** (as Home Assistant has it, Tobi 28.10.2026):
 outside it the cards and rows carry no box and no bar shows. A button with `ListChecks`
 (`outline`, "Auswählen", `aria-pressed`) beside the sort turns it on and off; on the phone it
 stands in the row of filters. In the mode a card or row is the label of its box instead of a
@@ -361,7 +361,7 @@ how far the search reaches). Each action but "Bestätigen" opens a `FormDialog` 
 and where documents were skipped, "Details" opens them with their reasons. The mode stays after
 an action and when the filters change (the choice is let go) until the person ends it.
 
-**A recommendation** (the open identifiers, Tobi 29.10.2026): where the data tell what to do with
+**A recommendation** (the open identifiers, Tobi 28.10.2026): where the data tell what to do with
 an item, its row says so in a column of its own as a `Badge`, `green` for "Übernehmen empfohlen",
 `muted` for "Verwerfen empfohlen", "–" where nothing is recommended; why stands in its tooltip,
 for a screen reader inside the badge, and in the item's dialog beside the badge. A value of the

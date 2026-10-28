@@ -15,7 +15,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
 
-	// The holders against the decisions at the contacts (Tobi, 29.10.2026; admins): per kind
+	// The holders against the decisions at the contacts (Tobi, 28.10.2026; admins): per kind
 	// with a holder, how often the rule agreed with what was confirmed or rejected, the two ways
 	// wrong apart (red above nought), the unclear and those read before their kind had a holder;
 	// last the open list's recommendation, over every kind. The API keeps it for a minute.

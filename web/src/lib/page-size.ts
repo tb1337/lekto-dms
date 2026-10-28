@@ -8,7 +8,7 @@
 export type PagedTable = 'jobs' | 'deliveries' | 'documents';
 
 /** The sizes a table offers: the jobs at most 100, as the API gives no more; the documents
- * too, as a search by words gives no more (200 was weighed and left out, Tobi 29.10.2026). */
+ * too, as a search by words gives no more (200 was weighed and left out, Tobi 28.10.2026). */
 export const PAGE_SIZES: Record<PagedTable, readonly number[]> = {
 	jobs: [25, 50, 100],
 	deliveries: [25, 50, 100],
@@ -16,7 +16,7 @@ export const PAGE_SIZES: Record<PagedTable, readonly number[]> = {
 };
 
 /** The size of a table until one is chosen: the jobs and the deliveries 25 (Tobi,
- * 27.10.2026), the documents 50 (Tobi, 29.10.2026). */
+ * 27.10.2026), the documents 50 (Tobi, 28.10.2026). */
 export const DEFAULT_PAGE_SIZES: Record<PagedTable, number> = {
 	jobs: 25,
 	deliveries: 25,

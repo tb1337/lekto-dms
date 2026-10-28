@@ -1329,6 +1329,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/documents/count': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * How many documents match a filter
+		 * @description How many documents within the caller's reach match the filter (the parameters of `GET /documents`), as `/facets` counts its total: for the lenses in the sidebar. Admins count every document with `all_users` (others: 403).
+		 */
+		get: operations['count_documents_api_v1_documents_count_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/documents/facets': {
 		parameters: {
 			query?: never;
@@ -3820,6 +3840,14 @@ export interface components {
 			 * @description For editors: the rules the change set off (they hold now and did not before) and what they did. Nothing turns yellow; what could not be applied is listed.
 			 */
 			rules?: components['schemas']['RuleReportOut'][] | null;
+		};
+		/** DocumentCountOut */
+		DocumentCountOut: {
+			/**
+			 * Total
+			 * @description Documents that match the filter.
+			 */
+			total: number;
 		};
 		/**
 		 * DocumentDetails
@@ -20070,6 +20098,110 @@ export interface operations {
 					 *       "title": "Unsupported Media Type",
 					 *       "status": 415,
 					 *       "detail": "unsupported file type"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	count_documents_api_v1_documents_count_get: {
+		parameters: {
+			query?: {
+				/** @description Every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+				contact_id?: string[] | null;
+				document_type_id?: string[] | null;
+				tag_id?: string[] | null;
+				space_id?: string[] | null;
+				lane?: components['schemas']['LaneFilter'][] | null;
+				field_id?: string | null;
+				contact_group_id?: string[] | null;
+				document_type_group_id?: string[] | null;
+				topic_id?: string[] | null;
+				document_date_from?: string | null;
+				document_date_to?: string | null;
+				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				fact?: string[] | null;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DocumentCountOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

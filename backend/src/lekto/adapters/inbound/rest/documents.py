@@ -30,6 +30,7 @@ from lekto.adapters.inbound.rest.problems import problem_responses
 from lekto.adapters.inbound.rest.schemas.documents import (
     DocumentAccepted,
     DocumentChanged,
+    DocumentCountOut,
     DocumentDetails,
     DocumentFacetsOut,
     DocumentOutOfReach,
@@ -256,6 +257,23 @@ async def list_documents(
         items=[ListedDocument.listed(view.document, view.access, view.in_inbox) for view in views],
         next_cursor=next_cursor,
     )
+
+
+@router.get(
+    "/count",
+    summary="How many documents match a filter",
+    description=(
+        "How many documents within the caller's reach match the filter (the parameters of "
+        "`GET /documents`), as `/facets` counts its total: for the lenses in the sidebar. "
+        "Admins count every document with `all_users` (others: 403)."
+    ),
+    response_model=DocumentCountOut,
+    responses=problem_responses(401, 403, 422),
+)
+async def count_documents(
+    user: CurrentUser, context: Context, filter: Filter, all_users: AllDocuments = False
+) -> DocumentCountOut:
+    return DocumentCountOut(total=await context.documents.count(user, filter, all_users=all_users))
 
 
 @router.get(

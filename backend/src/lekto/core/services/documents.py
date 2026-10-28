@@ -662,6 +662,19 @@ class DocumentService:
                 return await tag_counts(uow, user)
             return await uow.documents.count_by(by, user)
 
+    async def count(self, actor: UserId, filter: DocumentFilter, *, all_users: bool = False) -> int:
+        """How many documents within the caller's reach (with `all_users`, admins only: every
+        document) match `filter`, counted as `facets` counts its total (a lens in the sidebar)."""
+        async with self._uow() as uow:
+            check_fact_filter(
+                await load_lister(uow, actor, all_users, Action.COUNT_ALL_DOCUMENTS), filter
+            )
+            tree = await tag_tree(uow)
+            rows = await uow.documents.facet_rows(
+                expand(filter, tree), None if all_users else actor
+            )
+        return len(rows)
+
     async def facets(
         self, actor: UserId, filter: DocumentFilter, *, all_users: bool = False
     ) -> DocumentFacets:

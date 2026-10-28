@@ -12208,6 +12208,354 @@
         ]
       }
     },
+    "/api/v1/documents/count": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "How many documents match a filter",
+        "description": "How many documents within the caller's reach match the filter (the parameters of `GET /documents`), as `/facets` counts its total: for the lenses in the sidebar. Admins count every document with `all_users` (others: 403).",
+        "operationId": "count_documents_api_v1_documents_count_get",
+        "parameters": [
+          {
+            "name": "all_users",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Every user's documents instead of the caller's reach (admins).",
+              "default": false,
+              "title": "All Users"
+            },
+            "description": "Every user's documents instead of the caller's reach (admins)."
+          },
+          {
+            "name": "contact_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Id"
+            }
+          },
+          {
+            "name": "document_type_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Type Id"
+            }
+          },
+          {
+            "name": "tag_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag Id"
+            }
+          },
+          {
+            "name": "space_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Space Id"
+            }
+          },
+          {
+            "name": "lane",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LaneFilter"
+                  },
+                  "maxItems": 4
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lane"
+            }
+          },
+          {
+            "name": "field_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Field Id"
+            }
+          },
+          {
+            "name": "contact_group_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Group Id"
+            }
+          },
+          {
+            "name": "document_type_group_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Type Group Id"
+            }
+          },
+          {
+            "name": "topic_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic Id"
+            }
+          },
+          {
+            "name": "document_date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Date From"
+            }
+          },
+          {
+            "name": "document_date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Date To"
+            }
+          },
+          {
+            "name": "fact",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 5
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none.",
+              "title": "Fact"
+            },
+            "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentCountOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/documents/facets": {
       "get": {
         "tags": [
@@ -23071,6 +23419,20 @@
             "uploaded_by": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b"
           }
         ]
+      },
+      "DocumentCountOut": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Documents that match the filter."
+          }
+        },
+        "type": "object",
+        "required": [
+          "total"
+        ],
+        "title": "DocumentCountOut"
       },
       "DocumentDetails": {
         "properties": {

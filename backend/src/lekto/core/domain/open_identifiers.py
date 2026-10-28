@@ -26,7 +26,7 @@ from lekto.core.domain.identifiers import (
     IdentifierKind,
     IdentifierSource,
     Key,
-    matches,
+    KeyIndex,
     of_person,
 )
 from lekto.core.domain.ids import ContactId, DocumentId, UserId
@@ -120,23 +120,33 @@ def open_identifiers(
     or a creditor ID a document names as another contact's for that contact."""
     contacts = list(contacts)
     seen = [item for item in sightings if item.fact.kind in CONTACT_KINDS]
-    stated = [item for contact in contacts for item in contact.identifiers]
+    stated = KeyIndex((item, item) for contact in contacts for item in contact.identifiers)
+    learned = KeyIndex(
+        (identifier, (contact.id, identifier.key))
+        for contact in contacts
+        for identifier in contact.identifiers
+        if identifier.source is IdentifierSource.LEARNED
+    )
     by_key: dict[Key, list[Sighting]] = defaultdict(list)
     for item in seen:
         by_key[item.fact.key].append(item)
+    # The sightings of each learned identifier, at its contact: a learned customer number also
+    # as a contract number, a learned domain also as a subdomain (`matches`).
+    shown: dict[tuple[ContactId, Key], list[Sighting]] = defaultdict(list)
+    for key, items in by_key.items():
+        for owner in learned.matching(key):
+            shown[owner].extend(items)
     found: list[OpenIdentifier] = []
     for contact in contacts:
         for identifier in contact.identifiers:
-            if identifier.source is not IdentifierSource.LEARNED:
-                continue
-            shown = [item for key, items in by_key.items() if matches(identifier, key)
-                     for item in items]  # fmt: skip
-            found.append(_open(identifier.key, OpenSource.LEARNED, (contact.id,), shown))
+            if identifier.source is IdentifierSource.LEARNED:
+                seen_at = shown.get((contact.id, identifier.key), [])
+                found.append(_open(identifier.key, OpenSource.LEARNED, (contact.id,), seen_at))
     names = {contact.id: contact.names() for contact in contacts}
     for key, items in by_key.items():
         kind, value = key
         if (
-            any(matches(identifier, key) for identifier in stated)
+            stated.matching(key)
             or of_person(key, personal)
             or (kind is IdentifierKind.EMAIL_DOMAIN and value in FREE_MAIL)
             or any(_held(item, HolderKind.RECIPIENT) for item in items)
@@ -150,8 +160,9 @@ def open_identifiers(
         counts = Counter(item.contact for item in items)
         owners = tuple(sorted(counts, key=lambda contact: (-counts[contact], str(contact))))
         found.append(_open(key, OpenSource.UNKNOWN, owners, items))
-    found += _suggested(contacts, by_key, {item.key for item in found}, stated, personal,
-                        list(persons), declined or {})  # fmt: skip
+    found += _suggested(
+        contacts, by_key, {item.key for item in found}, stated, personal, persons, declined or {}
+    )
     labels = {contact.id: contact.name for contact in contacts}
     found = [replace(item, recommended=_recommended(item, names, labels)) for item in found]
     return sorted(
@@ -169,9 +180,9 @@ def _suggested(
     contacts: Sequence[Contact],
     by_key: Mapping[Key, Sequence[Sighting]],
     opened: Collection[Key],
-    stated: Sequence[Identifier],
+    stated: KeyIndex[Identifier],
     personal: Collection[Key],
-    persons: Sequence[Person],
+    persons: Iterable[Person],
     declined: Mapping[UserId, Collection[Key]],
 ) -> list[OpenIdentifier]:
     """The numbers with a holder open nowhere else whose holder a document names: a person (the
@@ -181,12 +192,20 @@ def _suggested(
         person.user_id: Parties(person_names=[person.display_name or "", *person.aliases])
         for person in persons
     }
+    # The same name stands in many documents (the landlord in every statement): named once.
+    named_contacts: dict[str, ContactId | None] = {}
+
+    def contact_named(name: str) -> ContactId | None:
+        if name not in named_contacts:
+            named_contacts[name] = _contact_named(name, contact_names)
+        return named_contacts[name]
+
     found = []
     for key, items in by_key.items():
         if (
             key[0] not in HOLDER_KINDS
             or key in opened
-            or any(matches(identifier, key) for identifier in stated)
+            or stated.matching(key)
             or of_person(key, personal)
         ):
             continue
@@ -205,7 +224,7 @@ def _suggested(
             if (holder := item.fact.holder) is not None
             and holder.name
             and holder.kind in (HolderKind.SENDER, HolderKind.THIRD_PARTY)
-            and (target := _contact_named(holder.name, contact_names)) is not None
+            and (target := contact_named(holder.name)) is not None
             and target != item.contact
         ]
         targets = {target for _, target in named}
@@ -217,14 +236,17 @@ def _suggested(
 
 
 def recommendation_for(
-    contact: Contact, key: Key, sightings: Sequence[Sighting], contacts: Sequence[Contact]
+    contact: ContactId,
+    key: Key,
+    sightings: Sequence[Sighting],
+    names: Mapping[ContactId, list[str]],
+    labels: Mapping[ContactId, str],
 ) -> Recommended | None:
     """What the documents recommend for `key` at `contact` as if training had learned it
     there (`_recommended`): the measure of the recommendation against a person's decision
-    (`domain.holder_evaluation`). `sightings`: those of `key`, at any contact."""
-    item = _open(key, OpenSource.LEARNED, (contact.id,), sightings)
-    names = {each.id: each.names() for each in contacts}
-    labels = {each.id: each.name for each in contacts}
+    (`domain.holder_evaluation`). `sightings`: those of `key`, at any contact; `names` and
+    `labels`: of every contact, their names with aliases and their name."""
+    item = _open(key, OpenSource.LEARNED, (contact,), sightings)
     return _recommended(item, names, labels)
 
 

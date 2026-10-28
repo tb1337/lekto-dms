@@ -70,6 +70,8 @@ def evaluate(contacts: Iterable[Contact], sightings: Iterable[Sighting]) -> Hold
     by_key: dict[Key, list[Sighting]] = defaultdict(list)
     for sighting in sightings:
         by_key[sighting.fact.key].append(sighting)
+    names = {contact.id: contact.names() for contact in contacts}
+    labels = {contact.id: contact.name for contact in contacts}
     evaluation = HolderEvaluation({kind: Tally() for kind in sorted(HOLDER_KINDS)})
     for contact in contacts:
         for identifier in contact.identifiers:
@@ -81,8 +83,9 @@ def evaluate(contacts: Iterable[Contact], sightings: Iterable[Sighting]) -> Hold
                 continue
             confirmed = identifier.source is IdentifierSource.MANUAL
             if identifier.kind in HOLDER_KINDS:
-                _count(evaluation.kinds[identifier.kind], _rule(own, contact.names()), confirmed)
-            advised = recommendation_for(contact, identifier.key, seen, contacts)
+                tally = evaluation.kinds[identifier.kind]
+                _count(tally, _rule(own, names[contact.id]), confirmed)
+            advised = recommendation_for(contact.id, identifier.key, seen, names, labels)
             if advised is None:
                 said = Said.UNCLEAR
             elif advised.action is Recommendation.CONFIRM:

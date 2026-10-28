@@ -2,6 +2,8 @@
 (`IdentifierSource`), and for a contact's the topic it points to, the user it names and the
 spaces it was learned in."""
 
+from collections import defaultdict
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -91,3 +93,31 @@ def matches(identifier: Identifier, found: Key) -> bool:
     if identifier.kind is IdentifierKind.CUSTOMER_NUMBER and kind in CUSTOMER_KINDS:
         return value == identifier.value
     return kind is identifier.kind and TYPES[kind].matches(identifier.value, value)
+
+
+class KeyIndex[T]:
+    """Identifiers with what belongs to each (`T`: their contact, the identifier itself), to
+    tell for a found key which of them it is (`matches`) without comparing it with each: by
+    its own key, a found contract, policy or membership number also as the customer number of
+    its value (`CUSTOMER_KINDS`), a found domain also as each domain it is a subdomain of."""
+
+    def __init__(self, items: Iterable[tuple[Identifier, T]]) -> None:
+        self._by_key: dict[Key, list[T]] = defaultdict(list)
+        for identifier, item in items:
+            self._by_key[identifier.key].append(item)
+
+    def matching(self, found: Key) -> list[T]:
+        """What belongs to the identifiers `found` is."""
+        return [item for key in _lookups(found) for item in self._by_key.get(key, ())]
+
+
+def _lookups(found: Key) -> Iterator[Key]:
+    """The keys an identifier that `found` matches may be stored under."""
+    kind, value = found
+    yield found
+    if kind in CUSTOMER_KINDS:
+        yield IdentifierKind.CUSTOMER_NUMBER, value
+    if kind is IdentifierKind.EMAIL_DOMAIN:
+        labels = value.split(".")
+        for start in range(1, len(labels)):
+            yield kind, ".".join(labels[start:])

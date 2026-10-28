@@ -32,6 +32,7 @@ import re
 from bisect import bisect_right
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass
+from functools import lru_cache
 
 from lekto.core.domain.document_facts import (
     HOLDER_KINDS,
@@ -232,10 +233,17 @@ def held_by(holder: Holder | None, names: Iterable[str]) -> HolderKind | None:
     if (
         holder.kind is HolderKind.SENDER
         and holder.name
-        and not Parties(contact_names=names).contact(holder.name)
+        and not _contact_parties(tuple(names)).contact(holder.name)
     ):
         return HolderKind.THIRD_PARTY
     return holder.kind
+
+
+@lru_cache(maxsize=4096)
+def _contact_parties(names: tuple[str, ...]) -> Parties:
+    """A contact by its names, kept: `held_by` is asked about the same contact for each of
+    its facts (training, the open identifiers, the evaluation)."""
+    return Parties(contact_names=names)
 
 
 def foreign(holder: Holder | None, names: Iterable[str]) -> bool:

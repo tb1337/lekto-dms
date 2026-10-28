@@ -10,7 +10,7 @@
 	import Info from '@lucide/svelte/icons/info';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import X from '@lucide/svelte/icons/x';
-	import { onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -24,7 +24,9 @@
 	import ActiveFilters from '#lib/components/ActiveFilters.svelte';
 	import DocumentCard from '#lib/components/DocumentCard.svelte';
 	import DocumentRow from '#lib/components/DocumentRow.svelte';
-	import DocumentsBulkBar, { type BulkSelection } from '#lib/components/DocumentsBulkBar.svelte';
+	import BulkSkipped from '#lib/components/BulkSkipped.svelte';
+	import DocumentsBulkBar from '#lib/components/DocumentsBulkBar.svelte';
+	import { BulkRun, type BulkSelection } from '#lib/bulk.svelte.ts';
 	import { phone } from '#lib/phone.svelte.ts';
 	import FilterPanel from '#lib/components/FilterPanel.svelte';
 	import InboxMark from '#lib/components/InboxMark.svelte';
@@ -385,7 +387,6 @@
 	let selecting = $state(false);
 	let chosen = $state<string[]>([]);
 	let allHits = $state(false);
-	let bulkBusy = $state(false);
 	const pageIds = $derived(list.items.map((item) => item.document.id));
 	const isChosen = (id: string) => allHits || chosen.includes(id);
 	const hits = $derived(
@@ -425,12 +426,16 @@
 		return { ids: null, query: searching ? { ...base, q: query } : base };
 	}
 
-	function bulkDone() {
+	// The action on the choice, followed by the page until it ends, whichever bar shows it.
+	const bulk = new BulkRun(() => {
 		letGo();
 		void list.refresh();
 		void loadFacets();
 		void loadLensCounts();
-	}
+	});
+	onDestroy(() => bulk.stop());
+	// The bar shows from the start of the mode, and while an action runs; not in the stream.
+	const showBar = $derived((selecting || bulk.busy) && !streaming);
 
 	// While a search waits for its first page, the hint says when it takes long.
 	$effect(() => searchNote.waiting(meaning && searching && list.loading && !list.loaded));
@@ -702,13 +707,12 @@ row of filters, on a desktop narrow by the title. -->
 		limit={!allHits && !searching && hits !== null && hits > MAX_DOCUMENTS ? MAX_DOCUMENTS : null}
 		capped={allHits && searching && list.total !== null && list.total > MAX_HITS ? MAX_HITS : null}
 		{selection}
+		run={bulk}
 		{lookup}
 		onpage={choosePage}
 		onall={() => (allHits = true)}
 		onclear={letGo}
 		onend={endSelecting}
-		ondone={bulkDone}
-		bind:busy={bulkBusy}
 	/>
 {/snippet}
 
@@ -955,6 +959,7 @@ row of filters, on a desktop narrow by the title. -->
 				</div>
 			{/if}
 
+			{#if showBar && !phone.current}{@render bulkBar()}{/if}
 			{#if streaming}
 				<StreamView query={apiQuery(filters, scope.allUsers)} {lookup} version={streamVersion} />
 			{:else if list.error}
@@ -989,7 +994,6 @@ row of filters, on a desktop narrow by the title. -->
 					{/snippet}
 				</EmptyNote>
 			{:else}
-				{#if (selecting || bulkBusy) && !phone.current}{@render bulkBar()}{/if}
 				<div class="flex flex-col gap-6" aria-busy={list.loading}>
 					{#each groups as group (group.key)}
 						<section class="flex flex-col gap-3" aria-label={group.label ?? undefined}>
@@ -1063,11 +1067,13 @@ row of filters, on a desktop narrow by the title. -->
 					onchange={(next) => goToPage(next)}
 					onsize={resize}
 				/>
-				{#if (selecting || bulkBusy) && phone.current}{@render bulkBar()}{/if}
 			{/if}
+			{#if showBar && phone.current}{@render bulkBar()}{/if}
 		</div>
 	</div>
 </div>
+
+<BulkSkipped operation={bulk.skipped} onclose={() => (bulk.skipped = null)} />
 
 {#if lookup}
 	<LensEditor

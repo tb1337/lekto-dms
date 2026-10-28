@@ -7,6 +7,7 @@ import { m } from '#lib/paraglide/messages.js';
 import { forgetPipeline } from '#lib/pipeline.ts';
 import { choose } from '#lib/testing/select.ts';
 import { fakeApi } from '#lib/testing/documents.ts';
+import { BulkRun } from '#lib/bulk.svelte.ts';
 import DocumentsBulkBar from './DocumentsBulkBar.svelte';
 
 const node = (name: string, requires: string[] = []) => ({ node: name, requires, waits_for: [] });
@@ -25,20 +26,22 @@ afterEach(() => {
 });
 
 function renderBar(count: number) {
-	return render(DocumentsBulkBar, {
+	const run = new BulkRun(vi.fn());
+	const rendered = render(DocumentsBulkBar, {
 		count,
 		all: false,
 		offerAll: null,
 		limit: null,
 		capped: null,
 		selection: () => ({ ids: ['d1'], query: {} }),
+		run,
 		lookup: { contacts: [], documentTypes: [], tags: [], fields: [], spaces: [], users: [] },
 		onpage: vi.fn(),
 		onall: vi.fn(),
 		onclear: vi.fn(),
-		onend: vi.fn(),
-		ondone: vi.fn()
+		onend: vi.fn()
 	});
+	return { ...rendered, run };
 }
 
 describe('the selection bar of the documents', () => {

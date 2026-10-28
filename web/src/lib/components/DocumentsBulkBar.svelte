@@ -1,33 +1,15 @@
-<script lang="ts" module>
-	import type { components } from '#lib/api/schema.ts';
-	import type { apiQuery } from '#lib/filters.ts';
-
-	/** The documents an action is for: `ids` one by one, else every hit of `query` (the
-	 * filters, with `q` the words). */
-	export interface BulkSelection {
-		ids: string[] | null;
-		query: Partial<ReturnType<typeof apiQuery>> & { q?: string };
-	}
-
-	export type BulkOperation = components['schemas']['BulkOperationOut'];
-</script>
-
 <script lang="ts">
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import X from '@lucide/svelte/icons/x';
+	import type { components } from '#lib/api/schema.ts';
 	import IconButton from '#lib/components/IconButton.svelte';
-	import { onDestroy } from 'svelte';
-	import { toast } from 'svelte-sonner';
-	import { api } from '#lib/api/client.ts';
-	import { unwrap } from '#lib/api/call.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import FormDialog from '#lib/components/FormDialog.svelte';
 	import SearchSelect from '#lib/components/SearchSelect.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import SelectionBar from '#lib/components/SelectionBar.svelte';
 	import TagPicker from '#lib/components/TagPicker.svelte';
-	import BulkSkipped from '#lib/components/BulkSkipped.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
@@ -41,17 +23,23 @@
 	import { descendants, pipeline, type GraphNode } from '#lib/pipeline.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { tagOptions } from '#lib/tags.ts';
-	import { bulkDocuments, bulkResult, MODEL_CALLS, WARN_ABOVE } from '#lib/bulk.ts';
+	import { bulkDocuments, MODEL_CALLS, WARN_ABOVE } from '#lib/bulk.ts';
+	import {
+		type BulkAction,
+		type BulkOperation,
+		type BulkRun,
+		type BulkSelection
+	} from '#lib/bulk.svelte.ts';
 
-	type Action = components['schemas']['BulkActionIn'];
 	type ReprocessNode = components['schemas']['ReprocessNode'];
 
 	// The bar of the selection mode of the documents list (web/DESIGN.md, "Choosing many"): an
 	// X that ends the mode, "Auswählen" (a menu: this page, all N hits, none, end the mode), how
 	// many are chosen, and the actions, pale while none is (Tags, Kontakt, Typ, and under "Mehr"
-	// Thema, Space, Bestätigen, Neu verarbeiten, Löschen). Each action but confirming opens its dialog; deleting and reprocessing name the
-	// exact count. The action runs in the background (`POST /documents/bulk`): the bar shows how
-	// far it has come and a toast what it did, with the skipped ones behind "Details".
+	// Thema, Space, Bestätigen, Neu verarbeiten, Löschen). Each action but confirming opens its
+	// dialog; deleting and reprocessing name the exact count. The action runs in the background
+	// (`run`, owned by the page: the bar is rendered anew across the phone width): the bar shows
+	// how far it has come in place of its actions.
 	let {
 		count,
 		all,
@@ -59,13 +47,12 @@
 		limit,
 		capped,
 		selection,
+		run,
 		lookup,
 		onpage,
 		onall,
 		onclear,
-		onend,
-		ondone,
-		busy = $bindable(false)
+		onend
 	}: {
 		/** How many documents are chosen. */
 		count: number;
@@ -78,6 +65,8 @@
 		/** The search reaches fewer hits than it found. */
 		capped: number | null;
 		selection: () => BulkSelection;
+		/** The action on the choice as the page follows it. */
+		run: BulkRun;
 		lookup: Lookup | null;
 		onpage: () => void;
 		onall: () => void;
@@ -85,16 +74,9 @@
 		onclear: () => void;
 		/** End the selection mode. */
 		onend: () => void;
-		/** The action has ended: the list loads again. */
-		ondone: () => void;
-		/** An action runs: the bar stays until it ends. */
-		busy?: boolean;
 	} = $props();
 
-	let running = $state<BulkOperation | null>(null);
-	let skipped = $state<BulkOperation | null>(null);
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	onDestroy(() => clearTimeout(timer));
+	const running = $derived(run.operation);
 
 	let dialog = $state<
 		'tags' | 'contact' | 'type' | 'topic' | 'move' | 'reprocess' | 'delete' | null
@@ -140,54 +122,10 @@
 		}
 	}
 
-	/** Start `action` on the selection; the bar follows it until it ends. */
-	async function start(action: Action) {
-		const { ids, query } = selection();
-		const operation = await unwrap(
-			api.POST('/api/v1/documents/bulk', {
-				params: { query: ids ? {} : query },
-				body: { document_ids: ids, action }
-			})
-		);
+	/** Start `action` on the selection; the page follows it until it ends. */
+	async function start(action: BulkAction) {
+		await run.start(selection(), action);
 		dialog = null;
-		running = operation;
-		busy = true;
-		follow(operation.id);
-	}
-
-	function follow(id: string) {
-		timer = setTimeout(async () => {
-			try {
-				const operation = await unwrap(
-					api.GET('/api/v1/documents/bulk/{id}', { params: { path: { id } } })
-				);
-				running = operation;
-				if (operation.status === 'done' || operation.status === 'failed') {
-					finish(operation);
-					return;
-				}
-			} catch {
-				// A hiccup of the connection: ask again.
-			}
-			follow(id);
-		}, 1000);
-	}
-
-	function finish(operation: BulkOperation) {
-		running = null;
-		busy = false;
-		const result = bulkResult(operation);
-		if (operation.status === 'failed') {
-			toast.error(m.bulk_failed(), { description: result });
-		} else if (operation.skipped.length > 0) {
-			toast.warning(result, {
-				description: m.bulk_skipped({ count: formatNumber(operation.skipped.length) }),
-				action: { label: m.bulk_details(), onClick: () => (skipped = operation) }
-			});
-		} else {
-			toast.success(result);
-		}
-		ondone();
 	}
 
 	async function confirmAll() {
@@ -287,7 +225,7 @@
 
 <SelectionBar
 	count={m.selection_selected({ count: formatNumber(count) })}
-	{busy}
+	busy={run.busy}
 	{lead}
 	trail={phone.current && !running ? chooser : undefined}
 	hint={running ? progressHint : all || count === 0 || limit !== null ? reach : undefined}
@@ -469,5 +407,3 @@
 	confirmLabel={m.delete_title()}
 	onconfirm={() => start({ kind: 'delete' })}
 />
-
-<BulkSkipped operation={skipped} onclose={() => (skipped = null)} />

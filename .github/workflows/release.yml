@@ -9,6 +9,7 @@ name: Release
 # By hand (`workflow_dispatch`) the images of a published release are built again.
 # Last, a published release whose `lekto` image got `latest` tells the homelab
 # (tb1337/homelab-ansible) its version by `repository_dispatch`; the homelab enters and deploys it.
+# Only in tb1337/lekto-dms itself: a fork never tells the homelab anything.
 
 # yamllint disable-line rule:truthy
 on:
@@ -182,9 +183,12 @@ jobs:
   homelab:
     name: 🏠 Homelab
     needs: [tags, publish]
-    # Only a published release that is the newest (`latest`): a release of an older line or a
-    # release built again by hand would set the homelab back.
-    if: github.event_name == 'release' && contains(format(' {0} ', needs.tags.outputs.tags), ' latest ')
+    # Only a published release of this repository, not of a fork, and only the newest (`latest`):
+    # a release of an older line or a release built again by hand would set the homelab back.
+    if: >-
+      github.repository == 'tb1337/lekto-dms'
+      && github.event_name == 'release'
+      && contains(format(' {0} ', needs.tags.outputs.tags), ' latest ')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}

@@ -1,62 +1,102 @@
 ---
-name-template: "v$RESOLVED_VERSION 🌈"
+name-template: "Lekto $RESOLVED_VERSION 🔎"
 tag-template: "v$RESOLVED_VERSION"
-change-template: "- $TITLE @$AUTHOR (#$NUMBER)"
 
-exclude-labels:
-  - "skip-changelog"
+# A pull request's section "## Release notes" (one sentence for the user) stands under its title.
+change-template: "- $TITLE (#$NUMBER)$BODY"
+change-title-escapes: '\<*_&|'
+
+replacers:
+  - target: change-title
+    search: '/^Web UI: (.*)$/'
+    replace: '\u$1 `UI`'
+  - target: change-body
+    section: "## Release notes"
+    not-found: empty
+  - target: change-body
+    search: '/<!--[\s\S]*?-->/g'
+    replace: ""
+  - target: change-body
+    search: '/\s*\n\s*/g'
+    replace: " "
+  - target: change-body
+    search: '/^\s+$/'
+    replace: ""
+  - target: change-body
+    search: '/^\s*(\S[\s\S]*?)\s*$/'
+    replace: "<br><sub>$1</sub>"
 
 categories:
+  - type: pre-exclude
+    when:
+      label: "skip-changelog"
   - title: "🚨 Breaking changes"
-    labels:
-      - "breaking-change"
+    semver-increment: major
+    when:
+      label: "breaking-change"
   - title: "✨ New features"
-    labels:
-      - "new-feature"
-  - title: "🐛 Bug fixes"
-    labels:
-      - "bugfix"
+    semver-increment: minor
+    when:
+      label: "new-feature"
   - title: "🚀 Enhancements"
-    labels:
-      - "enhancement"
-      - "refactor"
-      - "performance"
-  - title: "🧰 Maintenance"
-    labels:
-      - "maintenance"
-      - "ci"
+    when:
+      labels:
+        - "enhancement"
+        - "refactor"
+        - "performance"
+  - title: "🐛 Bug fixes"
+    when:
+      label: "bugfix"
   - title: "📚 Documentation"
-    labels:
-      - "documentation"
-  - title: "⬆️ Dependency updates"
-    labels:
-      - "dependencies"
+    when:
+      label: "documentation"
+  - title: "🧰 Maintenance"
+    collapse-after: 0
+    when:
+      labels:
+        - "maintenance"
+        - "ci"
+  - title: "⬆️ Dependencies"
+    collapse-after: 0
+    when:
+      labels:
+        - "dependencies"
+        - "dev-deps"
+  # The version alone, without a section of their own.
+  - type: version-resolver
+    semver-increment: major
+    when:
+      label: "major"
+  - type: version-resolver
+    semver-increment: minor
+    when:
+      label: "minor"
+  - type: version-resolver
+    semver-increment: patch
 
-  - title: "⬆️ Dev Dependency updates"
-    labels:
-      - "dev-deps"
+header: |
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/tb1337/lekto-dms/main/.github/release/banner-dark.svg">
+    <img alt="Lekto" src="https://raw.githubusercontent.com/tb1337/lekto-dms/main/.github/release/banner-light.svg" width="100%">
+  </picture>
 
-version-resolver:
-  major:
-    labels:
-      - "major"
-      - "breaking-change"
-  minor:
-    labels:
-      - "minor"
-      - "new-feature"
-  patch:
-    labels:
-      - "bugfix"
-      - "ci"
-      - "dependencies"
-      - "dev-deps"
-      - "enhancement"
-      - "performance"
-      - "refactor"
-  default: patch
+  ![version](https://img.shields.io/badge/version-$RESOLVED_VERSION-0d6b6b) ![ghcr.io](https://img.shields.io/badge/ghcr.io-tb1337%2Flekto-0d6b6b)
 
 template: |
-  ## Changes
 
   $CHANGES
+
+footer: |
+
+  ## Upgrade
+
+  > [!IMPORTANT]
+  > Back up first. The image migrates the database when it starts, and a schema upgrade cannot
+  > be undone.
+
+  ```sh
+  docker pull ghcr.io/tb1337/lekto:$RESOLVED_VERSION
+  docker pull ghcr.io/tb1337/lekto-migration:$RESOLVED_VERSION
+  ```
+
+  **Full changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION

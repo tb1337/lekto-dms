@@ -113,7 +113,9 @@ them. A pull request that changes only `.idea/` gets `skip-changelog`. The versi
 the labels (`breaking-change` or `major`: major; `new-feature` or `minor`: minor; else patch).
 Tobi publishes and tags the release from the draft.
 A pull request a user notices fills the section `## Release notes` of its description with one
-sentence on what changes for them; it stands under the title in the release notes.
+sentence on what changes for them; it stands under the title in the release notes. A pull request
+that changes the REST API (`web/openapi.json`) fills `## API` with one line on what changes in it;
+the release notes list it in the section "REST API" with that line.
 
 ## Language
 

@@ -1,5 +1,5 @@
 ---
-name-template: "Lekto $RESOLVED_VERSION 🔎"
+name-template: "Lekto $RESOLVED_VERSION 🦉"
 tag-template: "v$RESOLVED_VERSION"
 
 # A pull request's section "## Release notes" (one sentence for the user) stands under its title.

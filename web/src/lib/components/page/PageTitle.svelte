@@ -4,7 +4,8 @@
 	import { cn } from '#lib/utils.ts';
 
 	// The title of a page, its one `<h1>` (web/DESIGN.md, "Page frame"). Long German words break
-	// with hyphens instead of being cut.
+	// with hyphens instead of being cut; a word that cannot (a file name) breaks anywhere rather
+	// than widening the page.
 	let {
 		class: className,
 		children,
@@ -12,6 +13,6 @@
 	}: HTMLAttributes<HTMLHeadingElement> & { children: Snippet } = $props();
 </script>
 
-<h1 class={cn('text-title break-words hyphens-auto', className)} {...rest}>
+<h1 class={cn('text-title wrap-anywhere hyphens-auto', className)} {...rest}>
 	{@render children()}
 </h1>

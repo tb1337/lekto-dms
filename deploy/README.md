@@ -37,13 +37,13 @@ release and, while there is none, the newest beta. The image knows its version (
 set from the tag): the API description, the MCP server and the processing log name it. Building
 it yourself (above) is for development.
 
-Last, a published release whose image got `latest` tells the homelab
-([tb1337/homelab-ansible](https://github.com/tb1337/homelab-ansible)) its version: the job
+Last, a published release whose image got `latest` tells the homelab its version: the job
 `homelab` checks the version (`0.7.0`, `1.2.0-beta.1`) and sends a `repository_dispatch`
 (`lekto-release`, `client_payload.version`), which must answer HTTP 204. The homelab then enters
-the version and deploys it. A release of an older line and a release built again by hand send
-nothing. The job needs the secret `HOMELAB_DISPATCH_TOKEN` (fine-grained, only
-`homelab-ansible`, Contents: write); a failed dispatch does not mark the release red.
+the version and deploys it. A release of an older line, a release built again by hand and a
+release in a fork send nothing. The job needs two secrets: `HOMELAB_DISPATCH_REPO`, the homelab
+repository as `owner/name`, and `HOMELAB_DISPATCH_TOKEN` (fine-grained, only that repository,
+Contents: write); a failed dispatch does not mark the release red.
 
 ## Start an example stack
 

@@ -421,7 +421,9 @@ the deliveries by outcome and event). The documents list pages the same way (see
 
 - **Widths** come from the `size` prop (`sm` 384 px, `md` 512 px, `lg` 672 px, `xl` 768 px).
   A `class="max-w-*"` on dialog content is not used.
-- **Phone editor bar:** "Abbrechen" · title · "Speichern", fixed on top. The body scrolls.
+- **Phone editor bar:** "Abbrechen" · title · "Speichern", fixed on top. The body scrolls. The
+  action is a short verb there: a longer label of the desktop ("Ins Profil von Anna") becomes its
+  verb ("Übernehmen"), and the body names the rest (Tobi 29.10.2026).
 - **Sheet from the bottom:** `PhoneSheet`, on `ui/sheet` with `side="bottom"`: a grab handle,
   the title and its close button (an X, "Fertig") fixed on top, 85 % of the screen high;
   nothing takes the focus when it opens. The pickers (`SearchSelect`, `TagPickerDialog`) use

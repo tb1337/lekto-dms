@@ -2,8 +2,9 @@
 name-template: "Lekto $RESOLVED_VERSION 🦉"
 tag-template: "v$RESOLVED_VERSION"
 
-# A pull request's section "## Release notes" (one sentence for the user) stands under its title.
-change-template: "- $TITLE ($NUMBERS)$BODY"
+# Each line carries its category until the global replacers below have placed it.
+change-template: "- [$CATEGORY] $TITLE ($NUMBERS)$BODY"
+change-title-escapes: '\<*_&|'
 sort-by: merged_at
 sort-direction: ascending
 
@@ -13,29 +14,39 @@ no-new-contributor-template: "<!-- no new contributors -->"
 group-changes:
   - pattern: '/^(?:chore\(deps\): )?[Uu]pdate (?:dependency )?(?<group>.+?)(?: action| Docker tag)? to (?<to>\S+)$/'
     title-template: "Update $GROUP to $LAST_TO"
-change-title-escapes: '\<*_&|'
 
 replacers:
-  - search: '/## 👋 New contributors\s*<!-- no new contributors -->\s*/'
-    replace: ""
   - target: change-title
     search: '/^Web UI: (.*)$/'
     replace: '\u$1 `UI`'
-  - target: change-body
-    section: "## Release notes"
-    not-found: empty
+  # The sections "## Release notes" and "## API" of the pull request text become ⟦notes⟧⟦api⟧.
   - target: change-body
     search: '/<!--[\s\S]*?-->/g'
+    replace: ""
+  - target: change-body
+    search: '/^[\s\S]*?^## Release notes[ \t]*\n([\s\S]*?)(?:^## API[ \t]*\n([\s\S]*?))?(?=^## (?!API)|(?![\s\S]))[\s\S]*$/m'
+    replace: "⟦$1⟧⟦$2⟧"
+  - target: change-body
+    search: '/^(?!⟦)[\s\S]*$/'
     replace: ""
   - target: change-body
     search: '/\s*\n\s*/g'
     replace: " "
   - target: change-body
-    search: '/^\s+$/'
+    search: '/(⟦)\s+|\s+(⟧)/g'
+    replace: "$1$2"
+  # The REST API section shows what changed in the API, every other section the sentence for users.
+  - search: '/^(- \[🧩 REST API\] .*?)⟦(.*?)⟧⟦(.*?)⟧$/gm'
+    replace: "$1<br><sub>$3</sub>"
+  - search: '/^(- \[[^\]\n]*\] .*?)⟦(.*?)⟧⟦(.*?)⟧$/gm'
+    replace: "$1<br><sub>$2</sub>"
+  - search: '/<br><sub><\/sub>/g'
     replace: ""
-  - target: change-body
-    search: '/^\s*(\S[\s\S]*?)\s*$/'
-    replace: "<br><sub>$1</sub>"
+  # Drop the category from every line.
+  - search: '/^- \[[^\]\n]*\] /gm'
+    replace: "- "
+  - search: '/## 👋 New contributors\s*<!-- no new contributors -->\s*/'
+    replace: ""
 
 categories:
   - type: pre-exclude
@@ -58,6 +69,10 @@ categories:
   - title: "🐛 Bug fixes"
     when:
       label: "bugfix"
+  # Every change of the API changes web/openapi.json (a test keeps it current).
+  - title: "🧩 REST API"
+    when:
+      path: "web/openapi.json"
   - title: "📚 Documentation"
     when:
       label: "documentation"

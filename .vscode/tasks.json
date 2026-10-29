@@ -1,24 +1,12 @@
 {
 	// Lekto as a development instance inside the devcontainer (see .devcontainer/README.md).
 	// Every task runs with the settings of .devcontainer/dev.local.env (not in the repository;
-	// "Lekto: Set up dev instance" creates it): `lekto --env-file`. Only "zsh" starts on its own.
+	// "Lekto: Set up dev instance" creates it): `lekto --env-file`.
 	"version": "2.0.0",
 	"options": {
 		"shell": { "executable": "/bin/bash", "args": ["-c"] }
 	},
 	"tasks": [
-		{
-			// A terminal when the folder opens, after a rebuild too: the one of postCreateCommand
-			// closes when it is done, and VS Code hides the panel with it. Without dev.local.env.
-			"label": "zsh",
-			"detail": "A terminal when the folder opens",
-			"type": "process",
-			"command": "zsh",
-			"args": ["-l"],
-			"problemMatcher": [],
-			"presentation": { "panel": "dedicated", "reveal": "always", "focus": true, "close": true },
-			"runOptions": { "runOn": "folderOpen" }
-		},
 		{
 			"label": "Lekto: Set up dev instance",
 			"detail": "Once: dev.local.env from the example, database lekto_dev, bucket lekto-dev",

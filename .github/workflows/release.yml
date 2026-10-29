@@ -8,7 +8,8 @@ name: Release
 # tags (`.github/scripts/image_tags.py`: the version, `beta` or `stable`, `latest`).
 # By hand (`workflow_dispatch`) the images of a published release are built again.
 # Last, a published release whose `lekto` image got `latest` tells the homelab
-# (tb1337/homelab-ansible) its version by `repository_dispatch`; the homelab enters and deploys it.
+# its version by `repository_dispatch` (repository in the secret `HOMELAB_DISPATCH_REPO`); the
+# homelab enters and deploys it.
 # Only in tb1337/lekto-dms itself: a fork never tells the homelab anything.
 
 # yamllint disable-line rule:truthy
@@ -206,8 +207,13 @@ jobs:
         # failed dispatch must not mark the release red.
         continue-on-error: true
         env:
+          REPO: ${{ secrets.HOMELAB_DISPATCH_REPO }}
           TOKEN: ${{ secrets.HOMELAB_DISPATCH_TOKEN }}
         run: |
+          if ! [[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "::error::The secret HOMELAB_DISPATCH_REPO holds no repository (owner/name)"
+            exit 1
+          fi
           body=$(jq -nc --arg version "$VERSION" \
             '{event_type: "lekto-release", client_payload: {version: $version}}')
           # The token goes to curl on stdin, never on a command line.
@@ -217,7 +223,7 @@ jobs:
             -H "X-GitHub-Api-Version: 2022-11-28" \
             --data "$body" \
             -o /tmp/response -w '%{http_code}' \
-            https://api.github.com/repos/tb1337/homelab-ansible/dispatches)
+            "https://api.github.com/repos/$REPO/dispatches")
           if [ "$status" != "204" ]; then
             echo "::error::The homelab answered HTTP $status"
             cat /tmp/response

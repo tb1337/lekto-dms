@@ -2,6 +2,11 @@
 
 <!-- What changes and why; link the issue (`Closes #…`). -->
 
+## Release notes
+
+<!-- One sentence for the user: what changes for them. It stands under the title in the release
+notes. Leave the section empty for maintenance, CI and refactoring. -->
+
 ## Checks
 
 - [ ] Backend: `ruff check`, `ruff format --check`, `mypy`, `lint-imports`, `pytest`

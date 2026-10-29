@@ -315,4 +315,27 @@ describe('IdentifiersPanel', () => {
 			])
 		);
 	});
+
+	it('names the action of a suggestion by its verb alone on a phone', async () => {
+		phone.override(true);
+		const user = userEvent.setup();
+		render(IdentifiersPanel);
+		await user.click(
+			await screen.findByRole('button', { name: new RegExp(`^${m.open_suggestions()}`) })
+		);
+		await user.click(
+			await screen.findByRole('button', { name: m.open_open({ value: SUGGESTION.written }) })
+		);
+		const dialog = await screen.findByRole('dialog');
+		// The text names whose profile takes it.
+		expect(
+			within(dialog).getByText(m.open_suggested_person({ person: 'Max Nord', count: '6' }))
+		).toBeTruthy();
+		expect(within(dialog).getByRole('button', { name: m.open_confirm() })).toBeTruthy();
+		expect(
+			within(dialog).queryByRole('button', {
+				name: m.open_confirm_profile({ person: 'Max Nord' })
+			})
+		).toBeNull();
+	});
 });

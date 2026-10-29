@@ -24,6 +24,7 @@
 		targetName
 	} from '#lib/open-identifiers.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { phone } from '#lib/phone.svelte.ts';
 	import { reasonText } from '#lib/reasons.ts';
 
 	// An open identifier opened from the list (web/DESIGN.md, "Lists": the title opens it):
@@ -90,8 +91,9 @@
 		return item.documents === 1 ? m.open_unknown_in_one() : m.open_unknown_in({ count });
 	});
 
+	// On a phone the bar on top keeps room for the title: the verb alone, the text names whose.
 	const submitLabel = $derived.by(() => {
-		if (item?.source !== 'suggested') return m.open_confirm();
+		if (item?.source !== 'suggested' || phone.current) return m.open_confirm();
 		return item.person
 			? m.open_confirm_profile({ person: item.person.name })
 			: m.open_confirm_at({ contact: targetName(item) });

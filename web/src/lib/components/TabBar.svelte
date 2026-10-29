@@ -90,7 +90,7 @@
 			href={tab.href}
 			aria-current={tab.key === current ? 'page' : undefined}
 			class={cn(
-				'relative inline-flex h-11 shrink-0 items-center justify-center gap-1.5 px-3 text-sm whitespace-nowrap transition-colors',
+				'relative inline-flex h-11 shrink-0 items-center justify-center gap-1.5 px-3 text-sm whitespace-nowrap transition-colors max-sm:min-w-11',
 				fill && 'max-sm:px-1',
 				tab.key === current
 					? 'font-medium text-foreground'

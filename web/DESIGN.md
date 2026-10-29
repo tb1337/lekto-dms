@@ -133,7 +133,7 @@ page image use `.mark-glass`; a pinned page of the viewer uses `shadow-pinned`. 
 - **Back link** (optional, detail pages): `BackLink`, above the title. It leads to the list the
   page came from, with that list's state: lens, filters, search and sort.
 - **Title**: `PageTitle`, the `<h1>` in `text-title`, optionally followed by a count or a badge
-  (lane).
+  (lane). A long word breaks with a hyphen; one that cannot (a file name) breaks anywhere.
 - **Subtitle** (optional): one line in `text-sm text-muted-foreground` under the title.
 - **Actions**: right of the title, at its height. The primary action of the page is last
   (rightmost). On the phone, a page action may become an icon button. It keeps its label as
@@ -303,6 +303,9 @@ Two components that **look different on purpose**:
   three short options that changes what follows (a webhook's trigger and body). A grey bar with
   the choice on a light pill that slides over (`motion-safe`, not on first show). Sizes: `md`
   40 px, `sm` 32 px; 44 px on the phone. With icons only (`names="hidden"`) every option has a label for its tooltip.
+  Where it is wider than the room (a phone, five options with counts), it scrolls sideways as the
+  `TabBar` does, the chosen option in view and a fade at the cut edge; it never widens the page
+  (Tobi 29.10.2026).
 
 No other tab or segmented look exists. `AutomationTab` and `PeriodFacet` use `Segmented`.
 

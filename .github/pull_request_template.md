@@ -2,6 +2,16 @@
 
 <!-- What changes and why; link the issue (`Closes #…`). -->
 
+## Release notes
+
+<!-- One sentence for the user: what changes for them. It stands under the title in the release
+notes. Leave the section empty for maintenance, CI and refactoring. -->
+
+## API
+
+<!-- If the REST API changes (web/openapi.json): one line on what changes in it, such as
+endpoints and fields. It stands under the pull request in the section "REST API". -->
+
 ## Checks
 
 - [ ] Backend: `ruff check`, `ruff format --check`, `mypy`, `lint-imports`, `pytest`

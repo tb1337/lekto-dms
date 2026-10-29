@@ -3,10 +3,21 @@ name-template: "Lekto $RESOLVED_VERSION 🔎"
 tag-template: "v$RESOLVED_VERSION"
 
 # A pull request's section "## Release notes" (one sentence for the user) stands under its title.
-change-template: "- $TITLE (#$NUMBER)$BODY"
+change-template: "- $TITLE ($NUMBERS)$BODY"
+sort-by: merged_at
+sort-direction: ascending
+
+new-contributor-template: "- $AUTHOR_MENTION made their first contribution in #$NUMBER"
+no-new-contributor-template: "<!-- no new contributors -->"
+
+group-changes:
+  - pattern: '/^(?:chore\(deps\): )?[Uu]pdate (?:dependency )?(?<group>.+?)(?: action| Docker tag)? to (?<to>\S+)$/'
+    title-template: "Update $GROUP to $LAST_TO"
 change-title-escapes: '\<*_&|'
 
 replacers:
+  - search: '/## 👋 New contributors\s*<!-- no new contributors -->\s*/'
+    replace: ""
   - target: change-title
     search: '/^Web UI: (.*)$/'
     replace: '\u$1 `UI`'
@@ -80,13 +91,17 @@ header: |
     <img alt="Lekto" src="https://raw.githubusercontent.com/tb1337/lekto-dms/main/.github/release/banner-light.svg" width="100%">
   </picture>
 
-  ![version](https://img.shields.io/badge/version-$RESOLVED_VERSION-0d6b6b) ![ghcr.io](https://img.shields.io/badge/ghcr.io-tb1337%2Flekto-0d6b6b)
+  ![version](https://img.shields.io/static/v1?label=version&message=$RESOLVED_VERSION&color=0d6b6b) ![ghcr.io](https://img.shields.io/badge/ghcr.io-tb1337%2Flekto-0d6b6b)
 
 template: |
 
   $CHANGES
 
 footer: |
+
+  ## 👋 New contributors
+
+  $NEW_CONTRIBUTORS
 
   ## Upgrade
 

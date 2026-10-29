@@ -303,6 +303,9 @@ Two components that **look different on purpose**:
   three short options that changes what follows (a webhook's trigger and body). A grey bar with
   the choice on a light pill that slides over (`motion-safe`, not on first show). Sizes: `md`
   40 px, `sm` 32 px; 44 px on the phone. With icons only (`names="hidden"`) every option has a label for its tooltip.
+  Where it is wider than the room (a phone, five options with counts), it scrolls sideways as the
+  `TabBar` does, the chosen option in view and a fade at the cut edge; it never widens the page
+  (Tobi 29.10.2026).
 
 No other tab or segmented look exists. `AutomationTab` and `PeriodFacet` use `Segmented`.
 

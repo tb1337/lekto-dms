@@ -25,7 +25,9 @@
 	// the tabs of a page do (`TabBar`). `sm` for a toolbar, `md` beside 40 px buttons. Names are
 	// `shown`, `wide` (an icon only on a phone), `hidden` (icons only; the name is read out and
 	// shown on hover), or shown from a width of the surrounding container on (`@xl`, `@3xl`:
-	// in a pane as narrow as it gets). `equal`: every entry as wide as the widest.
+	// in a pane as narrow as it gets). `equal`: every entry as wide as the widest. Where the bar
+	// is wider than the room (a phone), it scrolls sideways, the chosen one in view, and the cut
+	// edge fades, as the tabs of a page do.
 	let {
 		value = $bindable(''),
 		options,
@@ -57,6 +59,34 @@
 		'@3xl': 'sr-only @3xl:not-sr-only'
 	} as const;
 	const roomy = $derived(names === 'wide' || names === '@xl' || names === '@3xl');
+
+	let room = $state<HTMLElement | null>(null);
+	/** Which edges have more behind them. */
+	let more = $state<{ start: boolean; end: boolean }>({ start: false, end: false });
+
+	function measure() {
+		if (!room) return;
+		const end = room.scrollWidth - room.clientWidth - room.scrollLeft;
+		more = { start: room.scrollLeft > 1, end: end > 1 };
+	}
+
+	$effect(() => {
+		void value;
+		void options;
+		const chosen = room?.querySelector<HTMLElement>('[aria-pressed="true"]');
+		if (!room || !chosen) return;
+		const left = chosen.offsetLeft - (room.clientWidth - chosen.offsetWidth) / 2;
+		room.scrollLeft = Math.max(0, left);
+		measure();
+	});
+
+	$effect(() => {
+		if (!room) return;
+		const sizes = new ResizeObserver(measure);
+		sizes.observe(room);
+		for (const child of room.children) sizes.observe(child);
+		return () => sizes.disconnect();
+	});
 
 	function choose(next: string) {
 		if (next === value) return;
@@ -101,36 +131,52 @@
 	</button>
 {/snippet}
 
+<!-- The room the bar scrolls in; on a phone as much taller as the hit areas reach beyond the
+     bar, so that it does not cut them. -->
 <div
-	role="group"
-	aria-label={labelledby ? undefined : label}
-	aria-labelledby={labelledby}
-	{@attach slidingPill}
+	bind:this={room}
+	onscroll={measure}
+	data-more-start={more.start || undefined}
+	data-more-end={more.end || undefined}
 	class={cn(
-		'relative flex w-fit max-w-full items-center rounded-full bg-secondary',
-		size === 'sm' ? 'gap-0.5 p-[3px]' : 'h-10 gap-0.5 p-1',
-		equal && 'grid auto-cols-fr grid-flow-col',
+		'w-fit max-w-full [scrollbar-width:none] overflow-x-auto',
+		size === 'sm' ? 'max-sm:-my-1.5 max-sm:py-1.5' : 'max-sm:-my-0.5 max-sm:py-0.5',
+		'data-more-end:[mask-image:linear-gradient(to_right,black_85%,transparent)]',
+		'data-more-start:[mask-image:linear-gradient(to_left,black_85%,transparent)]',
+		'data-more-start:data-more-end:[mask-image:linear-gradient(to_right,transparent,black_15%,black_85%,transparent)]',
 		className
 	)}
 >
-	<span
-		data-pill
-		hidden
-		aria-hidden="true"
-		class="pointer-events-none absolute top-0 left-0 rounded-full bg-card shadow-sm data-moving:motion-safe:transition-[transform,width,height] data-moving:motion-safe:duration-300 data-moving:motion-safe:ease-out"
-	></span>
-	{#each options as option (option.value)}
-		{@const tip =
-			option.hint ?? (names === 'hidden' || names.startsWith('@') ? option.label : undefined)}
-		{#if tip}
-			<Tooltip.Root>
-				<Tooltip.Trigger>
-					{#snippet child({ props })}{@render entry(option, props)}{/snippet}
-				</Tooltip.Trigger>
-				<Tooltip.Content>{tip}</Tooltip.Content>
-			</Tooltip.Root>
-		{:else}
-			{@render entry(option, {})}
-		{/if}
-	{/each}
+	<div
+		role="group"
+		aria-label={labelledby ? undefined : label}
+		aria-labelledby={labelledby}
+		{@attach slidingPill}
+		class={cn(
+			'relative flex w-max min-w-full items-center rounded-full bg-secondary',
+			size === 'sm' ? 'gap-0.5 p-[3px]' : 'h-10 gap-0.5 p-1',
+			equal && 'grid auto-cols-fr grid-flow-col'
+		)}
+	>
+		<span
+			data-pill
+			hidden
+			aria-hidden="true"
+			class="pointer-events-none absolute top-0 left-0 rounded-full bg-card shadow-sm data-moving:motion-safe:transition-[transform,width,height] data-moving:motion-safe:duration-300 data-moving:motion-safe:ease-out"
+		></span>
+		{#each options as option (option.value)}
+			{@const tip =
+				option.hint ?? (names === 'hidden' || names.startsWith('@') ? option.label : undefined)}
+			{#if tip}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}{@render entry(option, props)}{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content>{tip}</Tooltip.Content>
+				</Tooltip.Root>
+			{:else}
+				{@render entry(option, {})}
+			{/if}
+		{/each}
+	</div>
 </div>

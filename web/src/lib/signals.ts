@@ -111,6 +111,8 @@ export function pageBars(output: Json): PageBar[] {
 
 export interface Neighbour {
 	title: string;
+	/** The document, where the caller reads it. */
+	id: string | null;
 	href: string | null;
 	/** Contact, type, topic and space of the document, by name. */
 	parts: string[];
@@ -132,6 +134,7 @@ export function neighbourList(output: Json, lookup: Lookup | null): Neighbour[] 
 			.map((id) => named(id, lookup));
 		return {
 			title: m.signal_document({ number: index + 1 }),
+			id: typeof found.document_id === 'string' ? found.document_id : null,
 			href: typeof found.document_id === 'string' ? documentHref(found.document_id) : null,
 			parts,
 			about: parts.join(' · '),

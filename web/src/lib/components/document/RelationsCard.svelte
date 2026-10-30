@@ -7,12 +7,19 @@
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
-	import { documentHref } from '#lib/candidates.ts';
+	import ScanEye from '@lucide/svelte/icons/scan-eye';
+	import { openBeam, type BeamSource } from '#lib/beam.svelte.ts';
+	import { refOf } from '#lib/fact-refs.svelte.ts';
 	import ReferencePicker, {
 		type Reference
 	} from '#lib/components/templates/ReferencePicker.svelte';
 	import { formatDate } from '#lib/i18n.ts';
-	import { labelOfKind } from '#lib/identifiers.ts';
+	import {
+		IDENTIFIER_KINDS,
+		NUMBER_KINDS,
+		labelOfKind,
+		type IdentifierKind
+	} from '#lib/identifiers.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { reportError } from '#lib/errors.ts';
@@ -24,12 +31,19 @@
 
 	type Relations = components['schemas']['RelationsOut'];
 	type Related = components['schemas']['RelatedOut'];
+	const IDENTIFIER_OR_NUMBER: readonly string[] = [...IDENTIFIER_KINDS, ...NUMBER_KINDS];
 
 	// The relations of the document (#145): the older documents it refers to, the newer ones
 	// that refer to it, and Lekto's suggestions, each with what Lekto had as evidence. Who edits
 	// the document relates it with another (the newer refers to the older), accepts or rejects a
-	// suggestion, removes a relation, where they edit the newer of the two.
-	let { documentId, lookup }: { documentId: string; lookup: Lookup | null } = $props();
+	// suggestion, removes a relation, where they edit the newer of the two. A related document's
+	// title opens both in the Beam, the newer first, the shared number marked in each (the eye
+	// before the title says so); into the other document from there.
+	let {
+		documentId,
+		documentTitle = '',
+		lookup
+	}: { documentId: string; documentTitle?: string; lookup: Lookup | null } = $props();
 
 	let relations = $state<Relations | null>(null);
 	let busy = $state(false);
@@ -100,6 +114,28 @@
 	const typeName = (id: string | null | undefined) =>
 		lookup?.documentTypes.find((entry) => entry.id === id)?.name ?? null;
 
+	/** Both documents in the Beam, the newer first, the number they share marked in each. */
+	async function view(item: Related, older: boolean | null) {
+		const other = item.document.id;
+		const ids = older === false ? [other, documentId] : [documentId, other];
+		const found = item.evidence as Record<string, unknown>;
+		const kind = found.fact_kind;
+		const shared = (found.kind === 'fact' || found.kind === 'target') && typeof kind === 'string';
+		let source: BeamSource | undefined;
+		if (shared && IDENTIFIER_OR_NUMBER.includes(kind) && found.value) {
+			try {
+				source = {
+					kind: 'fact',
+					identifier: kind as IdentifierKind,
+					ref: await refOf(kind as IdentifierKind, String(found.value))
+				};
+			} catch {
+				// Without the number's reference the pages show unmarked.
+			}
+		}
+		openBeam(ids, other, documentTitle || m.relations_title(), source ? { source } : {});
+	}
+
 	/** What Lekto had, in words; a person's relation says so. */
 	function evidence(item: Related): string {
 		if (item.origin === 'person') return m.relations_by_person();
@@ -154,11 +190,22 @@
 			<div class="flex items-center gap-2 rounded-xl px-2.5 py-2">
 				<Link2 class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 				<div class="flex min-w-0 flex-1 flex-col gap-0.5">
-					<a
-						href={documentHref(item.document.id)}
-						class="truncate text-sm font-medium underline-offset-2 hover:underline"
-						>{item.document.title}</a
+					<button
+						type="button"
+						class="group inline-flex min-w-0 items-center gap-1.5 text-left text-sm font-medium"
+						aria-label={m.beam_open_named({ title: item.document.title })}
+						title={m.beam_open_named({ title: item.document.title })}
+						onclick={() =>
+							view(
+								item,
+								group.key === 'refers_to' ? true : group.key === 'referred_by' ? false : null
+							)}
 					>
+						<ScanEye class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+						<span class="truncate underline-offset-2 group-hover:underline"
+							>{item.document.title}</span
+						>
+					</button>
 					<span class="truncate text-xs text-muted-foreground">
 						{[
 							typeName(item.document.document_type_id),

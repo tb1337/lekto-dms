@@ -580,6 +580,7 @@
 							<DocumentFacts
 								{facts}
 								documentId={id}
+								documentTitle={document.title}
 								{lookup}
 								topicId={document.topic_id}
 								admin={session.isAdmin}

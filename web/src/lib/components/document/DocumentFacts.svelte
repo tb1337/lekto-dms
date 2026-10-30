@@ -20,6 +20,7 @@
 	let {
 		facts = null,
 		documentId,
+		documentTitle = '',
 		lookup = null,
 		topicId = null,
 		admin = false,
@@ -30,6 +31,8 @@
 	}: {
 		facts?: Facts | null;
 		documentId: string;
+		/** Names the way back after a relation's document was opened from the Beam. */
+		documentTitle?: string;
 		lookup?: Lookup | null;
 		/** The document's topic: identifiers attached point to it by default. */
 		topicId?: string | null;
@@ -70,7 +73,7 @@
 				{onshowcode}
 				{onchanged}
 			/>
-			<div class="mt-3.5"><RelationsCard {documentId} {lookup} /></div>
+			<div class="mt-3.5"><RelationsCard {documentId} {documentTitle} {lookup} /></div>
 		{:else}
 			<p class="p-2 text-sm text-muted-foreground">{m.facts_pending()}</p>
 		{/if}

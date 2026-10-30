@@ -3,7 +3,17 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { components } from '#lib/api/schema.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { kindLabel } from '#lib/identifiers.ts';
+import { goTo, testPage } from '#lib/testing/page-state.svelte.ts';
 import RelationsCard from './RelationsCard.svelte';
+
+vi.mock('$app/navigation', async () => ({
+	beforeNavigate: vi.fn(),
+	goto: (await import('#lib/testing/page-state.svelte.ts')).fakeGoto
+}));
+vi.mock('$app/state', async () => ({
+	page: (await import('#lib/testing/page-state.svelte.ts')).testPage
+}));
 
 type Relations = components['schemas']['RelationsOut'];
 
@@ -60,7 +70,11 @@ describe('RelationsCard', () => {
 		render(RelationsCard, { props: { documentId: 'reminder', lookup: null } });
 		expect(await screen.findByText('Rechnung 4711')).toBeTruthy();
 		expect(screen.getByText(m.relations_suggested())).toBeTruthy();
-		expect(screen.getByText(/4711$/, { selector: 'span' })).toBeTruthy();
+		expect(
+			screen.getByText(
+				m.relations_evidence_fact({ kind: kindLabel('invoice_number'), value: '4711' })
+			)
+		).toBeTruthy();
 		await user.click(
 			screen.getByRole('button', { name: m.relations_accept({ title: 'Rechnung 4711' }) })
 		);
@@ -81,6 +95,34 @@ describe('RelationsCard', () => {
 		);
 		render(RelationsCard, { props: { documentId: 'reminder', lookup: null } });
 		expect(await screen.findByText('Rechnung 4711')).toBeTruthy();
-		expect(screen.queryByRole('button')).toBeNull();
+		// Only "Ansehen" (the title), nothing to change.
+		expect(
+			screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'))
+		).toEqual([m.beam_open_named({ title: 'Rechnung 4711' })]);
+	});
+
+	it('opens both documents in the Beam, the newer first, the shared number marked', async () => {
+		goTo('/ui/documents/reminder');
+		const read = { ...accepted.refers_to[0], changeable: false };
+		fetchMock.mockImplementation(async (request) =>
+			new URL(request.url).pathname === '/api/v1/identifiers/refs'
+				? json({ kind: 'invoice_number', value: '4711', ref: 'NDcxMQ' })
+				: json({ ...accepted, refers_to: [read], editable: false })
+		);
+		const user = userEvent.setup();
+		render(RelationsCard, {
+			props: { documentId: 'reminder', documentTitle: 'Mahnung', lookup: null }
+		});
+		await user.click(
+			await screen.findByRole('button', { name: m.beam_open_named({ title: 'Rechnung 4711' }) })
+		);
+		await waitFor(() =>
+			expect(testPage.state.beam).toEqual({
+				ids: ['reminder', 'invoice'],
+				index: 1,
+				from: 'Mahnung',
+				source: { kind: 'fact', identifier: 'invoice_number', ref: 'NDcxMQ' }
+			})
+		);
 	});
 });

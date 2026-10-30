@@ -453,8 +453,10 @@ modal, over a dialog too.
 - **Opening it:** "Ansehen" (`ViewButton`, icon `scan-eye`; never "Beamen"): on a card's first
   page as glass with its name, always shown; at the end of a row or beside a title as an icon.
   The title keeps opening the document. From a list, the Beam pages through the list's page.
-  Where a dialog lists the places of a value (Fundstellen), the title itself opens the Beam,
-  the eye before it, cut to one line; into the document from the Beam.
+  Where a dialog or a card lists documents as evidence (Fundstellen, a relation, similar
+  documents), the title itself opens the Beam, the eye before it, cut to one line; into the
+  document from the Beam. A relation shows both documents, the newer first, the number they
+  share marked in each.
 - **State:** the history entry's (`beam.svelte.ts`): ids only. The back button closes it, a
   reload brings it back, paging replaces the entry. A document that is gone closes it with a
   toast.

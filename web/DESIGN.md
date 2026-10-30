@@ -453,11 +453,21 @@ modal, over a dialog too.
 - **Opening it:** "Ansehen" (`ViewButton`, icon `scan-eye`; never "Beamen"): on a card's first
   page as glass with its name, always shown; at the end of a row or beside a title as an icon.
   The title keeps opening the document. From a list, the Beam pages through the list's page.
+  Where a dialog lists the places of a value (Fundstellen), the title itself opens the Beam,
+  the eye before it, cut to one line; into the document from the Beam.
 - **State:** the history entry's (`beam.svelte.ts`): ids only. The back button closes it, a
   reload brings it back, paging replaces the entry. A document that is gone closes it with a
   toast.
 - **"Dokument öffnen"** jumps there with the way back to here (see
   [Navigation between list and detail](#navigation-between-list-and-detail)).
+- **Places:** where Lekto claims a value from a document, the Beam marks each place the pages
+  show it, the one the fact was read at with a halo and its kind ("IBAN"), and scrolls there;
+  it pages through the places ("Fundstelle 2 von 5"). The places come from the endpoint that
+  names the fact (`occurrences`), never from a search of its own.
+- **Over a dialog:** a dialog that opens the Beam keeps its state in the history entry too, so
+  the back button closes the Beam, then the dialog, and the way back from a document returns to
+  both. From 1280 px the dialog moves aside while the Beam is open (`app.css`), so both stand
+  side by side; narrower, the Beam lies over it.
 
 ### Alerts
 

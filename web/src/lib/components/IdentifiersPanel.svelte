@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import Check from '@lucide/svelte/icons/check';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { onMount, untrack } from 'svelte';
@@ -11,6 +12,7 @@
 	import Loading from '#lib/components/Loading.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import OpenIdentifierDialog from '#lib/components/OpenIdentifierDialog.svelte';
+	import { dropEntry, pushEntry } from '#lib/history-state.ts';
 	import Pagination from '#lib/components/Pagination.svelte';
 	import Segmented from '#lib/components/Segmented.svelte';
 	import Select from '#lib/components/Select.svelte';
@@ -71,8 +73,10 @@
 	let kinds = $state<OpenPage['kinds']>({});
 	let chosen = $state<Record<string, OpenIdentifier>>({});
 	let busy = $state(false);
-	let opened = $state<OpenIdentifier | null>(null);
-	let dialog = $state(false);
+	// The open dialog lives in the history entry (`page.state.identifier`): the back button
+	// closes it, a reload and the way back from a document bring it back.
+	const wanted = $derived(page.state.identifier ?? null);
+	let opened: OpenIdentifier | null = null;
 	// The contacts with their logos, for the avatar of a learned or suggested identifier.
 	let contacts = $state<Contact[]>([]);
 
@@ -112,6 +116,11 @@
 		toConfirm = found.to_confirm;
 		return { items: found.items, total: found.total };
 	}, SIZE);
+	const listed = $derived(
+		wanted
+			? (list.items.find((item) => item.kind === wanted.kind && item.ref === wanted.ref) ?? null)
+			: null
+	);
 
 	// Again for other words, a moment after the last key.
 	let typed: ReturnType<typeof setTimeout> | undefined;
@@ -208,7 +217,7 @@
 
 	function openItem(item: OpenIdentifier) {
 		opened = item;
-		dialog = true;
+		pushEntry('identifier', { kind: item.kind, ref: item.ref });
 	}
 
 	function decided(action: OpenAction) {
@@ -512,7 +521,16 @@
 	{#if selection.length > 0 && phone.current}{@render bar()}{/if}
 </div>
 
-<OpenIdentifierDialog bind:open={dialog} item={opened} ondecided={decided} />
+<OpenIdentifierDialog
+	bind:open={() => wanted !== null, (next) => !next && dropEntry('identifier')}
+	{wanted}
+	{listed}
+	ondecided={decided}
+	ongone={() => {
+		dropEntry('identifier');
+		void list.refresh();
+	}}
+/>
 
 <ConfirmDialog
 	bind:open={asking}

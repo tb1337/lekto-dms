@@ -295,8 +295,8 @@ class OpenIdentifierService:
 async def _open(
     uow: UnitOfWork,
 ) -> tuple[list[OpenIdentifier], dict[ContactId, str], dict[UserId, str], dict[Key, Identifier]]:
-    """The open identifiers, the names of the contacts and the persons, and the identifiers
-    training learned by key (each at one contact)."""
+    """The open identifiers, the names of the contacts and the persons (`User.label`, as
+    everywhere), and the identifiers training learned by key (each at one contact)."""
     contacts = await uow.contacts.list_all()
     sightings = await uow.document_facts.sightings(CONTACT_KINDS)
     personal = await person_identifiers(uow)
@@ -313,7 +313,8 @@ async def _open(
         if item.source is IdentifierSource.LEARNED
     }
     found = open_identifiers(contacts, sightings, personal, persons, declined)
-    return found, names, {person.user_id: person.display_name or "" for person in persons}, learned
+    labels = {user.id: user.label for user in await uow.users.list_all()}
+    return found, names, labels, learned
 
 
 def _to_confirm(item: OpenIdentifier) -> bool:

@@ -664,6 +664,12 @@ Eingreifen, In Verarbeitung.
 Dates and numbers follow the UI language (`Intl`): `26.10.2026`, `123,45 €` in German. Durations
 are short and do not wrap ("4,2s", "1m 3s").
 
+### Names of people
+
+A person reads as their display name, else their username, everywhere: `userLabel` where the UI
+has the user, and a `name` the API sends for a user follows the same rule (`User.label`). A
+choice among users adds the username where it differs (`userChoice`: "Anna Busch (anna)").
+
 ## Exceptions
 
 Allowed outside the token rules, each for a stated reason:

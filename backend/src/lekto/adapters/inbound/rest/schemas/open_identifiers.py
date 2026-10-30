@@ -40,7 +40,7 @@ class OpenContactOut(BaseModel):
 
 class OpenPersonOut(BaseModel):
     id: UUID = Field(description="The user.")
-    name: str = Field(description="Their display name.")
+    name: str = Field(description="Their display name, else the username.")
 
 
 class RecommendationOut(BaseModel):

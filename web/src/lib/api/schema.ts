@@ -7343,7 +7343,7 @@ export interface components {
 			id: string;
 			/**
 			 * Name
-			 * @description Their display name.
+			 * @description Their display name, else the username.
 			 */
 			name: string;
 		};

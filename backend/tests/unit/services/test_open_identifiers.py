@@ -254,6 +254,23 @@ async def test_a_suggestion_goes_into_a_profile_or_is_declined_there(world: Worl
     assert (await world.open_identifiers.page(admin.id)).items == []
 
 
+async def test_a_person_without_a_display_name_is_named_by_their_username(world: World) -> None:
+    """A suggestion for a person names them as everywhere (`User.label`), and the search finds
+    them by that name."""
+    admin = await world.user(role=Role.ADMIN)
+    assert admin.display_name is None
+    bank = Contact.create(name="Bank", now=NOW)
+    async with world.uow() as uow:
+        await uow.contacts.add(bank)
+        await uow.commit()
+    await confirmed(world, admin, bank, [IBAN], Holder(HolderKind.RECIPIENT, HolderSource.RULE))
+    page = await world.open_identifiers.page(admin.id, words=admin.username)
+    assert [item.person for item in page.items] == [admin.id]
+    assert page.persons == {admin.id: admin.username}
+    detail = await world.open_identifiers.detail(admin.id, *IBAN)
+    assert detail.persons == {admin.id: admin.username}
+
+
 async def test_a_suggestion_for_a_contact_is_entered_there(world: World) -> None:
     """The bank's statements name the utility as the payee: confirmed, the utility holds the
     IBAN entered by hand."""

@@ -1014,29 +1014,22 @@ describe('the topic', () => {
 		expect(topicValue()).toBe(WORK);
 	});
 
-	it('lets an admin choose any topic, which saving enables at the contact', async () => {
+	it('offers an admin, too, only the topics of the chosen contact', async () => {
 		session.start({
 			user: { id: OWNER, username: 'admin', role: 'admin' },
 			method: 'password',
 			expires_at: '2026-10-09T12:00:00Z',
 			csrf_token: 'token'
 		});
-		fetchMock.mockResolvedValue(
-			new Response('{"changed": [], "rules": null, "visibility": null, "document": null}', {
-				status: 200,
-				headers: { 'content-type': 'application/json' }
-			})
-		);
 		const bank = { ...filed, contact_id: BANK, topic_id: null } as Document;
-		render(DocumentForm, props({ document: bank, lookup: topics, review: null }));
-		expect(await topicChoices()).toEqual([m.topic_none(), 'Arbeit', 'Krankenversicherung']);
-		await chooseTopic('Krankenversicherung');
-		expect(screen.getByText(m.topic_enables_hint())).toBeTruthy();
-		await userEvent.click(screen.getByRole('button', { name: m.edit_review() }));
-		const sent = await fetchMock.mock.calls[0][0].json();
-		expect(sent).toEqual({ topic_id: HEALTH });
-		await userEvent.click(await screen.findByRole('button', { name: m.cancel() }));
-		await closed();
+		const view = render(DocumentForm, props({ document: bank, lookup: topics, review: null }));
+		expect(await topicChoices()).toEqual([m.topic_none(), 'Arbeit']);
+		view.unmount();
+		// The stored topic is not offered again once another contact without it is chosen.
+		render(DocumentForm, props({ document: filed, lookup: topics, review: null }));
+		await choose(userEvent, select(m.field_contact()), BANK);
+		expect(topicValue()).toBe('');
+		expect(await topicChoices()).toEqual([m.topic_none(), 'Arbeit']);
 	});
 
 	it('shows a topic Lekto only suggests as a card; a click takes it', async () => {
@@ -1120,32 +1113,6 @@ describe('the topic', () => {
 		expect(await sentPatch()).toEqual({ contact_id: BANK, topic_id: null });
 	});
 
-	it('sends the topic an admin chooses again for the next contact, and reloads the master data', async () => {
-		session.start({
-			user: { id: OWNER, username: 'admin', role: 'admin' },
-			method: 'password',
-			expires_at: '2026-10-09T12:00:00Z',
-			csrf_token: 'token'
-		});
-		fetchMock.mockImplementation(async (request) =>
-			json(request.method === 'PATCH' ? { ...filed, contact_id: BANK } : PREVIEW)
-		);
-		const onenabled = vi.fn();
-		const onsaved = vi.fn();
-		render(
-			DocumentForm,
-			props({ document: filed, lookup: topics, review: null, onenabled, onsaved })
-		);
-		await choose(userEvent, select(m.field_contact()), BANK);
-		await chooseTopic('Krankenversicherung');
-		await userEvent.click(screen.getByRole('button', { name: m.edit_review() }));
-		expect(await fetchMock.mock.calls[0][0].json()).toEqual({ contact_id: BANK, topic_id: HEALTH });
-		await userEvent.click(await screen.findByRole('button', { name: m.edit_save() }));
-		expect(fetchMock.mock.calls[1][0].method).toBe('PATCH');
-		expect(onsaved).toHaveBeenCalled();
-		expect(onenabled).toHaveBeenCalledOnce();
-	});
-
 	it('lets an admin create a topic named as searched in its dialog; saving enables it at the contact', async () => {
 		session.start({
 			user: { id: OWNER, username: 'admin', role: 'admin' },
@@ -1154,9 +1121,12 @@ describe('the topic', () => {
 			csrf_token: 'token'
 		});
 		const DENTAL = '0199a6c4-0000-7000-8000-0000000000b9';
-		fetchMock.mockImplementation(async () => json(PREVIEW));
 		const bank = { ...filed, contact_id: BANK, topic_id: null } as Document;
-		render(DocumentForm, props({ document: bank, lookup: topics, review: null }));
+		fetchMock.mockImplementation(async (request) =>
+			json(request.method === 'PATCH' ? { ...bank, topic_id: DENTAL } : PREVIEW)
+		);
+		const onenabled = vi.fn();
+		render(DocumentForm, props({ document: bank, lookup: topics, review: null, onenabled }));
 		await userEvent.click(topicField());
 		await typeInSearch(m.picker_search_create(), 'Zahnzusatz');
 		await userEvent.click(await screen.findByText(m.create_named({ name: 'Zahnzusatz' })));
@@ -1167,6 +1137,10 @@ describe('the topic', () => {
 		expect(topicField().textContent?.trim()).toBe('Zahnzusatz');
 		expect(screen.getByText(m.topic_enables_hint())).toBeTruthy();
 		expect(await sentPatch()).toEqual({ topic_id: DENTAL });
+		// Saved, the master data load again: the contact enables it now.
+		await userEvent.click(screen.getByRole('button', { name: m.edit_review() }));
+		await userEvent.click(await screen.findByRole('button', { name: m.edit_save() }));
+		await waitFor(() => expect(onenabled).toHaveBeenCalledOnce());
 	});
 
 	it('lets an admin create a contact or type named as searched in its dialog, chosen after', async () => {

@@ -31571,7 +31571,7 @@
           "name": {
             "type": "string",
             "title": "Name",
-            "description": "Their display name."
+            "description": "Their display name, else the username."
           }
         },
         "type": "object",

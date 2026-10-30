@@ -11,6 +11,7 @@ import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
 import { choose, selectedValue } from '#lib/testing/select.ts';
 import { toast } from 'svelte-sonner';
+import { beforeNavigate } from '$app/navigation';
 import DocumentForm from './DocumentForm.svelte';
 
 type Document = components['schemas']['DocumentDetails'];
@@ -1214,5 +1215,32 @@ describe('the topic', () => {
 			accept_suggestions: false,
 			resume_at: 'apply_rules'
 		});
+	});
+});
+
+describe('leaving the form', () => {
+	/** A move from `from` to `to`, as the guard of unsaved changes sees it; its `cancel`. */
+	function leave(to: string, from = '/ui/documents/doc-1') {
+		const cancel = vi.fn();
+		const guard = vi.mocked(beforeNavigate).mock.lastCall![0];
+		guard({
+			type: 'link',
+			from: { url: new URL(from, 'http://lekto') },
+			to: { url: new URL(to, 'http://lekto') },
+			cancel
+		} as unknown as Parameters<typeof guard>[0]);
+		return cancel;
+	}
+
+	it('asks nothing for the suggestions it starts with, only for what the person changed', async () => {
+		render(DocumentForm, props());
+		// The open contact starts with the model's suggestion: no change of the person's.
+		expect(selectedValue(screen.getByRole('combobox', { name: m.field_contact() }))).toBe(CONTACT);
+		expect(leave('/ui/inbox')).not.toHaveBeenCalled();
+		await userEvent.type(globalThis.document.getElementById('doc-title')!, ' neu');
+		expect(leave('/ui/inbox')).toHaveBeenCalledOnce();
+		// Another pane of the same document hides the form and keeps it; another tab does not.
+		expect(leave('/ui/documents/doc-1?left=text&right=form')).not.toHaveBeenCalled();
+		expect(leave('/ui/documents/doc-1?tab=properties')).toHaveBeenCalledOnce();
 	});
 });

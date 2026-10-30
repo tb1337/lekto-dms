@@ -34,6 +34,7 @@
 	import { describeValue, fieldLabel } from '#lib/describe.ts';
 	import {
 		fieldEvidence,
+		keepsForm,
 		marksOf,
 		placesApply,
 		type Mark,
@@ -225,7 +226,7 @@
 			spaceChoice,
 			otherSpace
 		]);
-	let baseline: { id: string; form: string; reviewing: boolean } | null = null;
+	let baseline = $state.raw<{ id: string; form: string; reviewing: boolean } | null>(null);
 
 	function assign(key: string, value: ReviewValue) {
 		const id = fieldId(key);
@@ -311,7 +312,6 @@
 		void decisions;
 		void filing;
 		untrack(() => {
-			const edited = baseline?.id === document.id && snapshot() !== baseline.form;
 			if (!edited) fromDocument();
 			else if (reviewing && baseline && !baseline.reviewing) {
 				// It came into the inbox while the user typed: their input stays, the open
@@ -427,6 +427,11 @@
 	}
 
 	const dirty = $derived(Object.keys(buildPatch()).length > 0);
+	// What the person changed since the form started: the suggestions it starts with in the
+	// inbox differ from the stored document, but leaving loses nothing of theirs.
+	const edited = $derived(
+		baseline !== null && baseline.id === document.id && snapshot() !== baseline.form
+	);
 	// Confirmed: what follows (a reload, the next document) is no loss to ask about.
 	let settled = $state(false);
 
@@ -628,7 +633,7 @@
 	const located = $derived([...evidence.values()].some((entry) => entry.check.locations?.length));
 </script>
 
-<UnsavedGuard dirty={dirty && !busy && !settled} />
+<UnsavedGuard dirty={edited && !busy && !settled} keeps={keepsForm} />
 
 <form
 	class={cn(cardVariants({ size: 'flush' }), 'flex h-full min-h-0 flex-col overflow-hidden')}

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+	keepsForm,
 	fieldEvidence,
 	byPage,
 	inboxDocument,
@@ -124,6 +125,16 @@ describe('the view of the document tab', () => {
 		);
 		expect(pageOf(new URL('http://lekto/ui/documents/1?page=0'))).toBeNull();
 		expect(pageOf(new URL('http://lekto/ui/documents/1?page=x'))).toBeNull();
+	});
+
+	it('keeps the form while only the view of the same document changes', () => {
+		const at = (href: string) => new URL(`http://lekto/ui/documents/${href}`);
+		expect(keepsForm(at('1?from=inbox'), at('1?from=inbox&left=text&right=form'))).toBe(true);
+		expect(keepsForm(at('1?left=text&right=form'), at('1?left=pages&right=facts&page=2'))).toBe(
+			true
+		);
+		expect(keepsForm(at('1'), at('1?tab=properties'))).toBe(false);
+		expect(keepsForm(at('1'), at('2'))).toBe(false);
 	});
 
 	it('is linked, leaving a tab of before behind', () => {

@@ -29,6 +29,13 @@ export function tabOf(url: Address): Tab {
 	return (TABS as readonly string[]).includes(tab) ? (tab as Tab) : 'document';
 }
 
+/** Whether going from `from` to `to` keeps the document tab of the same document, and with it
+ * its form: only the view of its panes (or the page shown) changes, which hides a pane and
+ * keeps it. */
+export function keepsForm(from: Address, to: Address): boolean {
+	return from.pathname === to.pathname && tabOf(from) === 'document' && tabOf(to) === 'document';
+}
+
 /** The URL of `tab`, keeping the other parameters (`from=inbox`, the view); the step of the
  * processing tab (`?step=`) only stays there. */
 export function tabHref(url: Address, tab: Tab): string {

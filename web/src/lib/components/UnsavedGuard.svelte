@@ -6,7 +6,9 @@
 	// Asks before changes are lost (web/DESIGN.md, "Saving and leaving"): while `dirty`, leaving
 	// the page by a link, a tab, the back button or closing the window asks first; "Discard"
 	// goes on, anything else stays. The form clears `dirty` once it saved or the person cancelled.
-	let { dirty }: { dirty: boolean } = $props();
+	// `keeps`: a move within the page that keeps the form (a pane shown instead of another) asks
+	// nothing.
+	let { dirty, keeps }: { dirty: boolean; keeps?: (from: URL, to: URL) => boolean } = $props();
 
 	let asking = $state(false);
 	let target = $state<URL | null>(null);
@@ -20,6 +22,7 @@
 			return;
 		}
 		if (!navigation.to) return;
+		if (navigation.from && keeps?.(navigation.from.url, navigation.to.url)) return;
 		navigation.cancel();
 		target = navigation.to.url;
 		asking = true;

@@ -6,7 +6,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from lekto.adapters.inbound.rest.schemas.refs import MAX_REF, opened, seal
 from lekto.core.domain.document_facts import FactCriterion, FactRole
+from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import (
     ContactId,
@@ -28,6 +30,8 @@ from lekto.core.domain.lenses import (
     LensSort,
     RelativePeriod,
 )
+from lekto.core.domain.reasons import ReasonCode, because
+from lekto.core.ports.identity import RefCipher
 
 
 def _ids() -> Any:
@@ -36,21 +40,38 @@ def _ids() -> Any:
 
 
 class FactFilterBody(BaseModel):
-    """A fact the documents have: of `kind`, with `value` (as written; it needs its kind), in
-    `role`; what is null is any."""
+    """A fact the documents have: of `kind`, with the value of `ref` (it needs its kind; from
+    `POST /identifiers/refs`), in `role`; what is null is any."""
 
     model_config = ConfigDict(extra="forbid")
 
     kind: IdentifierKind | None = None
-    value: str | None = Field(default=None, max_length=200)
+    ref: str | None = Field(default=None, max_length=MAX_REF, description="The value's reference.")
     role: FactRole | None = None
 
-    def domain(self) -> FactCriterion:
-        return FactCriterion.written(self.kind, self.value, self.role)
+    def domain(self, refs: RefCipher) -> FactCriterion:
+        value = None
+        if self.ref:
+            if self.kind is None:
+                raise ValidationError(because(ReasonCode.FACT_CRITERION_EMPTY))
+            value = opened(refs, self.kind, self.ref)
+        return FactCriterion.written(self.kind, value, self.role)
+
+
+class FactFilterOut(BaseModel):
+    """A fact the documents have, with its value and the value's reference."""
+
+    kind: IdentifierKind | None
+    value: str | None = Field(description="Normalised, as Lekto compares it.")
+    ref: str | None = Field(description="The value's reference, for the `fact` filter.")
+    role: FactRole | None
 
     @classmethod
-    def of(cls, criterion: FactCriterion) -> "FactFilterBody":
-        return cls(kind=criterion.kind, value=criterion.value, role=criterion.role)
+    def of(cls, criterion: FactCriterion, refs: RefCipher) -> "FactFilterOut":
+        ref = None
+        if criterion.kind is not None and criterion.value is not None:
+            ref = seal(refs, criterion.kind, criterion.value)
+        return cls(kind=criterion.kind, value=criterion.value, ref=ref, role=criterion.role)
 
 
 class LensFilterBody(BaseModel):
@@ -81,7 +102,7 @@ class LensFilterBody(BaseModel):
         description="Facts the documents have, each (`fact` of `GET /documents`).",
     )
 
-    def domain(self) -> LensFilter:
+    def domain(self, refs: RefCipher) -> LensFilter:
         return LensFilter(
             contact_ids=tuple(ContactId(id) for id in self.contact_ids),
             document_type_ids=tuple(DocumentTypeId(id) for id in self.document_type_ids),
@@ -94,11 +115,28 @@ class LensFilterBody(BaseModel):
             date_from=self.document_date_from,
             date_to=self.document_date_to,
             relative_period=self.document_period,
-            facts=tuple(item.domain() for item in self.facts),
+            facts=tuple(item.domain(refs) for item in self.facts),
         )
 
+
+class LensFilterOut(BaseModel):
+    """The filters of a lens as `LensFilterBody`, each fact with its value."""
+
+    contact_ids: list[UUID]
+    document_type_ids: list[UUID]
+    contact_group_ids: list[UUID]
+    document_type_group_ids: list[UUID]
+    topic_ids: list[UUID]
+    tag_ids: list[UUID]
+    space_ids: list[UUID]
+    field_id: UUID | None
+    document_date_from: date | None
+    document_date_to: date | None
+    document_period: RelativePeriod | None
+    facts: list[FactFilterOut]
+
     @classmethod
-    def of(cls, filter: LensFilter) -> "LensFilterBody":
+    def of(cls, filter: LensFilter, refs: RefCipher) -> "LensFilterOut":
         return cls(
             contact_ids=list(filter.contact_ids),
             document_type_ids=list(filter.document_type_ids),
@@ -111,7 +149,7 @@ class LensFilterBody(BaseModel):
             document_date_from=filter.date_from,
             document_date_to=filter.date_to,
             document_period=filter.relative_period,
-            facts=[FactFilterBody.of(item) for item in filter.facts],
+            facts=[FactFilterOut.of(item, refs) for item in filter.facts],
         )
 
 
@@ -201,7 +239,7 @@ class LensOut(BaseModel):
     id: UUID
     name: str
     position: int = Field(description="Where it stands among the user's lenses, from 0.")
-    filter: LensFilterBody
+    filter: LensFilterOut
     query: str | None
     sort: LensSort | None
     sort_field_id: UUID | None
@@ -213,12 +251,12 @@ class LensOut(BaseModel):
     updated_at: datetime
 
     @classmethod
-    def of(cls, lens: Lens) -> "LensOut":
+    def of(cls, lens: Lens, refs: RefCipher) -> "LensOut":
         return cls(
             id=lens.id,
             name=lens.name,
             position=lens.position,
-            filter=LensFilterBody.of(lens.filter),
+            filter=LensFilterOut.of(lens.filter, refs),
             query=lens.query,
             sort=lens.sort,
             sort_field_id=lens.sort_field_id,

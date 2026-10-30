@@ -77,6 +77,12 @@ class BulkRequest(BaseModel):
             "(the filter of `GET /documents`, with `q` the hits of the search)."
         ),
     )
+    q: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=500,
+        description="Words of the search (`POST /documents/search`), not with `document_ids`.",
+    )
     action: BulkActionIn
 
 

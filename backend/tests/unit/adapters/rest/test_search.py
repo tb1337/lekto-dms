@@ -21,9 +21,10 @@ async def found(scene: Scene, actor: str, **params: Any) -> set[str]:
     ids: set[str] = set()
     offset: int | None = 0
     while offset is not None:
-        response = await scene.api.client.get(
+        response = await scene.api.client.post(
             SEARCH,
-            params={"q": "pdf", "limit": 1, **params, "offset": offset},
+            json={"q": "pdf"},
+            params={"limit": 1, **params, "offset": offset},
             headers=scene.headers[actor],
         )
         assert response.status_code == 200, response.text
@@ -61,7 +62,9 @@ async def test_lists_and_search_tell_what_stands_in_the_inbox(api: Api) -> None:
     async def in_inbox(actor: str, **params: Any) -> dict[str, bool]:
         headers = scene.headers[actor]
         listed = await api.client.get(f"{PREFIX}/documents", params=params, headers=headers)
-        searched = await api.client.get(SEARCH, params={"q": "pdf", **params}, headers=headers)
+        searched = await api.client.post(
+            SEARCH, json={"q": "pdf"}, params={**params}, headers=headers
+        )
         flags = {item["id"]: item["in_inbox"] for item in listed.json()["items"]}
         found = {
             item["document"]["id"]: item["document"]["in_inbox"]
@@ -86,9 +89,9 @@ async def test_lists_and_search_tell_what_stands_in_the_inbox(api: Api) -> None:
 @pytest.mark.parametrize("actor", sorted(DENIED))
 async def test_search_needs_a_valid_sign_in(api: Api, actor: str) -> None:
     scene = await indexed_scene(api)
-    response = await api.client.get(SEARCH, params={"q": "pdf"}, headers=scene.headers[actor])
+    response = await api.client.post(SEARCH, json={"q": "pdf"}, headers=scene.headers[actor])
     assert response.status_code == 401
-    anonymous = await api.client.get(SEARCH, params={"q": "pdf"})
+    anonymous = await api.client.post(SEARCH, json={"q": "pdf"})
     assert anonymous.status_code == 401
 
 
@@ -117,8 +120,8 @@ async def test_a_lane_that_changed_before_the_index_heard_of_it(api: Api) -> Non
 
 async def test_a_hit_has_the_document_a_snippet_and_a_score(api: Api) -> None:
     scene = await indexed_scene(api)
-    response = await api.client.get(
-        SEARCH, params={"q": "fake text"}, headers=scene.headers["reader"]
+    response = await api.client.post(
+        SEARCH, json={"q": "fake text"}, headers=scene.headers["reader"]
     )
     assert response.status_code == 200
     page = response.json()
@@ -151,14 +154,15 @@ async def test_a_hit_has_the_document_a_snippet_and_a_score(api: Api) -> None:
 )
 async def test_bad_parameters_are_unprocessable(api: Api, params: dict[str, Any]) -> None:
     user = await api.user()
-    response = await api.client.get(SEARCH, params=params, headers=auth(user))
+    body = {"q": params.pop("q")} if "q" in params else {}
+    response = await api.client.post(SEARCH, json=body, params=params, headers=auth(user))
     assert response.status_code == 422
     assert response.headers["content-type"] == "application/problem+json"
 
 
 async def test_search_is_not_a_document_id(api: Api) -> None:
     user = await api.user()
-    response = await api.client.get(f"{PREFIX}/documents/search", headers=auth(user))
+    response = await api.client.post(SEARCH, json={}, headers=auth(user))
     assert response.status_code == 422
     assert "q:" in response.json()["detail"]
 
@@ -166,9 +170,9 @@ async def test_search_is_not_a_document_id(api: Api) -> None:
 async def test_without_a_search_index_the_endpoints_answer_503(api: Api) -> None:
     admin = await api.admin()
     api.app.state.context = replace(api.app.state.context, search=None, indexing=None)
-    found = await api.client.get(SEARCH, params={"q": "x"}, headers=auth(admin))
+    found = await api.client.post(SEARCH, json={"q": "x"}, headers=auth(admin))
     # Without the service, the query is not looked at.
-    unchecked = await api.client.get(SEARCH, headers=auth(admin))
+    unchecked = await api.client.post(SEARCH, json={}, headers=auth(admin))
     rebuild = await api.client.post(f"{PREFIX}/search/reindex", headers=auth(admin))
     status = await api.client.get(f"{PREFIX}/search/status", headers=auth(admin))
     check = await api.client.post(f"{PREFIX}/search/check", headers=auth(admin))
@@ -185,7 +189,7 @@ async def test_an_unreachable_index_answers_503(api: Api) -> None:
 
     assert api.container.search_index is not None
     api.container.search_index.search = down  # type: ignore[method-assign,assignment]
-    response = await api.client.get(SEARCH, params={"q": "x"}, headers=auth(user))
+    response = await api.client.post(SEARCH, json={"q": "x"}, headers=auth(user))
     assert response.status_code == 503
     # What went wrong stays in the log; the caller learns that the list works without it.
     assert response.json()["reason"] == {"code": "search_index_unavailable", "params": {}}
@@ -217,18 +221,21 @@ async def test_only_admins_rebuild_the_index(api: Api) -> None:
 
 async def test_hits_by_relevance_or_sorted(api: Api) -> None:
     scene = await indexed_scene(api)
-    by_title = await scene.api.client.get(
-        SEARCH, params={"q": "pdf", "sort": "title", "limit": 50}, headers=scene.headers["admin"]
+    by_title = await scene.api.client.post(
+        SEARCH,
+        json={"q": "pdf"},
+        params={"sort": "title", "limit": 50},
+        headers=scene.headers["admin"],
     )
     assert by_title.status_code == 200, by_title.text
     titles = [item["document"]["title"].casefold() for item in by_title.json()["items"]]
     assert titles == sorted(titles)
-    relevance = await scene.api.client.get(
-        SEARCH, params={"q": "pdf", "sort": "relevance"}, headers=scene.headers["admin"]
+    relevance = await scene.api.client.post(
+        SEARCH, json={"q": "pdf"}, params={"sort": "relevance"}, headers=scene.headers["admin"]
     )
     assert relevance.status_code == 200
-    bad = await scene.api.client.get(
-        SEARCH, params={"q": "pdf", "sort": "size"}, headers=scene.headers["admin"]
+    bad = await scene.api.client.post(
+        SEARCH, json={"q": "pdf"}, params={"sort": "size"}, headers=scene.headers["admin"]
     )
     assert bad.status_code == 422
 

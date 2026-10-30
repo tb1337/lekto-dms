@@ -14,6 +14,7 @@ const BANK = { id: '0199a6c4-0000-7000-8000-0000000000c2', name: 'Bank' };
 const CUSTOMER = {
 	kind: 'customer_number',
 	value: '20047718',
+	ref: 'MjAwNDc3MTg',
 	written: '2004 7718',
 	source: 'learned',
 	contacts: [UTILITY],
@@ -27,6 +28,7 @@ const CUSTOMER = {
 const IBAN = {
 	kind: 'iban',
 	value: 'DE02120300000000202051',
+	ref: 'REUwMg',
 	written: 'DE02 1203 0000 0000 2020 51',
 	source: 'unknown',
 	contacts: [UTILITY, BANK],
@@ -37,6 +39,7 @@ const IBAN = {
 const SUGGESTION = {
 	kind: 'iban',
 	value: 'DE89370400440532013000',
+	ref: 'REU4OQ',
 	written: 'DE89 3704 0044 0532 0130 00',
 	source: 'suggested',
 	contacts: [],
@@ -68,7 +71,9 @@ beforeEach(() => {
 	fetchMock.mockReset();
 	fetchMock.mockImplementation(async (request) => {
 		const url = new URL(request.url);
-		if (request.method === 'GET' && url.pathname === '/api/v1/identifiers/open') {
+		const searched =
+			request.method === 'POST' && url.pathname === '/api/v1/identifiers/open/search';
+		if ((request.method === 'GET' && url.pathname === '/api/v1/identifiers/open') || searched) {
 			const source = url.searchParams.get('source');
 			const advised = url.searchParams.get('recommended') === 'true';
 			const items =
@@ -96,7 +101,10 @@ beforeEach(() => {
 				BANK
 			]);
 		}
-		if (request.method === 'GET' && url.pathname === '/api/v1/identifiers/open/detail') {
+		if (
+			request.method === 'GET' &&
+			url.pathname === `/api/v1/identifiers/open/customer_number/${CUSTOMER.ref}`
+		) {
 			return json({
 				identifier: CUSTOMER,
 				places: [
@@ -158,7 +166,8 @@ describe('IdentifiersPanel', () => {
 		const documents = within(found[1]).getByRole('link', {
 			name: usageLabel(4)
 		});
-		expect(documents.getAttribute('href')).toContain('fact=customer_number%3A20047718%3A');
+		// The value by its reference, never as written.
+		expect(documents.getAttribute('href')).toContain('fact=customer_number%3AMjAwNDc3MTg%3A');
 		// The logo comes from the contacts, which the list does not carry.
 		await vi.waitFor(() => expect(found[1].querySelector('img')?.getAttribute('src')).toBe(LOGO));
 		expect(found[0].querySelector('img')).toBeNull();
@@ -233,14 +242,18 @@ describe('IdentifiersPanel', () => {
 		await rows();
 		await vi.advanceTimersByTimeAsync(600);
 		const lists = () =>
-			fetchMock.mock.calls.filter(
-				([request]) => new URL(request.url).pathname === '/api/v1/identifiers/open'
+			fetchMock.mock.calls.filter(([request]) =>
+				new URL(request.url).pathname.startsWith('/api/v1/identifiers/open')
 			);
 		expect(lists()).toHaveLength(1);
 		await rerender({ query: 'nord' });
 		await vi.advanceTimersByTimeAsync(250);
 		await vi.waitFor(() => expect(lists()).toHaveLength(2));
-		expect(new URL(lists()[1][0].url).searchParams.get('q')).toBe('nord');
+		// The words go in the body, never in the address.
+		const [request] = lists()[1];
+		expect(new URL(request.url).pathname).toBe('/api/v1/identifiers/open/search');
+		expect(new URL(request.url).searchParams.has('q')).toBe(false);
+		expect(await request.clone().json()).toEqual({ q: 'nord' });
 	});
 
 	it('takes over the chosen ones, leaving out one without a clear contact', async () => {

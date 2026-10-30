@@ -38,19 +38,34 @@ class FakeSource {
 	}
 }
 
-const state = vi.hoisted(() => ({ url: new URL('http://lekto/ui/documents') }));
+const state = vi.hoisted(() => ({
+	url: new URL('http://lekto/ui/documents'),
+	// The history entry: the words of a search stand here, never in the URL.
+	entry: {} as App.PageState
+}));
 vi.mock('$app/navigation', () => ({ beforeNavigate: vi.fn(), goto: vi.fn() }));
 vi.mock('$app/state', () => ({
 	page: {
 		get url() {
 			return state.url;
+		},
+		get state() {
+			return state.entry;
 		}
 	}
 }));
 
+/** The options of a navigation of the list that searches for `words`. */
+const searching = (words: string, options: object = { reset: false }) => ({
+	...options,
+	state: { words },
+	persistState: true
+});
+
 beforeEach(() => {
 	forgetMeaningSearch();
 	state.url = new URL('http://lekto/ui/documents');
+	state.entry = {};
 	session.start({
 		user: { id: OWNER, username: 'tobi', role: 'user' },
 		method: 'password',
@@ -147,7 +162,7 @@ describe('the archive page', () => {
 		await userEvent.click(
 			within(pages).getByRole('button', { name: m.pagination_page({ page: '3' }) })
 		);
-		expect(goto).toHaveBeenLastCalledWith('?sort=title&page=3', { replaceState: false });
+		expect(goto).toHaveBeenLastCalledWith('?sort=title&page=3', searching('', { replace: false }));
 	});
 
 	it('loads the page shown again after a reconnect of the event stream, not the first', async () => {
@@ -465,7 +480,7 @@ describe('the archive page', () => {
 			'GET /api/v1/documents/count': (_request, url) => ({
 				total: url.searchParams.has('tag_id') ? 7 : 1234
 			}),
-			'GET /api/v1/documents/search': () => ({
+			'POST /api/v1/documents/search': () => ({
 				items: [],
 				estimated_total: 12,
 				next_offset: null,
@@ -484,7 +499,7 @@ describe('the archive page', () => {
 		const all = new RegExp(m.lens_all());
 		expect(texts(all).some((text) => text.includes(formatNumber(1234)))).toBe(true);
 		// A lens with words counts by the words alone, without the embedding.
-		const searched = calls(api).find((call) => call.startsWith('GET /api/v1/documents/search?'));
+		const searched = calls(api).find((call) => call.startsWith('POST /api/v1/documents/search?'));
 		expect(searched).toContain('semantic_ratio=0');
 	});
 
@@ -576,33 +591,36 @@ describe('the archive page', () => {
 		await vi.waitFor(() => expect(patched).toHaveLength(1));
 		expect(patched[0]).toMatchObject({ filter: { tag_ids: ['t1', 't2'] }, query: null });
 		await user.click(screen.getByRole('button', { name: m.lens_discard() }));
-		expect(vi.mocked(goto)).toHaveBeenLastCalledWith('?lens=l1&tag=t1', { reset: false });
+		expect(vi.mocked(goto)).toHaveBeenLastCalledWith('?lens=l1&tag=t1', searching(''));
 	});
 
 	it('shows the words of a search as a chip that ends it, their count by the title', async () => {
-		state.url = new URL('http://lekto/ui/documents?q=Strom&tag=t1');
-		vi.stubGlobal(
-			'fetch',
-			fakeApi({
-				'GET /api/v1/documents/search': () => ({
-					items: [],
-					estimated_total: 4,
-					next_offset: null,
-					semantic: false
-				})
-			})
-		);
+		state.url = new URL('http://lekto/ui/documents?tag=t1');
+		state.entry = { words: 'Strom' };
+		const bodies: unknown[] = [];
+		const api = fakeApi({
+			'POST /api/v1/documents/search': async (request) => {
+				bodies.push(await request.json());
+				return { items: [], estimated_total: 4, next_offset: null, semantic: false };
+			}
+		});
+		vi.stubGlobal('fetch', api);
 		const user = userEvent.setup();
 		render(Page);
 		expect(await screen.findByText(m.search_total({ count: '4' }))).toBeTruthy();
+		// The words go in the body, never in an address; the filters stay query parameters.
+		expect(bodies).toEqual([{ q: 'Strom' }]);
+		const searched = calls(api).find((call) => call.startsWith('POST /api/v1/documents/search'));
+		expect(searched).toContain('tag_id=t1');
+		expect(searched).not.toContain('Strom');
 		await user.click(
 			screen.getByRole('button', { name: m.search_chip_remove({ words: 'Strom' }) })
 		);
-		expect(vi.mocked(goto)).toHaveBeenLastCalledWith('?tag=t1', { reset: false });
+		expect(vi.mocked(goto)).toHaveBeenLastCalledWith('?tag=t1', searching(''));
 	});
 
 	it('says when a search went by words alone, and offers the meaning once it is ready', async () => {
-		state.url = new URL('http://lekto/ui/documents?q=Weihnachten');
+		state.entry = { words: 'Weihnachten' };
 		let first = true;
 		const api = fakeApi({
 			'GET /api/v1/pipeline': () => ({
@@ -611,7 +629,7 @@ describe('the archive page', () => {
 				logo_fetch: false,
 				meaning_search: true
 			}),
-			'GET /api/v1/documents/search': () => {
+			'POST /api/v1/documents/search': () => {
 				const pending = first;
 				first = false;
 				return {
@@ -652,14 +670,14 @@ describe('the archive page', () => {
 				screen.queryByText(m.reason_search_embed_timeout({ seconds: '5' }), { exact: false })
 			).toBeNull()
 		);
-		const searches = calls(api).filter((call) => call.startsWith('GET /api/v1/documents/search'));
+		const searches = calls(api).filter((call) => call.startsWith('POST /api/v1/documents/search'));
 		expect(searches[0]).not.toContain('semantic_ratio');
 		expect(searches.at(-1)).not.toContain('semantic_ratio');
 		events.stop();
 	});
 
 	it('shows nothing of the meaning where the installation has no search by it', async () => {
-		state.url = new URL('http://lekto/ui/documents?q=Strom');
+		state.entry = { words: 'Strom' };
 		const api = fakeApi({
 			'GET /api/v1/pipeline': () => ({
 				nodes: [],
@@ -667,7 +685,7 @@ describe('the archive page', () => {
 				logo_fetch: false,
 				meaning_search: false
 			}),
-			'GET /api/v1/documents/search': () => ({
+			'POST /api/v1/documents/search': () => ({
 				items: [],
 				estimated_total: 0,
 				next_offset: null,
@@ -692,22 +710,23 @@ describe('the archive page', () => {
 		rememberFilters({ ...NO_FILTERS, contacts: ['c1'], tags: ['t1'] });
 		vi.stubGlobal('fetch', fakeApi());
 		render(Page);
-		expect(vi.mocked(goto)).toHaveBeenCalledWith('?contact=c1&tag=t1', {
-			replace: true,
-			reset: false
-		});
+		expect(vi.mocked(goto)).toHaveBeenCalledWith(
+			'?contact=c1&tag=t1',
+			searching('', { replace: true, reset: false })
+		);
 	});
 
 	it.each([
 		// A link's filters show, and are remembered in turn; words and a lens leave the memory.
-		['?tag=t2', { ...NO_FILTERS, tags: ['t2'] }],
-		['?contact=c2&layout=stream', { ...NO_FILTERS, contacts: ['c2'] }],
-		['?q=Strom', { ...NO_FILTERS, contacts: ['c1'] }],
-		['?lens=l1', { ...NO_FILTERS, contacts: ['c1'] }],
-		['?lens=l1&tag=t2', { ...NO_FILTERS, contacts: ['c1'] }]
-	])('leaves what a link brings alone (%s)', async (search, remembered) => {
+		['?tag=t2', {}, { ...NO_FILTERS, tags: ['t2'] }],
+		['?contact=c2&layout=stream', {}, { ...NO_FILTERS, contacts: ['c2'] }],
+		['', { words: 'Strom' }, { ...NO_FILTERS, contacts: ['c1'] }],
+		['?lens=l1', {}, { ...NO_FILTERS, contacts: ['c1'] }],
+		['?lens=l1&tag=t2', {}, { ...NO_FILTERS, contacts: ['c1'] }]
+	])('leaves what a link brings alone (%s %o)', async (search, entry, remembered) => {
 		rememberFilters({ ...NO_FILTERS, contacts: ['c1'] });
 		state.url = new URL(`http://lekto/ui/documents${search}`);
+		state.entry = entry;
 		vi.stubGlobal(
 			'fetch',
 			fakeApi({ 'GET /api/v1/documents/stream': () => ({ lanes: [], truncated: false }) })
@@ -727,10 +746,10 @@ describe('the archive page', () => {
 			await screen.findByRole('button', { name: m.filter_tag_remove({ name: 't1' }) })
 		);
 		expect(rememberedFilters()).toEqual({ ...NO_FILTERS, contacts: ['c1'] });
-		expect(vi.mocked(goto)).toHaveBeenLastCalledWith('?contact=c1', { reset: false });
+		expect(vi.mocked(goto)).toHaveBeenLastCalledWith('?contact=c1', searching(''));
 		await user.click(screen.getByRole('button', { name: m.filter_reset() }));
 		expect(rememberedFilters()).toBeNull();
-		expect(vi.mocked(goto)).toHaveBeenLastCalledWith('/ui/documents', { reset: false });
+		expect(vi.mocked(goto)).toHaveBeenLastCalledWith('/ui/documents', searching(''));
 	});
 
 	it('does not remember the filters of a lens', async () => {
@@ -741,7 +760,7 @@ describe('the archive page', () => {
 		await user.click(
 			await screen.findByRole('button', { name: m.filter_tag_remove({ name: 't1' }) })
 		);
-		expect(vi.mocked(goto)).toHaveBeenLastCalledWith('?lens=l1', { reset: false });
+		expect(vi.mocked(goto)).toHaveBeenLastCalledWith('?lens=l1', searching(''));
 		expect(rememberedFilters()).toBeNull();
 	});
 

@@ -51,8 +51,8 @@
 		problem = null;
 		try {
 			const found = await unwrap(
-				api.GET('/api/v1/identifiers/open/detail', {
-					params: { query: { kind: wanted.kind, value: wanted.value } }
+				api.GET('/api/v1/identifiers/open/{kind}/{ref}', {
+					params: { path: { kind: wanted.kind, ref: wanted.ref } }
 				})
 			);
 			if (item === wanted) detail = found;

@@ -418,7 +418,7 @@ async def test_auth_answers_are_not_stored(api: Api) -> None:
     ]
     answers += [
         await api.client.get(f"{PREFIX}/spaces", headers=auth(user)),
-        await api.client.get(f"{PREFIX}/documents/search", params={"q": "x"}, headers=auth(user)),
+        await api.client.post(f"{PREFIX}/documents/search", json={"q": "x"}, headers=auth(user)),
         await api.client.get(f"{PREFIX}/users/{UUID(int=7)}", headers=auth(user)),  # 404
     ]
     for answer in answers:

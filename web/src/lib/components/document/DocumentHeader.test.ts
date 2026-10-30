@@ -267,7 +267,12 @@ describe('DocumentHeader', () => {
 			const dialog = await screen.findByRole('dialog');
 			await choose(user, within(dialog).getByLabelText(m.field_space()), 'space-3');
 			await user.click(within(dialog).getByRole('button', { name: m.move_title() }));
-			await waitFor(() => expect(goto).toHaveBeenCalledWith('/ui/documents'));
+			await waitFor(() =>
+				expect(goto).toHaveBeenCalledWith('/ui/documents', {
+					state: { words: '' },
+					persistState: true
+				})
+			);
 			expect(await fetchMock.mock.calls[0][0].json()).toEqual({ space_id: 'space-3' });
 			expect(onchanged).not.toHaveBeenCalled();
 		});
@@ -284,7 +289,12 @@ describe('DocumentHeader', () => {
 			const dialog = await screen.findByRole('dialog');
 			await choose(user, within(dialog).getByLabelText(m.field_space()), 'space-3');
 			await user.click(within(dialog).getByRole('button', { name: m.move_title() }));
-			await waitFor(() => expect(goto).toHaveBeenCalledWith('/ui/documents'));
+			await waitFor(() =>
+				expect(goto).toHaveBeenCalledWith('/ui/documents', {
+					state: { words: '' },
+					persistState: true
+				})
+			);
 			expect(await fetchMock.mock.calls[0][0].json()).toEqual({ space_id: 'space-3' });
 			expect(onchanged).not.toHaveBeenCalled();
 		});

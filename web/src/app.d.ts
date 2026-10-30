@@ -4,7 +4,10 @@ declare global {
 		// interface Error {}
 		// interface Locals {}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			/** The words of the documents' search (`lib/words.ts`), never in the address. */
+			words?: string;
+		}
 		// interface Platform {}
 	}
 }

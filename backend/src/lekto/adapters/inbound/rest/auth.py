@@ -3,7 +3,9 @@
 - With a Bearer header, only the token counts; a cookie in the same request is ignored.
 - Requests that change something (any method but GET, HEAD, OPTIONS) need, with a session, the
   header `X-CSRF-Token` with the session's CSRF token (`GET /auth/me`, sign-in answer), and,
-  with a token, the scope `read_write`.
+  with a token, the scope `read_write`. A POST that only reads (`READS`: words in the body, so
+  they stay out of addresses) is open to a `read` token; with a session it needs the header all
+  the same.
 - Every protected router depends on `authenticate`, so a route cannot be added without it. It
   runs before the parameters are checked: without credentials the answer is always 401.
 - Managing one's own sign-in (password, TOTP, tokens, sessions, links) needs a session; an API
@@ -13,6 +15,7 @@
 from typing import Annotated, Literal, TypedDict
 
 from fastapi import Depends, Request, Response
+from fastapi.routing import APIRoute
 
 from lekto.adapters.inbound.bearer import bearer_token
 from lekto.adapters.inbound.rest.context import ApiContext, Context
@@ -29,6 +32,9 @@ SECURE_FLOW_COOKIE = "__Host-lekto_oidc"
 FLOW_COOKIE = "lekto_oidc"
 CSRF_HEADER = "X-CSRF-Token"
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+READS_KEY = "x-reads"
+READS = {READS_KEY: True}
+"""`openapi_extra` of a POST that only reads, such as a search with its words in the body."""
 
 # Security schemes of the OpenAPI document; `app.openapi` sets them per operation from the
 # dependencies of its route.
@@ -46,7 +52,10 @@ SECURITY_SCHEMES = {
     "token": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Personal API token (`lekto_…`); scope `read` allows reading only.",
+        "description": (
+            "Personal API token (`lekto_…`); scope `read` allows reading only: GET, and the "
+            f"POST operations marked `{READS_KEY}` (a search with its words in the body)."
+        ),
     },
     "taskToken": {
         "type": "http",
@@ -90,7 +99,7 @@ async def authenticate(request: Request, context: Context) -> Principal:
     header = request.headers.get("authorization")
     if header is not None:
         principal = await context.auth.authenticate_token(bearer_token(header))
-        if request.method not in SAFE_METHODS and not principal.can_write:
+        if request.method not in SAFE_METHODS and not principal.can_write and not _reads(request):
             raise PermissionDeniedError(because(ReasonCode.READ_ONLY_TOKEN))
     else:
         session_token = request.cookies.get(session_cookie_name(context))
@@ -103,6 +112,12 @@ async def authenticate(request: Request, context: Context) -> Principal:
             raise PermissionDeniedError(because(ReasonCode.CSRF_MISSING, header=CSRF_HEADER))
     request.state.principal = principal
     return principal
+
+
+def _reads(request: Request) -> bool:
+    """Whether the request's route only reads although its method is not safe (`READS`)."""
+    route = request.scope.get("route")
+    return isinstance(route, APIRoute) and bool((route.openapi_extra or {}).get(READS_KEY))
 
 
 async def still_authenticated(request: Request, context: ApiContext, user: UserId) -> bool:

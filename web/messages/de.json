@@ -1753,6 +1753,7 @@
 	"reason_relation_to_itself": "ein Dokument bezieht sich nicht auf sich selbst",
 	"reason_fact_filter_of_person": "nur Admins finden Dokumente über Nummern einer Person",
 	"reason_rule_fact_of_person": "nur Admins schreiben Regeln auf die Nummern einer Person",
+	"reason_ref_unknown": "der Verweis nennt keinen Wert dieser Art; er ist beschädigt oder stammt aus einer anderen Instanz",
 	"reason_fact_criterion_empty": "ein Filter nach Fakten nennt eine Art, eine Rolle oder eine Art mit ihrem Wert",
 	"reason_fact_not_asked": "ein Fakt „{kind}“ in der Rolle „{role}“ war nicht gefragt",
 	"reason_holder_not_listed": "„{value}“ war keine der gefragten Nummern",

@@ -324,6 +324,7 @@ class ReasonCode(StrEnum):
     HOLDER_KIND_UNKNOWN = "holder_kind_unknown"
     HOLDER_NAME_NOT_NEAR = "holder_name_not_near"
     FACT_CRITERION_EMPTY = "fact_criterion_empty"
+    REF_UNKNOWN = "ref_unknown"
     RULE_FACT_OF_PERSON = "rule_fact_of_person"
     RELATION_EXISTS = "relation_exists"
     RELATION_NOT_FOUND = "relation_not_found"
@@ -795,6 +796,9 @@ TEMPLATES: Mapping[ReasonCode, str] = {
     ReasonCode.HOLDER_NOT_LISTED: "'{value}' was not among the numbers asked about",
     ReasonCode.HOLDER_KIND_UNKNOWN: "'{holder}' is no holder Lekto knows",
     ReasonCode.HOLDER_NAME_NOT_NEAR: "the name '{name}' does not stand near the number",
+    ReasonCode.REF_UNKNOWN: (
+        "the reference names no value of this kind; it is damaged or comes from another instance"
+    ),
     ReasonCode.FACT_CRITERION_EMPTY: (
         "a filter by facts names a kind, a role, or a kind with its value"
     ),

@@ -12,7 +12,6 @@
 	import X from '@lucide/svelte/icons/x';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
@@ -60,6 +59,7 @@
 		lensDiffers,
 		lensFilter,
 		lensParams,
+		rememberLensFacts,
 		type Lens,
 		type LensSort
 	} from '#lib/lenses.ts';
@@ -99,6 +99,7 @@
 	import { cn } from '#lib/utils.ts';
 	import { onChange } from '#lib/watch.svelte.ts';
 	import { returnTo } from '#lib/return-to.svelte.ts';
+	import { gotoSearching, stateWords } from '#lib/words.ts';
 	import PageTitle from '#lib/components/page/PageTitle.svelte';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import { FIELD_FRAME } from '#lib/components/ui/field-look.ts';
@@ -122,7 +123,12 @@
 
 	const params = $derived(new URLSearchParams(page.url.search));
 	const filters = $derived(parseFilters(params));
-	const query = $derived(params.get('q')?.trim() ?? '');
+	// The user's lenses; the open one is in the URL (`lens`).
+	let lenses = $state<Lens[]>([]);
+	const lens = $derived(lenses.find((entry) => entry.id === params.get('lens')) ?? null);
+	// The words of the search live in the history entry, never in the URL (`lib/words.ts`); a
+	// plain link to a lens opens it with the lens's words.
+	const query = $derived(stateWords(page.state) ?? lens?.query?.trim() ?? '');
 	const searching = $derived(query !== '');
 	const sort = $derived(sortOf(params, searching));
 	const sortField = $derived(sortFieldOf(params, searching));
@@ -132,7 +138,7 @@
 	// A link may ask for a layout (`layout=stream`: the stream of a contact, #145).
 	const asked = $derived(LAYOUTS.find((value) => value === params.get('layout')) ?? null);
 	// "Back" from a document returns to the list as it is now (`returnTo`).
-	$effect(() => returnTo.rememberDocuments(page.url));
+	$effect(() => returnTo.rememberDocuments(page.url, query));
 
 	$effect(() => {
 		if (asked) layout = asked;
@@ -161,9 +167,6 @@
 		collapsed = !collapsed;
 		rememberFiltersCollapsed(collapsed);
 	}
-	// The user's lenses; the open one is in the URL (`lens`).
-	let lenses = $state<Lens[]>([]);
-	const lens = $derived(lenses.find((entry) => entry.id === params.get('lens')) ?? null);
 	const today = new Date();
 	// The editor of a lens: a new one (null) from the page as it stands, or the open one.
 	let editorOpen = $state(false);
@@ -177,7 +180,7 @@
 	});
 
 	// The page differs from the open lens: keep it there, as a new lens, or go back.
-	const changed = $derived(lens !== null && lensDiffers(lens, params, today));
+	const changed = $derived(lens !== null && lensDiffers(lens, params, query, today));
 	let keeping = $state(false);
 
 	async function keep() {
@@ -198,7 +201,7 @@
 			toast.success(m.lens_saved({ name: kept.name }));
 			await loadLenses();
 			// As the lens keeps it (a fact's value normalised): the page no longer differs.
-			go(lensParams(kept, today));
+			go(lensParams(kept, today), kept.query ?? '');
 		} catch (error) {
 			toast.error(describeError(error));
 		} finally {
@@ -214,7 +217,7 @@
 	async function saved(saved: Lens, created: boolean) {
 		await loadLenses();
 		if (created) {
-			go(lensParams(saved, today));
+			go(lensParams(saved, today), saved.query ?? '');
 			return;
 		}
 		// The page takes the lens's sort and layout; its filters stay as they stand.
@@ -233,13 +236,17 @@
 
 	async function deleted(id: string) {
 		await loadLenses();
-		if (params.get('lens') === id) go(new URLSearchParams());
+		if (params.get('lens') === id) go(new URLSearchParams(), '');
 	}
 
 	// The header's search names the open lens.
 	$effect(() => {
 		openLens.name = lens?.name ?? null;
-		return () => (openLens.name = null);
+		openLens.query = lens?.query ?? null;
+		return () => {
+			openLens.name = null;
+			openLens.query = null;
+		};
 	});
 
 	// Opening a lens shows its layout (not remembered: that is the choice outside lenses).
@@ -264,6 +271,7 @@
 	async function loadLenses() {
 		try {
 			lenses = await unwrap(api.GET('/api/v1/lenses'));
+			rememberLensFacts(lenses);
 		} catch {
 			// Without lenses the documents stand as ever.
 			lenses = [];
@@ -317,18 +325,18 @@
 		if (searching) {
 			const words = query;
 			const data = await unwrap(
-				api.GET('/api/v1/documents/search', {
+				api.POST('/api/v1/documents/search', {
 					params: {
 						query: {
 							...base,
-							q: words,
 							// A search never sorts by a field (`sortOf`).
 							sort: sort as Exclude<Sort, FieldSort>,
 							offset,
 							limit,
 							semantic_ratio: searchNote.ratio(words)
 						}
-					}
+					},
+					body: { q: words }
 				})
 			);
 			if (offset === 0) searchNote.answered(words, data);
@@ -366,7 +374,7 @@
 		const params = new URLSearchParams(page.url.search);
 		if (next > 1) params.set('page', String(next));
 		else params.delete('page');
-		void goto(params.size > 0 ? `?${params}` : page.url.pathname, { replaceState: replace });
+		void gotoSearching(params.size > 0 ? `?${params}` : page.url.pathname, query, { replace });
 	}
 
 	/** Show `size` documents per page, on the page that holds the first one shown so far; that
@@ -424,7 +432,7 @@
 	function selection(): BulkSelection {
 		if (!allHits) return { ids: chosen, query: {} };
 		const base = apiQuery(filters, scope.allUsers);
-		return { ids: null, query: searching ? { ...base, q: query } : base };
+		return { ids: null, query: base, words: searching ? query : undefined };
 	}
 
 	// The action on the choice, followed by the page until it ends, whichever bar shows it.
@@ -455,7 +463,7 @@
 	let seenGeneration = 0;
 	$effect(() => {
 		const shown = [...params].filter(([name]) => name !== 'page');
-		const shownList = `${JSON.stringify(shown)}|${scope.allUsers}`;
+		const shownList = `${JSON.stringify([shown, query])}|${scope.allUsers}`;
 		const generation = events.generation;
 		const wanted = pageNumber;
 		const before = shownKey;
@@ -498,7 +506,7 @@
 		const remembered = rememberedFilters();
 		if (remembered && !isFiltered(filters) && !searching && !params.has('lens')) {
 			const next = writeFilters(new URLSearchParams(page.url.search), remembered);
-			void goto(`?${next}`, { replace: true, reset: false });
+			void gotoSearching(`?${next}`, query, { replace: true, reset: false });
 		}
 		void pageLookup.load();
 		void loadLenses();
@@ -530,9 +538,10 @@
 		};
 	});
 
-	function go(next: URLSearchParams) {
+	/** Show the list of `next`, searching for `words` (the words searched for so far). */
+	function go(next: URLSearchParams, words = query) {
 		const search = next.toString();
-		void goto(search ? `?${search}` : page.url.pathname, { reset: false });
+		void gotoSearching(search ? `?${search}` : page.url.pathname, words, { reset: false });
 	}
 
 	// What the page shows outside a lens is remembered for the next opening, whether a chip or
@@ -551,12 +560,10 @@
 		// Built and handed on at once, nothing reacts to it.
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const next = new URLSearchParams(page.url.search);
-		if (term) next.set('q', term);
-		else next.delete('q');
 		// A list sort may not suit a search and back: the remembered one of the mode holds.
 		next.delete('sort');
 		next.delete('sort_field');
-		go(next);
+		go(next, term);
 	}
 
 	function sortBy(value: string) {
@@ -927,7 +934,7 @@ row of filters, on a desktop narrow by the title. -->
 						busy={keeping}
 						onsave={keep}
 						onsaveas={() => edit(null)}
-						ondiscard={() => lens && go(lensParams(lens, today))}
+						ondiscard={() => lens && go(lensParams(lens, today), lens.query ?? '')}
 					/>
 				{/if}
 				{#if lookup}

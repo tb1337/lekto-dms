@@ -222,8 +222,8 @@ async def test_a_person_decides_about_a_fact(facts_api: Api) -> None:
 
 
 async def test_documents_are_found_by_their_facts(facts_api: Api) -> None:
-    """In the list and its counts, by `kind:value:role`; a person's kinds only for admins; a
-    lens keeps facts with their values normalised."""
+    """In the list and its counts, by `kind:ref:role`, the value by its reference; a person's
+    kinds only for admins; a lens keeps facts with their values normalised."""
     api = facts_api
     owner = await api.user()
     document = await upload(api, auth(owner))
@@ -234,10 +234,24 @@ async def test_documents_are_found_by_their_facts(facts_api: Api) -> None:
     )
     assert added.status_code == 200, added.text
 
-    async def listed(*facts: str) -> list[str] | int:
-        response = await api.client.get(
-            DOCUMENTS, params=[("fact", fact) for fact in facts], headers=auth(owner)
+    async def ref(kind: str, value: str) -> str:
+        made = await api.client.post(
+            f"{PREFIX}/identifiers/refs", json={"kind": kind, "value": value}, headers=auth(owner)
         )
+        assert made.status_code == 200, made.text
+        return str(made.json()["ref"])
+
+    async def written(fact: str) -> str:
+        """`kind:value:role` with the value as written, as the filter takes it."""
+        kind, _, rest = fact.partition(":")
+        value, _, role = rest.rpartition(":")
+        if value and kind:
+            value = await ref(kind, value)
+        return f"{kind}:{value}:{role}"
+
+    async def listed(*facts: str) -> list[str] | int:
+        params = {"fact": [await written(fact) for fact in facts]}
+        response = await api.client.get(DOCUMENTS, params=params, headers=auth(owner))
         if response.status_code != 200:
             return response.status_code
         return [item["id"] for item in response.json()["items"]]
@@ -253,6 +267,11 @@ async def test_documents_are_found_by_their_facts(facts_api: Api) -> None:
     assert await listed("letter_date:15.08.2026 10:30:") == []  # a value may hold colons
     unknown = await api.client.get(DOCUMENTS, params={"fact": "bogus::"}, headers=auth(owner))
     assert (unknown.status_code, unknown.json()["reason"]["code"]) == (422, "fact_kind_unknown")
+    # The value as written, or a reference of another kind, names nothing.
+    invoice = await ref("invoice_number", "R-1001")
+    for fact in ("invoice_number:R1001:", f"customer_number:{invoice}:"):
+        wrong = await api.client.get(DOCUMENTS, params={"fact": fact}, headers=auth(owner))
+        assert (wrong.status_code, wrong.json()["reason"]["code"]) == (422, "ref_unknown")
     facets = await api.client.get(
         f"{DOCUMENTS}/facets", params={"fact": "invoice_number::"}, headers=auth(owner)
     )
@@ -262,14 +281,20 @@ async def test_documents_are_found_by_their_facts(facts_api: Api) -> None:
         f"{PREFIX}/lenses",
         json={
             "name": "Rechnung R-1001",
-            "filter": {"facts": [{"kind": "invoice_number", "value": "R-1001"}]},
+            "filter": {"facts": [{"kind": "invoice_number", "ref": invoice}]},
         },
         headers=auth(owner),
     )
     assert lens.status_code == 201, lens.text
     assert lens.json()["filter"]["facts"] == [
-        {"kind": "invoice_number", "value": "R1001", "role": None}
+        {"kind": "invoice_number", "value": "R1001", "ref": invoice, "role": None}
     ]
+    broken = await api.client.post(
+        f"{PREFIX}/lenses",
+        json={"name": "Kaputt", "filter": {"facts": [{"kind": "invoice_number", "ref": "x"}]}},
+        headers=auth(owner),
+    )
+    assert (broken.status_code, broken.json()["reason"]["code"]) == (422, "ref_unknown")
     personal = await api.client.post(
         f"{PREFIX}/lenses",
         json={"name": "Steuer", "filter": {"facts": [{"kind": "tax_id"}]}},

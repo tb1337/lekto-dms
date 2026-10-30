@@ -7,6 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from lekto.adapters.inbound.rest.schemas.refs import seal
 from lekto.adapters.inbound.schemas import ReasonOut
 from lekto.core.domain.document_facts import FactRole
 from lekto.core.domain.identifiers import IdentifierKind
@@ -17,6 +18,7 @@ from lekto.core.domain.open_identifiers import (
     Recommendation,
     Recommended,
 )
+from lekto.core.ports.identity import RefCipher
 from lekto.core.services.open_identifiers import (
     DecisionOutcome,
     OpenAction,
@@ -60,6 +62,10 @@ class OpenIdentifierOut(BaseModel):
 
     kind: IdentifierKind
     value: str = Field(description="Normalised, as Lekto compares it.")
+    ref: str = Field(
+        description="The value's reference: for `GET /identifiers/open/{kind}/{ref}` and the "
+        "`fact` filter of the documents."
+    )
     written: str = Field(description="As the newest of its documents writes it.")
     source: OpenSource = Field(
         description="`learned`: training found it at `contacts[0]`; `unknown`: it stands in "
@@ -84,10 +90,12 @@ class OpenIdentifierOut(BaseModel):
         item: OpenIdentifier,
         names: Mapping[ContactId, str],
         persons: Mapping[UserId, str],
+        refs: RefCipher,
     ) -> "OpenIdentifierOut":
         return cls(
             kind=item.kind,
             value=item.value,
+            ref=seal(refs, item.kind, item.value),
             written=item.written,
             source=item.source,
             contacts=[OpenContactOut(id=id, name=names.get(id, "")) for id in item.contacts],
@@ -129,13 +137,15 @@ class OpenPageOut(BaseModel):
     )
     to_confirm: int = Field(
         description="How many of them have one to confirm: what `POST /recommended` confirms "
-        "(of every source and kind, without `q`)."
+        "(of every source and kind, without the words)."
     )
 
     @classmethod
-    def of(cls, page: OpenPage) -> "OpenPageOut":
+    def of(cls, page: OpenPage, refs: RefCipher) -> "OpenPageOut":
         return cls(
-            items=[OpenIdentifierOut.of(item, page.names, page.persons) for item in page.items],
+            items=[
+                OpenIdentifierOut.of(item, page.names, page.persons, refs) for item in page.items
+            ],
             total=page.total,
             counts=OpenCountsOut.of(page.counts),
             kinds=dict(page.kinds),
@@ -178,11 +188,22 @@ class OpenDetailOut(BaseModel):
     places: list[PlaceOut] = Field(description="Where it stands in its newest documents (5).")
 
     @classmethod
-    def of(cls, detail: OpenDetail) -> "OpenDetailOut":
+    def of(cls, detail: OpenDetail, refs: RefCipher) -> "OpenDetailOut":
         return cls(
-            identifier=OpenIdentifierOut.of(detail.item, detail.names, detail.persons),
+            identifier=OpenIdentifierOut.of(detail.item, detail.names, detail.persons, refs),
             places=[PlaceOut.of(place) for place in detail.places],
         )
+
+
+class OpenSearchIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"examples": [{"q": "2004 7718"}]})
+
+    q: str = Field(
+        min_length=1,
+        max_length=200,
+        description="Words in the value (with or without spaces), as written or in a contact's "
+        "name.",
+    )
 
 
 class OpenDecisionIn(BaseModel):

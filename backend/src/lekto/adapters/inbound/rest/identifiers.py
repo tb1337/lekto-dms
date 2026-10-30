@@ -1,11 +1,12 @@
-"""`/identifiers/open`: the identifiers no person has confirmed, and decisions about them."""
+"""`/identifiers/open`: the identifiers no person has confirmed, and decisions about them;
+`/identifiers/refs`: the references that name a value in an address."""
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Path, Query
 
-from lekto.adapters.inbound.rest.auth import PROTECTED, Authenticated, CurrentUser
-from lekto.adapters.inbound.rest.context import Context
+from lekto.adapters.inbound.rest.auth import PROTECTED, READS, Authenticated, CurrentUser
+from lekto.adapters.inbound.rest.context import ApiContext, Context
 from lekto.adapters.inbound.rest.params import ADMINS_ONLY
 from lekto.adapters.inbound.rest.problems import problem_responses
 from lekto.adapters.inbound.rest.schemas.open_identifiers import (
@@ -13,9 +14,12 @@ from lekto.adapters.inbound.rest.schemas.open_identifiers import (
     OpenDecisionsIn,
     OpenDetailOut,
     OpenPageOut,
+    OpenSearchIn,
     OutcomeOut,
 )
-from lekto.core.domain.identifiers import IdentifierKind
+from lekto.adapters.inbound.rest.schemas.refs import MAX_REF, RefIn, RefOut, opened, seal
+from lekto.core.domain.identifiers import IdentifierKind, normalise_identifier
+from lekto.core.domain.ids import UserId
 from lekto.core.domain.open_identifiers import OpenSource
 from lekto.core.ports.repository import PAGE_LIMIT
 
@@ -29,38 +33,68 @@ _OPEN = (
 )
 
 
+_LIST = (
+    " The most documents first, then the newest. `recommended` keeps those whose documents "
+    "recommend confirming or rejecting them (`recommendation`)."
+)
+
+
+class _Listing:
+    """The query parameters of the list, shared by `GET` and the search."""
+
+    def __init__(
+        self,
+        source: OpenSource | None = None,
+        kind: IdentifierKind | None = None,
+        recommended: bool = False,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=0, le=PAGE_LIMIT)] = 50,
+    ) -> None:
+        self.source, self.kind, self.recommended = source, kind, recommended
+        self.offset, self.limit = offset, limit
+
+    async def page(self, user: UserId, context: ApiContext, words: str | None) -> OpenPageOut:
+        page = await context.open_identifiers.page(
+            user,
+            source=self.source,
+            kind=self.kind,
+            words=words,
+            recommended=self.recommended,
+            offset=self.offset,
+            limit=self.limit,
+        )
+        return OpenPageOut.of(page, context.refs)
+
+
+Listing = Annotated[_Listing, Depends()]
+
+
 @router.get(
     "",
     summary="The open identifiers",
+    description=ADMINS_ONLY + " " + _OPEN + _LIST + " To find words: `POST /search`.",
+    response_model=OpenPageOut,
+    responses=problem_responses(401, 403, 422),
+)
+async def open_identifiers(user: CurrentUser, context: Context, listing: Listing) -> OpenPageOut:
+    return await listing.page(user, context, None)
+
+
+@router.post(
+    "/search",
+    openapi_extra=READS,
+    summary="Find open identifiers by words",
     description=(
-        ADMINS_ONLY + " " + _OPEN + " The most documents first, then the newest. `q` finds "
-        "words in the value (with or without spaces), as written or in a contact's name; "
-        "`recommended` keeps those whose documents recommend confirming or rejecting them "
-        "(`recommendation`)."
+        ADMINS_ONLY + " The list of `GET` with the words of `q`, which go in the body so that "
+        "they stay out of addresses and logs." + _LIST
     ),
     response_model=OpenPageOut,
     responses=problem_responses(401, 403, 422),
 )
-async def open_identifiers(
-    user: CurrentUser,
-    context: Context,
-    source: OpenSource | None = None,
-    kind: IdentifierKind | None = None,
-    q: Annotated[str | None, Query(max_length=200)] = None,
-    recommended: bool = False,
-    offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=0, le=PAGE_LIMIT)] = 50,
+async def search_open_identifiers(
+    body: OpenSearchIn, user: CurrentUser, context: Context, listing: Listing
 ) -> OpenPageOut:
-    page = await context.open_identifiers.page(
-        user,
-        source=source,
-        kind=kind,
-        words=q,
-        recommended=recommended,
-        offset=offset,
-        limit=limit,
-    )
-    return OpenPageOut.of(page)
+    return await listing.page(user, context, body.q)
 
 
 @router.get(
@@ -75,11 +109,12 @@ async def open_summary(user: CurrentUser, context: Context) -> OpenCountsOut:
 
 
 @router.get(
-    "/detail",
+    "/{kind}/{ref}",
     summary="An open identifier and where it stands",
     description=(
-        ADMINS_ONLY + " The open identifier of `kind` and `value` (normalised, as the list "
-        "gives it) and where it stands in its five newest documents. 404 if it is not open."
+        ADMINS_ONLY + " The open identifier of `kind` with the value of `ref` (its `ref` in the "
+        "list) and where it stands in its five newest documents. 404 if it is not open, 422 "
+        "for a reference that names no value of the kind."
     ),
     response_model=OpenDetailOut,
     responses=problem_responses(401, 403, 404, 422),
@@ -88,9 +123,10 @@ async def open_detail(
     user: CurrentUser,
     context: Context,
     kind: IdentifierKind,
-    value: Annotated[str, Query(min_length=1, max_length=200)],
+    ref: Annotated[str, Path(max_length=MAX_REF)],
 ) -> OpenDetailOut:
-    return OpenDetailOut.of(await context.open_identifiers.detail(user, kind, value))
+    value = opened(context.refs, kind, ref)
+    return OpenDetailOut.of(await context.open_identifiers.detail(user, kind, value), context.refs)
 
 
 @router.post(
@@ -135,3 +171,41 @@ async def confirm_recommended(principal: Authenticated, context: Context) -> lis
         principal.id, session=principal.session is not None
     )
     return [OutcomeOut.of(outcome) for outcome in outcomes]
+
+
+refs_router = APIRouter(prefix="/identifiers/refs", tags=["identifiers"], dependencies=PROTECTED)
+
+
+@refs_router.post(
+    "",
+    openapi_extra=READS,
+    summary="The reference to a value",
+    description=(
+        "The reference to an identifier's value, for addresses that name it (the `fact` "
+        "filter of the documents): the value goes in the body, the reference in the URL, so "
+        "the value stays out of histories, bookmarks and logs. The same value (normalised) "
+        "always gives the same reference while the instance's secret key stays. 422 for a "
+        "value that is none of its kind."
+    ),
+    response_model=RefOut,
+    responses=problem_responses(401, 422),
+)
+async def make_ref(body: RefIn, user: CurrentUser, context: Context) -> RefOut:
+    value = normalise_identifier(body.kind, body.value)
+    return RefOut(kind=body.kind, value=value, ref=seal(context.refs, body.kind, value))
+
+
+@refs_router.get(
+    "/{kind}/{ref}",
+    summary="The value of a reference",
+    description="To show what a reference names. 422 for one that names no value of the kind.",
+    response_model=RefOut,
+    responses=problem_responses(401, 422),
+)
+async def read_ref(
+    kind: IdentifierKind,
+    ref: Annotated[str, Path(max_length=MAX_REF)],
+    user: CurrentUser,
+    context: Context,
+) -> RefOut:
+    return RefOut(kind=kind, value=opened(context.refs, kind, ref), ref=ref)

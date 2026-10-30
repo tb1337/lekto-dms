@@ -180,7 +180,7 @@ async def test_the_meaning_of_a_query_reaches_only_its_searcher() -> None:
         for stream in streams.values():
             await asyncio.wait_for(stream.ready.wait(), timeout=5)
         query = {"q": "Weihnachtsgeld"}
-        first = await client.get(f"{PREFIX}/documents/search", params=query, headers=auth(searcher))
+        first = await client.post(f"{PREFIX}/documents/search", json=query, headers=auth(searcher))
         assert first.status_code == 200, first.text
         body = first.json()
         assert (body["mode"], body["meaning_pending"]) == ("words", True)
@@ -190,7 +190,7 @@ async def test_the_meaning_of_a_query_reaches_only_its_searcher() -> None:
         event = streams[searcher.id].events[0]
         assert event["query"] == "Weihnachtsgeld"
         assert "user_id" not in event and "document_id" not in event
-        again = await client.get(f"{PREFIX}/documents/search", params=query, headers=auth(searcher))
+        again = await client.post(f"{PREFIX}/documents/search", json=query, headers=auth(searcher))
         assert (again.json()["mode"], again.json()["reason"]) == ("hybrid", None)
         warm = await client.post(f"{PREFIX}/documents/search/warm", headers=auth(searcher))
         assert warm.status_code == 204

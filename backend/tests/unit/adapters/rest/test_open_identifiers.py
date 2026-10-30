@@ -59,6 +59,7 @@ async def test_admins_see_the_open_identifiers(api: Api) -> None:
         {
             "kind": "customer_number",
             "value": "20047718",
+            "ref": api.container.refs.seal("20047718", context="customer_number"),
             "written": "20047718",
             "source": "learned",
             "contacts": [{"id": str(contact.id), "name": "Stadtwerke"}],
@@ -88,10 +89,10 @@ async def test_admins_see_the_open_identifiers(api: Api) -> None:
     summary = await api.client.get(f"{URL}/summary", headers=auth(admin))
     assert summary.json() == {"learned": 1, "unknown": 1, "suggested": 0}
 
-    detail = await api.client.get(
-        f"{URL}/detail", params={"kind": "vat_id", "value": VAT[1]}, headers=auth(admin)
-    )
+    vat = api.container.refs.seal(VAT[1], context="vat_id")
+    detail = await api.client.get(f"{URL}/vat_id/{vat}", headers=auth(admin))
     assert detail.status_code == 200
+    assert detail.json()["identifier"]["ref"] == vat
     (place, _) = detail.json()["places"]
     assert place["role"] == "contact"
     assert place["excerpt"] == {
@@ -99,10 +100,53 @@ async def test_admins_see_the_open_identifiers(api: Api) -> None:
         "match": "DE312456789",
         "after": "",
     }
-    missing = await api.client.get(
-        f"{URL}/detail", params={"kind": "vat_id", "value": "DE1"}, headers=auth(admin)
-    )
+    gone = api.container.refs.seal("DE1", context="vat_id")
+    missing = await api.client.get(f"{URL}/vat_id/{gone}", headers=auth(admin))
     assert (missing.status_code, missing.json()["reason"]["code"]) == (404, "identifier_not_open")
+    for wrong in (f"customer_number/{vat}", "vat_id/DE312456789"):
+        refused = await api.client.get(f"{URL}/{wrong}", headers=auth(admin))
+        assert (refused.status_code, refused.json()["reason"]["code"]) == (422, "ref_unknown")
+
+
+async def test_open_identifiers_are_found_by_words_in_the_body(api: Api) -> None:
+    await seeded(api)
+    user, admin = await api.user(), await api.admin()
+    search = f"{URL}/search"
+    assert (await api.client.post(search, json={"q": "x"}, headers=auth(user))).status_code == 403
+    found = await api.client.post(
+        search, params={"source": "learned"}, json={"q": "2004 7718"}, headers=auth(admin)
+    )
+    assert found.status_code == 200, found.text
+    assert [item["value"] for item in found.json()["items"]] == ["20047718"]
+    none = await api.client.post(search, json={"q": "Gaswerke"}, headers=auth(admin))
+    assert none.json()["items"] == []
+    assert (await api.client.post(search, json={}, headers=auth(admin))).status_code == 422
+    # The list takes no words.
+    listed = await api.client.get(URL, params={"q": "Gaswerke"}, headers=auth(admin))
+    assert listed.json()["total"] == 2
+
+
+async def test_refs_name_a_value_without_showing_it(api: Api) -> None:
+    user = await api.user()
+    refs = f"{PREFIX}/identifiers/refs"
+    made = await api.client.post(
+        refs, json={"kind": "iban", "value": "de89 3704 0044 0532 0130 00"}, headers=auth(user)
+    )
+    assert made.status_code == 200, made.text
+    ref = made.json()["ref"]
+    assert made.json() == {"kind": "iban", "value": "DE89370400440532013000", "ref": ref}
+    assert "DE89" not in ref
+    again = await api.client.post(
+        refs, json={"kind": "iban", "value": "DE89370400440532013000"}, headers=auth(user)
+    )
+    assert again.json()["ref"] == ref
+    read = await api.client.get(f"{refs}/iban/{ref}", headers=auth(user))
+    assert read.json() == made.json()
+    bad = await api.client.post(refs, json={"kind": "iban", "value": "DE00"}, headers=auth(user))
+    assert bad.status_code == 422
+    other = await api.client.get(f"{refs}/vat_id/{ref}", headers=auth(user))
+    assert (other.status_code, other.json()["reason"]["code"]) == (422, "ref_unknown")
+    assert (await api.client.get(f"{refs}/iban/{ref}")).status_code == 401
 
 
 async def test_decisions_come_back_one_by_one(api: Api) -> None:

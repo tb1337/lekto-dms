@@ -1,5 +1,5 @@
 """Query parameters that routes share: the filter of documents (`GET /documents`,
-`GET /documents/search`), the switches to every user's documents and rules (`all_users`), and
+`POST /documents/search`), the switches to every user's documents and rules (`all_users`), and
 document counts; and how their descriptions say who may call them."""
 
 from datetime import date
@@ -10,6 +10,8 @@ from uuid import UUID
 from fastapi import Depends, Query
 from fastapi.exceptions import RequestValidationError
 
+from lekto.adapters.inbound.rest.context import Context
+from lekto.adapters.inbound.rest.schemas.refs import opened
 from lekto.core.domain.document_facts import FactCriterion, FactRole
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.identifiers import IdentifierKind
@@ -18,6 +20,7 @@ from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.search import PROCESSING, lane_value
+from lekto.core.ports.identity import RefCipher
 from lekto.core.ports.repository import DocumentFilter
 
 ADMINS_ONLY = "Admins only."
@@ -63,14 +66,18 @@ def document_filter(
         Query(
             max_length=MAX_FACTS,
             description=(
-                "A fact the document has (none a person rejected), as `kind:value:role`: the "
-                "value as written (it needs its kind; it may hold colons), any part empty for "
-                "any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all "
-                "of them. A person's facts (the kinds that are a person's alone, the role "
-                "`person`) only for admins (403); 422 for one that is none."
+                "A fact the document has (none a person rejected), as `kind:ref:role`: the "
+                "value by its reference (`ref`, from `POST /identifiers/refs` or an answer that "
+                "names the value; it needs its kind), never as written, so it stays out of "
+                "logs and histories; any part empty for any (`invoice_number:<ref>:`, "
+                "`contract_number::`, `::refers`). Several: all of them. A person's facts (the "
+                "kinds that are a person's alone, the role `person`) only for admins (403); 422 "
+                "for one that is none or a reference that names no value of the kind."
             ),
         ),
     ] = None,
+    *,
+    context: Context,
 ) -> DocumentFilter:
     """The query parameters of the document list as a filter (the search takes the same).
     Several contacts, types, spaces, contact groups, type groups or topics: one of them (each
@@ -97,26 +104,26 @@ def document_filter(
         lanes=None if not lane else frozenset(_LANES[item] for item in lane),
         field=None if field_id is None else FieldId(field_id),
         document_dates=_dates(document_date_from, document_date_to),
-        facts=tuple(_fact(item) for item in dict.fromkeys(fact or ())),
+        facts=tuple(_fact(item, context.refs) for item in dict.fromkeys(fact or ())),
     )
 
 
-def _fact(written: str) -> FactCriterion:
-    """A fact of the filter as `kind:value:role`: the kind before the first colon, the role
-    after the last, the value between (a value may hold colons, a time of day). 422 with the
-    reason for one that is none."""
-    kind, colon, rest = written.partition(":")
-    value, colon_too, role = rest.rpartition(":")
-    if not (colon and colon_too):
+def _fact(written: str, refs: RefCipher) -> FactCriterion:
+    """A fact of the filter as `kind:ref:role`, the value by its reference (base64url, no
+    colon). 422 with the reason for one that is none."""
+    parts = [part.strip() for part in written.split(":")]
+    if len(parts) != 3:
         raise ValidationError(because(ReasonCode.FACT_CRITERION_EMPTY))
-    kind, value, role = kind.strip(), value.strip(), role.strip()
+    kind, ref, role = parts
     if kind and kind not in IdentifierKind:
         raise ValidationError(because(ReasonCode.FACT_KIND_UNKNOWN, kind=kind))
     if role and role not in FactRole:
         raise ValidationError(because(ReasonCode.FACT_KIND_UNKNOWN, kind=role))
+    if ref and not kind:
+        raise ValidationError(because(ReasonCode.FACT_CRITERION_EMPTY))
     return FactCriterion.written(
         IdentifierKind(kind) if kind else None,
-        value or None,
+        opened(refs, IdentifierKind(kind), ref) if ref else None,
         FactRole(role) if role else None,
     )
 

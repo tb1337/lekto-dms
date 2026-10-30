@@ -599,6 +599,19 @@ true })`, read from `page.state` (`lib/words.ts` for the words of the documents)
 - Words go to the API in a body (`POST /documents/search`); never put them into a query.
 - Not in `localStorage` either: that is per browser and outlives the tab.
 
+### Steady layout
+
+What a person did not touch stays where it is: choosing something, or going to another page,
+moves nothing beside it.
+
+- **A label that turns bolder when chosen** (a link of the menu, a tab, a switch, a lens chip)
+  keeps its width: `SteadyText` holds the room of its bolder weight. Never change a label's
+  weight without it where something stands beside it.
+- **The head of a page** is as high as a button, with actions beside the title or without
+  (`PageHeader`, and the documents' own head), so that the title and what follows stand at the
+  same height on every page.
+- A strip of tabs that scrolls on a phone brings the chosen tab into view; that is no move.
+
 ### Motion
 
 Only `motion-safe`: the sliding pill of `Segmented`, the underline of `TabBar`, opening sheets and

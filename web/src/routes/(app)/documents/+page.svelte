@@ -752,7 +752,8 @@ row of filters, on a desktop narrow by the title. -->
 
 <div class="flex flex-col gap-6" data-roomy>
 	<div class="flex flex-col gap-3">
-		<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+		<!-- As high as the head of every other page (`PageHeader`). -->
+		<div class="flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 max-sm:min-h-11">
 			<!-- Collapses the filters beside the list; collapsed, it counts the active ones. -->
 			<IconButton
 				variant="outline"

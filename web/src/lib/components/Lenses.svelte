@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SteadyText from '#lib/components/SteadyText.svelte';
 	import Bookmark from '@lucide/svelte/icons/bookmark';
 	import Files from '@lucide/svelte/icons/files';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -116,7 +117,7 @@
 						: 'border bg-card hover:bg-secondary'
 				]}
 			>
-				{entry.name}
+				<SteadyText text={entry.name} />
 			</a>
 		{/each}
 		{#if onadd}

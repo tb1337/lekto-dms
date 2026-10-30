@@ -367,12 +367,3 @@
 		--chip-fg: color-mix(in oklab, var(--chip-own) var(--chip-dark), var(--foreground));
 	}
 }
-
-/* A dialog under the Beam moves aside, so that both stand side by side where the window is wide
-   enough (web/DESIGN.md, "Beam"): its middle to the middle of the room left of the sheet. Not in
-   a layer, so that it wins over the dialog's centring utility. */
-@media (min-width: 80rem) {
-	body:has([data-beam]) [data-slot='dialog-content'] {
-		--tw-translate-x: calc(-50% - 20rem);
-	}
-}

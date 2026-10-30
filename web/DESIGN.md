@@ -471,8 +471,10 @@ modal, over a dialog too.
   the first with a halo: why it is yellow, on the page.
 - **Over a dialog:** a dialog that opens the Beam keeps its state in the history entry too, so
   the back button closes the Beam, then the dialog, and the way back from a document returns to
-  both. From 1280 px the dialog moves aside while the Beam is open (`app.css`), so both stand
-  side by side; narrower, the Beam lies over it.
+  both. The Beam lies over the dialog, which stays where it is, on a phone as on a desktop: it
+  is the top layer (`z-[60]` over the dialogs' `z-50`, tooltips `z-[70]` over it), whichever
+  of them was mounted last. Its backdrop dims without blur, so neither the dialog's blur nor its
+  own blurs the pages.
 
 ### Alerts
 

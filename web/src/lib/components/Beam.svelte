@@ -307,13 +307,14 @@
 		if (!next) closeBeam();
 	}}
 >
-	<!-- The sheet itself takes the focus: ← → work at once, and no tooltip shows unasked. The
-	     page behind stays sharp: a dialog beside it stays readable. -->
+	<!-- The sheet itself takes the focus: ← → work at once, and no tooltip shows unasked. Above
+	     every dialog (z-60, web/DESIGN.md "Beam"), whichever was mounted last; the page behind
+	     stays sharp. -->
 	<Sheet.Content
 		bind:ref={sheet}
 		data-beam
 		side="right"
-		overlayClass="supports-backdrop-filter:backdrop-blur-none"
+		overlayClass="z-[60] supports-backdrop-filter:backdrop-blur-none"
 		showCloseButton={false}
 		tabindex={-1}
 		onOpenAutoFocus={(event) => {
@@ -321,7 +322,7 @@
 			sheet?.focus();
 		}}
 		onkeydown={keydown}
-		class="gap-0 p-0 outline-none data-[side=right]:w-full data-[side=right]:sm:max-w-[40rem]"
+		class="z-[60] gap-0 p-0 outline-none data-[side=right]:w-full data-[side=right]:sm:max-w-[40rem]"
 	>
 		<div class="flex shrink-0 items-start gap-3 py-3 pr-2 pl-4 sm:pl-5">
 			<div class="min-w-0 flex-1">

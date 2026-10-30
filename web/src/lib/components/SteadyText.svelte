@@ -6,4 +6,6 @@
 	let { text, class: className }: { text: string; class?: string } = $props();
 </script>
 
-<span class={cn('steady-weight', className)} data-text={text}>{text}</span>
+<span class={cn('steady-weight', className)} data-text={text}
+	><span class="truncate">{text}</span></span
+>

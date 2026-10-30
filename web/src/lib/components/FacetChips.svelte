@@ -12,7 +12,7 @@
 </script>
 
 <script lang="ts">
-	import Check from '@lucide/svelte/icons/check';
+	import SteadyText from '#lib/components/SteadyText.svelte';
 	import LucideIcon from '#lib/components/LucideIcon.svelte';
 	import { chipLook } from '#lib/components/TagChip.svelte';
 	import { chipStyle } from '#lib/colors.ts';
@@ -24,7 +24,8 @@
 
 	// Values of the filters as the chips they are everywhere (`chipLook`, as TagChip draws them): a
 	// tag round in its colour, a topic square, a group outlined in its colour, a plain value as an
-	// uncoloured group; the count in the chip, a chosen one with a tick and a ring. The first
+	// uncoloured group; the count in the chip, a chosen one with a ring (a plain one bolder, at the
+	// width it has unchosen: web/DESIGN.md, "Steady layout"). The first
 	// `limit` show and the chosen ones; `more` (a label) shows the rest on a tap.
 	let {
 		items,
@@ -79,9 +80,11 @@
 					)}
 					onclick={() => toggle(item.id)}
 				>
-					{#if active}<Check class="size-3 shrink-0" aria-hidden="true" />{/if}
 					{#if item.icon}<LucideIcon name={item.icon} class="size-3 shrink-0" />{/if}
-					<span class="min-w-0 truncate">{item.label}</span>
+					<SteadyText
+						text={item.label}
+						class="min-w-0 [--steady-weight:var(--font-weight-semibold)]"
+					/>
 					{#if item.count !== null}
 						<span class="shrink-0 tabular-nums opacity-70">{formatNumber(item.count)}</span>
 					{/if}

@@ -113,7 +113,7 @@
 					// Chips as everywhere (web/DESIGN.md): the chosen one in the selected look.
 					'relative inline-flex h-8 shrink-0 items-center rounded-full px-3 text-sm whitespace-nowrap after:absolute after:inset-x-0 after:-inset-y-1.5',
 					current
-						? 'bg-panel font-medium text-brand ring-1 ring-primary/30 ring-inset'
+						? 'border border-primary/45 bg-panel font-medium text-brand'
 						: 'border bg-card hover:bg-secondary'
 				]}
 			>

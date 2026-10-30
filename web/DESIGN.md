@@ -450,9 +450,13 @@ modal, over a dialog too.
   document view's `PageViewer` (one page to a row at the start; buttons, Ctrl/⌘ with the wheel,
   pinch, double click, + − 0); at the bottom "Dokument öffnen", on a phone across the width.
   Editing happens in the document view.
-- **Opening it:** "Ansehen" (`ViewButton`, icon `scan-eye`; never "Beamen"): on a card's first
-  page as glass with its name, always shown; at the end of a row or beside a title as an icon.
-  The title keeps opening the document. From a list, the Beam pages through the list's page.
+- **Opening it:** a card of the documents opens it itself (`viewOrOpen`): a click, a tap or
+  Enter shows the document in the Beam, a double click or a long press (a phone) opens it; a
+  click with Ctrl/⌘ or the middle button opens a new tab, as on any link. A mouse's click waits
+  250 ms for a second one, so that a double click never shows the Beam first. Elsewhere
+  "Ansehen" (`ViewButton`, icon `scan-eye`; never "Beamen") at the end of a row or beside a
+  title as an icon; the title keeps opening the document. From a list, the Beam pages through
+  the list's page.
   Where a dialog or a card lists documents as evidence (Fundstellen, a relation, similar
   documents), the title itself opens the Beam, the eye before it, cut to one line; into the
   document from the Beam. A relation shows both documents, the newer first, the number they
@@ -507,7 +511,8 @@ The grid card "contact on top":
 1. **Head:** the contact's avatar (logo or initials) and name. Right: the inbox mark as a small
    badge (icon, tooltip "Im Posteingang", link to the document in the inbox), when it stands there.
 2. **First page:** the page image (`DocumentThumb`, white paper in both modes). The page count sits
-   bottom right as a glass mark (`.mark-glass`). Nothing else covers the page.
+   bottom right as a glass mark (`.mark-glass`). Nothing else covers the page: the card itself
+   opens the Beam ("Beam", "Opening it").
 3. **Body:** the title (bold, two lines, hyphenated), type with icon and date, then topic, tags
    and groups as chips in one line (three fit) with "+n" for the rest. Lens card fields
    (`CardFields`) follow below a line.

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { goto } from '$app/navigation';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
 	import type { CardLine } from '#lib/card-fields.ts';
@@ -10,13 +11,13 @@
 	import TagChip from '#lib/components/TagChip.svelte';
 	import { shownChips } from '#lib/tags.ts';
 	import TypeIcon from '#lib/components/TypeIcon.svelte';
-	import ViewButton from '#lib/components/ViewButton.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import { byId, foreignSpace, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import { viewOrOpen } from '#lib/view-or-open.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
 
@@ -29,8 +30,8 @@
 	// of; `children` adds a line; `fields`, the fields of a lens, stand below a line. With
 	// `onchoose` (the selection mode of the list) the card is no link but the label of its box,
 	// which starts its head: a tap chooses it; a chosen card has `bg-panel` and a primary edge.
-	// `onview` puts "Ansehen" on the first page, always shown (nothing hangs on hover): it opens
-	// the Beam; the rest of the card opens the document.
+	// With `onview` a click or a tap shows it in the Beam, a double click or a long press opens
+	// the document (`viewOrOpen`); a new tab works as on any link.
 	let {
 		document,
 		lookup,
@@ -92,7 +93,13 @@
 		<svelte:element
 			this={onchoose ? 'label' : 'a'}
 			href={onchoose ? undefined : href}
-			class={cn('group flex min-w-0 flex-1 flex-col text-sm', onchoose && 'cursor-pointer')}
+			aria-haspopup={onview && !onchoose ? 'dialog' : undefined}
+			class={cn(
+				'group flex min-w-0 flex-1 flex-col text-sm',
+				onchoose && 'cursor-pointer',
+				onview && !onchoose && 'select-none [-webkit-touch-callout:none]'
+			)}
+			{@attach onview && !onchoose && viewOrOpen(onview, () => goto(href))}
 		>
 			<div
 				class={cn(
@@ -175,16 +182,5 @@
 	</Card.Root>
 	{#if document.in_inbox}
 		<InboxMark id={document.id} badge class="absolute top-2 right-2 z-10" />
-	{/if}
-	{#if onview && !onchoose}
-		<!-- Over the first page (below the head of 40 px), outside the card's link. -->
-		<div class="pointer-events-none absolute inset-x-px top-[calc(2.5rem+1px)] aspect-[4/3]">
-			<ViewButton
-				title={document.title}
-				pill
-				class="pointer-events-auto absolute bottom-2 left-2 z-10"
-				onclick={onview}
-			/>
-		</div>
 	{/if}
 </div>

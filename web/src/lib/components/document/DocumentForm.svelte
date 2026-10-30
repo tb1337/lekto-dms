@@ -272,8 +272,9 @@
 		return null;
 	}
 
-	// The topics of the chosen contact; an admin may choose any (it is then enabled at the
-	// contact). Another contact keeps the topic only if it enables it, as the API does.
+	// The topics of the chosen contact, and only those, for admins too (Tobi, 30.10.2026): a topic
+	// is enabled at the contact in its dialog, or by creating one here. Another contact keeps the
+	// topic only if it enables it, as the API does.
 	const enabledTopics = $derived(
 		lookup.contacts.find((entry) => entry.id === contact)?.topic_ids ?? []
 	);
@@ -281,9 +282,7 @@
 	const tagsAbove = $derived(above(lookup.tags, tags));
 	const topicChoices = $derived(
 		ofScope(lookup.tags, 'topic').filter(
-			(option) =>
-				option.id === topic ||
-				(contact !== '' && (session.isAdmin || enabledTopics.includes(option.id)))
+			(option) => option.id === topic || enabledTopics.includes(option.id)
 		)
 	);
 	const enablesTopic = $derived(topic !== '' && contact !== '' && !enabledTopics.includes(topic));
@@ -819,7 +818,8 @@
 					onjump={jump}
 					onpick={take}
 				>
-					<!-- An admin creates a topic here, too; saving enables it at the contact. -->
+					<!-- An admin creates a topic here, too; saving enables it at the contact. One the
+					     contact does not enable is offered to nobody. -->
 					<TopicInput
 						id="doc-topic"
 						bind:value={topic}

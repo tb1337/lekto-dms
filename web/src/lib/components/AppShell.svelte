@@ -15,6 +15,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { API_DOCS, BASE } from '#lib/base.ts';
+	import Beam from '#lib/components/Beam.svelte';
 	import HeaderSearch from '#lib/components/HeaderSearch.svelte';
 	import Logo from '#lib/components/Logo.svelte';
 	import Segmented from '#lib/components/Segmented.svelte';
@@ -404,3 +405,4 @@
 		</div>
 	</main>
 </div>
+<Beam />

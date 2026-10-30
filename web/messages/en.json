@@ -2659,5 +2659,16 @@
 	"holders_unclear": "Unclear",
 	"holders_unread": "No holder yet",
 	"holders_recommendation": "Recommendation",
-	"holders_footnote": "“Right”: the contact’s and confirmed, or foreign and rejected. For the recommendation, “Unclear” means none. Identifiers without a holder come from documents read before their kind had one: “Read facts again” sets it."
+	"holders_footnote": "“Right”: the contact’s and confirmed, or foreign and rejected. For the recommendation, “Unclear” means none. Identifiers without a holder come from documents read before their kind had one: “Read facts again” sets it.",
+	"beam_name": "Beam",
+	"beam_open": "View",
+	"beam_open_named": "View “{title}”",
+	"beam_previous": "Previous document",
+	"beam_next": "Next document",
+	"beam_position": "Document {current} of {total}",
+	"beam_open_document": "Open document",
+	"beam_pages": "Pages of “{title}”",
+	"beam_gone": "The document is gone, or you can no longer see it.",
+	"beam_no_pages": "This document has no page images yet.",
+	"back_to": "Back to {place}"
 }

@@ -11,7 +11,6 @@
 	import ScanEye from '@lucide/svelte/icons/scan-eye';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { toast } from 'svelte-sonner';
-	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
@@ -39,10 +38,10 @@
 	import { cn } from '#lib/utils.ts';
 	import { adviceText, visionAvailable, type Reading, type Vision } from '#lib/vision.ts';
 	import { Choice } from '#lib/components/ui/choice/index.ts';
-	import BackLink from '#lib/components/BackLink.svelte';
+	import DocumentBackLink from '#lib/components/document/DocumentBackLink.svelte';
 	import IconButton from '#lib/components/IconButton.svelte';
 	import PageTitle from '#lib/components/page/PageTitle.svelte';
-	import { returnTo } from '#lib/return-to.svelte.ts';
+	import { leaveDocument } from '#lib/way-back.ts';
 	import FormDialog from '#lib/components/FormDialog.svelte';
 
 	type Document = components['schemas']['DocumentDetails'];
@@ -213,7 +212,7 @@
 		if (!into || into.role !== 'edit') {
 			toast.success(receiver ? m.move_handed_over({ name: userLabel(receiver) }) : m.move_done());
 			moveOpen = false;
-			await (inbox ? goto(`${BASE}/inbox`) : returnTo.goDocuments());
+			await leaveDocument(Boolean(inbox));
 			return;
 		}
 		toast.success(m.move_done());
@@ -223,17 +222,13 @@
 	async function remove() {
 		await unwrap(api.DELETE('/api/v1/documents/{id}', { params: { path: { id: document.id } } }));
 		toast.success(m.delete_done());
-		await (inbox ? goto(`${BASE}/inbox`) : returnTo.goDocuments());
+		await leaveDocument(Boolean(inbox));
 	}
 </script>
 
 <div class="flex flex-col gap-3.5">
 	<div class="flex min-h-9 flex-wrap items-center gap-3">
-		<BackLink
-			href={inbox ? `${BASE}/inbox` : returnTo.documents}
-			label={inbox ? m.nav_inbox() : m.nav_documents()}
-			state={inbox ? undefined : returnTo.state}
-		/>
+		<DocumentBackLink inbox={Boolean(inbox)} />
 		{#if inbox && inbox.position !== null}
 			<nav aria-label={m.doc_inbox_nav()} class="ml-auto flex items-center gap-1">
 				<span class="mr-1.5 text-sm text-muted-foreground">

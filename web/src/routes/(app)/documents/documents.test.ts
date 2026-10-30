@@ -113,6 +113,28 @@ describe('the archive page', () => {
 		);
 	});
 
+	it('opens a document in the Beam, paging through the documents of the page', async () => {
+		state.entry = { words: '' };
+		vi.stubGlobal(
+			'fetch',
+			fakeApi({
+				'GET /api/v1/documents': () => ({
+					items: [listedOf({ id: 'd1', title: 'Eins' }), listedOf({ id: 'd2', title: 'Zwei' })],
+					next_cursor: null
+				})
+			})
+		);
+		const user = userEvent.setup();
+		render(Page);
+		await screen.findByText('Zwei');
+		await user.click(screen.getByRole('button', { name: m.beam_open_named({ title: 'Zwei' }) }));
+		expect(goto).toHaveBeenLastCalledWith('http://lekto/ui/documents', {
+			shallow: true,
+			state: { words: '', beam: { ids: ['d1', 'd2'], index: 1, from: m.nav_documents() } },
+			persistState: true
+		});
+	});
+
 	it('stands the documents by month while sorted by a date, last those without one', async () => {
 		vi.stubGlobal(
 			'fetch',

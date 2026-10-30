@@ -10,6 +10,8 @@
 	import { describeError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import { labelOfKind } from '#lib/identifiers.ts';
+	import { openBeam } from '#lib/beam.svelte.ts';
+	import ViewButton from '#lib/components/ViewButton.svelte';
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
@@ -128,13 +130,22 @@
 								<span class="text-sm text-muted-foreground">
 									{rhythm(item)} · {m.expected_documents({ count: String(item.documents) })}
 								</span>
-								<span class="text-sm text-muted-foreground">
+								<span class="flex flex-wrap items-center gap-x-1 text-sm text-muted-foreground">
 									{m.expected_last()}
 									<a
 										href={documentHref(item.last.id)}
 										class="text-foreground underline-offset-2 hover:underline">{item.last.title}</a
 									>
 									({formatDate(item.last.document_date)})
+									<ViewButton
+										title={item.last.title}
+										onclick={() =>
+											openBeam(
+												sections.flatMap((each) => each.items.map((entry) => entry.last.id)),
+												item.last.id,
+												m.overview_title()
+											)}
+									/>
 								</span>
 							</div>
 							<div class="flex flex-col items-end gap-0.5 text-right">

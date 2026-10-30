@@ -15,7 +15,8 @@ vi.mock('$app/state', () => ({
 	page: {
 		get url() {
 			return state.url;
-		}
+		},
+		state: {}
 	}
 }));
 
@@ -51,6 +52,9 @@ const SPACES = [
 ];
 
 type Items = ReturnType<typeof inboxItem>[];
+
+/** A button's name. */
+const name = (button: HTMLElement) => button.getAttribute('aria-label');
 
 function start(items: Items | ((tab: string | null) => Items), summary = summaryOf({ new: 1 })) {
 	const api = fakeApi({
@@ -162,7 +166,10 @@ describe('inbox rows', () => {
 		const yellow = screen.getByText('Gelb').closest('li')!;
 		expect(within(yellow).getByText(m.lane_yellow())).toBeTruthy();
 		expect(within(yellow).getByText('Kontakt unsicher')).toBeTruthy();
-		expect(within(yellow).queryByRole('button')).toBeNull();
+		// No action of its own: only "Ansehen", which opens it in the Beam.
+		expect(within(yellow).getAllByRole('button').map(name)).toEqual([
+			m.beam_open_named({ title: 'Gelb' })
+		]);
 		expect(within(running).getByRole('link').getAttribute('href')).toBe(
 			'/ui/documents/p1?from=inbox'
 		);
@@ -270,7 +277,9 @@ describe('inbox rows', () => {
 				new RegExp(`^${m.inbox_done_seen({ who: m.inbox_by_you(), when: '.+' })}$`)
 			)
 		).toBeTruthy();
-		expect(within(confirmed).queryByRole('button')).toBeNull();
+		expect(within(confirmed).getAllByRole('button').map(name)).toEqual([
+			m.beam_open_named({ title: 'Bestätigt' })
+		]);
 		await userEvent.click(within(seen).getByRole('button', { name: m.inbox_unseen() }));
 		await waitFor(() => expect(calls(api)).toContain('DELETE /api/v1/documents/s1/seen'));
 	});

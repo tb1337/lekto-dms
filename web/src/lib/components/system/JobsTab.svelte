@@ -32,6 +32,8 @@
 	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import { rememberedPageSize } from '#lib/page-size.ts';
 	import { Pager } from '#lib/paging.svelte.ts';
+	import { openBeam } from '#lib/beam.svelte.ts';
+	import ViewButton from '#lib/components/ViewButton.svelte';
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
@@ -328,11 +330,29 @@
 									<Table.Cell>
 										<Badge variant={TONES[job.state]}>{STATE_LABELS[job.state]()}</Badge>
 									</Table.Cell>
-									<Table.Cell class="max-w-[22rem] truncate">
+									<Table.Cell class="max-w-[22rem]">
 										{#if job.document}
-											<a href={documentHref(job.document.id)} class="text-brand hover:underline">
-												{job.document.title}
-											</a>
+											{@const shown = job.document}
+											<span class="flex min-w-0 items-center gap-1">
+												<a
+													href={documentHref(shown.id)}
+													class="min-w-0 truncate text-brand hover:underline"
+												>
+													{shown.title}
+												</a>
+												<ViewButton
+													title={shown.title}
+													class="shrink-0"
+													onclick={() =>
+														openBeam(
+															jobs.items.flatMap((each) =>
+																each.document ? [each.document.id] : []
+															),
+															shown.id,
+															m.system_tab_jobs()
+														)}
+												/>
+											</span>
 										{:else if job.document_hidden}
 											<span class="text-muted-foreground italic">{m.jobs_hidden_document()}</span>
 										{:else if job.contact}

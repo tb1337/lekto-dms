@@ -20,12 +20,14 @@
 	// red with its lane and why (a suggested space as the suggestion); new calmly, marked and
 	// with "seen" (no call to act); done with how, when and by whom, and "new again" for one
 	// seen. The actions stand beside the row's link; on a phone as icons a finger can hit.
+	// `onview`: "Ansehen" at the end opens the document in the Beam.
 	let {
 		item,
 		lookup,
 		busy = false,
 		onseen,
-		onunseen
+		onunseen,
+		onview
 	}: {
 		item: InboxItem;
 		lookup: Lookup | null;
@@ -33,6 +35,7 @@
 		busy?: boolean;
 		onseen: (id: string) => void;
 		onunseen: (id: string) => void;
+		onview?: (id: string) => void;
 	} = $props();
 
 	const document = $derived(item.document);
@@ -51,7 +54,12 @@
 	const action = 'h-11 shrink-0 max-sm:w-11 max-sm:px-0 sm:h-9';
 </script>
 
-<DocumentRow {document} {lookup} href={inboxDocument(document.id)}>
+<DocumentRow
+	{document}
+	{lookup}
+	href={inboxDocument(document.id)}
+	onview={onview ? () => onview(document.id) : undefined}
+>
 	{#if item.tab === 'processing'}
 		<ProcessingProgress processing={document.processing} compact class="mt-1 max-w-48" />
 	{:else if item.tab === 'review' || item.tab === 'intervene'}

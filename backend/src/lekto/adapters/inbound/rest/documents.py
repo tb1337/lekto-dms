@@ -60,12 +60,15 @@ from lekto.adapters.inbound.rest.schemas.inbox import (
     InboxSummaryOut,
     ReviewOut,
 )
+from lekto.adapters.inbound.rest.schemas.open_identifiers import PlaceOut
+from lekto.adapters.inbound.rest.schemas.refs import MAX_REF, opened
 from lekto.adapters.inbound.rest.upload import read_upload, upload_body
 from lekto.adapters.inbound.schemas import RuleReportOut
 from lekto.core.domain.classification import CHANGE_FIELDS, SPACE, field_id_of, field_key
 from lekto.core.domain.documents import UNSET, Channel, Document, DocumentChanges, Unset
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.fields import FieldDefinition, field_from_json
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -626,6 +629,29 @@ async def read_with_vision(id: UUID, user: CurrentUser, context: Context) -> Doc
 )
 async def document_facts(id: UUID, user: CurrentUser, context: Context) -> FactsOut:
     return FactsOut.of(await context.documents.facts(user, DocumentId(id)))
+
+
+@router.get(
+    "/{id}/places/{kind}/{ref}",
+    summary="Where an identifier stands in a document",
+    description=(
+        "Needs read access. The document's fact of `kind` with the value of `ref` (none a "
+        "person rejected): the text around it and each place the pages show it, the one the "
+        "fact was read at as `own`. 404 for a document without such a fact; a person's kinds "
+        "only for admins (403); 422 for a reference that names no value of the kind."
+    ),
+    response_model=PlaceOut,
+    responses=problem_responses(401, 403, 404, 422),
+)
+async def document_place(
+    id: UUID,
+    kind: IdentifierKind,
+    ref: Annotated[str, FastApiPath(max_length=MAX_REF)],
+    user: CurrentUser,
+    context: Context,
+) -> PlaceOut:
+    value = opened(context.refs, kind, ref)
+    return PlaceOut.of(await context.documents.identifier_place(user, DocumentId(id), kind, value))
 
 
 @router.post(

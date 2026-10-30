@@ -8,6 +8,7 @@ from lekto.core.domain.identifiers import Identifier, IdentifierKind, Identifier
 from lekto.core.domain.labels import grid_layout
 from lekto.core.domain.master_data import Contact
 from lekto.core.domain.users import User
+from lekto.core.ports.repository import DocumentFilter
 from lekto.core.services.objects import structure_key, text_key
 from tests import builders
 from tests.api import auth
@@ -231,3 +232,24 @@ async def test_where_an_identifier_stands_in_the_documents_the_caller_reads(api:
     assert (await api.client.get(f"{places}/tax_id/{tax}", headers=auth(other))).status_code == 403
     broken = await api.client.get(f"{places}/vat_id/{customer}", headers=auth(other))
     assert (broken.status_code, broken.json()["reason"]["code"]) == (422, "ref_unknown")
+
+
+async def test_where_an_identifier_stands_in_one_document(api: Api) -> None:
+    owner = await api.user()
+    await seeded(api, owner)
+    async with api.container.unit_of_work() as uow:
+        (first, *_) = await uow.documents.query_visible(owner.id, DocumentFilter(), limit=5)
+    customer = api.container.refs.seal(CUSTOMER[1], context="customer_number")
+    url = f"{PREFIX}/documents/{first.id}/places/customer_number/{customer}"
+    found = await api.client.get(url, headers=auth(owner))
+    assert found.status_code == 200, found.text
+    assert found.json()["excerpt"]["match"] == "20047718"
+    assert [item["own"] for item in found.json()["occurrences"]] == [True]
+    # A value the document does not have; a document the caller does not read.
+    other = api.container.refs.seal("99999999", context="customer_number")
+    missing = await api.client.get(
+        f"{PREFIX}/documents/{first.id}/places/customer_number/{other}", headers=auth(owner)
+    )
+    assert missing.status_code == 404
+    stranger = await api.user()
+    assert (await api.client.get(url, headers=auth(stranger))).status_code == 404

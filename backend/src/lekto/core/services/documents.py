@@ -223,6 +223,20 @@ class DocumentNumber:
         return DocumentNumber(self.fact, placed)
 
 
+def _kept_fact(
+    facts: Sequence[DocumentFact], kind: IdentifierKind, value: str
+) -> DocumentFact | None:
+    """The first of `facts` of `kind` and `value` no person rejected."""
+    return next(
+        (
+            fact
+            for fact in facts
+            if fact.kind is kind and fact.value == value and fact.state is not FactState.REJECTED
+        ),
+        None,
+    )
+
+
 def _other_fact_shown(user: User, fact: DocumentFact) -> bool:
     """Whether the facts report lists a kept fact the identifiers do not show: every one to an
     admin; to others one a person decided, of no person's kind alone and not a person's (an
@@ -547,6 +561,26 @@ class DocumentService:
         except NotFoundError:
             raise ConflictError(because(ReasonCode.NO_STRUCTURE_YET)) from None
 
+    async def identifier_place(
+        self, actor: UserId, id: DocumentId, kind: IdentifierKind, value: str
+    ) -> Place:
+        """Where the identifier of `kind` and `value` (normalised) stands in the document, as
+        its fact (none a person rejected): the text around it and each place its pages show it.
+        NotFoundError if the caller may not read the document or it has no such fact; a
+        person's kinds only for admins (PermissionDeniedError, as the `fact` filter)."""
+        async with self._uow() as uow:
+            user = await load_actor(uow, actor)
+            check_fact_filter(user, DocumentFilter(facts=(FactCriterion(kind, value),)))
+            document, _ = await readable_document(uow, user, id)
+            kept = await uow.document_facts.of_document(id)
+        fact = _kept_fact(kept, kind, value)
+        if fact is None:
+            raise NotFoundError(
+                "fact", value, because(ReasonCode.FACT_NOT_FOUND, kind=kind.value, value=value)
+            )
+        dated = document.document_date or document.created_at.date()
+        return await place_of(self._object_store, id, document.title, dated, fact)
+
     async def identifier_places(
         self, actor: UserId, kind: IdentifierKind, value: str, *, limit: int = PLACES
     ) -> list[Place]:
@@ -568,16 +602,7 @@ class DocumentService:
         places = []
         for item in listed:
             document = item.document
-            fact = next(
-                (
-                    each
-                    for each in kept[document.id]
-                    if each.kind is kind
-                    and each.value == value
-                    and each.state is not FactState.REJECTED
-                ),
-                None,
-            )
+            fact = _kept_fact(kept[document.id], kind, value)
             if fact is None:
                 continue
             dated = document.document_date or document.created_at.date()

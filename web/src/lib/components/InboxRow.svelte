@@ -20,7 +20,7 @@
 	// red with its lane and why (a suggested space as the suggestion); new calmly, marked and
 	// with "seen" (no call to act); done with how, when and by whom, and "new again" for one
 	// seen. The actions stand beside the row's link; on a phone as icons a finger can hit.
-	// `onview`: "Ansehen" at the end opens the document in the Beam.
+	// `onview`: a click or a tap shows it in the Beam, a double click or a long press opens it.
 	let {
 		item,
 		lookup,

@@ -4,13 +4,13 @@
 	import { BASE } from '#lib/base.ts';
 	import type { CardLine } from '#lib/card-fields.ts';
 	import CardFields from '#lib/components/CardFields.svelte';
+	import DocumentLink from '#lib/components/DocumentLink.svelte';
 	import DocumentThumb from '#lib/components/DocumentThumb.svelte';
 	import NamesLine from '#lib/components/NamesLine.svelte';
 	import TagChips from '#lib/components/TagChips.svelte';
-	import ViewButton from '#lib/components/ViewButton.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { formatDate } from '#lib/i18n.ts';
-	import { byId, foreignSpace, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { documentParts, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
@@ -22,8 +22,9 @@
 	// a document in a space they are no member of. `children` adds a line, `fields` the fields of a lens;
 	// `aside` stands at the end of the row, beside its link (a button, a link of its own). With
 	// `onchoose` (the selection mode of the list) the row is no link but the label of its box,
-	// which starts it: a tap chooses it; a chosen row has `bg-panel` and a primary edge. `onview`
-	// ends the row with "Ansehen" (an eye): it opens the Beam; the rest opens the document.
+	// which starts it: a tap chooses it; a chosen row has `bg-panel` and a primary edge. With
+	// `onview` a click or a tap shows it in the Beam, a double click or a long press opens the
+	// document (`DocumentLink`), as a card does.
 	let {
 		document,
 		lookup,
@@ -46,17 +47,7 @@
 		onview?: () => void;
 	} = $props();
 
-	// By the indexes of the lists: one card of many must not scan them on every render.
-	const contact = $derived(
-		lookup && document.contact_id ? byId(lookup.contacts).get(document.contact_id) : undefined
-	);
-	const kind = $derived(
-		lookup && document.document_type_id
-			? byId(lookup.documentTypes).get(document.document_type_id)
-			: undefined
-	);
-	// For admins, the space of a document in a space they are no member of.
-	const foreign = $derived(foreignSpace(document.space_id, lookup, session.user?.id));
+	const { contact, kind, foreign } = $derived(documentParts(document, lookup, session.user?.id));
 </script>
 
 <Card.Root
@@ -66,10 +57,11 @@
 		chosen && 'border-primary bg-panel'
 	)}
 >
-	<svelte:element
-		this={onchoose ? 'label' : 'a'}
-		href={onchoose ? undefined : href}
-		class={cn('flex min-w-0 flex-1 items-center gap-4 rounded-lg', onchoose && 'cursor-pointer')}
+	<DocumentLink
+		{href}
+		choosing={onchoose !== undefined}
+		{onview}
+		class="flex min-w-0 flex-1 items-center gap-4 rounded-lg"
 	>
 		{#if onchoose}
 			<ChoiceBox
@@ -101,9 +93,6 @@
 			{@render children?.()}
 			{#if fields.length > 0}<div class="max-w-sm"><CardFields lines={fields} /></div>{/if}
 		</div>
-	</svelte:element>
+	</DocumentLink>
 	{@render aside?.()}
-	{#if onview && !onchoose}
-		<ViewButton title={document.title} class="shrink-0" onclick={onview} />
-	{/if}
 </Card.Root>

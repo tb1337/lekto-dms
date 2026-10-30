@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+import { goto } from '$app/navigation';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { inbox } from '#lib/inbox.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
@@ -52,9 +53,6 @@ const SPACES = [
 ];
 
 type Items = ReturnType<typeof inboxItem>[];
-
-/** A button's name. */
-const name = (button: HTMLElement) => button.getAttribute('aria-label');
 
 function start(items: Items | ((tab: string | null) => Items), summary = summaryOf({ new: 1 })) {
 	const api = fakeApi({
@@ -166,13 +164,24 @@ describe('inbox rows', () => {
 		const yellow = screen.getByText('Gelb').closest('li')!;
 		expect(within(yellow).getByText(m.lane_yellow())).toBeTruthy();
 		expect(within(yellow).getByText('Kontakt unsicher')).toBeTruthy();
-		// No action of its own: only "Ansehen", which opens it in the Beam.
-		expect(within(yellow).getAllByRole('button').map(name)).toEqual([
-			m.beam_open_named({ title: 'Gelb' })
-		]);
+		// No action of its own: its link shows it in the Beam.
+		expect(within(yellow).queryAllByRole('button')).toEqual([]);
+		expect(within(yellow).getByRole('link').getAttribute('aria-haspopup')).toBe('dialog');
 		expect(within(running).getByRole('link').getAttribute('href')).toBe(
 			'/ui/documents/p1?from=inbox'
 		);
+	});
+
+	it('shows a row in the Beam with the fields that keep it here', async () => {
+		start([inboxItem('review', { id: 'y1', title: 'Gelb', lane: 'yellow' })]);
+		const row = (await screen.findByText('Gelb')).closest('li')!;
+		const link = within(row).getByRole('link');
+		link.focus();
+		await userEvent.keyboard('{Enter}');
+		expect(vi.mocked(goto).mock.lastCall?.[1]).toMatchObject({
+			shallow: true,
+			state: { beam: { ids: ['y1'], index: 0, inbox: true, source: { kind: 'review' } } }
+		});
 	});
 
 	it('names the space Lekto suggests, and who would see the document there', async () => {
@@ -277,9 +286,7 @@ describe('inbox rows', () => {
 				new RegExp(`^${m.inbox_done_seen({ who: m.inbox_by_you(), when: '.+' })}$`)
 			)
 		).toBeTruthy();
-		expect(within(confirmed).getAllByRole('button').map(name)).toEqual([
-			m.beam_open_named({ title: 'Bestätigt' })
-		]);
+		expect(within(confirmed).queryAllByRole('button')).toEqual([]);
 		await userEvent.click(within(seen).getByRole('button', { name: m.inbox_unseen() }));
 		await waitFor(() => expect(calls(api)).toContain('DELETE /api/v1/documents/s1/seen'));
 	});

@@ -165,6 +165,29 @@ export function foreignSpace(
 	return spaceLabel(space, lookup?.users ?? [], me);
 }
 
+/** What a listed document's card or row names (`DocumentCard`, `DocumentRow`): its contact and
+ * type, by the indexes of the lists (one of many must not scan them on every render), and for
+ * an admin the space it stands in when they are no member of it. */
+export function documentParts(
+	document: { contact_id?: string | null; document_type_id?: string | null; space_id: string },
+	lookup: Lookup | null,
+	me: string | undefined
+): {
+	contact: Lookup['contacts'][number] | undefined;
+	kind: Lookup['documentTypes'][number] | undefined;
+	foreign: string | null;
+} {
+	return {
+		contact:
+			lookup && document.contact_id ? byId(lookup.contacts).get(document.contact_id) : undefined,
+		kind:
+			lookup && document.document_type_id
+				? byId(lookup.documentTypes).get(document.document_type_id)
+				: undefined,
+		foreign: foreignSpace(document.space_id, lookup, me)
+	};
+}
+
 /** The spaces a document goes to, as options: those the caller edits, then the other users'
  * personal spaces, as a hand-over ("Hand over to Anna"). */
 export function spaceOptions(

@@ -3,6 +3,7 @@ import { userEvent } from '@testing-library/user-event';
 import { toast } from 'svelte-sonner';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
+import { fieldLabel } from '#lib/describe.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { documentOf, fakeApi } from '#lib/testing/documents.ts';
 import { goTo } from '#lib/testing/page-state.svelte.ts';
@@ -41,6 +42,23 @@ beforeEach(() => {
 				}),
 			'GET /api/v1/documents/b': () => new Response(null, { status: 404 }),
 			'GET /api/v1/contacts/c1': () => ({ id: 'c1', name: 'Stadtwerke' }),
+			'GET /api/v1/documents/a/review': () => ({
+				document: {},
+				nodes: [],
+				open: [
+					{
+						node: 'judge',
+						outcome: 'uncertain',
+						reason: '',
+						reasons: [],
+						fields: [
+							{ field: 'contact', locations: [{ page: 1, boxes: [BOX] }] },
+							{ field: 'field:f1', locations: [{ page: 2, boxes: [BOX] }] }
+						]
+					}
+				]
+			}),
+			'GET /api/v1/fields': () => [{ id: 'f1', name: 'Betrag' }],
 			'GET /api/v1/identifiers/places/iban/REU4OQ': () => ({
 				places: [
 					{
@@ -157,5 +175,23 @@ describe('Beam', () => {
 		expect(sheet.querySelectorAll('.shadow-pinned')).toHaveLength(2);
 		// The kind stands once, at the own place.
 		expect(sheet.textContent?.match(/IBAN/g)).toHaveLength(1);
+	});
+
+	it('marks from the inbox the quotes of the fields that keep a document there', async () => {
+		goTo(
+			'/ui/inbox',
+			{},
+			{
+				beam: { ...beam(0), from: 'Eingang', inbox: true, source: { kind: 'review' } }
+			}
+		);
+		render(Beam);
+		const sheet = await screen.findByRole('dialog', { name: 'Stromrechnung März' });
+		await waitFor(() => expect(sheet.querySelectorAll('.ring-primary')).toHaveLength(2));
+		expect(sheet.textContent).toContain(fieldLabel('contact', null));
+		expect(sheet.textContent).toContain('Betrag');
+		expect(sheet.querySelectorAll('.shadow-pinned')).toHaveLength(1);
+		// It pages through the documents, not through places.
+		expect(sheet.textContent).toContain(m.beam_position({ current: 1, total: 2 }));
 	});
 });

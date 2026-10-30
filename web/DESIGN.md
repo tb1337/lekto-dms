@@ -463,7 +463,9 @@ modal, over a dialog too.
 - **Places:** where Lekto claims a value from a document, the Beam marks each place the pages
   show it, the one the fact was read at with a halo and its kind ("IBAN"), and scrolls there;
   it pages through the places ("Fundstelle 2 von 5"). The places come from the endpoint that
-  names the fact (`occurrences`), never from a search of its own.
+  names the fact (`occurrences`), never from a search of its own. From the inbox ("Ansehen" in a row)
+  it marks the quotes of the fields that keep each document there, each with the field's name,
+  the first with a halo: why it is yellow, on the page.
 - **Over a dialog:** a dialog that opens the Beam keeps its state in the history entry too, so
   the back button closes the Beam, then the dialog, and the way back from a document returns to
   both. From 1280 px the dialog moves aside while the Beam is open (`app.css`), so both stand

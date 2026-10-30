@@ -229,7 +229,7 @@
 								list.items.map((entry) => entry.document.id),
 								id,
 								m.nav_inbox(),
-								{ inbox: true }
+								{ inbox: true, source: { kind: 'review' } }
 							)}
 					/>
 				</li>

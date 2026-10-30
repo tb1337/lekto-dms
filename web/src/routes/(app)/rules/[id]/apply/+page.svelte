@@ -12,6 +12,8 @@
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import RuleEffects from '#lib/components/rules/RuleEffects.svelte';
+	import ScanEye from '@lucide/svelte/icons/scan-eye';
+	import { openBeam } from '#lib/beam.svelte.ts';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { Progress } from '#lib/components/ui/progress/index.ts';
@@ -294,10 +296,24 @@
 						{/if}
 						<div class="flex min-w-0 flex-1 flex-col gap-1.5 text-sm">
 							<span class="flex flex-wrap items-center gap-2">
-								<a
-									href="{BASE}/documents/{item.document_id}"
-									class="truncate text-base font-medium hover:underline">{item.title}</a
+								<!-- The title opens the Beam: where the rule's text conditions hit. -->
+								<button
+									type="button"
+									class="group inline-flex min-w-0 items-center gap-1.5 text-left text-base font-medium"
+									aria-label={m.beam_open_named({ title: item.title })}
+									title={m.beam_open_named({ title: item.title })}
+									onclick={() =>
+										openBeam(
+											items.map((entry) => entry.document_id),
+											item.document_id,
+											rule ? m.rule_apply_title({ name: rule.name }) : m.rule_apply_generic(),
+											{ source: { kind: 'rule', rule: id } }
+										)}
 								>
+									<ScanEye class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+									<span class="truncate underline-offset-2 group-hover:underline">{item.title}</span
+									>
+								</button>
 								{#if conflict}<Badge variant="yellow">{m.rule_conflict()}</Badge>{/if}
 							</span>
 							<RuleEffects

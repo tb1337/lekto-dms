@@ -12,8 +12,9 @@ import { dropEntry, pushEntry, replaceEntry } from '#lib/history-state.ts';
  * (`GET /identifiers/open/{kind}/{ref}`), the places of any identifier
  * (`GET /identifiers/places/{kind}/{ref}`); for each document, the place of a value (`fact`:
  * `GET /documents/{id}/places/{kind}/{ref}`, a relation's shared number), or the quotes of its
- * open fields (`review`: `GET /documents/{id}/review`, why it waits in the inbox). */
-export type BeamSource = ValueSource | { kind: 'review' };
+ * open fields (`review`: `GET /documents/{id}/review`, why it waits in the inbox), or where a
+ * rule's text conditions hit it (`rule`: `GET /rules/{id}/apply/hits/{document_id}`). */
+export type BeamSource = ValueSource | { kind: 'review' } | { kind: 'rule'; rule: string };
 
 /** A source that names the places of a value of `identifier` by its reference. */
 export interface ValueSource {

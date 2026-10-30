@@ -4,7 +4,8 @@ Files of the build are served as they are; every other page path gets `index.htm
 routes in the browser. Hashed files below `_app/immutable/` never change and may be cached for
 good; everything else is revalidated (`ETag`, `Last-Modified`, 304). The content security policy
 comes from the page itself (a meta tag with the hashes of its start script); the headers add
-what a meta tag cannot carry.
+what a meta tag cannot carry. No page sends a `Referer`: the addresses of the app are its own
+business, even if they name nothing but ids.
 """
 
 import os
@@ -24,7 +25,7 @@ REVALIDATE = "no-cache"
 SECURITY_HEADERS = {
     "Content-Security-Policy": "frame-ancestors 'none'",
     "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "same-origin",
+    "Referrer-Policy": "no-referrer",
 }
 # Files the build writes with a content hash in their name.
 _IMMUTABLE_DIRECTORY = "_app/immutable/"

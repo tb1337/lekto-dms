@@ -424,6 +424,7 @@ async def test_auth_answers_are_not_stored(api: Api) -> None:
     for answer in answers:
         assert answer.headers["cache-control"] == "no-store", answer.request.url
         assert answer.headers["x-content-type-options"] == "nosniff", answer.request.url
+        assert answer.headers["referrer-policy"] == "no-referrer", answer.request.url
     for path in ("/health", "/openapi.json"):
         public = await api.client.get(PREFIX + path)
         assert public.status_code == 200

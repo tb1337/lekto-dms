@@ -2670,5 +2670,8 @@
 	"beam_pages": "Pages of “{title}”",
 	"beam_gone": "The document is gone, or you can no longer see it.",
 	"beam_no_pages": "This document has no page images yet.",
-	"back_to": "Back to {place}"
+	"back_to": "Back to {place}",
+	"beam_place_position": "Place {current} of {total}",
+	"identifier_whence": "Where was it learned?",
+	"identifier_whence_none": "No document you can see holds this identifier."
 }

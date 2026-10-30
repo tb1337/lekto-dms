@@ -11,6 +11,8 @@ declare global {
 			beam?: import('#lib/beam.svelte.ts').BeamState;
 			/** The place a jump came from (`lib/way-back.ts`). */
 			from?: { label: string };
+			/** The open identifier whose dialog is open (`IdentifiersPanel`). */
+			identifier?: { kind: import('#lib/identifiers.ts').IdentifierKind; ref: string };
 		}
 		// interface Platform {}
 	}

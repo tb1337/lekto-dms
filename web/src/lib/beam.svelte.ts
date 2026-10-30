@@ -1,12 +1,21 @@
 /**
  * The Beam (web/DESIGN.md, "Beam"): a sheet from the right that shows a document's pages
- * without leaving the place. Its state lives in the history entry (`page.state.beam`), ids
- * only, so a reload brings it back (`persistState`) and the back button closes it. Opening
- * pushes an entry, paging replaces it, closing goes back to the entry before (or, after a
- * reload, where this page did not push it, replaces it).
+ * without leaving the place. Its state lives in the history entry (`page.state.beam`, ids
+ * only; `history-state.ts`): the back button closes it, a reload brings it back, paging through
+ * its documents replaces the entry.
  */
-import { goto } from '$app/navigation';
 import { page } from '$app/state';
+import type { IdentifierKind } from '#lib/identifiers.ts';
+import { dropEntry, pushEntry, replaceEntry } from '#lib/history-state.ts';
+
+/** Where the places the Beam marks come from: an open identifier's detail
+ * (`GET /identifiers/open/{kind}/{ref}`), or the places of any identifier
+ * (`GET /identifiers/places/{kind}/{ref}`). */
+export interface BeamSource {
+	kind: 'open' | 'places';
+	identifier: IdentifierKind;
+	ref: string;
+}
 
 export interface BeamState {
 	/** The documents to page through, in order. */
@@ -17,50 +26,31 @@ export interface BeamState {
 	from: string;
 	/** Opened from the inbox: "Dokument öffnen" opens it there, with its neighbours. */
 	inbox?: boolean;
+	/** Where the marked places come from; without, the pages are shown from the first. */
+	source?: BeamSource;
 }
-
-// Whether the entry of the open Beam was pushed by this page (else: restored by a reload).
-let pushed = false;
 
 /** Open the Beam on `id`, paging through `ids` (each once); `from` names the place. */
 export function openBeam(
 	ids: readonly string[],
 	id: string,
 	from: string,
-	options: { inbox?: boolean } = {}
+	options: { inbox?: boolean; source?: BeamSource } = {}
 ): void {
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
 	const unique = [...new Set(ids)];
 	const index = Math.max(0, unique.indexOf(id));
-	pushed = true;
-	void goto(page.url.href, {
-		shallow: true,
-		state: { ...page.state, beam: { ids: unique, index, from, ...options } },
-		persistState: true
-	});
+	pushEntry('beam', { ids: unique, index, from, ...options });
 }
 
 /** Show the document at `index` of the open Beam, in the same history entry. */
 export function beamTo(index: number): void {
 	const beam = page.state.beam;
 	if (!beam || index < 0 || index >= beam.ids.length) return;
-	void goto(page.url.href, {
-		shallow: true,
-		replace: true,
-		state: { ...page.state, beam: { ...beam, index } },
-		persistState: true
-	});
+	replaceEntry('beam', { ...beam, index });
 }
 
-/** Close the Beam: back to the entry before it, or that entry's state without it. */
+/** Close the Beam. */
 export function closeBeam(): void {
-	if (!page.state.beam) return;
-	if (pushed) {
-		pushed = false;
-		history.back();
-		return;
-	}
-	const state = { ...page.state };
-	delete state.beam;
-	void goto(page.url.href, { shallow: true, replace: true, state, persistState: true });
+	dropEntry('beam');
 }

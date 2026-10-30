@@ -18,6 +18,7 @@
 		class: className,
 		side = 'right',
 		showCloseButton = true,
+		overlayClass,
 		portalProps,
 		children,
 		...restProps
@@ -25,12 +26,14 @@
 		portalProps?: WithoutChildrenOrChild<ComponentProps<typeof SheetPortal>>;
 		side?: Side;
 		showCloseButton?: boolean;
+		/** Classes of the dimmed page behind it. */
+		overlayClass?: string;
 		children: Snippet;
 	} = $props();
 </script>
 
 <SheetPortal {...portalProps}>
-	<SheetOverlay />
+	<SheetOverlay class={overlayClass} />
 	<SheetPrimitive.Content
 		bind:ref
 		data-slot="sheet-content"

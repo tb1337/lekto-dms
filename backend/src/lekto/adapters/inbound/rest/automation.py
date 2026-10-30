@@ -1,6 +1,6 @@
 """The numbers of the page "System" about the automation: every user sees them."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Query
@@ -10,8 +10,15 @@ from lekto.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from lekto.adapters.inbound.rest.context import Context
 from lekto.adapters.inbound.rest.params import ADMINS_ONLY
 from lekto.adapters.inbound.rest.problems import problem_responses
-from lekto.adapters.inbound.rest.schemas.automation import AutomationOut, HoldersOut, SignalsOut
+from lekto.adapters.inbound.rest.schemas.automation import (
+    AutomationOut,
+    HolderCasesOut,
+    HoldersOut,
+    SignalsOut,
+)
 from lekto.core.domain.documents import Channel
+from lekto.core.domain.holder_evaluation import HolderOutcome
+from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.services.automation import DEFAULT_CHANNELS, Period
 
 router = APIRouter(prefix="/automation", tags=["automation"], dependencies=PROTECTED)
@@ -114,3 +121,26 @@ async def signals(
 )
 async def holders(user: CurrentUser, context: Context) -> HoldersOut:
     return HoldersOut.of(await context.automation.holders(user))
+
+
+@router.get(
+    "/holders/cases",
+    summary="The decisions behind a number of the holders",
+    description=(
+        ADMINS_ONLY + " The decisions behind one number of `GET /holders`: measured by the "
+        "holders of `measure` (a kind with a holder) or by the `recommendation`, with "
+        "`outcome` (a column), at most a hundred, each with the confirmed documents of its "
+        "contact that show it."
+    ),
+    response_model=HolderCasesOut,
+    responses=problem_responses(401, 403, 422),
+)
+async def holder_cases(
+    user: CurrentUser,
+    context: Context,
+    measure: IdentifierKind | Literal["recommendation"],
+    outcome: HolderOutcome,
+) -> HolderCasesOut:
+    kind = None if measure == "recommendation" else IdentifierKind(measure)
+    cases, names = await context.automation.holder_cases(user, kind, outcome)
+    return HolderCasesOut.of(cases, names, context.refs)

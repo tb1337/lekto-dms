@@ -124,3 +124,19 @@ async def test_admins_see_the_holders_against_their_decisions(api: Api) -> None:
         "vat_id",
     ]
     assert body["recommendation"] == zero  # nothing decided yet
+    cases = f"{PREFIX}/automation/holders/cases"
+    none = await api.client.get(
+        cases, params={"measure": "iban", "outcome": "learned_rejected"}, headers=auth(admin)
+    )
+    assert none.json() == {"cases": []}
+    recommended = await api.client.get(
+        cases, params={"measure": "recommendation", "outcome": "unclear"}, headers=auth(admin)
+    )
+    assert recommended.status_code == 200
+    for params in ({"measure": "nonsense", "outcome": "right"}, {"measure": "iban"}):
+        assert (await api.client.get(cases, params=params, headers=auth(admin))).status_code == 422
+    assert (
+        await api.client.get(
+            cases, params={"measure": "iban", "outcome": "right"}, headers=auth(user)
+        )
+    ).status_code == 403

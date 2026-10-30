@@ -2615,6 +2615,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/automation/holders/cases': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The decisions behind a number of the holders
+		 * @description Admins only. The decisions behind one number of `GET /holders`: measured by the holders of `measure` (a kind with a holder) or by the `recommendation`, with `outcome` (a column), at most a hundred, each with the confirmed documents of its contact that show it.
+		 */
+		get: operations['holder_cases_api_v1_automation_holders_cases_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/health': {
 		parameters: {
 			query?: never;
@@ -5566,6 +5586,51 @@ export interface components {
 			};
 		};
 		/**
+		 * HolderCaseOut
+		 * @description One decision behind a number of the holders' evaluation.
+		 */
+		HolderCaseOut: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @description Normalised, as Lekto compares it.
+			 */
+			value: string;
+			/**
+			 * Ref
+			 * @description The value's reference (`GET /documents/{id}/places/...`).
+			 */
+			ref: string;
+			/**
+			 * Contact Id
+			 * Format: uuid
+			 */
+			contact_id: string;
+			/**
+			 * Contact
+			 * @description The contact's name.
+			 */
+			contact: string;
+			/**
+			 * Confirmed
+			 * @description The person confirmed it (else rejected it).
+			 */
+			confirmed: boolean;
+			/**
+			 * Document Ids
+			 * @description The confirmed documents of the contact that show it, the newest first.
+			 */
+			document_ids: string[];
+		};
+		/** HolderCasesOut */
+		HolderCasesOut: {
+			/**
+			 * Cases
+			 * @description At most a hundred.
+			 */
+			cases: components['schemas']['HolderCaseOut'][];
+		};
+		/**
 		 * HolderKind
 		 * @description Whose a number is where it stands (`domain.holders`).
 		 * @enum {string}
@@ -5615,6 +5680,12 @@ export interface components {
 			/** @description Who told it: `rule` or `model`. */
 			source: components['schemas']['HolderSource'];
 		};
+		/**
+		 * HolderOutcome
+		 * @description How a measure fared on one decision: a column of the tally.
+		 * @enum {string}
+		 */
+		HolderOutcome: 'right' | 'learned_rejected' | 'refused_confirmed' | 'unclear' | 'unread';
 		/**
 		 * HolderSource
 		 * @description Who told the holder.
@@ -28241,6 +28312,97 @@ export interface operations {
 					 *       "title": "Forbidden",
 					 *       "status": 403,
 					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	holder_cases_api_v1_automation_holders_cases_get: {
+		parameters: {
+			query: {
+				measure: components['schemas']['IdentifierKind'] | 'recommendation';
+				outcome: components['schemas']['HolderOutcome'];
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HolderCasesOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

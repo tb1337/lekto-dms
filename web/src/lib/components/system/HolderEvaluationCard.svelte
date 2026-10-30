@@ -4,12 +4,20 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import InfoTip from '#lib/components/InfoTip.svelte';
+	import HolderCasesDialog from '#lib/components/system/HolderCasesDialog.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import Loading from '#lib/components/Loading.svelte';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import * as Table from '#lib/components/ui/table/index.ts';
 	import { describeError } from '#lib/errors.ts';
+	import {
+		measureLabel,
+		outcomeLabel,
+		type HolderCases,
+		type HolderOutcome
+	} from '#lib/holder-cases.ts';
+	import { dropEntry, entryOf, pushEntry } from '#lib/history-state.ts';
 	import { formatNumber } from '#lib/i18n.ts';
 	import { labelOfKind, type IdentifierKind } from '#lib/identifiers.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -18,7 +26,9 @@
 	// The holders against the decisions at the contacts (Tobi, 28.10.2026; admins): per kind
 	// with a holder, how often the rule agreed with what was confirmed or rejected, the two ways
 	// wrong apart (red above nought), the unclear and those read before their kind had a holder;
-	// last the open list's recommendation, over every kind. The API keeps it for a minute.
+	// last the open list's recommendation, over every kind. The API keeps it for a minute. A
+	// number above nought but "Stimmt" opens the cases behind it (`HolderCasesDialog`), kept in
+	// the history entry as a dialog that opens the Beam is (web/DESIGN.md, "Beam").
 	type Holders = components['schemas']['HoldersOut'];
 	type Tally = components['schemas']['TallyOut'];
 
@@ -50,9 +60,33 @@
 	function told(tally: Tally): number {
 		return tally.right + tally.learned_rejected + tally.refused_confirmed;
 	}
+
+	const opened = entryOf('holders');
+	const wanted = $derived(opened() ?? null);
+
+	function open(measure: HolderCases['measure'], outcome: HolderOutcome) {
+		pushEntry('holders', { measure, outcome });
+	}
 </script>
 
-{#snippet row(label: string, tally: Tally, strong: boolean)}
+{#snippet count(measure: HolderCases['measure'], outcome: HolderOutcome, value: number)}
+	{#if value > 0}
+		<button
+			type="button"
+			class="relative -mx-1.5 rounded-md px-1.5 tabular-nums underline decoration-dotted underline-offset-4 hover:bg-secondary max-sm:after:absolute max-sm:after:-inset-2.5"
+			aria-label={m.holders_cases_open({
+				count: formatNumber(value),
+				measure: measureLabel(measure),
+				outcome: outcomeLabel(outcome)
+			})}
+			onclick={() => open(measure, outcome)}>{formatNumber(value)}</button
+		>
+	{:else}
+		{formatNumber(value)}
+	{/if}
+{/snippet}
+
+{#snippet row(label: string, measure: HolderCases['measure'], tally: Tally, strong: boolean)}
 	{@const of = told(tally)}
 	<Table.Row>
 		<Table.Cell class={cn(strong && 'font-semibold')}>{label}</Table.Cell>
@@ -64,19 +98,22 @@
 				<span class="text-muted-foreground">–</span>
 			{/if}
 		</Table.Cell>
-		{#each [tally.learned_rejected, tally.refused_confirmed] as wrong, index (index)}
+		{#each ['learned_rejected', 'refused_confirmed'] as const as outcome (outcome)}
+			{@const wrong = tally[outcome]}
 			<Table.Cell
 				class={cn(
 					'text-right tabular-nums',
 					wrong > 0 ? 'text-lane-red-foreground' : 'text-muted-foreground'
-				)}>{of > 0 ? formatNumber(wrong) : '–'}</Table.Cell
+				)}
 			>
+				{#if of > 0}{@render count(measure, outcome, wrong)}{:else}–{/if}
+			</Table.Cell>
 		{/each}
 		<Table.Cell class="text-right text-muted-foreground tabular-nums">
-			{formatNumber(tally.unclear)}
+			{@render count(measure, 'unclear', tally.unclear)}
 		</Table.Cell>
 		<Table.Cell class="text-right text-muted-foreground tabular-nums">
-			{strong ? '–' : formatNumber(tally.unread)}
+			{#if strong}–{:else}{@render count(measure, 'unread', tally.unread)}{/if}
 		</Table.Cell>
 	</Table.Row>
 {/snippet}
@@ -110,12 +147,14 @@
 				</Table.Header>
 				<Table.Body>
 					{#each rows as item (item.kind)}
-						{@render row(labelOfKind(item.kind), item, false)}
+						{@render row(labelOfKind(item.kind), item.kind, item, false)}
 					{/each}
-					{@render row(m.holders_recommendation(), holders.recommendation, true)}
+					{@render row(m.holders_recommendation(), 'recommendation', holders.recommendation, true)}
 				</Table.Body>
 			</Table.Root>
 		</div>
 		<p class="text-meta text-muted-foreground">{m.holders_footnote()}</p>
 	{/if}
 </Card.Root>
+
+<HolderCasesDialog {wanted} onclose={() => dropEntry('holders')} />

@@ -19,9 +19,9 @@ from typing import Any
 from lekto.core.domain.classification import DOCUMENT_DATE, field_id_of
 from lekto.core.domain.documents import Channel
 from lekto.core.domain.first_runs import FACTS, JUDGED_FIELDS, RELATIONS, Verdict
-from lekto.core.domain.holder_evaluation import HolderEvaluation, evaluate
-from lekto.core.domain.identifiers import CONTACT_KINDS
-from lekto.core.domain.ids import UserId
+from lekto.core.domain.holder_evaluation import Case, HolderEvaluation, HolderOutcome, evaluate
+from lekto.core.domain.identifiers import CONTACT_KINDS, IdentifierKind
+from lekto.core.domain.ids import ContactId, UserId
 from lekto.core.domain.pipeline import NODES, Lane, Node
 from lekto.core.domain.reasons import Action
 from lekto.core.domain.statistics import percentiles
@@ -33,6 +33,8 @@ from lekto.core.services._kept import Kept
 
 DEFAULT_CHANNELS = frozenset({Channel.WEB, Channel.API})
 HISTORY_MONTHS = 12
+MAX_CASES = 100
+"""Cases behind one number of the holders' evaluation at most."""
 """The months of the history, for the periods that end now; all time goes back to the first."""
 ALL_MONTHS = 60
 """How far the history of all time looks back, at most: five years of months is what a chart
@@ -250,6 +252,21 @@ class AutomationService:
             return evaluate(contacts, sightings)
 
         return await self._kept.get(("holders",), count)
+
+    async def holder_cases(
+        self, actor: UserId, measure: IdentifierKind | None, outcome: HolderOutcome
+    ) -> tuple[list[Case], dict[ContactId, str]]:
+        """The decisions behind one number of `holders` (admins): measured by the holders of
+        `measure` (None: the recommendation) with `outcome`, at most `MAX_CASES`, with the names
+        of their contacts."""
+        evaluation = await self.holders(actor)
+        cases = [
+            case for case in evaluation.cases if case.measure == measure and case.outcome is outcome
+        ][:MAX_CASES]
+        async with self._uow() as uow:
+            contacts = await uow.contacts.list_all()
+        wanted = {case.contact for case in cases}
+        return cases, {contact.id: contact.name for contact in contacts if contact.id in wanted}
 
     async def _actor(self, actor: UserId) -> None:
         async with self._uow() as uow:

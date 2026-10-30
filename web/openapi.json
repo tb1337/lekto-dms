@@ -8099,6 +8099,120 @@
         ]
       }
     },
+    "/api/v1/identifiers/places/{kind}/{ref}": {
+      "get": {
+        "tags": [
+          "identifiers"
+        ],
+        "summary": "Where an identifier stands",
+        "description": "The newest documents within the caller's reach that have the value of `ref` of `kind` as a fact (none a person rejected), by document date, at most five: the text around it and each place their pages show it, the one the fact was read at as `own`. A person's kinds only for admins (403, as the `fact` filter); 422 for a reference that names no value of the kind.",
+        "operationId": "identifier_places_api_v1_identifiers_places__kind___ref__get",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/IdentifierKind"
+            }
+          },
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 400,
+              "title": "Ref"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlacesOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/spaces": {
       "get": {
         "tags": [
@@ -30929,6 +31043,30 @@
         "title": "NoteKind",
         "description": "Why a rule's action was not applied, or a review the rule forces."
       },
+      "OccurrenceOut": {
+        "properties": {
+          "own": {
+            "type": "boolean",
+            "title": "Own",
+            "description": "Where the fact was read (its first place in the text)."
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/LocationOut"
+            },
+            "type": "array",
+            "title": "Locations",
+            "description": "By page, a box per line."
+          }
+        },
+        "type": "object",
+        "required": [
+          "own",
+          "locations"
+        ],
+        "title": "OccurrenceOut",
+        "description": "One place the pages show the value."
+      },
       "OidcInfo": {
         "properties": {
           "enabled": {
@@ -31715,6 +31853,14 @@
               }
             ],
             "description": "The text around it, where the document has text and the fact a position."
+          },
+          "occurrences": {
+            "items": {
+              "$ref": "#/components/schemas/OccurrenceOut"
+            },
+            "type": "array",
+            "title": "Occurrences",
+            "description": "Each place the document's pages show the value, in the order of its text; none for a document whose pages' words Lekto has not kept."
           }
         },
         "type": "object",
@@ -31723,9 +31869,27 @@
           "title",
           "date",
           "role",
-          "excerpt"
+          "excerpt",
+          "occurrences"
         ],
         "title": "PlaceOut"
+      },
+      "PlacesOut": {
+        "properties": {
+          "places": {
+            "items": {
+              "$ref": "#/components/schemas/PlaceOut"
+            },
+            "type": "array",
+            "title": "Places",
+            "description": "The newest documents first, at most five."
+          }
+        },
+        "type": "object",
+        "required": [
+          "places"
+        ],
+        "title": "PlacesOut"
       },
       "Processing": {
         "properties": {

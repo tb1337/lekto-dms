@@ -2670,5 +2670,8 @@
 	"beam_pages": "Seiten von „{title}“",
 	"beam_gone": "Das Dokument gibt es nicht mehr, oder Du siehst es nicht mehr.",
 	"beam_no_pages": "Für dieses Dokument gibt es noch keine Seitenbilder.",
-	"back_to": "Zurück zu {place}"
+	"back_to": "Zurück zu {place}",
+	"beam_place_position": "Fundstelle {current} von {total}",
+	"identifier_whence": "Woher gelernt?",
+	"identifier_whence_none": "Kein Dokument, das Du siehst, enthält diese Kennung."
 }

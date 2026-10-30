@@ -10,10 +10,8 @@ entered the value meanwhile) leaves the others done."""
 from collections import Counter
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import date
 from enum import StrEnum
 
-from lekto.core.domain.document_facts import FactRole
 from lekto.core.domain.errors import (
     ConflictError,
     NotFoundError,
@@ -27,14 +25,11 @@ from lekto.core.domain.identifiers import (
     IdentifierSource,
     Key,
 )
-from lekto.core.domain.ids import ContactId, DocumentId, UserId
+from lekto.core.domain.ids import ContactId, UserId
 from lekto.core.domain.open_identifiers import (
-    Excerpt,
     OpenIdentifier,
     OpenSource,
     Recommendation,
-    Sighting,
-    excerpt,
     open_identifiers,
 )
 from lekto.core.domain.profiles import Profile
@@ -44,15 +39,12 @@ from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import require_admin
 from lekto.core.services._identifiers import person_identifiers
 from lekto.core.services.master_data import MasterDataService
-from lekto.core.services.objects import load_text
+from lekto.core.services.places import PLACES, Place, place_of
 from lekto.core.services.profiles import (
     check_person_identifiers,
     matching_persons,
     save_profile,
 )
-
-PLACES = 5
-"""Documents whose places a detail shows, the newest first."""
 
 
 class OpenAction(StrEnum):
@@ -102,19 +94,6 @@ class OpenPage:
     persons: Mapping[UserId, str]
     recommended: int = 0
     to_confirm: int = 0
-
-
-@dataclass(frozen=True)
-class Place:
-    """Where an open identifier stands in one of its documents: the document's title and date,
-    the fact's role there, and the text around it (None if the document has no text or the
-    fact no position)."""
-
-    document: DocumentId
-    title: str
-    dated: date
-    role: FactRole
-    excerpt: Excerpt | None
 
 
 @dataclass(frozen=True)
@@ -206,13 +185,7 @@ class OpenIdentifierService:
             if document is None:
                 continue
             places.append(
-                Place(
-                    document=seen.document,
-                    title=document.title,
-                    dated=seen.dated,
-                    role=seen.fact.role,
-                    excerpt=await self._excerpt(seen),
-                )
+                await place_of(self._store, seen.document, document.title, seen.dated, seen.fact)
             )
         return OpenDetail(
             item,
@@ -220,17 +193,6 @@ class OpenIdentifierService:
             {id: names[id] for id in item.contacts if id in names},
             {} if item.person is None else {item.person: persons.get(item.person, "")},
         )
-
-    async def _excerpt(self, seen: Sighting) -> Excerpt | None:
-        """The text around the fact where it first stands in its document."""
-        fact = seen.fact
-        if fact.position is None:
-            return None
-        try:
-            text = (await load_text(self._store, seen.document)).decode("utf-8", "replace")
-        except NotFoundError:
-            return None
-        return excerpt(text, fact.position, len(fact.written or fact.value))
 
     async def decide(
         self, actor: UserId, decisions: Sequence[OpenDecision], *, session: bool = True

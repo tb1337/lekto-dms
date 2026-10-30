@@ -13,7 +13,14 @@ from uuid import UUID
 from lekto.core.domain import media_types
 from lekto.core.domain.classification import CONFIRMING, SPACE
 from lekto.core.domain.codes import Code, GiroCode, code_identifiers, giro_code
-from lekto.core.domain.document_facts import NUMBER_KINDS, DocumentFact, FactRole, person_only
+from lekto.core.domain.document_facts import (
+    NUMBER_KINDS,
+    DocumentFact,
+    FactCriterion,
+    FactRole,
+    FactState,
+    person_only,
+)
 from lekto.core.domain.documents import Channel, Document, DocumentChanges, confirms
 from lekto.core.domain.errors import (
     ConflictError,
@@ -101,6 +108,7 @@ from lekto.core.services.objects import (
     preview_key,
     structure_key,
 )
+from lekto.core.services.places import PLACES, Place, place_of
 from lekto.core.services.profiles import matching_persons
 from lekto.core.services.relating import queue_relate, relates_by
 from lekto.core.services.rules.changes import ChangeRules
@@ -538,6 +546,45 @@ class DocumentService:
             return await store.get(structure_key(id))
         except NotFoundError:
             raise ConflictError(because(ReasonCode.NO_STRUCTURE_YET)) from None
+
+    async def identifier_places(
+        self, actor: UserId, kind: IdentifierKind, value: str, *, limit: int = PLACES
+    ) -> list[Place]:
+        """Where the identifier of `kind` and `value` (normalised) stands in the newest
+        documents within the caller's reach that have it as a fact (none a person rejected), by
+        document date: the text around it and each place its pages show it. A person's kinds
+        only for admins, as the `fact` filter (PermissionDeniedError)."""
+        listed = await self.query(
+            actor,
+            DocumentFilter(facts=(FactCriterion(kind, value),)),
+            order=DocumentOrder(SortKey.DOCUMENT_DATE),
+            limit=limit,
+        )
+        async with self._uow() as uow:
+            kept = {
+                item.document.id: await uow.document_facts.of_document(item.document.id)
+                for item in listed
+            }
+        places = []
+        for item in listed:
+            document = item.document
+            fact = next(
+                (
+                    each
+                    for each in kept[document.id]
+                    if each.kind is kind
+                    and each.value == value
+                    and each.state is not FactState.REJECTED
+                ),
+                None,
+            )
+            if fact is None:
+                continue
+            dated = document.document_date or document.created_at.date()
+            places.append(
+                await place_of(self._object_store, document.id, document.title, dated, fact)
+            )
+        return places
 
     async def query(
         self,

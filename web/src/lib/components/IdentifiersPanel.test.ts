@@ -1,11 +1,20 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { cleanup, render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { usageLabel } from '#lib/components/UsageCount.svelte';
 import { m } from '#lib/paraglide/messages.js';
 import { phone } from '#lib/phone.svelte.ts';
 import { session } from '#lib/session.svelte.ts';
+import { fakeBack, goTo, testPage } from '#lib/testing/page-state.svelte.ts';
 import IdentifiersPanel from './IdentifiersPanel.svelte';
+
+vi.mock('$app/navigation', async () => ({
+	beforeNavigate: vi.fn(),
+	goto: (await import('#lib/testing/page-state.svelte.ts')).fakeGoto
+}));
+vi.mock('$app/state', async () => ({
+	page: (await import('#lib/testing/page-state.svelte.ts')).testPage
+}));
 
 const UTILITY = { id: '0199a6c4-0000-7000-8000-0000000000c1', name: 'Stadtwerke Nord' };
 const LOGO = `/api/v1/contacts/${UTILITY.id}/logo`;
@@ -60,6 +69,8 @@ function json(body: unknown, status = 200) {
 }
 
 beforeEach(() => {
+	goTo('/ui/admin/master-data?tab=identifiers');
+	vi.spyOn(history, 'back').mockImplementation(fakeBack);
 	session.start({
 		user: { id: 'admin', username: 'admin', role: 'admin' },
 		method: 'password',
@@ -101,10 +112,13 @@ beforeEach(() => {
 				BANK
 			]);
 		}
-		if (
-			request.method === 'GET' &&
-			url.pathname === `/api/v1/identifiers/open/customer_number/${CUSTOMER.ref}`
-		) {
+		const detailed = [CUSTOMER, IBAN, SUGGESTION].find(
+			(item) => url.pathname === `/api/v1/identifiers/open/${item.kind}/${item.ref}`
+		);
+		if (request.method === 'GET' && detailed && detailed !== CUSTOMER) {
+			return json({ identifier: detailed, places: [] });
+		}
+		if (request.method === 'GET' && detailed === CUSTOMER) {
 			return json({
 				identifier: CUSTOMER,
 				places: [
@@ -295,6 +309,56 @@ describe('IdentifiersPanel', () => {
 				{ kind: 'customer_number', value: '20047718', action: 'confirm', contact_id: null }
 			])
 		);
+	});
+
+	it('keeps the dialog in the history entry, and opens a place in the Beam', async () => {
+		const user = userEvent.setup();
+		render(IdentifiersPanel);
+		await rows();
+		await user.click(screen.getByRole('button', { name: m.open_open({ value: '20047718' }) }));
+		const dialog = await screen.findByRole('dialog');
+		// The address names nothing; the entry holds the identifier by its reference.
+		expect(testPage.url.search).toBe('?tab=identifiers');
+		expect(testPage.state.identifier).toEqual({ kind: 'customer_number', ref: CUSTOMER.ref });
+		await user.click(
+			await within(dialog).findByRole('button', {
+				name: m.beam_open_named({ title: 'Rechnung Oktober' })
+			})
+		);
+		expect(testPage.state.beam).toMatchObject({
+			ids: ['0199a6c4-0000-7000-8000-0000000000d1'],
+			index: 0,
+			source: { kind: 'open', identifier: 'customer_number', ref: CUSTOMER.ref }
+		});
+		// Back: first the Beam, then the dialog.
+		history.back();
+		expect(testPage.state.beam).toBeUndefined();
+		expect(testPage.state.identifier).toBeTruthy();
+		history.back();
+		await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+	});
+
+	it('opens the dialog a reload brings back, and closes it when it is decided meanwhile', async () => {
+		goTo(
+			'/ui/admin/master-data?tab=identifiers',
+			{},
+			{
+				identifier: { kind: 'customer_number', ref: CUSTOMER.ref }
+			}
+		);
+		render(IdentifiersPanel);
+		const dialog = await screen.findByRole('dialog');
+		expect(await within(dialog).findByText('Rechnung Oktober')).toBeTruthy();
+		cleanup();
+		goTo(
+			'/ui/admin/master-data?tab=identifiers',
+			{},
+			{
+				identifier: { kind: 'customer_number', ref: 'gone' }
+			}
+		);
+		render(IdentifiersPanel);
+		await vi.waitFor(() => expect(testPage.state.identifier).toBeUndefined());
 	});
 
 	it('narrows to the learned ones', async () => {

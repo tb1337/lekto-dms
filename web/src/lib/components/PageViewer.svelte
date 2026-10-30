@@ -394,7 +394,7 @@
 								style:height={`${box.height * 100}%`}
 								aria-hidden="true"
 							>
-								{#if boxIndex === 0}
+								{#if boxIndex === 0 && mark.label}
 									<span
 										class="absolute bottom-full left-0 mb-1 rounded-md bg-primary px-1.5 text-nano leading-4 font-semibold whitespace-nowrap text-primary-foreground"
 									>

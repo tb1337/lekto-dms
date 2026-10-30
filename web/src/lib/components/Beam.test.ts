@@ -14,6 +14,7 @@ vi.mock('$app/state', async () => ({
 }));
 
 const LIST = '/ui/documents?tag=t1';
+const BOX = { x: 0.1, y: 0.2, width: 0.3, height: 0.02 };
 const beam = (index: number) => ({ ids: ['a', 'b'], index, from: 'Dokumente' });
 
 beforeEach(() => {
@@ -40,6 +41,21 @@ beforeEach(() => {
 				}),
 			'GET /api/v1/documents/b': () => new Response(null, { status: 404 }),
 			'GET /api/v1/contacts/c1': () => ({ id: 'c1', name: 'Stadtwerke' }),
+			'GET /api/v1/identifiers/places/iban/REU4OQ': () => ({
+				places: [
+					{
+						document_id: 'a',
+						title: 'Stromrechnung März',
+						date: '2026-03-31',
+						role: 'contact',
+						excerpt: null,
+						occurrences: [
+							{ own: false, locations: [{ page: 1, boxes: [BOX] }] },
+							{ own: true, locations: [{ page: 2, boxes: [BOX, BOX] }] }
+						]
+					}
+				]
+			}),
 			'GET /api/v1/document-types/t1': () => ({ id: 't1', name: 'Rechnung' })
 		})
 	);
@@ -121,5 +137,25 @@ describe('Beam', () => {
 			state: { words: 'Strom' },
 			persistState: true
 		});
+	});
+
+	it('marks each place of its source, the own one with its kind and a halo', async () => {
+		goTo(
+			LIST,
+			{},
+			{
+				beam: {
+					...beam(0),
+					source: { kind: 'places', identifier: 'iban', ref: 'REU4OQ' }
+				}
+			}
+		);
+		render(Beam);
+		const sheet = await screen.findByRole('dialog', { name: 'Stromrechnung März' });
+		expect(sheet.textContent).toContain(m.beam_place_position({ current: 1, total: 2 }));
+		await waitFor(() => expect(sheet.querySelectorAll('.ring-primary')).toHaveLength(3));
+		expect(sheet.querySelectorAll('.shadow-pinned')).toHaveLength(2);
+		// The kind stands once, at the own place.
+		expect(sheet.textContent?.match(/IBAN/g)).toHaveLength(1);
 	});
 });

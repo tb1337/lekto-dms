@@ -1,11 +1,22 @@
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
+import { toast } from 'svelte-sonner';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type IdentifierRow, kindLabel, row } from '#lib/identifiers.ts';
 import type { Tag } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { phone } from '#lib/phone.svelte.ts';
+import { calls, fakeApi } from '#lib/testing/documents.ts';
+import { goTo, testPage } from '#lib/testing/page-state.svelte.ts';
 import IdentifiersEditor from './IdentifiersEditor.svelte';
+
+vi.mock('$app/navigation', async () => ({
+	beforeNavigate: vi.fn(),
+	goto: (await import('#lib/testing/page-state.svelte.ts')).fakeGoto
+}));
+vi.mock('$app/state', async () => ({
+	page: (await import('#lib/testing/page-state.svelte.ts')).testPage
+}));
 
 const WORK = {
 	id: 'p1',
@@ -117,5 +128,44 @@ describe('IdentifiersEditor', () => {
 		expect(screen.getByText(m.identifier_none())).toBeTruthy();
 		await user.click(screen.getByRole('button', { name: m.identifier_add() }));
 		expect(props.rows).toHaveLength(1);
+	});
+});
+
+describe('IdentifiersEditor, where a learned one stands', () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		goTo('/ui/inbox');
+	});
+
+	it('opens the documents that show it in the Beam, or says there are none', async () => {
+		let places = [{ document_id: 'd1' }, { document_id: 'd2' }];
+		const api = fakeApi({
+			'POST /api/v1/identifiers/refs': async (request) => ({
+				...(await request.json()),
+				ref: 'REU4OQ'
+			}),
+			'GET /api/v1/identifiers/places/iban/REU4OQ': () => ({ places })
+		});
+		vi.stubGlobal('fetch', api);
+		const info = vi.spyOn(toast, 'info');
+		goTo('/ui/admin/master-data');
+		const user = userEvent.setup();
+		editor([row('iban', 'DE89370400440532013000', 'learned')]);
+		await user.click(line(/^DE89/));
+		await user.click(screen.getByRole('button', { name: m.identifier_whence() }));
+		await vi.waitFor(() =>
+			expect(testPage.state.beam).toMatchObject({
+				ids: ['d1', 'd2'],
+				index: 0,
+				source: { kind: 'places', identifier: 'iban', ref: 'REU4OQ' }
+			})
+		);
+		// The value went in a body, never into an address.
+		expect(calls(api).some((call) => call.includes('DE89'))).toBe(false);
+		places = [];
+		goTo('/ui/admin/master-data');
+		await user.click(screen.getByRole('button', { name: m.identifier_whence() }));
+		await vi.waitFor(() => expect(info).toHaveBeenCalledWith(m.identifier_whence_none()));
+		expect(testPage.state.beam).toBeUndefined();
 	});
 });

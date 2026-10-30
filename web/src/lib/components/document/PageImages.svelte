@@ -1,17 +1,19 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import PageViewer from '#lib/components/PageViewer.svelte';
-	import { pageImageHref } from '#lib/document-view.ts';
+	import { pageImageHref, type Mark, type Place } from '#lib/document-view.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import type { Layout } from '#lib/viewer/zoom.ts';
 
 	// The page images (WebP from the original): in the document view until the archive PDF
-	// exists (they come early, while the text is still being recognised), and in the Beam. The
-	// same viewer as the PDF's: side by side, zoomed by gesture.
+	// exists (they come early, while the text is still being recognised), and in the Beam, with
+	// the places it marks (`marks`, `reveal`). The same viewer as the PDF's: side by side, zoomed
+	// by gesture.
 	let {
 		documentId,
 		pageCount,
 		label,
+		marks = [],
 		note = m.pages_preview(),
 		start = null,
 		end,
@@ -20,6 +22,7 @@
 		documentId: string;
 		pageCount: number;
 		label: string;
+		marks?: readonly Mark[];
 		/** Said in the toolbar beside the page count. */
 		note?: string | null;
 		/** How the viewer starts (`PageViewer`). */
@@ -29,6 +32,13 @@
 		/** The page in the upper third of the view, and how many there are. */
 		onpage?: (current: number, total: number) => void;
 	} = $props();
+
+	let viewer = $state<PageViewer | null>(null);
+
+	/** Scroll so that `place` stands in the upper third of the view. */
+	export function reveal(place: Place) {
+		viewer?.reveal(place);
+	}
 
 	/** An image is as wide as its page: 100 % is A4's width; its height once it is loaded. */
 	const WIDTH = 793;
@@ -41,7 +51,7 @@
 	);
 </script>
 
-<PageViewer {sizes} {label} {note} {start} {end} {onpage}>
+<PageViewer bind:this={viewer} {sizes} {label} {marks} {note} {start} {end} {onpage}>
 	{#snippet page(number: number)}
 		<img
 			src={pageImageHref(documentId, number)}

@@ -2,7 +2,14 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Plus from '@lucide/svelte/icons/plus';
 	import X from '@lucide/svelte/icons/x';
+	import ScanEye from '@lucide/svelte/icons/scan-eye';
 	import { tick } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { api } from '#lib/api/client.ts';
+	import { unwrap } from '#lib/api/call.ts';
+	import { openBeam } from '#lib/beam.svelte.ts';
+	import { describeError } from '#lib/errors.ts';
+	import { refOf } from '#lib/fact-refs.svelte.ts';
 	import InfoHint from '#lib/components/InfoHint.svelte';
 	import SearchField from '#lib/components/SearchField.svelte';
 	import Select from '#lib/components/Select.svelte';
@@ -127,6 +134,30 @@
 
 	function indexOf(item: IdentifierRow): number {
 		return rows.findIndex((other) => other.key === item.key);
+	}
+
+	/** Where a learned one stands: the documents within reach that show it, in the Beam, each
+	 * place marked. */
+	async function whence(item: IdentifierRow) {
+		const kind = item.kind as IdentifierKind;
+		try {
+			const ref = await refOf(kind, item.value);
+			const found = await unwrap(
+				api.GET('/api/v1/identifiers/places/{kind}/{ref}', {
+					params: { path: { kind, ref } }
+				})
+			);
+			const ids = found.places.map((place) => place.document_id);
+			if (ids.length === 0) {
+				toast.info(m.identifier_whence_none());
+				return;
+			}
+			openBeam(ids, ids[0], `${kindLabel(kind)} ${item.value}`, {
+				source: { kind: 'places', identifier: kind, ref }
+			});
+		} catch (error) {
+			toast.error(describeError(error));
+		}
 	}
 
 	function become(item: IdentifierRow, source: IdentifierSource) {
@@ -321,6 +352,10 @@
 										{/if}
 									</p>
 									{#if item.source === 'learned'}
+										<Button type="button" variant="ghost" size="sm" onclick={() => whence(item)}>
+											<ScanEye aria-hidden="true" />
+											{m.identifier_whence()}
+										</Button>
 										<Button
 											type="button"
 											variant="outline"

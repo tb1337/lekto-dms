@@ -7,11 +7,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from lekto.adapters.inbound.rest.schemas.inbox import LocationOut
 from lekto.adapters.inbound.rest.schemas.refs import seal
 from lekto.adapters.inbound.schemas import ReasonOut
 from lekto.core.domain.document_facts import FactRole
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import ContactId, UserId
+from lekto.core.domain.occurrences import Occurrence
 from lekto.core.domain.open_identifiers import (
     OpenIdentifier,
     OpenSource,
@@ -25,8 +27,8 @@ from lekto.core.services.open_identifiers import (
     OpenDecision,
     OpenDetail,
     OpenPage,
-    Place,
 )
+from lekto.core.services.places import Place
 
 MAX_DECISIONS = 200
 
@@ -160,6 +162,20 @@ class ExcerptOut(BaseModel):
     after: str
 
 
+class OccurrenceOut(BaseModel):
+    """One place the pages show the value."""
+
+    own: bool = Field(description="Where the fact was read (its first place in the text).")
+    locations: list[LocationOut] = Field(description="By page, a box per line.")
+
+    @classmethod
+    def of(cls, occurrence: Occurrence) -> "OccurrenceOut":
+        return cls(
+            own=occurrence.own,
+            locations=[LocationOut.of(location) for location in occurrence.locations],
+        )
+
+
 class PlaceOut(BaseModel):
     document_id: UUID
     title: str
@@ -167,6 +183,10 @@ class PlaceOut(BaseModel):
     role: FactRole
     excerpt: ExcerptOut | None = Field(
         description="The text around it, where the document has text and the fact a position."
+    )
+    occurrences: list[OccurrenceOut] = Field(
+        description="Each place the document's pages show the value, in the order of its text; "
+        "none for a document whose pages' words Lekto has not kept."
     )
 
     @classmethod
@@ -180,7 +200,12 @@ class PlaceOut(BaseModel):
             excerpt=None
             if excerpt is None
             else ExcerptOut(before=excerpt.before, match=excerpt.match, after=excerpt.after),
+            occurrences=[OccurrenceOut.of(item) for item in place.occurrences],
         )
+
+
+class PlacesOut(BaseModel):
+    places: list[PlaceOut] = Field(description="The newest documents first, at most five.")
 
 
 class OpenDetailOut(BaseModel):

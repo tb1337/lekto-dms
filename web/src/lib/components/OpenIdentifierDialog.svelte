@@ -1,7 +1,12 @@
 <script lang="ts">
+	import ScanEye from '@lucide/svelte/icons/scan-eye';
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
-	import { BASE } from '#lib/base.ts';
+	import { ApiError } from '#lib/api/problem.ts';
+	import { openBeam } from '#lib/beam.svelte.ts';
+	import { latest } from '#lib/latest.ts';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
 	import FormDialog from '#lib/components/FormDialog.svelte';
@@ -35,38 +40,67 @@
 	// way out at the start of the footer.
 	let {
 		open = $bindable(false),
-		item,
-		ondecided
+		wanted,
+		listed = null,
+		ondecided,
+		ongone
 	}: {
 		open?: boolean;
-		item: OpenIdentifier | null;
+		/** The identifier to show, by its kind and reference. */
+		wanted: { kind: OpenIdentifier['kind']; ref: string } | null;
+		/** It as the list has it, shown at once; else as its detail tells. */
+		listed?: OpenIdentifier | null;
 		ondecided: (action: OpenAction) => void;
+		/** It is no longer open (decided meanwhile, after a reload): the dialog closes. */
+		ongone: () => void;
 	} = $props();
 
 	let detail = $state<OpenDetail | null>(null);
 	let problem = $state<string | null>(null);
 	let contact = $state('');
+	const begin = latest();
+	const item = $derived(listed ?? detail?.identifier ?? null);
 
-	async function load(wanted: OpenIdentifier) {
+	async function load(asked: { kind: OpenIdentifier['kind']; ref: string }) {
+		const current = begin();
 		detail = null;
 		problem = null;
 		try {
 			const found = await unwrap(
 				api.GET('/api/v1/identifiers/open/{kind}/{ref}', {
-					params: { path: { kind: wanted.kind, ref: wanted.ref } }
+					params: { path: { kind: asked.kind, ref: asked.ref } }
 				})
 			);
-			if (item === wanted) detail = found;
+			if (!current()) return;
+			detail = found;
+			contact ||= found.identifier.contacts[0]?.id ?? '';
 		} catch (error) {
-			if (item === wanted) problem = describeError(error);
+			if (!current()) return;
+			if (error instanceof ApiError && error.status === 404) {
+				toast.info(describeError(error));
+				ongone();
+				return;
+			}
+			problem = describeError(error);
 		}
 	}
 
 	$effect(() => {
-		if (!open || !item) return;
-		contact = item.contacts[0]?.id ?? '';
-		void load(item);
+		if (!open || !wanted) return;
+		contact = untrack(() => listed)?.contacts[0]?.id ?? '';
+		void load(wanted);
 	});
+
+	/** A place's document in the Beam, paging through the places, each marked. */
+	function view(document: string) {
+		if (!detail || !item) return;
+		openBeam(
+			detail.places.map((place) => place.document_id),
+			document,
+			title,
+			{ source: { kind: 'open', identifier: item.kind, ref: item.ref } }
+		);
+	}
 
 	const title = $derived(item ? `${kindLabel(item.kind)} ${shown(item)}` : '');
 	const description = $derived.by(() => {
@@ -162,15 +196,25 @@
 				<ul class="flex flex-col gap-2">
 					{#each detail.places as place (place.document_id)}
 						<Card.Root as="li" size="sm" class="flex flex-col gap-2">
-							<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-								<a
-									class="inline-flex min-h-6 min-w-0 flex-1 items-center font-medium text-brand hover:underline max-sm:min-h-11"
-									href={`${BASE}/documents/${place.document_id}`}>{place.title}</a
+							<!-- The title opens the Beam (the eye before it says so), cut to one line; on a
+							     phone date and role stand below it. Into the document from there. -->
+							<div class="flex flex-wrap items-center gap-x-2 gap-y-1 sm:flex-nowrap">
+								<button
+									type="button"
+									class="group inline-flex min-h-6 min-w-0 flex-1 items-center gap-1.5 text-left font-medium text-brand max-sm:min-h-11 max-sm:basis-full"
+									aria-label={m.beam_open_named({ title: place.title })}
+									title={m.beam_open_named({ title: place.title })}
+									onclick={() => view(place.document_id)}
 								>
-								<span class="text-meta text-muted-foreground tabular-nums">
+									<ScanEye class="size-4 shrink-0" aria-hidden="true" />
+									<span class="truncate underline-offset-2 group-hover:underline"
+										>{place.title}</span
+									>
+								</button>
+								<span class="shrink-0 text-meta text-muted-foreground tabular-nums">
 									{formatDate(place.date)}
 								</span>
-								<Badge variant="note">{roleLabel(place.role)}</Badge>
+								<Badge variant="note" class="shrink-0">{roleLabel(place.role)}</Badge>
 							</div>
 							{#if place.excerpt}
 								<p class="rounded-xl bg-surface px-3 py-2 text-meta break-words">

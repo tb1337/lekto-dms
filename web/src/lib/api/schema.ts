@@ -956,6 +956,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/identifiers/places/{kind}/{ref}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Where an identifier stands
+		 * @description The newest documents within the caller's reach that have the value of `ref` of `kind` as a fact (none a person rejected), by document date, at most five: the text around it and each place their pages show it, the one the fact was read at as `own`. A person's kinds only for admins (403, as the `fact` filter); 422 for a reference that names no value of the kind.
+		 */
+		get: operations['identifier_places_api_v1_identifiers_places__kind___ref__get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/spaces': {
 		parameters: {
 			query?: never;
@@ -7085,6 +7105,22 @@ export interface components {
 		 * @enum {string}
 		 */
 		NoteKind: 'skipped' | 'overruled' | 'refused' | 'conflict' | 'review' | 'yielded';
+		/**
+		 * OccurrenceOut
+		 * @description One place the pages show the value.
+		 */
+		OccurrenceOut: {
+			/**
+			 * Own
+			 * @description Where the fact was read (its first place in the text).
+			 */
+			own: boolean;
+			/**
+			 * Locations
+			 * @description By page, a box per line.
+			 */
+			locations: components['schemas']['LocationOut'][];
+		};
 		/** OidcInfo */
 		OidcInfo: {
 			/** Enabled */
@@ -7514,6 +7550,19 @@ export interface components {
 			role: components['schemas']['FactRole'];
 			/** @description The text around it, where the document has text and the fact a position. */
 			excerpt: components['schemas']['ExcerptOut'] | null;
+			/**
+			 * Occurrences
+			 * @description Each place the document's pages show the value, in the order of its text; none for a document whose pages' words Lekto has not kept.
+			 */
+			occurrences: components['schemas']['OccurrenceOut'][];
+		};
+		/** PlacesOut */
+		PlacesOut: {
+			/**
+			 * Places
+			 * @description The newest documents first, at most five.
+			 */
+			places: components['schemas']['PlaceOut'][];
 		};
 		/** Processing */
 		Processing: {
@@ -17619,6 +17668,97 @@ export interface operations {
 					 *       "title": "Unauthorized",
 					 *       "status": 401,
 					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	identifier_places_api_v1_identifiers_places__kind___ref__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				kind: components['schemas']['IdentifierKind'];
+				ref: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PlacesOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

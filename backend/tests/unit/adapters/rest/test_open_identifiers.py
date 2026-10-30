@@ -1,10 +1,14 @@
 """`/identifiers/open`: the open identifiers, where one stands, decisions."""
 
+import json
+
 from lekto.adapters.inbound.rest import PREFIX
 from lekto.core.domain.document_facts import DocumentFact, FactOrigin, role_of
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
+from lekto.core.domain.labels import grid_layout
 from lekto.core.domain.master_data import Contact
-from lekto.core.services.objects import text_key
+from lekto.core.domain.users import User
+from lekto.core.services.objects import structure_key, text_key
 from tests import builders
 from tests.api import auth
 from tests.unit.adapters.rest.support import Api
@@ -15,8 +19,8 @@ VAT = (IdentifierKind.VAT_ID, "DE312456789")
 TEXT = "Kundennummer 20047718, USt-IdNr. DE312456789"
 
 
-async def seeded(api: Api) -> Contact:
-    owner = await api.user()
+async def seeded(api: Api, owner: User | None = None) -> Contact:
+    owner = owner or await api.user()
     contact = Contact.create(name="Stadtwerke", now=builders.NOW)
     contact.set_learned([Identifier(*CUSTOMER, IdentifierSource.LEARNED)])
     async with api.container.unit_of_work() as uow:
@@ -43,6 +47,11 @@ async def seeded(api: Api) -> Contact:
             )
             await api.container.object_store.put(
                 text_key(document.id), TEXT.encode(), content_type="text/plain"
+            )
+            await api.container.object_store.put(
+                structure_key(document.id),
+                json.dumps(grid_layout(TEXT)).encode(),
+                content_type="application/json",
             )
         await uow.commit()
     return contact
@@ -100,6 +109,12 @@ async def test_admins_see_the_open_identifiers(api: Api) -> None:
         "match": "DE312456789",
         "after": "",
     }
+    # Where the pages show it, the fact's own place marked.
+    (occurrence,) = place["occurrences"]
+    assert occurrence["own"] is True
+    (location,) = occurrence["locations"]
+    assert location["page"] == 1
+    assert round(location["boxes"][0]["x"] * 80) == TEXT.index("DE312456789")
     gone = api.container.refs.seal("DE1", context="vat_id")
     missing = await api.client.get(f"{URL}/vat_id/{gone}", headers=auth(admin))
     assert (missing.status_code, missing.json()["reason"]["code"]) == (404, "identifier_not_open")
@@ -194,3 +209,25 @@ async def test_the_recommended_are_confirmed_at_once(api: Api) -> None:
     user = await api.user()
     refused = await api.client.post(f"{URL}/recommended", headers=auth(user))
     assert refused.status_code == 403
+
+
+async def test_where_an_identifier_stands_in_the_documents_the_caller_reads(api: Api) -> None:
+    """The newest documents with the fact within the caller's reach, each place marked."""
+    owner = await api.user()
+    await seeded(api, owner)
+    places = f"{PREFIX}/identifiers/places"
+    customer = api.container.refs.seal(CUSTOMER[1], context="customer_number")
+    found = await api.client.get(f"{places}/customer_number/{customer}", headers=auth(owner))
+    assert found.status_code == 200, found.text
+    listed = found.json()["places"]
+    assert len(listed) == 2
+    assert listed[0]["excerpt"]["match"] == "20047718"
+    assert [item["own"] for item in listed[0]["occurrences"]] == [True]
+    # Another user reads none of them; a person's kind is for admins; a broken reference.
+    other = await api.user()
+    nothing = await api.client.get(f"{places}/customer_number/{customer}", headers=auth(other))
+    assert nothing.json() == {"places": []}
+    tax = api.container.refs.seal("12345678911", context="tax_id")
+    assert (await api.client.get(f"{places}/tax_id/{tax}", headers=auth(other))).status_code == 403
+    broken = await api.client.get(f"{places}/vat_id/{customer}", headers=auth(other))
+    assert (broken.status_code, broken.json()["reason"]["code"]) == (422, "ref_unknown")

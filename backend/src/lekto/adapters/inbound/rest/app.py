@@ -186,6 +186,7 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
         *master_data.ROUTERS,
         identifiers.router,
         identifiers.refs_router,
+        identifiers.places_router,
         spaces.router,
         rules.router,
         rules.applications,

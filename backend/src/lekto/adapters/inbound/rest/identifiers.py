@@ -16,6 +16,8 @@ from lekto.adapters.inbound.rest.schemas.open_identifiers import (
     OpenPageOut,
     OpenSearchIn,
     OutcomeOut,
+    PlaceOut,
+    PlacesOut,
 )
 from lekto.adapters.inbound.rest.schemas.refs import MAX_REF, RefIn, RefOut, opened, seal
 from lekto.core.domain.identifiers import IdentifierKind, normalise_identifier
@@ -209,3 +211,32 @@ async def read_ref(
     context: Context,
 ) -> RefOut:
     return RefOut(kind=kind, value=opened(context.refs, kind, ref), ref=ref)
+
+
+places_router = APIRouter(
+    prefix="/identifiers/places", tags=["identifiers"], dependencies=PROTECTED
+)
+
+
+@places_router.get(
+    "/{kind}/{ref}",
+    summary="Where an identifier stands",
+    description=(
+        "The newest documents within the caller's reach that have the value of `ref` of `kind` "
+        "as a fact (none a person rejected), by document date, at most five: the text around "
+        "it and each place their pages show it, the one the fact was read at as `own`. A "
+        "person's kinds only for admins (403, as the `fact` filter); 422 for a reference that "
+        "names no value of the kind."
+    ),
+    response_model=PlacesOut,
+    responses=problem_responses(401, 403, 422),
+)
+async def identifier_places(
+    kind: IdentifierKind,
+    ref: Annotated[str, Path(max_length=MAX_REF)],
+    user: CurrentUser,
+    context: Context,
+) -> PlacesOut:
+    value = opened(context.refs, kind, ref)
+    places = await context.documents.identifier_places(user, kind, value)
+    return PlacesOut(places=[PlaceOut.of(place) for place in places])

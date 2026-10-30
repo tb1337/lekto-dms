@@ -460,7 +460,8 @@ modal, over a dialog too.
   overview's expected documents, the jobs); the title keeps opening the document. From a list, the Beam pages through
   the list's page.
   Where a dialog or a card lists documents as evidence (Fundstellen, a relation, similar
-  documents), the title itself opens the Beam, the eye before it, cut to one line; into the
+  documents, the cases behind a number of the holders' evaluation), the title itself opens the
+  Beam, the eye before it, cut to one line; into the
   document from the Beam. A relation shows both documents, the newer first, the number they
   share marked in each. A rule's preview (Anwenden) shows where its text conditions hit, each
   labelled with its text.

@@ -8,7 +8,7 @@
 import { goto } from '$app/navigation';
 import { page } from '$app/state';
 
-type Key = 'beam' | 'identifier';
+type Key = 'beam' | 'identifier' | 'holders';
 
 // The keys whose entry this page pushed (else: a reload restored it).
 const pushed: Partial<Record<Key, boolean>> = {};

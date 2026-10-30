@@ -13,6 +13,8 @@ declare global {
 			from?: { label: string };
 			/** The open identifier whose dialog is open (`IdentifiersPanel`). */
 			identifier?: { kind: import('#lib/identifiers.ts').IdentifierKind; ref: string };
+			/** The cases behind a number of the holders' evaluation (`HolderEvaluationCard`). */
+			holders?: import('#lib/holder-cases.ts').HolderCases;
 		}
 		// interface Platform {}
 	}

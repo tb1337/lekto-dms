@@ -2375,6 +2375,68 @@ Stand: freigegeben (Tobi, 28.10.2026; offene Punkte 13 und 13.3). Mock: Leinwand
 1. Sollen Massenaktionen auch für Nicht-Admins gehen (für Dokumente, die sie bearbeiten dürfen)? Vorschlag: ja.
 2. Neu verarbeiten ab welchem Schritt? Vorschlag: wie der Knopf am Dokument, der Schritt im Dialog wählbar (voreingestellt der erste, die Texterkennung); ab „Sprachmodell“ kostet es je Dokument zwei Modellaufrufe, der Dialog sagt das bei mehr als 15 Dokumenten.
 
+### Beam: der Blick aufs Dokument, ohne den Ort zu verlassen
+
+Stand: freigegeben (Frage- und Antwortrunde mit Tobi, 30.10.2026; Fragen 1, 3, 4: „okay“). Mock: Leinwand „Fundstellen mit Seitenbild und Beam“ (https://claude.ai/artifact/NAhVzrNQjQwzL83WaRg5vF); gewählt ist dort C, das Sheet rechts; Schritt 0 (der Beam selbst) steht in den Reihen „Schritt 0“ und „Beam aus der Liste“.
+
+**Anlass (Tobi):** Im Dialog einer offenen Kennung stehen die Fundstellen nur als Text. Ob die IBAN wirklich so dasteht und in welchem Zusammenhang, sieht man erst im Dokument, und dorthin zu gehen verlässt die Entscheidung. Allgemeiner: Lekto muss viel transparenter und intuitiver werden. Wo Lekto etwas aus einem Dokument behauptet, soll man die Stelle mit einem Klick sehen.
+
+**Entscheidungen (Tobi, 30.10.2026):**
+1. **Beam** heißt das Sheet, das ein Dokument zeigt, ohne den Ort zu verlassen: „der Zugriff aufs Dokument in Lichtgeschwindigkeit“. Wie Space und Lens in beiden Sprachen gleich. Kein Verb „beamen“ in der UI (Tobi: „klingt wirklich lachhaft“); der Knopf heißt „Ansehen“ (Icon `scan-eye`), der Name steht als Eyebrow „Beam“ im Kopf des Sheets.
+2. Ein **Sheet von rechts**, modal, auch über einem Dialog; nicht der zweispaltige Dialog (C′), weil das Sheet an vielen Orten hilft. Allgemein: Es zeigt ein Dokument auch ohne gesuchte Stelle.
+3. Der Beam **zeigt nur**: Kopfzeile (Titel, Kontakt, Datum) und die Seiten. Bearbeitet wird in der Dokumentansicht. „Dokument öffnen“ führt dorthin.
+4. **Zoomen wie in der Dokumentansicht:** Knöpfe, Strg/⌘ mit Mausrad, Pinch und Wischen am Handy, Doppelklick, Tasten + − 0. Der Beam nutzt dafür den `PageViewer` selbst, keine zweite Implementierung.
+5. **Breite:** 640 px auf dem Desktop, unter `lg` volle Breite, am Handy Vollbild; die Zurück-Geste schließt ihn.
+6. **Alle Vorkommen** des Werts im Dokument sind markiert. Die Stelle, aus der der Fakt stammt, ist hervorgehoben (Halo wie „pinned“), und der Beam springt dorthin.
+7. Der Text der Fundstellen bleibt im Dialog. Das Bild der Seite steht im Beam (Variante B, der Ausschnitt in der Karte, ist verworfen: „mit B kann man nicht arbeiten“).
+8. **Keine Klardaten in Adressen**, weder in der Adresszeile noch in Anfragen an die API: Sie landen im Verlauf, in Lesezeichen, im `Referer` und in den Access-Logs der Proxys. In einer URL stehen nur undurchsichtige IDs.
+9. **Zustand im History-Eintrag** statt in der URL: SvelteKit-Shallow-Routing (`goto(url, { shallow: true, state, persistState: true })`, SvelteKit 3). Die Zurück-Taste schließt erst den Beam, dann den Dialog, und nach F5 sind beide wieder offen. Kein `localStorage` dafür.
+10. **Ein allgemeiner Rückweg** für jeden Absprung: Wer aus einem Beam, einem Dialog oder einer Liste ins Dokument springt, kommt mit „← Zurück zu …“ genau dorthin zurück, mit offenem Dialog und Beam.
+11. **Offene Kennungen bekommen eine undurchsichtige ID**, kein POST zum Lesen.
+12. **Die Suche schickt ihre Wörter im Body**, auch an die API.
+13. **Suchtreffer im Beam** (die Wörter auf der Seite markiert) gehören zu #192 und warten auf dessen Umbau; als Kommentar dort festgehalten. **Teilbare Links** ohne Klardaten: #216.
+14. **Alles wird gebaut, danach führt Claude Tobi durch jeden Ort.**
+
+**Vorschlag:**
+
+- **Beam (Web):** `Beam.svelte` auf `ui/sheet` (`side="right"`), darin `PageViewer` mit `marks` und `reveal`. Er bekommt eine Liste von Belegen: je Beleg `document_id`, Titel, Datum, optional `locations` (Seite und Boxen, wie `LocationOut`) und welche davon die des Fakts ist (`pinned`). Er blättert durch die Belege („Beleg 2 von 5“, Pfeile, Tasten ← →). Ohne Stellen zeigt er die Seiten ab Seite 1. Er lädt **nie selbst nach einem Wert**: Die Stellen kommen immer vom Endpunkt, der den Fakt liefert. Fehlen die Seitenbilder noch, sagt er das und bietet „Dokument öffnen“ an.
+- **Zustand und Rückweg (Web):** `lib/beam.svelte.ts` öffnet und schließt über `goto(…, { shallow: true, state, persistState: true })`; `page.state.beam` hält nur IDs (Dokumente, Seite, Index des Belegs, die ID der Kennung). Ein offener Dialog steht ebenso im State. Absprünge gehen über `goto('/documents/<id>', { state: { from: { label } } })`; der `BackLink` ruft dann `history.back()` auf, sonst gilt der heutige Weg. `?from=inbox` und `return-to.svelte.ts` gehen darin auf. **Veralteter Zustand:** Ist die Kennung nach F5 oder beim Zurückkehren schon entschieden oder das Dokument weg, schließen Dialog bzw. Beam still und ein Toast sagt, warum.
+- **Undurchsichtige ID einer Kennung:** HMAC-SHA-256 über Art und normalisierten Wert mit einem Schlüssel, der per HKDF aus `LEKTO_SECRET_KEY` für diesen Zweck abgeleitet ist (der TOTP-Schlüssel wird nicht doppelt genutzt). Ohne Schlüssel lässt sich die ID nicht durch Probieren auflösen; ein einfacher Hash ginge bei IBANs mit bekannter Bankleitzahl offline durch. Stabil, solange der Schlüssel bleibt; bei einem Wechsel ist nur offener UI-Zustand hin. Keine Tabelle, keine Migration: Der Endpunkt findet den Eintrag, dessen ID passt.
+- **Suche im Body:** `POST /documents/search` statt `GET /documents/search?q=`, dazu die Wörter von `POST /documents/bulk` und `GET /identifiers/open` (`q`) in den Body bzw. einen eigenen Such-Endpunkt. Das Web hält die Wörter der Dokumentliste in `page.state` statt in `?q=`. PR 1 sucht alle Endpunkte und Seiten nach Parametern mit getipptem Text ab und listet sie im PR.
+- **Referrer:** `Referrer-Policy: no-referrer` für UI und API (heute `same-origin` an der UI). Lekto braucht den Referrer nirgends.
+- **Muster in `web/DESIGN.md`:** der Beam (Sheet rechts, Breiten, Gesten, Belege blättern), „Sheet über Dialog“, der Rückweg nach Absprüngen, die Regel „keine Klardaten in Adressen“. In `architektur.md` (Web-UI) der Zustand im History-Eintrag und die ID der Kennungen.
+
+**Orte** (Tobi: alle bauen, dann Führung):
+
+| # | Ort | Was der Beam zeigt | Daten |
+|---|---|---|---|
+| 1 | Stammdaten › Kennungen › Dialog, Fundstellen | die Seiten mit allen Vorkommen, die des Fakts hervorgehoben; Blättern durch die Fundstellen | neu: `locations` je Fundstelle (`TextPlaces` mit `load_layout`) |
+| 2 | Übersicht › Kachel Kennungen / Empfehlungen | wie 1 | wie 1 |
+| 3 | Eingang: „Warum gelb?“ | das Zitat des Modells auf der Seite, je offenem Feld | vorhanden: `GET /documents/{id}/review`, `locations` der Prüfungen |
+| 4 | Kontaktdialog und Profil › Kennungen: eine gelernte Kennung | „Woher gelernt?“: die bestätigten Dokumente, in denen sie steht | neu: `GET /identifiers/{id}/places` für jede Kennung, offen oder am Kontakt |
+| 5 | Dokument › Beziehungen (#145): ein Vorschlag | zwei Belege nacheinander: wo das neue Dokument die Nummer nennt, wo das alte sie ausstellt | neu: `locations` zu `evidence` |
+| 6 | Regel › Anwenden (Vorschau) | wo eine Textbedingung (`contains`, `matches`) im Dokument trifft | neu: die Bedingungen geben ihre Treffer als Stellen zurück |
+| 7 | System › Automatisierung › Inhaber-Auswertung | die Fälle hinter einer Zahl („hätte gelernt, was Du verworfen hast“) mit der Stelle | neu: Fälle je Zelle (`GET /automation/holders/cases`) |
+| 8 | Dokument › Signale: ähnliche Dokumente | das ähnliche Dokument im Beam statt Wegnavigieren | vorhanden (ohne Stellen) |
+| – | allgemein: Dokumentliste (Karte, Zeile), Eingang, Übersicht › Erwartet, System › Jobs | das Dokument ab Seite 1 | vorhanden |
+
+**PRs** (Reihenfolge; jeder mit Tests, OpenAPI und `gen:api` wo die API sich ändert):
+1. `enhancement/no-plain-data-in-urls` (`enhancement`): `no-referrer`; Suche im Body; ID der Kennungen und `GET /identifiers/open/{id}` statt `open/detail?kind&value`; Wörter der Dokumentliste in `page.state`; die Regel in DESIGN.md und `architektur.md`.
+2. `feature/beam` (`new-feature`): `Beam.svelte`, `beam.svelte.ts`, Rückweg (ersetzt `from=inbox` und `returnTo`), die allgemeinen Orte (Liste, Eingang, Erwartet, Jobs), DESIGN.md.
+3. `feature/beam-identifiers` (`new-feature`): `locations` der Fundstellen mit allen Vorkommen, `GET /identifiers/{id}/places`; Orte 1, 2 und 4.
+4. `feature/beam-inbox` (`new-feature`): Ort 3.
+5. `feature/beam-document` (`new-feature`): Orte 5 und 8.
+6. `feature/beam-rules` (`new-feature`): Ort 6.
+7. `feature/beam-holders` (`new-feature`): Ort 7.
+
+Danach die Führung: Claude zeigt Tobi jeden Ort in der Dev-Instanz und sagt, was dort zu prüfen ist.
+
+**Fragen, die beantwortet sind (Tobi, 30.10.2026):**
+1. Vor dem Bauen ein Mock des Beam (über dem Dialog, aus der Liste, Rückweg im Dokumentkopf, Handy; hell und dunkel): ja, als Schritt 0.
+2. Den Beam öffnet in der Dokumentliste ein Knopf auf dem Vorschaubild der Karte und am Ende der Zeile; der Titel öffnet weiter das Dokument. Nicht „Beamen“; Vorschlag im Mock: „Ansehen“.
+3. Ort 7 bekommt eine Liste der Fälle hinter jeder Zahl: ja.
+4. Der `BackLink` geht über mehrere Sprünge immer einen Schritt zurück, wie die Zurück-Taste: ja.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

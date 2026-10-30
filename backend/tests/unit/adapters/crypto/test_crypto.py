@@ -1,4 +1,4 @@
-"""Argon2id, AES-256-GCM and pyotp pass the contract suites; TOTP matches RFC 6238."""
+"""Argon2id, AES-256-GCM, AES-SIV and pyotp pass the contract suites; TOTP matches RFC 6238."""
 
 import base64
 from datetime import UTC, datetime
@@ -7,13 +7,19 @@ import pytest
 
 from lekto.adapters.outbound.crypto import (
     AesGcmCipher,
+    AesSivRefCipher,
     Argon2PasswordHasher,
     PyotpTotp,
     decode_key,
 )
 from lekto.core.domain.encoding import base64url
 from lekto.core.ports.identity import DecryptionError
-from tests.contracts.identity import PasswordHasherContract, SecretCipherContract, TotpContract
+from tests.contracts.identity import (
+    PasswordHasherContract,
+    RefCipherContract,
+    SecretCipherContract,
+    TotpContract,
+)
 
 # Low cost, so the tests stay fast; production uses the RFC 9106 low-memory profile.
 FAST = {"time_cost": 1, "memory_cost": 8, "parallelism": 1}
@@ -27,6 +33,11 @@ def password_hasher() -> Argon2PasswordHasher:
 @pytest.fixture
 def cipher() -> AesGcmCipher:
     return AesGcmCipher(bytes(range(32)))
+
+
+@pytest.fixture
+def refs() -> AesSivRefCipher:
+    return AesSivRefCipher(bytes(range(32)))
 
 
 @pytest.fixture
@@ -44,6 +55,16 @@ class TestAesGcmCipher(SecretCipherContract):
 
 class TestPyotpTotp(TotpContract):
     pass
+
+
+class TestAesSivRefCipher(RefCipherContract):
+    pass
+
+
+def test_refs_of_another_key_do_not_open() -> None:
+    ref = AesSivRefCipher(bytes(range(32))).seal("DE89370400440532013000", context="iban")
+    with pytest.raises(DecryptionError):
+        AesSivRefCipher(bytes(32)).open(ref, context="iban")
 
 
 async def test_argon2id_with_rfc_9106_defaults() -> None:

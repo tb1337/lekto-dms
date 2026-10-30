@@ -5,7 +5,12 @@ They behave like the real adapters, including transactions: nothing is stored wi
 
 from lekto.adapters.outbound.memory.classifier import FakeClassifier
 from lekto.adapters.outbound.memory.clock import ManualClock
-from lekto.adapters.outbound.memory.crypto import FakeCipher, FakePasswordHasher, FakeTotp
+from lekto.adapters.outbound.memory.crypto import (
+    FakeCipher,
+    FakePasswordHasher,
+    FakeRefCipher,
+    FakeTotp,
+)
 from lekto.adapters.outbound.memory.database import MemoryDatabase
 from lekto.adapters.outbound.memory.event_bus import MemoryEventBus
 from lekto.adapters.outbound.memory.images import FAKE_LOGO, FakeImageNormaliser
@@ -50,6 +55,7 @@ __all__ = [
     "FakePageRenderer",
     "FakeParser",
     "FakePasswordHasher",
+    "FakeRefCipher",
     "FakeTextLocator",
     "FakeTotp",
     "FakeWebhookSender",

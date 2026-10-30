@@ -2,6 +2,7 @@
 ports."""
 
 import asyncio
+import re
 from collections.abc import Callable
 from datetime import timedelta
 
@@ -28,6 +29,7 @@ from lekto.core.ports.identity import (
     DecryptionError,
     OidcProvider,
     PasswordHasher,
+    RefCipher,
     SecretCipher,
     Totp,
 )
@@ -356,6 +358,31 @@ class SecretCipherContract:
         tampered = ciphertext[:-1] + bytes([ciphertext[-1] ^ 1])
         with pytest.raises(DecryptionError):
             cipher.decrypt(tampered, context=b"user-1")
+
+
+class RefCipherContract:
+    IBAN = "DE89370400440532013000"
+
+    def test_round_trip_without_showing_the_value(self, refs: RefCipher) -> None:
+        ref = refs.seal(self.IBAN, context="iban")
+        assert self.IBAN not in ref
+        assert re.fullmatch(r"[A-Za-z0-9_-]+", ref)
+        assert refs.open(ref, context="iban") == self.IBAN
+        assert refs.open(refs.seal("Ärger: 4711/2", context="x"), context="x") == "Ärger: 4711/2"
+
+    def test_the_same_value_gives_the_same_ref(self, refs: RefCipher) -> None:
+        assert refs.seal(self.IBAN, context="iban") == refs.seal(self.IBAN, context="iban")
+        assert refs.seal(self.IBAN, context="iban") != refs.seal(self.IBAN, context="other")
+        assert refs.seal(self.IBAN, context="iban") != refs.seal("DE02", context="iban")
+
+    def test_other_context_tampering_or_garbage_fails(self, refs: RefCipher) -> None:
+        ref = refs.seal(self.IBAN, context="iban")
+        with pytest.raises(DecryptionError):
+            refs.open(ref, context="vat_id")
+        tampered = ref[:-2] + ("A" if ref[-2] != "A" else "B") + ref[-1]
+        for broken in (tampered, "", "x", "not base64!", ref + "A"):
+            with pytest.raises(DecryptionError):
+                refs.open(broken, context="iban")
 
 
 class TotpContract:

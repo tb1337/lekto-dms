@@ -5,6 +5,7 @@ import hmac
 import secrets
 from datetime import datetime
 
+from lekto.core.domain.encoding import base64url, from_base64url
 from lekto.core.ports.identity import TOTP_STEP, DecryptionError
 
 
@@ -65,6 +66,34 @@ class FakeCipher:
 
     def _mac(self, context: bytes, body: bytes) -> bytes:
         return hmac.new(self._key, context + b"\0" + body, hashlib.sha256).digest()
+
+
+class FakeRefCipher:
+    """The value with a short MAC over context and value, in base64url: readable for anyone who
+    decodes it, but bound to its context."""
+
+    def __init__(self, key: bytes = b"fake key") -> None:
+        self._key = key
+
+    def seal(self, value: str, *, context: str) -> str:
+        data = value.encode()
+        return base64url(self._mac(context, data) + data)
+
+    def open(self, ref: str, *, context: str) -> str:
+        try:
+            raw = from_base64url(ref)
+        except ValueError:
+            raise DecryptionError("not a reference") from None
+        mac, data = raw[:8], raw[8:]
+        if len(mac) < 8 or not hmac.compare_digest(mac, self._mac(context, data)):
+            raise DecryptionError("the reference does not open")
+        try:
+            return data.decode()
+        except UnicodeDecodeError:
+            raise DecryptionError("the reference does not open") from None
+
+    def _mac(self, context: str, data: bytes) -> bytes:
+        return hmac.new(self._key, context.encode() + b"\0" + data, hashlib.sha256).digest()[:8]
 
 
 class FakeTotp:

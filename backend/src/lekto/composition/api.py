@@ -93,6 +93,7 @@ def api_context(container: Container, settings: Settings, services: Services) ->
         automation=services.automation,
         event_bus=container.event_bus,
         wakeup=container.wakeup,
+        refs=container.refs,
         health_checks=health_checks(container),
         optional_checks=frozenset({"search"}),
         max_upload_size=int(settings.upload_max_size),

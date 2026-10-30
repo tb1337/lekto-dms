@@ -60,6 +60,21 @@ beforeEach(() => {
 				]
 			}),
 			'GET /api/v1/fields': () => [{ id: 'f1', name: 'Betrag' }],
+			'GET /api/v1/rules/r1/apply/hits/a': () => ({
+				hits: [
+					{
+						value: 'Stadtwerke Musterstadt Süd',
+						occurrences: [{ own: false, locations: [{ page: 1, boxes: [BOX] }] }]
+					},
+					{
+						value: 'Nr\\. \\d{4}',
+						occurrences: [
+							{ own: false, locations: [{ page: 1, boxes: [BOX] }] },
+							{ own: false, locations: [{ page: 2, boxes: [BOX] }] }
+						]
+					}
+				]
+			}),
 			'GET /api/v1/documents/a/places/invoice_number/NDcxMQ': () => ({
 				document_id: 'a',
 				title: 'Stromrechnung März',
@@ -220,5 +235,14 @@ describe('Beam', () => {
 		await waitFor(() => expect(sheet.querySelectorAll('.shadow-pinned')).toHaveLength(1));
 		expect(sheet.textContent).toContain(kindLabel('invoice_number'));
 		expect(sheet.textContent).toContain(m.beam_position({ current: 1, total: 2 }));
+	});
+
+	it('marks where the text conditions of a rule hit, each labelled once', async () => {
+		goTo('/ui/rules/r1/apply', {}, { beam: { ...beam(0), source: { kind: 'rule', rule: 'r1' } } });
+		render(Beam);
+		const sheet = await screen.findByRole('dialog', { name: 'Stromrechnung März' });
+		await waitFor(() => expect(sheet.querySelectorAll('.ring-primary')).toHaveLength(3));
+		expect(sheet.textContent).toContain('Stadtwerke Musterstadt …');
+		expect(sheet.querySelectorAll('.shadow-pinned')).toHaveLength(1);
 	});
 });

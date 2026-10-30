@@ -1165,6 +1165,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/rules/{id}/apply/hits/{document_id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Where a rule's text conditions hit a document
+		 * @description For each text condition of the rule's current version (`contains`, `matches`) the places the document's pages show a hit, as the rules read the text: a text as whole words, a pattern on the text with whitespace collapsed (with the time limit of the rules: 422 when it runs out). Empty without text conditions, or for a document without text or the words of its pages. Needs read access to the document. A space rule: the editors of its space and admins, on the documents in its space. A global rule: anyone, on the documents they may edit (admins: every document). Documents in processing are left out.
+		 */
+		get: operations['apply_hits_api_v1_rules__id__apply_hits__document_id__get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/rules/{id}/apply': {
 		parameters: {
 			query?: never;
@@ -9852,6 +9872,30 @@ export interface components {
 			 * @default false
 			 */
 			unreadable: boolean;
+		};
+		/**
+		 * TextHitOut
+		 * @description Where one text condition hits the document.
+		 */
+		TextHitOut: {
+			/**
+			 * Value
+			 * @description The condition's text or pattern.
+			 */
+			value: string;
+			/**
+			 * Occurrences
+			 * @description Each place its pages show a hit.
+			 */
+			occurrences: components['schemas']['OccurrenceOut'][];
+		};
+		/** TextHitsOut */
+		TextHitsOut: {
+			/**
+			 * Hits
+			 * @description One per text condition, in the rule's order.
+			 */
+			hits: components['schemas']['TextHitOut'][];
 		};
 		/** TimesOut */
 		TimesOut: {
@@ -19645,6 +19689,114 @@ export interface operations {
 					 *       "title": "Content Too Large",
 					 *       "status": 413,
 					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	apply_hits_api_v1_rules__id__apply_hits__document_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+				document_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['TextHitsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

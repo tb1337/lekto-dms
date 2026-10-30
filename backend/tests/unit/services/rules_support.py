@@ -68,6 +68,14 @@ class FakeMatcher:
         flags = 0 if case_sensitive else re.IGNORECASE
         return re.search(pattern, text, flags) is not None
 
+    async def find(
+        self, pattern: str, text: str, *, case_sensitive: bool, limit: int
+    ) -> tuple[tuple[int, int], ...]:
+        await self.search(pattern, text, case_sensitive=case_sensitive)
+        flags = 0 if case_sensitive else re.IGNORECASE
+        found = [match.span() for match in re.finditer(pattern, text, flags) if match.end()]
+        return tuple(span for span in found if span[1] > span[0])[:limit]
+
 
 class Classifies:
     """Classification that sets a contact, type, topic and tags as the model does: applied,

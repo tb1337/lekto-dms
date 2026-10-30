@@ -10,6 +10,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from lekto.adapters.inbound.rest.schemas.open_identifiers import OccurrenceOut
 from lekto.adapters.inbound.schemas import (
     FieldJson,
     MoneyValue,
@@ -48,7 +49,7 @@ from lekto.core.domain.validation import MAX_NAME
 from lekto.core.domain.webhooks import MAX_BODY_TEMPLATE
 from lekto.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
 from lekto.core.services.rules.changes import ArrivalStep
-from lekto.core.services.rules.retroactive import Outcome
+from lekto.core.services.rules.retroactive import Outcome, TextHit
 
 
 class ConditionSchema(BaseModel):
@@ -685,6 +686,23 @@ class ApplyOutcomeOut(BaseModel):
         return cls(
             space_id=outcome.space_id, chain=[ArrivalStepOut.of(step) for step in outcome.chain]
         )
+
+
+class TextHitOut(BaseModel):
+    """Where one text condition hits the document."""
+
+    value: str = Field(description="The condition's text or pattern.")
+    occurrences: list[OccurrenceOut] = Field(description="Each place its pages show a hit.")
+
+    @classmethod
+    def of(cls, hit: TextHit) -> "TextHitOut":
+        return cls(
+            value=hit.value, occurrences=[OccurrenceOut.of(item) for item in hit.occurrences]
+        )
+
+
+class TextHitsOut(BaseModel):
+    hits: list[TextHitOut] = Field(description="One per text condition, in the rule's order.")
 
 
 class ApplyPreviewItemOut(BaseModel):

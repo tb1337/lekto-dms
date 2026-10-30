@@ -17,3 +17,11 @@ class PatternMatcher(Protocol):
         """Whether `pattern` occurs anywhere in `text`. PatternTimeoutError if the search takes
         longer than the configured limit; ValidationError if the pattern is invalid."""
         ...
+
+    async def find(
+        self, pattern: str, text: str, *, case_sensitive: bool, limit: int
+    ) -> tuple[tuple[int, int], ...]:
+        """Where `pattern` occurs in `text`: the first `limit` matches as start and end
+        (exclusive), in order, none empty. The same time limit and errors as `search`, for the
+        whole search."""
+        ...

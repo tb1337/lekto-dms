@@ -10383,6 +10383,138 @@
         ]
       }
     },
+    "/api/v1/rules/{id}/apply/hits/{document_id}": {
+      "get": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "Where a rule's text conditions hit a document",
+        "description": "For each text condition of the rule's current version (`contains`, `matches`) the places the document's pages show a hit, as the rules read the text: a text as whole words, a pattern on the text with whitespace collapsed (with the time limit of the rules: 422 when it runs out). Empty without text conditions, or for a document without text or the words of its pages. Needs read access to the document. A space rule: the editors of its space and admins, on the documents in its space. A global rule: anyone, on the documents they may edit (admins: every document). Documents in processing are left out.",
+        "operationId": "apply_hits_api_v1_rules__id__apply_hits__document_id__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TextHitsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/rules/{id}/apply": {
       "post": {
         "tags": [
@@ -36343,6 +36475,47 @@
           "values"
         ],
         "title": "TemplatePreviewOut"
+      },
+      "TextHitOut": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "The condition's text or pattern."
+          },
+          "occurrences": {
+            "items": {
+              "$ref": "#/components/schemas/OccurrenceOut"
+            },
+            "type": "array",
+            "title": "Occurrences",
+            "description": "Each place its pages show a hit."
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "occurrences"
+        ],
+        "title": "TextHitOut",
+        "description": "Where one text condition hits the document."
+      },
+      "TextHitsOut": {
+        "properties": {
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/TextHitOut"
+            },
+            "type": "array",
+            "title": "Hits",
+            "description": "One per text condition, in the rule's order."
+          }
+        },
+        "type": "object",
+        "required": [
+          "hits"
+        ],
+        "title": "TextHitsOut"
       },
       "TimesOut": {
         "properties": {

@@ -38,11 +38,13 @@
 	// the value stands, the fact's own with a halo and its kind, and scrolls there; it pages
 	// through the places ("Fundstelle 2 von 5"). With `fact` it marks a value in each document
 	// it pages through (a relation's shared number). From the inbox (`review`) it marks the quotes
-	// of the fields that keep each document there, each with the field's name. It never looks for
-	// a value itself: the places come from the endpoint that names them.
+	// of the fields that keep each document there, each with the field's name; from a rule's
+	// preview (`rule`) where its text conditions hit, each with its text. It never looks for a
+	// value itself: the places come from the endpoint that names them.
 	type Document = components['schemas']['DocumentDetails'];
 	type PlaceOut = components['schemas']['PlaceOut'];
 	type Check = components['schemas']['FieldCheckOut'];
+	type TextHit = components['schemas']['TextHitOut'];
 
 	const beam = $derived(page.state.beam ?? null);
 	const id = $derived(beam ? (beam.ids[beam.index] ?? null) : null);
@@ -67,7 +69,12 @@
 	);
 	// What the document shown has to mark, where its source tells it for each document: the place
 	// of a value, the open fields of the inbox; the names of the fields.
-	let ownMarks = $state<{ id: string; place: PlaceOut | null; checks: Check[] } | null>(null);
+	let ownMarks = $state<{
+		id: string;
+		place: PlaceOut | null;
+		checks: Check[];
+		hits: TextHit[];
+	} | null>(null);
 	let fields = $state<{ id: string; name: string }[] | null>(null);
 	const beginOwn = latest();
 
@@ -164,7 +171,16 @@
 						params: { path: { id: wanted, kind: source.identifier, ref: source.ref } }
 					})
 				);
-				if (current()) ownMarks = { id: wanted, place, checks: [] };
+				if (current()) ownMarks = { id: wanted, place, checks: [], hits: [] };
+				return;
+			}
+			if (source.kind === 'rule') {
+				const found = await unwrap(
+					api.GET('/api/v1/rules/{id}/apply/hits/{document_id}', {
+						params: { path: { id: source.rule, document_id: wanted } }
+					})
+				);
+				if (current()) ownMarks = { id: wanted, place: null, checks: [], hits: found.hits };
 				return;
 			}
 			const found = await unwrap(
@@ -174,7 +190,7 @@
 			if (checks.some((check) => check.field.startsWith('field:')) && fields === null) {
 				fields = await unwrap(api.GET('/api/v1/fields'));
 			}
-			if (current()) ownMarks = { id: wanted, place: null, checks };
+			if (current()) ownMarks = { id: wanted, place: null, checks, hits: [] };
 		} catch {
 			// The pages show all the same, unmarked.
 		}
@@ -182,10 +198,15 @@
 
 	$effect(() => {
 		const source = beam?.source;
-		if (!source || (source.kind !== 'fact' && source.kind !== 'review')) return;
+		if (!source || source.kind === 'open' || source.kind === 'places') return;
 		if (!id || ownMarks?.id === id) return;
 		void loadOwn(source, id);
 	});
+
+	/** A condition's text as a mark's label: one short line. */
+	function shortened(value: string): string {
+		return value.length > 24 ? `${value.slice(0, 23)}…` : value;
+	}
 
 	/** A field's name, as the document view names it. */
 	function fieldName(field: string): string {
@@ -207,6 +228,21 @@
 			if (!ownMarks || ownMarks.id !== id) return [];
 			return ownMarks.checks.flatMap((check, index) =>
 				marksOf(check.field, fieldName(check.field), check, { pinned: index === 0 })
+			);
+		}
+		if (beam?.source?.kind === 'rule') {
+			if (!ownMarks || ownMarks.id !== id) return [];
+			return ownMarks.hits.flatMap((hit, index) =>
+				hit.occurrences.flatMap((occurrence, place) =>
+					occurrence.locations.map((location) => ({
+						key: `hit-${index}-${place}`,
+						label: place === 0 ? shortened(hit.value) : '',
+						page: location.page,
+						boxes: location.boxes,
+						derived: false,
+						pinned: index === 0 && place === 0
+					}))
+				)
 			);
 		}
 		const source = beam?.source;

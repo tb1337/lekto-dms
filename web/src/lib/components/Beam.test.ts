@@ -4,6 +4,7 @@ import { toast } from 'svelte-sonner';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
 import { fieldLabel } from '#lib/describe.ts';
+import { kindLabel } from '#lib/identifiers.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { documentOf, fakeApi } from '#lib/testing/documents.ts';
 import { goTo } from '#lib/testing/page-state.svelte.ts';
@@ -59,6 +60,14 @@ beforeEach(() => {
 				]
 			}),
 			'GET /api/v1/fields': () => [{ id: 'f1', name: 'Betrag' }],
+			'GET /api/v1/documents/a/places/invoice_number/NDcxMQ': () => ({
+				document_id: 'a',
+				title: 'Stromrechnung März',
+				date: '2026-03-31',
+				role: 'refers',
+				excerpt: null,
+				occurrences: [{ own: true, locations: [{ page: 1, boxes: [BOX] }] }]
+			}),
 			'GET /api/v1/identifiers/places/iban/REU4OQ': () => ({
 				places: [
 					{
@@ -192,6 +201,24 @@ describe('Beam', () => {
 		expect(sheet.textContent).toContain('Betrag');
 		expect(sheet.querySelectorAll('.shadow-pinned')).toHaveLength(1);
 		// It pages through the documents, not through places.
+		expect(sheet.textContent).toContain(m.beam_position({ current: 1, total: 2 }));
+	});
+
+	it('marks a value in each document it pages through', async () => {
+		goTo(
+			LIST,
+			{},
+			{
+				beam: {
+					...beam(0),
+					source: { kind: 'fact', identifier: 'invoice_number', ref: 'NDcxMQ' }
+				}
+			}
+		);
+		render(Beam);
+		const sheet = await screen.findByRole('dialog', { name: 'Stromrechnung März' });
+		await waitFor(() => expect(sheet.querySelectorAll('.shadow-pinned')).toHaveLength(1));
+		expect(sheet.textContent).toContain(kindLabel('invoice_number'));
 		expect(sheet.textContent).toContain(m.beam_position({ current: 1, total: 2 }));
 	});
 });

@@ -98,6 +98,7 @@
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 	import { onChange } from '#lib/watch.svelte.ts';
+	import { openBeam } from '#lib/beam.svelte.ts';
 	import { returnTo } from '#lib/return-to.svelte.ts';
 	import { gotoSearching, stateWords } from '#lib/words.ts';
 	import PageTitle from '#lib/components/page/PageTitle.svelte';
@@ -427,6 +428,12 @@
 	function endSelecting() {
 		selecting = false;
 		letGo();
+	}
+
+	/** The document in the Beam, paging through the documents of this page. */
+	function view(id: string) {
+		const ids = list.items.map((item) => item.document.id);
+		openBeam(ids, id, lens?.name ?? m.nav_documents());
 	}
 
 	function selection(): BulkSelection {
@@ -1048,6 +1055,7 @@ row of filters, on a desktop narrow by the title. -->
 												fields={linesOf(item)}
 												chosen={selecting && isChosen(item.document.id)}
 												onchoose={selecting ? (on) => choose(item.document.id, on) : undefined}
+												onview={() => view(item.document.id)}
 											>
 												{@render snippetLine(item)}
 											</DocumentCard>
@@ -1064,6 +1072,7 @@ row of filters, on a desktop narrow by the title. -->
 												fields={linesOf(item)}
 												chosen={selecting && isChosen(item.document.id)}
 												onchoose={selecting ? (on) => choose(item.document.id, on) : undefined}
+												onview={() => view(item.document.id)}
 											>
 												{@render snippetLine(item)}
 												{#snippet aside()}

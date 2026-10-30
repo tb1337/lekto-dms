@@ -418,6 +418,7 @@ the deliveries by outcome and event). The documents list pages the same way (see
 | A secret shown once                                          | `SecretDialog`                              | centred, `size="md"`             | centred with gutter                                                                                                   |
 | A choice from many (tags, facets; contact, type, topic)      | popover / `TagPickerDialog`, `SearchSelect` | popover or dialog                | sheet from the bottom (`PhoneSheet`; `SearchSelect`: see [Fields](#fields))                                           |
 | Filters                                                      | sidebar                                     | sidebar                          | sheet from the bottom, title and close fixed on top, "Zurücksetzen" and "Ergebnisse anzeigen (N)" fixed at the bottom |
+| A document's pages without leaving the place                 | `Beam`                                      | sheet from the right, 640 px     | full screen                                                                                                           |
 
 - **Widths** come from the `size` prop (`sm` 384 px, `md` 512 px, `lg` 672 px, `xl` 768 px).
   A `class="max-w-*"` on dialog content is not used.
@@ -434,7 +435,29 @@ the deliveries by outcome and event). The documents list pages the same way (see
 - **Delete in an editor:** a `FormDialog` or `EditorShell` with `ondelete` shows "Löschen" at the
   start of its footer, apart from the two actions, and asks with `ConfirmDialog`.
 - **Dialog footer:** see [Patterns](#footers).
+- **Beam:** the one sheet from the right with content (see [Beam](#beam)).
 - A dialog title names its object: "„Stromrechnung Oktober“ löschen", never a bare "Löschen".
+
+### Beam
+
+The Beam shows a document's pages without leaving the place: wherever Lekto names a document or
+claims something from one, a person sees it with one tap. `Beam.svelte`, mounted once in the
+app shell, on `ui/sheet` with `side="right"`: 640 px on a desktop, the whole screen on a phone,
+modal, over a dialog too.
+
+- **It only shows:** the eyebrow "Beam", the title, a line with contact · type · date; then,
+  with more than one document, the arrows and "Dokument 2 von 24" (keys ← →); the pages in the
+  document view's `PageViewer` (one page to a row at the start; buttons, Ctrl/⌘ with the wheel,
+  pinch, double click, + − 0); at the bottom "Dokument öffnen", on a phone across the width.
+  Editing happens in the document view.
+- **Opening it:** "Ansehen" (`ViewButton`, icon `scan-eye`; never "Beamen"): on a card's first
+  page as glass with its name, always shown; at the end of a row or beside a title as an icon.
+  The title keeps opening the document. From a list, the Beam pages through the list's page.
+- **State:** the history entry's (`beam.svelte.ts`): ids only. The back button closes it, a
+  reload brings it back, paging replaces the entry. A document that is gone closes it with a
+  toast.
+- **"Dokument öffnen"** jumps there with the way back to here (see
+  [Navigation between list and detail](#navigation-between-list-and-detail)).
 
 ### Alerts
 
@@ -541,6 +564,11 @@ Destructive actions are in editors and on detail pages, not in list rows.
   primary action). A single destructive action stands there as an `IconButton` (rule, webhook);
   where there are more actions, a "…" menu holds the rest (delete last, in `destructive`).
 - `return-to.svelte.ts` keeps the list's URL and words for the way back.
+- **After a jump** (the Beam's "Dokument öffnen", later a dialog's link): the new history entry
+  names where it came from (`way-back.ts`, `page.state.from`). The document's `BackLink` then
+  reads "Zurück zu {place}" and goes back in the history, one step, as the back button does: to
+  the place as it was, its dialog and Beam open. Leaving a document (deleted, handed over) takes
+  the same way.
 
 ### No plain data in addresses
 

@@ -2659,5 +2659,16 @@
 	"holders_unclear": "Unklar",
 	"holders_unread": "Noch ohne Inhaber",
 	"holders_recommendation": "Empfehlung",
-	"holders_footnote": "„Stimmt“: dem Kontakt und übernommen, oder fremd und verworfen. Bei der Empfehlung heißt „Unklar“: keine Empfehlung. Kennungen ohne Inhaber stammen aus Dokumenten, die gelesen wurden, bevor ihre Art einen hatte: „Fakten neu lesen“ setzt ihn."
+	"holders_footnote": "„Stimmt“: dem Kontakt und übernommen, oder fremd und verworfen. Bei der Empfehlung heißt „Unklar“: keine Empfehlung. Kennungen ohne Inhaber stammen aus Dokumenten, die gelesen wurden, bevor ihre Art einen hatte: „Fakten neu lesen“ setzt ihn.",
+	"beam_name": "Beam",
+	"beam_open": "Ansehen",
+	"beam_open_named": "„{title}“ ansehen",
+	"beam_previous": "Voriges Dokument",
+	"beam_next": "Nächstes Dokument",
+	"beam_position": "Dokument {current} von {total}",
+	"beam_open_document": "Dokument öffnen",
+	"beam_pages": "Seiten von „{title}“",
+	"beam_gone": "Das Dokument gibt es nicht mehr, oder Du siehst es nicht mehr.",
+	"beam_no_pages": "Für dieses Dokument gibt es noch keine Seitenbilder.",
+	"back_to": "Zurück zu {place}"
 }

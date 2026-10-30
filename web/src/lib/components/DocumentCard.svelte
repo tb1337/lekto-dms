@@ -10,6 +10,7 @@
 	import TagChip from '#lib/components/TagChip.svelte';
 	import { shownChips } from '#lib/tags.ts';
 	import TypeIcon from '#lib/components/TypeIcon.svelte';
+	import ViewButton from '#lib/components/ViewButton.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import { byId, foreignSpace, type Lookup } from '#lib/masterdata.svelte.ts';
@@ -28,6 +29,8 @@
 	// of; `children` adds a line; `fields`, the fields of a lens, stand below a line. With
 	// `onchoose` (the selection mode of the list) the card is no link but the label of its box,
 	// which starts its head: a tap chooses it; a chosen card has `bg-panel` and a primary edge.
+	// `onview` puts "Ansehen" on the first page, always shown (nothing hangs on hover): it opens
+	// the Beam; the rest of the card opens the document.
 	let {
 		document,
 		lookup,
@@ -35,7 +38,8 @@
 		children,
 		fields = [],
 		chosen = false,
-		onchoose
+		onchoose,
+		onview
 	}: {
 		document: components['schemas']['ListedDocument'];
 		lookup: Lookup | null;
@@ -44,6 +48,7 @@
 		fields?: readonly CardLine[];
 		chosen?: boolean;
 		onchoose?: (chosen: boolean) => void;
+		onview?: () => void;
 	} = $props();
 
 	// By the indexes of the lists: one card of many must not scan them on every render.
@@ -170,5 +175,16 @@
 	</Card.Root>
 	{#if document.in_inbox}
 		<InboxMark id={document.id} badge class="absolute top-2 right-2 z-10" />
+	{/if}
+	{#if onview && !onchoose}
+		<!-- Over the first page (below the head of 40 px), outside the card's link. -->
+		<div class="pointer-events-none absolute inset-x-px top-[calc(2.5rem+1px)] aspect-[4/3]">
+			<ViewButton
+				title={document.title}
+				pill
+				class="pointer-events-auto absolute bottom-2 left-2 z-10"
+				onclick={onview}
+			/>
+		</div>
 	{/if}
 </div>

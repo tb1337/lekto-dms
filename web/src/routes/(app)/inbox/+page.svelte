@@ -23,6 +23,7 @@
 	import { readDrop } from '#lib/intake.ts';
 	import { PageLookup } from '#lib/lookup.svelte.ts';
 	import { PagedList } from '#lib/paging.svelte.ts';
+	import { openBeam } from '#lib/beam.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { scope } from '#lib/scope.svelte.ts';
@@ -223,6 +224,13 @@
 						busy={busy === item.document.id}
 						onseen={(id) => mark(id, true)}
 						onunseen={(id) => mark(id, false)}
+						onview={(id) =>
+							openBeam(
+								list.items.map((entry) => entry.document.id),
+								id,
+								m.nav_inbox(),
+								{ inbox: true }
+							)}
 					/>
 				</li>
 			{/each}

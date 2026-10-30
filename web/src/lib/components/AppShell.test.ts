@@ -11,7 +11,7 @@ import { session, type User } from '#lib/session.svelte.ts';
 import AppShell from './AppShell.svelte';
 
 vi.mock('$app/navigation', () => ({ beforeNavigate: vi.fn(), goto: vi.fn() }));
-vi.mock('$app/state', () => ({ page: { url: new URL('http://lekto/ui/inbox') } }));
+vi.mock('$app/state', () => ({ page: { url: new URL('http://lekto/ui/inbox'), state: {} } }));
 
 const children = createRawSnippet(() => ({ render: () => '<p>content</p>' }));
 

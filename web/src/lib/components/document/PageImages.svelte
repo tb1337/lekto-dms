@@ -3,20 +3,27 @@
 	import PageViewer from '#lib/components/PageViewer.svelte';
 	import { pageImageHref } from '#lib/document-view.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import type { Layout } from '#lib/viewer/zoom.ts';
 
-	// The page images (WebP from the original), shown until the archive PDF exists: they come
-	// early, while the text is still being recognised; no marks, those belong to the archive.
-	// The same viewer as the PDF's: side by side, zoomed by gesture.
+	// The page images (WebP from the original): in the document view until the archive PDF
+	// exists (they come early, while the text is still being recognised), and in the Beam. The
+	// same viewer as the PDF's: side by side, zoomed by gesture.
 	let {
 		documentId,
 		pageCount,
 		label,
+		note = m.pages_preview(),
+		start = null,
 		end,
 		onpage
 	}: {
 		documentId: string;
 		pageCount: number;
 		label: string;
+		/** Said in the toolbar beside the page count. */
+		note?: string | null;
+		/** How the viewer starts (`PageViewer`). */
+		start?: Layout | null;
 		/** At the end of the toolbar (the switch of a pane). */
 		end?: Snippet;
 		/** The page in the upper third of the view, and how many there are. */
@@ -34,7 +41,7 @@
 	);
 </script>
 
-<PageViewer {sizes} {label} note={m.pages_preview()} {end} {onpage}>
+<PageViewer {sizes} {label} {note} {start} {end} {onpage}>
 	{#snippet page(number: number)}
 		<img
 			src={pageImageHref(documentId, number)}

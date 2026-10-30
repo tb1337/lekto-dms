@@ -7,6 +7,7 @@
 	import DocumentThumb from '#lib/components/DocumentThumb.svelte';
 	import NamesLine from '#lib/components/NamesLine.svelte';
 	import TagChips from '#lib/components/TagChips.svelte';
+	import ViewButton from '#lib/components/ViewButton.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import { byId, foreignSpace, type Lookup } from '#lib/masterdata.svelte.ts';
@@ -21,7 +22,8 @@
 	// a document in a space they are no member of. `children` adds a line, `fields` the fields of a lens;
 	// `aside` stands at the end of the row, beside its link (a button, a link of its own). With
 	// `onchoose` (the selection mode of the list) the row is no link but the label of its box,
-	// which starts it: a tap chooses it; a chosen row has `bg-panel` and a primary edge.
+	// which starts it: a tap chooses it; a chosen row has `bg-panel` and a primary edge. `onview`
+	// ends the row with "Ansehen" (an eye): it opens the Beam; the rest opens the document.
 	let {
 		document,
 		lookup,
@@ -30,7 +32,8 @@
 		fields = [],
 		aside,
 		chosen = false,
-		onchoose
+		onchoose,
+		onview
 	}: {
 		document: components['schemas']['DocumentDetails'];
 		lookup: Lookup | null;
@@ -40,6 +43,7 @@
 		aside?: Snippet;
 		chosen?: boolean;
 		onchoose?: (chosen: boolean) => void;
+		onview?: () => void;
 	} = $props();
 
 	// By the indexes of the lists: one card of many must not scan them on every render.
@@ -99,4 +103,7 @@
 		</div>
 	</svelte:element>
 	{@render aside?.()}
+	{#if onview && !onchoose}
+		<ViewButton title={document.title} class="shrink-0" onclick={onview} />
+	{/if}
 </Card.Root>

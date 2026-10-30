@@ -70,8 +70,7 @@
 	} from '#lib/facts.ts';
 	import { adviceText, visionAvailable, type Reading, type Vision } from '#lib/vision.ts';
 	import { onChange } from '#lib/watch.svelte.ts';
-	import BackLink from '#lib/components/BackLink.svelte';
-	import { returnTo } from '#lib/return-to.svelte.ts';
+	import DocumentBackLink from '#lib/components/document/DocumentBackLink.svelte';
 	import Loading from '#lib/components/Loading.svelte';
 
 	type Document = components['schemas']['DocumentDetails'];
@@ -422,11 +421,7 @@
 <div class="flex flex-col gap-4 lg:h-full lg:min-h-0" data-wide>
 	{#if problem || !document}
 		<!-- While it loads or when it cannot, the way back stays. -->
-		<BackLink
-			href={inbox ? `${BASE}/inbox` : returnTo.documents}
-			label={inbox ? m.nav_inbox() : m.nav_documents()}
-			state={inbox ? undefined : returnTo.state}
-		/>
+		<DocumentBackLink inbox={Boolean(inbox)} />
 	{/if}
 	{#if problem}
 		<LoadProblem

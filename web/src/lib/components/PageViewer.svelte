@@ -42,6 +42,7 @@
 		loading = false,
 		problem = null,
 		note = null,
+		start = null,
 		page,
 		end,
 		onshow,
@@ -56,6 +57,8 @@
 		problem?: string | null;
 		/** Said in the toolbar beside the page count. */
 		note?: string | null;
+		/** How it starts; else two pages in a row, one on a narrow screen. */
+		start?: Layout | null;
 		page: Snippet<[number]>;
 		/** At the end of the toolbar (the switch of a pane). */
 		end?: Snippet;
@@ -132,9 +135,9 @@
 	$effect(() => {
 		if (fitted || !container || sizes.length === 0) return;
 		fitted = true;
-		const start: Layout = container.clientWidth < NARROW ? 'one' : 'two';
-		layout = start;
-		zoom = fitZoom(start, room(), widest);
+		const first: Layout = start ?? (container.clientWidth < NARROW ? 'one' : 'two');
+		layout = first;
+		zoom = fitZoom(first, room(), widest);
 		void tick().then(() => {
 			observe();
 			follow();

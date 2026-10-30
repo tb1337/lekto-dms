@@ -560,7 +560,11 @@ the phone a full-screen editor carries the same two actions in its top bar.
   a tab, the back button, closing the dialog or closing the browser (`beforeNavigate`,
   `beforeunload`). The question is a `ConfirmDialog` with "Verwerfen" and "Weiter bearbeiten":
   `UnsavedGuard`, or `AsyncForm` with `onchanged`.
-- Panes of the document page keep their state while hidden.
+- **A change is the person's own:** what they changed since the form started. What a form
+  starts with (the model's suggestions in the inbox) is no change, even where it differs from
+  the stored document; leaving loses nothing then.
+- Panes of the document page keep their state while hidden: showing another pane (on a phone
+  the bar Seiten, Text, Angaben, Fakten) asks nothing (`keepsForm`); another tab does.
 
 ### Destructive actions
 

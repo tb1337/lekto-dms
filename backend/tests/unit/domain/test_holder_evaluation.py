@@ -10,7 +10,7 @@ from lekto.core.domain.document_facts import (
     HolderSource,
     role_of,
 )
-from lekto.core.domain.holder_evaluation import Tally, evaluate
+from lekto.core.domain.holder_evaluation import HolderOutcome, Tally, evaluate
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from lekto.core.domain.ids import ContactId, DocumentId, new_id
 from lekto.core.domain.master_data import Contact
@@ -82,3 +82,14 @@ def test_the_ways_wrong_are_kept_apart() -> None:
     found = evaluate([utility], sightings)
     assert found.kinds[IdentifierKind.IBAN] == Tally(learned_rejected=1, refused_confirmed=1)
     assert found.recommendation == Tally(learned_rejected=1, refused_confirmed=1)
+    # Behind each number its decisions, with the documents they were measured in, newest first.
+    learned = [
+        case
+        for case in found.cases
+        if case.measure is IdentifierKind.IBAN and case.outcome is HolderOutcome.LEARNED_REJECTED
+    ]
+    (case,) = learned
+    assert (case.value, case.contact, case.confirmed) == (IBAN[1], utility.id, False)
+    assert case.documents == (sightings[1].document, sightings[0].document)
+    assert {case.measure for case in found.cases} == {IdentifierKind.IBAN, None}
+    assert len(found.cases) == 4

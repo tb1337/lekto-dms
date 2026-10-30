@@ -1,16 +1,20 @@
 """The numbers of the page "System" about the automation: first runs, what became of them,
 their times, and the verdicts of people per field and per signal."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime, timedelta
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from lekto.adapters.inbound.rest.schemas.refs import seal
 from lekto.core.domain.documents import Channel
 from lekto.core.domain.first_runs import Verdict
-from lekto.core.domain.holder_evaluation import HolderEvaluation, Tally
+from lekto.core.domain.holder_evaluation import Case, HolderEvaluation, Tally
 from lekto.core.domain.identifiers import IdentifierKind
+from lekto.core.domain.ids import ContactId
 from lekto.core.domain.pipeline import Lane, Node
+from lekto.core.ports.identity import RefCipher
 from lekto.core.services.automation import (
     AutomationReport,
     FieldVerdicts,
@@ -225,4 +229,41 @@ class HoldersOut(BaseModel):
         return cls(
             kinds=[HolderKindOut.of_kind(kind, tally) for kind, tally in evaluation.kinds.items()],
             recommendation=TallyOut.of(evaluation.recommendation),
+        )
+
+
+class HolderCaseOut(BaseModel):
+    """One decision behind a number of the holders' evaluation."""
+
+    kind: IdentifierKind
+    value: str = Field(description="Normalised, as Lekto compares it.")
+    ref: str = Field(description="The value's reference (`GET /documents/{id}/places/...`).")
+    contact_id: UUID
+    contact: str = Field(description="The contact's name.")
+    confirmed: bool = Field(description="The person confirmed it (else rejected it).")
+    document_ids: list[UUID] = Field(
+        description="The confirmed documents of the contact that show it, the newest first."
+    )
+
+
+class HolderCasesOut(BaseModel):
+    cases: list[HolderCaseOut] = Field(description="At most a hundred.")
+
+    @classmethod
+    def of(
+        cls, cases: Sequence[Case], names: Mapping[ContactId, str], refs: RefCipher
+    ) -> "HolderCasesOut":
+        return cls(
+            cases=[
+                HolderCaseOut(
+                    kind=case.kind,
+                    value=case.value,
+                    ref=seal(refs, case.kind, case.value),
+                    contact_id=case.contact,
+                    contact=names.get(case.contact, ""),
+                    confirmed=case.confirmed,
+                    document_ids=list(case.documents),
+                )
+                for case in cases
+            ]
         )

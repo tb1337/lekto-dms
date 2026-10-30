@@ -210,6 +210,7 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
         (f"{PREFIX}/automation", "get"),
         (f"{PREFIX}/automation/signals", "get"),
         (f"{PREFIX}/automation/holders", "get"),
+        (f"{PREFIX}/automation/holders/cases", "get"),
         (f"{PREFIX}/search/status", "get"),
         (f"{PREFIX}/search/check", "post"),
         (f"{PREFIX}/jobs", "get"),

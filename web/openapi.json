@@ -21953,6 +21953,127 @@
         ]
       }
     },
+    "/api/v1/automation/holders/cases": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "The decisions behind a number of the holders",
+        "description": "Admins only. The decisions behind one number of `GET /holders`: measured by the holders of `measure` (a kind with a holder) or by the `recommendation`, with `outcome` (a column), at most a hundred, each with the confirmed documents of its contact that show it.",
+        "operationId": "holder_cases_api_v1_automation_holders_cases_get",
+        "parameters": [
+          {
+            "name": "measure",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/IdentifierKind"
+                },
+                {
+                  "const": "recommendation",
+                  "type": "string"
+                }
+              ],
+              "title": "Measure"
+            }
+          },
+          {
+            "name": "outcome",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/HolderOutcome"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HolderCasesOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "tags": [
@@ -28082,6 +28203,76 @@
         ],
         "title": "Health"
       },
+      "HolderCaseOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "Normalised, as Lekto compares it."
+          },
+          "ref": {
+            "type": "string",
+            "title": "Ref",
+            "description": "The value's reference (`GET /documents/{id}/places/...`)."
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Contact Id"
+          },
+          "contact": {
+            "type": "string",
+            "title": "Contact",
+            "description": "The contact's name."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "title": "Confirmed",
+            "description": "The person confirmed it (else rejected it)."
+          },
+          "document_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Document Ids",
+            "description": "The confirmed documents of the contact that show it, the newest first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value",
+          "ref",
+          "contact_id",
+          "contact",
+          "confirmed",
+          "document_ids"
+        ],
+        "title": "HolderCaseOut",
+        "description": "One decision behind a number of the holders' evaluation."
+      },
+      "HolderCasesOut": {
+        "properties": {
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/HolderCaseOut"
+            },
+            "type": "array",
+            "title": "Cases",
+            "description": "At most a hundred."
+          }
+        },
+        "type": "object",
+        "required": [
+          "cases"
+        ],
+        "title": "HolderCasesOut"
+      },
       "HolderKind": {
         "type": "string",
         "enum": [
@@ -28166,6 +28357,18 @@
         ],
         "title": "HolderOut",
         "description": "Whose an IBAN, a creditor ID, a VAT ID or an e-mail domain is where it stands."
+      },
+      "HolderOutcome": {
+        "type": "string",
+        "enum": [
+          "right",
+          "learned_rejected",
+          "refused_confirmed",
+          "unclear",
+          "unread"
+        ],
+        "title": "HolderOutcome",
+        "description": "How a measure fared on one decision: a column of the tally."
       },
       "HolderSource": {
         "type": "string",

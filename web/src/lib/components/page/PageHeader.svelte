@@ -34,7 +34,9 @@
 	<BackLink href={back.href} label={back.label} />
 {/if}
 <div class="flex flex-col gap-1">
-	<div class="flex flex-wrap items-center justify-between gap-3">
+	<!-- As high as a button beside it, with actions or without, so that the head stands alike on
+	     every page (web/DESIGN.md, "Steady layout"). -->
+	<div class="flex min-h-10 flex-wrap items-center justify-between gap-3 max-sm:min-h-11">
 		<div class="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
 			<PageTitle>
 				{#if typeof title === 'string'}{title}{:else}{@render title()}{/if}

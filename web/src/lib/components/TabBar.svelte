@@ -12,6 +12,7 @@
 </script>
 
 <script lang="ts">
+	import SteadyText from '#lib/components/SteadyText.svelte';
 	import { slidingPill } from '#lib/sliding-pill.ts';
 	import { cn } from '#lib/utils.ts';
 
@@ -97,7 +98,7 @@
 					: 'text-muted-foreground hover:text-foreground'
 			)}
 		>
-			{tab.label}
+			<SteadyText text={tab.label} />
 			{#if tab.count}
 				<span class="text-xs font-normal text-muted-foreground tabular-nums">{tab.count}</span>
 			{/if}

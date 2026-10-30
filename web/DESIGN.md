@@ -252,14 +252,15 @@ divider.
 
 `Chip` is the one chip: a pill, `md` 32 px (`h-8`) or `sm` 24 px, icon and name, optionally
 removable (`onremove`, a ✕ with a hit area of 44 px on the phone) or toggleable (`pressed`:
-`aria-pressed`, a check when on). Its variants:
+`aria-pressed`; on, the selected look and a bolder name, no check, at the width it has off, so
+that the chips beside it stay: "Steady layout"). Its variants:
 
-| Variant    | Use                                                              |
-| ---------- | ---------------------------------------------------------------- |
-| `neutral`  | Free values (spellings), search words                            |
-| `outline`  | Groups (contact and type groups), quiet values                   |
-| `selected` | What is chosen: active filters, a toggle that is on              |
-| `add`      | The dashed "+ Gruppe" / "+ Thema" / "+ Name" that opens a picker |
+| Variant    | Use                                                                                                      |
+| ---------- | -------------------------------------------------------------------------------------------------------- |
+| `neutral`  | Free values (spellings), search words                                                                    |
+| `outline`  | Groups (contact and type groups), quiet values                                                           |
+| `selected` | What is chosen: active filters, a toggle that is on (`bg-panel`, text `brand`, a 1 px edge `primary/45`) |
+| `add`      | The dashed "+ Gruppe" / "+ Thema" / "+ Name" that opens a picker                                         |
 
 Tags and topics in their colours (`chipLook()`) are `TagChip`, drawn in the same shape. All chips
 are pills, topics included. The field a chip stands in names its kind. `TagChips`, `GroupChips`,
@@ -605,6 +606,23 @@ true })`, read from `page.state` (`lib/words.ts` for the words of the documents)
   button and F5 bring it back; a plain link opens without it.
 - Words go to the API in a body (`POST /documents/search`); never put them into a query.
 - Not in `localStorage` either: that is per browser and outlives the tab.
+
+### Steady layout
+
+What a person did not touch stays where it is: choosing something, or going to another page,
+moves nothing beside it.
+
+- **A label that turns bolder when chosen** (a link of the menu, a tab, a switch, a chip that
+  toggles, a lens chip) keeps its width: `SteadyText` holds the room of its bolder weight (for
+  markup, the `steadyText` attachment). Never change a label's weight without it where something
+  stands beside it, and add nothing when chosen (a check): an edge stays 1 px in both states.
+- **The head of a page** is as high as a button, with actions beside the title or without
+  (`PageHeader`, and the documents' own head), so that the title and what follows stand at the
+  same height on every page.
+- **The room of a scroll bar** stays reserved (`scrollbar-gutter: stable` on `html`): a page
+  longer than the window, or a dialog that locks it, does not shift the page sideways where the
+  system shows scroll bars (Windows, a Mac with a mouse).
+- A strip of tabs that scrolls on a phone brings the chosen tab into view; that is no move.
 
 ### Motion
 

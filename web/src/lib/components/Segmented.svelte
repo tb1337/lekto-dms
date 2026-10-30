@@ -15,6 +15,7 @@
 </script>
 
 <script lang="ts">
+	import SteadyText from '#lib/components/SteadyText.svelte';
 	import { slidingPill } from '#lib/sliding-pill.ts';
 	import { cn } from '#lib/utils.ts';
 	import * as Tooltip from '#lib/components/ui/tooltip/index.ts';
@@ -117,9 +118,10 @@
 			<option.icon class={size === 'sm' ? 'size-3.5' : 'size-4'} aria-hidden="true" />
 		{/if}
 		{#if names !== 'hidden'}
-			<span class={cn(roomy && option.icon && ROOM[names as keyof typeof ROOM])}>
-				{option.label}
-			</span>
+			<SteadyText
+				text={option.label}
+				class={cn(roomy && option.icon && ROOM[names as keyof typeof ROOM])}
+			/>
 		{/if}
 		{#if option.count !== undefined}
 			<span class="text-xs font-normal text-muted-foreground tabular-nums">{option.count}</span>

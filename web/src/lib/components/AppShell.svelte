@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SteadyText from '#lib/components/SteadyText.svelte';
 	import type { Snippet } from 'svelte';
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
@@ -105,7 +106,7 @@
 		)}
 	>
 		{#if vertical}<section.icon class="size-[18px]" aria-hidden="true" />{/if}
-		{section.label()}
+		<SteadyText text={section.label()} />
 		{#if section.path === '/inbox' && inbox.summary && tone}
 			<!-- Coloured by the worst lane in it; the label says what stands there. -->
 			<span
@@ -171,7 +172,7 @@
 								within ? 'bg-secondary font-medium text-foreground' : 'text-muted-foreground'
 							)}
 						>
-							{m.nav_more()}
+							<SteadyText text={m.nav_more()} />
 							<ChevronDown class="size-4" aria-hidden="true" />
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Content align="start" class="w-56">

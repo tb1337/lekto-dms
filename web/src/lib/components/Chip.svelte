@@ -6,15 +6,17 @@
 </script>
 
 <script lang="ts">
-	import Check from '@lucide/svelte/icons/check';
 	import X from '@lucide/svelte/icons/x';
 	import type { Snippet } from 'svelte';
+	import { steadyText } from '#lib/steady-text.ts';
 	import { cn } from '#lib/utils.ts';
 
 	// The one chip (web/DESIGN.md, "Chips"): a pill with an optional icon and a name. `neutral`
 	// for free values and search words, `outline` for a group or a quiet value, `selected` for
 	// what is chosen (an active filter), `add` the dashed "+ …" that opens a picker. With
-	// `pressed` it is a toggle (`aria-pressed`, a check when on); with `onremove` it has a ✕.
+	// `pressed` it is a toggle (`aria-pressed`): on, it takes the selected look and a bolder name
+	// at the width it has off, so that the chips beside it stay (web/DESIGN.md, "Steady layout");
+	// with `onremove` it has a ✕.
 	// Tags and topics in their colours are `TagChip`, drawn in the same shape.
 	let {
 		variant = 'neutral',
@@ -49,12 +51,12 @@
 			onremove && (size === 'sm' ? 'pr-0.5' : 'pr-1'),
 			toggle
 				? pressed
-					? 'bg-panel font-medium text-brand ring-1 ring-primary/30 ring-inset'
+					? 'border border-primary/45 bg-panel text-brand'
 					: 'border bg-card hover:bg-secondary'
 				: {
 						neutral: 'bg-secondary text-foreground',
 						outline: 'border bg-card',
-						selected: 'bg-panel text-brand ring-1 ring-primary/30 ring-inset',
+						selected: 'border border-primary/45 bg-panel text-brand',
 						add: 'border border-dashed border-muted-foreground/50 text-brand hover:bg-secondary'
 					}[variant],
 			// A finger's tap on a phone: 44 pixels high around the pill.
@@ -67,9 +69,14 @@
 
 {#if toggle || variant === 'add' || onclick}
 	<button type="button" aria-pressed={pressed} {onclick} class={look} {...rest}>
-		{#if pressed}<Check class="size-3.5 shrink-0" aria-hidden="true" />{/if}
 		{@render icon?.()}
-		<span class="min-w-0 truncate">{@render children()}</span>
+		{#if toggle}
+			<span class={cn('steady-weight min-w-0', pressed && 'font-medium')} {@attach steadyText}
+				><span class="truncate">{@render children()}</span></span
+			>
+		{:else}
+			<span class="min-w-0 truncate">{@render children()}</span>
+		{/if}
 	</button>
 {:else}
 	<span class={look} {...rest}>

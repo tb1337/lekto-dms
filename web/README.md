@@ -104,8 +104,9 @@ fetched again after events and when the window comes back into view.
 
 ## Documents and search
 
-`/ui/documents` is the archive: it lists the documents and, with words in `?q=`, searches them
-(`/documents/search`, with snippets), with the same filters (`lib/filters.ts`: contact, type,
+`/ui/documents` is the archive: it lists the documents and, with words, searches them
+(`POST /documents/search`, with snippets; the words stand in the history entry, `lib/words.ts`,
+never in the address: `web/DESIGN.md`, "No plain data in addresses"), with the same filters (`lib/filters.ts`: contact, type,
 tags, contact and type groups, topics, space, a field with a value; tags, groups and topics as
 chips, several topics meaning one of them); there is no search page of its own. It shows no
 lanes and no progress: a document that stands open in the inbox (`in_inbox`) carries "In the

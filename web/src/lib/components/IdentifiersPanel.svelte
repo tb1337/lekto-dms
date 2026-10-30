@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import Check from '@lucide/svelte/icons/check';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { onMount, untrack } from 'svelte';
@@ -12,7 +11,7 @@
 	import Loading from '#lib/components/Loading.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import OpenIdentifierDialog from '#lib/components/OpenIdentifierDialog.svelte';
-	import { dropEntry, pushEntry } from '#lib/history-state.ts';
+	import { dropEntry, entryOf, pushEntry } from '#lib/history-state.ts';
 	import Pagination from '#lib/components/Pagination.svelte';
 	import Segmented from '#lib/components/Segmented.svelte';
 	import Select from '#lib/components/Select.svelte';
@@ -74,8 +73,10 @@
 	let chosen = $state<Record<string, OpenIdentifier>>({});
 	let busy = $state(false);
 	// The open dialog lives in the history entry (`page.state.identifier`): the back button
-	// closes it, a reload and the way back from a document bring it back.
-	const wanted = $derived(page.state.identifier ?? null);
+	// closes it, a reload and the way back from a document bring it back; the Beam opening over
+	// it leaves it as it is (`entryOf`).
+	const identifier = entryOf('identifier');
+	const wanted = $derived(identifier() ?? null);
 	let opened: OpenIdentifier | null = null;
 	// The contacts with their logos, for the avatar of a learned or suggested identifier.
 	let contacts = $state<Contact[]>([]);

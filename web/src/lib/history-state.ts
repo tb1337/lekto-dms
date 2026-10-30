@@ -45,3 +45,26 @@ export function dropEntry(key: Key): void {
 	delete state[key];
 	void goto(page.url.href, { shallow: true, replace: true, state, persistState: true });
 }
+
+/**
+ * `key` of the history entry as one object while what it holds stays the same. Each change of
+ * the entry (the Beam opening over a dialog, the back button closing it) restores every key as a
+ * new object; read through this, what shows `key` does not load again, and a close by the back
+ * button is noted:
+ * `const wanted = $derived(identifier())` with `const identifier = entryOf('identifier')`.
+ */
+export function entryOf<K extends Key>(key: K): () => App.PageState[K] | undefined {
+	let kept: App.PageState[K] | undefined;
+	let written: string | undefined;
+	return () => {
+		const value = page.state[key];
+		// Gone from the entry: the back button left the one this page pushed.
+		if (value === undefined) pushed[key] = false;
+		const now = value === undefined ? undefined : JSON.stringify(value);
+		if (now !== written) {
+			kept = value;
+			written = now;
+		}
+		return kept;
+	};
+}

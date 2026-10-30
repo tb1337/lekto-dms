@@ -1,12 +1,12 @@
 <script lang="ts">
 	import SearchIcon from '@lucide/svelte/icons/search';
-	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { m } from '#lib/paraglide/messages.js';
 	import { BASE } from '#lib/base.ts';
 	import { openLens } from '#lib/open-lens.svelte.ts';
 	import { warmSearch } from '#lib/meaning-search.ts';
 	import { cn } from '#lib/utils.ts';
+	import { gotoSearching, stateWords } from '#lib/words.ts';
 	import { FIELD_FRAME } from '#lib/components/ui/field-look.ts';
 
 	// The search field of the header: Enter searches the documents with the words (and, in the
@@ -18,20 +18,19 @@
 	let input = $state<HTMLInputElement | null>(null);
 	const DOCUMENTS = `${BASE}/documents`;
 	const inDocuments = $derived(page.url.pathname === DOCUMENTS);
-	// In the document view the field shows what is searched for, until the user types.
-	let text = $derived(inDocuments ? (page.url.searchParams.get('q') ?? '') : '');
+	// In the document view the field shows what is searched for, until the user types: the
+	// words of the history entry, or those of the lens a plain link opened (`lib/words.ts`).
+	let text = $derived(inDocuments ? (stateWords(page.state) ?? openLens.query ?? '') : '');
 
 	function submit(event: SubmitEvent) {
 		event.preventDefault();
 		// Built and read at once, nothing reacts to it.
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const params = new URLSearchParams(inDocuments ? page.url.search : '');
-		const term = text.trim();
-		if (term) params.set('q', term);
-		else params.delete('q');
 		params.delete('sort'); // a search sorts as the last search did
 		const query = params.toString();
-		void goto(query ? `${DOCUMENTS}?${query}` : DOCUMENTS);
+		// The words go into the history entry, never into the address.
+		void gotoSearching(query ? `${DOCUMENTS}?${query}` : DOCUMENTS, text.trim());
 	}
 
 	function keydown(event: KeyboardEvent) {

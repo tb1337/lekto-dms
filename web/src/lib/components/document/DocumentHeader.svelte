@@ -213,7 +213,7 @@
 		if (!into || into.role !== 'edit') {
 			toast.success(receiver ? m.move_handed_over({ name: userLabel(receiver) }) : m.move_done());
 			moveOpen = false;
-			await goto(inbox ? `${BASE}/inbox` : returnTo.documents);
+			await (inbox ? goto(`${BASE}/inbox`) : returnTo.goDocuments());
 			return;
 		}
 		toast.success(m.move_done());
@@ -223,7 +223,7 @@
 	async function remove() {
 		await unwrap(api.DELETE('/api/v1/documents/{id}', { params: { path: { id: document.id } } }));
 		toast.success(m.delete_done());
-		await goto(inbox ? `${BASE}/inbox` : returnTo.documents);
+		await (inbox ? goto(`${BASE}/inbox`) : returnTo.goDocuments());
 	}
 </script>
 
@@ -232,6 +232,7 @@
 		<BackLink
 			href={inbox ? `${BASE}/inbox` : returnTo.documents}
 			label={inbox ? m.nav_inbox() : m.nav_documents()}
+			state={inbox ? undefined : returnTo.state}
 		/>
 		{#if inbox && inbox.position !== null}
 			<nav aria-label={m.doc_inbox_nav()} class="ml-auto flex items-center gap-1">

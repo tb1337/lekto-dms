@@ -227,7 +227,7 @@ async def upload(
         "or amount (by its value); documents without a date or value come last. Each document "
         "says whether "
         "it stands in the caller's inbox (`in_inbox`). To search by words and meaning use "
-        "`GET /documents/search`."
+        "`POST /documents/search`."
     ),
     response_model=DocumentPage,
     responses=problem_responses(401, 403, 422),

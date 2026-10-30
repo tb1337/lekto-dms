@@ -1,9 +1,8 @@
 """Changing many documents at once: `POST /documents/bulk` and `GET /documents/bulk/{id}`."""
 
-from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, Request, Response
 
 from lekto.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from lekto.adapters.inbound.rest.context import Context
@@ -29,9 +28,9 @@ router = APIRouter(prefix="/documents/bulk", tags=["documents"], dependencies=PR
         "Does one action to the selected documents in the background; follow it at "
         f"`GET /documents/bulk/{{id}}`. The selection: `document_ids` (at most {MAX_IDS}), or "
         "every document the query parameters find, as `GET /documents` (at most "
-        f"{MAX_DOCUMENTS}, more: 422) or with `q` as `GET /documents/search` (the hits it "
-        f"reaches, at most {MAX_HITS}); it is fixed now. Each document goes through the same "
-        "change as one by hand, rights included: one the caller may not edit, one being "
+        f"{MAX_DOCUMENTS}, more: 422) or with `q` in the body as `POST /documents/search` (the "
+        f"hits it reaches, at most {MAX_HITS}); it is fixed now. Each document goes through the "
+        "same change as one by hand, rights included: one the caller may not edit, one being "
         "processed (except to delete it) or one that changed meanwhile is skipped with the "
         "reason, one that is as the action wants it already stays as it is. A tag, contact, "
         "type, topic or space the action names that does not exist: 404. Admins act on "
@@ -47,11 +46,9 @@ async def start_bulk(
     user: CurrentUser,
     context: Context,
     filter: Filter,
-    q: Annotated[
-        str | None, Query(min_length=1, max_length=500, description="Words of the search.")
-    ] = None,
     all_users: AllDocuments = False,
 ) -> BulkOperationOut:
+    q = body.q
     if body.document_ids is not None and (q is not None or filter != DocumentFilter()):
         raise ValidationError(because(ReasonCode.BULK_IDS_AND_FILTER))
     operation = await context.bulk.start(

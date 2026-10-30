@@ -16,11 +16,12 @@ import { m } from '#lib/paraglide/messages.js';
 export type BulkOperation = components['schemas']['BulkOperationOut'];
 export type BulkAction = components['schemas']['BulkActionIn'];
 
-/** The documents an action is for: `ids` one by one, else every hit of `query` (the filters,
- * with `q` the words). */
+/** The documents an action is for: `ids` one by one, else every hit of `query` (the filters)
+ * and, with them, `words` (the search; they go in the body, never in an address). */
 export interface BulkSelection {
 	ids: string[] | null;
-	query: Partial<ReturnType<typeof apiQuery>> & { q?: string };
+	query: Partial<ReturnType<typeof apiQuery>>;
+	words?: string;
 }
 
 /** How long between two polls of a running operation. */
@@ -47,11 +48,11 @@ export class BulkRun {
 
 	/** Start `action` on `selection` and follow it until it ends. Throws what the API refused. */
 	async start(selection: BulkSelection, action: BulkAction): Promise<void> {
-		const { ids, query } = selection;
+		const { ids, query, words } = selection;
 		const operation = await unwrap(
 			api.POST('/api/v1/documents/bulk', {
 				params: { query: ids ? {} : query },
-				body: { document_ids: ids, action }
+				body: { document_ids: ids, ...(ids || !words ? {} : { q: words }), action }
 			})
 		);
 		if (this.#stopped) return;

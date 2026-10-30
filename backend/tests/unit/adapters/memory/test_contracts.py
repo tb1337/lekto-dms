@@ -22,6 +22,7 @@ from lekto.adapters.outbound.memory import (
     FakePageRenderer,
     FakeParser,
     FakePasswordHasher,
+    FakeRefCipher,
     FakeTextLocator,
     FakeTotp,
     ManualClock,
@@ -49,6 +50,7 @@ from tests.contracts.identity import (
     IdentityRepositoriesContract,
     OidcProviderContract,
     PasswordHasherContract,
+    RefCipherContract,
     SecretCipherContract,
     TotpContract,
 )
@@ -256,6 +258,11 @@ def cipher() -> FakeCipher:
 
 
 @pytest.fixture
+def refs() -> FakeRefCipher:
+    return FakeRefCipher()
+
+
+@pytest.fixture
 def totp() -> FakeTotp:
     return FakeTotp()
 
@@ -265,6 +272,10 @@ class TestFakePasswordHasher(PasswordHasherContract):
 
 
 class TestFakeCipher(SecretCipherContract):
+    pass
+
+
+class TestFakeRefCipher(RefCipherContract):
     pass
 
 

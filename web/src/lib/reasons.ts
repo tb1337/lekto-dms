@@ -350,6 +350,7 @@ export const REASONS: Record<Exclude<ReasonCode, 'text' | 'error'>, ReasonEntry>
 	relation_not_found: entry(m.reason_relation_not_found),
 	relation_to_itself: entry(m.reason_relation_to_itself),
 	fact_criterion_empty: entry(m.reason_fact_criterion_empty),
+	ref_unknown: entry(m.reason_ref_unknown),
 	fact_filter_of_person: entry(m.reason_fact_filter_of_person),
 	rule_fact_of_person: entry(m.reason_rule_fact_of_person),
 	fact_not_asked: entry(m.reason_fact_not_asked),

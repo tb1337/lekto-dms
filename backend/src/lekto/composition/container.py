@@ -16,6 +16,7 @@ from lekto import __version__
 from lekto.adapters.inbound.rest import OIDC_CALLBACK_PATH
 from lekto.adapters.outbound.crypto import (
     AesGcmCipher,
+    AesSivRefCipher,
     Argon2PasswordHasher,
     PyotpTotp,
     decode_key,
@@ -34,6 +35,7 @@ from lekto.adapters.outbound.memory import (
     FakePageRenderer,
     FakeParser,
     FakePasswordHasher,
+    FakeRefCipher,
     FakeTextLocator,
     FakeTotp,
     FakeWebhookSender,
@@ -69,7 +71,13 @@ from lekto.core.ports.clock import Clock
 from lekto.core.ports.codes import CodeReader
 from lekto.core.ports.embeddings import Embeddings
 from lekto.core.ports.event_bus import DELIVERY_DELAY, DELIVERY_MAX_DELAY, EventBus
-from lekto.core.ports.identity import OidcProvider, PasswordHasher, SecretCipher, Totp
+from lekto.core.ports.identity import (
+    OidcProvider,
+    PasswordHasher,
+    RefCipher,
+    SecretCipher,
+    Totp,
+)
 from lekto.core.ports.images import ImageNormaliser
 from lekto.core.ports.llm import LanguageModel
 from lekto.core.ports.locator import TextLocator
@@ -341,6 +349,11 @@ def secret_cipher(settings: Settings) -> SecretCipher:
     return AesGcmCipher(decode_key(settings.secret_key.get_secret_value()))
 
 
+def ref_cipher(settings: Settings) -> RefCipher:
+    assert settings.secret_key is not None  # Settings require it for every role.
+    return AesSivRefCipher(decode_key(settings.secret_key.get_secret_value()))
+
+
 @dataclass(frozen=True)
 class Container:
     """One adapter per port. Search, language model and embeddings are optional until the
@@ -364,6 +377,7 @@ class Container:
     images: ImageNormaliser
     password_hasher: PasswordHasher
     cipher: SecretCipher
+    refs: RefCipher
     webhook_sender: WebhookSender
     totp: Totp
     patterns: PatternMatcher
@@ -431,6 +445,7 @@ def build_container(settings: Settings) -> Container:
         images=_select("images", "pillow", IMAGE_NORMALISERS, settings),
         password_hasher=Argon2PasswordHasher(),
         cipher=secret_cipher(settings),
+        refs=ref_cipher(settings),
         webhook_sender=HttpWebhookSender(user_agent=USER_AGENT),
         totp=PyotpTotp(),
         patterns=RegexPatternMatcher(settings.rules_pattern_timeout.total_seconds()),
@@ -479,6 +494,7 @@ def build_memory_container(
         images=FakeImageNormaliser(),
         password_hasher=FakePasswordHasher(),
         cipher=FakeCipher(),
+        refs=FakeRefCipher(),
         webhook_sender=FakeWebhookSender(),
         totp=FakeTotp(),
         patterns=RegexPatternMatcher(settings.rules_pattern_timeout.total_seconds()),

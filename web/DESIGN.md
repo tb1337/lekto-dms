@@ -533,13 +533,29 @@ Destructive actions are in editors and on detail pages, not in list rows.
 
 ### Navigation between list and detail
 
-- A list's state (lens, filters, words, sort, layout) lives in its URL. A detail page reached from
-  a list carries that URL back (`from`), and its `BackLink` returns there. The inbox's
-  previous/next works the same way.
+- A list's state (lens, filters, sort, layout) lives in its URL, its words in the history entry
+  (see "No plain data in addresses"). A detail page reached from a list carries that URL and
+  entry back (`from`), and its `BackLink` returns there. The inbox's previous/next works the same
+  way.
 - Detail pages of the same kind offer the same actions in the same place: header actions (edit,
   primary action). A single destructive action stands there as an `IconButton` (rule, webhook);
   where there are more actions, a "…" menu holds the rest (delete last, in `destructive`).
-- `return-to.svelte.ts` keeps the list's URL for the way back.
+- `return-to.svelte.ts` keeps the list's URL and words for the way back.
+
+### No plain data in addresses
+
+What a person types or what comes from a document (the words of a search, an IBAN, an invoice
+number) never stands in a URL: not in the address bar, not in a request to the API. URLs end up
+in the browser history, bookmarks, the `Referer` and proxy logs.
+
+- In a URL: ids, choices (a tab, a sort, a lane), and references. A fact's value is its
+  reference (`ref`, from `POST /identifiers/refs` or an answer that names the value):
+  `fact=iban:<ref>:`. Its label asks the API for the value (`fact-refs.svelte.ts`).
+- State that carries such data lives in the history entry: `goto(url, { state, persistState:
+true })`, read from `page.state` (`lib/words.ts` for the words of the documents). The back
+  button and F5 bring it back; a plain link opens without it.
+- Words go to the API in a body (`POST /documents/search`); never put them into a query.
+- Not in `localStorage` either: that is per browser and outlives the tab.
 
 ### Motion
 

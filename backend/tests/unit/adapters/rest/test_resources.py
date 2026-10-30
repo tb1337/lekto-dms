@@ -202,9 +202,12 @@ async def test_listing_sorts_by_date_title_and_field_and_filters_by_field(api: A
         bad = await api.client.get(f"{PREFIX}/documents", params=bad_params, headers=auth(owner))
         assert bad.status_code == 422, bad_params
     # The search index holds no field values.
-    search = {"q": "arzt", "sort": "field", "sort_field_id": due["id"]}
-    bad = await api.client.get(f"{PREFIX}/documents/search", params=search, headers=auth(owner))
+    search = {"sort": "field", "sort_field_id": due["id"]}
+    bad = await api.client.post(
+        f"{PREFIX}/documents/search", json={"q": "arzt"}, params=search, headers=auth(owner)
+    )
     assert bad.status_code == 422
+    assert "sort" in bad.json()["detail"]
 
 
 async def test_counts_for_the_filters_of_the_documents(api: Api) -> None:

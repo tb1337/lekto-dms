@@ -2,13 +2,21 @@
 
 from datetime import datetime, timedelta
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from lekto.adapters.inbound.rest.schemas.documents import ListedDocument
 from lekto.adapters.inbound.schemas import ReasonOut
 from lekto.core.ports.search_index import MAX_HITS
 from lekto.core.services.indexing import IndexCheck, IndexStatus, JobTimes
 from lekto.core.services.search import SearchMode
+
+
+class SearchIn(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid", json_schema_extra={"examples": [{"q": "Stromrechnung 2025"}]}
+    )
+
+    q: str = Field(min_length=1, max_length=500, description="What to look for.")
 
 
 class SnippetSegment(BaseModel):

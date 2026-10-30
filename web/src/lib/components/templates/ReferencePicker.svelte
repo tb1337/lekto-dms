@@ -85,8 +85,9 @@
 		let current = true;
 		const timer = setTimeout(() => {
 			void unwrap(
-				api.GET('/api/v1/documents/search', {
-					params: { query: { q: text, limit: 20, semantic_ratio: 0 } }
+				api.POST('/api/v1/documents/search', {
+					params: { query: { limit: 20, semantic_ratio: 0 } },
+					body: { q: text }
 				})
 			).then(
 				(page) => {

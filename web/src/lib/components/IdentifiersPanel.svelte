@@ -31,6 +31,7 @@
 		confirmable,
 		decide,
 		documentsHref,
+		rememberOpenRefs,
 		type OpenAction,
 		type OpenDecision,
 		type OpenIdentifier,
@@ -88,20 +89,23 @@
 	}
 
 	const list = new Pager<OpenIdentifier>(async (offset, limit) => {
+		const params = {
+			query: {
+				source: source || undefined,
+				kind: (kind || undefined) as IdentifierKind | undefined,
+				recommended: onlyRecommended || undefined,
+				offset,
+				limit
+			}
+		};
+		// Words go in the body, never in an address (web/DESIGN.md).
+		const words = query.trim();
 		const found = await unwrap(
-			api.GET('/api/v1/identifiers/open', {
-				params: {
-					query: {
-						source: source || undefined,
-						kind: (kind || undefined) as IdentifierKind | undefined,
-						q: query.trim() || undefined,
-						recommended: onlyRecommended || undefined,
-						offset,
-						limit
-					}
-				}
-			})
+			words
+				? api.POST('/api/v1/identifiers/open/search', { params, body: { q: words } })
+				: api.GET('/api/v1/identifiers/open', { params })
 		);
+		rememberOpenRefs(found.items);
 		counts = found.counts;
 		kinds = found.kinds;
 		recommended = found.recommended;

@@ -1753,6 +1753,7 @@
 	"reason_relation_to_itself": "a document does not refer to itself",
 	"reason_fact_filter_of_person": "only admins find documents by a person’s numbers",
 	"reason_rule_fact_of_person": "only admins write rules on a person's numbers",
+	"reason_ref_unknown": "the reference names no value of this kind; it is damaged or comes from another instance",
 	"reason_fact_criterion_empty": "a filter by facts names a kind, a role, or a kind with its value",
 	"reason_fact_not_asked": "a fact “{kind}” in the role “{role}” was not asked for",
 	"reason_holder_not_listed": "“{value}” was not among the numbers asked about",

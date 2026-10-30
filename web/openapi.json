@@ -7123,7 +7123,7 @@
           "identifiers"
         ],
         "summary": "The open identifiers",
-        "description": "Admins only. Open are the identifiers no person has confirmed: those training learned at a contact (`learned`), and those of a contact's kind that confirmed documents with a contact show but no contact has, entered, learned or rejected (`unknown`). A person's value (a user's profile) is never open. The most documents first, then the newest. `q` finds words in the value (with or without spaces), as written or in a contact's name; `recommended` keeps those whose documents recommend confirming or rejecting them (`recommendation`).",
+        "description": "Admins only. Open are the identifiers no person has confirmed: those training learned at a contact (`learned`), and those of a contact's kind that confirmed documents with a contact show but no contact has, entered, learned or rejected (`unknown`). A person's value (a user's profile) is never open. The most documents first, then the newest. `recommended` keeps those whose documents recommend confirming or rejecting them (`recommendation`). To find words: `POST /search`.",
         "operationId": "open_identifiers_api_v1_identifiers_open_get",
         "parameters": [
           {
@@ -7156,23 +7156,6 @@
                 }
               ],
               "title": "Kind"
-            }
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "maxLength": 200
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Q"
             }
           },
           {
@@ -7295,6 +7278,194 @@
         ]
       }
     },
+    "/api/v1/identifiers/open/search": {
+      "post": {
+        "tags": [
+          "identifiers"
+        ],
+        "summary": "Find open identifiers by words",
+        "description": "Admins only. The list of `GET` with the words of `q`, which go in the body so that they stay out of addresses and logs. The most documents first, then the newest. `recommended` keeps those whose documents recommend confirming or rejecting them (`recommendation`).",
+        "operationId": "search_open_identifiers_api_v1_identifiers_open_search_post",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OpenSource"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/IdentifierKind"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "recommended",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Recommended"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 0,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenSearchIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenPageOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "the request body is larger than 1048576 bytes"
+                }
+              }
+            }
+          }
+        },
+        "x-reads": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/identifiers/open/summary": {
       "get": {
         "tags": [
@@ -7373,32 +7544,31 @@
         ]
       }
     },
-    "/api/v1/identifiers/open/detail": {
+    "/api/v1/identifiers/open/{kind}/{ref}": {
       "get": {
         "tags": [
           "identifiers"
         ],
         "summary": "An open identifier and where it stands",
-        "description": "Admins only. The open identifier of `kind` and `value` (normalised, as the list gives it) and where it stands in its five newest documents. 404 if it is not open.",
-        "operationId": "open_detail_api_v1_identifiers_open_detail_get",
+        "description": "Admins only. The open identifier of `kind` with the value of `ref` (its `ref` in the list) and where it stands in its five newest documents. 404 if it is not open, 422 for a reference that names no value of the kind.",
+        "operationId": "open_detail_api_v1_identifiers_open__kind___ref__get",
         "parameters": [
           {
             "name": "kind",
-            "in": "query",
+            "in": "path",
             "required": true,
             "schema": {
               "$ref": "#/components/schemas/IdentifierKind"
             }
           },
           {
-            "name": "value",
-            "in": "query",
+            "name": "ref",
+            "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "minLength": 1,
-              "maxLength": 200,
-              "title": "Value"
+              "maxLength": 400,
+              "title": "Ref"
             }
           }
         ],
@@ -7679,6 +7849,225 @@
                   "title": "Forbidden",
                   "status": 403,
                   "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/identifiers/refs": {
+      "post": {
+        "tags": [
+          "identifiers"
+        ],
+        "summary": "The reference to a value",
+        "description": "The reference to an identifier's value, for addresses that name it (the `fact` filter of the documents): the value goes in the body, the reference in the URL, so the value stays out of histories, bookmarks and logs. The same value (normalised) always gives the same reference while the instance's secret key stays. 422 for a value that is none of its kind.",
+        "operationId": "make_ref_api_v1_identifiers_refs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "the request body is larger than 1048576 bytes"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only editors and admins control the processing of this document"
+                }
+              }
+            }
+          }
+        },
+        "x-reads": true,
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/identifiers/refs/{kind}/{ref}": {
+      "get": {
+        "tags": [
+          "identifiers"
+        ],
+        "summary": "The value of a reference",
+        "description": "To show what a reference names. 422 for one that names no value of the kind.",
+        "operationId": "read_ref_api_v1_identifiers_refs__kind___ref__get",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/IdentifierKind"
+            }
+          },
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 400,
+              "title": "Ref"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -10271,27 +10660,14 @@
       }
     },
     "/api/v1/documents/search": {
-      "get": {
+      "post": {
         "tags": [
           "search"
         ],
         "summary": "Search documents",
-        "description": "Full text and, if the installation has embeddings, meaning in one call. Finds the documents within the caller's reach, the same ones as `GET /documents` lists, with the same filters (they combine; `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat, a topic takes the topics below it); admins search every document with `all_users` (others: 403). Each hit is checked against the permissions once more before it is returned. The index follows the documents a moment later, so a new document may take a few seconds to turn up. Pages are by `offset`; at most 1000 hits can be reached. `sort`: by relevance (the default), or by a key as in `GET /documents`, relevance breaking ties.",
-        "operationId": "search_documents_api_v1_documents_search_get",
+        "description": "Full text and, if the installation has embeddings, meaning in one call. Finds the documents within the caller's reach, the same ones as `GET /documents` lists, with the same filters (they combine; `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat, a topic takes the topics below it); admins search every document with `all_users` (others: 403). Each hit is checked against the permissions once more before it is returned. The index follows the documents a moment later, so a new document may take a few seconds to turn up. Pages are by `offset`; at most 1000 hits can be reached. `sort`: by relevance (the default), or by a key as in `GET /documents`, relevance breaking ties. The words go in the body, so that they stay out of addresses and logs; the filters and the rest stay query parameters.",
+        "operationId": "search_documents_api_v1_documents_search_post",
         "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 500,
-              "description": "What to look for.",
-              "title": "Q"
-            },
-            "description": "What to look for."
-          },
           {
             "name": "sort",
             "in": "query",
@@ -10603,12 +10979,22 @@
                   "type": "null"
                 }
               ],
-              "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none.",
+              "description": "A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind.",
               "title": "Fact"
             },
-            "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none."
+            "description": "A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind."
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchIn"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -10699,8 +11085,25 @@
                 }
               }
             }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "the request body is larger than 1048576 bytes"
+                }
+              }
+            }
           }
         },
+        "x-reads": true,
         "security": [
           {
             "session": []
@@ -11063,29 +11466,9 @@
           "documents"
         ],
         "summary": "Change many documents at once",
-        "description": "Does one action to the selected documents in the background; follow it at `GET /documents/bulk/{id}`. The selection: `document_ids` (at most 500), or every document the query parameters find, as `GET /documents` (at most 10000, more: 422) or with `q` as `GET /documents/search` (the hits it reaches, at most 1000); it is fixed now. Each document goes through the same change as one by hand, rights included: one the caller may not edit, one being processed (except to delete it) or one that changed meanwhile is skipped with the reason, one that is as the action wants it already stays as it is. A tag, contact, type, topic or space the action names that does not exist: 404. Admins act on every user's documents with `all_users` (others: 403).",
+        "description": "Does one action to the selected documents in the background; follow it at `GET /documents/bulk/{id}`. The selection: `document_ids` (at most 500), or every document the query parameters find, as `GET /documents` (at most 10000, more: 422) or with `q` in the body as `POST /documents/search` (the hits it reaches, at most 1000); it is fixed now. Each document goes through the same change as one by hand, rights included: one the caller may not edit, one being processed (except to delete it) or one that changed meanwhile is skipped with the reason, one that is as the action wants it already stays as it is. A tag, contact, type, topic or space the action names that does not exist: 404. Admins act on every user's documents with `all_users` (others: 403).",
         "operationId": "start_bulk_api_v1_documents_bulk_post",
         "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 500
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Words of the search.",
-              "title": "Q"
-            },
-            "description": "Words of the search."
-          },
           {
             "name": "all_users",
             "in": "query",
@@ -11333,10 +11716,10 @@
                   "type": "null"
                 }
               ],
-              "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none.",
+              "description": "A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind.",
               "title": "Fact"
             },
-            "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none."
+            "description": "A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind."
           }
         ],
         "requestBody": {
@@ -11845,10 +12228,10 @@
                   "type": "null"
                 }
               ],
-              "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none.",
+              "description": "A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind.",
               "title": "Fact"
             },
-            "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none."
+            "description": "A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind."
           }
         ],
         "responses": {
@@ -12431,7 +12814,7 @@
           "documents"
         ],
         "summary": "List documents",
-        "description": "The documents within the caller's reach, newest first: every document in the spaces they edit, the green ones in the spaces they read. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `contact_id`, `document_type_id`, `space_id`, `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (any contact, type, space, group, topic or lane, all tags; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; a topic the documents with it or one below it. `field_id`: a value for the field is set. `document_date_from` and `document_date_to`: the document date lies between them, both days included, either end open (a document without a date does not match). `sort` orders by arrival (the default, newest first), document date, title, or (`field` with `sort_field_id`) the value of a field of type date, period (by its first day), number or amount (by its value); documents without a date or value come last. Each document says whether it stands in the caller's inbox (`in_inbox`). To search by words and meaning use `GET /documents/search`.",
+        "description": "The documents within the caller's reach, newest first: every document in the spaces they edit, the green ones in the spaces they read. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `contact_id`, `document_type_id`, `space_id`, `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (any contact, type, space, group, topic or lane, all tags; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; a topic the documents with it or one below it. `field_id`: a value for the field is set. `document_date_from` and `document_date_to`: the document date lies between them, both days included, either end open (a document without a date does not match). `sort` orders by arrival (the default, newest first), document date, title, or (`field` with `sort_field_id`) the value of a field of type date, period (by its first day), number or amount (by its value); documents without a date or value come last. Each document says whether it stands in the caller's inbox (`in_inbox`). To search by words and meaning use `POST /documents/search`.",
         "operationId": "list_documents_api_v1_documents_get",
         "parameters": [
           {
@@ -12753,10 +13136,10 @@
                   "type": "null"
                 }
               ],
-              "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none.",
+              "description": "A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind.",
               "title": "Fact"
             },
-            "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none."
+            "description": "A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind."
           }
         ],
         "responses": {
@@ -13101,10 +13484,10 @@
                   "type": "null"
                 }
               ],
-              "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none.",
+              "description": "A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind.",
               "title": "Fact"
             },
-            "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none."
+            "description": "A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind."
           }
         ],
         "responses": {
@@ -13449,10 +13832,10 @@
                   "type": "null"
                 }
               ],
-              "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none.",
+              "description": "A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind.",
               "title": "Fact"
             },
-            "description": "A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none."
+            "description": "A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind."
           }
         ],
         "responses": {
@@ -22673,6 +23056,20 @@
             "title": "Document Ids",
             "description": "The documents one by one. Without: every document the query parameters find (the filter of `GET /documents`, with `q` the hits of the search)."
           },
+          "q": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q",
+            "description": "Words of the search (`POST /documents/search`), not with `document_ids`."
+          },
           "action": {
             "$ref": "#/components/schemas/BulkActionIn"
           }
@@ -25908,17 +26305,18 @@
               }
             ]
           },
-          "value": {
+          "ref": {
             "anyOf": [
               {
                 "type": "string",
-                "maxLength": 200
+                "maxLength": 400
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Value"
+            "title": "Ref",
+            "description": "The value's reference."
           },
           "role": {
             "anyOf": [
@@ -25934,7 +26332,64 @@
         "additionalProperties": false,
         "type": "object",
         "title": "FactFilterBody",
-        "description": "A fact the documents have: of `kind`, with `value` (as written; it needs its kind), in\n`role`; what is null is any."
+        "description": "A fact the documents have: of `kind`, with the value of `ref` (it needs its kind; from\n`POST /identifiers/refs`), in `role`; what is null is any."
+      },
+      "FactFilterOut": {
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IdentifierKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "Normalised, as Lekto compares it."
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref",
+            "description": "The value's reference, for the `fact` filter."
+          },
+          "role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FactRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value",
+          "ref",
+          "role"
+        ],
+        "title": "FactFilterOut",
+        "description": "A fact the documents have, with its value and the value's reference."
       },
       "FactOrigin": {
         "type": "string",
@@ -28545,6 +29000,136 @@
         "title": "LensFilterBody",
         "description": "The filters as `GET /documents` takes them, with a list for each repeated parameter."
       },
+      "LensFilterOut": {
+        "properties": {
+          "contact_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Contact Ids"
+          },
+          "document_type_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Document Type Ids"
+          },
+          "contact_group_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Contact Group Ids"
+          },
+          "document_type_group_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Document Type Group Ids"
+          },
+          "topic_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Topic Ids"
+          },
+          "tag_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Tag Ids"
+          },
+          "space_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Space Ids"
+          },
+          "field_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field Id"
+          },
+          "document_date_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Date From"
+          },
+          "document_date_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Date To"
+          },
+          "document_period": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RelativePeriod"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "facts": {
+            "items": {
+              "$ref": "#/components/schemas/FactFilterOut"
+            },
+            "type": "array",
+            "title": "Facts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "contact_ids",
+          "document_type_ids",
+          "contact_group_ids",
+          "document_type_group_ids",
+          "topic_ids",
+          "tag_ids",
+          "space_ids",
+          "field_id",
+          "document_date_from",
+          "document_date_to",
+          "document_period",
+          "facts"
+        ],
+        "title": "LensFilterOut",
+        "description": "The filters of a lens as `LensFilterBody`, each fact with its value."
+      },
       "LensOrder": {
         "properties": {
           "ids": {
@@ -28589,7 +29174,7 @@
             "description": "Where it stands among the user's lenses, from 0."
           },
           "filter": {
-            "$ref": "#/components/schemas/LensFilterBody"
+            "$ref": "#/components/schemas/LensFilterOut"
           },
           "query": {
             "anyOf": [
@@ -30523,6 +31108,11 @@
             "title": "Value",
             "description": "Normalised, as Lekto compares it."
           },
+          "ref": {
+            "type": "string",
+            "title": "Ref",
+            "description": "The value's reference: for `GET /identifiers/open/{kind}/{ref}` and the `fact` filter of the documents."
+          },
           "written": {
             "type": "string",
             "title": "Written",
@@ -30584,6 +31174,7 @@
         "required": [
           "kind",
           "value",
+          "ref",
           "written",
           "source",
           "contacts",
@@ -30677,7 +31268,7 @@
           "to_confirm": {
             "type": "integer",
             "title": "To Confirm",
-            "description": "How many of them have one to confirm: what `POST /recommended` confirms (of every source and kind, without `q`)."
+            "description": "How many of them have one to confirm: what `POST /recommended` confirms (of every source and kind, without the words)."
           }
         },
         "type": "object",
@@ -30711,6 +31302,28 @@
           "name"
         ],
         "title": "OpenPersonOut"
+      },
+      "OpenSearchIn": {
+        "properties": {
+          "q": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Q",
+            "description": "Words in the value (with or without spaces), as written or in a contact's name."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "q"
+        ],
+        "title": "OpenSearchIn",
+        "examples": [
+          {
+            "q": "2004 7718"
+          }
+        ]
       },
       "OpenSource": {
         "type": "string",
@@ -31765,6 +32378,7 @@
           "holder_kind_unknown",
           "holder_name_not_near",
           "fact_criterion_empty",
+          "ref_unknown",
           "rule_fact_of_person",
           "relation_exists",
           "relation_not_found",
@@ -31971,6 +32585,57 @@
         ],
         "title": "RecoveryCodes",
         "description": "Shown once; each works once instead of a TOTP code."
+      },
+      "RefIn": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Value",
+            "description": "As written."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "value"
+        ],
+        "title": "RefIn",
+        "examples": [
+          {
+            "kind": "invoice_number",
+            "value": "R-2025-0471"
+          }
+        ]
+      },
+      "RefOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "Normalised, as Lekto compares it."
+          },
+          "ref": {
+            "type": "string",
+            "title": "Ref",
+            "description": "The value's reference for addresses (the `fact` filter, `GET /identifiers/open/{kind}/{ref}`); the same value always gives the same one."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value",
+          "ref"
+        ],
+        "title": "RefOut"
       },
       "RelateIn": {
         "properties": {
@@ -33374,6 +34039,28 @@
         ],
         "title": "RunExchangeOut",
         "description": "What a node sent to the language model in one processing run."
+      },
+      "SearchIn": {
+        "properties": {
+          "q": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Q",
+            "description": "What to look for."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "q"
+        ],
+        "title": "SearchIn",
+        "examples": [
+          {
+            "q": "Stromrechnung 2025"
+          }
+        ]
       },
       "SearchMode": {
         "type": "string",
@@ -36831,7 +37518,7 @@
       "token": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Personal API token (`lekto_…`); scope `read` allows reading only."
+        "description": "Personal API token (`lekto_…`); scope `read` allows reading only: GET, and the POST operations marked `x-reads` (a search with its words in the body)."
       },
       "taskToken": {
         "type": "http",
@@ -37505,6 +38192,7 @@
       "name": "text"
     },
     "fact_criterion_empty": {},
+    "ref_unknown": {},
     "rule_fact_of_person": {},
     "relation_exists": {},
     "relation_not_found": {},

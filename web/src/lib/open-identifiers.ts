@@ -6,6 +6,7 @@ import { unwrap } from '#lib/api/call.ts';
 import type { components } from '#lib/api/schema.ts';
 import { BASE } from '#lib/base.ts';
 import { ReasonError } from '#lib/errors.ts';
+import { rememberRef } from '#lib/fact-refs.svelte.ts';
 import { factFilter } from '#lib/facts.ts';
 
 export type OpenIdentifier = components['schemas']['OpenIdentifierOut'];
@@ -22,9 +23,15 @@ export function openKey(item: Pick<OpenIdentifier, 'kind' | 'value'>): string {
 	return `${item.kind}:${item.value}`;
 }
 
-/** The documents that show it, in the documents list (a fact of its kind and value). */
-export function documentsHref(item: Pick<OpenIdentifier, 'kind' | 'value'>): string {
-	return `${BASE}/documents?fact=${encodeURIComponent(factFilter(item.kind, item.value, null))}`;
+/** The documents that show it, in the documents list (a fact of its kind and value, by the
+ * value's reference). */
+export function documentsHref(item: Pick<OpenIdentifier, 'kind' | 'ref'>): string {
+	return `${BASE}/documents?fact=${encodeURIComponent(factFilter(item.kind, item.ref, null))}`;
+}
+
+/** The values of `items` for the labels of the documents' filter they link to. */
+export function rememberOpenRefs(items: readonly OpenIdentifier[]): void {
+	for (const item of items) rememberRef(item.kind, item.ref, item.value);
 }
 
 /** Whether "Übernehmen" knows where: a learned one's contact, the one its documents name, or

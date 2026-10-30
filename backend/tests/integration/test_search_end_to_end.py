@@ -34,8 +34,11 @@ class SearchSystem(System):
     async def search(self, user: User, text: str, **params: Any) -> dict[str, Any]:
         """By words unless the test asks for more: a search by meaning ranks every document, so
         it would find documents that are not about the text."""
-        response = await self.client.get(
-            SEARCH, params={"q": text, "semantic_ratio": 0, **params}, headers=auth(user)
+        response = await self.client.post(
+            SEARCH,
+            json={"q": text},
+            params={"semantic_ratio": 0, **params},
+            headers=auth(user),
         )
         assert response.status_code == 200, response.text
         page: dict[str, Any] = response.json()
@@ -187,8 +190,11 @@ async def test_the_index_is_rebuilt_on_an_empty_meilisearch(
 
     async def gone() -> bool:
         """The search fails (503) or, once the adapter has set up an empty index, finds nothing."""
-        response = await system.client.get(
-            SEARCH, params={"q": "Steuerbescheid", "semantic_ratio": 0}, headers=auth(owner)
+        response = await system.client.post(
+            SEARCH,
+            json={"q": "Steuerbescheid"},
+            params={"semantic_ratio": 0},
+            headers=auth(owner),
         )
         return response.status_code == 503 or response.json()["items"] == []
 

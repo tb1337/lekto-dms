@@ -1,10 +1,10 @@
-"""Search: `GET /documents/search` (words and meaning in one call) and `POST /search/reindex`."""
+"""Search: `POST /documents/search` (words and meaning in one call) and `POST /search/reindex`."""
 
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, Response
 
-from lekto.adapters.inbound.rest.auth import PROTECTED, CurrentUser
+from lekto.adapters.inbound.rest.auth import PROTECTED, READS, CurrentUser
 from lekto.adapters.inbound.rest.context import Indexing, Search
 from lekto.adapters.inbound.rest.documents import DocumentSort
 from lekto.adapters.inbound.rest.params import ADMINS_ONLY, AllDocuments, Filter
@@ -12,6 +12,7 @@ from lekto.adapters.inbound.rest.problems import problem_responses
 from lekto.adapters.inbound.rest.schemas.documents import ListedDocument
 from lekto.adapters.inbound.rest.schemas.search import (
     IndexCheckOut,
+    SearchIn,
     SearchResultItem,
     SearchResultPage,
     SearchStatusOut,
@@ -23,8 +24,9 @@ from lekto.core.ports.search_index import MAX_HITS, MAX_LIMIT, SEARCH_PAGE
 router = APIRouter(tags=["search"], dependencies=PROTECTED)
 
 
-@router.get(
+@router.post(
     "/documents/search",
+    openapi_extra=READS,
     summary="Search documents",
     description=(
         "Full text and, if the installation has embeddings, meaning in one call. Finds the "
@@ -35,15 +37,17 @@ router = APIRouter(tags=["search"], dependencies=PROTECTED)
         "against the permissions once more before it is returned. The index follows the "
         "documents a moment later, so a new document may take a few seconds to turn up. "
         f"Pages are by `offset`; at most {MAX_HITS} hits can be reached. `sort`: by relevance (the "
-        "default), or by a key as in `GET /documents`, relevance breaking ties."
+        "default), or by a key as in `GET /documents`, relevance breaking ties. The words go "
+        "in the body, so that they stay out of addresses and logs; the filters and the rest "
+        "stay query parameters."
     ),
     response_model=SearchResultPage,
     responses=problem_responses(401, 403, 422, 503),
 )
 async def search_documents(
+    body: SearchIn,
     user: CurrentUser,
     search: Search,
-    q: Annotated[str, Query(min_length=1, max_length=500, description="What to look for.")],
     filter: Filter,
     sort: Annotated[
         DocumentSort | Literal["relevance"], Query(description="`relevance` or a key.")
@@ -63,7 +67,7 @@ async def search_documents(
 ) -> SearchResultPage:
     page = await search.search(
         user,
-        q,
+        body.q,
         filter,
         offset=offset,
         limit=limit,

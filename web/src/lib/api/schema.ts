@@ -805,11 +805,31 @@ export interface paths {
 		};
 		/**
 		 * The open identifiers
-		 * @description Admins only. Open are the identifiers no person has confirmed: those training learned at a contact (`learned`), and those of a contact's kind that confirmed documents with a contact show but no contact has, entered, learned or rejected (`unknown`). A person's value (a user's profile) is never open. The most documents first, then the newest. `q` finds words in the value (with or without spaces), as written or in a contact's name; `recommended` keeps those whose documents recommend confirming or rejecting them (`recommendation`).
+		 * @description Admins only. Open are the identifiers no person has confirmed: those training learned at a contact (`learned`), and those of a contact's kind that confirmed documents with a contact show but no contact has, entered, learned or rejected (`unknown`). A person's value (a user's profile) is never open. The most documents first, then the newest. `recommended` keeps those whose documents recommend confirming or rejecting them (`recommendation`). To find words: `POST /search`.
 		 */
 		get: operations['open_identifiers_api_v1_identifiers_open_get'];
 		put?: never;
 		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/identifiers/open/search': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Find open identifiers by words
+		 * @description Admins only. The list of `GET` with the words of `q`, which go in the body so that they stay out of addresses and logs. The most documents first, then the newest. `recommended` keeps those whose documents recommend confirming or rejecting them (`recommendation`).
+		 */
+		post: operations['search_open_identifiers_api_v1_identifiers_open_search_post'];
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -836,7 +856,7 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
-	'/api/v1/identifiers/open/detail': {
+	'/api/v1/identifiers/open/{kind}/{ref}': {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -845,9 +865,9 @@ export interface paths {
 		};
 		/**
 		 * An open identifier and where it stands
-		 * @description Admins only. The open identifier of `kind` and `value` (normalised, as the list gives it) and where it stands in its five newest documents. 404 if it is not open.
+		 * @description Admins only. The open identifier of `kind` with the value of `ref` (its `ref` in the list) and where it stands in its five newest documents. 404 if it is not open, 422 for a reference that names no value of the kind.
 		 */
-		get: operations['open_detail_api_v1_identifiers_open_detail_get'];
+		get: operations['open_detail_api_v1_identifiers_open__kind___ref__get'];
 		put?: never;
 		post?: never;
 		delete?: never;
@@ -890,6 +910,46 @@ export interface paths {
 		 * @description Admins only. Confirms every open identifier whose `recommendation` is `confirm` (`to_confirm` of the list), each as a decision `confirm` of `POST /decisions`: one that cannot be done says why in its outcome, the others are done all the same. Never rejects. A suggestion for a person's profile needs a session.
 		 */
 		post: operations['confirm_recommended_api_v1_identifiers_open_recommended_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/identifiers/refs': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * The reference to a value
+		 * @description The reference to an identifier's value, for addresses that name it (the `fact` filter of the documents): the value goes in the body, the reference in the URL, so the value stays out of histories, bookmarks and logs. The same value (normalised) always gives the same reference while the instance's secret key stays. 422 for a value that is none of its kind.
+		 */
+		post: operations['make_ref_api_v1_identifiers_refs_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/identifiers/refs/{kind}/{ref}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The value of a reference
+		 * @description To show what a reference names. 422 for one that names no value of the kind.
+		 */
+		get: operations['read_ref_api_v1_identifiers_refs__kind___ref__get'];
+		put?: never;
+		post?: never;
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -1152,13 +1212,13 @@ export interface paths {
 			path?: never;
 			cookie?: never;
 		};
+		get?: never;
+		put?: never;
 		/**
 		 * Search documents
-		 * @description Full text and, if the installation has embeddings, meaning in one call. Finds the documents within the caller's reach, the same ones as `GET /documents` lists, with the same filters (they combine; `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat, a topic takes the topics below it); admins search every document with `all_users` (others: 403). Each hit is checked against the permissions once more before it is returned. The index follows the documents a moment later, so a new document may take a few seconds to turn up. Pages are by `offset`; at most 1000 hits can be reached. `sort`: by relevance (the default), or by a key as in `GET /documents`, relevance breaking ties.
+		 * @description Full text and, if the installation has embeddings, meaning in one call. Finds the documents within the caller's reach, the same ones as `GET /documents` lists, with the same filters (they combine; `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat, a topic takes the topics below it); admins search every document with `all_users` (others: 403). Each hit is checked against the permissions once more before it is returned. The index follows the documents a moment later, so a new document may take a few seconds to turn up. Pages are by `offset`; at most 1000 hits can be reached. `sort`: by relevance (the default), or by a key as in `GET /documents`, relevance breaking ties. The words go in the body, so that they stay out of addresses and logs; the filters and the rest stay query parameters.
 		 */
-		get: operations['search_documents_api_v1_documents_search_get'];
-		put?: never;
-		post?: never;
+		post: operations['search_documents_api_v1_documents_search_post'];
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -1256,7 +1316,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Change many documents at once
-		 * @description Does one action to the selected documents in the background; follow it at `GET /documents/bulk/{id}`. The selection: `document_ids` (at most 500), or every document the query parameters find, as `GET /documents` (at most 10000, more: 422) or with `q` as `GET /documents/search` (the hits it reaches, at most 1000); it is fixed now. Each document goes through the same change as one by hand, rights included: one the caller may not edit, one being processed (except to delete it) or one that changed meanwhile is skipped with the reason, one that is as the action wants it already stays as it is. A tag, contact, type, topic or space the action names that does not exist: 404. Admins act on every user's documents with `all_users` (others: 403).
+		 * @description Does one action to the selected documents in the background; follow it at `GET /documents/bulk/{id}`. The selection: `document_ids` (at most 500), or every document the query parameters find, as `GET /documents` (at most 10000, more: 422) or with `q` in the body as `POST /documents/search` (the hits it reaches, at most 1000); it is fixed now. Each document goes through the same change as one by hand, rights included: one the caller may not edit, one being processed (except to delete it) or one that changed meanwhile is skipped with the reason, one that is as the action wants it already stays as it is. A tag, contact, type, topic or space the action names that does not exist: 404. Admins act on every user's documents with `all_users` (others: 403).
 		 */
 		post: operations['start_bulk_api_v1_documents_bulk_post'];
 		delete?: never;
@@ -1374,7 +1434,7 @@ export interface paths {
 		};
 		/**
 		 * List documents
-		 * @description The documents within the caller's reach, newest first: every document in the spaces they edit, the green ones in the spaces they read. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `contact_id`, `document_type_id`, `space_id`, `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (any contact, type, space, group, topic or lane, all tags; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; a topic the documents with it or one below it. `field_id`: a value for the field is set. `document_date_from` and `document_date_to`: the document date lies between them, both days included, either end open (a document without a date does not match). `sort` orders by arrival (the default, newest first), document date, title, or (`field` with `sort_field_id`) the value of a field of type date, period (by its first day), number or amount (by its value); documents without a date or value come last. Each document says whether it stands in the caller's inbox (`in_inbox`). To search by words and meaning use `GET /documents/search`.
+		 * @description The documents within the caller's reach, newest first: every document in the spaces they edit, the green ones in the spaces they read. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `contact_id`, `document_type_id`, `space_id`, `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (any contact, type, space, group, topic or lane, all tags; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; a topic the documents with it or one below it. `field_id`: a value for the field is set. `document_date_from` and `document_date_to`: the document date lies between them, both days included, either end open (a document without a date does not match). `sort` orders by arrival (the default, newest first), document date, title, or (`field` with `sort_field_id`) the value of a field of type date, period (by its first day), number or amount (by its value); documents without a date or value come last. Each document says whether it stands in the caller's inbox (`in_inbox`). To search by words and meaning use `POST /documents/search`.
 		 */
 		get: operations['list_documents_api_v1_documents_get'];
 		put?: never;
@@ -3185,6 +3245,11 @@ export interface components {
 			 * @description The documents one by one. Without: every document the query parameters find (the filter of `GET /documents`, with `q` the hits of the search).
 			 */
 			document_ids?: string[] | null;
+			/**
+			 * Q
+			 * @description Words of the search (`POST /documents/search`), not with `document_ids`.
+			 */
+			q?: string | null;
 			action: components['schemas']['BulkActionIn'];
 		};
 		/**
@@ -4780,14 +4845,35 @@ export interface components {
 		};
 		/**
 		 * FactFilterBody
-		 * @description A fact the documents have: of `kind`, with `value` (as written; it needs its kind), in
-		 *     `role`; what is null is any.
+		 * @description A fact the documents have: of `kind`, with the value of `ref` (it needs its kind; from
+		 *     `POST /identifiers/refs`), in `role`; what is null is any.
 		 */
 		FactFilterBody: {
 			kind?: components['schemas']['IdentifierKind'] | null;
-			/** Value */
-			value?: string | null;
+			/**
+			 * Ref
+			 * @description The value's reference.
+			 */
+			ref?: string | null;
 			role?: components['schemas']['FactRole'] | null;
+		};
+		/**
+		 * FactFilterOut
+		 * @description A fact the documents have, with its value and the value's reference.
+		 */
+		FactFilterOut: {
+			kind: components['schemas']['IdentifierKind'] | null;
+			/**
+			 * Value
+			 * @description Normalised, as Lekto compares it.
+			 */
+			value: string | null;
+			/**
+			 * Ref
+			 * @description The value's reference, for the `fact` filter.
+			 */
+			ref: string | null;
+			role: components['schemas']['FactRole'] | null;
 		};
 		/**
 		 * FactOrigin
@@ -6088,6 +6174,35 @@ export interface components {
 			facts?: components['schemas']['FactFilterBody'][];
 		};
 		/**
+		 * LensFilterOut
+		 * @description The filters of a lens as `LensFilterBody`, each fact with its value.
+		 */
+		LensFilterOut: {
+			/** Contact Ids */
+			contact_ids: string[];
+			/** Document Type Ids */
+			document_type_ids: string[];
+			/** Contact Group Ids */
+			contact_group_ids: string[];
+			/** Document Type Group Ids */
+			document_type_group_ids: string[];
+			/** Topic Ids */
+			topic_ids: string[];
+			/** Tag Ids */
+			tag_ids: string[];
+			/** Space Ids */
+			space_ids: string[];
+			/** Field Id */
+			field_id: string | null;
+			/** Document Date From */
+			document_date_from: string | null;
+			/** Document Date To */
+			document_date_to: string | null;
+			document_period: components['schemas']['RelativePeriod'] | null;
+			/** Facts */
+			facts: components['schemas']['FactFilterOut'][];
+		};
+		/**
 		 * LensOrder
 		 * @example {
 		 *       "ids": [
@@ -6117,7 +6232,7 @@ export interface components {
 			 * @description Where it stands among the user's lenses, from 0.
 			 */
 			position: number;
-			filter: components['schemas']['LensFilterBody'];
+			filter: components['schemas']['LensFilterOut'];
 			/** Query */
 			query: string | null;
 			sort: components['schemas']['LensSort'] | null;
@@ -7062,6 +7177,11 @@ export interface components {
 			 */
 			value: string;
 			/**
+			 * Ref
+			 * @description The value's reference: for `GET /identifiers/open/{kind}/{ref}` and the `fact` filter of the documents.
+			 */
+			ref: string;
+			/**
 			 * Written
 			 * @description As the newest of its documents writes it.
 			 */
@@ -7133,7 +7253,7 @@ export interface components {
 			recommended: number;
 			/**
 			 * To Confirm
-			 * @description How many of them have one to confirm: what `POST /recommended` confirms (of every source and kind, without `q`).
+			 * @description How many of them have one to confirm: what `POST /recommended` confirms (of every source and kind, without the words).
 			 */
 			to_confirm: number;
 		};
@@ -7150,6 +7270,19 @@ export interface components {
 			 * @description Their display name.
 			 */
 			name: string;
+		};
+		/**
+		 * OpenSearchIn
+		 * @example {
+		 *       "q": "2004 7718"
+		 *     }
+		 */
+		OpenSearchIn: {
+			/**
+			 * Q
+			 * @description Words in the value (with or without spaces), as written or in a contact's name.
+			 */
+			q: string;
 		};
 		/**
 		 * OpenSource
@@ -7859,6 +7992,7 @@ export interface components {
 			| 'holder_kind_unknown'
 			| 'holder_name_not_near'
 			| 'fact_criterion_empty'
+			| 'ref_unknown'
 			| 'rule_fact_of_person'
 			| 'relation_exists'
 			| 'relation_not_found'
@@ -8015,6 +8149,35 @@ export interface components {
 			 *     ]
 			 */
 			recovery_codes: string[];
+		};
+		/**
+		 * RefIn
+		 * @example {
+		 *       "kind": "invoice_number",
+		 *       "value": "R-2025-0471"
+		 *     }
+		 */
+		RefIn: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @description As written.
+			 */
+			value: string;
+		};
+		/** RefOut */
+		RefOut: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @description Normalised, as Lekto compares it.
+			 */
+			value: string;
+			/**
+			 * Ref
+			 * @description The value's reference for addresses (the `fact` filter, `GET /identifiers/open/{kind}/{ref}`); the same value always gives the same one.
+			 */
+			ref: string;
 		};
 		/**
 		 * RelateIn
@@ -8700,6 +8863,19 @@ export interface components {
 			 * @description One call, or two after an answer that did not fit the schema; then those of a further request (`request`).
 			 */
 			calls: components['schemas']['ModelCallOut'][];
+		};
+		/**
+		 * SearchIn
+		 * @example {
+		 *       "q": "Stromrechnung 2025"
+		 *     }
+		 */
+		SearchIn: {
+			/**
+			 * Q
+			 * @description What to look for.
+			 */
+			q: string;
 		};
 		/**
 		 * SearchMode
@@ -16738,7 +16914,6 @@ export interface operations {
 			query?: {
 				source?: components['schemas']['OpenSource'] | null;
 				kind?: components['schemas']['IdentifierKind'] | null;
-				q?: string | null;
 				recommended?: boolean;
 				offset?: number;
 				limit?: number;
@@ -16787,6 +16962,121 @@ export interface operations {
 					 *       "title": "Forbidden",
 					 *       "status": 403,
 					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	search_open_identifiers_api_v1_identifiers_open_search_post: {
+		parameters: {
+			query?: {
+				source?: components['schemas']['OpenSource'] | null;
+				kind?: components['schemas']['IdentifierKind'] | null;
+				recommended?: boolean;
+				offset?: number;
+				limit?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['OpenSearchIn'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['OpenPageOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -16899,14 +17189,14 @@ export interface operations {
 			};
 		};
 	};
-	open_detail_api_v1_identifiers_open_detail_get: {
+	open_detail_api_v1_identifiers_open__kind___ref__get: {
 		parameters: {
-			query: {
-				kind: components['schemas']['IdentifierKind'];
-				value: string;
-			};
+			query?: never;
 			header?: never;
-			path?: never;
+			path: {
+				kind: components['schemas']['IdentifierKind'];
+				ref: string;
+			};
 			cookie?: never;
 		};
 		requestBody?: never;
@@ -17163,6 +17453,189 @@ export interface operations {
 					 *       "title": "Forbidden",
 					 *       "status": 403,
 					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	make_ref_api_v1_identifiers_refs_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['RefIn'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['RefOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	read_ref_api_v1_identifiers_refs__kind___ref__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				kind: components['schemas']['IdentifierKind'];
+				ref: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['RefOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -19397,11 +19870,9 @@ export interface operations {
 			};
 		};
 	};
-	search_documents_api_v1_documents_search_get: {
+	search_documents_api_v1_documents_search_post: {
 		parameters: {
-			query: {
-				/** @description What to look for. */
-				q: string;
+			query?: {
 				/** @description `relevance` or a key. */
 				sort?: components['schemas']['DocumentSort'] | 'relevance';
 				limit?: number;
@@ -19421,14 +19892,18 @@ export interface operations {
 				topic_id?: string[] | null;
 				document_date_from?: string | null;
 				document_date_to?: string | null;
-				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				/** @description A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind. */
 				fact?: string[] | null;
 			};
 			header?: never;
 			path?: never;
 			cookie?: never;
 		};
-		requestBody?: never;
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['SearchIn'];
+			};
+		};
 		responses: {
 			/** @description Successful Response */
 			200: {
@@ -19468,6 +19943,23 @@ export interface operations {
 					 *       "title": "Forbidden",
 					 *       "status": 403,
 					 *       "detail": "only editors and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -19860,8 +20352,6 @@ export interface operations {
 	start_bulk_api_v1_documents_bulk_post: {
 		parameters: {
 			query?: {
-				/** @description Words of the search. */
-				q?: string | null;
 				/** @description Every user's documents instead of the caller's reach (admins). */
 				all_users?: boolean;
 				contact_id?: string[] | null;
@@ -19875,7 +20365,7 @@ export interface operations {
 				topic_id?: string[] | null;
 				document_date_from?: string | null;
 				document_date_to?: string | null;
-				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				/** @description A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind. */
 				fact?: string[] | null;
 			};
 			header?: never;
@@ -20124,7 +20614,7 @@ export interface operations {
 				topic_id?: string[] | null;
 				document_date_from?: string | null;
 				document_date_to?: string | null;
-				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				/** @description A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind. */
 				fact?: string[] | null;
 			};
 			header?: never;
@@ -20481,7 +20971,7 @@ export interface operations {
 				topic_id?: string[] | null;
 				document_date_from?: string | null;
 				document_date_to?: string | null;
-				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				/** @description A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind. */
 				fact?: string[] | null;
 			};
 			header?: never;
@@ -20793,7 +21283,7 @@ export interface operations {
 				topic_id?: string[] | null;
 				document_date_from?: string | null;
 				document_date_to?: string | null;
-				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				/** @description A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind. */
 				fact?: string[] | null;
 			};
 			header?: never;
@@ -20897,7 +21387,7 @@ export interface operations {
 				topic_id?: string[] | null;
 				document_date_from?: string | null;
 				document_date_to?: string | null;
-				/** @description A fact the document has (none a person rejected), as `kind:value:role`: the value as written (it needs its kind; it may hold colons), any part empty for any (`invoice_number:4711:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none. */
+				/** @description A fact the document has (none a person rejected), as `kind:ref:role`: the value by its reference (`ref`, from `POST /identifiers/refs` or an answer that names the value; it needs its kind), never as written, so it stays out of logs and histories; any part empty for any (`invoice_number:<ref>:`, `contract_number::`, `::refers`). Several: all of them. A person's facts (the kinds that are a person's alone, the role `person`) only for admins (403); 422 for one that is none or a reference that names no value of the kind. */
 				fact?: string[] | null;
 			};
 			header?: never;

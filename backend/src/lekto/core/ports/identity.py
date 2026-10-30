@@ -148,6 +148,21 @@ class SecretCipher(Protocol):
         ...
 
 
+class RefCipher(Protocol):
+    """Opaque references to short values (an IBAN, an invoice number) for addresses: a URL names
+    the value without showing it to the browser history, bookmarks, the `Referer` or a proxy's
+    log. Deterministic: the same value in the same context gives the same reference, so equal
+    references mean equal values and a reference stays valid while the key stays. Authenticated:
+    a made-up reference, or one of another context, does not open. URL-safe (base64url). First
+    adapter: AES-SIV with a key derived from the configured secret key."""
+
+    def seal(self, value: str, *, context: str) -> str: ...
+
+    def open(self, ref: str, *, context: str) -> str:
+        """Raises DecryptionError."""
+        ...
+
+
 TOTP_STEP = 30
 """Seconds per time step of a one-time password (RFC 6238); the adapters and the contract
 count with it."""

@@ -28,7 +28,7 @@ GONE = (
     responses=problem_responses(401),
 )
 async def list_lenses(user: CurrentUser, context: Context) -> list[LensOut]:
-    return [LensOut.of(lens) for lens in await context.lenses.list_lenses(user)]
+    return [LensOut.of(lens, context.refs) for lens in await context.lenses.list_lenses(user)]
 
 
 @router.post(
@@ -47,7 +47,7 @@ async def list_lenses(user: CurrentUser, context: Context) -> list[LensOut]:
 )
 async def create_lens(body: LensCreate, user: CurrentUser, context: Context) -> LensOut:
     changes = LensChanges(
-        filter=body.filter.domain(),
+        filter=body.filter.domain(context.refs),
         query=body.query,
         sort=body.sort,
         sort_field_id=None if body.sort_field_id is None else FieldId(body.sort_field_id),
@@ -56,7 +56,7 @@ async def create_lens(body: LensCreate, user: CurrentUser, context: Context) -> 
         card_field_ids=tuple(FieldId(id) for id in body.card_field_ids),
         due_field_id=None if body.due_field_id is None else FieldId(body.due_field_id),
     )
-    return LensOut.of(await context.lenses.create(user, body.name, changes))
+    return LensOut.of(await context.lenses.create(user, body.name, changes), context.refs)
 
 
 @router.put(
@@ -68,7 +68,7 @@ async def create_lens(body: LensCreate, user: CurrentUser, context: Context) -> 
 )
 async def order_lenses(body: LensOrder, user: CurrentUser, context: Context) -> list[LensOut]:
     lenses = await context.lenses.reorder(user, [LensId(id) for id in body.ids])
-    return [LensOut.of(lens) for lens in lenses]
+    return [LensOut.of(lens, context.refs) for lens in lenses]
 
 
 @router.get(
@@ -79,7 +79,7 @@ async def order_lenses(body: LensOrder, user: CurrentUser, context: Context) -> 
     responses=problem_responses(401, 404, 422),
 )
 async def get_lens(id: UUID, user: CurrentUser, context: Context) -> LensOut:
-    return LensOut.of(await context.lenses.get(user, LensId(id)))
+    return LensOut.of(await context.lenses.get(user, LensId(id)), context.refs)
 
 
 @router.patch(
@@ -97,7 +97,7 @@ async def update_lens(id: UUID, body: LensPatch, user: CurrentUser, context: Con
 
     changes = LensChanges(
         name=body.name if body.name is not None else UNSET,
-        filter=body.filter.domain() if body.filter is not None else UNSET,
+        filter=body.filter.domain(context.refs) if body.filter is not None else UNSET,
         query=body.query if "query" in given else UNSET,
         sort=body.sort if "sort" in given else UNSET,
         sort_field_id=field(body.sort_field_id) if "sort_field_id" in given else UNSET,
@@ -110,7 +110,7 @@ async def update_lens(id: UUID, body: LensPatch, user: CurrentUser, context: Con
         ),
         due_field_id=field(body.due_field_id) if "due_field_id" in given else UNSET,
     )
-    return LensOut.of(await context.lenses.update(user, LensId(id), changes))
+    return LensOut.of(await context.lenses.update(user, LensId(id), changes), context.refs)
 
 
 @router.delete(

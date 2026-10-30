@@ -6,6 +6,7 @@
  */
 import type { components } from '#lib/api/schema.ts';
 import type { Mark } from '#lib/document-view.ts';
+import { refValue } from '#lib/fact-refs.svelte.ts';
 import { type IdentifierKind, kindLabel } from '#lib/identifiers.ts';
 import { m } from '#lib/paraglide/messages.js';
 
@@ -332,40 +333,38 @@ export function factsSummary({ evidence, unknown, codes }: ReturnType<typeof fac
 	].join(' · ');
 }
 
-/** A fact of the documents filter (`fact` of `GET /documents`): `kind:value:role`, a part empty
- * for any. */
+/** A fact of the documents filter (`fact` of `GET /documents`): `kind:ref:role`, the value by
+ * its reference (`refOf`), never as written; a part empty for any. */
 export function factFilter(
 	kind: IdentifierKind | null,
-	value: string | null,
+	ref: string | null,
 	role: FactRole | null
 ): string {
-	return [kind ?? '', value?.trim() ?? '', role ?? ''].join(':');
+	return [kind ?? '', ref ?? '', role ?? ''].join(':');
 }
 
-/** The parts of a fact of the filter: the kind before the first colon, the role after the
- * last, the value between (it may hold colons, a time of day); what is empty is null. */
+/** The parts of a fact of the filter; what is empty is null. */
 export function parseFactFilter(fact: string): {
 	kind: IdentifierKind | null;
-	value: string | null;
+	ref: string | null;
 	role: FactRole | null;
 } {
-	const first = fact.indexOf(':');
-	const last = fact.lastIndexOf(':');
-	const kind = first < 0 ? fact : fact.slice(0, first);
-	const value = first < 0 || last === first ? '' : fact.slice(first + 1, last);
-	const role = last > first ? fact.slice(last + 1) : '';
+	const [kind = '', ref = '', role = ''] = fact.split(':');
 	return {
 		kind: (kind || null) as IdentifierKind | null,
-		value: value || null,
+		ref: ref || null,
 		role: (role || null) as FactRole | null
 	};
 }
 
-/** A fact of the filter in words: "Rechnungsnummer 4711 · verweist auf ein Dokument"; a kind
- * or role this UI does not know (an old link) as written. */
+/** A fact of the filter in words: "Rechnungsnummer R1001 · verweist auf ein Dokument", the value
+ * as the API names its reference ("…" until it has); a kind or role this UI does not know (an
+ * old link) as written, without a value. */
 export function factFilterLabel(fact: string): string {
-	const { kind, value, role } = parseFactFilter(fact);
-	const kindText = kind ? (kind in KIND_ROLES ? kindLabel(kind) : kind) : m.filter_fact_any_kind();
+	const { kind, ref, role } = parseFactFilter(fact);
+	const known = kind !== null && kind in KIND_ROLES;
+	const kindText = kind ? (known ? kindLabel(kind) : kind) : m.filter_fact_any_kind();
+	const value = ref && known ? (refValue(kind, ref) ?? '…') : null;
 	const roleText = role ? (role in ROLE_LABELS ? roleLabel(role) : role) : null;
 	return [[kindText, value].filter(Boolean).join(' '), roleText].filter(Boolean).join(' · ');
 }

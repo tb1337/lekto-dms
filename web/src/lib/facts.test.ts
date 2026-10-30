@@ -18,6 +18,8 @@ import {
 	type Facts
 } from './facts.ts';
 import openapi from '../../openapi.json';
+import { rememberRef } from '#lib/fact-refs.svelte.ts';
+import { kindLabel } from '#lib/identifiers.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 const CONTACT = 'contact-1';
@@ -269,13 +271,15 @@ describe('the counts of the facts', () => {
 });
 
 describe('a fact of the filter', () => {
-	it('keeps colons in its value and names what it does not know as written', () => {
-		expect(parseFactFilter('letter_date:15.08.2026 10:30:refers')).toEqual({
+	it('names the value by its reference and what it does not know as written', () => {
+		expect(parseFactFilter('letter_date:AbC-_9:refers')).toEqual({
 			kind: 'letter_date',
-			value: '15.08.2026 10:30',
+			ref: 'AbC-_9',
 			role: 'refers'
 		});
-		expect(parseFactFilter('::own')).toEqual({ kind: null, value: null, role: 'own' });
-		expect(factFilterLabel('bogus:1:nonsense')).toBe('bogus 1 · nonsense');
+		expect(parseFactFilter('::own')).toEqual({ kind: null, ref: null, role: 'own' });
+		expect(factFilterLabel('bogus:AbC:nonsense')).toBe('bogus · nonsense');
+		rememberRef('invoice_number', 'AbC', 'R1001');
+		expect(factFilterLabel('invoice_number:AbC:')).toBe(`${kindLabel('invoice_number')} R1001`);
 	});
 });

@@ -65,8 +65,9 @@ class LimitRequestBody:
 
 
 class NoStore:
-    """Marks every answer below `prefix` `Cache-Control: no-store` and
-    `X-Content-Type-Options: nosniff`, also errors and redirects: the API's answers are
+    """Marks every answer below `prefix` `Cache-Control: no-store`,
+    `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer` (a PDF opened from the
+    API names no address to the links in it), also errors and redirects: the API's answers are
     personal (documents, users, logs) and some carry CSRF tokens, TOTP secrets, recovery codes
     and API tokens, which no browser or proxy cache may keep. `public` names the paths below
     the prefix that are not personal (health, the API description). On `cacheable` paths, a
@@ -106,6 +107,7 @@ class NoStore:
                 if not kept:
                     headers["Cache-Control"] = "no-store"
                 headers["X-Content-Type-Options"] = "nosniff"
+                headers["Referrer-Policy"] = "no-referrer"
             await send(message)
 
         await self._app(scope, receive, marked)

@@ -1,9 +1,13 @@
 """`/rules`: managing rules over the API."""
 
+import json
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from lekto.adapters.inbound.rest import PREFIX
+from lekto.core.domain.ids import DocumentId
+from lekto.core.domain.labels import grid_layout
+from lekto.core.services.objects import structure_key, text_key
 from tests import builders
 from tests.api import auth
 from tests.builders import SAMPLES
@@ -592,3 +596,43 @@ async def test_a_webhook_template_is_previewed_as_json(api: Api) -> None:
     long = {"template": "x" * 501, "document_id": id}
     response = await api.client.post(f"{PREFIX}/templates/preview", json=long, headers=u)
     assert response.json()["error"] == "the template has more than 500 characters"
+
+
+async def test_the_preview_shows_where_text_conditions_hit(api: Api) -> None:
+    owner = await api.user()
+    o = auth(owner)
+    document = await upload(api, o)
+    text = "Stadtwerke Süd\nIhre Stromrechnung Nr. 4711\nNr. 0815"
+    await api.container.object_store.put(
+        text_key(DocumentId(UUID(document))), text.encode(), content_type="text/plain"
+    )
+    await api.container.object_store.put(
+        structure_key(DocumentId(UUID(document))),
+        json.dumps(grid_layout(text)).encode(),
+        content_type="application/json",
+    )
+    rule = await post(
+        api,
+        "/rules",
+        {
+            "name": "Strom",
+            "conditions": {
+                "all": [
+                    {"field": "text", "op": "contains", "value": "stadtwerke süd"},
+                    {"field": "text", "op": "matches", "value": r"Nr\. \d{4}"},
+                ]
+            },
+            "actions": [{"type": "set_title", "template": "Strom"}],
+        },
+        o,
+    )
+    url = f"{PREFIX}/rules/{rule['id']}/apply/hits/{document}"
+    found = await api.client.get(url, headers=o)
+    assert found.status_code == 200, found.text
+    contains, matches = found.json()["hits"]
+    assert contains["value"] == "stadtwerke süd"
+    assert [len(item["locations"]) for item in contains["occurrences"]] == [1]
+    assert len(matches["occurrences"]) == 2
+    # Who does not read the document learns nothing of it.
+    stranger = await api.user()
+    assert (await api.client.get(url, headers=auth(stranger))).status_code in (403, 404)

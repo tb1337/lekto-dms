@@ -23,6 +23,8 @@ from lekto.adapters.inbound.rest.schemas.rules import (
     RuleVersionOut,
     TemplatePreviewIn,
     TemplatePreviewOut,
+    TextHitOut,
+    TextHitsOut,
 )
 from lekto.adapters.inbound.schemas import ReasonOut, RuleEffectOut, RuleNoteOut, field_json
 from lekto.core.domain.ids import (
@@ -233,6 +235,26 @@ async def preview_apply(
         ],
         next_cursor=None if preview.next_cursor is None else encode_cursor(preview.next_cursor),
     )
+
+
+@router.get(
+    "/{id}/apply/hits/{document_id}",
+    summary="Where a rule's text conditions hit a document",
+    description=(
+        "For each text condition of the rule's current version (`contains`, `matches`) the "
+        "places the document's pages show a hit, as the rules read the text: a text as whole "
+        "words, a pattern on the text with whitespace collapsed (with the time limit of the "
+        "rules: 422 when it runs out). Empty without text conditions, or for a document without "
+        "text or the words of its pages. Needs read access to the document. " + WHO_APPLIES
+    ),
+    response_model=TextHitsOut,
+    responses=problem_responses(401, 403, 404, 422),
+)
+async def apply_hits(
+    id: UUID, document_id: UUID, user: CurrentUser, context: Context
+) -> TextHitsOut:
+    hits = await context.rule_applications.hits(user, RuleId(id), DocumentId(document_id))
+    return TextHitsOut(hits=[TextHitOut.of(hit) for hit in hits])
 
 
 @router.post(

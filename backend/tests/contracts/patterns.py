@@ -25,6 +25,19 @@ class PatternMatcherContract:
         assert await pattern_matcher.search(r"(?m)^Stromrechnung", text, case_sensitive=True)
         assert await pattern_matcher.search(r"München", text, case_sensitive=True)
 
+    async def test_finds_where_the_pattern_stands(self, pattern_matcher: PatternMatcher) -> None:
+        text = "Nr. 4711 und Nr. 0815, dann Nr. 1234"
+        found = await pattern_matcher.find(r"Nr\. \d{4}", text, case_sensitive=True, limit=2)
+        assert found == ((0, 8), (13, 21))
+        assert await pattern_matcher.find("x?", "abc", case_sensitive=False, limit=5) == ()
+        assert await pattern_matcher.find("NR", text, case_sensitive=False, limit=9) == (
+            (0, 2),
+            (13, 15),
+            (28, 30),
+        )
+        with pytest.raises(PatternTimeoutError):
+            await pattern_matcher.find(CATASTROPHIC, NO_MATCH_SLOWLY, case_sensitive=False, limit=1)
+
     async def test_no_match(self, pattern_matcher: PatternMatcher) -> None:
         assert await pattern_matcher.search("Mahnung", "Rechnung", case_sensitive=False) is False
         assert await pattern_matcher.search(r"\d", "", case_sensitive=False) is False

@@ -16,6 +16,7 @@
   and continues in a new job, so processing and indexing do not wait.
 """
 
+import asyncio
 import copy
 import logging
 from collections.abc import Collection, Sequence
@@ -34,6 +35,7 @@ from lekto.core.domain.errors import (
 from lekto.core.domain.ids import DocumentId, RuleApplicationId, RuleId, SpaceId, UserId
 from lekto.core.domain.jobs import Job
 from lekto.core.domain.json_value import JsonValue
+from lekto.core.domain.occurrences import Occurrence
 from lekto.core.domain.permissions import can_edit_document, space_role
 from lekto.core.domain.pipeline import (
     ACTOR,
@@ -46,6 +48,8 @@ from lekto.core.domain.pipeline import (
 from lekto.core.domain.reasons import Reason, ReasonCode, because, reasons_to_json
 from lekto.core.domain.rule_planner import Effect, Mode, Note, NoteKind
 from lekto.core.domain.rules import (
+    ConditionField,
+    Operator,
     Rule,
     RuleApplication,
     RuleDefinition,
@@ -53,6 +57,8 @@ from lekto.core.domain.rules import (
     SetSpace,
     Trigger,
 )
+from lekto.core.domain.text_hits import MAX_HITS, collapsed, contained
+from lekto.core.domain.text_places import TextPlaces
 from lekto.core.domain.users import User
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.object_store import ObjectStore
@@ -60,8 +66,14 @@ from lekto.core.ports.patterns import PatternMatcher
 from lekto.core.ports.repository import PAGE_SIZE, DocumentFilter, DocumentPosition
 from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
-from lekto.core.services._access import check_rule_facts, field_definitions, load_actor
+from lekto.core.services._access import (
+    check_rule_facts,
+    field_definitions,
+    load_actor,
+    readable_document,
+)
 from lekto.core.services._jobs import LEASE, JobRunner, lost
+from lekto.core.services.objects import load_layout, load_text
 from lekto.core.services.rules.changes import ArrivalStep, ChangeRules
 from lekto.core.services.rules.management import visible_rule
 from lekto.core.services.rules.running import (
@@ -131,6 +143,15 @@ class _Played:
     chain: tuple[ArrivalStep, ...]
     sends: tuple[Send, ...] = ()
     refused: tuple[Reason, ...] = ()
+
+
+@dataclass(frozen=True)
+class TextHit:
+    """Where one text condition of a rule hits a document: its value (the text or pattern)
+    and each place its pages show it."""
+
+    value: str
+    occurrences: tuple[Occurrence, ...]
 
 
 @dataclass(frozen=True)
@@ -259,6 +280,53 @@ class RuleApplicationService:
             played.sends,
             played.refused,
         )
+
+    async def hits(self, actor: UserId, id: RuleId, document: DocumentId) -> list[TextHit]:
+        """Where the text conditions of the rule's current version (`contains`, `matches`)
+        hit the document, on its pages, for those who apply the rule and read the document;
+        none without text or the words of its pages. A pattern runs as in the rules, on the
+        text with whitespace collapsed, at most `max_text` characters, with the time limit
+        (PatternTimeoutError)."""
+        async with self._uow() as uow:
+            user = await load_actor(uow, actor)
+            rule = await _applicable_rule(uow, user, id)
+            await readable_document(uow, user, document)
+        conditions = [
+            condition
+            for condition in rule.definition.all_conditions()
+            if condition.field is ConditionField.TEXT
+        ]
+        if not conditions:
+            return []
+        try:
+            text = (await load_text(self._store, document)).decode("utf-8", "replace")
+        except NotFoundError:
+            return []
+        pages = await load_layout(self._store, document)
+        if not pages:
+            return []
+        places = await asyncio.to_thread(TextPlaces, text, pages)
+        folded = collapsed(text[: self._max_text * 2])
+        hits = []
+        for condition in conditions:
+            value = str(condition.value)
+            if condition.op is Operator.MATCHES:
+                found = await self._matcher.find(
+                    value,
+                    folded.text[: self._max_text],
+                    case_sensitive=condition.case_sensitive,
+                    limit=MAX_HITS,
+                )
+                spans = [folded.span(start, end) for start, end in found]
+            else:
+                spans = list(contained(text, value))
+            occurrences = tuple(
+                Occurrence(located)
+                for start, end in spans
+                if (located := places.locations(start, end))
+            )
+            hits.append(TextHit(value, occurrences))
+        return hits
 
     # --- applying --------------------------------------------------------------------------------
 

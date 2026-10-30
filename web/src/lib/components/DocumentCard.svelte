@@ -1,10 +1,10 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { goto } from '$app/navigation';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
 	import type { CardLine } from '#lib/card-fields.ts';
 	import CardFields from '#lib/components/CardFields.svelte';
+	import DocumentLink from '#lib/components/DocumentLink.svelte';
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
 	import DocumentThumb from '#lib/components/DocumentThumb.svelte';
 	import InboxMark from '#lib/components/InboxMark.svelte';
@@ -13,11 +13,10 @@
 	import TypeIcon from '#lib/components/TypeIcon.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { formatDate } from '#lib/i18n.ts';
-	import { byId, foreignSpace, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { documentParts, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
-	import { viewOrOpen } from '#lib/view-or-open.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import { ChoiceBox } from '#lib/components/ui/choice/index.ts';
 
@@ -31,7 +30,7 @@
 	// `onchoose` (the selection mode of the list) the card is no link but the label of its box,
 	// which starts its head: a tap chooses it; a chosen card has `bg-panel` and a primary edge.
 	// With `onview` a click or a tap shows it in the Beam, a double click or a long press opens
-	// the document (`viewOrOpen`); a new tab works as on any link.
+	// the document (`DocumentLink`).
 	let {
 		document,
 		lookup,
@@ -52,15 +51,7 @@
 		onview?: () => void;
 	} = $props();
 
-	// By the indexes of the lists: one card of many must not scan them on every render.
-	const contact = $derived(
-		lookup && document.contact_id ? byId(lookup.contacts).get(document.contact_id) : undefined
-	);
-	const kind = $derived(
-		lookup && document.document_type_id
-			? byId(lookup.documentTypes).get(document.document_type_id)
-			: undefined
-	);
+	const { contact, kind, foreign } = $derived(documentParts(document, lookup, session.user?.id));
 	// The topic first, then the tags, then the groups of contact and type; three fit a line.
 	const chips = $derived.by(() => {
 		if (!lookup) return [];
@@ -77,8 +68,6 @@
 	});
 	const FITS = 3;
 	const rest = $derived(chips.slice(FITS));
-	// For admins, the space of a document in a space they are no member of.
-	const foreign = $derived(foreignSpace(document.space_id, lookup, session.user?.id));
 </script>
 
 <!-- The inbox mark is a link of its own: it stands over the card's link, not inside it. -->
@@ -90,16 +79,11 @@
 			chosen && 'border-primary bg-panel'
 		)}
 	>
-		<svelte:element
-			this={onchoose ? 'label' : 'a'}
-			href={onchoose ? undefined : href}
-			aria-haspopup={onview && !onchoose ? 'dialog' : undefined}
-			class={cn(
-				'group flex min-w-0 flex-1 flex-col text-sm',
-				onchoose && 'cursor-pointer',
-				onview && !onchoose && 'select-none [-webkit-touch-callout:none]'
-			)}
-			{@attach onview && !onchoose && viewOrOpen(onview, () => goto(href))}
+		<DocumentLink
+			{href}
+			choosing={onchoose !== undefined}
+			{onview}
+			class="group flex min-w-0 flex-1 flex-col text-sm"
 		>
 			<div
 				class={cn(
@@ -178,7 +162,7 @@
 			{#if fields.length > 0}
 				<div class="mx-3 border-t py-2.5"><CardFields lines={fields} /></div>
 			{/if}
-		</svelte:element>
+		</DocumentLink>
 	</Card.Root>
 	{#if document.in_inbox}
 		<InboxMark id={document.id} badge class="absolute top-2 right-2 z-10" />

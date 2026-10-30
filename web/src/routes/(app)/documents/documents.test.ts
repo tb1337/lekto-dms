@@ -127,7 +127,11 @@ describe('the archive page', () => {
 		const user = userEvent.setup();
 		render(Page);
 		await screen.findByText('Zwei');
-		await user.click(screen.getByRole('button', { name: m.beam_open_named({ title: 'Zwei' }) }));
+		// The document's link itself shows it (Enter, a click, a tap); a double click opens it.
+		const link = screen.getByRole('link', { name: /Zwei/ });
+		expect(link.getAttribute('aria-haspopup')).toBe('dialog');
+		link.focus();
+		await user.keyboard('{Enter}');
 		expect(goto).toHaveBeenLastCalledWith('http://lekto/ui/documents', {
 			shallow: true,
 			state: { words: '', beam: { ids: ['d1', 'd2'], index: 1, from: m.nav_documents() } },

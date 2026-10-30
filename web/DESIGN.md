@@ -610,6 +610,9 @@ moves nothing beside it.
 - **The head of a page** is as high as a button, with actions beside the title or without
   (`PageHeader`, and the documents' own head), so that the title and what follows stand at the
   same height on every page.
+- **The room of a scroll bar** stays reserved (`scrollbar-gutter: stable` on `html`): a page
+  longer than the window, or a dialog that locks it, does not shift the page sideways where the
+  system shows scroll bars (Windows, a Mac with a mouse).
 - A strip of tabs that scrolls on a phone brings the chosen tab into view; that is no move.
 
 ### Motion

@@ -207,8 +207,11 @@
 	* {
 		@apply border-border outline-ring/50;
 	}
+	/* The room of a scroll bar stays reserved, so that a page does not shift sideways when it
+	   grows longer than the window or a dialog locks it (web/DESIGN.md, "Steady layout"). */
 	html {
 		@apply bg-background font-sans text-foreground antialiased;
+		scrollbar-gutter: stable;
 	}
 	/* A visible focus everywhere the keyboard lands. */
 	:focus-visible {

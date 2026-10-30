@@ -9,13 +9,11 @@ import type { IdentifierKind } from '#lib/identifiers.ts';
 import { dropEntry, pushEntry, replaceEntry } from '#lib/history-state.ts';
 
 /** Where the places the Beam marks come from: an open identifier's detail
- * (`GET /identifiers/open/{kind}/{ref}`), or the places of any identifier
- * (`GET /identifiers/places/{kind}/{ref}`). */
-export interface BeamSource {
-	kind: 'open' | 'places';
-	identifier: IdentifierKind;
-	ref: string;
-}
+ * (`GET /identifiers/open/{kind}/{ref}`), the places of any identifier
+ * (`GET /identifiers/places/{kind}/{ref}`), or, for each document, the quotes of its open
+ * fields (`review`: `GET /documents/{id}/review`, why it waits in the inbox). */
+export type BeamSource =
+	{ kind: 'open' | 'places'; identifier: IdentifierKind; ref: string } | { kind: 'review' };
 
 export interface BeamState {
 	/** The documents to page through, in order. */

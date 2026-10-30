@@ -18,10 +18,12 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Sheet from '#lib/components/ui/sheet/index.ts';
 	import { documentHref } from '#lib/candidates.ts';
-	import { inboxDocument, type Mark } from '#lib/document-view.ts';
+	import { fieldLabel } from '#lib/describe.ts';
+	import { inboxDocument, marksOf, type Mark } from '#lib/document-view.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import { kindLabel } from '#lib/identifiers.ts';
+	import { fieldId } from '#lib/review.ts';
 	import { latest } from '#lib/latest.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { jumpTo } from '#lib/way-back.ts';
@@ -34,10 +36,12 @@
 	// (`beam.svelte.ts`): the back button closes it, a reload brings it back. A document that is
 	// gone or out of reach closes it, and a toast says why. With a `source` it marks each place
 	// the value stands, the fact's own with a halo and its kind, and scrolls there; it pages
-	// through the places ("Fundstelle 2 von 5"). It never looks for a value itself: the places
-	// come from the endpoint that names them.
+	// through the places ("Fundstelle 2 von 5"). From the inbox (`review`) it marks the quotes of
+	// the fields that keep each document there, each with the field's name. It never looks for a
+	// value itself: the places come from the endpoint that names them.
 	type Document = components['schemas']['DocumentDetails'];
 	type PlaceOut = components['schemas']['PlaceOut'];
+	type Check = components['schemas']['FieldCheckOut'];
 
 	const beam = $derived(page.state.beam ?? null);
 	const id = $derived(beam ? (beam.ids[beam.index] ?? null) : null);
@@ -53,7 +57,13 @@
 	let places = $state<{ key: string; byDocument: Map<string, PlaceOut> } | null>(null);
 	const begin = latest();
 	const beginPlaces = latest();
-	const sourceKey = $derived(beam?.source ? JSON.stringify(beam.source) : null);
+	const sourceKey = $derived(
+		beam?.source && beam.source.kind !== 'review' ? JSON.stringify(beam.source) : null
+	);
+	// The open fields of the document shown, for a Beam from the inbox; the names of the fields.
+	let review = $state<{ id: string; checks: Check[] } | null>(null);
+	let fields = $state<{ id: string; name: string }[] | null>(null);
+	const beginReview = latest();
 
 	async function load(wanted: string) {
 		const current = begin();
@@ -104,7 +114,7 @@
 	});
 
 	/** The places of the Beam's source; without them it shows the pages unmarked. */
-	async function loadPlaces(source: BeamSource, key: string) {
+	async function loadPlaces(source: Exclude<BeamSource, { kind: 'review' }>, key: string) {
 		const current = beginPlaces();
 		try {
 			const found =
@@ -132,17 +142,56 @@
 
 	$effect(() => {
 		const source = beam?.source;
-		if (!source || !sourceKey || places?.key === sourceKey) return;
+		if (!source || source.kind === 'review' || !sourceKey || places?.key === sourceKey) return;
 		void loadPlaces(source, sourceKey);
 	});
+
+	/** Why the document waits: its open fields with the places of their quotes. */
+	async function loadReview(wanted: string) {
+		const current = beginReview();
+		try {
+			const found = await unwrap(
+				api.GET('/api/v1/documents/{id}/review', { params: { path: { id: wanted } } })
+			);
+			const checks = found.open.flatMap((node) => node.fields);
+			if (checks.some((check) => check.field.startsWith('field:')) && fields === null) {
+				fields = await unwrap(api.GET('/api/v1/fields'));
+			}
+			if (!current()) return;
+			review = { id: wanted, checks };
+		} catch {
+			// The pages show all the same, unmarked.
+		}
+	}
+
+	$effect(() => {
+		if (beam?.source?.kind !== 'review' || !id || review?.id === id) return;
+		void loadReview(id);
+	});
+
+	/** A field's name, as the document view names it. */
+	function fieldName(field: string): string {
+		const custom = fieldId(field);
+		return custom
+			? (fields?.find((entry) => entry.id === custom)?.name ?? field)
+			: fieldLabel(field, null);
+	}
 
 	const place = $derived(
 		id && places && places.key === sourceKey ? (places.byDocument.get(id) ?? null) : null
 	);
-	// Each place on each of its pages; the fact's own one with its kind and a halo.
+	// Each place on each of its pages; the fact's own one with its kind and a halo. From the
+	// inbox, each open field's quote with its name, the first with a halo.
 	const marks = $derived.by<Mark[]>(() => {
-		if (!place || !beam?.source) return [];
-		const kind = kindLabel(beam.source.identifier);
+		if (beam?.source?.kind === 'review') {
+			if (!review || review.id !== id) return [];
+			return review.checks.flatMap((check, index) =>
+				marksOf(check.field, fieldName(check.field), check, { pinned: index === 0 })
+			);
+		}
+		const source = beam?.source;
+		if (!place || !source) return [];
+		const kind = kindLabel(source.identifier);
 		return place.occurrences.flatMap((occurrence, index) =>
 			occurrence.locations.map((location) => ({
 				key: `place-${index}`,
@@ -155,10 +204,12 @@
 		);
 	});
 
-	// To the fact's own place (else the first) once the pages stand.
+	// To the fact's own place (else the first; the first quote) once the pages stand.
 	$effect(() => {
 		const occurrence = place?.occurrences.find((item) => item.own) ?? place?.occurrences[0];
-		const target = occurrence?.locations[0];
+		const first = marks.find((mark) => mark.pinned) ?? marks[0];
+		const target =
+			occurrence?.locations[0] ?? (first ? { page: first.page, boxes: first.boxes } : undefined);
 		if (!target || !images || !document) return;
 		const shown = images;
 		const timer = setTimeout(() => shown.reveal(target), 120);
@@ -246,7 +297,7 @@
 					<ChevronLeft aria-hidden="true" />
 				</IconButton>
 				<span class="min-w-28 text-center text-sm tabular-nums" aria-live="polite">
-					{beam.source
+					{beam.source && beam.source.kind !== 'review'
 						? m.beam_place_position({ current: beam.index + 1, total: beam.ids.length })
 						: m.beam_position({ current: beam.index + 1, total: beam.ids.length })}
 				</span>

@@ -530,6 +530,15 @@ eingereiht") or report an error of an action. **A toast never replaces a load er
   options in pickers (swatches, icons, months, tag paths), never on buttons.
 - Information is never available only through hover. On the phone a tooltip's content must also be
   reachable another way (label, sheet, detail).
+- **One box at a time** (Tobi, 31.10.2026): a tooltip or an info tip that opens closes the one
+  shown before in the same moment (`tips.svelte.ts`); a tooltip goes without fading out. While
+  one shows, or for 300 ms after it went, the next tooltip shows without its delay, as the
+  tooltips of an operating system do.
+- **A focus opens a tooltip only when Tab brought it.** A dialog or the Beam that hands the focus
+  back to the button that opened it leaves its tooltip closed; so does a focus set by a script.
+  A pointer resting where it clicked opens no box either, also when the dialog it opened closes
+  beneath it; it opens once the pointer moved. Tooltips are built with `ui/tooltip` only, which
+  keeps these rules.
 
 ### Document card
 
@@ -774,7 +783,9 @@ A new exception needs a row here and its entry in `tests/design-system.test.ts` 
     card of a list, the Beam and the navigation of the inbox ("Beam"); a toggled `Chip`
     (`pressed`) only where each toggles on its own ("Tabs and switches"); every master data tab
     in the order tabs, search, filter row, list, with no paragraph before the list ("Master data
-    tabs");
+    tabs"); tooltips only through `ui/tooltip` ("Help and tooltips");
+  - `src/lib/tips.test.ts`: one box of help at a time, the next without delay; a tooltip opens on
+    a focus Tab brought, not on one handed back;
   - `tests/messages-tone.test.ts`: German texts without "Sie" and without a lowercase "du";
   - `tests/no-raw-text.test.ts`: no raw text in markup; `tests/no-raw-choice.test.ts`: no raw
     checkbox or radio.

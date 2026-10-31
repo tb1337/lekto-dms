@@ -2,7 +2,7 @@
 // only (no arbitrary font sizes, radii, shadows or palette colours), one page title, one table,
 // tooltips instead of native titles on buttons, dialog widths by their size, icon buttons
 // through `IconButton`, one way to view a document (the Beam), toggle chips only where each
-// toggles on its own, one order on the master data tabs. An exception needs its line in DESIGN.md ("Exceptions") and here; the
+// toggles on its own, one order on the master data tabs, tooltips through `ui/tooltip`. An exception needs its line in DESIGN.md ("Exceptions") and here; the
 // lists of exceptions may only shrink.
 import { describe, expect, it } from 'vitest';
 
@@ -204,6 +204,16 @@ describe('the design system (web/DESIGN.md)', () => {
 				const text = markup.search(/<p[\s>]/);
 				return text !== -1 && text < list ? [path] : [];
 			})
+		).toEqual([]);
+	});
+
+	it('builds tooltips with ui/tooltip, which shows one at a time and none on a returned focus', () => {
+		expect(
+			offenders((source, path) =>
+				path.startsWith('/src/lib/components/ui/tooltip/')
+					? null
+					: line(source, /\bTooltip\b[^;]*from 'bits-ui'/)
+			)
 		).toEqual([]);
 	});
 

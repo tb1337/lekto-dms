@@ -109,7 +109,9 @@ describe('the lens editor', () => {
 		// Grouping by deadline needs a deadline.
 		const byDue = within(dialog).getByRole('button', { name: m.lens_grouping_due() });
 		expect((byDue as HTMLButtonElement).disabled).toBe(true);
+		expect(within(dialog).getByText(m.lens_grouping_due_hint())).toBeTruthy();
 		await choose(user, within(dialog).getByLabelText(m.lens_due()), 'due');
+		expect(within(dialog).queryByText(m.lens_grouping_due_hint())).toBeNull();
 		await user.click(byDue);
 		await user.click(within(dialog).getByRole('button', { name: m.save() }));
 		await waitFor(() => expect(onsaved).toHaveBeenCalled());

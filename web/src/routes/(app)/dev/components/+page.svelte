@@ -263,6 +263,16 @@
 					{ value: 'list', label: m.dev_sample_tab_two(), icon: List }
 				]}
 			/>
+			<!-- With counts, one option not to be chosen now. -->
+			<Segmented
+				label={m.dev_section_tabs()}
+				bind:value={view}
+				options={[
+					{ value: 'grid', label: m.dev_sample_tab_one(), count: 12 },
+					{ value: 'list', label: m.dev_sample_tab_two(), count: 3 },
+					{ value: 'none', label: m.dev_sample_option(), disabled: true }
+				]}
+			/>
 		</div>
 	</section>
 

@@ -11,6 +11,8 @@
 		count?: number | string;
 		/** A red dot after the name, read out as this (a problem in there). */
 		alert?: string;
+		/** Not to be chosen now; the text near the bar says why. */
+		disabled?: boolean;
 	}
 </script>
 
@@ -103,15 +105,16 @@
 		type="button"
 		aria-pressed={chosen}
 		aria-label={names === 'hidden' ? option.label : undefined}
+		disabled={option.disabled}
 		class={cn(
-			'relative inline-flex items-center justify-center rounded-full whitespace-nowrap transition-colors',
+			'relative inline-flex items-center justify-center rounded-full whitespace-nowrap transition-colors disabled:opacity-50',
 			size === 'sm' ? 'h-7 gap-1.5 px-2.5 text-xs' : 'h-8 gap-2 px-3 text-sm',
 			names === 'hidden' && (size === 'sm' ? 'w-7 px-0 max-sm:w-10' : 'w-8 px-0 max-sm:w-11'),
 			// A finger's tap on a phone: 44 pixels high, the bar keeps its look.
 			size === 'sm'
 				? 'max-sm:after:absolute max-sm:after:inset-x-0 max-sm:after:-inset-y-2'
 				: 'max-sm:after:absolute max-sm:after:inset-x-0 max-sm:after:-inset-y-1.5',
-			chosen ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'
+			chosen ? 'font-medium text-foreground' : 'text-muted-foreground enabled:hover:text-foreground'
 		)}
 	>
 		{#if option.icon}

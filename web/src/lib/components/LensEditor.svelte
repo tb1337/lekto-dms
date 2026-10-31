@@ -35,7 +35,6 @@
 	import { LIST_SORTS, sortLabel } from '#lib/listing.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import Chip from '#lib/components/Chip.svelte';
 	import IconButton from '#lib/components/IconButton.svelte';
 
 	type Listed = components['schemas']['ListedDocument'];
@@ -248,22 +247,22 @@
 				</Field.Field>
 			</div>
 
-			<div class="flex flex-col gap-2" role="group" aria-labelledby="lens-grouping">
+			<!-- One way of a few, always one: a bar (web/DESIGN.md, "Tabs and switches"). By the
+			     deadline only with one, said below it while there is none. -->
+			<div class="flex flex-col gap-2">
 				<span id="lens-grouping" class="text-sm font-medium">{m.lens_grouping()}</span>
-				<div class="flex flex-wrap gap-1.5">
-					{#each GROUPINGS as option (option.value)}
-						{@const active = grouping === option.value}
-						<Chip
-							pressed={active}
-							disabled={option.value === 'due' && !dueId}
-							title={option.value === 'due' && !dueId ? m.lens_grouping_due_hint() : undefined}
-							class="disabled:opacity-50"
-							onclick={() => (grouping = option.value)}
-						>
-							{option.label()}
-						</Chip>
-					{/each}
-				</div>
+				<Segmented
+					labelledby="lens-grouping"
+					bind:value={() => grouping, (next) => (grouping = next as Grouping)}
+					options={GROUPINGS.map((option) => ({
+						value: option.value,
+						label: option.label(),
+						disabled: option.value === 'due' && !dueId
+					}))}
+				/>
+				{#if !dueId}
+					<p class="text-xs text-muted-foreground">{m.lens_grouping_due_hint()}</p>
+				{/if}
 			</div>
 
 			<div class="flex flex-col gap-2">
@@ -271,7 +270,6 @@
 				<Segmented
 					labelledby="lens-layout"
 					equal
-					class="w-56"
 					value={layout}
 					options={[
 						{ value: 'grid', label: m.layout_grid() },

@@ -14,7 +14,8 @@
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import * as Table from '#lib/components/ui/table/index.ts';
-	import { documentHref } from '#lib/candidates.ts';
+	import { openBeam } from '#lib/beam.svelte.ts';
+	import BeamTitle from '#lib/components/BeamTitle.svelte';
 	import Pagination from '#lib/components/Pagination.svelte';
 	import Segmented from '#lib/components/Segmented.svelte';
 	import Select from '#lib/components/Select.svelte';
@@ -323,9 +324,19 @@
 								</Table.Cell>
 								<Table.Cell class="max-w-[20rem] truncate">
 									{#if delivery.document}
-										<a href={documentHref(delivery.document.id)} class="text-brand hover:underline">
-											{delivery.document.title}
-										</a>
+										{@const shown = delivery.document}
+										<BeamTitle
+											title={shown.title}
+											class="max-w-full"
+											onview={() =>
+												openBeam(
+													deliveries.items.flatMap((each) =>
+														each.document ? [each.document.id] : []
+													),
+													shown.id,
+													m.webhook_log()
+												)}
+										/>
 									{:else if delivery.document_hidden}
 										<span class="text-muted-foreground italic">{m.jobs_hidden_document()}</span>
 									{:else}

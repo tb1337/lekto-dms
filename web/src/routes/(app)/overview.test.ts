@@ -123,7 +123,13 @@ describe('Übersicht', () => {
 		expect(
 			within(overdue).getByText(m.expected_next({ date: formatDate('2026-10-15') }))
 		).toBeTruthy();
-		expect(within(overdue).getByRole('link', { name: 'Abschlag September' })).toBeTruthy();
+		// The last one's title shows it in the Beam (web/DESIGN.md, "Beam").
+		expect(
+			within(overdue).getByRole('button', {
+				name: m.beam_open_named({ title: 'Abschlag September' })
+			})
+		).toBeTruthy();
+		expect(within(overdue).queryByRole('link', { name: 'Abschlag September' })).toBeNull();
 		expect(screen.queryByRole('region', { name: new RegExp(m.expected_later()) })).toBeNull();
 		await userEvent.click(
 			screen.getByRole('button', { name: m.overview_expected_more({ count: '1' }) })

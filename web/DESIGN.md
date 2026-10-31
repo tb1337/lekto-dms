@@ -451,20 +451,32 @@ modal, over a dialog too.
   document view's `PageViewer` (one page to a row at the start; buttons, Ctrl/⌘ with the wheel,
   pinch, double click, + − 0); at the bottom "Dokument öffnen", on a phone across the width.
   Editing happens in the document view.
-- **Opening it:** a card or row of a list of documents (the documents, the inbox) opens it
-  itself (`DocumentLink`, `viewOrOpen`): a click, a tap or Enter shows the document in the
-  Beam, a double click or a long press (a phone) opens it; a click with Ctrl/⌘ or the middle
-  button opens a new tab, as on any link. A mouse's click waits
-  250 ms for a second one, so that a double click never shows the Beam first. Elsewhere
-  "Ansehen" (`ViewButton`, icon `scan-eye`; never "Beamen") beside a title as an icon (the
-  overview's expected documents, the jobs); the title keeps opening the document. From a list, the Beam pages through
-  the list's page.
-  Where a dialog or a card lists documents as evidence (Fundstellen, a relation, similar
-  documents, the cases behind a number of the holders' evaluation), the title itself opens the
-  Beam, the eye before it, cut to one line; into the
-  document from the Beam. A relation shows both documents, the newer first, the number they
-  share marked in each. A rule's preview (Anwenden) shows where its text conditions hit, each
-  labelled with its text.
+- **Opening it: one way everywhere** (Tobi, 31.10.2026). Wherever Lekto names a document, its
+  title opens it in the Beam: the eye (`scan-eye`) before the title, both one button in the
+  brand colour, medium weight, one line, cut (`BeamTitle`); a value that stands for documents
+  (the identifier of a case of the holders' evaluation) does the same in mono. No title opens a
+  document directly: into the document from the Beam ("Dokument öffnen"). So the Fundstellen of
+  an identifier, a relation, a rule's preview (Anwenden), the cases behind a number of the
+  holders' evaluation, the similar documents of the processing, the overview's expected
+  documents, the jobs, a webhook's deliveries, the existing document of a duplicate upload and
+  the documents a bulk action skipped. The Beam pages through what stands beside it.
+- **Lists of documents carry no eye:** a card or row (the documents, the inbox, search hits)
+  and a chip of the stream is the button itself (`DocumentLink`, `viewOrOpen`): a click, a tap
+  or Enter shows the document in the Beam, a double click or a long press (a phone) opens it; a
+  click with Ctrl/⌘ or the middle button opens a new tab, as on any link. A mouse's click waits
+  250 ms for a second one, so that a double click never shows the Beam first. From a list, the
+  Beam pages through the list's page; from the stream, through the lane.
+- **Without a title:** the similar documents behind a signal (the check of a field) stand as
+  their numbers, without the eye in the small chip (Tobi, 31.10.2026); a number shows its
+  document in the Beam, paging through them all, and the document checked stays where it is. An
+  action that shows documents rather than naming one ("Woher gelernt?") has the eye before its
+  text.
+- **The eye means only this:** no other action uses `scan-eye` ("Mit dem Bildmodell lesen" has
+  `scan-text`). The mark "Im Eingang" is navigation (the inbox's view of the document), not
+  viewing. `tests/design-system.test.ts` keeps both: the eye only in `BeamTitle` and before
+  "Woher gelernt?", a link to one document only where this section allows it.
+- A relation shows both documents, the newer first, the number they share marked in each. A
+  rule's preview shows where its text conditions hit, each labelled with its text.
 - **State:** the history entry's (`beam.svelte.ts`): ids only. The back button closes it, a
   reload brings it back, paging replaces the entry. A document that is gone closes it with a
   toast.
@@ -473,7 +485,7 @@ modal, over a dialog too.
 - **Places:** where Lekto claims a value from a document, the Beam marks each place the pages
   show it, the one the fact was read at with a halo and its kind ("IBAN"), and scrolls there;
   it pages through the places ("Fundstelle 2 von 5"). The places come from the endpoint that
-  names the fact (`occurrences`), never from a search of its own. From the inbox ("Ansehen" in a row)
+  names the fact (`occurrences`), never from a search of its own. From the inbox (a row)
   it marks the quotes of the fields that keep each document there, each with the field's name,
   the first with a halo: why it is yellow, on the page.
 - **Over a dialog:** a dialog that opens the Beam keeps its state in the history entry too, so
@@ -729,7 +741,9 @@ A new exception needs a row here and its entry in `tests/design-system.test.ts` 
   - `tests/design-system.test.ts`: font sizes, radii, shadows and colours from the tokens only
     (no arbitrary values, no Tailwind palette) outside the exceptions; `<h1>` only in
     `PageTitle`; `<table>` only in `ui/table`; no `title=` on `Button`, `IconButton` or a menu
-    trigger; no `max-w-*` on dialog content; icon buttons only through `IconButton`;
+    trigger; no `max-w-*` on dialog content; icon buttons only through `IconButton`; the eye
+    `scan-eye` only where it shows a document in the Beam, a link to one document only from a
+    card of a list, the Beam and the navigation of the inbox ("Beam");
   - `tests/messages-tone.test.ts`: German texts without "Sie" and without a lowercase "du";
   - `tests/no-raw-text.test.ts`: no raw text in markup; `tests/no-raw-choice.test.ts`: no raw
     checkbox or radio.

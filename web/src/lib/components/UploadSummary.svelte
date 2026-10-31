@@ -3,7 +3,8 @@
 	import Copy from '@lucide/svelte/icons/copy';
 	import Upload from '@lucide/svelte/icons/upload';
 	import X from '@lucide/svelte/icons/x';
-	import { BASE } from '#lib/base.ts';
+	import { openBeam } from '#lib/beam.svelte.ts';
+	import BeamTitle from '#lib/components/BeamTitle.svelte';
 	import { Progress } from '#lib/components/ui/progress/index.ts';
 	import type { SkipReason } from '#lib/intake.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -74,12 +75,17 @@
 								{m.upload_duplicate()}
 							</span>
 							{#if item.documentId}
-								<a
-									href="{BASE}/documents/{item.documentId}"
-									class="text-brand underline-offset-4 hover:underline"
-								>
-									{m.upload_existing()}
-								</a>
+								{@const existing = item.documentId}
+								<BeamTitle
+									title={m.upload_existing()}
+									label={m.beam_open_named({ title: item.name })}
+									onview={() =>
+										openBeam(
+											notable.flatMap((each) => (each.documentId ? [each.documentId] : [])),
+											existing,
+											m.upload_summary_label()
+										)}
+								/>
 							{:else}
 								<span class="text-muted-foreground">{m.upload_duplicate_unseen()}</span>
 							{/if}

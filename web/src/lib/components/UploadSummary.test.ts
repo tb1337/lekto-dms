@@ -60,9 +60,9 @@ describe('UploadSummary', () => {
 		expect(summary.querySelector('[aria-live="polite"]')?.textContent).toBe(line);
 		const twin = within(summary).getByText('twin.pdf').closest('li')!;
 		expect(within(twin).getByText(m.upload_duplicate())).toBeTruthy();
-		expect(within(twin).getByRole('link', { name: m.upload_existing() }).getAttribute('href')).toBe(
-			'/ui/documents/doc-old'
-		);
+		expect(
+			within(twin).getByRole('button', { name: m.beam_open_named({ title: 'twin.pdf' }) })
+		).toBeTruthy();
 		const hidden = within(summary).getByText('Scans/.DS_Store').closest('li')!;
 		expect(within(hidden).getByText(m.upload_skipped_hidden())).toBeTruthy();
 		expect(

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { api } from '#lib/api/client.ts';
 	import type { components } from '#lib/api/schema.ts';
-	import { BASE } from '#lib/base.ts';
+	import { openBeam } from '#lib/beam.svelte.ts';
+	import BeamTitle from '#lib/components/BeamTitle.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import { formatNumber } from '#lib/i18n.ts';
@@ -55,12 +56,16 @@
 				{@const title = titles[row.document_id]}
 				<li class="flex flex-col gap-0.5 py-2">
 					{#if title}
-						<a
-							href="{BASE}/documents/{row.document_id}"
-							class="inline-flex min-h-6 items-center self-start font-medium hover:underline max-sm:min-h-11"
-						>
+						<BeamTitle
 							{title}
-						</a>
+							class="max-w-full self-start"
+							onview={() =>
+								openBeam(
+									rows.flatMap((each) => (titles[each.document_id] ? [each.document_id] : [])),
+									row.document_id,
+									m.bulk_details_title()
+								)}
+						/>
 					{:else}
 						<span class="font-medium text-muted-foreground">{m.bulk_unknown_document()}</span>
 					{/if}

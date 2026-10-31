@@ -118,7 +118,11 @@ describe('the page of a webhook', () => {
 		const table = await screen.findByRole('table');
 		const rows = within(table).getAllByRole('row');
 		expect(within(rows[1]).getByText(m.event_filed())).toBeTruthy();
-		expect(within(rows[1]).getByRole('link', { name: 'Stadtwerke – Abschlag' })).toBeTruthy();
+		expect(
+			within(rows[1]).getByRole('button', {
+				name: m.beam_open_named({ title: 'Stadtwerke – Abschlag' })
+			})
+		).toBeTruthy();
 		expect(within(rows[2]).getByText(m.jobs_hidden_document())).toBeTruthy();
 		expect(within(rows[2]).getByText(m.delivery_attempt({ attempt: 6 }))).toBeTruthy();
 		expect(within(table).getByText('no answer within 10 seconds')).toBeTruthy();

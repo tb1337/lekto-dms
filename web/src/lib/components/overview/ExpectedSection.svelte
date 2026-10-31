@@ -3,7 +3,6 @@
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
-	import { documentHref } from '#lib/candidates.ts';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
@@ -11,7 +10,7 @@
 	import { formatDate } from '#lib/i18n.ts';
 	import { labelOfKind } from '#lib/identifiers.ts';
 	import { openBeam } from '#lib/beam.svelte.ts';
-	import ViewButton from '#lib/components/ViewButton.svelte';
+	import BeamTitle from '#lib/components/BeamTitle.svelte';
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
@@ -132,20 +131,16 @@
 								</span>
 								<span class="flex flex-wrap items-center gap-x-1 text-sm text-muted-foreground">
 									{m.expected_last()}
-									<a
-										href={documentHref(item.last.id)}
-										class="text-foreground underline-offset-2 hover:underline">{item.last.title}</a
-									>
-									({formatDate(item.last.document_date)})
-									<ViewButton
+									<BeamTitle
 										title={item.last.title}
-										onclick={() =>
+										onview={() =>
 											openBeam(
 												sections.flatMap((each) => each.items.map((entry) => entry.last.id)),
 												item.last.id,
 												m.overview_title()
 											)}
 									/>
+									({formatDate(item.last.document_date)})
 								</span>
 							</div>
 							<div class="flex flex-col items-end gap-0.5 text-right">

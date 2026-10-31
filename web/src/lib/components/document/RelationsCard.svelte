@@ -7,7 +7,7 @@
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
-	import ScanEye from '@lucide/svelte/icons/scan-eye';
+	import BeamTitle from '#lib/components/BeamTitle.svelte';
 	import { openBeam, type BeamSource } from '#lib/beam.svelte.ts';
 	import { refOf } from '#lib/fact-refs.svelte.ts';
 	import ReferencePicker, {
@@ -190,22 +190,15 @@
 			<div class="flex items-center gap-2 rounded-xl px-2.5 py-2">
 				<Link2 class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 				<div class="flex min-w-0 flex-1 flex-col gap-0.5">
-					<button
-						type="button"
-						class="group inline-flex min-w-0 items-center gap-1.5 text-left text-sm font-medium"
-						aria-label={m.beam_open_named({ title: item.document.title })}
-						title={m.beam_open_named({ title: item.document.title })}
-						onclick={() =>
+					<BeamTitle
+						title={item.document.title}
+						class="text-sm"
+						onview={() =>
 							view(
 								item,
 								group.key === 'refers_to' ? true : group.key === 'referred_by' ? false : null
 							)}
-					>
-						<ScanEye class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-						<span class="truncate underline-offset-2 group-hover:underline"
-							>{item.document.title}</span
-						>
-					</button>
+					/>
 					<span class="truncate text-xs text-muted-foreground">
 						{[
 							typeName(item.document.document_type_id),

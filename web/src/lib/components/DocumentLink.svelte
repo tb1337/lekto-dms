@@ -12,12 +12,15 @@
 		href,
 		choosing = false,
 		onview,
+		title,
 		class: className,
 		children
 	}: {
 		href: string;
 		choosing?: boolean;
 		onview?: () => void;
+		/** The whole title, where the card cuts it. */
+		title?: string;
 		class?: string;
 		children: Snippet;
 	} = $props();
@@ -28,6 +31,7 @@
 <svelte:element
 	this={choosing ? 'label' : 'a'}
 	href={choosing ? undefined : href}
+	{title}
 	aria-haspopup={viewing ? 'dialog' : undefined}
 	class={cn(
 		className,

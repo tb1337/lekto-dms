@@ -8,6 +8,7 @@
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
+	import InfoHint from '#lib/components/InfoHint.svelte';
 	import Loading from '#lib/components/Loading.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import OpenIdentifierDialog from '#lib/components/OpenIdentifierDialog.svelte';
@@ -322,24 +323,29 @@
 {/snippet}
 
 <div class="flex flex-col gap-3">
-	<p class="text-meta text-muted-foreground">{m.open_hint()}</p>
 	<div class="flex flex-wrap items-center justify-between gap-3">
-		<Segmented
-			label={m.open_source()}
-			value={onlyRecommended ? 'recommended' : source}
-			onchange={show}
-			options={[
-				{ value: '', label: m.open_all(), count: formatNumber(openTotal(counts)) },
-				{ value: 'learned', label: m.open_learned(), count: formatNumber(counts.learned) },
-				{ value: 'unknown', label: m.open_unknown(), count: formatNumber(counts.unknown) },
-				{
-					value: 'suggested',
-					label: m.open_suggestions(),
-					count: formatNumber(counts.suggested)
-				},
-				{ value: 'recommended', label: m.open_recommended(), count: formatNumber(recommended) }
-			]}
-		/>
+		<!-- What the sources mean behind the info button beside them, no text above the list
+		     (web/DESIGN.md, "Master data tabs"); on a phone the bar scrolls beside it. -->
+		<div class="flex max-w-full min-w-0 items-center gap-1.5">
+			<Segmented
+				label={m.open_source()}
+				class="min-w-0"
+				value={onlyRecommended ? 'recommended' : source}
+				onchange={show}
+				options={[
+					{ value: '', label: m.open_all(), count: formatNumber(openTotal(counts)) },
+					{ value: 'learned', label: m.open_learned(), count: formatNumber(counts.learned) },
+					{ value: 'unknown', label: m.open_unknown(), count: formatNumber(counts.unknown) },
+					{
+						value: 'suggested',
+						label: m.open_suggestions(),
+						count: formatNumber(counts.suggested)
+					},
+					{ value: 'recommended', label: m.open_recommended(), count: formatNumber(recommended) }
+				]}
+			/>
+			<InfoHint text={m.open_hint()} about={m.open_source()} />
+		</div>
 		<div class="flex flex-wrap items-center gap-2">
 			{#if anyKinds || kind}
 				<Select
@@ -408,18 +414,27 @@
 								aria-pressed={choosing ? key in chosen : undefined}
 								onclick={() => (choosing ? toggle(item, !(key in chosen)) : openItem(item))}
 							>
-								<span class="flex min-w-0 flex-1 flex-col gap-0.5">
-									<span class="flex items-center justify-between gap-2">
-										<span class="text-xs text-muted-foreground">{kindLabel(item.kind)}</span>
+								<!-- As a row of the master data (`MasterRow`): the value with the badge of
+								     its source, its kind and contact below, the documents a bare number. -->
+								<span class="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+									<span class="flex max-w-full flex-wrap items-center gap-x-2 gap-y-1">
+										<span class="font-mono text-meta break-all">{value}</span>
 										{@render sourceBadge(item)}
 									</span>
-									<span class="font-mono text-meta break-all">{value}</span>
 									<span class="text-meta text-muted-foreground">
-										{contactText(item)}{item.source === 'suggested' ? ` (${whereText(item)})` : ''} ·
-										{documentsText(item.documents)}
+										{kindLabel(item.kind)} · {contactText(item)}{item.source === 'suggested'
+											? ` (${whereText(item)})`
+											: ''}
 									</span>
 									{#if item.recommendation}{@render advice(item, false)}{/if}
 								</span>
+								<span
+									class="shrink-0 text-sm text-muted-foreground tabular-nums"
+									aria-hidden="true"
+								>
+									{formatNumber(item.documents)}
+								</span>
+								<span class="sr-only">{documentsText(item.documents)}</span>
 								<ChevronRight class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 							</button>
 						</li>

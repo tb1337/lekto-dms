@@ -813,7 +813,7 @@
 	"open_dialog_hint_suggested_person": "Confirming enters it in the profile: it then finds the person in documents. Rejecting notes it there as not theirs, and Lekto does not suggest it again.",
 	"open_kind": "Kind",
 	"open_kind_any": "All kinds",
-	"open_hint": "Training found the learned identifiers in confirmed documents. Unknown ones stand in confirmed documents but at no contact. Suggestions are IBANs and creditor IDs a document attributes to another contact or to a person.",
+	"open_hint": "Learned: found by training at a contact. Unknown: in confirmed documents, at no contact. Suggestions: IBANs and creditor IDs a document attributes to someone else.",
 	"open_none": "Nothing open: every identifier in confirmed documents is entered or rejected.",
 	"open_none_found": "No open identifier matches.",
 	"open_column_identifier": "Identifier",

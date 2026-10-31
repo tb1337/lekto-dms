@@ -159,6 +159,15 @@ def test_a_personnel_number_after_its_label(text: str, value: str) -> None:
     assert identifiers_in(text) == {(PERSONNEL, value)}
 
 
+def test_a_number_ends_with_its_column() -> None:
+    # A statement's line as the parser sets it: columns apart by two spaces or more.
+    line = " 05.06.   Stadtwerke Musterstadt   Abschlag Juni Kd-Nr. 40012345        -86,00"
+    assert identifiers_in(line) == {(CUSTOMER, "40012345")}
+    # The label in one column, its value in the next; a value's words in running text.
+    assert identifiers_in("Kundennummer        40012345\nZähler") == {(CUSTOMER, "40012345")}
+    assert identifiers_in("Kundennummer: DE 4711 0815") == {(CUSTOMER, "DE47110815")}
+
+
 def test_no_personnel_number_without_label_or_value() -> None:
     assert identifiers_in("Supers Nr 4711, Nummer 12345") == set()
     assert identifiers_in("Personalnummer: siehe oben; Personalnummer 12") == set()

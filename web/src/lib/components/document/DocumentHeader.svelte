@@ -8,7 +8,7 @@
 	import FolderInput from '@lucide/svelte/icons/folder-input';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
-	import ScanEye from '@lucide/svelte/icons/scan-eye';
+	import ScanText from '@lucide/svelte/icons/scan-text';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
@@ -342,7 +342,7 @@
 						{/if}
 						{#if readable}
 							<DropdownMenu.Item disabled={busy} onSelect={startVision}>
-								<ScanEye aria-hidden="true" />
+								<ScanText aria-hidden="true" />
 								{m.vision_read()}
 								{#if advice}
 									<span class="ml-auto text-xs text-lane-yellow-foreground">

@@ -24,6 +24,7 @@
 		type IdentifierSource,
 		kindLabel,
 		NAMING_KINDS,
+		printed,
 		row
 	} from '#lib/identifiers.ts';
 	import {
@@ -152,7 +153,7 @@
 				toast.info(m.identifier_whence_none());
 				return;
 			}
-			openBeam(ids, ids[0], `${kindLabel(kind)} ${item.value}`, {
+			openBeam(ids, ids[0], `${kindLabel(kind)} ${printed(kind, item.value)}`, {
 				source: { kind: 'places', identifier: kind, ref }
 			});
 		} catch (error) {
@@ -248,7 +249,7 @@
 									item.source === 'rejected' && 'text-muted-foreground line-through'
 								]}
 							>
-								{item.value || m.identifier_new()}
+								{item.value ? printed(item.kind, item.value) : m.identifier_new()}
 							</span>
 							{#if item.source !== 'manual'}
 								<Badge variant={item.source === 'learned' ? 'note' : 'muted'}>
@@ -268,7 +269,9 @@
 							<IconButton
 								type="button"
 								class="shrink-0"
-								label={m.identifier_remove_named({ value: item.value || m.identifier_new() })}
+								label={m.identifier_remove_named({
+									value: item.value ? printed(item.kind, item.value) : m.identifier_new()
+								})}
 								onclick={() => drop(item)}
 							>
 								<X aria-hidden="true" />

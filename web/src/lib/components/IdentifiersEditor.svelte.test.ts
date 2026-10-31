@@ -55,7 +55,10 @@ describe('IdentifiersEditor', () => {
 		expect(screen.getByRole('heading', { name: `${kindLabel('iban')} 1` })).toBeTruthy();
 		const personnel = line(/^4711/);
 		expect(within(personnel).getByText('Arbeit')).toBeTruthy();
-		expect(within(line(/^DE89/)).getByText(m.identifier_learned())).toBeTruthy();
+		// An IBAN as it is printed, in groups of four.
+		expect(
+			within(line(/^DE89 3704 0044 0532 0130 00/)).getByText(m.identifier_learned())
+		).toBeTruthy();
 		expect(within(line(/^KD-1/)).getByText(m.identifier_rejected())).toBeTruthy();
 		// Closed, the lines have no fields.
 		expect(personnel.getAttribute('aria-expanded')).toBe('false');

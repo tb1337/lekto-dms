@@ -11,6 +11,7 @@ import {
 	NAMING_KINDS,
 	numbersOf,
 	PERSON_KINDS,
+	printed,
 	refusedRow,
 	rowsOf
 } from '#lib/identifiers.ts';
@@ -74,6 +75,14 @@ describe('identifiers', () => {
 		expect(screen.getAllByText(m.identifier_rejected())).toHaveLength(1);
 		await userEvent.click(screen.getByRole('button', { name: m.identifier_add_short() }));
 		expect(screen.getAllByRole('textbox', { name: m.identifier_value() })).toHaveLength(1);
+	});
+});
+
+describe('an identifier as it is printed', () => {
+	it('groups an IBAN by four, however it is kept, and leaves the others', () => {
+		expect(printed('iban', 'DE89370400440532013000')).toBe('DE89 3704 0044 0532 0130 00');
+		expect(printed('iban', 'DE89 3704 0044 0532 0130 00')).toBe('DE89 3704 0044 0532 0130 00');
+		expect(printed('customer_number', 'KD 4711')).toBe('KD 4711');
 	});
 });
 

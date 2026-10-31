@@ -2,6 +2,7 @@
 	import Info from '@lucide/svelte/icons/info';
 	import { Popover } from 'bits-ui';
 	import type { Snippet } from 'svelte';
+	import { hideTip, mayOpenTip, showTip } from '#lib/tips.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 
 	// An info button and what it explains in a dark box beside it, for every info icon of the UI
@@ -39,8 +40,24 @@
 	let button = $state<HTMLButtonElement | null>(null);
 	let timer: ReturnType<typeof setTimeout> | undefined;
 
+	// One box of help at a time (`tips.svelte.ts`): opening closes a tooltip or another info tip,
+	// and one of them opening closes this box.
+	const tip = {
+		close: () => {
+			clearTimeout(timer);
+			open = false;
+			byHand = false;
+		}
+	};
+	$effect(() => {
+		if (open) showTip(tip);
+		else hideTip(tip);
+	});
+	$effect(() => () => hideTip(tip));
+
 	function enter(event: PointerEvent) {
-		if (event.pointerType !== 'mouse') return;
+		// Not under a pointer resting after a click (`tips.svelte.ts`).
+		if (event.pointerType !== 'mouse' || !mayOpenTip()) return;
 		clearTimeout(timer);
 		if (!open) {
 			byHand = false;
@@ -113,7 +130,8 @@
 			onpointerenter={enter}
 			onpointerleave={leave}
 			class={cn(
-				'z-50 max-w-[calc(100vw-1rem)] rounded-xl bg-foreground px-3.5 py-3 text-meta leading-normal text-background shadow-lg outline-none',
+				// Gone the moment it closes, not a frame later beside the next box.
+				'z-50 max-w-[calc(100vw-1rem)] rounded-xl bg-foreground px-3.5 py-3 text-meta leading-normal text-background shadow-lg outline-none data-[state=closed]:hidden',
 				className
 			)}
 		>

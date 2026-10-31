@@ -253,7 +253,8 @@ divider.
 `Chip` is the one chip: a pill, `md` 32 px (`h-8`) or `sm` 24 px, icon and name, optionally
 removable (`onremove`, a ✕ with a hit area of 44 px on the phone) or toggleable (`pressed`:
 `aria-pressed`; on, the selected look and a bolder name, no check, at the width it has off, so
-that the chips beside it stay: "Steady layout"). Its variants:
+that the chips beside it stay: "Steady layout"; only where each toggles on its own, see "Tabs
+and switches"). Its variants:
 
 | Variant    | Use                                                                                                      |
 | ---------- | -------------------------------------------------------------------------------------------------------- |
@@ -300,15 +301,22 @@ Two components that **look different on purpose**:
   2 px `brand` underline. A bottom border runs across the bar. It scrolls sideways on the phone
   with a fade at the cut edge. Counts and dots sit beside the label.
 - **`Segmented`**: a choice of how to show something (pages, grid/list/stream, text/pages,
-  form/facts, period quick picks, language, appearance), and in a form a choice among two or
+  form/facts, the period of the automation, language, appearance, the grouping of a lens), which
+  part of a list shows (the open identifiers by source, the tags by kind, the jobs by state, the
+  deliveries by outcome; with counts), and in a form a choice among two or
   three short options that changes what follows (a webhook's trigger and body). A grey bar with
   the choice on a light pill that slides over (`motion-safe`, not on first show). Sizes: `md`
   40 px, `sm` 32 px; 44 px on the phone. With icons only (`names="hidden"`) every option has a label for its tooltip.
   Where it is wider than the room (a phone, five options with counts), it scrolls sideways as the
   `TabBar` does, the chosen option in view and a fade at the cut edge; it never widens the page
-  (Tobi 29.10.2026).
+  (Tobi 29.10.2026). An option that cannot be chosen now is disabled (`disabled`, at half
+  strength); a text near the bar says why, not only a tooltip.
 
-No other tab or segmented look exists. `AutomationTab` and `PeriodFacet` use `Segmented`.
+**Which one** (Tobi, 31.10.2026): one of a few with always one chosen, whether it picks a view
+or narrows a list, is `Segmented`, with counts where the list knows them. A `Chip` with
+`pressed` is only for choices that each toggle on their own, several at once or none: the
+channels of the automation, the quick picks of a period (a second tap lets go). No other tab or
+segmented look exists.
 
 ### Cards
 
@@ -346,9 +354,10 @@ It has the card look through `cardVariants`: on desktop it stands above the list
 and sticks below the header (`top-20`); on the phone it sticks to the bottom of the screen
 (`bg-card`, a line above), the hint as a line of its own and its two actions sharing the width.
 One item is still decided in its dialog, opened from its title: the actions stay out of the
-row. The open identifiers are a `ui/table` on a desktop; on a phone they are rows, and the
-whole row opens the identifier (as the rows of the master data do) or, while some are chosen,
-chooses it.
+row. The open identifiers are a `ui/table` on a desktop; on a phone they are rows built as the
+rows of the master data (`MasterRow`): the value as the title with the badge of its source,
+below it kind · contact, the number of documents bare and a chevron at the end. The whole row
+opens the identifier or, while some are chosen, chooses it.
 
 The documents list chooses in a **selection mode** (Tobi 28.10.2026): outside it the cards and
 rows carry no box and no bar shows. A button with `ListChecks` (`outline`, "Auswählen",
@@ -612,6 +621,25 @@ Destructive actions are in editors and on detail pages, not in list rows.
   the place as it was, its dialog and Beam open. Leaving a document (deleted, handed over) takes
   the same way.
 
+### Master data tabs
+
+Every tab of the master data stands in one order (Tobi, 31.10.2026): the `TabBar`, the search
+of the tab (`SearchField`), the tab's filter row where it has one, then its list. Nothing stands
+between them: an explanation is an info button (`InfoHint`) in the filter row, never a paragraph
+above the list.
+
+| Tab       | Filter row                                                                                                |
+| --------- | --------------------------------------------------------------------------------------------------------- |
+| Kontakte  | the chip of the group or topic a link from the Tags tab names (removable)                                 |
+| Typen     | the chip of the group a link from the Tags tab names (removable)                                          |
+| Tags      | a `Segmented` of the kinds with counts                                                                    |
+| Felder    | none                                                                                                      |
+| Kennungen | a `Segmented` of the sources with counts and its `InfoHint`; the kind (`Select`), "Empfohlene übernehmen" |
+
+The lists are rows in one card (`MasterRow`), the tags one card per kind; the open identifiers a
+table on a desktop (see [Lists](#lists)). Their rows on a phone are `MasterRow`s or built as they
+are.
+
 ### No plain data in addresses
 
 What a person types or what comes from a document (the words of a search, an IBAN, an invoice
@@ -743,7 +771,10 @@ A new exception needs a row here and its entry in `tests/design-system.test.ts` 
     `PageTitle`; `<table>` only in `ui/table`; no `title=` on `Button`, `IconButton` or a menu
     trigger; no `max-w-*` on dialog content; icon buttons only through `IconButton`; the eye
     `scan-eye` only where it shows a document in the Beam, a link to one document only from a
-    card of a list, the Beam and the navigation of the inbox ("Beam");
+    card of a list, the Beam and the navigation of the inbox ("Beam"); a toggled `Chip`
+    (`pressed`) only where each toggles on its own ("Tabs and switches"); every master data tab
+    in the order tabs, search, filter row, list, with no paragraph before the list ("Master data
+    tabs");
   - `tests/messages-tone.test.ts`: German texts without "Sie" and without a lowercase "du";
   - `tests/no-raw-text.test.ts`: no raw text in markup; `tests/no-raw-choice.test.ts`: no raw
     checkbox or radio.

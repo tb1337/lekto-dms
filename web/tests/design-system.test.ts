@@ -1,7 +1,8 @@
 // The rules of web/DESIGN.md that a machine can check, over every component and page: tokens
 // only (no arbitrary font sizes, radii, shadows or palette colours), one page title, one table,
 // tooltips instead of native titles on buttons, dialog widths by their size, icon buttons
-// through `IconButton`, one way to view a document (the Beam). An exception needs its line in DESIGN.md ("Exceptions") and here; the
+// through `IconButton`, one way to view a document (the Beam), toggle chips only where each
+// toggles on its own, one order on the master data tabs. An exception needs its line in DESIGN.md ("Exceptions") and here; the
 // lists of exceptions may only shrink.
 import { describe, expect, it } from 'vitest';
 
@@ -50,6 +51,19 @@ const DOCUMENT_LINKS = new Set([
 	'/src/routes/(app)/documents/[id]/+page.svelte'
 ]);
 const DOCUMENT_LINK = /documentHref\(|inboxDocument\(|BASE\}\/documents\/(?:\{|\$\{)/;
+
+/** Where a chip toggles on its own (DESIGN.md, "Tabs and switches"): several at once or none, the
+ * channels of the automation and the quick picks of a period; the style guide shows it. One of a
+ * few, always one, is `Segmented`. */
+const TOGGLE_CHIPS = new Set([
+	'/src/lib/components/PeriodFacet.svelte',
+	'/src/lib/components/system/AutomationTab.svelte',
+	'/src/routes/(app)/dev/components/+page.svelte'
+]);
+
+/** The master data tabs and what each shows below its search (DESIGN.md, "Master data tabs"). */
+const MASTER_PAGE = '/src/routes/(app)/admin/master-data/+page.svelte';
+const MASTER_PANELS = ['MasterDataList', 'TagsPanel', 'FieldsPanel', 'IdentifiersPanel'];
 
 const PALETTE =
 	/\b(?:text|bg|border|ring|fill|stroke|outline|decoration|from|to|via)-(?:white|black|slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)(?:-\d{2,3})?\b/;
@@ -157,6 +171,39 @@ describe('the design system (web/DESIGN.md)', () => {
 	it('opens a document directly only from a card of a list or from the Beam', () => {
 		expect(
 			offenders((source, path) => (DOCUMENT_LINKS.has(path) ? null : line(source, DOCUMENT_LINK)))
+		).toEqual([]);
+	});
+
+	it('toggles chips on their own only where several or none may be chosen', () => {
+		expect(
+			offenders((source, path) =>
+				TOGGLE_CHIPS.has(path)
+					? null
+					: (tags(source, 'Chip').find((tag) => /\spressed\b/.test(tag)) ?? null)
+			)
+		).toEqual([]);
+	});
+
+	it('shows every master data tab as tabs, search, its filter row and its list', () => {
+		const page = sources[MASTER_PAGE];
+		const at = (name: string) => page.indexOf(`<${name}`);
+		expect(at('TabBar')).toBeGreaterThan(-1);
+		expect(at('SearchField')).toBeGreaterThan(at('TabBar'));
+		for (const panel of MASTER_PANELS) expect(at(panel)).toBeGreaterThan(at('SearchField'));
+		// A panel starts with its filter row or its list: no text between the search and them.
+		expect(
+			MASTER_PANELS.flatMap((panel) => {
+				const path = `/src/lib/components/${panel}.svelte`;
+				const markup = sources[path].split('</script>').at(-1)!;
+				const list = Math.min(
+					...['<PanelState', '<Card.Root', '<Table.Root'].map((tag) => {
+						const index = markup.indexOf(tag);
+						return index === -1 ? Infinity : index;
+					})
+				);
+				const text = markup.search(/<p[\s>]/);
+				return text !== -1 && text < list ? [path] : [];
+			})
 		).toEqual([]);
 	});
 

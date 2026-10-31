@@ -281,5 +281,7 @@ describe('a fact of the filter', () => {
 		expect(factFilterLabel('bogus:AbC:nonsense')).toBe('bogus · nonsense');
 		rememberRef('invoice_number', 'AbC', 'R1001');
 		expect(factFilterLabel('invoice_number:AbC:')).toBe(`${kindLabel('invoice_number')} R1001`);
+		rememberRef('iban', 'DeF', 'DE89370400440532013000');
+		expect(factFilterLabel('iban:DeF:')).toBe(`${kindLabel('iban')} DE89 3704 0044 0532 0130 00`);
 	});
 });

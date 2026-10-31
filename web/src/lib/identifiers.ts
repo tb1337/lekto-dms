@@ -110,6 +110,12 @@ export function kindLabel(kind: IdentifierKind): string {
 	return KIND_LABELS[kind]();
 }
 
+/** An identifier's value as it is printed: an IBAN in groups of four, other values as they are
+ * kept. Wherever one is shown; an input holds it as kept. */
+export function printed(kind: string, value: string): string {
+	return kind === 'iban' ? value.replace(/\s+/g, '').replace(/(.{4})(?=.)/g, '$1 ') : value;
+}
+
 /** One row of the editor; `key` keeps a row apart while its value is typed. `topic_id`: the
  * contact's topic it points to (empty: none); `user_id`: the user a customer or personnel number
  * belongs to (empty: none); `contact_id`: the contact of a user's number (the profile; empty:

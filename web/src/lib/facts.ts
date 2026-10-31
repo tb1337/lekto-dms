@@ -7,7 +7,7 @@
 import type { components } from '#lib/api/schema.ts';
 import type { Mark } from '#lib/document-view.ts';
 import { refValue } from '#lib/fact-refs.svelte.ts';
-import { type IdentifierKind, kindLabel } from '#lib/identifiers.ts';
+import { type IdentifierKind, kindLabel, printed } from '#lib/identifiers.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 export type Facts = components['schemas']['FactsOut'];
@@ -262,9 +262,9 @@ export function spanMarks(spans: readonly Span[], label: string): Mark[] {
 	);
 }
 
-/** An IBAN in groups of four, as it is printed; other values as they are kept. */
+/** An IBAN in groups of four, as it is printed; other values as they are kept (`printed`). */
 export function shown(item: Pick<FoundIdentifier, 'kind' | 'value'>): string {
-	return item.kind === 'iban' ? item.value.replace(/(.{4})(?=.)/g, '$1 ') : item.value;
+	return printed(item.kind, item.value);
 }
 
 /** The key of an identifier, to tell rows apart and to find a code's in the text. */
@@ -364,7 +364,8 @@ export function factFilterLabel(fact: string): string {
 	const { kind, ref, role } = parseFactFilter(fact);
 	const known = kind !== null && kind in KIND_ROLES;
 	const kindText = kind ? (known ? kindLabel(kind) : kind) : m.filter_fact_any_kind();
-	const value = ref && known ? (refValue(kind, ref) ?? '…') : null;
+	const stored = ref && known ? refValue(kind, ref) : null;
+	const value = ref && known ? (stored === null ? '…' : printed(kind, stored)) : null;
 	const roleText = role ? (role in ROLE_LABELS ? roleLabel(role) : role) : null;
 	return [[kindText, value].filter(Boolean).join(' '), roleText].filter(Boolean).join(' · ');
 }

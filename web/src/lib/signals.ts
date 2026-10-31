@@ -9,7 +9,7 @@ import type { components } from '#lib/api/schema.ts';
 import { documentHref } from '#lib/candidates.ts';
 import { describeValue, fieldLabel } from '#lib/describe.ts';
 import { formatNumber, formatPercent } from '#lib/i18n.ts';
-import { labelOfKind } from '#lib/identifiers.ts';
+import { labelOfKind, printed } from '#lib/identifiers.ts';
 import type { Strength } from '#lib/facts.ts';
 import { userLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
@@ -49,7 +49,7 @@ export const kind = (value: unknown): string => labelOfKind(String(value));
 
 /** `kind value` of an identifier the text names: "Personalnummer 20417". */
 export function identifierText(found: Json): string {
-	return `${kind(found.kind)} ${String(found.value ?? '')}`;
+	return `${kind(found.kind)} ${printed(String(found.kind ?? ''), String(found.value ?? ''))}`;
 }
 
 /** The contacts the facts signal found by name or alias. */

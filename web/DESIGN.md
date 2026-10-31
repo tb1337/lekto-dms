@@ -696,6 +696,10 @@ Eingreifen, In Verarbeitung.
 Dates and numbers follow the UI language (`Intl`): `26.10.2026`, `123,45 €` in German. Durations
 are short and do not wrap ("4,2s", "1m 3s").
 
+Identifiers stand as they are printed wherever they are shown: an IBAN in groups of four
+(`DE89 3704 0044 0532 0130 00`), whether the API sends it as kept or as written; other values as
+they are kept (`printed` in `lib/identifiers.ts`). An input holds the value as kept.
+
 ### Names of people
 
 A person reads as their display name, else their username, everywhere: `userLabel` where the UI

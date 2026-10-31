@@ -26,6 +26,13 @@ def test_normalise() -> None:
     assert normalise(text) == "rechnungsnummer: 4711 strasse gross fi"
 
 
+def test_normalise_keeps_the_gaps_between_columns_where_asked() -> None:
+    text = "Kd-Nr. 4711        -86,00\n      Seite\t2  **3**"
+    assert normalise(text, columns=True) == "kd-nr. 4711\t-86,00 seite\t2\t3"
+    # The same text at the same places.
+    assert normalise(text, columns=True).replace("\t", " ") == normalise(text)
+
+
 def test_entities_of_older_parses_count_as_their_characters() -> None:
     # Texts parsed before 0.2.0 carry Docling's HTML escapes.
     text = DocumentText("Müller &amp; Söhne &lt;GmbH&gt;\n\n| Std.&#124;TAZPL | 7,48 &#124; 0,54 |")

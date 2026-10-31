@@ -407,6 +407,9 @@ relation target, and the worker relates the documents from before.
 The update that tells whose an IBAN or a creditor ID is (0.8, revision 0051) does so for new
 documents; run `lekto read-facts` after it, and the worker reads the facts of the documents
 from before again (until 0.8 the command was `read-codes`).
+The update that ends a value read for an identifier at the next column of a line (a customer
+number no longer runs on into the amount beside it) reads new documents so; run `lekto
+read-facts` after it, then `lekto relate`, and the worker reads the documents from before again.
 The same update renamed `LEKTO_STEP_MAX_ATTEMPTS` and `LEKTO_STEP_RETRY_DELAY` to
 `LEKTO_NODE_MAX_ATTEMPTS` and `LEKTO_NODE_RETRY_DELAY`; a container with an old name refuses
 to start and says so.

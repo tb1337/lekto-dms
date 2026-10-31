@@ -7,9 +7,10 @@ social security number, `65 170839 J 003`)."""
 import re
 from collections.abc import Iterable, Iterator
 from contextlib import suppress
+from dataclasses import replace
 
 from lekto.core.domain.errors import ValidationError
-from lekto.core.domain.evidence import normalise
+from lekto.core.domain.evidence import COLUMN_GAP, normalise
 from lekto.core.domain.identifiers.base import Candidate, Key
 from lekto.core.domain.identifiers.registry import NAMING_KINDS, OWN_KINDS, TYPES
 
@@ -19,10 +20,26 @@ it stands in."""
 
 
 def candidates_in(text: str) -> Iterator[Candidate]:
-    """What the patterns of every kind find in `text`."""
-    normalised = normalise(text)
+    """What the patterns of every kind find in `text`, each value up to the end of its column: a
+    statement's line "Kd-Nr. 40012345" is no customer number "4001234586" with the amount
+    "-86,00" of the next column."""
+    columned = normalise(text, columns=True)
+    normalised = columned.replace(COLUMN_GAP, " ")
     for item in TYPES.values():
-        yield from item.find(normalised)
+        for candidate in item.find(normalised):
+            yield _in_its_column(candidate, columned)
+
+
+def _in_its_column(candidate: Candidate, columned: str) -> Candidate:
+    """`candidate` up to the first gap between two columns within it, where it tells its place
+    (its value as `raw` stands there)."""
+    if candidate.span is None:
+        return candidate
+    start, end = candidate.span
+    gap = columned.find(COLUMN_GAP, start, end)
+    if gap == -1:
+        return candidate
+    return replace(candidate, raw=candidate.raw[: gap - start], span=(start, gap))
 
 
 def identifiers_in(text: str) -> set[Key]:

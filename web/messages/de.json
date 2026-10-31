@@ -813,7 +813,7 @@
 	"open_dialog_hint_suggested_person": "Übernehmen trägt sie im Profil ein, dann findet sie die Person in Dokumenten. Verwerfen merkt sie dort als „nicht ihre“, Lekto schlägt sie nicht wieder vor.",
 	"open_kind": "Art",
 	"open_kind_any": "Alle Arten",
-	"open_hint": "Gelernte Kennungen hat das Training aus bestätigten Dokumenten gefunden. Unbekannte stehen in bestätigten Dokumenten, aber bei keinem Kontakt. Vorschläge sind IBANs und Gläubiger-IDs, die ein Dokument einem anderen Kontakt oder einer Person zuschreibt.",
+	"open_hint": "Gelernt: vom Training bei einem Kontakt gefunden. Unbekannt: in bestätigten Dokumenten, bei keinem Kontakt. Vorschläge: IBANs und Gläubiger-IDs, die ein Dokument jemand anderem zuschreibt.",
 	"open_none": "Nichts offen: Jede Kennung in bestätigten Dokumenten ist eingetragen oder verworfen.",
 	"open_none_found": "Keine offene Kennung passt.",
 	"open_column_identifier": "Kennung",

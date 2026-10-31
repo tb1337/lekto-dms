@@ -185,6 +185,11 @@ describe('IdentifiersPanel', () => {
 		// The logo comes from the contacts, which the list does not carry.
 		await vi.waitFor(() => expect(found[1].querySelector('img')?.getAttribute('src')).toBe(LOGO));
 		expect(found[0].querySelector('img')).toBeNull();
+		// What the sources mean stands behind the info button beside them, not above the list.
+		expect(
+			screen.getByRole('button', { name: m.hint_about({ name: m.open_source() }) })
+		).toBeTruthy();
+		expect(screen.queryByText(m.open_hint())).toBeNull();
 	});
 
 	it('opens one from its whole row on a phone, and chooses it while some are chosen', async () => {
@@ -193,7 +198,15 @@ describe('IdentifiersPanel', () => {
 		render(IdentifiersPanel);
 		await screen.findByRole('list', { name: m.master_identifiers() });
 		const customer = () => screen.getByRole('button', { name: m.open_open({ value: '20047718' }) });
-		expect(customer().textContent).toContain('20047718');
+		// As a row of the master data: the value with its source, kind and contact below, the
+		// documents a bare number.
+		const [value, below] = customer().querySelectorAll(':scope > span > span');
+		expect(value.textContent).toContain('20047718');
+		expect(value.textContent).toContain(m.open_learned());
+		expect(below.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+			`${m.identifier_kind_customer_number()} · ${UTILITY.name}`
+		);
+		expect(customer().textContent).toContain(usageLabel(4));
 		await user.click(
 			screen.getByRole('checkbox', { name: m.open_select({ value: IBAN.written }) })
 		);

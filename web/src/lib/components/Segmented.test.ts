@@ -30,6 +30,24 @@ describe('Segmented', () => {
 		expect(group.querySelector<HTMLElement>('[data-pill]')!.hidden).toBe(false);
 	});
 
+	it('holds an option that is not to be chosen now', async () => {
+		const user = userEvent.setup();
+		const onchange = vi.fn();
+		render(Segmented, {
+			label: 'Grouping',
+			value: 'none',
+			options: [
+				{ value: 'none', label: 'None' },
+				{ value: 'due', label: 'Deadline', disabled: true }
+			],
+			onchange
+		});
+		const due = screen.getByRole('button', { name: 'Deadline' });
+		expect((due as HTMLButtonElement).disabled).toBe(true);
+		await user.click(due);
+		expect(onchange).not.toHaveBeenCalled();
+	});
+
 	it('names icons only by their label, read out and on hover', () => {
 		render(Segmented, { label: 'Layout', value: 'list', options: OPTIONS, names: 'hidden' });
 		const list = screen.getByRole('button', { name: 'List' });

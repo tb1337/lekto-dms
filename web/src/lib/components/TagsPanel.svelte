@@ -46,11 +46,13 @@
 	import { below, ofScope, visibleRows } from '#lib/tags.ts';
 	import * as Card from '#lib/components/ui/card/index.ts';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
-	import Chip from '#lib/components/Chip.svelte';
+	import Segmented, { type Segment } from '#lib/components/Segmented.svelte';
+	import { formatNumber } from '#lib/i18n.ts';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import IconButton from '#lib/components/IconButton.svelte';
 
-	// Every kind of tag in one place: a filter by kind (in the URL), one section per kind with
+	// Every kind of tag in one place: a bar of the kinds with how many tags the search finds in
+	// each (the kind in the URL), one section per kind with
 	// its tree (sections collapse, remembered in this browser), the search of the page over all
 	// of them. Each tag as its chip with how it is set and shown, how often it is used (as a
 	// link), and the editor; on a phone the row opens it.
@@ -70,9 +72,27 @@
 	// collapsed (a lone collapsed section would show nothing).
 	const forcedOpen = $derived(searching || filter !== null);
 	const childCount = $derived(childCounts(tags ?? []));
+	// Each kind's tags the search finds (every one without words): its section and its count.
+	const found = $derived(
+		new Map(
+			TAG_KIND_ORDER.map((kind) => [kind, searched(ofScope(tags ?? [], TAG_KINDS[kind]), query)])
+		)
+	);
+	const choices = $derived.by((): Segment[] => {
+		const count = (size: number) => (tags ? formatNumber(size) : undefined);
+		const all = TAG_KIND_ORDER.reduce((sum, kind) => sum + (found.get(kind)?.length ?? 0), 0);
+		return [
+			{ value: '', label: m.tag_kinds_all(), count: count(all) },
+			...TAG_KIND_ORDER.map((kind) => ({
+				value: kind,
+				label: KINDS[kind].title(),
+				count: count(found.get(kind)?.length ?? 0)
+			}))
+		];
+	});
 	const sections = $derived(
 		kinds.map((kind) => {
-			const own = searched(ofScope(tags ?? [], TAG_KINDS[kind]), query);
+			const own = found.get(kind) ?? [];
 			return {
 				kind,
 				rows: visibleRows(own, searching ? NO_COLLAPSE : collapsedTags),
@@ -195,18 +215,14 @@
 </script>
 
 <div class="flex flex-col gap-3 sm:gap-4">
-	<!-- On a phone the chips scroll sideways in their row; the page itself never does. -->
-	<div
-		role="group"
-		aria-label={m.tag_kinds_label()}
-		class="-mx-4 -my-1.5 flex gap-2 overflow-x-auto px-4 py-1.5 sm:mx-0 sm:flex-wrap sm:px-0"
-	>
-		{#each [null, ...TAG_KIND_ORDER] as kind (kind ?? 'all')}
-			<Chip pressed={filter === kind} class="shrink-0" onclick={() => choose(kind)}>
-				{kind ? KINDS[kind].title() : m.tag_kinds_all()}
-			</Chip>
-		{/each}
-	</div>
+	<!-- One kind of a few, always one: a bar with counts, as the sources of the identifiers
+	     (web/DESIGN.md, "Tabs and switches"); on a phone it scrolls sideways. -->
+	<Segmented
+		label={m.tag_kinds_label()}
+		value={filter ?? ''}
+		options={choices}
+		onchange={(value) => choose(value === '' ? null : (value as TagKind))}
+	/>
 
 	<PanelState
 		{problem}

@@ -1,9 +1,9 @@
 <script lang="ts">
-	import ScanEye from '@lucide/svelte/icons/scan-eye';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { openBeam } from '#lib/beam.svelte.ts';
+	import BeamTitle from '#lib/components/BeamTitle.svelte';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import Loading from '#lib/components/Loading.svelte';
@@ -95,21 +95,15 @@
 						size="sm"
 						class="flex flex-wrap items-center gap-x-3 gap-y-1 sm:flex-nowrap"
 					>
-						<!-- The value opens the Beam (the eye before it says so), cut to one line; on a
-						     phone the rest stands below it. -->
-						<button
-							type="button"
-							class="group inline-flex min-h-6 min-w-0 flex-1 items-center gap-1.5 text-left font-medium text-brand max-sm:min-h-11 max-sm:basis-full"
-							aria-label={m.holders_cases_view({ value: shown(item) })}
-							title={m.holders_cases_view({ value: shown(item) })}
+						<!-- The value opens the Beam; on a phone the rest stands below it. -->
+						<BeamTitle
+							title={shown(item)}
+							label={m.holders_cases_view({ value: shown(item) })}
+							mono
 							disabled={item.document_ids.length === 0}
-							onclick={() => view(item)}
-						>
-							<ScanEye class="size-4 shrink-0" aria-hidden="true" />
-							<span class="truncate font-mono text-sm underline-offset-2 group-hover:underline"
-								>{shown(item)}</span
-							>
-						</button>
+							class="flex-1 max-sm:basis-full"
+							onview={() => view(item)}
+						/>
 						<span class="min-w-0 truncate text-meta">{item.contact}</span>
 						<Badge variant={wrong(wanted?.outcome ?? 'right') ? 'red' : 'muted'} class="shrink-0">
 							{item.confirmed ? m.holders_cases_confirmed() : m.holders_cases_rejected()}

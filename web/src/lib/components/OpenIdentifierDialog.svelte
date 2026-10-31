@@ -1,5 +1,4 @@
 <script lang="ts">
-	import ScanEye from '@lucide/svelte/icons/scan-eye';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
@@ -7,6 +6,7 @@
 	import { ApiError } from '#lib/api/problem.ts';
 	import { openBeam } from '#lib/beam.svelte.ts';
 	import { latest } from '#lib/latest.ts';
+	import BeamTitle from '#lib/components/BeamTitle.svelte';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import Eyebrow from '#lib/components/page/Eyebrow.svelte';
 	import FormDialog from '#lib/components/FormDialog.svelte';
@@ -196,21 +196,13 @@
 				<ul class="flex flex-col gap-2">
 					{#each detail.places as place (place.document_id)}
 						<Card.Root as="li" size="sm" class="flex flex-col gap-2">
-							<!-- The title opens the Beam (the eye before it says so), cut to one line; on a
-							     phone date and role stand below it. Into the document from there. -->
+							<!-- The title opens the Beam; on a phone date and role stand below it. -->
 							<div class="flex flex-wrap items-center gap-x-2 gap-y-1 sm:flex-nowrap">
-								<button
-									type="button"
-									class="group inline-flex min-h-6 min-w-0 flex-1 items-center gap-1.5 text-left font-medium text-brand max-sm:min-h-11 max-sm:basis-full"
-									aria-label={m.beam_open_named({ title: place.title })}
-									title={m.beam_open_named({ title: place.title })}
-									onclick={() => view(place.document_id)}
-								>
-									<ScanEye class="size-4 shrink-0" aria-hidden="true" />
-									<span class="truncate underline-offset-2 group-hover:underline"
-										>{place.title}</span
-									>
-								</button>
+								<BeamTitle
+									title={place.title}
+									class="flex-1 max-sm:basis-full"
+									onview={() => view(place.document_id)}
+								/>
 								<span class="shrink-0 text-meta text-muted-foreground tabular-nums">
 									{formatDate(place.date)}
 								</span>

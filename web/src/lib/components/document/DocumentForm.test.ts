@@ -321,8 +321,13 @@ describe('DocumentForm', () => {
 		expect(within(card).getByText(': „Stadtwerk“')).toBeTruthy();
 		expect(within(card).getByText(m.candidate_new())).toBeTruthy();
 		expect(within(card).getByText(m.candidate_neighbours({ votes: 2, found: 3 }))).toBeTruthy();
-		const similar = within(card).getByRole('link', { name: m.candidate_document({ number: 1 }) });
-		expect(similar.getAttribute('href')).toBe(`/ui/documents/${SIMILAR}`);
+		// A similar document shows in the Beam: a button, no link out of the document checked.
+		expect(
+			within(card).getByRole('button', { name: m.candidate_document({ number: 1 }) })
+		).toBeTruthy();
+		expect(
+			within(card).queryByRole('link', { name: m.candidate_document({ number: 1 }) })
+		).toBeNull();
 
 		const select = screen.getByRole('combobox', { name: m.field_contact() });
 		expect(selectedValue(select)).toBe(CONTACT);

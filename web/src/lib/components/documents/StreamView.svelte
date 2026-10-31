@@ -6,7 +6,9 @@
 	import { tick } from 'svelte';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
+	import { openBeam } from '#lib/beam.svelte.ts';
 	import { documentHref } from '#lib/candidates.ts';
+	import DocumentLink from '#lib/components/DocumentLink.svelte';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import { describeError } from '#lib/errors.ts';
@@ -116,16 +118,30 @@
 	/** Newest first, as on a phone: the expected one on top, the target at the bottom. */
 	const newestFirst = (lane: StreamLane) => [...lane.documents].reverse();
 	const shown = (lane: StreamLane) => expanded || !lane.folded;
+
+	/** A chip in the Beam, paging through its lane: its documents and its target. */
+	function view(lane: StreamLane, id: string) {
+		const ids = [
+			...lane.documents.map((each) => each.id),
+			...(lane.target ? [lane.target.id] : [])
+		];
+		openBeam(ids, id, laneTitle(lane, lookup));
+	}
 </script>
 
-{#snippet chip(document: StreamDocument, target = false)}
-	<a
+<!-- A chip is a small card (web/DESIGN.md, "Beam"): a click shows it in the Beam, a double click
+     or a long press opens it. -->
+{#snippet chip(lane: StreamLane, document: StreamDocument, target = false)}
+	<DocumentLink
 		href={documentHref(document.id)}
+		title={document.title}
 		class={[
 			'flex min-w-0 flex-col rounded-lg border bg-card px-2 py-1 text-xs hover:bg-accent',
 			target && 'border-brand'
-		]}
-		title={document.title}
+		]
+			.filter(Boolean)
+			.join(' ')}
+		onview={() => view(lane, document.id)}
 	>
 		<span class="truncate font-medium">{document.title}</span>
 		<span class="text-muted-foreground"
@@ -133,7 +149,7 @@
 				? ` · ${m.inbox_processing()}`
 				: ''}</span
 		>
-	</a>
+	</DocumentLink>
 {/snippet}
 
 {#snippet expected(lane: StreamLane)}
@@ -206,9 +222,9 @@
 							<ol class="mt-2 flex flex-col gap-1.5 border-l-2 border-border pl-3">
 								{#if lane.expected}<li>{@render expected(lane)}</li>{/if}
 								{#each newestFirst(lane) as document (document.id)}
-									<li>{@render chip(document)}</li>
+									<li>{@render chip(lane, document)}</li>
 								{/each}
-								{#if lane.target}<li>{@render chip(lane.target, true)}</li>{/if}
+								{#if lane.target}<li>{@render chip(lane, lane.target, true)}</li>{/if}
 							</ol>
 						</li>
 					{/if}
@@ -296,10 +312,10 @@
 									{:else}
 										<div role="cell" class="flex min-w-0 flex-col gap-1 border-b border-l p-1.5">
 											{#if lane.target && monthOf(dayOf(lane.target)) === column.month}
-												{@render chip(lane.target, true)}
+												{@render chip(lane, lane.target, true)}
 											{/if}
 											{#each inMonth(lane, column.month) as document (document.id)}
-												{@render chip(document)}
+												{@render chip(lane, document)}
 											{/each}
 											{#if lane.expected && monthOf(lane.expected.next_date) === column.month}
 												{@render expected(lane)}

@@ -22,7 +22,7 @@
 
 <script lang="ts">
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
-	import ScanEye from '@lucide/svelte/icons/scan-eye';
+	import BeamTitle from '#lib/components/BeamTitle.svelte';
 	import { openBeam } from '#lib/beam.svelte.ts';
 	import Info from '@lucide/svelte/icons/info';
 	import { api } from '#lib/api/client.ts';
@@ -320,21 +320,15 @@
 						{#if neighbour.id}
 							{@const shown = neighbour.id}
 							<!-- The similar document opens in the Beam, paging through them all. -->
-							<button
-								type="button"
-								class="group inline-flex items-center gap-1.5 text-left whitespace-nowrap text-brand"
-								aria-label={m.beam_open_named({ title: neighbour.title })}
-								title={m.beam_open_named({ title: neighbour.title })}
-								onclick={() =>
+							<BeamTitle
+								title={neighbour.title}
+								onview={() =>
 									openBeam(
 										neighbours.flatMap((each) => (each.id ? [each.id] : [])),
 										shown,
 										m.tab_processing()
 									)}
-							>
-								<ScanEye class="size-4 shrink-0" aria-hidden="true" />
-								<span class="underline-offset-2 group-hover:underline">{neighbour.title}</span>
-							</button>
+							/>
 						{:else}
 							<span class="whitespace-nowrap">{neighbour.title}</span>
 						{/if}

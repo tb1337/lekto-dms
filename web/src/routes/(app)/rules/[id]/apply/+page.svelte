@@ -12,7 +12,7 @@
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
 	import LoadProblem from '#lib/components/LoadProblem.svelte';
 	import RuleEffects from '#lib/components/rules/RuleEffects.svelte';
-	import ScanEye from '@lucide/svelte/icons/scan-eye';
+	import BeamTitle from '#lib/components/BeamTitle.svelte';
 	import { openBeam } from '#lib/beam.svelte.ts';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -232,14 +232,22 @@
 				</p>
 			{/if}
 			{#if application.skipped.length > 0}
+				{@const skipped = application.skipped}
 				<div class="flex flex-col gap-1">
 					<SectionTitle size="card">{m.rule_apply_skipped()}</SectionTitle>
 					<ul class="flex flex-col gap-1 text-sm">
 						{#each application.skipped as skip (skip.document_id)}
 							<li>
-								<a href="{BASE}/documents/{skip.document_id}" class="font-medium hover:underline">
-									{titles.get(skip.document_id) ?? skip.document_id}
-								</a>
+								<BeamTitle
+									title={titles.get(skip.document_id) ?? skip.document_id}
+									class="max-w-full align-middle"
+									onview={() =>
+										openBeam(
+											skipped.map((each) => each.document_id),
+											skip.document_id,
+											m.rule_apply_skipped()
+										)}
+								/>
 								<span class="text-muted-foreground">
 									{reasonsText(skip.reasons, skip.reason)}
 								</span>
@@ -297,23 +305,17 @@
 						<div class="flex min-w-0 flex-1 flex-col gap-1.5 text-sm">
 							<span class="flex flex-wrap items-center gap-2">
 								<!-- The title opens the Beam: where the rule's text conditions hit. -->
-								<button
-									type="button"
-									class="group inline-flex min-w-0 items-center gap-1.5 text-left text-base font-medium"
-									aria-label={m.beam_open_named({ title: item.title })}
-									title={m.beam_open_named({ title: item.title })}
-									onclick={() =>
+								<BeamTitle
+									title={item.title}
+									class="text-base"
+									onview={() =>
 										openBeam(
 											items.map((entry) => entry.document_id),
 											item.document_id,
 											rule ? m.rule_apply_title({ name: rule.name }) : m.rule_apply_generic(),
 											{ source: { kind: 'rule', rule: id } }
 										)}
-								>
-									<ScanEye class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-									<span class="truncate underline-offset-2 group-hover:underline">{item.title}</span
-									>
-								</button>
+								/>
 								{#if conflict}<Badge variant="yellow">{m.rule_conflict()}</Badge>{/if}
 							</span>
 							<RuleEffects

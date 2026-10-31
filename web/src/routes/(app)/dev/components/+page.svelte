@@ -7,6 +7,7 @@
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { toast } from 'svelte-sonner';
+	import BeamTitle from '#lib/components/BeamTitle.svelte';
 	import Chip from '#lib/components/Chip.svelte';
 	import DateInput from '#lib/components/DateInput.svelte';
 	import EmptyNote from '#lib/components/EmptyNote.svelte';
@@ -60,6 +61,8 @@
 	const ALERTS = ['default', 'note', 'tip', 'warning', 'caution'] as const;
 	/** The toggle chip, named by its prop. */
 	const PRESSED = 'pressed';
+	// A value that stands for documents, as the cases of the holders' evaluation show it.
+	const VALUE = 'DE02 1203 0000 0000 2020 51';
 
 	let pressed = $state(true);
 	let checked = $state(true);
@@ -169,6 +172,14 @@
 				</Chip>
 			</div>
 		{/each}
+	</section>
+
+	<section class="flex flex-col gap-3" aria-labelledby="dev-beam">
+		<SectionTitle id="dev-beam">{m.dev_section_beam()}</SectionTitle>
+		<div class="flex max-w-md flex-col items-start gap-2">
+			<BeamTitle title={m.dev_sample_document()} onview={() => toast(m.dev_sample_document())} />
+			<BeamTitle title={VALUE} mono onview={() => toast(m.dev_sample_document())} />
+		</div>
 	</section>
 
 	<section class="flex max-w-sm flex-col gap-4" aria-labelledby="dev-fields">

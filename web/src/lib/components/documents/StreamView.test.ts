@@ -1,10 +1,17 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { goto } from '$app/navigation';
 import { apiQuery, NO_FILTERS } from '#lib/filters.ts';
 import { formatNumber } from '#lib/i18n.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { calls, fakeApi } from '#lib/testing/documents.ts';
 import StreamView from './StreamView.svelte';
+
+vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
+vi.mock('$app/state', () => ({
+	page: { state: {}, url: new URL('http://localhost/ui/documents') }
+}));
 
 const doc = (id: string, date: string, lane: string | null = 'green') => ({
 	id,
@@ -120,5 +127,31 @@ describe('StreamView', () => {
 		expect(within(table).getByRole('link', { name: /Abschlag c/ })).toBeTruthy();
 		expect(within(table).getByRole('link', { name: /Abschlag e/ })).toBeTruthy();
 		expect(within(table).getByRole('button', { name: m.stream_fewer() })).toBeTruthy();
+	});
+
+	it('shows a chip in the Beam, paging through its lane: a chip is a small card', async () => {
+		vi.stubGlobal(
+			'fetch',
+			fakeApi({
+				'GET /api/v1/documents/stream': () => ({
+					lanes: [
+						series([doc('a', '2026-07-15'), doc('b', '2026-08-15')], {
+							target: doc('v', '2026-06-01')
+						})
+					],
+					truncated: false
+				})
+			})
+		);
+		render(StreamView, { props: { query: apiQuery(NO_FILTERS), lookup: null } });
+		const table = await screen.findByRole('table', { name: m.stream_lanes() });
+		const chip = within(table).getByRole('link', { name: /Abschlag b/ });
+		expect(chip.getAttribute('aria-haspopup')).toBe('dialog');
+		chip.focus();
+		await userEvent.keyboard('{Enter}');
+		expect(vi.mocked(goto).mock.lastCall?.[1]).toMatchObject({
+			shallow: true,
+			state: { beam: { ids: ['a', 'b', 'v'], index: 1 } }
+		});
 	});
 });

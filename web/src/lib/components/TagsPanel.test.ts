@@ -137,12 +137,25 @@ describe('TagsPanel', () => {
 		expect(screen.getAllByRole('heading').map((heading) => heading.textContent?.trim())).toEqual([
 			m.master_topics()
 		]);
+		// A bar of the kinds, each with how many tags it holds.
 		const kinds = screen.getByRole('group', { name: m.tag_kinds_label() });
-		const pressed = within(kinds).getByRole('button', { pressed: true });
-		expect(pressed.textContent?.trim()).toBe(m.master_topics());
-		await fireEvent.click(within(kinds).getByRole('button', { name: m.master_contact_groups() }));
+		const kind = (name: string) =>
+			within(kinds).getByRole('button', { name: new RegExp(`^${name}`) });
+		expect(kind(m.master_topics()).getAttribute('aria-pressed')).toBe('true');
+		expect(
+			within(kinds)
+				.getAllByRole('button')
+				.map((button) => button.textContent?.replace(/\s+/g, ' ').trim())
+		).toEqual([
+			`${m.tag_kinds_all()} 6`,
+			`${m.master_document_tags()} 3`,
+			`${m.master_contact_groups()} 1`,
+			`${m.master_type_groups()} 1`,
+			`${m.master_topics()} 1`
+		]);
+		await fireEvent.click(kind(m.master_contact_groups()));
 		expect(nav.goto).toHaveBeenLastCalledWith('?tab=tags&kind=contact-groups', { reset: false });
-		await fireEvent.click(within(kinds).getByRole('button', { name: m.tag_kinds_all() }));
+		await fireEvent.click(kind(m.tag_kinds_all()));
 		expect(nav.goto).toHaveBeenLastCalledWith('?tab=tags', { reset: false });
 	});
 
@@ -215,6 +228,19 @@ describe('TagsPanel', () => {
 		expect(screen.queryByText('Paid')).toBeNull();
 		expect(screen.getAllByRole('heading').map((heading) => heading.textContent?.trim())).toEqual([
 			m.master_document_tags()
+		]);
+		// The counts are what the search finds, the tag above the match included.
+		const kinds = screen.getByRole('group', { name: m.tag_kinds_label() });
+		expect(
+			within(kinds)
+				.getAllByRole('button')
+				.map((button) => button.textContent?.replace(/\s+/g, ' ').trim())
+		).toEqual([
+			`${m.tag_kinds_all()} 2`,
+			`${m.master_document_tags()} 2`,
+			`${m.master_contact_groups()} 0`,
+			`${m.master_type_groups()} 0`,
+			`${m.master_topics()} 0`
 		]);
 	});
 

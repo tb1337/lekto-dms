@@ -143,6 +143,15 @@ export function viewerSources(document: Viewed, archive: boolean): string[] {
 }
 
 /** The document's place in the API; the id as a path segment, whatever it contains. */
+const SHORT_ID = /^[0-9a-f]{8,12}$/;
+
+/** The end of an id `id` is, as an assistant links a document by its short id (the last
+ * characters of the id), in lower case; null for a whole id or anything else. */
+export function shortIdOf(id: string): string | null {
+	const lower = id.toLowerCase();
+	return SHORT_ID.test(lower) ? lower : null;
+}
+
 export function documentApi(id: string): string {
 	return `${BASE_API}/documents/${encodeURIComponent(id)}`;
 }

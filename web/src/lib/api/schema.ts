@@ -21348,6 +21348,8 @@ export interface operations {
 				offset?: number;
 				/** @description Every user's documents instead of the caller's reach (admins). */
 				all_users?: boolean;
+				/** @description Documents by id: the whole id, or its end of at least 8 characters (a short id, as MCP names documents; an end several documents share finds each). Several: any of them. The list, its count and its facets take it; the search does not (the search index knows no ids). */
+				ids?: string[] | null;
 				contact_id?: string[] | null;
 				document_type_id?: string[] | null;
 				tag_id?: string[] | null;
@@ -21660,6 +21662,8 @@ export interface operations {
 			query?: {
 				/** @description Every user's documents instead of the caller's reach (admins). */
 				all_users?: boolean;
+				/** @description Documents by id: the whole id, or its end of at least 8 characters (a short id, as MCP names documents; an end several documents share finds each). Several: any of them. The list, its count and its facets take it; the search does not (the search index knows no ids). */
+				ids?: string[] | null;
 				contact_id?: string[] | null;
 				document_type_id?: string[] | null;
 				tag_id?: string[] | null;
@@ -21764,6 +21768,8 @@ export interface operations {
 			query?: {
 				/** @description Every user's documents instead of the caller's reach (admins). */
 				all_users?: boolean;
+				/** @description Documents by id: the whole id, or its end of at least 8 characters (a short id, as MCP names documents; an end several documents share finds each). Several: any of them. The list, its count and its facets take it; the search does not (the search index knows no ids). */
+				ids?: string[] | null;
 				contact_id?: string[] | null;
 				document_type_id?: string[] | null;
 				tag_id?: string[] | null;

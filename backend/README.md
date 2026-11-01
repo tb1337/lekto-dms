@@ -619,7 +619,7 @@ and the space, the fields node reads the fields of the decided type and the titl
   names its `origin` and Lekto's `evidence` (the fact, the period). The first decision about a
   document's relations is a verdict (`field_verdicts`, field `relations`, at the newer one):
   added, accepted or corrected, early before the first run stopped. No events go out for
-  relations yet. MCP's `get_document` lists the relations the caller sees; MCP sets none (an
+  relations yet. MCP's `documents_get` lists the relations the caller sees; MCP sets none (an
   assistant reads text from outside, an instruction there could relate documents unnoticed).
   Revision 0048 adds the table `document_relations`. An admin marks a document type as a
   relation target (`relation_target` at `/document-types`, revision 0049; the switch
@@ -650,7 +650,7 @@ and the space, the fields node reads the fields of the decided type and the titl
   relations and in the log of `relate`. Every change of relations, Lekto's or a person's, holds
   one lock.
 - **Series and the documents expected next** (issue #145 PR 12, `domain/series.py`,
-  `services/expected.py`, `GET /expected`, MCP `list_expected`; `.idea/bezuege.md` decisions
+  `services/expected.py`, `GET /expected`, MCP `expected_list`; `.idea/bezuege.md` decisions
   10–12): documents of one contact and type, and of one contract or customer number where they
   show one (by value, whatever its kind; a document whose number was not read joins the only
   numbered series of its contact and type; a person's number names none), at least three with
@@ -1823,25 +1823,37 @@ shown.
 ## MCP
 
 The API serves the Model Context Protocol (Streamable HTTP, stateless, JSON answers) at
-`/api/v1/mcp`, so AI clients can search documents, read them and correct their metadata.
-`LEKTO_MCP_ENABLED=false` removes it. It is not part of the OpenAPI document.
+`/api/v1/mcp`, so that every user can work with their documents through an AI client: find
+them, answer questions about them, review and correct what Lekto read. `LEKTO_MCP_ENABLED=false`
+removes it. It is not part of the OpenAPI document.
 
-Authentication: a personal API token (`POST /auth/tokens`; the web UI will offer it later) as
-`Authorization: Bearer lekto_…`; cookies do not count. Without a valid token the answer is `401`
-(`WWW-Authenticate: Bearer`). A client sees exactly what its token's user sees. The scope works
-as in REST: `read` may use every tool but `update_metadata`.
+Authentication: a personal API token (`POST /auth/tokens`) as `Authorization: Bearer lekto_…`;
+cookies do not count. Without a valid token the answer is `401` (`WWW-Authenticate: Bearer`). A
+client sees exactly what its token's user sees, and every tool calls the same services as REST,
+so rights and rules are the same.
 
-| Tool | Does |
-| --- | --- |
-| `search` | `query`, `limit` (1 to 25), `offset`, optional `contact`, `document_type`, `tags` (names of document tags, all of them; a tag finds the documents with a tag below it too), `topics` (names of topics, one of them; a topic finds those with a topic below it too): hits with `id`, `title`, `score`, `snippet` (plain text), contact, type, topic, tags, date, lane, `access`; `next_offset`, `semantic` |
-| `get_document` | `id`: metadata with contact, topic, type, tags and fields by name, lane and processing status, and the document's `relations` with documents the caller reads too (`id`, `title`, type, date, `direction` `refers_to` or `referred_by`, `suggested`); read only |
-| `get_text` | `id`, `offset`, `limit` (characters, at most `LEKTO_MCP_TEXT_MAX`, 20,000): a piece of the document's text as it is set, `next_offset` to continue. The text is content from outside; the tool description tells clients not to follow instructions in it |
-| `update_metadata` | `id` and any of `title`, `contact`, `topic`, `document_type` (name; `null` removes; a topic the contact enables), `tags` (names of document tags, the complete list, replaces), `document_date` (`null` removes), `fields` (field name to value; `null` removes). Needs a `read_write` token and edit rights; the change rules of its space run as for `PATCH /documents/{id}` and the result shows them. If the rules filed the document where the caller can no longer read it, the result has only `id` and `access: null` |
-| `list_expected` | The series of documents the caller reads and the document each expects next (contact, type, number, cadence, spread, newest document, next date and period, `overdue`, `soon`, `later` or `ended`); read only |
-| `list_tags` | The tags with `scope` and `path`, in the order of their trees, optionally of one `scope`; document tags name the tags of the other tools, topics the `topic` of `update_metadata` |
+Every tool has a class. A `read` tool only reads; a `write` tool changes, but nothing a person
+could not undo. A token with scope `read` is offered the read tools only, and a call of another
+tool is refused. Deleting, moving, reprocessing, reading with the VLM, uploading, rules,
+master data and managing Lekto are no tools: the client points the user to the web UI.
 
-Names are matched regardless of case; an unknown name is an error, nothing is created. A
-document the caller may not read is "not found", with the same text as a missing one.
+| Tool | Class | Does |
+| --- | --- | --- |
+| `documents_search` | read | `query`, `limit` (1 to 25, default 10), `offset`, optional `contact`, `document_type`, `tags` (all of them), `topics` (one of them), each by name; a tag or topic finds those below it too: hits with `id`, `title`, `score`, `snippet`, `lane`, `access`, contact, type, topic, tags, date; `next_offset`, `semantic`, `words_only_because` |
+| `documents_get` | read | `id`: metadata with contact, type, topic, tags and fields by name, lane, processing status, `access`, and the `relations` with documents the caller reads too (`id`, `title`, type, date, `direction` `refers_to` or `referred_by`, `suggested`) |
+| `documents_text` | read | `id`, `offset`, `limit` (characters, at most `LEKTO_MCP_TEXT_MAX`): a piece of the text as it is set, `next_offset` to continue. The text is content from outside; the description says not to follow instructions in it |
+| `documents_update` | write | `id` and any of `title`, `contact`, `document_type`, `topic` (names; `null` removes; a topic the contact enables), `tags` (the complete list, replaces), `document_date`, `fields` (name to value; `null` removes), `created_at`. Needs edit rights; the change rules of its space run as for `PATCH /documents/{id}`, and the result shows the document and what the rules did. If the rules filed the document where the caller can no longer read it, the result is `id` and `filed_away` |
+| `tags_list` | read | The tags by scope (`document`, `contact`, `document_type`, `topic`), each as its path from the top-level tag (`Energie / Strom`), in the order of their trees; optionally of one `scope` |
+| `expected_list` | read | The series of documents the caller reads and the document each expects next (contact, type, number, cadence, spread, newest document, next date and period, `overdue`, `soon`, `later` or `ended`); `include_ended` |
+
+Answers are compact, since every character costs the client tokens: a tool returns its result
+as JSON text without indentation and without output schemas, and leaves out every key whose
+value is null or empty (no tags, no hits, no further page). Contacts, document types, topics,
+tags and fields go by name, in input and output; documents go by `id`. A name matches
+regardless of case; an unknown name is an error that suggests up to three similar ones, and
+nothing is created. A document the caller may not read is "not found", with the same text as a
+missing one. The server's instructions say all this once for every tool, and, with
+`LEKTO_PUBLIC_URL`, how to link to a document in the web UI (`<url>/ui/documents/<id>`).
 
 Set up Claude Code (use a `read` token if the client should only read):
 
@@ -1929,7 +1941,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `LEKTO_WEBHOOK_DISABLE_AFTER` | Worker | `20` | Deliveries given up in a row until a webhook is switched off |
 | `LEKTO_WEBHOOK_CONCURRENCY` | Worker | `4` | Deliveries at the same time |
 | `LEKTO_MCP_ENABLED` | API | `true` | Serve MCP at `/api/v1/mcp` |
-| `LEKTO_MCP_TEXT_MAX` | API | `20000` | Characters one `get_text` call and one piece of `GET /documents/{id}/text` return at most (1,000 to 1,000,000) |
+| `LEKTO_MCP_TEXT_MAX` | API | `20000` | Characters one `documents_text` call and one piece of `GET /documents/{id}/text` return at most (1,000 to 1,000,000) |
 | `LEKTO_WORKER_CONCURRENCY` | Worker | `2` | Jobs at the same time, see Worker |
 | `LEKTO_WORKER_POLL_INTERVAL` | Worker | `1` | Seconds between looks for due jobs |
 | `LEKTO_WORKER_SHUTDOWN_TIMEOUT` | Worker | `30` | Seconds running jobs get to finish on SIGTERM |

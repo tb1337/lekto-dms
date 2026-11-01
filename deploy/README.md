@@ -116,7 +116,7 @@ container (`MEILI_MASTER_KEY`).
 | `LEKTO_UI_DIR` | `/opt/lekto/ui` | the web UI's files; unset it to serve the API only |
 | `LEKTO_WORKER_CONCURRENCY`, `LEKTO_WORKER_SHUTDOWN_TIMEOUT` | 2, 30 s | jobs at the same time (OCR shares the CPU cores among them); see [Stopping](#stopping) |
 | `LEKTO_WORKER_POLL_INTERVAL`, `LEKTO_EVENTS_POLL_INTERVAL` | 1 s, 1 s | how often the worker looks for jobs and both services for events while no signal reaches them; see [Idle](#idle) |
-| `LEKTO_MCP_ENABLED`, `LEKTO_MCP_TEXT_MAX` | `true`, 20000 | the MCP endpoint and the characters one `get_text` returns |
+| `LEKTO_MCP_ENABLED`, `LEKTO_MCP_TEXT_MAX` | `true`, 20000 | the MCP endpoint and the characters one `documents_text` returns |
 | `LEKTO_WEBHOOKS_PER_USER` | 20 | webhooks per user |
 | `LEKTO_WEBHOOK_TIMEOUT`, `_MAX_ATTEMPTS`, `_RETRY_DELAY` | 10 s, 10, 30 s | per attempt; attempts per event; first delay, doubling up to one hour |
 | `LEKTO_WEBHOOK_DISABLE_AFTER`, `_CONCURRENCY`, `_SECRET_GRACE` | 20, 4, 24 h | given-up deliveries in a row until a webhook is switched off; parallel deliveries; how long a renewed secret's predecessor still signs |

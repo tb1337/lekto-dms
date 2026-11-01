@@ -186,7 +186,7 @@ class Settings(BaseSettings):
     webhook_concurrency: Annotated[int, Field(ge=1, le=64)] = 4
 
     # MCP: the endpoint `/api/v1/mcp` of the API (tools for AI clients, API tokens as bearer),
-    # and the most characters one `get_text` call returns.
+    # and the most characters one `documents_text` call returns.
     mcp_enabled: bool = True
     mcp_text_max: Annotated[int, Field(ge=1000, le=1_000_000)] = 20_000
 

@@ -1,0 +1,107 @@
+[
+  {
+    "id": "t01",
+    "kind": "sum",
+    "question": "Wie viel habe ich 2025 laut Feld Betrag an Umzüge Express Nord GmbH gezahlt? Nenne die Summe.",
+    "expect": [
+      "5259.80",
+      "5259,80",
+      "5.259,80",
+      "5,259.80"
+    ]
+  },
+  {
+    "id": "t02",
+    "kind": "sum",
+    "question": "Wie viel habe ich 2025 laut Feld Betrag an FernNetz Telekommunikation GmbH gezahlt? Nenne die Summe.",
+    "expect": [
+      "693.61",
+      "693,61",
+      "693,61",
+      "693.61"
+    ]
+  },
+  {
+    "id": "t03",
+    "kind": "count",
+    "question": "Wie viele Dokumente vom Typ Rechnung sind von 2025? Nur die Zahl.",
+    "expect": [
+      "30"
+    ]
+  },
+  {
+    "id": "t04",
+    "kind": "count",
+    "question": "Wie viele Dokumente vom Typ Kassenbon sind von 2026? Nur die Zahl.",
+    "expect": [
+      "11"
+    ]
+  },
+  {
+    "id": "t05",
+    "kind": "group",
+    "question": "Von welchem Kontakt habe ich die meisten Dokumente?",
+    "expect": [
+      "Brückner Maschinenbau GmbH"
+    ]
+  },
+  {
+    "id": "t06",
+    "kind": "count",
+    "question": "Wie viele Dokumente habe ich von Brückner Maschinenbau GmbH? Nur die Zahl.",
+    "expect": [
+      "47"
+    ]
+  },
+  {
+    "id": "t07",
+    "kind": "find",
+    "question": "Welches Dokument hat die Rechnungsnummer R-2024-0277? Nenne seinen Titel.",
+    "expect": [
+      "Jahresabrechnung Strom 2023/2024"
+    ]
+  },
+  {
+    "id": "t08",
+    "kind": "latest",
+    "question": "Wie heißt meine neueste Lohnabrechnung? Nenne ihren Titel.",
+    "expect": [
+      "Gehaltsabrechnung September 2026"
+    ]
+  },
+  {
+    "id": "t09",
+    "kind": "latest",
+    "question": "Wie war der letzte Kontostand auf den Kontoauszügen der Sparkasse Musterstadt?",
+    "expect": [
+      "54406.19",
+      "54406,19",
+      "54.406,19",
+      "54,406.19"
+    ]
+  },
+  {
+    "id": "t10",
+    "kind": "field",
+    "question": "Welche Kundennummer habe ich bei den Stadtwerken Musterstadt?",
+    "expect": [
+      "2004 7718"
+    ]
+  },
+  {
+    "id": "t11",
+    "kind": "group",
+    "question": "In welchem Jahr habe ich die meisten Kontoauszüge? Nur das Jahr.",
+    "expect": [
+      "2025"
+    ]
+  },
+  {
+    "id": "t12",
+    "kind": "group",
+    "question": "Welcher Dokumenttyp kommt am häufigsten vor?",
+    "expect": [
+      "Rechnung"
+    ]
+  }
+]

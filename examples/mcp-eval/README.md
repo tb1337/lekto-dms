@@ -22,7 +22,7 @@ root; the image of a release, or one built from the branch to try):
 
 ```sh
 docker build --target runtime -t lekto:local .
-openssl rand -hex 32 > /tmp/lekto-eval-key
+openssl rand -base64 32 > /tmp/lekto-eval-key
 docker run -d --name lekto-eval -p 127.0.0.1:8010:8000 \
   -e LEKTO_SECRET_KEY_FILE=/run/secrets/key -v /tmp/lekto-eval-key:/run/secrets/key:ro \
   -e LEKTO_ADMIN_USERNAME=admin -e LEKTO_ADMIN_PASSWORD=eval-only-password \
@@ -38,9 +38,18 @@ manifest's metadata (channel `migration`); the text is read by OCR as always.
 
 ```sh
 cd examples/mcp-eval
-python seed.py --url http://localhost:8010 --token lekto_...   # then wait until the inbox shows nothing in processing
-python run.py --url http://localhost:8010 --token lekto_...    # --model sonnet, --only t01,t07
+python seed.py --url http://localhost:8010 --token lekto_... --documents 40   # a sample; all without
+# wait until the inbox shows nothing in processing, then read the facts: documents taken over
+# from another system keep none until then (the facts signal leaves them to the source system)
+docker exec lekto-eval lekto-run lekto read-facts
+python tasks.py --documents 40 --out tasks-40.json
+python run.py --url http://localhost:8010 --token lekto_... --tasks tasks-40.json --model sonnet
 ```
+
+A document whose pages hold no text fails reading and keeps none of its metadata; leave it out of
+the expected answers (`tasks.py` reckons from the manifest). The container has no search index,
+so `documents_search` answers "search is not available": the assistant finds by filters,
+counts and identifiers instead.
 
 `run.py` prints one line per task (right or not, the turns, the tokens) and the total;
 `results.json` keeps the answers. Remove the instance with

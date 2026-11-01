@@ -43,7 +43,13 @@ READS = {
     "documents_page",
     "documents_log",
     "inbox_list",
+    "contacts_list",
+    "contacts_get",
+    "document_types_list",
+    "fields_list",
     "tags_list",
+    "lenses_list",
+    "spaces_list",
     "expected_list",
 }
 WRITES = {"documents_update", "documents_retry", "inbox_confirm", "inbox_mark_seen", "facts_decide"}
@@ -487,6 +493,53 @@ async def test_facts_decide_adds_and_rejects_a_fact(api: Api, scene: Scene) -> N
         value="R-1001",
     )
     assert error(reader)
+
+
+async def test_master_data_are_read_by_name(api: Api, scene: Scene) -> None:
+    owner, admin = scene.headers["owner"], await api.admin()
+    master = api.services.master_data
+    invoice = await master.create_document_type(admin.id, "Rechnung")
+    await master.create_field(admin.id, "Betrag", FieldType.AMOUNT, document_type_ids=[invoice.id])
+    await master.create_field(admin.id, "Notiz", FieldType.TEXT)
+    data(await call(api, owner, "documents_update", id=scene.green, contact="ACME"))
+    data(await call(api, owner, "documents_update", id=scene.green, document_type="Rechnung"))
+
+    contacts = data(await call(api, owner, "contacts_list"))["contacts"]
+    assert {"name": "ACME", "documents": 1} in contacts
+    assert data(await call(api, owner, "contacts_list", query="acm"))["contacts"] == [
+        {"name": "ACME", "documents": 1}
+    ]
+    assert data(await call(api, owner, "contacts_get", name="acme")) == {
+        "name": "ACME",
+        "documents": 1,
+    }
+    assert "no contact named" in error(await call(api, owner, "contacts_get", name="Acne"))
+    (rechnung,) = data(await call(api, owner, "document_types_list"))["document_types"]
+    assert rechnung == {"name": "Rechnung", "fields": ["Betrag", "Notiz"], "documents": 1}
+    fields = data(await call(api, owner, "fields_list"))["fields"]
+    assert fields == [
+        {"name": "Betrag", "type": "amount", "document_types": ["Rechnung"]},
+        {"name": "Notiz", "type": "text"},
+    ]
+    # The stranger reads the master data, but counts none of the owner's documents.
+    theirs = data(await call(api, scene.headers["stranger"], "contacts_get", name="ACME"))
+    assert theirs == {"name": "ACME", "documents": 0}
+
+
+async def test_spaces_and_lenses_are_read_by_name(api: Api, scene: Scene) -> None:
+    owner = scene.headers["owner"]
+    spaces = data(await call(api, owner, "spaces_list"))["spaces"]
+    shared = next(space for space in spaces if space["name"] == "Shared")
+    assert shared["role"] == "edit"
+    assert {"name": "reader", "role": "read"} in shared["members"]
+    personal = [space for space in spaces if space.get("personal")]
+    assert [space["name"] for space in personal] == ["owner"]
+    document = data(await call(api, owner, "documents_get", id=scene.green))
+    assert document["space"] == "Shared" and "space_id" not in document
+
+    await post(api, "/lenses", {"name": "Neues", "query": "Rechnung"}, owner)
+    lenses = data(await call(api, owner, "lenses_list"))["lenses"]
+    assert lenses == [{"name": "Neues", "query": "Rechnung"}]
 
 
 async def test_a_document_one_may_not_read_is_just_not_found(api: Api, scene: Scene) -> None:

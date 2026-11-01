@@ -8,6 +8,7 @@ from lekto.adapters.inbound.mcp.tools.facts import add_fact_tools
 from lekto.adapters.inbound.mcp.tools.inbox import add_inbox_tools
 from lekto.adapters.inbound.mcp.tools.listing import add_listing_tools
 from lekto.adapters.inbound.mcp.tools.master_data import add_master_data_tools
+from lekto.adapters.inbound.mcp.tools.spaces import add_space_tools
 
 
 def add_tools(tools: Tools, context: ApiContext) -> None:
@@ -16,4 +17,5 @@ def add_tools(tools: Tools, context: ApiContext) -> None:
     add_inbox_tools(tools, context)
     add_fact_tools(tools, context)
     add_master_data_tools(tools, context)
+    add_space_tools(tools, context)
     add_expected_tools(tools, context)

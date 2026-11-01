@@ -4,7 +4,7 @@ unknown one is an error that names similar ones, so the client need not list the
 
 import difflib
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 
 from lekto.adapters.inbound.context import ApiContext
@@ -30,16 +30,23 @@ class Names:
     tags: dict[UUID, str]
     fields: dict[FieldId, FieldDefinition]
     topics: dict[UUID, str]
+    groups: dict[UUID, str] = field(default_factory=dict)  # of contacts and of types
 
     @classmethod
     async def load(cls, context: ApiContext, user: UserId) -> "Names":
         master = context.master_data
+        tags = await master.list_tags(user)
+
+        def of(*scopes: TagScope) -> dict[UUID, str]:
+            return {tag.id: tag.name for tag in tags if tag.scope in scopes}
+
         return cls(
             contacts={c.id: c.name for c in await master.list_contacts(user)},
             document_types={t.id: t.name for t in await master.list_document_types(user)},
-            tags={t.id: t.name for t in await master.list_tags(user, TagScope.DOCUMENT)},
+            tags=of(TagScope.DOCUMENT),
             fields={a.id: a for a in await master.list_fields(user)},
-            topics={t.id: t.name for t in await master.list_tags(user, TagScope.TOPIC)},
+            topics=of(TagScope.TOPIC),
+            groups=of(TagScope.CONTACT, TagScope.DOCUMENT_TYPE),
         )
 
     def contact(self, id: UUID | None) -> str | None:

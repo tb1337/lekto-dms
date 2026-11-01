@@ -10,7 +10,7 @@ from contextlib import suppress
 from dataclasses import replace
 
 from lekto.core.domain.errors import ValidationError
-from lekto.core.domain.evidence import COLUMN_GAP, normalise
+from lekto.core.domain.evidence import COLUMN_GAP, LINE_BREAK, normalise
 from lekto.core.domain.identifiers.base import Candidate, Key
 from lekto.core.domain.identifiers.registry import NAMING_KINDS, OWN_KINDS, TYPES
 
@@ -20,14 +20,15 @@ it stands in."""
 
 
 def candidates_in(text: str) -> Iterator[Candidate]:
-    """What the patterns of every kind find in `text`, each value up to the end of its column: a
-    statement's line "Kd-Nr. 40012345" is no customer number "4001234586" with the amount
-    "-86,00" of the next column."""
+    """What the patterns of every kind find in `text`, each value up to the end of its column
+    and of its line: a statement's line "Kd-Nr. 40012345" is no customer number "4001234586"
+    with the amount "-86,00" of the next column, and its "Mandatsref. 40012345-01" no mandate
+    reference with the date "17.03.25" that begins the next line."""
     columned = normalise(text, columns=True)
-    normalised = columned.replace(COLUMN_GAP, " ")
+    normalised = columned.replace(COLUMN_GAP, " ").replace(LINE_BREAK, " ")
     for item in TYPES.values():
         for candidate in item.find(normalised):
-            yield _in_its_column(candidate, columned)
+            yield _in_its_line(_in_its_column(candidate, columned), columned)
 
 
 def _in_its_column(candidate: Candidate, columned: str) -> Candidate:
@@ -40,6 +41,24 @@ def _in_its_column(candidate: Candidate, columned: str) -> Candidate:
     if gap == -1:
         return candidate
     return replace(candidate, raw=candidate.raw[: gap - start], span=(start, gap))
+
+
+def _in_its_line(candidate: Candidate, columned: str) -> Candidate:
+    """`candidate` up to the end of the line it begins on, if what stands there is a value of
+    its kind by itself; a value whose first line is none stays whole (an IBAN broken in running
+    text)."""
+    if candidate.span is None:
+        return candidate
+    start, end = candidate.span
+    cut = columned.find(LINE_BREAK, start, end)
+    if cut == -1:
+        return candidate
+    raw = candidate.raw[: cut - start]
+    try:
+        TYPES[candidate.kind].normalise(raw)
+    except ValidationError:
+        return candidate
+    return replace(candidate, raw=raw, span=(start, cut))
 
 
 def identifiers_in(text: str) -> set[Key]:

@@ -413,6 +413,9 @@ read-facts` after it, then `lekto relate`, and the worker reads the documents fr
 The same update renamed `LEKTO_STEP_MAX_ATTEMPTS` and `LEKTO_STEP_RETRY_DELAY` to
 `LEKTO_NODE_MAX_ATTEMPTS` and `LEKTO_NODE_RETRY_DELAY`; a container with an old name refuses
 to start and says so.
+The update that ends a value read for an identifier also at the end of its line (a mandate
+reference no longer runs on into the date of the next booking) asks the same: `lekto
+read-facts`, then `lekto relate`.
 The update to 0.3.0 renamed drawers to spaces in the API (`/api/v1/spaces`, `space_id`), in
 rules and in templates (`{{ space }}`); it needs no `reindex`. What to do after it is in
 [backend/README.md](../backend/README.md) ("After the update to 0.3").

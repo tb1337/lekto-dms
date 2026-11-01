@@ -168,6 +168,20 @@ def test_a_number_ends_with_its_column() -> None:
     assert identifiers_in("Kundennummer: DE 4711 0815") == {(CUSTOMER, "DE47110815")}
 
 
+def test_a_number_ends_with_its_line() -> None:
+    # The next line begins with digits: a statement's next booking, a form's next numbered line.
+    statement = "Lastschrift FernNetz\nMandatsref. 40012345-01\n17.03.25 17.03.25 Kartenzahlung"
+    assert identifiers_in(statement) == {(IdentifierKind.MANDATE_REFERENCE, "4001234501")}
+    certificate = "Steuernummer 21/150/04711\n3. Bruttoarbeitslohn 62.180,00"
+    assert identifiers_in(certificate) == {(IdentifierKind.TAX_NUMBER, "2115004711")}
+    printout = "RECHNUNGSNR.  : R-2024-0277\n12347 MUSTERSTADT"
+    assert identifiers_in(printout) == {(IdentifierKind.INVOICE_NUMBER, "R20240277")}
+    # The label at the end of one line, its value on the next.
+    assert identifiers_in("Kundennummer:\n40012345") == {(CUSTOMER, "40012345")}
+    # An IBAN broken in running text stays whole: its first line alone is none.
+    assert identifiers_in("auf unser Konto DE89 3704 0044\n0532 0130 00.") == {(IBAN, THEIR_IBAN)}
+
+
 def test_no_personnel_number_without_label_or_value() -> None:
     assert identifiers_in("Supers Nr 4711, Nummer 12345") == set()
     assert identifiers_in("Personalnummer: siehe oben; Personalnummer 12") == set()

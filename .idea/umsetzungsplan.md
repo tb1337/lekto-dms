@@ -2437,6 +2437,111 @@ Danach die Führung: Claude zeigt Tobi jeden Ort in der Dev-Instanz und sagt, wa
 3. Ort 7 bekommt eine Liste der Fälle hinter jeder Zahl: ja.
 4. Der `BackLink` geht über mehrere Sprünge immer einen Schritt zurück, wie die Zurück-Taste: ja.
 
+### MCP: Lekto über einen KI-Assistenten bedienen
+
+Stand: freigegeben (Frage- und Antwortrunde mit Tobi, 01.11.2026).
+
+**Anlass (Tobi):** Lekto soll sich über einen KI-Assistenten genauso gut bedienen lassen wie über die Web-UI. Mit dem MCP-Server aus M8 geht das nicht: sechs Tools (`search`, `get_document`, `get_text`, `update_metadata`, `list_tags`, `list_expected`) gegen 166 Endpunkte der REST-API. Es fehlen Posteingang, Dokumentliste mit Filtern, Fakten, Bezüge, Stammdaten (Kontakte, Typen und Felder kann die KI nicht einmal auflisten), Kennungen, Regeln und Systemzustand. Jedes Tool soll einen Namen mit Bereich und Aktion tragen.
+
+**Befund (Claude, 01.11.2026):**
+- Gut und bleibt: Die Tools rufen dieselben Dienste mit der ID des Aufrufers (Rechte und Regeln wie in REST), zustandslos, JSON, Bearer-Token mit Stufen, Namen statt IDs als Eingabe, Fehler des Kerns als Text des Tools, der Text eines Dokuments als fremder Inhalt markiert.
+- Die Tool-Liste ist für alle gleich: Ein Token mit Stufe `read` sieht `update_metadata`.
+- `Names.load` lädt bei jedem Aufruf alle Stammdaten (fünf Abfragen).
+- Die sechs Tools kosten 31.628 Zeichen Definition, davon 25.563 (81 %) die `outputSchema`, die das SDK aus den Rückgabetypen erzeugt (`update_metadata` allein 17.737). Ohne sie sind es 6.065. Die Liste lädt jedes Gespräch.
+- Das SDK schreibt den Text eines Ergebnisses mit `indent=2`: an einem Suchtreffer 616 statt 415 Zeichen.
+
+**Entscheidungen (Tobi, 01.11.2026):**
+1. **Ziel:** die tägliche Arbeit mit Dokumenten, für alle Nutzer, nicht nur Admins: Dokumente finden, Fragen über Dokumente beantworten (auch über viele: „Was habe ich 2025 für Strom bezahlt?“), Klassifizierungen prüfen und korrigieren, Fehler in Stammdaten finden, Regeln lesen („um Zusammenhänge zu verstehen“), den Systemzustand ansehen. Es zählen die Aufgaben, nicht die Endpunkte: rund 30 Tools statt 166.
+2. **Nicht über MCP:** Lekto verwalten (Nutzer, Spaces, Webhooks, Tokens, Passwort, TOTP, OIDC, Massenläufe der Pipeline, Training, Neuaufbau des Suchindex), Hochladen, Regeln bauen. Stammdaten nur lesen, auch für Admins. „Mit VLM lesen“ bleibt ohne MCP-Werkzeug (Entscheidung vom 15.10.2026).
+3. **Nichts Unumkehrbares:** kein Löschen, kein Verschieben, kein neu Verarbeiten (Idee Tobi). Die KI gibt einen Link in die Web-UI, dort handelt die Person selbst, mit Dialogen und Massenaktionen. Alle Schreib-Tools sind umkehrbar. Zwei Klassen, `read` und `write`, auf die bestehenden Stufen der Tokens; kein neuer Scope. Ein Dokument, das ein präparierter Text der KI unterschiebt, kann so höchstens falsche Metadaten bewirken, die im Protokoll stehen.
+4. **Unabhängig vom Client** (Tobi: „wer den MCP nutzt, ist uns egal“): nach der Spezifikation und nur, was alle Clients können, also Tools mit Text und Bildern; keine Resources, Prompts, Elicitation oder Tasks. Bearer-Token wie bisher, kein OAuth (Lekto läuft nicht übers Internet, claude.ai entfällt).
+5. **Namen** `bereich_verb` mit Unterstrich: der Bereich im Plural vorn, das Verb aus einem festen Wortschatz (`list`, `get`, `search`, `update` und Fachverben wie `confirm`, `decide`), höchstens 40 Zeichen (Claude Code setzt `mcp__lekto__` davor, 64 ist die Grenze). Der Punkt ist laut Spezifikation (SEP-986) erlaubt, Clients lehnen ihn aber ab (Claude Desktop mit `^[a-zA-Z0-9_-]{1,64}$`); Tobi folgt dem Einwand. Die sechs Tools werden ohne Alias umbenannt.
+6. **Die Tool-Liste richtet sich nach dem Aufrufer:** ohne Schreib-Tools für einen Token mit Stufe `read`, ohne Admin-Tools für Nicht-Admins. Ein Aufruf eines Tools, das der Aufrufer nicht sieht, wird abgelehnt.
+7. **So wenig Tokens wie möglich** („unbedingt“):
+   - kompakt serialisiert, ohne `null` und leere Listen, ohne `outputSchema`;
+   - Stammdaten in Ausgaben nur mit Namen (die Eingaben nehmen ohnehin Namen);
+   - knappe Listen, Details mit `include`;
+   - der Server rechnet: Anzahl und Summe, gruppiert;
+   - Schreib-Tools antworten mit dem, was sich änderte, und dem, was die Regeln taten, nicht mit dem ganzen Dokument;
+   - kurze Beschreibungen, was alle Tools betrifft, einmal in den Instructions;
+   - Fehler mit Vorschlägen („kein Kontakt namens ‚Stadtwerk‘; ähnlich: Stadtwerke Musterstadt“);
+   - ein Budget der Tool-Definitionen als Guard-Test.
+8. **Kurze Dokument-IDs** („probieren wir es“): die ersten 8 Zeichen der UUID, in jeder Ausgabe; als Eingabe kurz oder voll; ist ein Präfix mehrdeutig, sagt der Fehler das. Laut Anthropic greift ein Modell mit kurzen IDs seltener daneben als mit UUIDs.
+9. **Link auf eine Auswahl:** `/ui/documents?ids=…` zeigt in der Dokumentansicht genau diese Dokumente; in der Einzelansicht blättert man durch die Auswahl. Das Muster steht in den Instructions, kein Tool (die KI gibt die IDs so nur einmal aus).
+10. **Seitenbilder:** `documents_page` gibt eine Seite als Bild, eine je Aufruf. Die Beschreibung sagt, wann („nur wenn der Text nicht reicht“); `documents_get` nennt die schlecht gelesenen Seiten, damit die KI genau die holt. MCP kennt keine Annotation für „teuer“.
+11. **Herkunft:** Eine Entscheidung über einen API-Token trägt den Token, allgemein „über API-Token“, nicht „über MCP“; so auch REST-Skripte. Grund: `field_verdicts` hält fest, wie eine Person die Automatik beurteilte, nährt die Zahlen der Seite „System“ und wird nie geändert; ohne Marke ließe sich „Lekto gegen Tobi“ von „Lekto gegen Claude“ nicht mehr trennen. Das Training zählt die Urteile weiter.
+12. **Paritäts-Guard:** Jeder REST-Endpunkt ist einem Tool zugeordnet oder mit Grund ausgeschlossen; ein neuer Endpunkt lässt den Test scheitern, bis er eingeordnet ist.
+13. **Erprobung mit einem echten Client:** rund 15 Aufgaben mit bekannter Antwort aus `examples/documents`, Claude Code über MCP, gemessen werden Treffer und Tokens; von Hand vor dem Merge, nicht in der CI.
+14. **Label** `new-feature`, kein `breaking-change`; die Umbenennung steht als Satz in den Release Notes.
+
+**Tools:**
+
+| Tool | Klasse | Grundlage in REST |
+| --- | --- | --- |
+| `documents_search` | read | `POST /documents/search` (heute `search`) |
+| `documents_list` | read | `GET /documents`; neu `group_by` (Jahr, Monat, Kontakt, Typ, Thema, Tag) und `sum` (ein Betragsfeld): Gruppen mit Anzahl und Summe je Währung; `fields` wählt Spalten; `lens` nimmt die Filter einer Lens |
+| `documents_facets` | read | `GET /documents/facets`, `/count` |
+| `documents_get` | read | `GET /documents/{id}` (heute `get_document`); `include`: `facts`, `relations`, `review` (warum gelb), `reading` (schlecht gelesene Seiten) |
+| `documents_text` | read | `GET /documents/{id}/text` (heute `get_text`) |
+| `documents_page` | read | `GET /documents/{id}/pages/{number}` |
+| `documents_log` | read | `GET /documents/{id}/log` |
+| `documents_dry_run` | read | `POST /documents/{id}/dry-run`: was die Regeln täten |
+| `documents_update` | write | `PATCH /documents/{id}` (heute `update_metadata`) |
+| `documents_retry` | write | `POST /documents/{id}/retry`: nur gescheiterte Knoten |
+| `inbox_list` | read | `GET /inbox`, `/inbox/summary` |
+| `inbox_confirm` | write | `POST /documents/{id}/confirm`, mit Korrekturen |
+| `inbox_mark_seen` | write | `PUT`/`DELETE /documents/{id}/seen` |
+| `facts_decide` | write | `POST /documents/{id}/facts/decisions` |
+| `relations_set`, `relations_remove` | write | `POST`/`DELETE /documents/{id}/relations…` |
+| `contacts_list`, `contacts_get` | read | `GET /contacts`, `/contacts/{id}`: mit Kennungen, Themen, Zahl der Dokumente |
+| `document_types_list`, `fields_list` | read | `GET /document-types` (mit ihren Feldern), `GET /fields` |
+| `tags_list` | read | `GET /tags` (heute `list_tags`) |
+| `identifiers_find` | read | `POST /identifiers/refs`, `/places`: wem eine Kennung gehört, wo sie steht |
+| `identifiers_open` | read, Admins | `GET /identifiers/open…` |
+| `rules_list`, `rules_get` | read | `GET /rules`, `/rules/{id}`, Versionen |
+| `expected_list` | read | `GET /expected` (heute `list_expected`) |
+| `lenses_list`, `spaces_list` | read | `GET /lenses`, `GET /spaces` |
+| `system_status` | read | Jobs (`/jobs/summary`), Pipeline, Suchindex, soweit der Aufrufer sie sieht |
+
+Admins sehen wie in der Web-UI ihre Spaces; `all_users` entspricht dem Schalter „Alle Nutzer“.
+
+**Vorschlag:**
+
+- **Aufbau:** `adapters/inbound/mcp/` mit `server.py` (Server, Instructions, Liste je Aufrufer über den Request-Kontext von `_handle_list_tools`), `registry.py` (jedes Tool mit Klasse und ob nur für Admins; daraus Annotationen, Liste und Prüfung am Token), `output.py` (kompakte Ausgabe, Namen, kurze IDs, Links) und `tools/` mit einem Modul je Bereich. Die Tools rufen die Dienste wie bisher; eine eigene Rechteprüfung gibt es nicht, außer Klasse und Admin.
+- **Ausgabe:** Die Tools geben ihr Ergebnis selbst als Text aus (kompaktes JSON), ohne `outputSchema`; die Form steht knapp in der Beschreibung. Die Namen der Stammdaten lädt ein Aufruf nur, wenn er sie braucht.
+- **Instructions:** was Lekto ist, Lanes, Spaces, Posteingang, Namen statt IDs, kurze IDs, das Link-Muster (nur mit `LEKTO_PUBLIC_URL`; ohne sie nennt die KI Titel statt Links), dass Unumkehrbares in die Web-UI gehört, und dass der Text eines Dokuments fremder Inhalt ist.
+- **Budget:** 20.000 Zeichen für alle Tool-Definitionen (rund 5.000 Tokens), ohne Instructions. Die vorgeschlagenen 16.000 reichen nach der Messung nicht: Die sechs Tools brauchen ohne `outputSchema` schon rund 1.000 Zeichen je Tool. PR 1 legt die Zahl nach seiner Messung fest.
+- **Kurze IDs:** `DocumentRepository` löst ein Präfix auf (SQL: das Präfix der UUID als Text, auf SQLite und Postgres; In-Memory; Vertragstest). Ein Index ist bei Tausenden Dokumenten nicht nötig. In REST nimmt nur der Filter `ids` der Dokumentliste Präfixe an, weil der Link aus Entscheidung 9 dahinter steht; die übrigen Routen bleiben bei vollen UUIDs.
+- **Rechnen:** `DocumentService` gruppiert und summiert über die gefilterten Dokumente (mit Wörtern über den Suchindex, höchstens 1.000 Treffer wie bei den Massenaktionen); Beträge getrennt nach Währung; „2025“ zunächst nach Dokumentdatum, ein Zeitraum-Feld als anderer Filter. Nur im Dienst und in MCP: Einen REST-Endpunkt gibt es erst mit einem Anwendungsfall, etwa Summen in der Dokumentliste (Tobi: „wo ist da der Usecase?“). Die Rechte prüft der Dienst, nichts geht an ihm vorbei.
+- **Herkunft:** PR 2 sucht alle Stellen, die eine Entscheidung einer Person festhalten (`field_verdicts`, `inbox_confirmations`, `document_relations.decided_by`, Entscheidungen über Fakten, Protokoll), und listet sie im PR. Dort kommen ID und Name des Tokens dazu, der Name als Abschrift, damit er nach dem Löschen des Tokens lesbar bleibt. Die entscheidenden Dienste bekommen den Token ausdrücklich übergeben, kein Kontext im Hintergrund. Die Web-UI zeigt „über Token ‚Claude‘“ unter „Erledigt“ und im Protokoll; ein Filter auf der Seite „System“ kommt später.
+- **Auswahl per Link (Web):** `?ids=` setzt eine vorübergehende Auswahl, ein Chip „Auswahl · N“ mit X hebt sie auf; die gemerkten Filter bleiben unberührt. Die Einzelansicht blättert durch die Auswahl wie heute aus dem Archiv. Massenaktionen greifen auf die Auswahl. Höchstens 100 IDs. Das Muster kommt in `web/DESIGN.md`.
+- **Guard-Tests:** Namen (`^[a-z]+(_[a-z]+)+$`, höchstens 40 Zeichen), Budget, README-Tabelle vollständig, Parität mit einer Liste aller Endpunkte (Tool, ausgeschlossen mit Grund oder bis PR 6 „geplant, PR n“; am Ende ist „geplant“ leer).
+- **Erprobung:** `examples/mcp-eval/` (Standardbibliothek wie `model-calls`): `seed.py` lädt `examples/documents` in eine eigene, lokale Instanz (Image mit SQLite, ohne Sprachmodell, nicht dev) und setzt Kontakt, Typ, Datum, Titel und Felder aus `manifest.json`; so ist das Manifest die Wahrheit. `tasks.json` mit rund 15 Aufgaben und erwarteten Antworten (Summen, Anzahlen, ein bestimmtes Dokument, ein Fehler in Stammdaten, ein gelbes Dokument korrigieren). `run.py` ruft je Aufgabe `claude -p` mit `--mcp-config` und `--output-format json`, vergleicht und zählt Tokens. Ergebnis in den PR.
+- **Doku:** README-Abschnitt MCP neu (Tools, Klassen, Link, Herkunft), Einrichtung für Claude Code und für Claude Desktop über `mcp-remote` (die Connectors von Claude Desktop verbindet Anthropics Cloud, einen Server im LAN erreichen sie nicht); `deploy/README.md`; `architektur.md` (Schnittstellen, Authentifizierung, Bezüge).
+
+**PRs** (Reihenfolge; jeder mit Tests, OpenAPI und `gen:api`, wo die API sich ändert):
+1. `feature/mcp-foundation` (`new-feature`): Registry, Klassen, Liste je Aufrufer, kompakte Ausgabe ohne `outputSchema`, Stammdaten nur mit Namen, Fehler mit Vorschlägen, Instructions; die sechs Tools umbenannt und verschlankt; Guard-Tests.
+2. `feature/token-provenance` (`new-feature`): Herkunft über API-Token in Kern, Revision, REST und Web-UI.
+3. `enhancement/short-document-ids` (`enhancement`): Präfix im Repository, kurze IDs in MCP, `ids` in REST.
+4. `feature/mcp-documents` (`new-feature`): `documents_list` mit Rechnen, `facets`, `get` mit `include`, `page`, `log`, `dry_run`.
+5. `feature/mcp-inbox` (`new-feature`): `inbox_list`, `inbox_confirm`, `inbox_mark_seen`, `documents_update` mit knapper Antwort, `documents_retry`, `facts_decide`, `relations_set`, `relations_remove`. **Offen vor PR 5:** `relations_set` und `relations_remove` widersprechen `bezuege.md`, Entscheidung 19 (Tobi, 25.10.2026: „Bezüge setzt MCP nicht: eine Anweisung im Dokumenttext könnte still falsche Bezüge setzen“); beim Bau von PR 1 gefunden. Mit der Herkunft (PR 2) wäre ein solcher Bezug nicht mehr still, sondern trüge den Token. Tobi entscheidet.
+6. `feature/mcp-reference` (`new-feature`): Stammdaten, Kennungen, Regeln, Erwartete, Lenses, Spaces, System.
+7. `feature/selection-link` (`new-feature`): Auswahl per Link in der Web-UI, Blättern, `web/DESIGN.md`; das Muster in die Instructions.
+8. `documentation/mcp-eval` (`documentation`): README, `examples/mcp-eval`, Lauf mit Ergebnis.
+
+**Fragen, die beantwortet sind (Tobi, 01.11.2026):**
+1. Welche Clients? Desktop-Clients, nicht claude.ai übers Internet; später: welcher Client, ist egal.
+2. Wer? Alle Nutzer; verwalten muss man Lekto über MCP nicht.
+3. Welche Aufgaben? Wie vorgeschlagen, ohne Regeln bauen (Regeln lesen ja), ohne Hochladen; Systemzustand ja.
+4. Löschen? Erst als Tool mit eigener Klasse erwogen, dann (Tobi) ganz ohne Löschen und Verschieben, mit Link in die Web-UI.
+5. Stammdaten korrigieren? Nein, nur lesen.
+6. Herkunft markieren? Ja („das hilft später“), allgemein über API-Token.
+7. Punktnotation? Nein, Unterstrich (Einwand akzeptiert).
+8. Link auf mehrere Dokumente? Ja, die Dokumentansicht mit einer definierten Liste.
+9. Seitenbilder? Ja, mit einem Hinweis in den Daten statt einer Annotation (Empfehlung Claude, mit dem Plan freigegeben).
+10. Kurze IDs? Probieren. Rechnen? Anzahl und Summe. Budget als Guard-Test? Ja. Paritäts-Guard? Ja. Erprobung? Ja. Label? `new-feature`.
+11. Budget 20.000 statt 16.000 Zeichen? Ja. Rechnen auch in REST (`POST /documents/aggregate`)? Nein, ohne Anwendungsfall.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

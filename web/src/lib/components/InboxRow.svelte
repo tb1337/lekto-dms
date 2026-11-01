@@ -15,6 +15,7 @@
 	import { labelled, reasonsText } from '#lib/reasons.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { onlySpace, suggestedSpace, suggestionText } from '#lib/space-suggestion.ts';
+	import { viaToken } from '#lib/via-token.ts';
 
 	// One document of the inbox, by where it stands: in processing with its progress; yellow or
 	// red with its lane and why (a suggested space as the suggestion); new calmly, marked and
@@ -42,9 +43,9 @@
 	const done = $derived(item.done);
 	const who = $derived.by(() => {
 		if (!done) return '';
-		if (done.by === session.user?.id) return m.inbox_by_you();
+		if (done.by === session.user?.id) return viaToken(m.inbox_by_you(), done.via_token);
 		const user = lookup ? byId(lookup.users).get(done.by) : undefined;
-		return user ? userLabel(user) : m.inbox_by_unknown();
+		return viaToken(user ? userLabel(user) : m.inbox_by_unknown(), done.via_token);
 	});
 	const when = $derived(
 		done ? formatDate(done.at, { dateStyle: 'medium', timeStyle: 'short' }) : ''

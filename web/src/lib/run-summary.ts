@@ -15,6 +15,7 @@ import { nodeRun, startedAgain } from '#lib/runs.ts';
 import { list, object, person, text } from '#lib/signals.ts';
 import { byPerson, confirmationOf } from '#lib/step-summary.ts';
 import { stuck, type Step } from '#lib/steps.ts';
+import { viaToken } from '#lib/via-token.ts';
 
 type LogEntry = components['schemas']['LogEntry'];
 type ProcessingStatus = components['schemas']['ProcessingStatus'];
@@ -99,7 +100,7 @@ function through(run: ShownRun, steps: readonly Step[], lookup: Lookup | null): 
 	const confirmed = steps.find((step) => step.overruled === 'confirmed')?.done.entries.at(-1);
 	const confirmation = confirmed ? confirmationOf(confirmed) : null;
 	if (confirmation) {
-		const name = person(confirmation.by, lookup);
+		const name = viaToken(person(confirmation.by, lookup), confirmation.via);
 		return confirmation.before === 'failed'
 			? m.run_through_decided({ run: run.number, name })
 			: m.run_through_confirmed({ run: run.number, name });

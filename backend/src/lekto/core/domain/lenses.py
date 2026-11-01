@@ -11,7 +11,7 @@ lens out, so a lens never fails for it.
 """
 
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from enum import Enum, StrEnum
 from typing import Self
 
@@ -27,6 +27,7 @@ from lekto.core.domain.ids import (
     UserId,
     new_id,
 )
+from lekto.core.domain.periods import Period
 from lekto.core.domain.validation import require_name, require_utc
 
 MAX_NAME_LENGTH = 100
@@ -60,6 +61,25 @@ class RelativePeriod(StrEnum):
     THIS_YEAR = "this_year"
     LAST_12_MONTHS = "last_12_months"
     LAST_YEAR = "last_year"
+
+    def period(self, today: date) -> Period:
+        """The days of the period as of `today`, as the web UI reckons them (`filters.ts`):
+        this or last year, or the twelve months up to today."""
+        match self:
+            case RelativePeriod.THIS_YEAR:
+                return Period.year(today.year)
+            case RelativePeriod.LAST_YEAR:
+                return Period.year(today.year - 1)
+            case RelativePeriod.LAST_12_MONTHS:
+                return Period(_a_year_before(today) + timedelta(days=1), date.max)
+
+
+def _a_year_before(day: date) -> date:
+    """The same day a year before; the 28th of February for the 29th."""
+    try:
+        return day.replace(year=day.year - 1)
+    except ValueError:
+        return day.replace(year=day.year - 1, day=28)
 
 
 class LensSort(StrEnum):

@@ -31,7 +31,14 @@ from tests.unit.adapters.rest.support import Api, Scene, make_app, post, upload
 # --- the endpoint -------------------------------------------------------------------------------
 
 
-READS = {"documents_search", "documents_get", "documents_text", "tags_list", "expected_list"}
+READS = {
+    "documents_search",
+    "documents_list",
+    "documents_get",
+    "documents_text",
+    "tags_list",
+    "expected_list",
+}
 WRITES = {"documents_update"}
 
 
@@ -161,6 +168,91 @@ async def test_the_server_works_over_a_real_connection() -> None:
 
 
 # --- reading ------------------------------------------------------------------------------------
+
+
+async def test_documents_list_lists_by_filters_and_counts_by_groups(api: Api, scene: Scene) -> None:
+    owner = scene.headers["owner"]
+    admin = await api.admin()
+    await api.services.master_data.create_field(admin.id, "Betrag", FieldType.AMOUNT)
+    await api.services.master_data.create_field(admin.id, "Notiz", FieldType.TEXT)
+    for id, dated, amount in (
+        (scene.green, "2025-03-31", "80.10"),
+        (scene.yellow, "2026-01-31", "79.90"),
+    ):
+        data(
+            await call(
+                api,
+                owner,
+                "documents_update",
+                id=id,
+                document_date=dated,
+                fields={"betrag": {"amount": amount, "currency": "EUR"}},
+            )
+        )
+
+    every = data(await call(api, owner, "documents_list", fields=["Betrag"]))
+    assert {item["id"] for item in every["items"]} == shorts(
+        scene.green, scene.yellow, scene.processing
+    )
+    green = next(item for item in every["items"] if {item["id"]} == shorts(scene.green))
+    assert green["fields"] == {"Betrag": {"amount": "80.10", "currency": "EUR"}}
+    yellow = data(await call(api, owner, "documents_list", lane="yellow"))
+    assert {item["id"] for item in yellow["items"]} == shorts(scene.yellow)
+    paged = data(await call(api, owner, "documents_list", limit=2))
+    assert len(paged["items"]) == 2 and paged["next_offset"] == 2
+    last = data(await call(api, owner, "documents_list", limit=2, offset=2))
+    assert len(last["items"]) == 1 and "next_offset" not in last
+
+    by_year = data(await call(api, owner, "documents_list", group_by="year", sum="Betrag"))
+    assert by_year == {
+        "count": 3,
+        "sum": {"EUR": "160.00"},
+        "groups": [
+            {"key": "2025", "count": 1, "sum": {"EUR": "80.10"}},
+            {"key": "2026", "count": 1, "sum": {"EUR": "79.90"}},
+            {"count": 1},
+        ],
+    }
+    in_2026 = data(
+        await call(api, owner, "documents_list", sum="Betrag", document_date_from="2026-01-01")
+    )
+    assert in_2026 == {"count": 1, "sum": {"EUR": "79.90"}}
+    assert "holds no amount" in error(await call(api, owner, "documents_list", sum="Notiz"))
+    assert "no field named" in error(await call(api, owner, "documents_list", sum="Summe"))
+    # The stranger counts none of them.
+    assert data(await call(api, scene.headers["stranger"], "documents_list", sum="Betrag")) == {
+        "count": 0
+    }
+
+
+async def test_documents_list_lists_and_counts_the_hits_of_words(api: Api, scene: Scene) -> None:
+    owner = scene.headers["owner"]
+    listed = data(await call(api, owner, "documents_list", query="pdf", lane="green"))
+    assert {item["id"] for item in listed["items"]} == shorts(scene.green)
+    counted = data(await call(api, owner, "documents_list", query="pdf", group_by="month"))
+    assert (counted["count"], counted["hits_only"]) == (3, True)
+    reader = data(
+        await call(api, scene.headers["reader"], "documents_list", query="pdf", group_by="year")
+    )
+    assert reader["count"] == 1
+
+
+async def test_documents_list_takes_the_filters_of_a_lens(api: Api, scene: Scene) -> None:
+    owner = scene.headers["owner"]
+    admin = await api.admin()
+    urgent = await api.services.master_data.create_tag(admin.id, "Dringend")
+    await api.services.master_data.create_tag(admin.id, "Später")
+    data(await call(api, owner, "documents_update", id=scene.yellow, tags=["Dringend"]))
+    data(await call(api, owner, "documents_update", id=scene.green, tags=["Später"]))
+    lens = {"name": "Dringendes", "filter": {"tag_ids": [str(urgent.id)]}}
+    await post(api, "/lenses", lens, owner)
+
+    listed = data(await call(api, owner, "documents_list", lens="dringendes"))
+    assert {item["id"] for item in listed["items"]} == shorts(scene.yellow)
+    # A filter given replaces the lens's own.
+    later = data(await call(api, owner, "documents_list", lens="Dringendes", tags=["Später"]))
+    assert {item["id"] for item in later["items"]} == shorts(scene.green)
+    assert "no lens named" in error(await call(api, owner, "documents_list", lens="Rot"))
 
 
 async def test_documents_go_by_a_short_id_or_the_whole_one(api: Api, scene: Scene) -> None:

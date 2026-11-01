@@ -81,7 +81,7 @@ ENDPOINTS: dict[str, str | Excluded | Planned] = {
     "POST /search/check": MANAGING,
     # documents
     "POST /documents": Excluded.UPLOAD,
-    "GET /documents": Planned(4, "documents_list"),
+    "GET /documents": "documents_list",
     "GET /documents/count": Planned(4, "documents_facets"),
     "GET /documents/facets": Planned(4, "documents_facets"),
     "POST /documents/search": "documents_search",

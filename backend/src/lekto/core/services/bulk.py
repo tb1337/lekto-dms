@@ -43,7 +43,6 @@ from lekto.core.domain.pipeline import Lane
 from lekto.core.domain.reasons import Reason, ReasonCode, because
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.repository import PAGE_LIMIT, DocumentFilter
-from lekto.core.ports.search_index import MAX_HITS, MAX_LIMIT
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from lekto.core.services._access import load_actor
 from lekto.core.services._jobs import LEASE, JobRunner, lost
@@ -155,20 +154,9 @@ class BulkService:
         if self._search is None:
             raise SearchUnavailableError("the installation has no search index")
         assert selection.text is not None
-        found: dict[DocumentId, None] = {}
-        offset: int | None = 0
-        while offset is not None and offset < MAX_HITS:
-            page = await self._search.search(
-                actor,
-                selection.text,
-                selection.filter,
-                offset=offset,
-                limit=MAX_LIMIT,
-                all_users=selection.all_users,
-            )
-            found.update((item.document.id, None) for item in page.items)
-            offset = page.next_offset
-        return tuple(found)
+        return await self._search.hits(
+            actor, selection.text, selection.filter, all_users=selection.all_users
+        )
 
     # --- worker ----------------------------------------------------------------------------------
 

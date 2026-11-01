@@ -14,6 +14,7 @@ from lekto.core.domain.lenses import (
     LensSort,
     RelativePeriod,
 )
+from lekto.core.domain.periods import Period
 from tests.builders import HOUR, NOW
 
 FIELD = FieldId(new_id())
@@ -93,3 +94,18 @@ def test_a_filter_takes_each_value_once_and_one_kind_of_period() -> None:
     with pytest.raises(ValidationError):
         LensFilter(date_from=date(2026, 2, 1), date_to=date(2026, 1, 1))
     assert LensFilter(date_from=date(2026, 1, 1)).date_to is None
+
+
+@pytest.mark.parametrize(
+    ("period", "today", "days"),
+    [
+        (RelativePeriod.THIS_YEAR, date(2026, 11, 1), Period.year(2026)),
+        (RelativePeriod.LAST_YEAR, date(2026, 1, 1), Period.year(2025)),
+        (RelativePeriod.LAST_12_MONTHS, date(2026, 11, 1), Period(date(2025, 11, 2), date.max)),
+        (RelativePeriod.LAST_12_MONTHS, date(2028, 2, 29), Period(date(2027, 3, 1), date.max)),
+    ],
+)
+def test_a_relative_period_as_the_web_ui_reckons_it(
+    period: RelativePeriod, today: date, days: Period
+) -> None:
+    assert period.period(today) == days

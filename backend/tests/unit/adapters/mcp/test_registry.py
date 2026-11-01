@@ -2,7 +2,7 @@
 
 import pytest
 
-from lekto.adapters.inbound.mcp.registry import ToolClass, ToolSpec, split_name
+from lekto.adapters.inbound.mcp.registry import ToolClass, ToolSpec, _slim, split_name
 from lekto.core.domain.identity import ApiToken, TokenScope
 from lekto.core.services.auth import Principal
 from tests import builders
@@ -71,3 +71,31 @@ def test_a_tool_for_admins_is_for_admins_only() -> None:
     spec = ToolSpec("identifiers_open", ToolClass.READ, admin=True)
     assert spec.refusal(principal(admin=True)) is None
     assert spec.refusal(principal()) == "only admins may use this tool"
+
+
+def test_the_listed_schemas_leave_out_what_a_client_needs_no_telling() -> None:
+    """Titles go; null beside the type goes where null is the default (the client leaves the
+    parameter out), and stays where it means something (no default: null removes a value)."""
+    schema = {
+        "title": "documents_listArguments",
+        "properties": {
+            "title": {"title": "Title", "type": "string"},
+            "contact": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None},
+            "kept": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            "either": {
+                "anyOf": [{"type": "string"}, {"type": "integer"}, {"type": "null"}],
+                "default": None,
+            },
+        },
+    }
+    assert _slim(schema) == {
+        "properties": {
+            "title": {"type": "string"},
+            "contact": {"type": "string"},
+            "kept": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            "either": {
+                "anyOf": [{"type": "string"}, {"type": "integer"}, {"type": "null"}],
+                "default": None,
+            },
+        },
+    }

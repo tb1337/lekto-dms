@@ -11,6 +11,7 @@ from pathlib import Path
 from uuid import UUID
 
 from lekto.core.domain import media_types
+from lekto.core.domain.aggregates import Aggregate, GroupBy, aggregate
 from lekto.core.domain.classification import CONFIRMING, SPACE
 from lekto.core.domain.codes import Code, GiroCode, code_identifiers, giro_code
 from lekto.core.domain.document_facts import (
@@ -121,6 +122,10 @@ log = logging.getLogger(__name__)
 
 _SHOWN_ALIKE = 5
 """Documents an ambiguous short id names at most in its error."""
+AGGREGATE_MAX = 10_000
+"""Documents `DocumentService.aggregate` counts at most, as many as an action on many takes."""
+_AMONG_PER_QUERY = 200
+"""Ids one query of `aggregate` names."""
 
 
 @dataclass(frozen=True)
@@ -682,6 +687,45 @@ class DocumentService:
             ListedDocument(document, access, document.id in waiting)
             for document, access in readable
         ]
+
+    async def aggregate(
+        self,
+        actor: UserId,
+        filter: DocumentFilter,
+        *,
+        by: GroupBy | None = None,
+        amount: FieldId | None = None,
+        among: Collection[DocumentId] | None = None,
+    ) -> Aggregate:
+        """Count the documents within the caller's reach that match `filter` (and are `among`
+        the given ones: the hits of a search), grouped `by` a key, summing the amount field
+        `amount` per currency (`domain.aggregates`). ValidationError for a field that is no
+        amount field, and for more than `AGGREGATE_MAX` documents."""
+        async with self._uow() as uow:
+            user = await load_actor(uow, actor)
+            check_fact_filter(user, filter)
+            if amount is not None:
+                definition = (await field_definitions(uow)).get(amount)
+                if definition is None or definition.data_type is not FieldType.AMOUNT:
+                    raise ValidationError("only an amount field is summed")
+            filter = await expanded(uow, filter)
+            if among is None:
+                documents = await uow.documents.query_visible(
+                    actor, filter, limit=AGGREGATE_MAX + 1
+                )
+            else:
+                ids = sorted({id.hex for id in among})
+                documents = []
+                for start in range(0, len(ids), _AMONG_PER_QUERY):
+                    chunk = replace(filter, ids=frozenset(ids[start : start + _AMONG_PER_QUERY]))
+                    documents += await uow.documents.query_visible(
+                        actor, chunk, limit=_AMONG_PER_QUERY
+                    )
+        if len(documents) > AGGREGATE_MAX:
+            raise ValidationError(
+                f"more than {AGGREGATE_MAX} documents to count: narrow the filter"
+            )
+        return aggregate(documents, by, amount)
 
     async def resolve(self, actor: UserId, reference: str) -> DocumentId:
         """The document `reference` names: its whole id, or its end (`ids.short_id`, up to the

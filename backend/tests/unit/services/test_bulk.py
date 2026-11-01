@@ -28,7 +28,7 @@ from lekto.core.domain.spaces import SpaceRole
 from lekto.core.ports.repository import DocumentFilter
 from lekto.core.services import bulk
 from lekto.core.services.bulk import BulkService, Selection
-from lekto.core.services.search import SearchItem, SearchMode, SearchPage
+from lekto.core.services.search import SearchItem, SearchMode, SearchPage, SearchService
 from tests import builders
 from tests.unit.services.rules_support import (
     RuleWorld,
@@ -46,6 +46,7 @@ class Hits:
 
     found: list[SearchItem]
     asked: list[tuple[str, int]] = field(default_factory=list)
+    hits = SearchService.hits  # through the pages of `search` below
 
     async def search(
         self,

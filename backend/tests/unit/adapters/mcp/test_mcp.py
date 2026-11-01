@@ -84,6 +84,13 @@ async def test_a_read_token_sees_and_calls_no_tool_that_changes(api: Api, scene:
     assert error(refused) == "this API token may only read"
 
 
+def test_the_instructions_name_the_link_to_a_selection() -> None:
+    """Decision 9: the documents an assistant means, in one link the web UI shows as a list."""
+    assert "https://lekto.example.org/ui/documents?ids=<id>,<id>" in instructions(
+        "https://lekto.example.org/ui"
+    )
+
+
 def test_the_instructions_name_the_link_into_the_web_ui() -> None:
     assert "https://lekto.example.org/ui/documents/<id>" in instructions(
         "https://lekto.example.org/ui"

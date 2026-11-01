@@ -835,3 +835,46 @@ describe('the archive page', () => {
 		expect(listed.every((call) => !call.includes('lane'))).toBe(true);
 	});
 });
+
+describe('a selection by link', () => {
+	it('lists exactly the documents a link names, with a chip that ends it', async () => {
+		state.url = new URL('http://lekto/ui/documents?ids=9b653410,ab12cd34');
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({
+				items: [listedOf({ id: 'd1', title: 'Eins' })],
+				next_cursor: null
+			})
+		});
+		vi.stubGlobal('fetch', api);
+		const user = userEvent.setup();
+		render(Page);
+		await screen.findByText('Eins');
+		const named = (path: string) =>
+			calls(api).some(
+				(call) =>
+					call.startsWith(`GET ${path}?`) &&
+					call.includes('ids=9b653410') &&
+					call.includes('ids=ab12cd34')
+			);
+		expect(named('/api/v1/documents')).toBe(true);
+		expect(named('/api/v1/documents/count')).toBe(true);
+		await vi.waitFor(() => expect(named('/api/v1/documents/facets')).toBe(true));
+		expect(screen.getByText(m.selection_chip({ count: 2 }))).toBeTruthy();
+
+		await user.click(screen.getByRole('button', { name: m.selection_chip_remove() }));
+		expect(vi.mocked(goto).mock.lastCall?.[0]).toBe('/ui/documents');
+	});
+
+	it('leaves the remembered filters as they are', async () => {
+		rememberFilters({ ...NO_FILTERS, contacts: ['c1'] });
+		state.url = new URL('http://lekto/ui/documents?ids=9b653410');
+		vi.mocked(goto).mockClear();
+		vi.stubGlobal(
+			'fetch',
+			fakeApi({ 'GET /api/v1/documents': () => ({ items: [], next_cursor: null }) })
+		);
+		render(Page);
+		await screen.findByText(m.selection_chip({ count: 1 }));
+		expect(goto).not.toHaveBeenCalled();
+	});
+});

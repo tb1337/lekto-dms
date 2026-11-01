@@ -35,7 +35,8 @@ def instructions(ui_url: str | None) -> str:
     link = (
         "Name a document by its title."
         if ui_url is None
-        else f"Link to a document: {ui_url}/documents/<id>"
+        else f"Link to a document: {ui_url}/documents/<id>; to several (up to 100), so the "
+        f"person sees exactly them: {ui_url}/documents?ids=<id>,<id>"
     )
     return INSTRUCTIONS.format(link=link)
 

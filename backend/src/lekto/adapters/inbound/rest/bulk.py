@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request, Response
 
 from lekto.adapters.inbound.rest.auth import PROTECTED, CurrentUser, Via
 from lekto.adapters.inbound.rest.context import Context
-from lekto.adapters.inbound.rest.params import AllDocuments, Filter
+from lekto.adapters.inbound.rest.params import AllDocuments, Listed
 from lekto.adapters.inbound.rest.problems import problem_responses
 from lekto.adapters.inbound.rest.schemas.bulk import BulkOperationOut, BulkRequest
 from lekto.core.domain.bulk import MAX_DOCUMENTS, MAX_IDS
@@ -46,7 +46,7 @@ async def start_bulk(
     user: CurrentUser,
     via: Via,
     context: Context,
-    filter: Filter,
+    filter: Listed,
     all_users: AllDocuments = False,
 ) -> BulkOperationOut:
     q = body.q

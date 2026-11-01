@@ -1,5 +1,7 @@
 """Changing many documents at once over the API."""
 
+from uuid import UUID
+
 from tests import builders
 from tests.api import auth
 from tests.unit.adapters.rest.support import DOCUMENTS, Api, post, unique_pdf, upload
@@ -80,3 +82,24 @@ async def test_a_bulk_request_is_checked(api: Api) -> None:
     await refused({}, {"q": "Rechnung", "document_ids": [mine], "action": {"kind": "confirm"}})
     await refused({}, {"document_ids": [], "action": {"kind": "confirm"}})
     await refused({"all_users": True}, {"action": {"kind": "confirm"}}, 403)
+
+
+async def test_an_action_on_a_selection_by_link(api: Api) -> None:
+    """The ids of a link (`?ids=`, short or whole) choose the documents, as in the list."""
+    admin, owner = await api.admin(), await api.user()
+    o = auth(owner)
+    tax = await post(api, "/tags", {"name": "Steuer"}, auth(admin))
+    chosen, other = [await upload(api, o, content=unique_pdf(name)) for name in ("a", "b")]
+
+    response = await api.client.post(
+        BULK,
+        params={"ids": [UUID(chosen).hex[-8:]]},
+        json={"action": {"kind": "change_tags", "add_tag_ids": [tax["id"]]}},
+        headers=o,
+    )
+    assert response.status_code == 202, response.text
+    assert response.json()["total"] == 1
+    await builders.drain(api.services.bulk)
+    tagged = (await api.client.get(f"{DOCUMENTS}/{chosen}", headers=o)).json()
+    untouched = (await api.client.get(f"{DOCUMENTS}/{other}", headers=o)).json()
+    assert tagged["tag_ids"] == [tax["id"]] and untouched["tag_ids"] == []

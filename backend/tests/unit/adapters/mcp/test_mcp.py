@@ -50,6 +50,10 @@ READS = {
     "tags_list",
     "lenses_list",
     "spaces_list",
+    "identifiers_find",
+    "rules_list",
+    "rules_get",
+    "system_status",
     "expected_list",
 }
 WRITES = {"documents_update", "documents_retry", "inbox_confirm", "inbox_mark_seen", "facts_decide"}
@@ -540,6 +544,73 @@ async def test_spaces_and_lenses_are_read_by_name(api: Api, scene: Scene) -> Non
     await post(api, "/lenses", {"name": "Neues", "query": "Rechnung"}, owner)
     lenses = data(await call(api, owner, "lenses_list"))["lenses"]
     assert lenses == [{"name": "Neues", "query": "Rechnung"}]
+
+
+async def test_identifiers_find_says_where_a_number_stands(api: Api, scene: Scene) -> None:
+    owner = scene.headers["owner"]
+    data(
+        await call(
+            api,
+            owner,
+            "facts_decide",
+            id=scene.green,
+            action="add",
+            kind="invoice_number",
+            value="R-1001",
+            role="own",
+        )
+    )
+    found = data(await call(api, owner, "identifiers_find", kind="invoice_number", value="R-1001"))
+    (place,) = found["documents"]
+    assert {place["id"]} == shorts(scene.green) and place["role"] == "own"
+    nothing = data(
+        await call(
+            api,
+            scene.headers["stranger"],
+            "identifiers_find",
+            kind="invoice_number",
+            value="R-1001",
+        )
+    )
+    assert "documents" not in nothing
+    assert "no kind of identifier" in error(
+        await call(api, owner, "identifiers_find", kind="invoce", value="1")
+    )
+
+
+async def test_identifiers_open_is_for_admins(api: Api, scene: Scene) -> None:
+    listed = data(await call(api, scene.headers["admin"], "identifiers_open"))
+    assert listed["total"] >= 0
+    refused = await call(api, scene.headers["owner"], "identifiers_open")
+    assert "only admins" in error(refused)
+
+
+async def test_rules_are_read_with_names(api: Api, scene: Scene) -> None:
+    owner, admin = scene.headers["owner"], await api.admin()
+    tax = await api.services.master_data.create_tag(admin.id, "Steuer")
+    await post(
+        api,
+        "/rules",
+        {
+            "name": "Steuer",
+            "conditions": {"all": [{"field": "channel", "op": "is", "value": "api"}]},
+            "actions": [{"type": "add_tags", "tag_ids": [str(tax.id)]}],
+        },
+        owner,
+    )
+    (rule,) = data(await call(api, owner, "rules_list"))["rules"]
+    assert (rule["name"], rule["enabled"]) == ("Steuer", True)
+    detail = data(await call(api, owner, "rules_get", name="steuer"))
+    assert detail["version"] == 1
+    assert detail["definition"]["actions"][0]["tag_ids"] == ["Steuer"]
+    assert "no rule named 'Stuer'; similar: Steuer" in error(
+        await call(api, owner, "rules_get", name="Stuer")
+    )
+
+
+async def test_system_status_names_what_is_running(api: Api, scene: Scene) -> None:
+    status = data(await call(api, scene.headers["owner"], "system_status"))
+    assert isinstance(status.get("jobs", []), list)
 
 
 async def test_a_document_one_may_not_read_is_just_not_found(api: Api, scene: Scene) -> None:

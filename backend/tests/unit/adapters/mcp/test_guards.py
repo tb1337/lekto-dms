@@ -16,7 +16,7 @@ instructions before raising it."""
 
 README = Path(__file__).parents[4] / "README.md"
 _SECTION = re.compile(r"^## MCP\n(.*?)(?=^## )", re.MULTILINE | re.DOTALL)
-_ROW = re.compile(r"^\| `([a-z_]+)` \| (read|write) \| ", re.MULTILINE)
+_ROW = re.compile(r"^\| `([a-z_]+)` \| ((?:read|write)(?:, admins)?) \| ", re.MULTILINE)
 
 
 async def test_the_definitions_stay_within_their_budget(api: Api, scene: Scene) -> None:
@@ -35,10 +35,13 @@ async def test_every_name_is_a_domain_and_a_verb(api: Api, scene: Scene) -> None
 
 
 async def test_every_tool_is_documented_with_its_class(api: Api, scene: Scene) -> None:
-    """backend/README.md, section MCP: one row per tool with its class, read or write."""
+    """backend/README.md, section MCP: one row per tool with its class, read or write, and
+    ", admins" for one only admins see."""
     tools = await listed_tools(api, scene.headers["admin"])
+    for_all = {tool["name"] for tool in await listed_tools(api, scene.headers["owner"])}
     expected = {
-        tool["name"]: "read" if tool["annotations"].get("readOnlyHint") else "write"
+        tool["name"]: ("read" if tool["annotations"].get("readOnlyHint") else "write")
+        + ("" if tool["name"] in for_all else ", admins")
         for tool in tools
     }
     section = _SECTION.search(README.read_text(encoding="utf-8"))

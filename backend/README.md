@@ -1865,6 +1865,11 @@ master data and managing Lekto are no tools: the client points the user to the w
 | `expected_list` | read | The series of documents the caller reads and the document each expects next (contact, type, number, cadence, spread, newest document, next date and period, `overdue`, `soon`, `later` or `ended`); `include_ended` |
 | `lenses_list` | read | The caller's lenses with their `query` and filters by name (contacts, types, tags, topics, period); `documents_list` takes one by name |
 | `spaces_list` | read | The spaces the caller is a member of: a personal one by its person's name, `description`, the caller's `role`, the other `members` with theirs |
+| `identifiers_find` | read | `kind`, `value`: the contacts that hold the identifier and the newest of the caller's documents that show it (`identifier_places`: `id`, `title`, `date`, `role`, the `text` around it); a person's kinds only for admins |
+| `identifiers_open` | read, admins | `source` (`learned`, `unknown`, `suggested`), `query`, `offset`: the open identifiers as the tab Kennungen lists them, most documents first, with `contacts`, `person`, how many `documents`, the `last` one, the recommendation and `why`; decided in the web UI |
+| `rules_list` | read | The rules acting on the caller's documents in the order they apply: `name`, `scope`, `space`, `enabled` (and why not), `triggers`, `priority`, `managed` (a type's title pattern) |
+| `rules_get` | read | `name`: the rule with its `version`, `changed_at` and `definition` as stored, the ids of contacts, types, tags, topics, groups, fields and spaces replaced by their names |
+| `system_status` | read | Jobs by kind with work (`running`, `due`, `planned`, `failed`), the search index (`documents`, `with_meaning`, `queued`, `model`) and the classifier (`model`, `trained_at`, `examples`, `confirmed_since`) |
 
 Answers are compact, since every character costs the client tokens: a tool returns its result
 as JSON text without indentation and without output schemas, and leaves out every key whose

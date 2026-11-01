@@ -382,6 +382,8 @@
 	"filter_group_remove": "Remove group {name}",
 	"filter_topic_remove": "Remove topic {name}",
 	"filter_reset": "Reset filters",
+	"selection_chip": "Selection · {count}",
+	"selection_chip_remove": "Clear the selection",
 	"filters_title": "Filters",
 	"filters_open": "Filters",
 	"filters_collapse": "Hide filters",

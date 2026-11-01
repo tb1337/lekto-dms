@@ -101,6 +101,7 @@
 	import { openBeam } from '#lib/beam.svelte.ts';
 	import { returnTo } from '#lib/return-to.svelte.ts';
 	import { gotoSearching, stateWords } from '#lib/words.ts';
+	import { selectionOf } from '#lib/selection.ts';
 	import PageTitle from '#lib/components/page/PageTitle.svelte';
 	import SectionTitle from '#lib/components/page/SectionTitle.svelte';
 	import { FIELD_FRAME } from '#lib/components/ui/field-look.ts';
@@ -131,6 +132,8 @@
 	// plain link to a lens opens it with the lens's words.
 	const query = $derived(stateWords(page.state) ?? lens?.query?.trim() ?? '');
 	const searching = $derived(query !== '');
+	// The documents a link selected (an assistant's, `?ids=`); words search everything.
+	const selected = $derived(searching ? [] : selectionOf(params));
 	const sort = $derived(sortOf(params, searching));
 	const sortField = $derived(sortFieldOf(params, searching));
 	// The search field follows the URL (back button, links) until the user types.
@@ -303,7 +306,7 @@
 	const beginFacets = latest();
 	async function loadFacets() {
 		const current = beginFacets();
-		const query = apiQuery(filters, scope.allUsers);
+		const query = listQuery();
 		try {
 			const found = await unwrap(api.GET('/api/v1/documents/facets', { params: { query } }));
 			if (current()) facets = found;
@@ -344,12 +347,13 @@
 			const items = data.items.map((hit) => ({ document: hit.document, snippet: hit.snippet }));
 			return { items, total: data.estimated_total };
 		}
+		const listed = listQuery();
 		const [data, counted] = await Promise.all([
 			unwrap(
 				api.GET('/api/v1/documents', {
 					params: {
 						query: {
-							...base,
+							...listed,
 							sort: sort as ListSort,
 							sort_field_id: sortField ?? undefined,
 							offset,
@@ -358,7 +362,7 @@
 					}
 				})
 			),
-			unwrap(api.GET('/api/v1/documents/count', { params: { query: base } }))
+			unwrap(api.GET('/api/v1/documents/count', { params: { query: listed } }))
 		]);
 		return {
 			items: data.items.map((document) => ({ document, snippet: [] })),
@@ -438,8 +442,13 @@
 
 	function selection(): BulkSelection {
 		if (!allHits) return { ids: chosen, query: {} };
+		return { ids: null, query: listQuery(), words: searching ? query : undefined };
+	}
+
+	/** The query of the list: its filters, and the documents a link selected. */
+	function listQuery() {
 		const base = apiQuery(filters, scope.allUsers);
-		return { ids: null, query: base, words: searching ? query : undefined };
+		return selected.length > 0 ? { ...base, ids: selected } : base;
 	}
 
 	// The action on the choice, followed by the page until it ends, whichever bar shows it.
@@ -511,7 +520,8 @@
 		// the URL as if the link had brought them. A link's own filters, its words and a lens go
 		// first; within the page (a chip removed, "All documents" from a lens) nothing applies.
 		const remembered = rememberedFilters();
-		if (remembered && !isFiltered(filters) && !searching && !params.has('lens')) {
+		const plain = !isFiltered(filters) && !searching && selected.length === 0;
+		if (remembered && plain && !params.has('lens')) {
 			const next = writeFilters(new URLSearchParams(page.url.search), remembered);
 			void gotoSearching(`?${next}`, query, { replace: true, reset: false });
 		}
@@ -570,7 +580,16 @@
 		// A list sort may not suit a search and back: the remembered one of the mode holds.
 		next.delete('sort');
 		next.delete('sort_field');
+		// Words search every document: a selection by link ends.
+		if (term) next.delete('ids');
 		go(next, term);
+	}
+
+	function clearSelection() {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
+		const next = new URLSearchParams(page.url.search);
+		next.delete('ids');
+		go(next);
 	}
 
 	function sortBy(value: string) {
@@ -955,6 +974,8 @@ row of filters, on a desktop narrow by the title. -->
 							text = '';
 							search('');
 						}}
+						selection={selected.length}
+						onclearselection={clearSelection}
 					/>
 				{:else if lookupError}
 					<p class="text-destructive" role="alert">{lookupError}</p>

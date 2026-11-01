@@ -664,6 +664,23 @@ true })`, read from `page.state` (`lib/words.ts` for the words of the documents)
 - Words go to the API in a body (`POST /documents/search`); never put them into a query.
 - Not in `localStorage` either: that is per browser and outlives the tab.
 
+### Selection by link
+
+A link `/ui/documents?ids=…` shows exactly the documents it names: an assistant's selection
+(Tobi, 01.11.2026, umsetzungsplan "MCP", decision 9). It names them by short ids (the last 8
+characters of an id) or whole ones, comma-separated, at most 100 (`lib/selection.ts`).
+
+- The chip "Auswahl · N" (`selected`, icon `list-checks`) stands first among the active filters;
+  its ✕ ends the selection.
+- Filters narrow it further. Words search every document and end it (the search index knows no
+  ids).
+- The remembered filters neither apply nor change while it stands.
+- A document opened from the list pages through the selection as through any list, and an action
+  on many takes the selection.
+- Ids are no plain data ("No plain data in addresses").
+
+Guards: `src/lib/selection.test.ts`, the selection in `routes/(app)/documents/documents.test.ts`.
+
 ### Steady layout
 
 What a person did not touch stays where it is: choosing something, or going to another page,

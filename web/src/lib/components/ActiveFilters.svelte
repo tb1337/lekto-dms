@@ -10,6 +10,7 @@
 	import { session } from '#lib/session.svelte.ts';
 	import { pathLabel } from '#lib/tags.ts';
 	import Chip from '#lib/components/Chip.svelte';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
 
 	// What narrows the list, each as a chip that lets it go, and a reset; nothing while nothing
 	// is chosen. Tags, topics and groups are their chips as everywhere (`TagChip`: colour and
@@ -22,6 +23,8 @@
 		onchange,
 		query = '',
 		onclearquery,
+		selection = 0,
+		onclearselection,
 		readonly = false
 	}: {
 		filters: Filters;
@@ -29,6 +32,9 @@
 		onchange?: (filters: Filters) => void;
 		query?: string;
 		onclearquery?: () => void;
+		/** How many documents a link selected (`lib/selection.ts`); its chip stands first. */
+		selection?: number;
+		onclearselection?: () => void;
 		readonly?: boolean;
 	} = $props();
 
@@ -142,8 +148,16 @@
 	});
 </script>
 
-{#if isFiltered(filters) || query}
+{#if isFiltered(filters) || query || selection > 0}
 	<div class="flex flex-wrap items-center gap-2" role="group" aria-label={m.filters_active()}>
+		{#if selection > 0}
+			<Chip variant="selected" onremove={onclearselection} removeLabel={m.selection_chip_remove()}>
+				{#snippet icon()}
+					<ListChecks class="size-3.5 shrink-0" aria-hidden="true" />
+				{/snippet}
+				{m.selection_chip({ count: selection })}
+			</Chip>
+		{/if}
 		{#if query}
 			<Chip
 				variant="outline"

@@ -160,8 +160,8 @@ def listed_filter(
             description=(
                 "Documents by id: the whole id, or its end of at least 8 characters (a short "
                 "id, as MCP names documents; an end several documents share finds each). "
-                "Several: any of them. The list, its count and its facets take it; the search "
-                "does not (the search index knows no ids)."
+                "Several: any of them. The list, its count, its facets and an action on many "
+                "take it; the search does not (the search index knows no ids)."
             ),
         ),
     ] = None,

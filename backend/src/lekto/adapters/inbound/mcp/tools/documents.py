@@ -15,6 +15,7 @@ from lekto.adapters.inbound.context import ApiContext
 from lekto.adapters.inbound.mcp.names import Names
 from lekto.adapters.inbound.mcp.output import compact
 from lekto.adapters.inbound.mcp.registry import Tools, principal_of
+from lekto.adapters.inbound.mcp.tools.spaces import space_name
 from lekto.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
 from lekto.core.domain.classification import field_id_of
 from lekto.core.domain.document_facts import FactState
@@ -81,7 +82,7 @@ class DocumentOut(BaseModel):
     channel: str
     lane: str | None
     status: str
-    space_id: UUID
+    space: str | None = None  # by name; a personal space by its person's
     access: SpaceRole
     contact: str | None
     document_type: str | None
@@ -254,6 +255,7 @@ def add_document_tools(tools: Tools, context: ApiContext) -> None:
         document, wanted = view.document, set(include or ())
         names = await Names.load(context, user)
         out = document_out(document, view.access, names)
+        out.space = await space_name(context, user, document.space_id)
         if "relations" in wanted:
             out.relations = await relations(context, user, document.id, names)
         if "facts" in wanted:
@@ -405,7 +407,6 @@ def document_out(document: Document, access: SpaceRole, names: Names) -> Documen
         channel=document.channel.value,
         lane=None if document.lane is None else document.lane.value,
         status=document.processing.status.value,
-        space_id=document.space_id,
         access=access,
         contact=names.contact(document.contact_id),
         document_type=names.document_type(document.document_type_id),

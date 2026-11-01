@@ -2,7 +2,6 @@
 
 from datetime import date
 from typing import Annotated
-from uuid import UUID
 
 from mcp.server.mcpserver import Context
 from pydantic import BaseModel, Field
@@ -10,6 +9,7 @@ from pydantic import BaseModel, Field
 from lekto.adapters.inbound.context import ApiContext
 from lekto.adapters.inbound.mcp.output import compact
 from lekto.adapters.inbound.mcp.registry import Tools, principal_of
+from lekto.core.domain.ids import short_id
 from lekto.core.domain.series import SeriesState
 
 
@@ -21,7 +21,7 @@ class SeriesOut(BaseModel):
     interval_days: int
     spread_days: int
     documents: int
-    last_document: UUID
+    last_document: str
     last_date: date
     next_date: date
     next_period: str | None
@@ -62,7 +62,7 @@ def add_expected_tools(tools: Tools, context: ApiContext) -> None:
                     interval_days=item.series.interval,
                     spread_days=item.series.spread,
                     documents=len(item.series.documents),
-                    last_document=last.id,
+                    last_document=short_id(last.id),
                     last_date=last.document_date,
                     next_date=item.series.next_date,
                     next_period=(

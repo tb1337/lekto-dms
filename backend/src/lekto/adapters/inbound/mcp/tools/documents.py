@@ -15,7 +15,7 @@ from lekto.adapters.inbound.mcp.registry import Tools, principal_of
 from lekto.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
 from lekto.core.domain.documents import MAX_TITLE, UNSET, Document, DocumentChanges, Unset
 from lekto.core.domain.fields import field_from_json
-from lekto.core.domain.ids import DocumentId, FieldId, UserId
+from lekto.core.domain.ids import DocumentId, FieldId, UserId, short_id
 from lekto.core.domain.relations import RelationState
 from lekto.core.domain.spaces import SpaceRole
 from lekto.core.ports.repository import DocumentFilter
@@ -28,7 +28,7 @@ SEARCH_MAX_LIMIT = 25
 
 
 class RelationOut(BaseModel):
-    id: UUID
+    id: str
     title: str
     document_type: str | None
     document_date: date | None
@@ -37,7 +37,7 @@ class RelationOut(BaseModel):
 
 
 class DocumentOut(BaseModel):
-    id: UUID
+    id: str
     title: str
     original_filename: str
     media_type: str
@@ -58,7 +58,7 @@ class DocumentOut(BaseModel):
 
 
 class SearchItem(BaseModel):
-    id: UUID
+    id: str
     title: str
     score: float | None
     snippet: str
@@ -86,7 +86,7 @@ class TextOut(BaseModel):
 
 
 class UpdateOut(BaseModel):
-    id: UUID
+    id: str
     filed_away: bool | None = None
     access: SpaceRole | None = None
     document: DocumentOut | None = None
@@ -135,7 +135,7 @@ def add_document_tools(tools: Tools, context: ApiContext) -> None:
             SearchOut(
                 items=[
                     SearchItem(
-                        id=item.document.id,
+                        id=short_id(item.document.id),
                         title=item.document.title,
                         score=None if item.score is None else round(item.score, 2),
                         snippet="".join(segment.text for segment in item.snippet),
@@ -160,12 +160,12 @@ def add_document_tools(tools: Tools, context: ApiContext) -> None:
         "A document's metadata, processing state, and its relations with documents you may "
         "read (direction refers_to or referred_by).",
     )
-    async def documents_get(ctx: Context, id: UUID) -> str:
+    async def documents_get(ctx: Context, id: str) -> str:
         user = principal_of(ctx).id
-        view = await context.documents.view(user, DocumentId(id))
+        view = await context.documents.view(user, await context.documents.resolve(user, id))
         names = await Names.load(context, user)
         out = document_out(view.document, view.access, names)
-        out.relations = await relations(context, user, DocumentId(id), names)
+        out.relations = await relations(context, user, view.document.id, names)
         return compact(out)
 
     @tools.read(
@@ -175,13 +175,16 @@ def add_document_tools(tools: Tools, context: ApiContext) -> None:
     )
     async def documents_text(
         ctx: Context,
-        id: UUID,
+        id: str,
         offset: Annotated[int, Field(ge=0)] = 0,
         limit: Annotated[int, Field(ge=1)] = text_max,
     ) -> str:
         user = principal_of(ctx).id
         piece = await context.documents.read_text(
-            user, DocumentId(id), offset=offset, limit=min(limit, text_max)
+            user,
+            await context.documents.resolve(user, id),
+            offset=offset,
+            limit=min(limit, text_max),
         )
         return compact(
             TextOut(
@@ -204,7 +207,7 @@ def add_document_tools(tools: Tools, context: ApiContext) -> None:
     )
     async def documents_update(
         ctx: Context,
-        id: UUID,
+        id: str,
         # A parameter left out is `UNSET` (pydantic neither checks a `default_factory`'s value
         # nor shows it in the schema), unlike one given as null.
         title: Annotated[
@@ -236,16 +239,16 @@ def add_document_tools(tools: Tools, context: ApiContext) -> None:
             ),
         )
         change = await context.documents.change_metadata(
-            user, DocumentId(id), changes, via=principal.via
+            user, await context.documents.resolve(user, id), changes, via=principal.via
         )
         if change.access is None:
-            return compact(UpdateOut(id=change.document.id, filed_away=True))
+            return compact(UpdateOut(id=short_id(change.document.id), filed_away=True))
         document = document_out(change.document, change.access, names)
         # A change of a document leaves the master data as it is.
         document.relations = await relations(context, user, change.document.id, names)
         return compact(
             UpdateOut(
-                id=change.document.id,
+                id=short_id(change.document.id),
                 access=change.access,
                 document=document,
                 rules=(
@@ -259,7 +262,7 @@ def add_document_tools(tools: Tools, context: ApiContext) -> None:
 
 def document_out(document: Document, access: SpaceRole, names: Names) -> DocumentOut:
     return DocumentOut(
-        id=document.id,
+        id=short_id(document.id),
         title=document.title,
         original_filename=document.original_filename,
         media_type=document.media_type,
@@ -291,7 +294,7 @@ async def relations(
     related = await context.relations.relations(user, id)
     return [
         RelationOut(
-            id=item.other.id,
+            id=short_id(item.other.id),
             title=item.other.title,
             document_type=names.document_type(item.other.document_type_id),
             document_date=item.other.document_date,

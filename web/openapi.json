@@ -13148,6 +13148,28 @@
             "description": "Every user's documents instead of the caller's reach (admins)."
           },
           {
+            "name": "ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Documents by id: the whole id, or its end of at least 8 characters (a short id, as MCP names documents; an end several documents share finds each). Several: any of them. The list, its count and its facets take it; the search does not (the search index knows no ids).",
+              "title": "Ids"
+            },
+            "description": "Documents by id: the whole id, or its end of at least 8 characters (a short id, as MCP names documents; an end several documents share finds each). Several: any of them. The list, its count and its facets take it; the search does not (the search index knows no ids)."
+          },
+          {
             "name": "contact_id",
             "in": "query",
             "required": false,
@@ -13496,6 +13518,28 @@
             "description": "Every user's documents instead of the caller's reach (admins)."
           },
           {
+            "name": "ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Documents by id: the whole id, or its end of at least 8 characters (a short id, as MCP names documents; an end several documents share finds each). Several: any of them. The list, its count and its facets take it; the search does not (the search index knows no ids).",
+              "title": "Ids"
+            },
+            "description": "Documents by id: the whole id, or its end of at least 8 characters (a short id, as MCP names documents; an end several documents share finds each). Several: any of them. The list, its count and its facets take it; the search does not (the search index knows no ids)."
+          },
+          {
             "name": "contact_id",
             "in": "query",
             "required": false,
@@ -13842,6 +13886,28 @@
               "title": "All Users"
             },
             "description": "Every user's documents instead of the caller's reach (admins)."
+          },
+          {
+            "name": "ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Documents by id: the whole id, or its end of at least 8 characters (a short id, as MCP names documents; an end several documents share finds each). Several: any of them. The list, its count and its facets take it; the search does not (the search index knows no ids).",
+              "title": "Ids"
+            },
+            "description": "Documents by id: the whole id, or its end of at least 8 characters (a short id, as MCP names documents; an end several documents share finds each). Several: any of them. The list, its count and its facets take it; the search does not (the search index knows no ids)."
           },
           {
             "name": "contact_id",

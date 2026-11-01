@@ -43,6 +43,7 @@ from lekto.core.domain.ids import (
     SpaceId,
     TagId,
     UserId,
+    id_reference,
 )
 from lekto.core.domain.locations import Box, Location
 from lekto.core.domain.master_data import Assignment
@@ -117,6 +118,9 @@ from lekto.core.services.rules.running import Prepared, RuleRun
 from lekto.core.services.tasks.settling import cancel_tasks
 
 log = logging.getLogger(__name__)
+
+_SHOWN_ALIKE = 5
+"""Documents an ambiguous short id names at most in its error."""
 
 
 @dataclass(frozen=True)
@@ -678,6 +682,29 @@ class DocumentService:
             ListedDocument(document, access, document.id in waiting)
             for document, access in readable
         ]
+
+    async def resolve(self, actor: UserId, reference: str) -> DocumentId:
+        """The document `reference` names: its whole id, or its end (`ids.short_id`, up to the
+        last group), among the documents within the caller's reach. ValidationError for text
+        that is neither, and for an end several of them share (naming each by a longer end and
+        its title); NotFoundError if it names none of them. A whole id is taken as it is: the
+        call it goes to checks the access."""
+        hex = id_reference(reference)
+        if hex is None:
+            raise ValidationError(f"'{reference}' is no document id")
+        if len(hex) == 32:
+            return DocumentId(UUID(hex=hex))
+        found = await self.query(actor, DocumentFilter(ids=frozenset({hex})), limit=_SHOWN_ALIKE)
+        if not found:
+            raise NotFoundError("document", reference)
+        if len(found) > 1:
+            alike = ", ".join(
+                f"{item.document.id.hex[-12:]} ({item.document.title})" for item in found
+            )
+            raise ValidationError(
+                f"the id '{reference}' fits several documents: {alike}; give more of its end"
+            )
+        return found[0].document.id
 
     async def download(
         self, actor: UserId, id: DocumentId, file: DocumentFile, target: Path, *, page: int = 1

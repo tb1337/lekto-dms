@@ -1,6 +1,7 @@
 """Identifiers: UUIDv7 (time-ordered), one distinct type per entity."""
 
 import os
+import re
 import time
 from typing import NewType
 from uuid import UUID
@@ -28,6 +29,28 @@ LensId = NewType("LensId", UUID)
 
 _TIMESTAMP_BITS = 48
 _RANDOM_BITS = 80
+
+SHORT_ID = 8
+"""Characters of a short id: the end of the id, its random bits (Tobi, 01.11.2026, umsetzungsplan
+"MCP", decision 8; the start is the time and stays the same for a minute)."""
+_REFERENCE = re.compile(rf"[0-9a-f]{{{SHORT_ID},12}}|[0-9a-f]{{32}}")
+
+
+def short_id(id: UUID) -> str:
+    """The last `SHORT_ID` characters of `id`: how an assistant names a document."""
+    return id.hex[-SHORT_ID:]
+
+
+def id_reference(text: str) -> str | None:
+    """`text` as the end of an id it names, in hex: a short id (`SHORT_ID` to 12 characters, the
+    last group) or the whole id, with or without hyphens; None for anything else."""
+    hex = text.strip().lower().replace("-", "")
+    return hex if _REFERENCE.fullmatch(hex) else None
+
+
+def ends_with(id: UUID, references: frozenset[str]) -> bool:
+    """Whether `id` ends with one of `references` (`id_reference`)."""
+    return any(id.hex.endswith(reference) for reference in references)
 
 
 def new_id() -> UUID:

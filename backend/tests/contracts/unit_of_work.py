@@ -39,6 +39,7 @@ from lekto.core.domain.ids import (
     TagId,
     UserId,
     new_id,
+    short_id,
 )
 from lekto.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
 from lekto.core.domain.periods import Period
@@ -1504,6 +1505,22 @@ class UnitOfWorkContract:
                 tags=(frozenset({paid.id}),),
             )
             assert set(ids(await query(owner.id, combined, limit=9))) == {0}
+            # By id: a short id (its end, any case), the whole id with or without hyphens; an
+            # end that is no document's finds none.
+            by_id = DocumentFilter(
+                ids=frozenset(
+                    {
+                        short_id(documents[1].id),
+                        documents[3].id.hex,
+                        str(documents[5].id).replace("-", "")[-12:],
+                        "00000000",
+                    }
+                )
+            )
+            assert set(ids(await query(owner.id, by_id, limit=9))) == {1, 3, 5}
+            assert set(ids(await uow.documents.query(by_id, limit=9))) == {1, 3, 5}
+            with_type = replace(by_id, document_types=frozenset({invoice.id}))
+            assert set(ids(await query(owner.id, with_type, limit=9))) == {1}
 
             # Pages of two, following the last id.
             pages: list[DocumentId] = []

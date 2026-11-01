@@ -22,7 +22,15 @@ from lekto.core.services.objects import exchanges_key, original_key
 from tests import builders
 from tests.api import auth, issue_token
 from tests.builders import PASSWORD, SAMPLES
-from tests.unit.adapters.rest.support import DOCUMENTS, MAX_UPLOAD, Api, make_app, sample_file
+from tests.unit.adapters.rest.support import (
+    DOCUMENTS,
+    MAX_UPLOAD,
+    Api,
+    make_app,
+    sample_file,
+    unique_pdf,
+    upload,
+)
 
 SIGNALS = ("signal_llm", "signal_classifier", "signal_neighbours", "signal_facts")
 PROBLEM = "application/problem+json"
@@ -581,3 +589,27 @@ def nodes(processing: dict[str, Any]) -> dict[str, str]:
 
 def waiting(*names: str) -> dict[str, str]:
     return dict.fromkeys(names, "waiting")
+
+
+async def test_the_list_names_documents_by_id(api: Api) -> None:
+    """`ids`: whole ids or their ends (the short ids MCP names); with the count and the facets,
+    within the caller's reach, any case, with or without hyphens."""
+    owner, other = await api.user(), await api.user()
+    first, second, third = [
+        await upload(api, auth(owner), content=unique_pdf(name)) for name in ("a", "b", "c")
+    ]
+    theirs = await upload(api, auth(other), content=unique_pdf("theirs"))
+    short = UUID(first).hex[-8:]
+    params = {"ids": [short.upper(), second, UUID(theirs).hex[-8:]]}
+
+    listed = await api.client.get(DOCUMENTS, params=params, headers=auth(owner))
+    assert listed.status_code == 200, listed.text
+    assert {item["id"] for item in listed.json()["items"]} == {first, second}
+    counted = await api.client.get(f"{DOCUMENTS}/count", params=params, headers=auth(owner))
+    assert counted.json()["total"] == 2
+    facets = await api.client.get(f"{DOCUMENTS}/facets", params=params, headers=auth(owner))
+    assert facets.status_code == 200, facets.text
+    assert third not in {item["id"] for item in listed.json()["items"]}
+
+    wrong = await api.client.get(DOCUMENTS, params={"ids": "1234"}, headers=auth(owner))
+    assert wrong.status_code == 422

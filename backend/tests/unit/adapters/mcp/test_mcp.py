@@ -19,7 +19,7 @@ from lekto.adapters.outbound.memory import ManualClock
 from lekto.composition.container import build_memory_container, build_services
 from lekto.core.domain.documents import DocumentChanges
 from lekto.core.domain.fields import FieldType, Money
-from lekto.core.domain.ids import DocumentId, new_id
+from lekto.core.domain.ids import DocumentId, new_id, short_id
 from lekto.core.domain.master_data import TagScope
 from lekto.core.services.objects import text_key
 from tests import builders
@@ -157,10 +157,23 @@ async def test_the_server_works_over_a_real_connection() -> None:
     ):
         result = await mcp.call_tool("documents_get", {"id": str(received.id)})
     await client.aclose()
-    assert data(result)["id"] == str(received.id)
+    assert data(result)["id"] == short_id(received.id)
 
 
 # --- reading ------------------------------------------------------------------------------------
+
+
+async def test_documents_go_by_a_short_id_or_the_whole_one(api: Api, scene: Scene) -> None:
+    """Tobi, 01.11.2026 (umsetzungsplan "MCP", decision 8): the last 8 characters of the id."""
+    owner = scene.headers["owner"]
+    (short,) = shorts(scene.green)
+    assert data(await call(api, owner, "documents_get", id=short))["id"] == short
+    assert data(await call(api, owner, "documents_get", id=scene.green))["id"] == short
+    assert data(await call(api, owner, "documents_text", id=short.upper()))["total_length"] > 0
+    assert "is no document id" in error(await call(api, owner, "documents_get", id="1234"))
+    assert "not found" in error(await call(api, owner, "documents_get", id="00000000"))
+    hidden = await call(api, scene.headers["stranger"], "documents_get", id=short)
+    assert "not found" in error(hidden)
 
 
 async def test_documents_get_names_what_the_document_refers_to(api: Api, scene: Scene) -> None:
@@ -199,14 +212,14 @@ async def test_documents_get_names_its_relations_one_may_read(api: Api, scene: S
     await api.services.relations.relate(scene.owner.id, green, yellow)
     owner = data(await call(api, scene.headers["owner"], "documents_get", id=scene.green))
     (relation,) = owner["relations"]
-    assert relation["id"] == scene.yellow and "suggested" not in relation
+    assert relation["id"] == shorts(scene.yellow).pop() and "suggested" not in relation
     assert relation["direction"] in ("refers_to", "referred_by")
     reader = data(await call(api, scene.headers["reader"], "documents_get", id=scene.green))
     assert "relations" not in reader
     changed = data(
         await call(api, scene.headers["owner"], "documents_update", id=scene.green, title="Neu")
     )
-    assert [item["id"] for item in changed["document"]["relations"]] == [scene.yellow]
+    assert {item["id"] for item in changed["document"]["relations"]} == shorts(scene.yellow)
 
 
 async def test_a_document_one_may_not_read_is_just_not_found(api: Api, scene: Scene) -> None:
@@ -276,6 +289,11 @@ async def test_tags_list_gives_each_tag_as_its_path_by_scope(api: Api, scene: Sc
 # --- search -------------------------------------------------------------------------------------
 
 
+def shorts(*ids: str) -> set[str]:
+    """The short ids MCP names the documents `ids` by."""
+    return {short_id(UUID(id)) for id in ids}
+
+
 async def found(api: Api, headers: dict[str, str], **arguments: Any) -> set[str]:
     ids: set[str] = set()
     offset: int | None = 0
@@ -291,14 +309,14 @@ async def found(api: Api, headers: dict[str, str], **arguments: Any) -> set[str]
 
 
 async def test_search_finds_what_the_caller_may_read(api: Api, scene: Scene) -> None:
-    everything = {scene.green, scene.yellow, scene.processing}
+    everything = shorts(scene.green, scene.yellow, scene.processing)
     assert await found(api, scene.headers["owner"]) == everything
     assert await found(api, scene.headers["read_token"]) == everything
-    assert await found(api, scene.headers["reader"]) == {scene.green}
+    assert await found(api, scene.headers["reader"]) == shorts(scene.green)
     assert await found(api, scene.headers["stranger"]) == set()
     page = data(await call(api, scene.headers["reader"], "documents_search", query="pdf"))
     item = page["items"][0]
-    assert item["id"] == scene.green and item["access"] == "read"
+    assert {item["id"]} == shorts(scene.green) and item["access"] == "read"
     assert set(item) >= {"title", "snippet", "lane"}
     assert isinstance(item["snippet"], str)
     assert "semantic" in page  # false says something, unlike null or empty
@@ -322,9 +340,9 @@ async def test_search_filters_by_name(api: Api, scene: Scene) -> None:
     assert indexing is not None
     await indexing.reconcile()
     await builders.drain(indexing)
-    assert await found(api, scene.headers["owner"], tags=["strom"]) == {scene.green}
+    assert await found(api, scene.headers["owner"], tags=["strom"]) == shorts(scene.green)
     # A tag finds the documents with a tag below it.
-    assert await found(api, scene.headers["owner"], tags=["Energie"]) == {scene.green}
+    assert await found(api, scene.headers["owner"], tags=["Energie"]) == shorts(scene.green)
     unknown = await call(
         api, scene.headers["owner"], "documents_search", query="pdf", tags=["Nope"]
     )
@@ -361,12 +379,11 @@ async def test_search_filters_by_topics(api: Api, scene: Scene) -> None:
     await indexing.reconcile()
     await builders.drain(indexing)
     owner = scene.headers["owner"]
-    assert await found(api, owner, topics=["arbeit"]) == {scene.green}
-    assert await found(api, owner, topics=["Versicherung"]) == {scene.yellow}
-    assert await found(api, owner, topics=["Arbeit", "Krankenversicherung"]) == {
-        scene.green,
-        scene.yellow,
-    }
+    assert await found(api, owner, topics=["arbeit"]) == shorts(scene.green)
+    assert await found(api, owner, topics=["Versicherung"]) == shorts(scene.yellow)
+    assert await found(api, owner, topics=["Arbeit", "Krankenversicherung"]) == shorts(
+        scene.green, scene.yellow
+    )
     page = data(await call(api, owner, "documents_search", query="pdf", topics=["Arbeit"]))
     assert page["items"][0]["topic"] == "Arbeit"
     assert "no topic named 'Nope'" in error(
@@ -530,7 +547,7 @@ async def test_documents_update_returns_the_document_and_the_rules_report(
     result = data(
         await call(api, scene.headers["owner"], "documents_update", id=scene.green, title="Z")
     )
-    assert result["id"] == scene.green and result["document"]["title"] == "Z"
+    assert result["id"] == shorts(scene.green).pop() and result["document"]["title"] == "Z"
     assert result.get("rules", []) == []
 
 
@@ -576,7 +593,7 @@ async def test_an_editor_whose_change_files_the_document_away_learns_nothing_mor
 
     result = await call(api, auth(editor), "documents_update", id=id, contact="ACME")
 
-    assert data(result) == {"id": id, "filed_away": True}
+    assert data(result) == {"id": shorts(id).pop(), "filed_away": True}
     assert "not found" in error(await call(api, auth(editor), "documents_get", id=id))
     owners = data(await call(api, o, "documents_update", id=id, title="Seen by the owner"))
     assert owners["document"]["space_id"] == private["id"]

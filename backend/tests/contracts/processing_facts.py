@@ -1,6 +1,7 @@
 """Contract of the facts of processing (`ProcessingFacts`): the first runs and verdicts, kept
 once, and the statistics over them."""
 
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
@@ -16,7 +17,7 @@ from lekto.core.domain.users import User
 from lekto.core.ports.repository import FactsScope, LaneCount, SignalCount
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from tests import builders
-from tests.builders import FAILED, NOW, UNCERTAIN
+from tests.builders import FAILED, NOW, UNCERTAIN, VIA
 from tests.contracts.unit_of_work import owner_with_space
 
 SECOND = timedelta(seconds=1)
@@ -109,7 +110,7 @@ class ProcessingFactsContract:
         await store(uow_factory, document)
         first = [
             verdict(document, CONTACT, Verdict.ACCEPTED, signals={Node.SIGNAL_LLM: True}),
-            verdict(document, DOCUMENT_DATE, Verdict.EARLY),
+            replace(verdict(document, DOCUMENT_DATE, Verdict.EARLY), via=VIA),
         ]
         later = [
             verdict(document, CONTACT, Verdict.CORRECTED, at=DAY),

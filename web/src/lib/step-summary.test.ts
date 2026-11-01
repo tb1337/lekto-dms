@@ -3,7 +3,7 @@ import type { components } from '#lib/api/schema.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import type { Node, NodeState } from '#lib/pipeline.ts';
-import { byPerson, confirmationOf, stepSummary } from './step-summary.ts';
+import { actorOf, byPerson, confirmationOf, stepSummary } from './step-summary.ts';
 
 type LogEntry = components['schemas']['LogEntry'];
 
@@ -169,7 +169,31 @@ describe('stepSummary', () => {
 					{ model_version: 'person' }
 				)
 			)
-		).toEqual({ by: ANNA, before: 'failed' });
+		).toEqual({ by: ANNA, via: null, before: 'failed' });
+		// Through an API token: the token stands after the name.
+		const token = { id: 't', name: 'Claude' };
+		expect(
+			summary(
+				'judge',
+				{ confirmed_by: ANNA, via_token: token, outcome_before: 'uncertain' },
+				{ model_version: 'person' }
+			)
+		).toBe(
+			m.summary_overruled_confirmed({
+				name: m.by_token({ name: 'Anna Leider', token: 'Claude' })
+			})
+		);
+	});
+
+	it('names who set off an entry outside processing, with the token', () => {
+		const change = (input: Record<string, unknown>) =>
+			actorOf(entry('apply_rules', {}, { model_version: 'rules:change', input }));
+		expect(change({ actor: ANNA })).toEqual({ by: ANNA, via: null });
+		expect(change({ actor: ANNA, via_token: { id: 't', name: 'Claude' } })).toEqual({
+			by: ANNA,
+			via: 'Claude'
+		});
+		expect(change({ trigger: 'change' })).toBeNull();
 	});
 
 	it('counts the fields read and the rules that took effect', () => {

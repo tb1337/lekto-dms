@@ -9,8 +9,10 @@ from typing import Any
 from sqlalchemy import ColumnElement, Select, case, func, literal, select
 
 from lekto.adapters.outbound.sql import tables as t
+from lekto.adapters.outbound.sql.repositories import via_columns
 from lekto.adapters.outbound.sql.transaction import Transaction
 from lekto.core.domain.first_runs import Decision, FieldVerdict, FirstRun, Verdict
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import DocumentId
 from lekto.core.domain.pipeline import Lane, Node
 from lekto.core.domain.validation import require_utc
@@ -51,6 +53,7 @@ class SqlProcessingFacts:
                 "decided_at": verdict.decided_at,
                 "decision": verdict.decision.value,
                 **{signal.value: verdict.signals.get(signal) for signal in _SIGNALS},
+                **via_columns(verdict.via),
             }
             for verdict in verdicts
         ]
@@ -87,6 +90,7 @@ class SqlProcessingFacts:
                     for signal in _SIGNALS
                     if (value := getattr(row, signal.value)) is not None
                 },
+                via=ViaToken.stored(row.via_token_id, row.via_token_name),
             )
             for row in rows
         ]

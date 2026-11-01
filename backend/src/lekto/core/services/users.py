@@ -17,7 +17,7 @@ from lekto.core.domain.errors import (
     PermissionDeniedError,
     ValidationError,
 )
-from lekto.core.domain.identity import Credential, ExternalIdentity, check_new_password
+from lekto.core.domain.identity import Credential, ExternalIdentity, ViaToken, check_new_password
 from lekto.core.domain.ids import DocumentId, SpaceId, UserId
 from lekto.core.domain.reasons import Action, ReasonCode, because
 from lekto.core.domain.rules import Rule
@@ -254,14 +254,16 @@ class UserService:
         actor: UserId,
         id: UserId,
         settle: Mapping[SpaceId, Settlement] | None = None,
+        *,
+        via: ViaToken | None = None,
     ) -> None:
         """Admins only. A space that would stop it needs a decision in `settle` (Tobi,
         22.10.2026; `removal` lists them, UserDeletionBlockedError names those left open): the
         user's personal space while it holds documents moves them into another space
         (`move_to`); a shared space the user alone edits goes with the user if it is empty
         (`remove`), moves its documents (`move_to`) and goes, or gets another editor
-        (`editor`) and stays. Documents move as an admin moves them by hand. All at once:
-        nothing happens if one fails.
+        (`editor`) and stays. Documents move as an admin moves them by hand (through the API
+        token `via`). All at once: nothing happens if one fails.
 
         Removes the personal space with its rules, the user's memberships of other spaces,
         their webhooks, lenses and applications of rules, all their sign-in data and what they
@@ -306,6 +308,7 @@ class UserService:
                             now=now,
                             rules=self._rules,
                             prepared=prepared.get(document.id),
+                            via=via,
                         )
                 elif settlement.editor is not None:
                     editor = await uow.users.find(settlement.editor)

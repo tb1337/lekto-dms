@@ -1181,6 +1181,7 @@ class UnitOfWorkContract:
             state=RelationState.SET,
             decided_by=owner.id,
             decided_at=NOW + timedelta(minutes=1),
+            decided_via=builders.VIA,
         )
         later = Relation(
             newer=other.id,
@@ -2049,16 +2050,18 @@ class UnitOfWorkContract:
             action=BulkAction(kind=BulkKind.CHANGE_TAGS, add=tags),
             documents=documents,
             now=NOW,
+            via=builders.VIA,
         )
         async with uow_factory() as uow:
             await uow.bulk_operations.add(operation)
             await uow.commit()
         async with uow_factory() as uow:
             stored = await uow.bulk_operations.get(operation.id)
-            assert (stored.action, stored.documents, stored.status) == (
+            assert (stored.action, stored.documents, stored.status, stored.via) == (
                 BulkAction(kind=BulkKind.CHANGE_TAGS, add=tags),
                 documents,
                 BulkStatus.QUEUED,
+                builders.VIA,
             )
             stored.record_changed()
             stored.record_skipped(documents[1], because(ReasonCode.NO_DOCUMENT_TEXT))

@@ -218,7 +218,8 @@ def add_document_tools(tools: Tools, context: ApiContext) -> None:
         fields: Annotated[dict[str, Any], Field(default_factory=lambda: UNSET)],
         created_at: Annotated[AwareDatetime, Field(default_factory=lambda: UNSET)],
     ) -> str:
-        user = principal_of(ctx).id
+        principal = principal_of(ctx)
+        user = principal.id
         names = await Names.load(context, user)
         changes = DocumentChanges(
             title=title,
@@ -234,7 +235,9 @@ def add_document_tools(tools: Tools, context: ApiContext) -> None:
                 created_at if isinstance(created_at, Unset) else created_at.astimezone(UTC)
             ),
         )
-        change = await context.documents.change_metadata(user, DocumentId(id), changes)
+        change = await context.documents.change_metadata(
+            user, DocumentId(id), changes, via=principal.via
+        )
         if change.access is None:
             return compact(UpdateOut(id=change.document.id, filed_away=True))
         document = document_out(change.document, change.access, names)

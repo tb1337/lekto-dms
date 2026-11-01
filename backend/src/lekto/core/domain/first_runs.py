@@ -52,6 +52,7 @@ from lekto.core.domain.classification import (
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.fields import field_to_json
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import DocumentId, TagId
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.pipeline import OUTSIDE_PIPELINE, PERSON, Node, NodeRun
@@ -168,7 +169,8 @@ JUDGED_SIGNALS: tuple[Node, ...] = (
 @dataclass(frozen=True, kw_only=True)
 class FieldVerdict:
     """A person's verdict on one field of a document, at their first decision on it; per
-    signal that named a value for it, whether it named the person's (`signals`)."""
+    signal that named a value for it, whether it named the person's (`signals`); `via` the API
+    token they decided through."""
 
     document_id: DocumentId
     field: str
@@ -176,6 +178,7 @@ class FieldVerdict:
     decided_at: datetime
     decision: Decision
     signals: Mapping[Node, bool] = dataclass_field(default_factory=dict)
+    via: ViaToken | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "decided_at", require_utc(self.decided_at, "decided_at"))

@@ -14,10 +14,11 @@
 	import { object, person } from '#lib/signals.ts';
 	import { drawsDetails, drawsFacts } from '#lib/step-details.ts';
 	import { YELLOW_ACTION } from '#lib/step-look.ts';
-	import { confirmationOf } from '#lib/step-summary.ts';
+	import { actorOf, confirmationOf } from '#lib/step-summary.ts';
 	import type { Step } from '#lib/steps.ts';
 	import { usageOf } from '#lib/usage.ts';
 	import { cn } from '#lib/utils.ts';
+	import { viaToken } from '#lib/via-token.ts';
 
 	type LogEntry = components['schemas']['LogEntry'];
 	type Outcome = components['schemas']['Outcome'];
@@ -63,7 +64,7 @@
 	function overruled(entry: LogEntry, last: boolean): string | null {
 		const confirmed = confirmationOf(entry);
 		if (confirmed) {
-			const name = person(confirmed.by, lookup);
+			const name = viaToken(person(confirmed.by, lookup), confirmed.via);
 			return confirmed.before === 'failed'
 				? m.processing_overruled_decided({ name })
 				: m.processing_overruled_confirmed({ name });
@@ -83,12 +84,15 @@
 		{#each step.done.entries as entry, index (`${entry.run}-${index}`)}
 			{@const usage = usageOf(entry.output)}
 			{@const settled = overruled(entry, index === step.done.entries.length - 1)}
+			{@const actor = actorOf(entry)}
 			<div class="flex flex-col gap-1.5 text-sm" data-run={entry.run}>
 				<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
 					<span>
 						{time(entry.started_at)} · {m.log_run({
 							run: entry.run
-						})}{#if entry.model_version}{` · ${entry.model_version}`}{/if}
+						})}{#if entry.model_version}{` · ${entry.model_version}`}{/if}{#if actor}{` · ${m.log_by(
+								{ name: viaToken(person(actor.by, lookup), actor.via) }
+							)}`}{/if}
 					</span>
 					{#if usage}
 						<TokenInfo

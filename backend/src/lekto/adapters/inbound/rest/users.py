@@ -11,6 +11,7 @@ from lekto.adapters.inbound.rest.auth import (
     Authenticated,
     CurrentUser,
     SessionPrincipal,
+    Via,
 )
 from lekto.adapters.inbound.rest.context import Context
 from lekto.adapters.inbound.rest.params import ADMINS_ONLY, SESSION_ONLY_NOTE
@@ -230,9 +231,9 @@ async def removal(id: UUID, user: CurrentUser, context: Context) -> UserRemovalO
     responses=problem_responses(401, 403, 404, 409, 422),
 )
 async def delete_user(
-    id: UUID, user: CurrentUser, context: Context, body: UserRemovalIn | None = None
+    id: UUID, user: CurrentUser, via: Via, context: Context, body: UserRemovalIn | None = None
 ) -> None:
     settle = (
         {} if body is None else {SpaceId(item.space_id): item.settlement() for item in body.spaces}
     )
-    await context.users.delete_user(user, UserId(id), settle)
+    await context.users.delete_user(user, UserId(id), settle, via=via)

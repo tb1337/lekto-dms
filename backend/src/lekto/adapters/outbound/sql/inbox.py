@@ -22,9 +22,10 @@ from sqlalchemy import (
 
 from lekto.adapters.outbound.sql import tables as t
 from lekto.adapters.outbound.sql.documents import SqlDocumentRepository
-from lekto.adapters.outbound.sql.repositories import KEYS_PER_QUERY
+from lekto.adapters.outbound.sql.repositories import KEYS_PER_QUERY, via_columns
 from lekto.adapters.outbound.sql.spaces import member_space_ids
 from lekto.adapters.outbound.sql.transaction import Transaction
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import DocumentId, UserId
 from lekto.core.domain.inbox import OPEN_TABS, Confirmation, InboxTab
 from lekto.core.domain.pipeline import Lane
@@ -82,8 +83,13 @@ class SqlInboxRepository:
                 row.inbox_seen_at,
                 None
                 if row.inbox_confirmed_by is None
-                else Confirmation(UserId(row.inbox_confirmed_by), row.inbox_confirmed_at),
+                else Confirmation(
+                    UserId(row.inbox_confirmed_by),
+                    row.inbox_confirmed_at,
+                    ViaToken.stored(row.inbox_confirmed_via_id, row.inbox_confirmed_via_name),
+                ),
                 bool(row.inbox_seen_silent),
+                ViaToken.stored(row.inbox_seen_via_id, row.inbox_seen_via_name),
             )
             for document, row in zip(documents, rows, strict=True)
         ]
@@ -121,17 +127,25 @@ class SqlInboxRepository:
         return found
 
     async def mark_seen(
-        self, viewer: UserId, document: DocumentId, at: datetime, *, silent: bool = False
+        self,
+        viewer: UserId,
+        document: DocumentId,
+        at: datetime,
+        *,
+        silent: bool = False,
+        via: ViaToken | None = None,
     ) -> None:
-        await self._mark([document], viewer, at, silent=silent)
+        await self._mark([document], viewer, at, silent=silent, via=via)
 
-    async def mark_all_seen(self, viewer: UserId, *, editor: UserId | None, at: datetime) -> int:
+    async def mark_all_seen(
+        self, viewer: UserId, *, editor: UserId | None, at: datetime, via: ViaToken | None = None
+    ) -> int:
         statement = (
             select(_documents.c.id).select_from(_joined(viewer)).where(_new(), *_whose(editor))
         )
         new = [DocumentId(row.id) for row in await self._tx.read(statement)]
         for start in range(0, len(new), KEYS_PER_QUERY):
-            await self._mark(new[start : start + KEYS_PER_QUERY], viewer, at)
+            await self._mark(new[start : start + KEYS_PER_QUERY], viewer, at, via=via)
         return len(new)
 
     async def unmark_seen(self, viewer: UserId, document: DocumentId) -> None:
@@ -141,14 +155,17 @@ class SqlInboxRepository:
 
     async def record_confirmation(self, document: DocumentId, confirmation: Confirmation) -> None:
         statement = self._tx.database.insert(_confirmations).values(
-            document_id=document, confirmed_by=confirmation.by, confirmed_at=confirmation.at
+            document_id=document,
+            confirmed_by=confirmation.by,
+            confirmed_at=confirmation.at,
+            **via_columns(confirmation.via),
         )
         await self._tx.write(
             statement.on_conflict_do_update(
                 index_elements=[_confirmations.c.document_id],
                 set_={
-                    "confirmed_by": statement.excluded.confirmed_by,
-                    "confirmed_at": statement.excluded.confirmed_at,
+                    name: statement.excluded[name]
+                    for name in ("confirmed_by", "confirmed_at", "via_token_id", "via_token_name")
                 },
             )
         )
@@ -175,7 +192,13 @@ class SqlInboxRepository:
         return int(result.rowcount)
 
     async def _mark(
-        self, documents: list[DocumentId], viewer: UserId, at: datetime, *, silent: bool = False
+        self,
+        documents: list[DocumentId],
+        viewer: UserId,
+        at: datetime,
+        *,
+        silent: bool = False,
+        via: ViaToken | None = None,
     ) -> None:
         """Upsert the marks of `viewer` on `documents` with `at`."""
         if not documents:
@@ -183,12 +206,21 @@ class SqlInboxRepository:
         statement = self._tx.database.insert(_seen)
         statement = statement.on_conflict_do_update(
             index_elements=[_seen.c.user_id, _seen.c.document_id],
-            set_={"seen_at": statement.excluded.seen_at, "silent": statement.excluded.silent},
+            set_={
+                name: statement.excluded[name]
+                for name in ("seen_at", "silent", "via_token_id", "via_token_name")
+            },
         )
         await self._tx.write(
             statement,
             [
-                {"user_id": viewer, "document_id": id, "seen_at": at, "silent": silent}
+                {
+                    "user_id": viewer,
+                    "document_id": id,
+                    "seen_at": at,
+                    "silent": silent,
+                    **via_columns(via),
+                }
                 for id in documents
             ],
         )
@@ -214,8 +246,12 @@ def _entry_rows(viewer: UserId) -> Select[Any]:
         _documents,
         _seen.c.seen_at.label("inbox_seen_at"),
         _seen.c.silent.label("inbox_seen_silent"),
+        _seen.c.via_token_id.label("inbox_seen_via_id"),
+        _seen.c.via_token_name.label("inbox_seen_via_name"),
         _confirmations.c.confirmed_by.label("inbox_confirmed_by"),
         _confirmations.c.confirmed_at.label("inbox_confirmed_at"),
+        _confirmations.c.via_token_id.label("inbox_confirmed_via_id"),
+        _confirmations.c.via_token_name.label("inbox_confirmed_via_name"),
     ).select_from(_joined(viewer))
 
 

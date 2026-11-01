@@ -30,6 +30,7 @@ from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import NotFoundError, PatternTimeoutError, ValidationError
 from lekto.core.domain.evidence import DocumentText
 from lekto.core.domain.fields import FieldDefinition, field_to_json
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import (
     ContactId,
     DocumentTypeId,
@@ -61,6 +62,7 @@ from lekto.core.domain.pipeline import (
     NodeResult,
     NodeRun,
     Outcome,
+    via_entry,
 )
 from lekto.core.domain.reasons import Reason, ReasonCode, because, reasons_to_json
 from lekto.core.domain.rule_conditions import (
@@ -419,14 +421,27 @@ def entry_beside(
 
 
 def space_choice(
-    document: Document, *, node: Node, actor: UserId, trigger: str, version: str, now: datetime
+    document: Document,
+    *,
+    node: Node,
+    actor: UserId,
+    trigger: str,
+    version: str,
+    now: datetime,
+    via: ViaToken | None = None,
 ) -> NodeRun:
-    """The log entry of a person choosing the document's space outside the inbox."""
+    """The log entry of a person choosing the document's space outside the inbox (through the
+    API token `via`)."""
     return entry_beside(
         document,
         node=node,
         model_version=PERSON_SPACE,
-        input={TRIGGER: trigger, ACTOR: str(actor), CHOSEN_SPACE: str(document.space_id)},
+        input={
+            TRIGGER: trigger,
+            ACTOR: str(actor),
+            **via_entry(via),
+            CHOSEN_SPACE: str(document.space_id),
+        },
         output=person_record(
             changed=[SPACE], tags_before=document.tag_ids, tags_after=document.tag_ids
         ),

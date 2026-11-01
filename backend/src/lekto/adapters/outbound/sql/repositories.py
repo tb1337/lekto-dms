@@ -17,8 +17,17 @@ from sqlalchemy import ColumnElement, Row, Table, delete, insert, select, true, 
 from lekto.adapters.outbound.sql.transaction import Transaction
 from lekto.core.domain.entity import Entity
 from lekto.core.domain.errors import ConcurrencyError, NotFoundError
+from lekto.core.domain.identity import ViaToken
 
 type Values = dict[str, Any]
+
+
+def via_columns(via: ViaToken | None) -> Values:
+    """The columns of `tables._via_token` for `via`."""
+    return {
+        "via_token_id": None if via is None else via.id,
+        "via_token_name": None if via is None else via.name,
+    }
 
 
 KEYS_PER_QUERY = 200

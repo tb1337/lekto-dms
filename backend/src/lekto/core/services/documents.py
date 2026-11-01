@@ -34,6 +34,7 @@ from lekto.core.domain.facts import Facts, Span, facts_in, identifier_spans, on_
 from lekto.core.domain.fields import SORTABLE_TYPES, FieldType, FieldValue
 from lekto.core.domain.first_runs import Decision
 from lekto.core.domain.identifiers import TYPES, IdentifierKind
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -507,13 +508,18 @@ class DocumentService:
             editable=can_edit_document(user, document, space),
         )
 
-    async def decide_fact(self, actor: UserId, id: DocumentId, decision: FactDecision) -> None:
-        """Keep a person's decision about a fact of the document (`fact_decisions`); the change
-        rules of its space and the global ones run on the facts before and after it, the
-        document's values as they are (a field a rule fills from a fact follows it)."""
+    async def decide_fact(
+        self, actor: UserId, id: DocumentId, decision: FactDecision, *, via: ViaToken | None = None
+    ) -> None:
+        """Keep a person's decision about a fact of the document (`fact_decisions`; through the
+        API token `via`); the change rules of its space and the global ones run on the facts
+        before and after it, the document's values as they are (a field a rule fills from a
+        fact follows it)."""
         rules = self._rules
         if rules is None:
-            await decide_fact(self._uow, self._object_store, self._clock, actor, id, decision)
+            await decide_fact(
+                self._uow, self._object_store, self._clock, actor, id, decision, via=via
+            )
             return
         async with self._uow() as uow:
             document, _ = await writable_document(uow, await load_actor(uow, actor), id)
@@ -536,11 +542,19 @@ class DocumentService:
                 definitions=await field_definitions(uow),
                 now=self._clock.now(),
                 kept_before=kept_before,
+                via=via,
             )
             await _save(uow, document)
 
         await decide_fact(
-            self._uow, self._object_store, self._clock, actor, id, decision, after=run_rules
+            self._uow,
+            self._object_store,
+            self._clock,
+            actor,
+            id,
+            decision,
+            after=run_rules,
+            via=via,
         )
 
     async def _codes(self, id: DocumentId) -> tuple[Code, ...] | None:
@@ -875,13 +889,18 @@ class DocumentService:
         return Review(document, access, open_nodes(document, log), node_reviews(log))
 
     async def update_metadata(
-        self, actor: UserId, id: DocumentId, changes: DocumentChanges
+        self,
+        actor: UserId,
+        id: DocumentId,
+        changes: DocumentChanges,
+        *,
+        via: ViaToken | None = None,
     ) -> Document:
         """Needs write access. Referenced contact, type, topic, tags and fields must exist; the
         topic is one the contact enables, or an admin's choice enables it there
         (`_access.checked_changes`). A change of confirming metadata confirms the document,
         unless it only adds or removes tags set by hand (`documents.confirms`)."""
-        return (await self.change_metadata(actor, id, changes)).document
+        return (await self.change_metadata(actor, id, changes, via=via)).document
 
     async def change_metadata(
         self,
@@ -891,13 +910,15 @@ class DocumentService:
         *,
         dry_run: bool = False,
         confirm: bool = True,
+        via: ViaToken | None = None,
     ) -> MetadataChange:
         """As `update_metadata`, and the change rules of the document's space and the global
         ones run (see `rules.changes`). The rules' report is for its editors and admins. With
         `dry_run`, nothing is stored: what would happen. Without `confirm` (an admin, on a
         document taken over from another system: the migration aligns it with its source), the
         change neither confirms the document nor counts as a person's decision; the checks and
-        the rules are the same."""
+        the rules are the same. `via`: the API token the caller acts through, kept with the
+        verdicts and in the log."""
         # When the document came in is no metadata the rules decide on: changed alone, they
         # do not run (Tobi, 21.10.2026).
         rules = None if changes.only_receipt else self._rules
@@ -940,6 +961,7 @@ class DocumentService:
                         given=changed_fields(given),
                         definitions=definitions,
                         now=now,
+                        via=via,
                     )
             elif confirm and CONFIRMING & set(changed):
                 document.record_decision()  # tags set by hand: no confirmation, but a decision
@@ -955,6 +977,7 @@ class DocumentService:
                     definitions=definitions,
                     now=now,
                     log=not dry_run,
+                    via=via,
                 )
             space = await uow.spaces.get(document.space_id)
             access = document_access(user, document, space)
@@ -966,13 +989,16 @@ class DocumentService:
         report = access is not None and access.can_edit
         return MetadataChange(document, access, space, run if report else None, before)
 
-    async def move(self, actor: UserId, id: DocumentId, space: SpaceId) -> None:
+    async def move(
+        self, actor: UserId, id: DocumentId, space: SpaceId, *, via: ViaToken | None = None
+    ) -> None:
         """The editors of the document's space move it into a space they edit, or hand it over
         into another, active user's personal space; an admin moves any document into any space,
         but, as everyone, hands nothing over to a deactivated user (unless a member of their
         personal space). A green document becomes new for the editors of the target who could
         not read it before (`inbox.arrived`). A completed document then runs the target's rules
-        (as change rules, `ChangeRules.after_arrival`); they leave the space the person chose."""
+        (as change rules, `ChangeRules.after_arrival`); they leave the space the person chose.
+        `via`: the API token the caller acts through."""
         prepared = Prepared()
         if self._rules is not None:
             async with self._uow() as uow:
@@ -1010,6 +1036,7 @@ class DocumentService:
                 now=now,
                 rules=self._rules,
                 prepared=prepared,
+                via=via,
             )
             await keep_verdicts(
                 uow,
@@ -1019,6 +1046,7 @@ class DocumentService:
                 given={SPACE},
                 definitions=await field_definitions(uow),
                 now=now,
+                via=via,
             )
             await uow.commit()
 

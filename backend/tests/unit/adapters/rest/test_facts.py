@@ -2,6 +2,7 @@
 
 import dataclasses
 from collections.abc import AsyncIterator, Mapping
+from uuid import UUID
 
 import httpx2
 import pytest
@@ -15,6 +16,7 @@ from lekto.adapters.outbound.memory import (
 )
 from lekto.composition.container import build_memory_container, build_services
 from lekto.core.domain.codes import Code
+from lekto.core.domain.ids import DocumentId
 from lekto.core.domain.labels import grid_layout
 from lekto.core.domain.locations import Box
 from tests import builders
@@ -219,6 +221,24 @@ async def test_a_person_decides_about_a_fact(facts_api: Api) -> None:
     assert wrong.status_code == 422
     report = await api.client.get(f"{url}/facts", headers=auth(owner))
     assert report.json()["editable"] is True
+
+
+async def test_a_decision_through_a_token_carries_it(facts_api: Api) -> None:
+    """The verdict on the facts names the token (umsetzungsplan "MCP", decision 11)."""
+    api = facts_api
+    owner = await api.user()
+    document = await upload(api, auth(owner))
+    added = await api.client.post(
+        f"{DOCUMENTS}/{document}/facts/decisions",
+        json={"action": "add", "kind": "invoice_number", "value": "R-1001", "role": "own"},
+        headers=auth(owner),
+    )
+    assert added.status_code == 200, added.text
+    async with api.container.unit_of_work() as uow:
+        verdicts = await uow.processing_facts.verdicts(DocumentId(UUID(document)))
+    assert [(item.field, None if item.via is None else item.via.name) for item in verdicts] == [
+        ("facts", "tests")
+    ]
 
 
 async def test_documents_are_found_by_their_facts(facts_api: Api) -> None:

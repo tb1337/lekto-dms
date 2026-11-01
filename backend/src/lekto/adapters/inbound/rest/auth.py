@@ -20,7 +20,7 @@ from fastapi.routing import APIRoute
 from lekto.adapters.inbound.bearer import bearer_token
 from lekto.adapters.inbound.rest.context import ApiContext, Context
 from lekto.core.domain.errors import AuthenticationError, PermissionDeniedError
-from lekto.core.domain.identity import csrf_matches
+from lekto.core.domain.identity import ViaToken, csrf_matches
 from lekto.core.domain.ids import UserId
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.services.auth import Principal, SignedIn
@@ -135,6 +135,12 @@ async def current_user(principal: Annotated[Principal, Depends(authenticate)]) -
     return principal.id
 
 
+async def via_token(principal: Annotated[Principal, Depends(authenticate)]) -> ViaToken | None:
+    """The API token the caller acts through, for what records their decisions; None in a
+    session."""
+    return principal.via
+
+
 async def session_principal(principal: Annotated[Principal, Depends(authenticate)]) -> Principal:
     """The caller, who must use a session (not an API token)."""
     if principal.session is None:
@@ -144,6 +150,7 @@ async def session_principal(principal: Annotated[Principal, Depends(authenticate
 
 Authenticated = Annotated[Principal, Depends(authenticate)]
 CurrentUser = Annotated[UserId, Depends(current_user)]
+Via = Annotated[ViaToken | None, Depends(via_token)]
 SessionPrincipal = Annotated[Principal, Depends(session_principal)]
 PROTECTED = [Depends(authenticate)]
 

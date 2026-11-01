@@ -34,6 +34,7 @@ from lekto.core.domain.errors import (
 )
 from lekto.core.domain.events import DocumentUpdated
 from lekto.core.domain.first_runs import FACTS, Decision
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import DocumentId, SpaceId, TagId, UserId
 from lekto.core.domain.imports import IMPORTED, ImportedMetadata
 from lekto.core.domain.inbox import Confirmation
@@ -322,6 +323,7 @@ class PipelineService:
         channel: Channel = Channel.API,
         uploaded_by: UserId | None = None,
         imported: ImportedMetadata | None = None,
+        via: ViaToken | None = None,
     ) -> Document:
         """Store the original, then create the document, its first events and the jobs of the
         nodes after receiving in one transaction.
@@ -340,6 +342,7 @@ class PipelineService:
         `space` says otherwise). `imported`: metadata of a document taken over from another
         system, for an active admin and the channel `migration` only; it is checked against the
         master data now and applied by the classification nodes instead of the language model.
+        `via`: the API token the caller acts through, kept with their choice of `space`.
         """
         started = self._clock.now()
         sha256 = file.sha256
@@ -379,6 +382,7 @@ class PipelineService:
                 started,
                 chosen=space is not None,
                 received=None if imported is None else imported.created_at,
+                via=via,
             )
         except ConflictError:
             # The same file arrived twice at the same moment; the other upload won.
@@ -403,9 +407,10 @@ class PipelineService:
         *,
         chosen: bool,
         received: datetime | None = None,
+        via: ViaToken | None = None,
     ) -> Document:
-        """`chosen`: the person chose the space; rules leave it. `received`: when it came in,
-        if not now (taken over from the source system)."""
+        """`chosen`: the person chose the space (through the API token `via`); rules leave it.
+        `received`: when it came in, if not now (taken over from the source system)."""
         now = self._clock.now()
         key = original_key(sha256)
         async with self._uow() as uow:
@@ -439,6 +444,7 @@ class PipelineService:
                         trigger=TRIGGER_UPLOAD,
                         version=self._version,
                         now=now,
+                        via=via,
                     )
                 )
             await enqueue_nodes(uow, document, document.processing.due(), now)
@@ -578,6 +584,7 @@ class PipelineService:
         accept_suggestions: bool = False,
         resume_at: Node = Node.APPLY_RULES,
         space: SpaceId | None = None,
+        via: ViaToken | None = None,
     ) -> DocumentView | None:
         """Editors and admins, for a document in the inbox: decide its open fields, apply
         `changes` (as a metadata change), move it into `space` (as `DocumentService.move`: one
@@ -596,7 +603,8 @@ class PipelineService:
 
         The document leaves the inbox for everyone and is new for no one, except for the
         editors of `space` who could not read it before (`inbox.confirmed_into`); who confirmed
-        it, and when, is kept for done (`domain.inbox`). None: the caller cannot read the
+        it, when, and through which API token (`via`), is kept for done (`domain.inbox`), in
+        the log and with the verdicts. None: the caller cannot read the
         document where it lies now (handed over, or moved into a space they only read, where
         it is not green yet).
 
@@ -619,7 +627,7 @@ class PipelineService:
             tags_before = frozenset(document.tag_ids)
             space_decided = document.space_confirmed_at is not None
             overruled = document.confirm(resume_at, now)
-            await uow.inbox.record_confirmation(id, Confirmation(user.id, now))
+            await uow.inbox.record_confirmation(id, Confirmation(user.id, now, via))
             definitions = await field_definitions(uow)
             # A suggested space the person may not move the document into is kept with the
             # suggestions, not taken: the rest is confirmed.
@@ -657,7 +665,7 @@ class PipelineService:
                     by_person=True,
                     handed_over=target.personal_of not in (None, user.id),
                 )
-                await confirmed_into(uow, document, source, target, now, user.id)
+                await confirmed_into(uow, document, source, target, now, user.id, via)
             await keep_verdicts(
                 uow,
                 Decision.INBOX,
@@ -668,13 +676,14 @@ class PipelineService:
                 now=now,
                 log=log,
                 space_decided=space_decided,
+                via=via,
             )
             run = document.processing.run
             for node in overruled:
-                result = confirmation(node, outcomes.get(node), decision, user.id)
+                result = confirmation(node, outcomes.get(node), decision, user.id, via)
                 await self._log(uow, id, node, run, result, now, now)
             result = confirmation(
-                Node.APPLY_RULES, outcomes.get(Node.APPLY_RULES), decision, user.id
+                Node.APPLY_RULES, outcomes.get(Node.APPLY_RULES), decision, user.id, via
             )
             person = person_record(
                 changed=decided | ({SPACE} if target else set()),

@@ -50,6 +50,7 @@ from lekto.core.domain.fields import (
     read_written,
 )
 from lekto.core.domain.identifiers import IdentifierKind, normalise_identifier
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -1021,13 +1022,15 @@ class RuleApplication:
 
     `accept_conflicts`: documents where the rule's value replaces a different value the
     document has (a deliberate decision, no review). `position`: how many of `documents` are
-    done. `skipped`: document id and reason (with its code)."""
+    done. `skipped`: document id and reason (with its code). `via`: the API token the person
+    started it through, kept in the log entry of each document."""
 
     id: RuleApplicationId
     rule_id: RuleId
     rule_version: int
     user_id: UserId
     documents: tuple[DocumentId, ...]
+    via: ViaToken | None = None
     accept_conflicts: frozenset[DocumentId] = frozenset()
     status: ApplicationStatus = ApplicationStatus.QUEUED
     position: int = 0
@@ -1058,6 +1061,7 @@ class RuleApplication:
         documents: tuple[DocumentId, ...],
         accept_conflicts: frozenset[DocumentId],
         now: datetime,
+        via: ViaToken | None = None,
     ) -> Self:
         return cls(
             id=RuleApplicationId(new_id()),
@@ -1065,6 +1069,7 @@ class RuleApplication:
             rule_version=rule_version,
             user_id=user_id,
             documents=documents,
+            via=via,
             accept_conflicts=accept_conflicts,
             created_at=now,
         )

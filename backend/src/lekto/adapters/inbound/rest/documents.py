@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse
 from pydantic import ValidationError as PydanticValidationError
 from starlette.background import BackgroundTask
 
-from lekto.adapters.inbound.rest.auth import PROTECTED, Authenticated, CurrentUser
+from lekto.adapters.inbound.rest.auth import PROTECTED, Authenticated, CurrentUser, Via
 from lekto.adapters.inbound.rest.context import Context
 from lekto.adapters.inbound.rest.cursors import Cursor, decode_cursor, encode_cursor
 from lekto.adapters.inbound.rest.params import AllDocuments, AllInboxes, Filter
@@ -201,6 +201,7 @@ async def upload(
             channel=channel,
             uploaded_by=None if form.uploaded_by is None else UserId(form.uploaded_by),
             imported=imported,
+            via=principal.via,
         )
     finally:
         await asyncio.shield(asyncio.to_thread(received.file.path.unlink, missing_ok=True))
@@ -350,10 +351,17 @@ Confirm = Annotated[
     responses=problem_responses(401, 403, 404, 409, 422),
 )
 async def update_document(
-    id: UUID, body: DocumentPatch, user: CurrentUser, context: Context, confirm: Confirm = True
+    id: UUID,
+    body: DocumentPatch,
+    user: CurrentUser,
+    via: Via,
+    context: Context,
+    confirm: Confirm = True,
 ) -> DocumentChanged | DocumentOutOfReach:
     changes = await _changes(body, user, context)
-    change = await context.documents.change_metadata(user, DocumentId(id), changes, confirm=confirm)
+    change = await context.documents.change_metadata(
+        user, DocumentId(id), changes, confirm=confirm, via=via
+    )
     return _changed(change)
 
 
@@ -407,8 +415,10 @@ async def preview_change(
     ),
     responses=problem_responses(401, 403, 404, 409, 422),
 )
-async def move_document(id: UUID, body: MoveRequest, user: CurrentUser, context: Context) -> None:
-    await context.documents.move(user, DocumentId(id), SpaceId(body.space_id))
+async def move_document(
+    id: UUID, body: MoveRequest, user: CurrentUser, via: Via, context: Context
+) -> None:
+    await context.documents.move(user, DocumentId(id), SpaceId(body.space_id), via=via)
 
 
 @router.delete(
@@ -671,9 +681,9 @@ async def document_place(
     responses=problem_responses(401, 403, 404, 409, 422),
 )
 async def decide_document_fact(
-    id: UUID, body: FactDecisionIn, user: CurrentUser, context: Context
+    id: UUID, body: FactDecisionIn, user: CurrentUser, via: Via, context: Context
 ) -> FactsOut:
-    await context.documents.decide_fact(user, DocumentId(id), body.decision())
+    await context.documents.decide_fact(user, DocumentId(id), body.decision(), via=via)
     return FactsOut.of(await context.documents.facts(user, DocumentId(id)))
 
 
@@ -743,8 +753,8 @@ async def reprocess(
     ),
     responses=problem_responses(401, 403, 404, 422),
 )
-async def mark_seen(id: UUID, user: CurrentUser, context: Context) -> None:
-    await context.inbox.mark_seen(user, DocumentId(id))
+async def mark_seen(id: UUID, user: CurrentUser, via: Via, context: Context) -> None:
+    await context.inbox.mark_seen(user, DocumentId(id), via=via)
 
 
 @router.delete(
@@ -804,7 +814,7 @@ async def review(id: UUID, user: CurrentUser, context: Context) -> ReviewOut:
     responses=problem_responses(401, 403, 404, 409, 422),
 )
 async def confirm(
-    id: UUID, body: ConfirmRequest, user: CurrentUser, context: Context
+    id: UUID, body: ConfirmRequest, user: CurrentUser, via: Via, context: Context
 ) -> DocumentDetails | DocumentOutOfReach:
     changes = await _changes(body.changes, user, context)
     view = await context.pipeline.confirm(
@@ -814,6 +824,7 @@ async def confirm(
         accept_suggestions=body.accept_suggestions,
         resume_at=Node(body.resume_at.value),
         space=None if body.space_id is None else SpaceId(body.space_id),
+        via=via,
     )
     return DocumentOutOfReach(id=id) if view is None else _details(view)
 
@@ -884,9 +895,10 @@ async def inbox_summary(
     responses=problem_responses(401, 403, 422),
 )
 async def mark_all_seen(
-    user: CurrentUser, context: Context, all_users: AllInboxes = False
+    user: CurrentUser, via: Via, context: Context, all_users: AllInboxes = False
 ) -> InboxSeenOut:
-    return InboxSeenOut(marked=await context.inbox.mark_all_seen(user, all_users=all_users))
+    marked = await context.inbox.mark_all_seen(user, all_users=all_users, via=via)
+    return InboxSeenOut(marked=marked)
 
 
 def _differences(before: Document, after: Document) -> list[str]:

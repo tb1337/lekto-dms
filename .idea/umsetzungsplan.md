@@ -2521,7 +2521,7 @@ Admins sehen wie in der Web-UI ihre Spaces; `all_users` entspricht dem Schalter 
 
 **PRs** (Reihenfolge; jeder mit Tests, OpenAPI und `gen:api`, wo die API sich ändert):
 1. `feature/mcp-foundation` (`new-feature`): Registry, Klassen, Liste je Aufrufer, kompakte Ausgabe ohne `outputSchema`, Stammdaten nur mit Namen, Fehler mit Vorschlägen, Instructions; die sechs Tools umbenannt und verschlankt; Guard-Tests.
-2. `feature/token-provenance` (`new-feature`): Herkunft über API-Token in Kern, Revision, REST und Web-UI.
+2. `feature/token-provenance` (`new-feature`): Herkunft über API-Token in Kern, Revision, REST und Web-UI. **Gebaut (01.11.2026):** `ViaToken` an allen Stellen, die festhalten, wer entschied (Urteile, Bestätigung, Gesehen-Marke, Bezüge, Massenaktionen, angewandte Regeln, Protokoll; Revision 0054); Stammdaten-Entscheidungen über REST ohne Token (sie urteilen nicht über die Automatik). Abweichung vom Vorschlag: auch Gesehen-Marken, Hochladen in einen gewählten Space, Massenaktionen und angewandte Regeln tragen ihn, weil sie eine Person nennen.
 3. `enhancement/short-document-ids` (`enhancement`): Präfix im Repository, kurze IDs in MCP, `ids` in REST.
 4. `feature/mcp-documents` (`new-feature`): `documents_list` mit Rechnen, `facets`, `get` mit `include`, `page`, `log`, `dry_run`.
 5. `feature/mcp-inbox` (`new-feature`): `inbox_list`, `inbox_confirm`, `inbox_mark_seen`, `documents_update` mit knapper Antwort, `documents_retry`, `facts_decide`. Ohne `relations_set` und `relations_remove` (Entscheidung 15).

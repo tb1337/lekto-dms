@@ -13,7 +13,7 @@ from lekto.core.domain.entity import Entity
 from lekto.core.domain.events import DomainEvent
 from lekto.core.domain.fields import FieldDefinition
 from lekto.core.domain.first_runs import FieldVerdict, FirstRun
-from lekto.core.domain.identity import ApiToken, ExternalIdentity, Session
+from lekto.core.domain.identity import ApiToken, ExternalIdentity, Session, ViaToken
 from lekto.core.domain.ids import DocumentId, EventId, JobId, UserId
 from lekto.core.domain.inbox import Confirmation
 from lekto.core.domain.jobs import Job
@@ -160,11 +160,13 @@ class SubscriptionState:
 
 @dataclass(frozen=True)
 class SeenMark:
-    """A user's seen mark on a document: when, and whether a move set it silently (it keeps
-    the document from being new but is no seeing, `InboxRepository.mark_seen`)."""
+    """A user's seen mark on a document: when, whether a move set it silently (it keeps the
+    document from being new but is no seeing, `InboxRepository.mark_seen`), and through which
+    API token."""
 
     at: datetime
     silent: bool = False
+    via: ViaToken | None = None
 
 
 @dataclass

@@ -32,6 +32,7 @@ from lekto.core.domain.ids import (
     UserId,
     new_id,
 )
+from lekto.core.domain.json_value import JsonObject
 from lekto.core.domain.reasons import ReasonCode, because
 from lekto.core.domain.validation import (
     MAX_URL_LENGTH,
@@ -268,6 +269,29 @@ class ApiToken:
 
     def is_valid(self, now: datetime) -> bool:
         return self.expires_at is None or now < self.expires_at
+
+
+@dataclass(frozen=True)
+class ViaToken:
+    """The API token a person acted through: kept with what records their decision (Tobi,
+    01.11.2026, umsetzungsplan "MCP", decision 11), so that a verdict through a script or an
+    assistant stays apart from one in the web UI. The name is a copy as it was then: it stays
+    readable once the token is renamed or revoked."""
+
+    id: ApiTokenId
+    name: str
+
+    @classmethod
+    def of(cls, token: ApiToken | None) -> Self | None:
+        return None if token is None else cls(token.id, token.name)
+
+    @classmethod
+    def stored(cls, id: uuid.UUID | None, name: str | None) -> Self | None:
+        """From the two columns that keep it; None if they are empty."""
+        return None if id is None or name is None else cls(ApiTokenId(id), name)
+
+    def to_json(self) -> JsonObject:
+        return {"id": str(self.id), "name": self.name}
 
 
 # --- external identities ------------------------------------------------------------------------

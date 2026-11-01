@@ -5815,6 +5815,11 @@ export interface components {
 			 * @description The user who confirmed it, or who saw it (the caller); the account may be gone.
 			 */
 			by: string;
+			/**
+			 * Via Token
+			 * @description The name of the API token they confirmed or saw it through, as it was then; null in the web UI.
+			 */
+			via_token?: string | null;
 		};
 		/** InboxItemOut */
 		InboxItemOut: {

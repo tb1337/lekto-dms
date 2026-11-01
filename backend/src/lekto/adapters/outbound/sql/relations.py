@@ -6,8 +6,9 @@ from typing import Any
 from sqlalchemy import Row, and_, delete, insert, or_, select
 
 from lekto.adapters.outbound.sql import tables as t
-from lekto.adapters.outbound.sql.repositories import KEYS_PER_QUERY
+from lekto.adapters.outbound.sql.repositories import KEYS_PER_QUERY, via_columns
 from lekto.adapters.outbound.sql.transaction import Transaction
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import DocumentId, UserId
 from lekto.core.domain.relations import Relation, RelationOrigin, RelationState
 
@@ -63,6 +64,7 @@ def _row(relation: Relation) -> dict[str, Any]:
         "created_at": relation.created_at,
         "decided_by": relation.decided_by,
         "decided_at": relation.decided_at,
+        **via_columns(relation.decided_via),
     }
 
 
@@ -76,4 +78,5 @@ def _relation(row: Row[Any]) -> Relation:
         created_at=row.created_at,
         decided_by=None if row.decided_by is None else UserId(row.decided_by),
         decided_at=row.decided_at,
+        decided_via=ViaToken.stored(row.via_token_id, row.via_token_name),
     )

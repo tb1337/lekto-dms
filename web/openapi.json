@@ -28587,6 +28587,18 @@
             "format": "uuid",
             "title": "By",
             "description": "The user who confirmed it, or who saw it (the caller); the account may be gone."
+          },
+          "via_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Via Token",
+            "description": "The name of the API token they confirmed or saw it through, as it was then; null in the web UI."
           }
         },
         "type": "object",

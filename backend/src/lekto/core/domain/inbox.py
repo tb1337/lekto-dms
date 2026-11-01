@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 
 from lekto.core.domain.documents import Document
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import UserId
 from lekto.core.domain.pipeline import Lane
 
@@ -47,19 +48,23 @@ class Departure(StrEnum):
 
 @dataclass(frozen=True)
 class Confirmation:
-    """A person confirmed the document out of yellow or red: who, and when."""
+    """A person confirmed the document out of yellow or red: who, when, and through which API
+    token."""
 
     by: UserId
     at: datetime
+    via: ViaToken | None = None
 
 
 @dataclass(frozen=True)
 class Done:
-    """How, when and by whom a document left the viewer's inbox."""
+    """How, when and by whom a document left the viewer's inbox, and through which API
+    token."""
 
     how: Departure
     at: datetime
     by: UserId
+    via: ViaToken | None = None
 
 
 @dataclass(frozen=True)
@@ -112,17 +117,19 @@ def departure(
     confirmation: Confirmation | None,
     since: datetime,
     silent: bool = False,
+    seen_via: ViaToken | None = None,
 ) -> Done | None:
     """How the green document left `viewer`'s inbox from `since` on (`left_at`), if it did:
-    the viewer saw it since it became new, or a person confirmed it. A `silent` mark (a move
-    set it for someone who knew the document, Tobi, 22.10.2026) keeps it from being new but
-    is no seeing: it does not make the document done."""
+    the viewer saw it since it became new (through the API token `seen_via`), or a person
+    confirmed it. A `silent` mark (a move set it for someone who knew the document, Tobi,
+    22.10.2026) keeps it from being new but is no seeing: it does not make the document
+    done."""
     at = left_at(document, None if silent else seen_at, confirmation)
     if document.lane is not Lane.GREEN or at is None or at < since:
         return None
     if document.new_at is None and confirmation is not None:
-        return Done(Departure.CONFIRMED, at, confirmation.by)
-    return Done(Departure.SEEN, at, viewer)
+        return Done(Departure.CONFIRMED, at, confirmation.by, confirmation.via)
+    return Done(Departure.SEEN, at, viewer, seen_via)
 
 
 def inbox_state(
@@ -133,6 +140,7 @@ def inbox_state(
     confirmation: Confirmation | None,
     since: datetime,
     silent: bool = False,
+    seen_via: ViaToken | None = None,
 ) -> InboxState | None:
     """Where the document stands in `viewer`'s inbox, who saw it last at `seen_at` (None:
     never; `silent`: the mark is a move's, see `departure`); done counts from `since`. None if
@@ -147,6 +155,7 @@ def inbox_state(
         confirmation=confirmation,
         since=since,
         silent=silent,
+        seen_via=seen_via,
     )
     return None if done is None else InboxState(InboxTab.DONE, done)
 

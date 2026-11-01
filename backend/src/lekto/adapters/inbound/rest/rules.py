@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request, Response
 
-from lekto.adapters.inbound.rest.auth import PROTECTED, CurrentUser
+from lekto.adapters.inbound.rest.auth import PROTECTED, CurrentUser, Via
 from lekto.adapters.inbound.rest.context import Context
 from lekto.adapters.inbound.rest.cursors import decode_cursor, encode_cursor
 from lekto.adapters.inbound.rest.params import AllRules
@@ -276,6 +276,7 @@ async def apply_rule(
     request: Request,
     response: Response,
     user: CurrentUser,
+    via: Via,
     context: Context,
 ) -> RuleApplicationOut:
     application = await context.rule_applications.start(
@@ -284,6 +285,7 @@ async def apply_rule(
         version=body.version,
         documents=[DocumentId(item) for item in body.document_ids],
         accept_conflicts=[DocumentId(item) for item in body.accept_conflicts],
+        via=via,
     )
     response.headers["Location"] = str(request.url_for("get_application", id=application.id).path)
     return RuleApplicationOut.of(application)

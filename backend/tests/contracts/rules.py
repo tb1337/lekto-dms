@@ -1,6 +1,7 @@
 """Contract suite for the rule repositories in the unit of work: `RuleRepository` (rules with
 their versions) and `RuleApplicationRepository`."""
 
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
@@ -42,7 +43,7 @@ from lekto.core.domain.rules import (
 from lekto.core.domain.rules_json import definition_to_json
 from lekto.core.domain.users import User
 from lekto.core.ports.unit_of_work import UnitOfWorkFactory
-from tests.builders import NOW
+from tests.builders import NOW, VIA
 from tests.contracts.unit_of_work import owner_with_space, users
 
 LATER = NOW + timedelta(hours=1)
@@ -612,12 +613,13 @@ class RuleRepositoriesContract:
     async def test_an_application_round_trips(self, uow_factory: UnitOfWorkFactory) -> None:
         owner, owned = await owner_with_space(uow_factory)
         rule = space_rule(owner, owned.id)
-        item = application(rule, owner, documents=4)
+        item = replace(application(rule, owner, documents=4), via=VIA)
         await store(uow_factory, rule, applications=(item,))
         async with uow_factory() as uow:
             stored = await uow.rule_applications.get(item.id)
             assert await uow.rule_applications.find(item.id) == stored
         assert stored == item
+        assert stored.via == VIA
         assert stored.documents == item.documents  # in the order selected
         assert stored.accept_conflicts == frozenset(item.documents[:1])
         assert (stored.status, stored.position, stored.skipped) == (ApplicationStatus.QUEUED, 0, [])

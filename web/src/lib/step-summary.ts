@@ -21,6 +21,7 @@ import {
 	SIGNAL_NODES,
 	text
 } from '#lib/signals.ts';
+import { tokenOf, viaToken } from '#lib/via-token.ts';
 
 type LogEntry = components['schemas']['LogEntry'];
 type ProcessingStatus = components['schemas']['ProcessingStatus'];
@@ -36,14 +37,24 @@ export function byPerson(entry: LogEntry): boolean {
 }
 
 /** A person's confirmation of a step that had not ended OK (the entry the inbox writes for a
- * step it overrules): who confirmed it and how the step had ended; null for any other entry. */
+ * step it overrules): who confirmed it, through which API token, and how the step had ended;
+ * null for any other entry. */
 export function confirmationOf(
 	entry: LogEntry
-): { by: unknown; before: 'uncertain' | 'failed' } | null {
+): { by: unknown; via: string | null; before: 'uncertain' | 'failed' } | null {
 	if (entry.model_version !== 'person') return null;
 	const output = object(entry.output);
 	const before = output.outcome_before;
-	return before === 'uncertain' || before === 'failed' ? { by: output.confirmed_by, before } : null;
+	return before === 'uncertain' || before === 'failed'
+		? { by: output.confirmed_by, via: tokenOf(output), before }
+		: null;
+}
+
+/** Who set off an entry outside processing (a change, a rule applied on request, a space they
+ * chose), and through which API token; null for any other entry. */
+export function actorOf(entry: LogEntry): { by: unknown; via: string | null } | null {
+	const input = object(entry.input);
+	return input.actor === undefined ? null : { by: input.actor, via: tokenOf(input) };
 }
 
 /** Whether a step counts as OK although its last entry is uncertain: a later step of its run
@@ -71,7 +82,7 @@ export function stepSummary(
 	if (state?.status !== 'done' || !entry) return null;
 	const confirmed = confirmationOf(entry);
 	if (confirmed) {
-		const name = person(confirmed.by, lookup);
+		const name = viaToken(person(confirmed.by, lookup), confirmed.via);
 		return confirmed.before === 'failed'
 			? m.summary_overruled_decided({ name })
 			: m.summary_overruled_confirmed({ name });

@@ -1564,7 +1564,8 @@ class MigrationSuite:
             decided = select(t.documents.c.processing_decided)
             assert set(await _read_all(connection, decided)) == {(False,)}
             assert await _read_all(connection, select(_before_0033(t.inbox_seen))) == []
-            assert await _read_all(connection, select(t.inbox_confirmations)) == []
+            confirmations = select(_before_0054(t.inbox_confirmations))
+            assert await _read_all(connection, confirmations) == []
         async with empty_database.writing() as connection:
             await connection.execute(
                 t.documents.update()
@@ -2894,7 +2895,7 @@ class MigrationSuite:
                     row.signal_llm,
                     row.signal_classifier,
                 )
-                for row in await connection.execute(select(t.field_verdicts))
+                for row in await connection.execute(select(_before_0054(t.field_verdicts)))
             }
         micros = 1_000_000
         assert runs == {
@@ -3578,13 +3579,29 @@ def _drawer(table: sa.TableClause) -> sa.TableClause:
 _INBOX_COLUMNS = frozenset({"new_at", "processing_baseline", "processing_decided"})
 
 
+def _before_0054(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0054 had it: no API token beside who decided."""
+    return sa.table(
+        table.name,
+        *(
+            sa.column(c.name, c.type)
+            for c in table.c
+            if c.name not in {"via_token_id", "via_token_name"}
+        ),
+    )
+
+
 def _before_0046(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0046 had it: no webhook serves as a model call, a task
     keeps no context."""
     added = {"webhooks": {"model_call", "model_call_timeout_seconds"}, "tasks": {"context"}}
     return sa.table(
         table.name,
-        *(sa.column(c.name, c.type) for c in table.c if c.name not in added.get(table.name, ())),
+        *(
+            sa.column(c.name, c.type)
+            for c in _before_0054(table).c
+            if c.name not in added.get(table.name, ())
+        ),
     )
 
 

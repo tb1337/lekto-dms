@@ -1894,9 +1894,31 @@ claude mcp add --transport http lekto https://lekto.example.org/api/v1/mcp \
   --header "Authorization: Bearer lekto_..."
 ```
 
+Claude Desktop: its custom connectors are reached from Anthropic's cloud, which a Lekto in the
+home network does not answer; the bridge `mcp-remote` runs on the computer instead and talks to
+Lekto from there (Node.js needed). In `claude_desktop_config.json` (Settings, Developer, Edit
+Config):
+
+```json
+{
+  "mcpServers": {
+    "lekto": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote", "https://lekto.example.org/api/v1/mcp",
+        "--header", "Authorization:${LEKTO_AUTH}"
+      ],
+      "env": { "LEKTO_AUTH": "Bearer lekto_..." }
+    }
+  }
+}
+```
+
+(The header goes through `env` because Claude Desktop on Windows splits arguments at spaces.)
 Other clients take the same URL and header; the MCP Inspector
 (`npx @modelcontextprotocol/inspector`) is handy to try it out: transport *Streamable HTTP*,
-the URL, and the header `Authorization`. Behind a reverse proxy the path needs no special
+the URL, and the header `Authorization`. How well an assistant does with the tools, measured
+against the example documents: `examples/mcp-eval`. Behind a reverse proxy the path needs no special
 handling; requests are plain `POST`s with JSON bodies, limited by `LEKTO_REQUEST_MAX_SIZE`.
 
 ## Configuration

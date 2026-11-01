@@ -1,6 +1,7 @@
 """The MCP endpoint, with the SDK's own client: tokens, tools, and that the rights of the REST
 API hold here too."""
 
+import base64
 import json
 from dataclasses import replace
 from decimal import Decimal
@@ -11,7 +12,7 @@ import httpx2
 import pytest
 from mcp.client import Client
 from mcp.client.streamable_http import streamable_http_client
-from mcp_types import Tool
+from mcp_types import ImageContent, Tool
 
 from lekto.adapters.inbound.mcp.server import instructions
 from lekto.adapters.inbound.rest import PREFIX
@@ -21,7 +22,7 @@ from lekto.core.domain.documents import DocumentChanges
 from lekto.core.domain.fields import FieldType, Money
 from lekto.core.domain.ids import DocumentId, new_id, short_id
 from lekto.core.domain.master_data import TagScope
-from lekto.core.services.objects import text_key
+from lekto.core.services.objects import page_key, text_key
 from tests import builders
 from tests.api import auth, serving
 from tests.builders import SAMPLES
@@ -36,6 +37,8 @@ READS = {
     "documents_list",
     "documents_get",
     "documents_text",
+    "documents_page",
+    "documents_log",
     "tags_list",
     "expected_list",
 }
@@ -302,16 +305,73 @@ async def test_documents_get_names_its_relations_one_may_read(api: Api, scene: S
     """Read only (#145): the reader does not read the yellow document, so not the relation."""
     green, yellow = DocumentId(UUID(scene.green)), DocumentId(UUID(scene.yellow))
     await api.services.relations.relate(scene.owner.id, green, yellow)
-    owner = data(await call(api, scene.headers["owner"], "documents_get", id=scene.green))
+    wanted = {"id": scene.green, "include": ["relations"]}
+    owner = data(await call(api, scene.headers["owner"], "documents_get", **wanted))
     (relation,) = owner["relations"]
     assert relation["id"] == shorts(scene.yellow).pop() and "suggested" not in relation
     assert relation["direction"] in ("refers_to", "referred_by")
-    reader = data(await call(api, scene.headers["reader"], "documents_get", id=scene.green))
+    reader = data(await call(api, scene.headers["reader"], "documents_get", **wanted))
     assert "relations" not in reader
+    # Only when asked for.
+    plain = data(await call(api, scene.headers["owner"], "documents_get", id=scene.green))
+    assert "relations" not in plain
     changed = data(
         await call(api, scene.headers["owner"], "documents_update", id=scene.green, title="Neu")
     )
     assert {item["id"] for item in changed["document"]["relations"]} == shorts(scene.yellow)
+
+
+async def test_documents_get_tells_what_is_open_and_how_it_was_read(api: Api, scene: Scene) -> None:
+    owner = scene.headers["owner"]
+    wanted = ["review", "reading", "facts"]
+    yellow = data(await call(api, owner, "documents_get", id=scene.yellow, include=wanted))
+    (judge,) = yellow["open"]
+    assert judge["node"] == "judge" and judge["reason"] == "new contact"
+    green = data(await call(api, owner, "documents_get", id=scene.green, include=wanted))
+    assert "open" not in green and "poorly_read" not in green
+
+
+async def test_documents_page_gives_the_image_of_a_page(api: Api, scene: Scene) -> None:
+    document = DocumentId(UUID(scene.green))
+    await api.container.object_store.put(
+        page_key(document, 1), b"RIFF\x00\x00\x00\x00WEBPVP8 ", content_type="image/webp"
+    )
+    async with api.container.unit_of_work() as uow:
+        stored = await uow.documents.get(document)
+        stored.page_count = 1
+        await uow.documents.update(stored)
+        await uow.commit()
+    result = await call(api, scene.headers["reader"], "documents_page", id=scene.green, page=1)
+    assert not result.is_error
+    (image,) = result.content
+    assert isinstance(image, ImageContent) and image.mime_type == "image/webp"
+    assert base64.b64decode(image.data).startswith(b"RIFF")
+    missing = await call(api, scene.headers["reader"], "documents_page", id=scene.green, page=2)
+    assert "not found" in error(missing)
+
+
+async def test_documents_log_names_the_steps_and_who_decided(api: Api, scene: Scene) -> None:
+    owner = scene.headers["owner"]
+    data(await call(api, owner, "documents_update", id=scene.green, title="Neu"))
+    log = data(await call(api, owner, "documents_log", id=scene.green))
+    nodes = [entry["node"] for entry in log["entries"]]
+    assert nodes[0] == "receive" and "judge" in nodes
+    change = log["entries"][-1]
+    assert (change["node"], change["by"], change["via_token"]) == ("apply_rules", "owner", "tests")
+    every = data(await call(api, owner, "documents_log", id=scene.yellow, every_run=True))
+    assert {entry["run"] for entry in every["entries"]} == {1, 2}
+    latest = data(await call(api, owner, "documents_log", id=scene.yellow))
+    assert {entry["run"] for entry in latest["entries"]} == {2}
+
+
+async def test_documents_update_tries_a_change_without_storing_it(api: Api, scene: Scene) -> None:
+    owner = scene.headers["owner"]
+    tried = data(
+        await call(api, owner, "documents_update", id=scene.green, title="Probe", dry_run=True)
+    )
+    assert tried["dry_run"] is True and tried["document"]["title"] == "Probe"
+    stored = data(await call(api, owner, "documents_get", id=scene.green))
+    assert stored["title"] != "Probe"
 
 
 async def test_a_document_one_may_not_read_is_just_not_found(api: Api, scene: Scene) -> None:

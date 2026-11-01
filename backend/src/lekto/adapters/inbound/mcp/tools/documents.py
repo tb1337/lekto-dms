@@ -1,11 +1,14 @@
 """The tools of the domain `documents`: find, read and change documents."""
 
+import asyncio
+import tempfile
 from collections.abc import Callable
 from datetime import UTC, date, datetime
-from typing import Annotated, Any
+from pathlib import Path
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from mcp.server.mcpserver import Context
+from mcp.server.mcpserver import Context, Image
 from pydantic import AwareDatetime, BaseModel, Field
 
 from lekto.adapters.inbound.context import ApiContext
@@ -13,18 +16,26 @@ from lekto.adapters.inbound.mcp.names import Names
 from lekto.adapters.inbound.mcp.output import compact
 from lekto.adapters.inbound.mcp.registry import Tools, principal_of
 from lekto.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
+from lekto.core.domain.classification import field_id_of
+from lekto.core.domain.document_facts import FactState
 from lekto.core.domain.documents import MAX_TITLE, UNSET, Document, DocumentChanges, Unset
 from lekto.core.domain.fields import field_from_json
 from lekto.core.domain.ids import DocumentId, FieldId, UserId, short_id
+from lekto.core.domain.json_value import JsonValue
+from lekto.core.domain.pipeline import ACTOR, CONFIRMED_BY, VIA_TOKEN, NodeRun
 from lekto.core.domain.relations import RelationState
 from lekto.core.domain.spaces import SpaceRole
 from lekto.core.ports.repository import DocumentFilter
 from lekto.core.ports.search_index import MAX_HITS
+from lekto.core.services.documents import DocumentFacts, DocumentFile
+from lekto.core.services.inbox import OpenNode
 
 SEARCH_HITS = 10
 """Hits one search returns unless the client asks for more: fewer than a page of the web UI,
 so that the answer leaves room in a model's context."""
 SEARCH_MAX_LIMIT = 25
+
+type Include = Literal["facts", "relations", "review", "reading"]
 
 
 class RelationOut(BaseModel):
@@ -34,6 +45,27 @@ class RelationOut(BaseModel):
     document_date: date | None
     direction: str
     suggested: bool | None  # only when Lekto suggests it
+
+
+class FactOut(BaseModel):
+    kind: str
+    value: str
+    role: str | None = None
+    contact: str | None = None  # whose identifier it is
+    state: str | None = None  # a person's decision: added, corrected, rejected
+
+
+class CheckOut(BaseModel):
+    field: str
+    reason: str | None
+    proposed: JsonValue  # what the model read
+    suggestion: JsonValue = None
+
+
+class OpenOut(BaseModel):
+    node: str
+    reason: str | None
+    fields: list[CheckOut]
 
 
 class DocumentOut(BaseModel):
@@ -55,6 +87,10 @@ class DocumentOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     relations: list[RelationOut] = []
+    facts: list[FactOut] = []
+    open: list[OpenOut] = []  # why it is yellow or red
+    poorly_read: list[int] = []  # pages; their text may be wrong
+    read_by_vision: bool | None = None
 
 
 class SearchItem(BaseModel):
@@ -85,8 +121,24 @@ class TextOut(BaseModel):
     next_offset: int | None
 
 
+class LogEntryOut(BaseModel):
+    node: str
+    run: int
+    outcome: str
+    at: datetime
+    reason: str | None
+    model: str | None
+    by: str | None  # the person who decided
+    via_token: str | None
+
+
+class LogOut(BaseModel):
+    entries: list[LogEntryOut]
+
+
 class UpdateOut(BaseModel):
     id: str
+    dry_run: bool | None = None  # nothing was stored
     filed_away: bool | None = None
     access: SpaceRole | None = None
     document: DocumentOut | None = None
@@ -157,16 +209,65 @@ def add_document_tools(tools: Tools, context: ApiContext) -> None:
 
     @tools.read(
         "documents_get",
-        "A document's metadata, processing state, and its relations with documents you may "
-        "read (direction refers_to or referred_by).",
+        "A document's metadata and processing state. include: facts (numbers it shows, with "
+        "role and whose), relations (with documents you may read), review (what is open and "
+        "why), reading (poorly read pages: look at them with documents_page).",
     )
-    async def documents_get(ctx: Context, id: str) -> str:
+    async def documents_get(
+        ctx: Context,
+        id: str,
+        include: Annotated[list[Include] | None, Field(max_length=4)] = None,
+    ) -> str:
         user = principal_of(ctx).id
         view = await context.documents.view(user, await context.documents.resolve(user, id))
+        document, wanted = view.document, set(include or ())
         names = await Names.load(context, user)
-        out = document_out(view.document, view.access, names)
-        out.relations = await relations(context, user, view.document.id, names)
+        out = document_out(document, view.access, names)
+        if "relations" in wanted:
+            out.relations = await relations(context, user, document.id, names)
+        if "facts" in wanted:
+            out.facts = facts_out(await context.documents.facts(user, document.id), names)
+        if "review" in wanted and document.lane is not None:
+            review = await context.documents.review(user, document.id)
+            out.open = [open_out(item, names) for item in review.open]
+        if "reading" in wanted:
+            reading = await context.pipeline.reading(user, document.id)
+            out.poorly_read, out.read_by_vision = list(reading.poor), reading.vision or None
         return compact(out)
+
+    @tools.read(
+        "documents_page",
+        "The image of one page (from 1). Costly: only where the text does not tell, such as a "
+        "poorly read page, a table or a signature.",
+    )
+    async def documents_page(ctx: Context, id: str, page: Annotated[int, Field(ge=1)]) -> Image:
+        user = principal_of(ctx).id
+        document = await context.documents.resolve(user, id)
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "page"
+            info = await context.documents.download(
+                user, document, DocumentFile.PAGE, target, page=page
+            )
+            data = await asyncio.to_thread(target.read_bytes)
+        return Image(data=data, format=info.media_type.removeprefix("image/"))
+
+    @tools.read(
+        "documents_log",
+        "What processing did with a document: its steps in order (node, outcome, reason, "
+        "model), a person's decisions with who and through which token. The latest run, or "
+        "every run.",
+    )
+    async def documents_log(ctx: Context, id: str, every_run: bool = False) -> str:
+        user = principal_of(ctx).id
+        document = await context.documents.resolve(user, id)
+        log = await context.documents.processing_log(user, document)
+        latest = max((entry.run for entry in log), default=0)
+        users = {person.id: person.label for person in await context.users.list_users(user)}
+        return compact(
+            LogOut(
+                entries=[log_out(entry, users) for entry in log if every_run or entry.run == latest]
+            )
+        )
 
     @tools.read(
         "documents_text",
@@ -202,7 +303,7 @@ def add_document_tools(tools: Tools, context: ApiContext) -> None:
         "topic: one the contact enables. fields: name to value (amount {amount, currency}, "
         "period {start, end}, dates YYYY-MM-DD), null removes. The change rules of its space "
         "run as in the web UI. created_at: when it came in (with offset); alone it confirms "
-        "nothing.",
+        "nothing. dry_run: what it would do, nothing stored.",
         idempotent=True,
     )
     async def documents_update(
@@ -220,6 +321,7 @@ def add_document_tools(tools: Tools, context: ApiContext) -> None:
         document_date: Annotated[date | None, Field(default_factory=lambda: UNSET)],
         fields: Annotated[dict[str, Any], Field(default_factory=lambda: UNSET)],
         created_at: Annotated[AwareDatetime, Field(default_factory=lambda: UNSET)],
+        dry_run: bool = False,
     ) -> str:
         principal = principal_of(ctx)
         user = principal.id
@@ -239,16 +341,23 @@ def add_document_tools(tools: Tools, context: ApiContext) -> None:
             ),
         )
         change = await context.documents.change_metadata(
-            user, await context.documents.resolve(user, id), changes, via=principal.via
+            user,
+            await context.documents.resolve(user, id),
+            changes,
+            dry_run=dry_run,
+            via=principal.via,
         )
+        tried = True if dry_run else None
         if change.access is None:
-            return compact(UpdateOut(id=short_id(change.document.id), filed_away=True))
+            out = UpdateOut(id=short_id(change.document.id), filed_away=True, dry_run=tried)
+            return compact(out)
         document = document_out(change.document, change.access, names)
-        # A change of a document leaves the master data as it is.
-        document.relations = await relations(context, user, change.document.id, names)
+        if not dry_run:
+            document.relations = await relations(context, user, change.document.id, names)
         return compact(
             UpdateOut(
                 id=short_id(change.document.id),
+                dry_run=tried,
                 access=change.access,
                 document=document,
                 rules=(
@@ -320,3 +429,76 @@ def _fields(given: dict[str, Any] | Unset, names: Names) -> dict[FieldId, object
         definition = names.find_field(name)
         changes[definition.id] = None if value is None else field_from_json(definition, value)
     return changes
+
+
+def facts_out(report: DocumentFacts, names: Names) -> list[FactOut]:
+    """The facts the document shows as the web UI shows them to the caller: the identifiers of
+    contacts (a person's only to who may see them), then its own numbers and those it refers
+    to, with a person's decisions."""
+    found = [
+        FactOut(kind=item.kind.value, value=item.value, contact=names.contact(item.contact_id))
+        for item in report.facts.identifiers
+    ]
+    numbers = [
+        FactOut(
+            kind=item.fact.kind.value,
+            value=item.fact.written or item.fact.value,
+            role=item.fact.role.value,
+            state=None if item.fact.state is FactState.FOUND else item.fact.state.value,
+        )
+        for item in (*report.numbers, *report.decided)
+    ]
+    return found + numbers
+
+
+def open_out(item: OpenNode, names: Names) -> OpenOut:
+    return OpenOut(
+        node=item.node.value,
+        reason=item.reason,
+        fields=[
+            CheckOut(
+                field=_field_label(check.field, names),
+                reason="; ".join(reason.text for reason in check.reasons) or None,
+                proposed=check.proposed,
+                suggestion=_named(check.field, check.suggestion, names),
+            )
+            for check in item.fields
+        ],
+    )
+
+
+def log_out(entry: NodeRun, users: dict[UserId, str]) -> LogEntryOut:
+    result = entry.result
+    by = result.input.get(ACTOR) or result.output.get(CONFIRMED_BY)
+    via = result.input.get(VIA_TOKEN) or result.output.get(VIA_TOKEN)
+    return LogEntryOut(
+        node=entry.node.value,
+        run=entry.run,
+        outcome=result.outcome.value,
+        at=entry.started_at,
+        reason=result.reason,
+        model=result.model_version,
+        by=None if not isinstance(by, str) else users.get(UserId(UUID(by)), "a former account"),
+        via_token=via.get("name") if isinstance(via, dict) else None,  # type: ignore[arg-type]
+    )
+
+
+def _field_label(field: str, names: Names) -> str:
+    id = field_id_of(field)
+    return field if id is None else names.field_name(id)
+
+
+def _named(field: str, value: JsonValue, names: Names) -> JsonValue:
+    """A suggested value with names for ids."""
+    if not isinstance(value, str | list):
+        return value
+    match field:
+        case "contact" if isinstance(value, str):
+            return names.contact(UUID(value))
+        case "document_type" if isinstance(value, str):
+            return names.document_type(UUID(value))
+        case "topic" if isinstance(value, str):
+            return names.topic(UUID(value))
+        case "tags" if isinstance(value, list):
+            return list[JsonValue](names.tag_names(UUID(str(item)) for item in value))
+    return value

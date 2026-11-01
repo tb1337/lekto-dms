@@ -29,6 +29,8 @@ _WHITESPACE = re.compile(r"\s+")
 _COLUMN_GAP = re.compile(r"[ \t]{2,}|\t")
 COLUMN_GAP = "\t"
 """Where `normalise(..., columns=True)` keeps a gap between two columns of a line."""
+LINE_BREAK = "\n"
+"""Where `normalise(..., columns=True)` keeps the end of a line."""
 UMLAUTS = {"ä": "ae", "ö": "oe", "ü": "ue"}
 """Umlauts (case folded) and how they are written without them."""
 _UMLAUTS = str.maketrans(UMLAUTS)
@@ -38,8 +40,9 @@ def normalise(text: str, *, columns: bool = False) -> str:
     """HTML entities as characters (texts parsed before 0.2.0 have `&amp;` and `&#124;`),
     compatibility forms unified (NFKC), lower case (case folding, so `ß` is `ss`),
     hyphenation at line ends and Markdown markup removed, whitespace collapsed. With `columns`,
-    a gap between two columns of a line collapses to `COLUMN_GAP` instead of a space: the same
-    text at the same places, telling where a value must not run on into the next column."""
+    a gap between two columns of a line collapses to `COLUMN_GAP` and a line break to
+    `LINE_BREAK` instead of a space: the same text at the same places, telling where a value
+    must not run on into the next column or line."""
     text = unicodedata.normalize("NFKC", html.unescape(text)).replace("­", "")
     text = _HYPHENATION.sub("", text)
     if columns:
@@ -49,9 +52,12 @@ def normalise(text: str, *, columns: bool = False) -> str:
 
 
 def _collapsed(match: re.Match[str]) -> str:
-    """A run of whitespace as one character: a column gap if it holds one and no line break."""
+    """A run of whitespace as one character: a line break if it holds one, else a column gap if
+    it holds one."""
     run = match.group()
-    return COLUMN_GAP if COLUMN_GAP in run and "\n" not in run else " "
+    if "\n" in run:
+        return LINE_BREAK
+    return COLUMN_GAP if COLUMN_GAP in run else " "
 
 
 def without_markup(text: str) -> str:

@@ -2473,6 +2473,7 @@ Stand: freigegeben (Frage- und Antwortrunde mit Tobi, 01.11.2026).
 12. **Paritäts-Guard:** Jeder REST-Endpunkt ist einem Tool zugeordnet oder mit Grund ausgeschlossen; ein neuer Endpunkt lässt den Test scheitern, bis er eingeordnet ist.
 13. **Erprobung mit einem echten Client:** rund 15 Aufgaben mit bekannter Antwort aus `examples/documents`, Claude Code über MCP, gemessen werden Treffer und Tokens; von Hand vor dem Merge, nicht in der CI.
 14. **Label** `new-feature`, kein `breaking-change`; die Umbenennung steht als Satz in den Release Notes.
+15. **Bezüge setzt MCP nicht** (Tobi, 01.11.2026: „Die alte Entscheidung bleibt erstmal“): `bezuege.md`, Entscheidung 19, gilt weiter; ein Assistent liest fremden Dokumenttext, eine Anweisung darin könnte falsche Bezüge setzen. `documents_get` liefert die Bezüge, setzen, annehmen, verwerfen und entfernen geht in der Web-UI.
 
 **Tools:**
 
@@ -2492,7 +2493,6 @@ Stand: freigegeben (Frage- und Antwortrunde mit Tobi, 01.11.2026).
 | `inbox_confirm` | write | `POST /documents/{id}/confirm`, mit Korrekturen |
 | `inbox_mark_seen` | write | `PUT`/`DELETE /documents/{id}/seen` |
 | `facts_decide` | write | `POST /documents/{id}/facts/decisions` |
-| `relations_set`, `relations_remove` | write | `POST`/`DELETE /documents/{id}/relations…` |
 | `contacts_list`, `contacts_get` | read | `GET /contacts`, `/contacts/{id}`: mit Kennungen, Themen, Zahl der Dokumente |
 | `document_types_list`, `fields_list` | read | `GET /document-types` (mit ihren Feldern), `GET /fields` |
 | `tags_list` | read | `GET /tags` (heute `list_tags`) |
@@ -2524,7 +2524,7 @@ Admins sehen wie in der Web-UI ihre Spaces; `all_users` entspricht dem Schalter 
 2. `feature/token-provenance` (`new-feature`): Herkunft über API-Token in Kern, Revision, REST und Web-UI.
 3. `enhancement/short-document-ids` (`enhancement`): Präfix im Repository, kurze IDs in MCP, `ids` in REST.
 4. `feature/mcp-documents` (`new-feature`): `documents_list` mit Rechnen, `facets`, `get` mit `include`, `page`, `log`, `dry_run`.
-5. `feature/mcp-inbox` (`new-feature`): `inbox_list`, `inbox_confirm`, `inbox_mark_seen`, `documents_update` mit knapper Antwort, `documents_retry`, `facts_decide`, `relations_set`, `relations_remove`. **Offen vor PR 5:** `relations_set` und `relations_remove` widersprechen `bezuege.md`, Entscheidung 19 (Tobi, 25.10.2026: „Bezüge setzt MCP nicht: eine Anweisung im Dokumenttext könnte still falsche Bezüge setzen“); beim Bau von PR 1 gefunden. Mit der Herkunft (PR 2) wäre ein solcher Bezug nicht mehr still, sondern trüge den Token. Tobi entscheidet.
+5. `feature/mcp-inbox` (`new-feature`): `inbox_list`, `inbox_confirm`, `inbox_mark_seen`, `documents_update` mit knapper Antwort, `documents_retry`, `facts_decide`. Ohne `relations_set` und `relations_remove` (Entscheidung 15).
 6. `feature/mcp-reference` (`new-feature`): Stammdaten, Kennungen, Regeln, Erwartete, Lenses, Spaces, System.
 7. `feature/selection-link` (`new-feature`): Auswahl per Link in der Web-UI, Blättern, `web/DESIGN.md`; das Muster in die Instructions.
 8. `documentation/mcp-eval` (`documentation`): README, `examples/mcp-eval`, Lauf mit Ergebnis.
@@ -2541,6 +2541,7 @@ Admins sehen wie in der Web-UI ihre Spaces; `all_users` entspricht dem Schalter 
 9. Seitenbilder? Ja, mit einem Hinweis in den Daten statt einer Annotation (Empfehlung Claude, mit dem Plan freigegeben).
 10. Kurze IDs? Probieren. Rechnen? Anzahl und Summe. Budget als Guard-Test? Ja. Paritäts-Guard? Ja. Erprobung? Ja. Label? `new-feature`.
 11. Budget 20.000 statt 16.000 Zeichen? Ja. Rechnen auch in REST (`POST /documents/aggregate`)? Nein, ohne Anwendungsfall.
+12. Bezüge über MCP setzen, gegen `bezuege.md`, Entscheidung 19 (beim Bau von PR 1 gefunden; mit der Herkunft aus PR 2 trüge ein solcher Bezug den Token)? Nein, die alte Entscheidung bleibt erstmal.
 
 ### M16 – Lesen
 

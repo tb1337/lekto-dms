@@ -20,6 +20,7 @@ class Excluded(StrEnum):
     RULES = "rules are only read; made, changed and applied in the web UI"
     UPLOAD = "no uploads"
     WEB_UI = "cannot be undone or changes many at once: the client links to the web UI"
+    RELATIONS = "relations are set in the web UI: a document's text could relate it unnoticed"
     VLM = "sending pages to a VLM is a person's decision"
     BROWSER = "for the browser: event streams, files, page layout, references in addresses"
     INTERNALS = "raw internals of the processing: the calls of the language model"
@@ -114,8 +115,8 @@ ENDPOINTS: dict[str, str | Excluded | Planned] = {
     "PUT /documents/{id}/seen": Planned(5, "inbox_mark_seen"),
     "DELETE /documents/{id}/seen": Planned(5, "inbox_mark_seen"),
     "GET /documents/{id}/relations": "documents_get",
-    "POST /documents/{id}/relations": Planned(5, "relations_set"),
-    "DELETE /documents/{id}/relations/{other_id}": Planned(5, "relations_remove"),
+    "POST /documents/{id}/relations": Excluded.RELATIONS,
+    "DELETE /documents/{id}/relations/{other_id}": Excluded.RELATIONS,
     "GET /events": BROWSER,
     "GET /expected": "expected_list",
     # inbox

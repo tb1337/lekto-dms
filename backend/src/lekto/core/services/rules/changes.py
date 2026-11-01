@@ -28,6 +28,7 @@ from lekto.core.domain.classification import SPACE, TAGS, TITLE
 from lekto.core.domain.document_facts import DocumentFact
 from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.fields import FieldDefinition
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import FieldId, SpaceId
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.pipeline import (
@@ -38,6 +39,7 @@ from lekto.core.domain.pipeline import (
     Node,
     NodeRun,
     ProcessingStatus,
+    via_entry,
 )
 from lekto.core.domain.reasons import Reason
 from lekto.core.domain.rule_planner import Mode, RuleReport, changed_fields
@@ -146,13 +148,15 @@ class ChangeRules:
         now: datetime,
         by_person: bool,
         applier: User | None = None,
+        via: ViaToken | None = None,
         chain: Chain | None = None,
     ) -> list[ArrivalStep]:
         """After `document` was moved out of `source` into the space it lies in now: run the
         rules of that space (its own, trigger `ingest`) in the manner of change rules, and of
         every space they file it into, each at most once; one log entry per space. `by_person`:
-        a person chose the space, the rules leave it. `chain`: what the rules that moved it
-        carry on (`running.Chain`). Returns what the rules of each space did, in order (spaces
+        a person chose the space, the rules leave it. `applier`: the person who set it off
+        (through the API token `via`). `chain`: what the rules that moved it carry on
+        (`running.Chain`). Returns what the rules of each space did, in order (spaces
         where no rule holds are left out)."""
         steps: list[ArrivalStep] = []
         if document.processing.status is not ProcessingStatus.COMPLETED:
@@ -203,7 +207,7 @@ class ChangeRules:
                         TRIGGER: Trigger.INGEST.value,
                         "space_id": str(here),
                         "rules": checked_rules(rules),
-                        **({} if applier is None else {ACTOR: str(applier.id)}),
+                        **({} if applier is None else {ACTOR: str(applier.id), **via_entry(via)}),
                     },
                     output=output,
                     version=self._version,
@@ -232,12 +236,16 @@ class ChangeRules:
             names.append(str(id) if space is None else space_label(space, users))
         return names
 
-    def space_chosen(self, document: Document, *, actor: User, now: datetime) -> NodeRun:
-        """The log entry of a person moving the document: rules leave the space then."""
+    def space_chosen(
+        self, document: Document, *, actor: User, now: datetime, via: ViaToken | None = None
+    ) -> NodeRun:
+        """The log entry of a person moving the document (through the API token `via`): rules
+        leave the space then."""
         return space_choice(
             document,
             node=Node.APPLY_RULES,
             actor=actor.id,
+            via=via,
             trigger=TRIGGER_MOVE,
             version=self._version,
             now=now,
@@ -256,11 +264,13 @@ class ChangeRules:
         now: datetime,
         log: bool = True,
         kept_before: Sequence[DocumentFact] | None = None,
+        via: ViaToken | None = None,
     ) -> RuleRun | None:
-        """After the person's change is applied to `document`: run the rules, apply their
-        change and (with `log`) write the log entry. Returns the run, if rules were
-        evaluated. `changes`: the person's change as given, before `checked_changes` (a topic
-        it clears because the new contact does not enable it is no decision of theirs).
+        """After the person's change (through the API token `via`) is applied to `document`:
+        run the rules, apply their change and (with `log`) write the log entry. Returns the
+        run, if rules were evaluated. `changes`: the person's change as given, before
+        `checked_changes` (a topic it clears because the new contact does not enable it is no
+        decision of theirs).
         `kept_before`: the facts before a person's decision about one (`fact_decisions`); the
         change is then to the facts, the document's values stay."""
         changed = changed_fields(changes)
@@ -273,6 +283,7 @@ class ChangeRules:
         input: dict[str, JsonValue] = {
             TRIGGER: Trigger.CHANGE.value,
             ACTOR: str(actor.id),
+            **via_entry(via),
             **record,
         }
         rules = await self.rules(uow, document)

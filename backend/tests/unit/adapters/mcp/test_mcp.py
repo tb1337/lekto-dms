@@ -445,6 +445,19 @@ async def test_documents_update_changes_what_is_given(api: Api, scene: Scene) ->
     assert rest["title"] == "Strom März" and rest["contact_id"] is None
 
 
+async def test_a_change_carries_the_token(api: Api, scene: Scene) -> None:
+    """The verdicts name the token the change came through (umsetzungsplan "MCP", decision
+    11), as over REST."""
+    changed = await call(
+        api, scene.headers["owner"], "documents_update", id=scene.green, document_date="2026-03-31"
+    )
+    data(changed)
+    async with api.container.unit_of_work() as uow:
+        verdicts = await uow.processing_facts.verdicts(DocumentId(UUID(scene.green)))
+    assert verdicts
+    assert {None if verdict.via is None else verdict.via.name for verdict in verdicts} == {"tests"}
+
+
 async def test_the_topic_is_read_and_set_by_its_name(api: Api, scene: Scene) -> None:
     admin = await api.admin()
     master = api.services.master_data

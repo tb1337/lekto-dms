@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter
 
-from lekto.adapters.inbound.rest.auth import PROTECTED, CurrentUser
+from lekto.adapters.inbound.rest.auth import PROTECTED, CurrentUser, Via
 from lekto.adapters.inbound.rest.context import Context
 from lekto.adapters.inbound.rest.problems import problem_responses
 from lekto.adapters.inbound.rest.schemas.relations import RelateIn, RelationsOut
@@ -41,8 +41,10 @@ async def relations(id: UUID, user: CurrentUser, context: Context) -> RelationsO
     response_model=RelationsOut,
     responses=problem_responses(401, 403, 404, 409, 422),
 )
-async def relate(id: UUID, body: RelateIn, user: CurrentUser, context: Context) -> RelationsOut:
-    await context.relations.relate(user, DocumentId(id), DocumentId(body.document_id))
+async def relate(
+    id: UUID, body: RelateIn, user: CurrentUser, via: Via, context: Context
+) -> RelationsOut:
+    await context.relations.relate(user, DocumentId(id), DocumentId(body.document_id), via=via)
     return RelationsOut.of(await context.relations.relations(user, DocumentId(id)))
 
 
@@ -58,6 +60,8 @@ async def relate(id: UUID, body: RelateIn, user: CurrentUser, context: Context) 
     response_model=RelationsOut,
     responses=problem_responses(401, 403, 404, 409, 422),
 )
-async def unrelate(id: UUID, other_id: UUID, user: CurrentUser, context: Context) -> RelationsOut:
-    await context.relations.unrelate(user, DocumentId(id), DocumentId(other_id))
+async def unrelate(
+    id: UUID, other_id: UUID, user: CurrentUser, via: Via, context: Context
+) -> RelationsOut:
+    await context.relations.unrelate(user, DocumentId(id), DocumentId(other_id), via=via)
     return RelationsOut.of(await context.relations.relations(user, DocumentId(id)))

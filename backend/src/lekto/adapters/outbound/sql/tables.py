@@ -51,6 +51,14 @@ _SEQUENCE = BigInteger().with_variant(Integer(), "sqlite")
 # Job statuses that block another job with the same dedup key.
 ACTIVE_JOB_STATUSES = tuple(status.value for status in JobStatus if status.is_active)
 
+
+def _via_token() -> tuple[Column[Any], Column[Any]]:
+    """The API token a person decided through (`domain.identity.ViaToken`), beside who they are:
+    no foreign key and the name a copy, so both stay once the token is revoked."""
+    id = Column("via_token_id", Uuid, nullable=True)
+    return id, Column("via_token_name", Text, nullable=True)
+
+
 users = Table(
     "users",
     metadata,
@@ -440,6 +448,7 @@ document_relations = Table(
     Column("created_at", UtcDateTime, nullable=False),
     Column("decided_by", Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
     Column("decided_at", UtcDateTime, nullable=True),
+    *_via_token(),
 )
 
 processing_log = Table(
@@ -495,6 +504,7 @@ field_verdicts = Table(
     Column("signal_classifier", Boolean, nullable=True),
     Column("signal_neighbours", Boolean, nullable=True),
     Column("signal_facts", Boolean, nullable=True),
+    *_via_token(),
 )
 
 # --- the inbox (`domain.inbox`): rows go with their document ------------------------------------
@@ -516,6 +526,7 @@ inbox_seen = Table(
     # Set by a move for someone who knew the document already: it is not new for them, but
     # they did not look at it, so it does not stand under done.
     Column("silent", Boolean, nullable=False, server_default=false()),
+    *_via_token(),
 )
 
 # Who confirmed a document out of yellow or red last, and when: for "done", removed by the
@@ -527,6 +538,7 @@ inbox_confirmations = Table(
     Column("document_id", Uuid, ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
     Column("confirmed_by", Uuid, nullable=False),
     Column("confirmed_at", UtcDateTime, nullable=False, index=True),
+    *_via_token(),
 )
 
 # --- rules --------------------------------------------------------------------------------------
@@ -607,6 +619,7 @@ rule_applications = Table(
     Column("error", Text, nullable=True),
     Column("created_at", UtcDateTime, nullable=False),
     Column("finished_at", UtcDateTime, nullable=True),
+    *_via_token(),
     Column("version", Integer, nullable=False),
 )
 
@@ -626,6 +639,7 @@ bulk_operations = Table(
     Column("error", Text, nullable=True),
     Column("created_at", UtcDateTime, nullable=False),
     Column("finished_at", UtcDateTime, nullable=True),
+    *_via_token(),
     Column("version", Integer, nullable=False),
 )
 

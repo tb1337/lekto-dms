@@ -23,8 +23,8 @@ from lekto.composition.container import (
 )
 from lekto.composition.settings import Settings
 from lekto.core.domain.documents import Document, Sha256
-from lekto.core.domain.identity import Credential, check_new_password
-from lekto.core.domain.ids import DocumentId, SpaceId, UserId, new_id
+from lekto.core.domain.identity import Credential, ViaToken, check_new_password
+from lekto.core.domain.ids import ApiTokenId, DocumentId, SpaceId, UserId, new_id
 from lekto.core.domain.pipeline import Lane, Node, NodeResult, Outcome
 from lekto.core.domain.reasons import written
 from lekto.core.domain.search import IndexDocument, Visibility
@@ -92,6 +92,8 @@ def pipeline_service(
 
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
+VIA = ViaToken(ApiTokenId(uuid.UUID("00000000-0000-4000-8000-00000000c1a0")), "Claude")
+"""An API token a person decided through."""
 HOUR = timedelta(hours=1)
 
 # The sample files of the tests (made by `samples/make_samples.py`).

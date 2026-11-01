@@ -35,6 +35,7 @@ from lekto.core.domain.errors import (
     SearchUnavailableError,
     ValidationError,
 )
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import BulkOperationId, DocumentId, UserId
 from lekto.core.domain.jobs import Job
 from lekto.core.domain.json_value import JsonValue
@@ -87,8 +88,16 @@ class BulkService:
 
     job_kinds = (BULK_JOB,)
 
-    async def start(self, actor: UserId, selection: Selection, action: BulkAction) -> BulkOperation:
-        """Resolve the selection and queue the action on its documents. ValidationError for
+    async def start(
+        self,
+        actor: UserId,
+        selection: Selection,
+        action: BulkAction,
+        *,
+        via: ViaToken | None = None,
+    ) -> BulkOperation:
+        """Resolve the selection and queue the action on its documents (through the API token
+        `via`, which each change carries). ValidationError for
         an empty selection, too many ids or more than `MAX_DOCUMENTS` documents of a filter;
         NotFoundError for a tag, contact, type, topic or space the action names that does not
         exist (told once here, not with every document); PermissionDeniedError for
@@ -100,7 +109,7 @@ class BulkService:
             await _check_action(uow, action)
             now = self._clock.now()
             operation = BulkOperation.create(
-                user_id=user.id, action=action, documents=documents, now=now
+                user_id=user.id, action=action, documents=documents, now=now, via=via
             )
             await uow.bulk_operations.add(operation)
             await _enqueue(uow, operation.id, now)
@@ -216,7 +225,7 @@ class BulkService:
                 return True
         document = operation.remaining[0]
         try:
-            outcome = await self._act(operation.user_id, operation.action, document)
+            outcome = await self._act(operation, document)
         except AuthenticationError:
             outcome = None  # the person was deactivated: the rest stops
         except ConcurrencyError:
@@ -237,10 +246,11 @@ class BulkService:
             await uow.commit()
         return outcome is None
 
-    async def _act(self, actor: UserId, action: BulkAction, id: DocumentId) -> bool | Reason:
-        """Do `action` to the document as `actor` would by hand: True if it changed, False if
-        it was as the action wants it already, else the reason it was skipped. Raises the
-        errors of the services."""
+    async def _act(self, operation: BulkOperation, id: DocumentId) -> bool | Reason:
+        """Do the operation's action to the document as its person would by hand: True if it
+        changed, False if it was as the action wants it already, else the reason it was
+        skipped. Raises the errors of the services."""
+        actor, action, via = operation.user_id, operation.action, operation.via
         try:
             view = await self._documents.view(actor, id)
         except NotFoundError:
@@ -255,16 +265,17 @@ class BulkService:
         match action.kind:
             case BulkKind.MOVE:
                 assert action.space is not None
-                await self._documents.move(actor, id, action.space)
+                await self._documents.move(actor, id, action.space, via=via)
             case BulkKind.CONFIRM:
-                await self._pipeline.confirm(actor, id, DocumentChanges())
+                await self._pipeline.confirm(actor, id, DocumentChanges(), via=via)
             case BulkKind.REPROCESS:
                 assert action.node is not None
                 await self._pipeline.reprocess_from(actor, id, action.node)
             case BulkKind.DELETE:
                 await self._documents.delete(actor, id)
             case _:
-                await self._documents.change_metadata(actor, id, _changes(action, document))
+                changes = _changes(action, document)
+                await self._documents.change_metadata(actor, id, changes, via=via)
         return True
 
 

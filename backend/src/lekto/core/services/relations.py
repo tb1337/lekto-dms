@@ -18,6 +18,7 @@ from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import ConflictError, NotFoundError
 from lekto.core.domain.events import DocumentUpdated
 from lekto.core.domain.first_runs import RELATIONS, Decision, FieldVerdict, Verdict
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import DocumentId, DocumentTypeId, UserId
 from lekto.core.domain.permissions import can_edit_document, can_read_document
 from lekto.core.domain.reasons import ReasonCode, because
@@ -84,9 +85,12 @@ class RelationService:
             editable=can_edit_document(user, document, space),
         )
 
-    async def relate(self, actor: UserId, id: DocumentId, other: DocumentId) -> None:
+    async def relate(
+        self, actor: UserId, id: DocumentId, other: DocumentId, *, via: ViaToken | None = None
+    ) -> None:
         """Set the relation between the two documents, from the newer to the older (by their
-        document dates, else when they came in), or accept Lekto's suggestion of it.
+        document dates, else when they came in), or accept Lekto's suggestion of it (through the
+        API token `via`).
         NotFoundError if the caller reads neither, PermissionDeniedError if they do not edit
         the newer; ConflictError if it is set already."""
         now = self._clock.now()
@@ -101,7 +105,13 @@ class RelationService:
             # One Lekto made stays Lekto's (a suggestion accepted, a rejection taken back):
             # removed again, it is rejected again, not forgotten.
             relation = (
-                replace(known, state=RelationState.SET, decided_by=user.id, decided_at=now)
+                replace(
+                    known,
+                    state=RelationState.SET,
+                    decided_by=user.id,
+                    decided_at=now,
+                    decided_via=via,
+                )
                 if known is not None
                 else Relation(
                     newer=newer.id,
@@ -111,16 +121,21 @@ class RelationService:
                     created_at=now,
                     decided_by=user.id,
                     decided_at=now,
+                    decided_via=via,
                 )
             )
             await uow.document_relations.put(relation)
-            await _verdict(uow, newer, Verdict.ACCEPTED if accepting else Verdict.ADDED, now)
+            verdict = Verdict.ACCEPTED if accepting else Verdict.ADDED
+            await _verdict(uow, newer, verdict, now, via)
             await uow.outbox.add(relation_events([relation], now))
             await uow.commit()
 
-    async def unrelate(self, actor: UserId, id: DocumentId, other: DocumentId) -> None:
-        """Remove the relation between the two documents, or reject Lekto's suggestion of it:
-        one Lekto made is kept as rejected (it is not suggested again), one a person set goes.
+    async def unrelate(
+        self, actor: UserId, id: DocumentId, other: DocumentId, *, via: ViaToken | None = None
+    ) -> None:
+        """Remove the relation between the two documents, or reject Lekto's suggestion of it
+        (through the API token `via`): one Lekto made is kept as rejected (it is not suggested
+        again), one a person set goes.
         NotFoundError if there is none (or the caller reads neither document),
         PermissionDeniedError if they do not edit the newer."""
         now = self._clock.now()
@@ -135,10 +150,14 @@ class RelationService:
                 )
             if known.origin is RelationOrigin.LEKTO:
                 rejected = replace(
-                    known, state=RelationState.REJECTED, decided_by=user.id, decided_at=now
+                    known,
+                    state=RelationState.REJECTED,
+                    decided_by=user.id,
+                    decided_at=now,
+                    decided_via=via,
                 )
                 await uow.document_relations.put(rejected)
-                await _verdict(uow, newer, Verdict.CORRECTED, now)
+                await _verdict(uow, newer, Verdict.CORRECTED, now, via)
             else:
                 await uow.document_relations.remove(known.newer, known.older)
             await uow.outbox.add(relation_events([known], now))
@@ -243,9 +262,11 @@ def _newer(first: Document, second: Document) -> DocumentId:
     return newer
 
 
-async def _verdict(uow: UnitOfWork, newer: Document, verdict: Verdict, now: datetime) -> None:
-    """The first decision about the newer document's relations; before its first run stopped,
-    early."""
+async def _verdict(
+    uow: UnitOfWork, newer: Document, verdict: Verdict, now: datetime, via: ViaToken | None
+) -> None:
+    """The first decision about the newer document's relations (through the API token `via`);
+    before its first run stopped, early."""
     if newer.processing.run == 1 and newer.first_lane is None:
         verdict = Verdict.EARLY
     await uow.processing_facts.add_verdicts(
@@ -256,6 +277,7 @@ async def _verdict(uow: UnitOfWork, newer: Document, verdict: Verdict, now: date
                 verdict=verdict,
                 decided_at=now,
                 decision=Decision.CHANGE,
+                via=via,
             )
         ]
     )

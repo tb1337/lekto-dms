@@ -11,6 +11,7 @@ from lekto.adapters.outbound.memory.database import DOCUMENTS, SPACES, USERS, Se
 from lekto.adapters.outbound.memory.rows import _copy
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import ConflictError
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import DocumentId, UserId
 from lekto.core.domain.inbox import Confirmation, InboxState, InboxTab, inbox_state, open_tab
 from lekto.core.domain.spaces import SpaceRole
@@ -80,15 +81,23 @@ class MemoryInboxRepository:
         }
 
     async def mark_seen(
-        self, viewer: UserId, document: DocumentId, at: datetime, *, silent: bool = False
+        self,
+        viewer: UserId,
+        document: DocumentId,
+        at: datetime,
+        *,
+        silent: bool = False,
+        via: ViaToken | None = None,
     ) -> None:
         self._marks()  # the unit is open
         self._refer(document)
         if self._uow._row(USERS, viewer) is None:
             raise ConflictError(f"seen mark of a user that does not exist: {viewer}")
-        self._uow._seen[(viewer, document)] = SeenMark(require_utc(at, "seen_at"), silent)
+        self._uow._seen[(viewer, document)] = SeenMark(require_utc(at, "seen_at"), silent, via)
 
-    async def mark_all_seen(self, viewer: UserId, *, editor: UserId | None, at: datetime) -> int:
+    async def mark_all_seen(
+        self, viewer: UserId, *, editor: UserId | None, at: datetime, via: ViaToken | None = None
+    ) -> int:
         marks = self._marks()
         new = [
             document.id
@@ -96,7 +105,7 @@ class MemoryInboxRepository:
             if open_tab(document, _at(marks.get((viewer, document.id)))) is InboxTab.NEW
         ]
         for document in new:
-            await self.mark_seen(viewer, document, at)
+            await self.mark_seen(viewer, document, at, via=via)
         return len(new)
 
     async def unmark_seen(self, viewer: UserId, document: DocumentId) -> None:
@@ -144,6 +153,7 @@ class MemoryInboxRepository:
                 confirmation=confirmation,
                 since=since,
                 silent=mark is not None and mark.silent,
+                seen_via=None if mark is None else mark.via,
             )
             if state is not None:
                 yield document, state, mark, confirmation
@@ -198,7 +208,13 @@ def _at(mark: SeenMark | None) -> datetime | None:
 def _entry(
     document: Document, mark: SeenMark | None, confirmation: Confirmation | None
 ) -> InboxEntry:
-    return InboxEntry(_copy(document), _at(mark), confirmation, mark is not None and mark.silent)
+    return InboxEntry(
+        _copy(document),
+        _at(mark),
+        confirmation,
+        mark is not None and mark.silent,
+        None if mark is None else mark.via,
+    )
 
 
 def _left(state: InboxState) -> datetime:

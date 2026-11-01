@@ -1,7 +1,8 @@
 """Keeping the facts of processing as they happen (`domain.first_runs`): the first run when it
 stops, and a person's verdicts when they decide, in the transaction of the change itself."""
 
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
+from dataclasses import replace
 from datetime import datetime
 
 from lekto.core.domain.classification import SPACE, FieldCheck, field_key
@@ -21,6 +22,7 @@ from lekto.core.domain.first_runs import (
     judge_fields,
     values_of,
 )
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import FieldId, TagId
 from lekto.core.domain.master_data import Assignment
 from lekto.core.domain.pipeline import Lane, NodeRun
@@ -52,6 +54,7 @@ async def keep_verdicts(
     now: datetime,
     log: Sequence[NodeRun] | None = None,
     space_decided: bool | None = None,
+    via: ViaToken | None = None,
 ) -> None:
     """Keep a person's verdicts on the fields their decision covers (`decided_fields`):
     `before` and `after` it, `given` the fields they set (named as in checks). A field judged
@@ -60,7 +63,7 @@ async def keep_verdicts(
     decided it before (`space_decided`; None: as `before` tells, `space_confirmed_at`), such as
     on upload, unless the automation asked about it since (its check is open): the person's
     answer to that is their first decision on what the automation proposed. `log`: the
-    document's log, if read already."""
+    document's log, if read already; `via`: the API token the person decided through."""
     manual = await _manual_tags(uow, before.tag_ids | after.tag_ids)
     applying = {
         field_key(id)
@@ -70,7 +73,8 @@ async def keep_verdicts(
     if before.processing.run == 1 and before.first_lane is None:
         named = {*given, *([SPACE] if decision is Decision.MOVE else [])}
         early = named & {*JUDGED_FIELDS, *applying}
-        await uow.processing_facts.add_verdicts(early_verdicts(after.id, decision, early, now))
+        verdicts = early_verdicts(after.id, decision, early, now)
+        await uow.processing_facts.add_verdicts(through(verdicts, via))
         return
     values = values_of(before, manual)
     fields = decided_fields(decision, before=values, given=given, applying=applying)
@@ -126,7 +130,7 @@ async def keep_verdicts(
                 decision=decision,
             )
         )
-    await uow.processing_facts.add_verdicts(verdicts)
+    await uow.processing_facts.add_verdicts(through(verdicts, via))
 
 
 async def _manual_tags(uow: UnitOfWork, tags: Collection[TagId]) -> frozenset[TagId]:
@@ -137,3 +141,8 @@ async def _manual_tags(uow: UnitOfWork, tags: Collection[TagId]) -> frozenset[Ta
         if tag is not None and tag.assignment is Assignment.MANUAL:
             manual.add(id)
     return frozenset(manual)
+
+
+def through(verdicts: Iterable[FieldVerdict], via: ViaToken | None) -> list[FieldVerdict]:
+    """`verdicts` decided through the API token `via`."""
+    return [replace(verdict, via=via) for verdict in verdicts]

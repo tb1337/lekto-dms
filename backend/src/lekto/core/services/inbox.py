@@ -29,6 +29,7 @@ from lekto.core.domain.classification import (
 from lekto.core.domain.documents import Document, DocumentChanges, Unset
 from lekto.core.domain.errors import OpenFieldsError, ValidationError
 from lekto.core.domain.fields import FieldDefinition, field_from_json
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -65,6 +66,7 @@ from lekto.core.domain.pipeline import (
     NodeRun,
     Outcome,
     ProcessingHistory,
+    via_entry,
 )
 from lekto.core.domain.reasons import Action, Reason, text_of
 from lekto.core.domain.spaces import Space, SpaceRole
@@ -343,11 +345,16 @@ def alias_to_learn(
 
 
 def confirmation(
-    node: Node, before: Outcome | None, decision: Decision, confirmed_by: UUID
+    node: Node,
+    before: Outcome | None,
+    decision: Decision,
+    confirmed_by: UUID,
+    via: ViaToken | None = None,
 ) -> NodeResult:
-    """The log entry's result for a node a person confirmed."""
+    """The log entry's result for a node a person confirmed (through `via`)."""
     output: JsonObject = {
         CONFIRMED_BY: str(confirmed_by),
+        **via_entry(via),
         "outcome_before": None if before is None else before.value,
         ACCEPTED: list(decision.accepted.get(node, ())),
         ENTERED: list(decision.entered.get(node, ())),
@@ -473,6 +480,7 @@ class InboxService:
                     confirmation=entry.confirmation,
                     since=since,
                     silent=entry.silent,
+                    seen_via=entry.seen_via,
                 )
                 if state is None:
                     log.error(
@@ -499,13 +507,15 @@ class InboxService:
             )
         return InboxSummary(counts, worst_lane(counts))
 
-    async def mark_seen(self, actor: UserId, id: DocumentId) -> None:
-        """The caller saw the document: the web UI reports it when the document view opens
-        (reading a document through the API or MCP does not). NotFoundError if they cannot read
-        it. Only a document that is new and unseen by the caller counts: one they saw since it
-        became new keeps when they saw it (it left their inbox then), and nothing changes for
-        one that is new for no one, or that cannot stand in the caller's inbox (a document in
-        reach through reading its space only)."""
+    async def mark_seen(
+        self, actor: UserId, id: DocumentId, *, via: ViaToken | None = None
+    ) -> None:
+        """The caller saw the document (through the API token `via`): the web UI reports it
+        when the document view opens (reading a document through the API or MCP does not).
+        NotFoundError if they cannot read it. Only a document that is new and unseen by the
+        caller counts: one they saw since it became new keeps when they saw it (it left their
+        inbox then), and nothing changes for one that is new for no one, or that cannot stand
+        in the caller's inbox (a document in reach through reading its space only)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             document, space = await readable_document(uow, user, id)
@@ -514,7 +524,7 @@ class InboxService:
             seen = await uow.inbox.seen(actor, [id])
             if not is_unseen(document, seen.get(id)):
                 return
-            await uow.inbox.mark_seen(actor, id, self._clock.now())
+            await uow.inbox.mark_seen(actor, id, self._clock.now(), via=via)
             await uow.commit()
 
     async def mark_unseen(self, actor: UserId, id: DocumentId) -> None:
@@ -525,13 +535,15 @@ class InboxService:
             await uow.inbox.unmark_seen(actor, id)
             await uow.commit()
 
-    async def mark_all_seen(self, actor: UserId, *, all_users: bool = False) -> int:
+    async def mark_all_seen(
+        self, actor: UserId, *, all_users: bool = False, via: ViaToken | None = None
+    ) -> int:
         """Mark everything new in the caller's inbox (with `all_users`, admins only: in every
-        user's) as seen by them; returns how many documents."""
+        user's) as seen by them (through `via`); returns how many documents."""
         async with self._uow() as uow:
             await load_lister(uow, actor, all_users, Action.SEE_ALL_INBOXES)
             count = await uow.inbox.mark_all_seen(
-                actor, editor=None if all_users else actor, at=self._clock.now()
+                actor, editor=None if all_users else actor, at=self._clock.now(), via=via
             )
             await uow.commit()
         return count
@@ -578,20 +590,26 @@ async def arrived(
 
 
 async def confirmed_into(
-    uow: UnitOfWork, document: Document, source: Space, target: Space, now: datetime, by: UserId
+    uow: UnitOfWork,
+    document: Document,
+    source: Space,
+    target: Space,
+    now: datetime,
+    by: UserId,
+    via: ViaToken | None = None,
 ) -> None:
     """`document`, decided in the inbox by `by`, was moved out of `source` into `target`: once
     processing ends green it is new for the editors of `target` who could not read it in
     `source`, where it waited for a decision (a hand-over arrives as new for the receiver).
     The editors of `source` had it before them (a silent mark: done only for who decided);
-    `by` decided it; confirming makes it new for no one else."""
+    `by` decided it (through `via`); confirming makes it new for no one else."""
     newcomers = target.editors - source.editors - {by}
     if not newcomers:
         return
     document.mark_new(now)
     for user in sorted(source.editors - {by}, key=str):
         await uow.inbox.mark_seen(user, document.id, now, silent=True)
-    await uow.inbox.mark_seen(by, document.id, now)
+    await uow.inbox.mark_seen(by, document.id, now, via=via)
 
 
 async def _position(

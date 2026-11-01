@@ -17,6 +17,7 @@ from datetime import date, datetime
 from enum import StrEnum
 
 from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import DocumentId, UserId
 from lekto.core.domain.json_value import JsonObject
 from lekto.core.domain.validation import require_utc
@@ -36,8 +37,8 @@ class RelationState(StrEnum):
 @dataclass(frozen=True, kw_only=True)
 class Relation:
     """`newer` refers to `older` (`bezieht sich auf`). `evidence`: what Lekto had (`kind` of
-    source and its values), empty for a person's. `decided_by`, `decided_at`: the person who set,
-    accepted or rejected it last."""
+    source and its values), empty for a person's. `decided_by`, `decided_at`, `decided_via`: the
+    person who set, accepted or rejected it last, when, and through which API token."""
 
     newer: DocumentId
     older: DocumentId
@@ -47,6 +48,7 @@ class Relation:
     evidence: JsonObject = field(default_factory=dict)
     decided_by: UserId | None = None
     decided_at: datetime | None = None
+    decided_via: ViaToken | None = None
 
     def __post_init__(self) -> None:
         if self.newer == self.older:

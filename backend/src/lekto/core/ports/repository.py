@@ -33,6 +33,7 @@ from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.fields import FieldDefinition, sort_value
 from lekto.core.domain.first_runs import FieldVerdict, FirstRun, Verdict
 from lekto.core.domain.identifiers import IdentifierKind
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import (
     BulkOperationId,
     ClassifierModelId,
@@ -540,12 +541,14 @@ class DocumentFactRepository(Protocol):
 class InboxEntry:
     """A document in a viewer's inbox, with what `domain.inbox.inbox_state` decides by: when
     the viewer saw it last (None: never), and who confirmed it out of yellow or red last.
-    `silent`: the viewer's mark is a move's (`InboxRepository.mark_seen`)."""
+    `silent`: the viewer's mark is a move's (`InboxRepository.mark_seen`); `seen_via`: the API
+    token the viewer marked it through."""
 
     document: Document
     seen_at: datetime | None
     confirmation: Confirmation | None
     silent: bool = False
+    seen_via: ViaToken | None = None
 
 
 @dataclass(frozen=True)
@@ -602,16 +605,25 @@ class InboxRepository(Protocol):
         ...
 
     async def mark_seen(
-        self, viewer: UserId, document: DocumentId, at: datetime, *, silent: bool = False
+        self,
+        viewer: UserId,
+        document: DocumentId,
+        at: datetime,
+        *,
+        silent: bool = False,
+        via: ViaToken | None = None,
     ) -> None:
-        """`viewer` saw `document` at `at`, which replaces when they saw it before. A `silent`
-        mark, which a move sets for someone who knew the document, keeps it from being new for
-        them but does not make it done (`domain.inbox.departure`); the next mark replaces it."""
+        """`viewer` saw `document` at `at` (through the API token `via`), which replaces when
+        they saw it before. A `silent` mark, which a move sets for someone who knew the
+        document, keeps it from being new for them but does not make it done
+        (`domain.inbox.departure`); the next mark replaces it."""
         ...
 
-    async def mark_all_seen(self, viewer: UserId, *, editor: UserId | None, at: datetime) -> int:
+    async def mark_all_seen(
+        self, viewer: UserId, *, editor: UserId | None, at: datetime, via: ViaToken | None = None
+    ) -> int:
         """Mark every document of `editor` that is new and unseen in the inbox as seen by
-        `viewer` at `at` (`domain.inbox.is_unseen`); returns how many."""
+        `viewer` at `at` (through `via`; `domain.inbox.is_unseen`); returns how many."""
         ...
 
     async def unmark_seen(self, viewer: UserId, document: DocumentId) -> None:

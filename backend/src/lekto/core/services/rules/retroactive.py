@@ -32,6 +32,7 @@ from lekto.core.domain.errors import (
     PermissionDeniedError,
     ValidationError,
 )
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import DocumentId, RuleApplicationId, RuleId, SpaceId, UserId
 from lekto.core.domain.jobs import Job
 from lekto.core.domain.json_value import JsonValue
@@ -44,6 +45,7 @@ from lekto.core.domain.pipeline import (
     TRIGGER_APPLY,
     Lane,
     Node,
+    via_entry,
 )
 from lekto.core.domain.reasons import Reason, ReasonCode, because, reasons_to_json
 from lekto.core.domain.rule_planner import Effect, Mode, Note, NoteKind
@@ -338,8 +340,10 @@ class RuleApplicationService:
         version: int,
         documents: Sequence[DocumentId],
         accept_conflicts: Collection[DocumentId] = (),
+        via: ViaToken | None = None,
     ) -> RuleApplication:
-        """Apply `version` of the rule to the selected documents in the background."""
+        """Apply `version` of the rule to the selected documents in the background (through
+        the API token `via`, kept in each log entry)."""
         if len(documents) > self._max_documents:
             raise ValidationError(f"select at most {self._max_documents} documents")
         async with self._uow() as uow:
@@ -353,6 +357,7 @@ class RuleApplicationService:
                 documents=tuple(documents),
                 accept_conflicts=frozenset(accept_conflicts),
                 now=self._clock.now(),
+                via=via,
             )
             await uow.rule_applications.add(application)
             await _enqueue(uow, application.id, self._clock.now())
@@ -486,6 +491,7 @@ class RuleApplicationService:
             prepared,
             accept=id in application.accept_conflicts,
             application=application.id,
+            via=application.via,
         )
         if played is None or not (played.run.plan.effects or played.sends):
             application.record_unchanged()
@@ -507,6 +513,7 @@ class RuleApplicationService:
         *,
         accept: bool,
         application: RuleApplicationId | None = None,
+        via: ViaToken | None = None,
     ) -> _Played | None:
         """Apply the rule to `document` in `uow`, with its log entry and the chain of the
         spaces it files the document into: what applying does and the preview plays (in a unit
@@ -532,6 +539,7 @@ class RuleApplicationService:
         input: dict[str, JsonValue] = {
             TRIGGER: TRIGGER_APPLY,
             ACTOR: str(user.id),
+            **via_entry(via),
             "rules": checked_rules([rule]),
         }
         if application is not None:
@@ -558,6 +566,7 @@ class RuleApplicationService:
                 now=now,
                 by_person=False,
                 applier=user,
+                via=via,
             )
         return _Played(run, None, tuple(chain), tuple(sends), tuple(refused))
 

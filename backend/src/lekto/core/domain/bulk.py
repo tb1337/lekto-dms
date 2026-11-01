@@ -16,6 +16,7 @@ from typing import Self
 from uuid import UUID
 
 from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import (
     BulkOperationId,
     ContactId,
@@ -141,12 +142,14 @@ class BulkStatus(StrEnum):
 class BulkOperation:
     """A person's action on the documents they selected, worked through in the background.
     `position`: how many of `documents` are done; `changed` of them changed, `unchanged` were as
-    the action wants them already, `skipped` left as they were, each with why."""
+    the action wants them already, `skipped` left as they were, each with why. `via`: the API
+    token the person started it through, kept with each change as with one by hand."""
 
     id: BulkOperationId
     user_id: UserId
     action: BulkAction
     documents: tuple[DocumentId, ...]
+    via: ViaToken | None = None
     status: BulkStatus = BulkStatus.QUEUED
     position: int = 0
     changed: int = 0
@@ -174,12 +177,14 @@ class BulkOperation:
         action: BulkAction,
         documents: tuple[DocumentId, ...],
         now: datetime,
+        via: ViaToken | None = None,
     ) -> Self:
         return cls(
             id=BulkOperationId(new_id()),
             user_id=user_id,
             action=action,
             documents=documents,
+            via=via,
             created_at=now,
         )
 

@@ -341,10 +341,18 @@ class InboxDoneOut(BaseModel):
             "The user who confirmed it, or who saw it (the caller); the account may be gone."
         )
     )
+    via_token: str | None = Field(
+        None,
+        description=(
+            "The name of the API token they confirmed or saw it through, as it was then; null "
+            "in the web UI."
+        ),
+    )
 
     @classmethod
     def of(cls, done: Done) -> "InboxDoneOut":
-        return cls(how=done.how, at=done.at, by=done.by)
+        via = None if done.via is None else done.via.name
+        return cls(how=done.how, at=done.at, by=done.by, via_token=via)
 
 
 class InboxItemOut(BaseModel):

@@ -48,6 +48,7 @@ from lekto.core.domain.identity import (
     ThrottleRule,
     TokenScope,
     TotpSetting,
+    ViaToken,
     account_key,
     check_new_password,
     csrf_token,
@@ -109,6 +110,12 @@ class Principal:
     @property
     def can_write(self) -> bool:
         return self.api_token is None or self.api_token.scope.can_write
+
+    @property
+    def via(self) -> ViaToken | None:
+        """The token the caller acts through, for what records their decisions; None in a
+        session."""
+        return ViaToken.of(self.api_token)
 
 
 @dataclass(frozen=True)

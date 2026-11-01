@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request, Response
 
-from lekto.adapters.inbound.rest.auth import PROTECTED, CurrentUser
+from lekto.adapters.inbound.rest.auth import PROTECTED, CurrentUser, Via
 from lekto.adapters.inbound.rest.context import Context
 from lekto.adapters.inbound.rest.params import AllDocuments, Filter
 from lekto.adapters.inbound.rest.problems import problem_responses
@@ -44,6 +44,7 @@ async def start_bulk(
     request: Request,
     response: Response,
     user: CurrentUser,
+    via: Via,
     context: Context,
     filter: Filter,
     all_users: AllDocuments = False,
@@ -64,6 +65,7 @@ async def start_bulk(
             all_users=all_users,
         ),
         body.action.action(),
+        via=via,
     )
     response.headers["Location"] = str(request.url_for("get_bulk", id=operation.id).path)
     return BulkOperationOut.of(operation)

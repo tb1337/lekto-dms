@@ -15,10 +15,10 @@ from lekto.core.domain.inbox import DONE_PERIOD, Confirmation, InboxTab, left_at
 from lekto.core.domain.pipeline import Node
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import User
-from lekto.core.ports.repository import InboxPosition
+from lekto.core.ports.repository import InboxEntry, InboxPosition
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from tests import builders
-from tests.builders import FAILED, NOW, UNCERTAIN
+from tests.builders import FAILED, NOW, UNCERTAIN, VIA
 from tests.contracts.unit_of_work import owner_with_space
 
 LATER = NOW + timedelta(hours=1)
@@ -143,6 +143,36 @@ class InboxRepositoryContract:
             assert await uow.inbox.seen(owner.id, [document.id]) == {}
             assert await uow.inbox.seen(admin.id, [document.id]) == {document.id: LAST}
             assert await uow.inbox.seen(admin.id, []) == {}
+
+    async def test_marks_and_confirmations_keep_their_api_token(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """Through which API token a person saw or confirmed a document; a later mark or
+        confirmation in the web UI replaces it."""
+        owner, space = await owner_with_space(uow_factory)
+        seen, confirmed = green(owner, space), green(owner, space)
+        await store(uow_factory, seen, confirmed)
+        async with uow_factory() as uow:
+            await uow.inbox.mark_seen(owner.id, seen.id, NOW, via=VIA)
+            await uow.inbox.record_confirmation(confirmed.id, Confirmation(owner.id, NOW, VIA))
+            await uow.commit()
+
+        async def entries() -> tuple[InboxEntry | None, InboxEntry | None]:
+            async with uow_factory() as uow:
+                return await uow.inbox.entry(owner.id, seen.id), await uow.inbox.entry(
+                    owner.id, confirmed.id
+                )
+
+        marked, decided = await entries()
+        assert marked is not None and marked.seen_via == VIA
+        assert decided is not None and decided.confirmation == Confirmation(owner.id, NOW, VIA)
+        async with uow_factory() as uow:
+            await uow.inbox.mark_seen(owner.id, seen.id, LATER)
+            await uow.inbox.record_confirmation(confirmed.id, Confirmation(owner.id, LATER))
+            await uow.commit()
+        marked, decided = await entries()
+        assert marked is not None and marked.seen_via is None
+        assert decided is not None and decided.confirmation == Confirmation(owner.id, LATER)
 
     async def test_marks_are_stored_on_commit_only(self, uow_factory: UnitOfWorkFactory) -> None:
         owner, space = await owner_with_space(uow_factory)

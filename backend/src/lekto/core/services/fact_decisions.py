@@ -45,6 +45,7 @@ from lekto.core.domain.identifiers import (
     IdentifierSource,
     Key,
 )
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import DocumentId, UserId
 from lekto.core.domain.pipeline import ProcessingHistory
 from lekto.core.domain.reasons import ReasonCode, because
@@ -96,8 +97,10 @@ async def decide_fact(
     decision: FactDecision,
     *,
     after: AfterFacts | None = None,
+    via: ViaToken | None = None,
 ) -> None:
-    """Keep `decision` about a fact of the document; if it changed the facts, `after` runs.
+    """Keep `decision` about a fact of the document (through the API token `via`, kept with the
+    verdict); if it changed the facts, `after` runs.
     NotFoundError if the caller may not read it, or it has no fact of that kind and value;
     PermissionDeniedError if they only read it, for a person's kind if they are no admin, and
     for `at_contact` if they are no admin;
@@ -192,6 +195,7 @@ async def decide_fact(
                         verdict=verdict,
                         decided_at=now,
                         decision=Decision.CHANGE,
+                        via=via,
                     )
                 ]
             )

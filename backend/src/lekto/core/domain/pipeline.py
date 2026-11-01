@@ -7,6 +7,7 @@ from enum import StrEnum
 from uuid import UUID
 
 from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.identity import ViaToken
 from lekto.core.domain.ids import DocumentId
 from lekto.core.domain.json_value import JsonObject
 from lekto.core.domain.reasons import Reason, text_of
@@ -206,6 +207,9 @@ ACTOR = "actor"
 chose), in its input."""
 CONFIRMED_BY = "confirmed_by"
 """Key of the person who confirmed, in the output of a `PERSON` entry."""
+VIA_TOKEN = "via_token"
+"""Key of the API token the person acted through (`ViaToken.to_json`), beside `ACTOR` or
+`CONFIRMED_BY`; missing for a person in the web UI."""
 ACCEPTED = "accepted"
 ENTERED = "entered"
 KEPT = "kept"
@@ -225,6 +229,11 @@ where the document went. The judge repeats them from `signal_llm` (`MODEL_RUN`).
 MODEL_RUN = (TRUNCATED, MODEL, ENDPOINT)
 OUTSIDE_PIPELINE = frozenset({RULES_CHANGE, RULES_APPLY, PERSON_SPACE})
 """Log entries written outside processing; they say nothing about a node's state."""
+
+
+def via_entry(via: ViaToken | None) -> JsonObject:
+    """`VIA_TOKEN` for a person's log entry: empty in the web UI."""
+    return {} if via is None else {VIA_TOKEN: via.to_json()}
 
 
 @dataclass(frozen=True)

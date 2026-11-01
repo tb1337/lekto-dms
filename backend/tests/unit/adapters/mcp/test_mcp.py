@@ -1,6 +1,7 @@
 """The MCP endpoint, with the SDK's own client: tokens, tools, and that the rights of the REST
 API hold here too."""
 
+import base64
 import json
 from dataclasses import replace
 from decimal import Decimal
@@ -11,7 +12,7 @@ import httpx2
 import pytest
 from mcp.client import Client
 from mcp.client.streamable_http import streamable_http_client
-from mcp_types import Tool
+from mcp_types import ImageContent, Tool
 
 from lekto.adapters.inbound.mcp.server import instructions
 from lekto.adapters.inbound.rest import PREFIX
@@ -21,7 +22,7 @@ from lekto.core.domain.documents import DocumentChanges
 from lekto.core.domain.fields import FieldType, Money
 from lekto.core.domain.ids import DocumentId, new_id, short_id
 from lekto.core.domain.master_data import TagScope
-from lekto.core.services.objects import text_key
+from lekto.core.services.objects import page_key, text_key
 from tests import builders
 from tests.api import auth, serving
 from tests.builders import SAMPLES
@@ -31,7 +32,16 @@ from tests.unit.adapters.rest.support import Api, Scene, make_app, post, upload
 # --- the endpoint -------------------------------------------------------------------------------
 
 
-READS = {"documents_search", "documents_get", "documents_text", "tags_list", "expected_list"}
+READS = {
+    "documents_search",
+    "documents_list",
+    "documents_get",
+    "documents_text",
+    "documents_page",
+    "documents_log",
+    "tags_list",
+    "expected_list",
+}
 WRITES = {"documents_update"}
 
 
@@ -163,6 +173,91 @@ async def test_the_server_works_over_a_real_connection() -> None:
 # --- reading ------------------------------------------------------------------------------------
 
 
+async def test_documents_list_lists_by_filters_and_counts_by_groups(api: Api, scene: Scene) -> None:
+    owner = scene.headers["owner"]
+    admin = await api.admin()
+    await api.services.master_data.create_field(admin.id, "Betrag", FieldType.AMOUNT)
+    await api.services.master_data.create_field(admin.id, "Notiz", FieldType.TEXT)
+    for id, dated, amount in (
+        (scene.green, "2025-03-31", "80.10"),
+        (scene.yellow, "2026-01-31", "79.90"),
+    ):
+        data(
+            await call(
+                api,
+                owner,
+                "documents_update",
+                id=id,
+                document_date=dated,
+                fields={"betrag": {"amount": amount, "currency": "EUR"}},
+            )
+        )
+
+    every = data(await call(api, owner, "documents_list", fields=["Betrag"]))
+    assert {item["id"] for item in every["items"]} == shorts(
+        scene.green, scene.yellow, scene.processing
+    )
+    green = next(item for item in every["items"] if {item["id"]} == shorts(scene.green))
+    assert green["fields"] == {"Betrag": {"amount": "80.10", "currency": "EUR"}}
+    yellow = data(await call(api, owner, "documents_list", lane="yellow"))
+    assert {item["id"] for item in yellow["items"]} == shorts(scene.yellow)
+    paged = data(await call(api, owner, "documents_list", limit=2))
+    assert len(paged["items"]) == 2 and paged["next_offset"] == 2
+    last = data(await call(api, owner, "documents_list", limit=2, offset=2))
+    assert len(last["items"]) == 1 and "next_offset" not in last
+
+    by_year = data(await call(api, owner, "documents_list", group_by="year", sum="Betrag"))
+    assert by_year == {
+        "count": 3,
+        "sum": {"EUR": "160.00"},
+        "groups": [
+            {"key": "2025", "count": 1, "sum": {"EUR": "80.10"}},
+            {"key": "2026", "count": 1, "sum": {"EUR": "79.90"}},
+            {"count": 1},
+        ],
+    }
+    in_2026 = data(
+        await call(api, owner, "documents_list", sum="Betrag", document_date_from="2026-01-01")
+    )
+    assert in_2026 == {"count": 1, "sum": {"EUR": "79.90"}}
+    assert "holds no amount" in error(await call(api, owner, "documents_list", sum="Notiz"))
+    assert "no field named" in error(await call(api, owner, "documents_list", sum="Summe"))
+    # The stranger counts none of them.
+    assert data(await call(api, scene.headers["stranger"], "documents_list", sum="Betrag")) == {
+        "count": 0
+    }
+
+
+async def test_documents_list_lists_and_counts_the_hits_of_words(api: Api, scene: Scene) -> None:
+    owner = scene.headers["owner"]
+    listed = data(await call(api, owner, "documents_list", query="pdf", lane="green"))
+    assert {item["id"] for item in listed["items"]} == shorts(scene.green)
+    counted = data(await call(api, owner, "documents_list", query="pdf", group_by="month"))
+    assert (counted["count"], counted["hits_only"]) == (3, True)
+    reader = data(
+        await call(api, scene.headers["reader"], "documents_list", query="pdf", group_by="year")
+    )
+    assert reader["count"] == 1
+
+
+async def test_documents_list_takes_the_filters_of_a_lens(api: Api, scene: Scene) -> None:
+    owner = scene.headers["owner"]
+    admin = await api.admin()
+    urgent = await api.services.master_data.create_tag(admin.id, "Dringend")
+    await api.services.master_data.create_tag(admin.id, "Später")
+    data(await call(api, owner, "documents_update", id=scene.yellow, tags=["Dringend"]))
+    data(await call(api, owner, "documents_update", id=scene.green, tags=["Später"]))
+    lens = {"name": "Dringendes", "filter": {"tag_ids": [str(urgent.id)]}}
+    await post(api, "/lenses", lens, owner)
+
+    listed = data(await call(api, owner, "documents_list", lens="dringendes"))
+    assert {item["id"] for item in listed["items"]} == shorts(scene.yellow)
+    # A filter given replaces the lens's own.
+    later = data(await call(api, owner, "documents_list", lens="Dringendes", tags=["Später"]))
+    assert {item["id"] for item in later["items"]} == shorts(scene.green)
+    assert "no lens named" in error(await call(api, owner, "documents_list", lens="Rot"))
+
+
 async def test_documents_go_by_a_short_id_or_the_whole_one(api: Api, scene: Scene) -> None:
     """Tobi, 01.11.2026 (umsetzungsplan "MCP", decision 8): the last 8 characters of the id."""
     owner = scene.headers["owner"]
@@ -210,16 +305,73 @@ async def test_documents_get_names_its_relations_one_may_read(api: Api, scene: S
     """Read only (#145): the reader does not read the yellow document, so not the relation."""
     green, yellow = DocumentId(UUID(scene.green)), DocumentId(UUID(scene.yellow))
     await api.services.relations.relate(scene.owner.id, green, yellow)
-    owner = data(await call(api, scene.headers["owner"], "documents_get", id=scene.green))
+    wanted = {"id": scene.green, "include": ["relations"]}
+    owner = data(await call(api, scene.headers["owner"], "documents_get", **wanted))
     (relation,) = owner["relations"]
     assert relation["id"] == shorts(scene.yellow).pop() and "suggested" not in relation
     assert relation["direction"] in ("refers_to", "referred_by")
-    reader = data(await call(api, scene.headers["reader"], "documents_get", id=scene.green))
+    reader = data(await call(api, scene.headers["reader"], "documents_get", **wanted))
     assert "relations" not in reader
+    # Only when asked for.
+    plain = data(await call(api, scene.headers["owner"], "documents_get", id=scene.green))
+    assert "relations" not in plain
     changed = data(
         await call(api, scene.headers["owner"], "documents_update", id=scene.green, title="Neu")
     )
     assert {item["id"] for item in changed["document"]["relations"]} == shorts(scene.yellow)
+
+
+async def test_documents_get_tells_what_is_open_and_how_it_was_read(api: Api, scene: Scene) -> None:
+    owner = scene.headers["owner"]
+    wanted = ["review", "reading", "facts"]
+    yellow = data(await call(api, owner, "documents_get", id=scene.yellow, include=wanted))
+    (judge,) = yellow["open"]
+    assert judge["node"] == "judge" and judge["reason"] == "new contact"
+    green = data(await call(api, owner, "documents_get", id=scene.green, include=wanted))
+    assert "open" not in green and "poorly_read" not in green
+
+
+async def test_documents_page_gives_the_image_of_a_page(api: Api, scene: Scene) -> None:
+    document = DocumentId(UUID(scene.green))
+    await api.container.object_store.put(
+        page_key(document, 1), b"RIFF\x00\x00\x00\x00WEBPVP8 ", content_type="image/webp"
+    )
+    async with api.container.unit_of_work() as uow:
+        stored = await uow.documents.get(document)
+        stored.page_count = 1
+        await uow.documents.update(stored)
+        await uow.commit()
+    result = await call(api, scene.headers["reader"], "documents_page", id=scene.green, page=1)
+    assert not result.is_error
+    (image,) = result.content
+    assert isinstance(image, ImageContent) and image.mime_type == "image/webp"
+    assert base64.b64decode(image.data).startswith(b"RIFF")
+    missing = await call(api, scene.headers["reader"], "documents_page", id=scene.green, page=2)
+    assert "not found" in error(missing)
+
+
+async def test_documents_log_names_the_steps_and_who_decided(api: Api, scene: Scene) -> None:
+    owner = scene.headers["owner"]
+    data(await call(api, owner, "documents_update", id=scene.green, title="Neu"))
+    log = data(await call(api, owner, "documents_log", id=scene.green))
+    nodes = [entry["node"] for entry in log["entries"]]
+    assert nodes[0] == "receive" and "judge" in nodes
+    change = log["entries"][-1]
+    assert (change["node"], change["by"], change["via_token"]) == ("apply_rules", "owner", "tests")
+    every = data(await call(api, owner, "documents_log", id=scene.yellow, every_run=True))
+    assert {entry["run"] for entry in every["entries"]} == {1, 2}
+    latest = data(await call(api, owner, "documents_log", id=scene.yellow))
+    assert {entry["run"] for entry in latest["entries"]} == {2}
+
+
+async def test_documents_update_tries_a_change_without_storing_it(api: Api, scene: Scene) -> None:
+    owner = scene.headers["owner"]
+    tried = data(
+        await call(api, owner, "documents_update", id=scene.green, title="Probe", dry_run=True)
+    )
+    assert tried["dry_run"] is True and tried["document"]["title"] == "Probe"
+    stored = data(await call(api, owner, "documents_get", id=scene.green))
+    assert stored["title"] != "Probe"
 
 
 async def test_a_document_one_may_not_read_is_just_not_found(api: Api, scene: Scene) -> None:

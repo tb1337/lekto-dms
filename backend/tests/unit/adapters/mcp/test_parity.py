@@ -81,9 +81,9 @@ ENDPOINTS: dict[str, str | Excluded | Planned] = {
     "POST /search/check": MANAGING,
     # documents
     "POST /documents": Excluded.UPLOAD,
-    "GET /documents": Planned(4, "documents_list"),
-    "GET /documents/count": Planned(4, "documents_facets"),
-    "GET /documents/facets": Planned(4, "documents_facets"),
+    "GET /documents": "documents_list",
+    "GET /documents/count": "documents_list",
+    "GET /documents/facets": "documents_list",
     "POST /documents/search": "documents_search",
     "POST /documents/search/warm": BROWSER,
     "GET /documents/stream": BROWSER,
@@ -96,13 +96,13 @@ ENDPOINTS: dict[str, str | Excluded | Planned] = {
     "POST /documents/{id}/reprocess": WEB_UI,
     "POST /documents/{id}/retry": Planned(5, "documents_retry"),
     "POST /documents/{id}/vision": Excluded.VLM,
-    "POST /documents/{id}/dry-run": Planned(4, "documents_dry_run"),
+    "POST /documents/{id}/dry-run": "documents_update",
     "GET /documents/{id}/text": "documents_text",
-    "GET /documents/{id}/pages/{number}": Planned(4, "documents_page"),
-    "GET /documents/{id}/log": Planned(4, "documents_log"),
-    "GET /documents/{id}/facts": Planned(4, "documents_get"),
-    "GET /documents/{id}/reading": Planned(4, "documents_get"),
-    "GET /documents/{id}/review": Planned(4, "documents_get"),
+    "GET /documents/{id}/pages/{number}": "documents_page",
+    "GET /documents/{id}/log": "documents_log",
+    "GET /documents/{id}/facts": "documents_get",
+    "GET /documents/{id}/reading": "documents_get",
+    "GET /documents/{id}/review": "documents_get",
     "GET /documents/{id}/original": BROWSER,
     "GET /documents/{id}/archive": BROWSER,
     "GET /documents/{id}/preview": BROWSER,
@@ -215,7 +215,7 @@ ENDPOINTS: dict[str, str | Excluded | Planned] = {
     "POST /external/tasks/{id}/result": Excluded.NOT_FOR_CLIENTS,
     "GET /external/tasks/{id}/files/{name}": Excluded.NOT_FOR_CLIENTS,
 }
-PLANNED_PRS = {4, 5, 6}
+PLANNED_PRS = {5, 6}
 """The pull requests of the plan that add tools; after the last, nothing is planned."""
 
 

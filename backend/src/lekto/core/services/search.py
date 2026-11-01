@@ -27,7 +27,7 @@ from lekto.core.domain.document_facts import fact_tokens
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import EmbeddingsError, SearchUnavailableError, ValidationError
 from lekto.core.domain.events import SearchMeaningReady
-from lekto.core.domain.ids import SpaceId, UserId
+from lekto.core.domain.ids import DocumentId, SpaceId, UserId
 from lekto.core.domain.permissions import Reach, document_access, reach_access
 from lekto.core.domain.reasons import Action, Reason, ReasonCode, because
 from lekto.core.domain.search import Segment, Visibility
@@ -37,6 +37,7 @@ from lekto.core.ports.embeddings import Embeddings
 from lekto.core.ports.repository import DocumentFilter, DocumentOrder, SortKey
 from lekto.core.ports.search_index import (
     MAX_HITS,
+    MAX_LIMIT,
     SEARCH_PAGE,
     SearchIndex,
     SearchQuery,
@@ -169,6 +170,26 @@ class SearchService:
     async def settled(self) -> None:
         """Wait for the embeddings still running in the background."""
         await asyncio.gather(*self._pending.values(), return_exceptions=True)
+
+    async def hits(
+        self,
+        actor: UserId,
+        text: str,
+        filter: DocumentFilter | None = None,
+        *,
+        all_users: bool = False,
+    ) -> tuple[DocumentId, ...]:
+        """Every hit of `search`, as far as the index reaches (`MAX_HITS`), best first: what an
+        action on many and a count over documents with words take."""
+        found: dict[DocumentId, None] = {}
+        offset: int | None = 0
+        while offset is not None and offset < MAX_HITS:
+            page = await self.search(
+                actor, text, filter, offset=offset, limit=MAX_LIMIT, all_users=all_users
+            )
+            found.update((item.document.id, None) for item in page.items)
+            offset = page.next_offset
+        return tuple(found)
 
     async def search(
         self,

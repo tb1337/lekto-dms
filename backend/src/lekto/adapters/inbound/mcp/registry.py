@@ -177,9 +177,9 @@ def _principal(request: object) -> Principal | None:
 
 class Visibility:
     """Middleware: lists the tools the caller may use, and refuses a call of any other. The list
-    leaves out the titles pydantic gives every schema and parameter: they repeat the names, and
-    the definitions are loaded into every conversation (the SDK checks arguments against the
-    schemas as they were registered)."""
+    is slimmer than the schemas pydantic writes, since the definitions are loaded into every
+    conversation (`_slim`); the SDK checks arguments against the schemas as they were
+    registered."""
 
     def __init__(self, specs: Mapping[str, ToolSpec]) -> None:
         self._specs = specs
@@ -204,7 +204,7 @@ class Visibility:
             result = result.model_dump(mode="json", by_alias=True, exclude_none=True)
         if isinstance(result, dict) and isinstance(result.get("tools"), list):
             listed: list[dict[str, Any]] = result["tools"]
-            tools = [_untitled(tool) for tool in listed if self._sees(tool.get("name"), principal)]
+            tools = [_slim(tool) for tool in listed if self._sees(tool.get("name"), principal)]
             return {**result, "tools": tools}
         return result
 
@@ -213,15 +213,28 @@ class Visibility:
         return spec is not None and spec.refusal(principal) is None
 
 
-def _untitled(value: Any) -> Any:
-    """`value` without the key `title` where it is text: a schema's title, not a parameter
-    named so (in `properties` that is a schema)."""
-    if isinstance(value, dict):
-        return {
-            key: _untitled(item)
-            for key, item in value.items()
-            if not (key == "title" and isinstance(item, str))
-        }
+_NULL = {"type": "null"}
+
+
+def _slim(value: Any) -> Any:
+    """`value` without what a client needs no telling: the titles (the key `title` where it is
+    text, a schema's, not a parameter named so: in `properties` that is a schema), which repeat
+    the names; and null beside the type of a parameter whose default is null, which a client
+    leaves out instead (the server takes null all the same). A parameter where null means
+    something (`documents_update` removes a value) has no default and keeps it."""
     if isinstance(value, list):
-        return [_untitled(item) for item in value]
-    return value
+        return [_slim(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    slim = {
+        key: _slim(item)
+        for key, item in value.items()
+        if not (key == "title" and isinstance(item, str))
+    }
+    choices = slim.get("anyOf")
+    if "default" in slim and slim["default"] is None and isinstance(choices, list):
+        others = [choice for choice in choices if choice != _NULL]
+        if len(others) == 1 < len(choices):
+            rest = {key: item for key, item in slim.items() if key not in ("anyOf", "default")}
+            return {**rest, **others[0]}
+    return slim

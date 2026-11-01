@@ -9,7 +9,7 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from mcp.server.mcpserver import Context, Image
-from pydantic import AwareDatetime, BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from lekto.adapters.inbound.context import ApiContext
 from lekto.adapters.inbound.mcp.names import Names
@@ -19,7 +19,7 @@ from lekto.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
 from lekto.core.domain.classification import field_id_of
 from lekto.core.domain.document_facts import FactState
 from lekto.core.domain.documents import MAX_TITLE, UNSET, Document, DocumentChanges, Unset
-from lekto.core.domain.fields import field_from_json
+from lekto.core.domain.fields import FieldValue, field_from_json, field_to_json
 from lekto.core.domain.ids import DocumentId, FieldId, UserId, short_id
 from lekto.core.domain.json_value import JsonValue
 from lekto.core.domain.pipeline import ACTOR, CONFIRMED_BY, VIA_TOKEN, NodeRun
@@ -53,6 +53,11 @@ class FactOut(BaseModel):
     role: str | None = None
     contact: str | None = None  # whose identifier it is
     state: str | None = None  # a person's decision: added, corrected, rejected
+
+
+class FactsOut(BaseModel):
+    id: str
+    facts: list[FactOut]
 
 
 class CheckOut(BaseModel):
@@ -137,12 +142,38 @@ class LogOut(BaseModel):
 
 
 class UpdateOut(BaseModel):
+    """What a change did: the values set and those removed, and what the rules did after it,
+    not the whole document (decision 7)."""
+
     id: str
     dry_run: bool | None = None  # nothing was stored
-    filed_away: bool | None = None
+    filed_away: bool | None = None  # the rules filed it where you no longer read it
     access: SpaceRole | None = None
-    document: DocumentOut | None = None
+    set: dict[str, JsonValue] = {}
+    removed: list[str] = []
     rules: list[RuleReportOut] | None = None
+
+
+class RetryOut(BaseModel):
+    id: str
+    status: str
+
+
+class ChangesIn(BaseModel):
+    """A change of a document as `documents_update` takes it (and `inbox_confirm` in
+    `changes`): what is left out is `UNSET` (pydantic neither checks a `default_factory`'s
+    value nor shows it in the schema), unlike what is given as null."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: Annotated[str, Field(min_length=1, max_length=MAX_TITLE, default_factory=lambda: UNSET)]
+    contact: Annotated[str | None, Field(default_factory=lambda: UNSET)]
+    document_type: Annotated[str | None, Field(default_factory=lambda: UNSET)]
+    topic: Annotated[str | None, Field(default_factory=lambda: UNSET)]
+    tags: Annotated[list[str], Field(default_factory=lambda: UNSET, max_length=50)]
+    document_date: Annotated[date | None, Field(default_factory=lambda: UNSET)]
+    fields: Annotated[dict[str, Any], Field(default_factory=lambda: UNSET)]
+    created_at: Annotated[AwareDatetime, Field(default_factory=lambda: UNSET)]
 
 
 def add_document_tools(tools: Tools, context: ApiContext) -> None:
@@ -297,6 +328,18 @@ def add_document_tools(tools: Tools, context: ApiContext) -> None:
         )
 
     @tools.write(
+        "documents_retry",
+        "Repeat the failed steps of a red document and go on from there (edit access); "
+        "nothing else is read again.",
+        idempotent=False,
+    )
+    async def documents_retry(ctx: Context, id: str) -> str:
+        user = principal_of(ctx).id
+        view = await context.pipeline.retry(user, await context.documents.resolve(user, id))
+        status = view.document.processing.status.value
+        return compact(RetryOut(id=short_id(view.document.id), status=status))
+
+    @tools.write(
         "documents_update",
         "Change a document's metadata (edit access). Leave a parameter out to keep it; null "
         "removes contact, document_type, topic or document_date. tags replaces all tags. "
@@ -309,8 +352,6 @@ def add_document_tools(tools: Tools, context: ApiContext) -> None:
     async def documents_update(
         ctx: Context,
         id: str,
-        # A parameter left out is `UNSET` (pydantic neither checks a `default_factory`'s value
-        # nor shows it in the schema), unlike one given as null.
         title: Annotated[
             str, Field(min_length=1, max_length=MAX_TITLE, default_factory=lambda: UNSET)
         ],
@@ -326,24 +367,20 @@ def add_document_tools(tools: Tools, context: ApiContext) -> None:
         principal = principal_of(ctx)
         user = principal.id
         names = await Names.load(context, user)
-        changes = DocumentChanges(
+        given = ChangesIn.model_construct(
             title=title,
-            contact_id=_reference(contact, names.find_contact),
-            document_type_id=_reference(document_type, names.find_document_type),
-            topic_id=_reference(topic, names.find_topic),
-            tag_ids=(
-                UNSET if isinstance(tags, Unset) else frozenset(names.find_tag(t) for t in tags)
-            ),
+            contact=contact,
+            document_type=document_type,
+            topic=topic,
+            tags=tags,
             document_date=document_date,
-            fields=_fields(fields, names),
-            created_at=(
-                created_at if isinstance(created_at, Unset) else created_at.astimezone(UTC)
-            ),
+            fields=fields,
+            created_at=created_at,
         )
         change = await context.documents.change_metadata(
             user,
             await context.documents.resolve(user, id),
-            changes,
+            changes_of(given, names),
             dry_run=dry_run,
             via=principal.via,
         )
@@ -351,22 +388,12 @@ def add_document_tools(tools: Tools, context: ApiContext) -> None:
         if change.access is None:
             out = UpdateOut(id=short_id(change.document.id), filed_away=True, dry_run=tried)
             return compact(out)
-        document = document_out(change.document, change.access, names)
-        if not dry_run:
-            document.relations = await relations(context, user, change.document.id, names)
-        return compact(
-            UpdateOut(
-                id=short_id(change.document.id),
-                dry_run=tried,
-                access=change.access,
-                document=document,
-                rules=(
-                    None
-                    if change.rules is None
-                    else [RuleReportOut.of(report) for report in change.rules.plan.reports]
-                ),
-            )
-        )
+        assert change.before is not None  # a change the caller still reads
+        out = update_out(change.before, change.document, change.access, names)
+        out.dry_run = tried
+        if change.rules is not None:
+            out.rules = [RuleReportOut.of(report) for report in change.rules.plan.reports]
+        return compact(out)
 
 
 def document_out(document: Document, access: SpaceRole, names: Names) -> DocumentOut:
@@ -502,3 +529,65 @@ def _named(field: str, value: JsonValue, names: Names) -> JsonValue:
         case "tags" if isinstance(value, list):
             return list[JsonValue](names.tag_names(UUID(str(item)) for item in value))
     return value
+
+
+def changes_of(given: ChangesIn, names: Names) -> DocumentChanges:
+    """The change `given`, with the names looked up."""
+    return DocumentChanges(
+        title=given.title,
+        contact_id=_reference(given.contact, names.find_contact),
+        document_type_id=_reference(given.document_type, names.find_document_type),
+        topic_id=_reference(given.topic, names.find_topic),
+        tag_ids=(
+            UNSET
+            if isinstance(given.tags, Unset)
+            else frozenset(names.find_tag(tag) for tag in given.tags)
+        ),
+        document_date=given.document_date,
+        fields=_fields(given.fields, names),
+        created_at=(
+            given.created_at
+            if isinstance(given.created_at, Unset)
+            else given.created_at.astimezone(UTC)
+        ),
+    )
+
+
+def update_out(before: Document, after: Document, access: SpaceRole, names: Names) -> UpdateOut:
+    """What changed from `before` to `after`, by name: what is set, and what is removed."""
+    out = UpdateOut(id=short_id(after.id), access=access)
+    values: dict[str, tuple[JsonValue, JsonValue]] = {
+        "title": (before.title, after.title),
+        "contact": (names.contact(before.contact_id), names.contact(after.contact_id)),
+        "document_type": (
+            names.document_type(before.document_type_id),
+            names.document_type(after.document_type_id),
+        ),
+        "topic": (names.topic(before.topic_id), names.topic(after.topic_id)),
+        "tags": (
+            list[JsonValue](names.tag_names(before.tag_ids)),
+            list[JsonValue](names.tag_names(after.tag_ids)),
+        ),
+        "document_date": (_iso(before.document_date), _iso(after.document_date)),
+    }
+    for id in sorted({*before.fields, *after.fields}, key=names.field_name):
+        values[names.field_name(id)] = (
+            _field(before.fields.get(id)),
+            _field(after.fields.get(id)),
+        )
+    for name, (old, new) in values.items():
+        if old == new:
+            continue
+        if new is None or new == []:
+            out.removed.append(name)
+        else:
+            out.set[name] = new
+    return out
+
+
+def _iso(value: date | None) -> str | None:
+    return None if value is None else value.isoformat()
+
+
+def _field(value: FieldValue | None) -> JsonValue:
+    return None if value is None else field_to_json(value)

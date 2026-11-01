@@ -18,16 +18,19 @@ from lekto.adapters.inbound.mcp.server import instructions
 from lekto.adapters.inbound.rest import PREFIX
 from lekto.adapters.outbound.memory import ManualClock
 from lekto.composition.container import build_memory_container, build_services
+from lekto.core.domain.classification import FieldCheck, checks_to_json
 from lekto.core.domain.documents import DocumentChanges
 from lekto.core.domain.fields import FieldType, Money
 from lekto.core.domain.ids import DocumentId, new_id, short_id
 from lekto.core.domain.master_data import TagScope
+from lekto.core.domain.pipeline import Node, NodeResult, Outcome
+from lekto.core.domain.reasons import written
 from lekto.core.services.objects import page_key, text_key
 from tests import builders
 from tests.api import auth, serving
 from tests.builders import SAMPLES
 from tests.unit.adapters.mcp.support import TEXT, call, connected, data, error, running
-from tests.unit.adapters.rest.support import Api, Scene, make_app, post, upload
+from tests.unit.adapters.rest.support import Api, Scene, make_app, post, unique_pdf, upload
 
 # --- the endpoint -------------------------------------------------------------------------------
 
@@ -39,10 +42,11 @@ READS = {
     "documents_text",
     "documents_page",
     "documents_log",
+    "inbox_list",
     "tags_list",
     "expected_list",
 }
-WRITES = {"documents_update"}
+WRITES = {"documents_update", "documents_retry", "inbox_confirm", "inbox_mark_seen", "facts_decide"}
 
 
 async def tools_of(api: Api, headers: dict[str, str]) -> dict[str, Tool]:
@@ -318,7 +322,7 @@ async def test_documents_get_names_its_relations_one_may_read(api: Api, scene: S
     changed = data(
         await call(api, scene.headers["owner"], "documents_update", id=scene.green, title="Neu")
     )
-    assert {item["id"] for item in changed["document"]["relations"]} == shorts(scene.yellow)
+    assert changed["set"] == {"title": "Neu"}  # what changed, not the whole document
 
 
 async def test_documents_get_tells_what_is_open_and_how_it_was_read(api: Api, scene: Scene) -> None:
@@ -369,9 +373,120 @@ async def test_documents_update_tries_a_change_without_storing_it(api: Api, scen
     tried = data(
         await call(api, owner, "documents_update", id=scene.green, title="Probe", dry_run=True)
     )
-    assert tried["dry_run"] is True and tried["document"]["title"] == "Probe"
+    assert tried["dry_run"] is True and tried["set"] == {"title": "Probe"}
     stored = data(await call(api, owner, "documents_get", id=scene.green))
     assert stored["title"] != "Probe"
+
+
+async def test_inbox_list_tells_what_waits_and_why(api: Api, scene: Scene) -> None:
+    owner = scene.headers["owner"]
+    inbox = data(await call(api, owner, "inbox_list"))
+    assert inbox["counts"]["review"] == 1 and inbox["counts"]["processing"] == 1
+    tabs = {item["id"]: item["tab"] for item in inbox["items"]}
+    assert tabs[shorts(scene.yellow).pop()] == "review"
+    (yellow,) = [item for item in inbox["items"] if item["tab"] == "review"]
+    assert yellow["open"][0]["reason"] == "new contact"
+    review = data(await call(api, owner, "inbox_list", tab="review"))
+    assert [item["id"] for item in review["items"]] == [shorts(scene.yellow).pop()]
+    first = data(await call(api, owner, "inbox_list", limit=1))
+    following = data(await call(api, owner, "inbox_list", limit=1, after=first["next_after"]))
+    assert following["items"][0]["id"] != first["items"][0]["id"]
+
+
+async def test_inbox_confirm_decides_and_names_the_token(api: Api, scene: Scene) -> None:
+    owner = scene.headers["owner"]
+    wrong = await call(api, owner, "inbox_confirm", id=scene.yellow, changes={"colour": "red"})
+    assert "changes: colour" in error(wrong)
+    confirmed = data(
+        await call(api, owner, "inbox_confirm", id=scene.yellow, changes={"title": "Geprüft"})
+    )
+    assert confirmed["set"] == {"title": "Geprüft"}
+    await api.drain()
+    done = data(await call(api, owner, "inbox_list", tab="done"))
+    (item,) = [item for item in done["items"] if {item["id"]} == shorts(scene.yellow)]
+    assert item["done"]["how"] == "confirmed"
+    assert (item["done"]["by"], item["done"]["via_token"]) == ("owner", "tests")
+
+
+async def test_inbox_confirm_leaves_where_a_document_belongs_to_the_person(api: Api) -> None:
+    owner = await api.user()
+    check = FieldCheck(
+        field="space",
+        outcome=Outcome.UNCERTAIN,
+        confidence=0.5,
+        reasons=(written("two spaces fit"),),
+        suggestion=str(new_id()),
+    )
+    api.services.pipeline.replace_executor(
+        Node.JUDGE,
+        builders.Returns(
+            NodeResult(
+                outcome=Outcome.UNCERTAIN,
+                reasons=(written("space"),),
+                output={"fields": checks_to_json([check])},
+            )
+        ),
+    )
+    id = await upload(api, auth(owner), content=unique_pdf("where"))
+    refused = await call(api, auth(owner), "inbox_confirm", id=id, accept_suggestions=True)
+    assert "the person decides it in the web UI" in error(refused)
+
+
+async def test_inbox_mark_seen_and_new_again(api: Api) -> None:
+    owner = await api.user()
+    id = await upload(api, auth(owner), content=unique_pdf("seen"))
+    data(await call(api, auth(owner), "inbox_mark_seen", id=id))
+    done = data(await call(api, auth(owner), "inbox_list", tab="done"))
+    assert done["items"][0]["done"]["via_token"] == "tests"
+    data(await call(api, auth(owner), "inbox_mark_seen", id=id, seen=False))
+    new = data(await call(api, auth(owner), "inbox_list", tab="new"))
+    assert [item["id"] for item in new["items"]] == [shorts(id).pop()]
+
+
+async def test_documents_retry_repeats_what_failed(api: Api) -> None:
+    owner = await api.user()
+    pipeline = api.services.pipeline
+    judge = pipeline.replace_executor(Node.JUDGE, builders.Returns(builders.FAILED))
+    id = await upload(api, auth(owner), content=unique_pdf("red"))
+    pipeline.replace_executor(Node.JUDGE, judge)
+    retried = data(await call(api, auth(owner), "documents_retry", id=id))
+    assert retried == {"id": shorts(id).pop(), "status": "processing"}
+    await api.drain()
+    again = data(await call(api, auth(owner), "documents_get", id=id))
+    assert again["lane"] == "green"
+
+
+async def test_facts_decide_adds_and_rejects_a_fact(api: Api, scene: Scene) -> None:
+    owner = scene.headers["owner"]
+    added = data(
+        await call(
+            api,
+            owner,
+            "facts_decide",
+            id=scene.green,
+            action="add",
+            kind="invoice_number",
+            value="R-1001",
+            role="own",
+        )
+    )
+    (fact,) = [fact for fact in added["facts"] if fact["kind"] == "invoice_number"]
+    assert (fact["value"], fact["role"], fact["state"]) == ("R-1001", "own", "added")
+    unknown = await call(
+        api, owner, "facts_decide", id=scene.green, action="add", kind="invoice", value="1"
+    )
+    assert "no kind of fact named 'invoice'" in error(unknown)
+    assert "invoice_number" in error(unknown)
+    reader = await call(
+        api,
+        scene.headers["reader"],
+        "facts_decide",
+        id=scene.green,
+        action="reject",
+        kind="invoice_number",
+        value="R-1001",
+    )
+    assert error(reader)
 
 
 async def test_a_document_one_may_not_read_is_just_not_found(api: Api, scene: Scene) -> None:
@@ -584,12 +699,15 @@ async def test_documents_update_changes_what_is_given(api: Api, scene: Scene) ->
             fields={"zählerstand": "1234.5"},
         )
     )
-    document = result["document"]
-    assert result["access"] == "edit" and document["title"] == "Strom März"
-    assert document["contact"] == "Stadtwerke"
-    assert document["tags"] == ["Strom", "Wohnung"]
-    assert document["document_date"] == "2026-03-31"
-    assert document["fields"] == {"Zählerstand": "1234.5"}
+    assert result["access"] == "edit"
+    assert result["set"] == {
+        "title": "Strom März",
+        "contact": "Stadtwerke",
+        "tags": ["Strom", "Wohnung"],
+        "document_date": "2026-03-31",
+        "Zählerstand": "1234.5",
+    }
+    assert "removed" not in result
 
     # What is left out stays; tags are replaced as a whole; null removes.
     again = data(
@@ -603,10 +721,11 @@ async def test_documents_update_changes_what_is_given(api: Api, scene: Scene) ->
             document_date=None,
             fields={"Zählerstand": None},
         )
-    )["document"]
-    assert again["title"] == "Strom März"
-    assert "contact" not in again and "document_date" not in again
-    assert again["tags"] == ["Strom"] and "fields" not in again
+    )
+    assert again["set"] == {"tags": ["Strom"]}
+    assert again["removed"] == ["contact", "document_date", "Zählerstand"]
+    kept = data(await call(api, scene.headers["owner"], "documents_get", id=scene.green))
+    assert kept["title"] == "Strom März" and "contact" not in kept
     # The same change as over REST.
     rest = (
         await api.client.get(f"{PREFIX}/documents/{scene.green}", headers=auth(scene.owner))
@@ -637,7 +756,7 @@ async def test_the_topic_is_read_and_set_by_its_name(api: Api, scene: Scene) -> 
     result = data(
         await call(api, writer, "documents_update", id=scene.green, contact="nord", topic="arbeit")
     )
-    assert result["document"]["topic"] == "Arbeit"
+    assert result["set"] == {"contact": "Nord", "topic": "Arbeit"}
     document = data(await call(api, scene.headers["reader"], "documents_get", id=scene.green))
     assert document["topic"] == "Arbeit"
     # Only one the contact enables; a tag is no topic; null removes it.
@@ -648,7 +767,7 @@ async def test_the_topic_is_read_and_set_by_its_name(api: Api, scene: Scene) -> 
         await call(api, writer, "documents_update", id=scene.green, topic="Strom")
     )
     cleared = data(await call(api, writer, "documents_update", id=scene.green, topic=None))
-    assert "topic" not in cleared["document"]
+    assert cleared["removed"] == ["topic"]
     topics = data(await call(api, writer, "tags_list", scope="topic"))
     assert topics == {"topic": ["Arbeit", "Girokonto"]}
 
@@ -699,7 +818,7 @@ async def test_documents_update_returns_the_document_and_the_rules_report(
     result = data(
         await call(api, scene.headers["owner"], "documents_update", id=scene.green, title="Z")
     )
-    assert result["id"] == shorts(scene.green).pop() and result["document"]["title"] == "Z"
+    assert result["id"] == shorts(scene.green).pop() and result["set"] == {"title": "Z"}
     assert result.get("rules", []) == []
 
 
@@ -748,7 +867,7 @@ async def test_an_editor_whose_change_files_the_document_away_learns_nothing_mor
     assert data(result) == {"id": shorts(id).pop(), "filed_away": True}
     assert "not found" in error(await call(api, auth(editor), "documents_get", id=id))
     owners = data(await call(api, o, "documents_update", id=id, title="Seen by the owner"))
-    assert owners["document"]["space_id"] == private["id"]
+    assert owners["set"] == {"title": "Seen by the owner"}
     assert "rules" not in owners  # no change that triggers it
 
 

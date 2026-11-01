@@ -94,7 +94,7 @@ ENDPOINTS: dict[str, str | Excluded | Planned] = {
     "DELETE /documents/{id}": WEB_UI,
     "POST /documents/{id}/move": WEB_UI,
     "POST /documents/{id}/reprocess": WEB_UI,
-    "POST /documents/{id}/retry": Planned(5, "documents_retry"),
+    "POST /documents/{id}/retry": "documents_retry",
     "POST /documents/{id}/vision": Excluded.VLM,
     "POST /documents/{id}/dry-run": "documents_update",
     "GET /documents/{id}/text": "documents_text",
@@ -110,18 +110,18 @@ ENDPOINTS: dict[str, str | Excluded | Planned] = {
     "GET /documents/{id}/files": BROWSER,
     "GET /documents/{id}/places/{kind}/{ref}": BROWSER,
     "GET /documents/{id}/exchanges/{node}": Excluded.INTERNALS,
-    "POST /documents/{id}/facts/decisions": Planned(5, "facts_decide"),
-    "POST /documents/{id}/confirm": Planned(5, "inbox_confirm"),
-    "PUT /documents/{id}/seen": Planned(5, "inbox_mark_seen"),
-    "DELETE /documents/{id}/seen": Planned(5, "inbox_mark_seen"),
+    "POST /documents/{id}/facts/decisions": "facts_decide",
+    "POST /documents/{id}/confirm": "inbox_confirm",
+    "PUT /documents/{id}/seen": "inbox_mark_seen",
+    "DELETE /documents/{id}/seen": "inbox_mark_seen",
     "GET /documents/{id}/relations": "documents_get",
     "POST /documents/{id}/relations": Excluded.RELATIONS,
     "DELETE /documents/{id}/relations/{other_id}": Excluded.RELATIONS,
     "GET /events": BROWSER,
     "GET /expected": "expected_list",
     # inbox
-    "GET /inbox": Planned(5, "inbox_list"),
-    "GET /inbox/summary": Planned(5, "inbox_list"),
+    "GET /inbox": "inbox_list",
+    "GET /inbox/summary": "inbox_list",
     "POST /inbox/seen": WEB_UI,
     # identifiers
     "GET /identifiers/open": Planned(6, "identifiers_open"),
@@ -215,7 +215,7 @@ ENDPOINTS: dict[str, str | Excluded | Planned] = {
     "POST /external/tasks/{id}/result": Excluded.NOT_FOR_CLIENTS,
     "GET /external/tasks/{id}/files/{name}": Excluded.NOT_FOR_CLIENTS,
 }
-PLANNED_PRS = {5, 6}
+PLANNED_PRS = {6}
 """The pull requests of the plan that add tools; after the last, nothing is planned."""
 
 

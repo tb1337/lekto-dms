@@ -219,9 +219,10 @@ _NULL = {"type": "null"}
 def _slim(value: Any) -> Any:
     """`value` without what a client needs no telling: the titles (the key `title` where it is
     text, a schema's, not a parameter named so: in `properties` that is a schema), which repeat
-    the names; and null beside the type of a parameter whose default is null, which a client
-    leaves out instead (the server takes null all the same). A parameter where null means
-    something (`documents_update` removes a value) has no default and keeps it."""
+    the names; the docstrings of enums; and null beside the type of a parameter whose default
+    is null, which a client leaves out instead (the server takes null all the same). A
+    parameter where null means something (`documents_update` removes a value) has no default
+    and keeps it."""
     if isinstance(value, list):
         return [_slim(item) for item in value]
     if not isinstance(value, dict):
@@ -231,6 +232,15 @@ def _slim(value: Any) -> Any:
         for key, item in value.items()
         if not (key == "title" and isinstance(item, str))
     }
+    definitions = slim.get("$defs")
+    if isinstance(definitions, dict):
+        # An enum's docstring is the code's, not the client's.
+        slim["$defs"] = {
+            name: {key: item for key, item in definition.items() if key != "description"}
+            if isinstance(definition, dict) and "enum" in definition
+            else definition
+            for name, definition in definitions.items()
+        }
     choices = slim.get("anyOf")
     if "default" in slim and slim["default"] is None and isinstance(choices, list):
         others = [choice for choice in choices if choice != _NULL]

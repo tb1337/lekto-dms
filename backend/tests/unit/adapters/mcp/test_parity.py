@@ -1,12 +1,10 @@
 """Parity of MCP with the REST API (Tobi, 01.11.2026, umsetzungsplan "MCP"): every endpoint is
-served by a tool, planned for one, or left out for a reason. A new endpoint fails this test
-until someone decides which."""
+served by a tool or left out for a reason. A new endpoint fails this test until someone decides
+which."""
 
 import json
-from dataclasses import dataclass
 from enum import StrEnum
 
-from lekto.adapters.inbound.mcp.registry import split_name
 from lekto.adapters.inbound.rest import PREFIX
 from tests.unit.adapters.mcp.support import listed_tools
 from tests.unit.adapters.rest.support import Api, Scene
@@ -27,18 +25,10 @@ class Excluded(StrEnum):
     NOT_FOR_CLIENTS = "health checks and the callbacks of external tasks"
 
 
-@dataclass(frozen=True)
-class Planned:
-    """Served by a tool of a later pull request of the plan (a new one, or one extended)."""
-
-    pr: int
-    tool: str
-
-
 ACCOUNT, MANAGING, MASTER_DATA = Excluded.ACCOUNT, Excluded.MANAGING, Excluded.MASTER_DATA
 RULES, WEB_UI, BROWSER = Excluded.RULES, Excluded.WEB_UI, Excluded.BROWSER
 
-ENDPOINTS: dict[str, str | Excluded | Planned] = {
+ENDPOINTS: dict[str, str | Excluded] = {
     # auth
     "POST /auth/login": ACCOUNT,
     "GET /auth/oidc": ACCOUNT,
@@ -60,23 +50,23 @@ ENDPOINTS: dict[str, str | Excluded | Planned] = {
     "POST /auth/oidc/link": ACCOUNT,
     "DELETE /auth/oidc/link": ACCOUNT,
     # automation, classifier, jobs, pipeline, search: the page "System"
-    "GET /automation": Planned(6, "system_status"),
-    "GET /automation/signals": Planned(6, "system_status"),
+    "GET /automation": "system_status",
+    "GET /automation/signals": "system_status",
     "GET /automation/holders": MANAGING,
     "GET /automation/holders/cases": MANAGING,
-    "GET /classifier": Planned(6, "system_status"),
+    "GET /classifier": "system_status",
     "GET /classifier/models": MANAGING,
     "POST /classifier/train": MANAGING,
-    "GET /jobs/summary": Planned(6, "system_status"),
-    "GET /jobs": Planned(6, "system_status"),
-    "GET /jobs/durations": Planned(6, "system_status"),
+    "GET /jobs/summary": "system_status",
+    "GET /jobs": "system_status",
+    "GET /jobs/durations": "system_status",
     "POST /jobs/{id}/retry": MANAGING,
-    "GET /pipeline": Planned(6, "system_status"),
+    "GET /pipeline": "system_status",
     "POST /pipeline/reparse": MANAGING,
     "POST /pipeline/relate": MANAGING,
     "POST /pipeline/render-pages": MANAGING,
     "POST /pipeline/read-facts": MANAGING,
-    "GET /search/status": Planned(6, "system_status"),
+    "GET /search/status": "system_status",
     "POST /search/reindex": MANAGING,
     "POST /search/check": MANAGING,
     # documents
@@ -124,15 +114,15 @@ ENDPOINTS: dict[str, str | Excluded | Planned] = {
     "GET /inbox/summary": "inbox_list",
     "POST /inbox/seen": WEB_UI,
     # identifiers
-    "GET /identifiers/open": Planned(6, "identifiers_open"),
-    "POST /identifiers/open/search": Planned(6, "identifiers_open"),
-    "GET /identifiers/open/summary": Planned(6, "identifiers_open"),
-    "GET /identifiers/open/{kind}/{ref}": Planned(6, "identifiers_open"),
+    "GET /identifiers/open": "identifiers_open",
+    "POST /identifiers/open/search": "identifiers_open",
+    "GET /identifiers/open/summary": "identifiers_open",
+    "GET /identifiers/open/{kind}/{ref}": "identifiers_open",
     "POST /identifiers/open/decisions": MASTER_DATA,
     "POST /identifiers/open/recommended": MASTER_DATA,
     "POST /identifiers/refs": BROWSER,
     "GET /identifiers/refs/{kind}/{ref}": BROWSER,
-    "GET /identifiers/places/{kind}/{ref}": Planned(6, "identifiers_find"),
+    "GET /identifiers/places/{kind}/{ref}": "identifiers_find",
     # master data
     "GET /contacts": "contacts_list",
     "POST /contacts": MASTER_DATA,
@@ -162,14 +152,14 @@ ENDPOINTS: dict[str, str | Excluded | Planned] = {
     "PATCH /fields/{id}": MASTER_DATA,
     "DELETE /fields/{id}": MASTER_DATA,
     # rules
-    "GET /rules": Planned(6, "rules_list"),
+    "GET /rules": "rules_list",
     "POST /rules": RULES,
-    "GET /rules/{id}": Planned(6, "rules_get"),
+    "GET /rules/{id}": "rules_get",
     "PUT /rules/{id}": RULES,
     "PATCH /rules/{id}": RULES,
     "DELETE /rules/{id}": RULES,
-    "GET /rules/{id}/versions": Planned(6, "rules_get"),
-    "GET /rules/{id}/versions/{number}": Planned(6, "rules_get"),
+    "GET /rules/{id}/versions": "rules_get",
+    "GET /rules/{id}/versions/{number}": "rules_get",
     "POST /rules/{id}/apply/preview": RULES,
     "GET /rules/{id}/apply/hits/{document_id}": RULES,
     "POST /rules/{id}/apply": RULES,
@@ -215,7 +205,6 @@ ENDPOINTS: dict[str, str | Excluded | Planned] = {
     "POST /external/tasks/{id}/result": Excluded.NOT_FOR_CLIENTS,
     "GET /external/tasks/{id}/files/{name}": Excluded.NOT_FOR_CLIENTS,
 }
-PLANNED_PRS = {6}
 """The pull requests of the plan that add tools; after the last, nothing is planned."""
 
 
@@ -244,8 +233,4 @@ async def test_the_tools_named_are_those_of_the_server(api: Api, scene: Scene) -
         if isinstance(target, str) and not isinstance(target, Excluded)
     }
     assert served <= tools, f"no such tool: {sorted(served - tools)}"
-    planned = {target.tool for target in ENDPOINTS.values() if isinstance(target, Planned)}
-    assert tools <= served | planned, f"a tool without an endpoint: {sorted(tools - served)}"
-    for target in ENDPOINTS.values():
-        if isinstance(target, Planned):
-            assert target.pr in PLANNED_PRS and split_name(target.tool) is not None, target
+    assert tools <= served, f"a tool without an endpoint: {sorted(tools - served)}"

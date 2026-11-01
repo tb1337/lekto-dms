@@ -213,7 +213,13 @@ long each node worked; `first_runs`), and per field the verdict at a person's fi
 it (`field_verdicts`: `taken`, `accepted`, `corrected`, `added`, or `early` before the first run
 stopped), with whether each signal named the person's value. Confirming in the inbox decides
 every field, a confirming change the fields it sets and those the automation had set, a move the
-space; a field keeps its first verdict. The statistics over both are counted live. `GET /automation`
+space; a field keeps its first verdict. A decision through an API token (a script, an assistant
+over MCP) carries the token beside the person (`ViaToken`: its id and a copy of its name; columns
+`via_token_id`, `via_token_name`, revision 0054), so a verdict through a token stays apart from one
+in the web UI (umsetzungsplan "MCP", decision 11): the verdicts, the confirmation and seen marks of
+the inbox (`GET /inbox` names it under done, `via_token`), relations, bulk operations and rule
+applications (which pass it on to each document), and the log entries of a person (`via_token`
+beside `actor` or `confirmed_by`). The web UI writes "Tobi über Token „Claude“" there. The statistics over both are counted live. `GET /automation`
 shows them on the page "System" to every user (`AutomationService`): the documents by the lane of
 their first run, what became of them, the history by month, the times (median and 90th
 percentile, per step too) and the verdicts per field; `GET /automation/signals` the hits of each
@@ -1854,6 +1860,8 @@ regardless of case; an unknown name is an error that suggests up to three simila
 nothing is created. A document the caller may not read is "not found", with the same text as a
 missing one. The server's instructions say all this once for every tool, and, with
 `LEKTO_PUBLIC_URL`, how to link to a document in the web UI (`<url>/ui/documents/<id>`).
+A change through a tool carries the token like one over REST (`ViaToken`, above): the web UI
+names it after the person, and the verdicts keep it.
 
 Set up Claude Code (use a `read` token if the client should only read):
 

@@ -2,6 +2,7 @@
 `POST /documents/search`), the switches to every user's documents and rules (`all_users`), and
 document counts; and how their descriptions say who may call them."""
 
+from dataclasses import replace
 from datetime import date
 from enum import StrEnum
 from typing import Annotated
@@ -15,7 +16,7 @@ from lekto.adapters.inbound.rest.schemas.refs import opened
 from lekto.core.domain.document_facts import FactCriterion, FactRole
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.identifiers import IdentifierKind
-from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId
+from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId, id_reference
 from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane
 from lekto.core.domain.reasons import ReasonCode, because
@@ -30,6 +31,8 @@ MAX_IDS = 50
 """Ids of one kind a filter names at most."""
 MAX_FACTS = 5
 """Facts a filter names at most."""
+MAX_SELECTED = 100
+"""Documents the list names by id at most (`ids`)."""
 
 
 class LaneFilter(StrEnum):
@@ -146,6 +149,42 @@ def _dates(start: date | None, end: date | None) -> Period | None:
 
 
 Filter = Annotated[DocumentFilter, Depends(document_filter)]
+
+
+def listed_filter(
+    filter: Filter,
+    ids: Annotated[
+        list[str] | None,
+        Query(
+            max_length=MAX_SELECTED,
+            description=(
+                "Documents by id: the whole id, or its end of at least 8 characters (a short "
+                "id, as MCP names documents; an end several documents share finds each). "
+                "Several: any of them. The list, its count and its facets take it; the search "
+                "does not (the search index knows no ids)."
+            ),
+        ),
+    ] = None,
+) -> DocumentFilter:
+    """The filter of the list (`document_filter`) with the documents it names by id."""
+    if not ids:
+        return filter
+    references = {id_reference(item) for item in ids}
+    if None in references:
+        raise RequestValidationError(
+            [
+                {
+                    "type": "value_error",
+                    "loc": ("query", "ids"),
+                    "msg": "an id is the whole id or its end of at least 8 hex characters",
+                    "input": next(item for item in ids if id_reference(item) is None),
+                }
+            ]
+        )
+    return replace(filter, ids=frozenset(item for item in references if item is not None))
+
+
+Listed = Annotated[DocumentFilter, Depends(listed_filter)]
 AllDocuments = Annotated[
     bool, Query(description="Every user's documents instead of the caller's reach (admins).")
 ]

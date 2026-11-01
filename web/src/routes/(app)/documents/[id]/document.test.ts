@@ -99,6 +99,33 @@ afterEach(() => {
 	localStorage.clear();
 });
 
+describe('a short id', () => {
+	it('goes on to the whole id of the document it names', async () => {
+		goTo('/ui/documents/9b653410?tab=properties', { id: '9b653410' });
+		const api = serve(() => documentOf({ lane: 'green' }), {
+			'GET /api/v1/documents': () => ({ items: [documentOf({ lane: 'green' })] })
+		});
+		render(Page);
+		await waitFor(() =>
+			expect(goto).toHaveBeenCalledWith('/ui/documents/doc-1?tab=properties', {
+				replace: true,
+				reset: false
+			})
+		);
+		expect(calls(api)).not.toContain('GET /api/v1/documents/9b653410');
+	});
+
+	it('shows none it does not find', async () => {
+		goTo('/ui/documents/9b653410', { id: '9b653410' });
+		serve(() => documentOf({ lane: 'green' }), {
+			'GET /api/v1/documents': () => ({ items: [] })
+		});
+		render(Page);
+		expect(await screen.findByText(m.document_not_found())).toBeTruthy();
+		expect(goto).not.toHaveBeenCalled();
+	});
+});
+
 describe('the document view and seen', () => {
 	it('reports seen when it opens, and refreshes the counter', async () => {
 		const api = serve(() => documentOf({ lane: 'green' }));

@@ -25,7 +25,7 @@ from starlette.background import BackgroundTask
 from lekto.adapters.inbound.rest.auth import PROTECTED, Authenticated, CurrentUser, Via
 from lekto.adapters.inbound.rest.context import Context
 from lekto.adapters.inbound.rest.cursors import Cursor, decode_cursor, encode_cursor
-from lekto.adapters.inbound.rest.params import AllDocuments, AllInboxes, Filter
+from lekto.adapters.inbound.rest.params import AllDocuments, AllInboxes, Listed
 from lekto.adapters.inbound.rest.problems import problem_responses
 from lekto.adapters.inbound.rest.schemas.documents import (
     DocumentAccepted,
@@ -239,7 +239,7 @@ async def upload(
 async def list_documents(
     user: CurrentUser,
     context: Context,
-    filter: Filter,
+    filter: Listed,
     sort: DocumentListSort = DocumentListSort.CREATED_DESC,
     sort_field_id: Annotated[
         UUID | None, Query(description="The field to sort by with `sort=field` or `-field`.")
@@ -283,7 +283,7 @@ async def list_documents(
     responses=problem_responses(401, 403, 422),
 )
 async def count_documents(
-    user: CurrentUser, context: Context, filter: Filter, all_users: AllDocuments = False
+    user: CurrentUser, context: Context, filter: Listed, all_users: AllDocuments = False
 ) -> DocumentCountOut:
     return DocumentCountOut(total=await context.documents.count(user, filter, all_users=all_users))
 
@@ -304,7 +304,7 @@ async def count_documents(
     responses=problem_responses(401, 403, 422),
 )
 async def document_facets(
-    user: CurrentUser, context: Context, filter: Filter, all_users: AllDocuments = False
+    user: CurrentUser, context: Context, filter: Listed, all_users: AllDocuments = False
 ) -> DocumentFacetsOut:
     facets = await context.documents.facets(user, filter, all_users=all_users)
     return DocumentFacetsOut.of(facets)

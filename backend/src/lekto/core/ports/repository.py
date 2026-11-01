@@ -49,6 +49,7 @@ from lekto.core.domain.ids import (
     TaskId,
     UserId,
     WebhookId,
+    ends_with,
 )
 from lekto.core.domain.inbox import Confirmation, InboxTab
 from lekto.core.domain.lenses import Lens
@@ -169,7 +170,8 @@ class DocumentFilter:
     examples; not in the search index).
     `field`: a value for it is set. `document_dates`: the document date lies in the period (a
     document without one does not match). `facts`: the document has a fact that matches each
-    (`FactCriterion`; none a person rejected)."""
+    (`FactCriterion`; none a person rejected). `ids`: the document's id ends with one of them
+    (`ids.id_reference`: a short id or the whole one; not in the search index)."""
 
     contacts: frozenset[ContactId] | None = None
     document_types: frozenset[DocumentTypeId] | None = None
@@ -184,6 +186,7 @@ class DocumentFilter:
     field: FieldId | None = None
     document_dates: Period | None = None
     facts: tuple[FactCriterion, ...] = ()
+    ids: frozenset[str] | None = None
 
     def __post_init__(self) -> None:
         for sets in (self.tags, self.contact_groups, self.document_type_groups):
@@ -194,6 +197,7 @@ class DocumentFilter:
             ("contacts", self.contacts),
             ("document types", self.document_types),
             ("spaces", self.spaces),
+            ("ids", self.ids),
         ):
             if chosen is not None and not chosen:
                 raise ValueError(f"a set of {name} in a filter is never empty")
@@ -214,6 +218,7 @@ class DocumentFilter:
             and (self.labelled is None or view.labelled is self.labelled)
             and (self.field is None or self.field in view.fields)
             and all(criterion.token in view.facts for criterion in self.facts)
+            and (self.ids is None or (view.id is not None and ends_with(view.id, self.ids)))
             and (
                 self.document_dates is None
                 or (
@@ -253,6 +258,7 @@ class FilterView:
     document_date: date | None = None
     labelled: bool = False  # not in the search index
     facts: frozenset[str] = frozenset()  # `document_facts.fact_tokens`
+    id: DocumentId | None = None  # not in the search index
 
     @classmethod
     def of(
@@ -277,6 +283,7 @@ class FilterView:
             document_date=document.document_date,
             labelled=document.confirmed_at is not None or document.space_confirmed_at is not None,
             facts=facts,
+            id=document.id,
         )
 
 

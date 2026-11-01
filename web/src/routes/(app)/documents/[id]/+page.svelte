@@ -37,6 +37,7 @@
 		pageHref,
 		pageOf,
 		type Right,
+		shortIdOf,
 		tabHref,
 		tabOf,
 		type Mark,
@@ -144,6 +145,20 @@
 		const wanted = id;
 		const request = ++latest;
 		try {
+			const short = shortIdOf(wanted);
+			if (short !== null) {
+				// An assistant's link names the document by a short id: on to its whole id, as the
+				// list finds it among the documents the caller reads (one, or none to show).
+				const found = await unwrap(
+					api.GET('/api/v1/documents', { params: { query: { ids: [short], limit: 2 } } })
+				);
+				if (found.items.length !== 1) throw new ApiError(404, null, null);
+				if (wanted === id && request === latest) {
+					const whole = `${BASE}/documents/${found.items[0].id}${page.url.search}`;
+					void goto(whole, { replace: true, reset: false });
+				}
+				return;
+			}
 			const loaded = await unwrap(
 				api.GET('/api/v1/documents/{id}', { params: { path: { id: wanted } } })
 			);

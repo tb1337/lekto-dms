@@ -23,7 +23,7 @@ exactly their documents.
 - A document's lane: green (filed), yellow (a person should review it), red (processing \
 failed); none while it is processed. access: read, or edit (you may change it).
 - Contacts, document types, topics, tags and fields go by name (any case), in input and \
-output; documents go by id.
+output; documents go by a short id of 8 characters (the whole id works too).
 - An absent key has no value: no contact, no tags, no further page.
 - Deleting, moving, reprocessing and uploading are no tools: the person does them in the web \
 UI. {link}

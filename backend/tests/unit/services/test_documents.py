@@ -1,6 +1,7 @@
 import json
 from datetime import date
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
@@ -19,7 +20,15 @@ from lekto.core.domain.events import (
 )
 from lekto.core.domain.exchanges import ModelCall, RunExchange, exchanges_to_json
 from lekto.core.domain.fields import FieldType
-from lekto.core.domain.ids import ContactId, DocumentId, SpaceId, TagId, UserId, new_id
+from lekto.core.domain.ids import (
+    ContactId,
+    DocumentId,
+    SpaceId,
+    TagId,
+    UserId,
+    new_id,
+    short_id,
+)
 from lekto.core.domain.inbox import InboxTab
 from lekto.core.domain.pipeline import PERSON_SPACE, Lane, Node
 from lekto.core.domain.spaces import Space, SpaceRole
@@ -33,6 +42,7 @@ from lekto.core.services.objects import (
     structure_key,
     text_key,
 )
+from tests import builders
 from tests.builders import UNCERTAIN, Returns, incoming
 from tests.unit.services.support import World
 
@@ -419,3 +429,40 @@ async def test_editors_read_the_model_exchanges(world: World, scene: Scene) -> N
         await world.documents.exchanges(scene.stranger.id, id, Node.SIGNAL_LLM)
     with pytest.raises(ValidationError, match="does not ask a language model"):
         await world.documents.exchanges(scene.owner.id, id, Node.PARSE)
+
+
+async def test_a_document_is_found_by_the_end_of_its_id(world: World) -> None:
+    """Tobi, 01.11.2026 (umsetzungsplan "MCP", decision 8): the last 8 characters, the random
+    bits of a UUIDv7; among the documents the caller reads; an end several share names them."""
+    owner, stranger = await world.user(), await world.user()
+    space = await world.personal_space(owner)
+    theirs = await world.personal_space(stranger)
+    twin = "0123456789ab"
+    one, two, hidden = (
+        builders.processed(owner, space),
+        builders.processed(owner, space),
+        builders.processed(stranger, theirs),
+    )
+    one.title, two.title = "Strom März", "Strom April"
+    one.id = DocumentId(UUID(hex="1" * 20 + twin))
+    two.id = DocumentId(UUID(hex="2" * 20 + "ff" + twin[2:]))
+    hidden.id = DocumentId(UUID(hex="3" * 20 + twin))
+    async with world.uow() as uow:
+        for document in (one, two, hidden):
+            await uow.documents.add(document)
+        await uow.commit()
+    documents = world.documents
+
+    assert await documents.resolve(owner.id, one.id.hex[-12:]) == one.id
+    assert await documents.resolve(owner.id, str(two.id).upper()) == two.id
+    assert await documents.resolve(owner.id, two.id.hex[-12:]) == two.id
+    # The stranger's document shares the end, but the owner cannot read it.
+    assert await documents.resolve(stranger.id, short_id(hidden.id)) == hidden.id
+    with pytest.raises(ValidationError, match="fits several documents") as raised:
+        await documents.resolve(owner.id, short_id(one.id))
+    assert "0123456789ab (Strom März)" in str(raised.value)
+    assert "ff23456789ab (Strom April)" in str(raised.value)
+    with pytest.raises(NotFoundError):
+        await documents.resolve(owner.id, "deadbeef")
+    with pytest.raises(ValidationError, match="no document id"):
+        await documents.resolve(owner.id, "1234")

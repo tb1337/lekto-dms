@@ -12,6 +12,7 @@ from sqlalchemy import (
     Float,
     FromClause,
     Row,
+    String,
     Table,
     and_,
     case,
@@ -619,6 +620,14 @@ def _matching(filter: DocumentFilter) -> list[ColumnElement[bool]]:
         criteria.append(documents.c.topic_id.in_(sorted(filter.topics)))
     if filter.spaces is not None:
         criteria.append(documents.c.space_id.in_(sorted(filter.spaces)))
+    if filter.ids is not None:
+        # The id as hex: Postgres writes a uuid with hyphens, SQLite keeps 32 characters.
+        hex = func.replace(cast(documents.c.id, String), "-", "")
+        whole = [UUID(hex=reference) for reference in filter.ids if len(reference) == 32]
+        ends = [
+            hex.like(f"%{reference}") for reference in sorted(filter.ids) if len(reference) < 32
+        ]
+        criteria.append(or_(documents.c.id.in_(sorted(whole)), *ends))
     if filter.document_dates is not None:
         criteria.append(
             documents.c.document_date.between(

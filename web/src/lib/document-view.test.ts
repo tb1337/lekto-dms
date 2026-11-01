@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+	shortIdOf,
 	keepsForm,
 	fieldEvidence,
 	byPage,
@@ -315,5 +316,15 @@ describe('viewerSources', () => {
 	it('asks for no archive before it can exist', () => {
 		expect(viewerSources(pdf, false)).toEqual(['/api/v1/documents/d1/original']);
 		expect(viewerSources(image, false)).toEqual([]);
+	});
+});
+
+describe('a short id', () => {
+	it('is the end of an id an assistant links a document by', () => {
+		expect(shortIdOf('9B653410')).toBe('9b653410');
+		expect(shortIdOf('54229b653410')).toBe('54229b653410');
+		expect(shortIdOf('01a19889-c51a-7602-b24a-54229b653410')).toBeNull();
+		expect(shortIdOf('1234')).toBeNull();
+		expect(shortIdOf('9b65341x')).toBeNull();
 	});
 });

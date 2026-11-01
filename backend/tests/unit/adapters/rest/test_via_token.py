@@ -1,6 +1,7 @@
 """A decision through an API token carries the token (Tobi, 01.11.2026, umsetzungsplan "MCP",
 decision 11): in the log, with the verdicts and under done; one in the web UI carries none."""
 
+from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 from uuid import UUID
@@ -20,6 +21,7 @@ from lekto.core.domain.pipeline import (
     Outcome,
 )
 from lekto.core.domain.reasons import written
+from lekto.core.domain.relations import RelationOrigin, RelationState
 from tests import builders
 from tests.api import auth
 from tests.builders import NOW, Returns
@@ -100,7 +102,8 @@ async def test_a_change_through_a_token_carries_it(api: Api) -> None:
         for entry in await log_of(api, id, auth(owner))
         if entry["model_version"] == RULES_CHANGE
     ]
-    assert entry["input"][VIA_TOKEN] == {"id": entry["input"][VIA_TOKEN]["id"], "name": TOKEN}
+    (token,) = await api.services.auth.list_api_tokens(owner.id)
+    assert entry["input"][VIA_TOKEN] == {"id": str(token.id), "name": TOKEN}
     assert await verdict_tokens(api, id) == {TOKEN}
 
 
@@ -171,6 +174,29 @@ async def test_relations_carry_the_token(api: Api) -> None:
     assert relation.decided_via.name == TOKEN
     assert await verdict_tokens(api, newer) == {TOKEN}
 
+    # Lekto's suggestion, rejected through the token: it stays, rejected, with the token.
+    async with api.container.unit_of_work() as uow:
+        suggested = replace(
+            relation,
+            origin=RelationOrigin.LEKTO,
+            state=RelationState.SUGGESTED,
+            decided_by=None,
+            decided_at=None,
+            decided_via=None,
+        )
+        await uow.document_relations.put(suggested)
+        await uow.commit()
+    rejected = await api.client.delete(
+        f"{DOCUMENTS}/{newer}/relations/{older}", headers=auth(owner)
+    )
+    assert rejected.status_code == 200, rejected.text
+    async with api.container.unit_of_work() as uow:
+        relation = await uow.document_relations.find(
+            DocumentId(UUID(newer)), DocumentId(UUID(older))
+        )
+    assert relation is not None and relation.state is RelationState.REJECTED
+    assert relation.decided_via is not None and relation.decided_via.name == TOKEN
+
 
 async def test_moves_bulk_changes_and_applied_rules_carry_the_token(api: Api) -> None:
     admin, owner, friend = await api.admin(), await api.user(), await api.user()
@@ -221,6 +247,38 @@ async def test_moves_bulk_changes_and_applied_rules_carry_the_token(api: Api) ->
     (choice,) = await entries_of(api, moved, PERSON_SPACE)
     assert choice["input"][VIA_TOKEN]["name"] == TOKEN
     assert await verdict_tokens(api, moved) == {TOKEN}
+
+
+async def test_moves_on_deleting_a_user_carry_the_token(api: Api) -> None:
+    """Documents move as an admin moves them by hand, through their token too."""
+    admin, anna = await api.admin("root"), await api.user("anna")
+    document = await upload(api, auth(anna), content=unique_pdf("anna's"))
+    url = f"{PREFIX}/users/{anna.id}"
+    (blocking,) = (await api.client.get(f"{url}/removal", headers=auth(admin))).json()[
+        "blocking_spaces"
+    ]
+    mine = await api.client.get(f"{PREFIX}/users/{admin.id}", headers=auth(admin))
+    settle = {
+        "spaces": [{"space_id": blocking["space_id"], "move_to": mine.json()["personal_space_id"]}]
+    }
+
+    deleted = await api.client.request("DELETE", url, json=settle, headers=auth(admin))
+    assert deleted.status_code == 204, deleted.text
+
+    (choice,) = await entries_of(api, document, PERSON_SPACE)
+    assert choice["input"][VIA_TOKEN]["name"] == TOKEN
+
+
+async def test_all_seen_through_a_token_carries_it(api: Api) -> None:
+    owner = await api.user()
+    id = await upload(api, auth(owner), content=unique_pdf("all seen"))
+
+    marked = await api.client.post(f"{PREFIX}/inbox/seen", headers=auth(owner))
+    assert marked.status_code == 200, marked.text
+
+    done = await api.client.get(f"{PREFIX}/inbox", params={"tab": "done"}, headers=auth(owner))
+    (item,) = done.json()["items"]
+    assert (item["document"]["id"], item["done"]["via_token"]) == (id, TOKEN)
 
 
 async def test_an_upload_into_a_chosen_space_carries_the_token(api: Api) -> None:

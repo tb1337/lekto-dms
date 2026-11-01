@@ -792,8 +792,9 @@ A new exception needs a row here and its entry in `tests/design-system.test.ts` 
     tabs"); tooltips only through `ui/tooltip` ("Help and tooltips");
   - `src/lib/tips.test.ts`: one box of help at a time, the next without delay; a tooltip opens on
     a focus Tab brought, not on one handed back;
-  - `src/lib/via-token.test.ts`: every file that reads `via_token` names the token through
-    `viaToken` ("Names of people");
+  - `src/lib/via-token.test.ts`: every file that has a person's API token (`via_token`, a
+    confirmation or an actor of the log) and names a person names the token through `viaToken`
+    ("Names of people");
   - `tests/messages-tone.test.ts`: German texts without "Sie" and without a lowercase "du";
   - `tests/no-raw-text.test.ts`: no raw text in markup; `tests/no-raw-choice.test.ts`: no raw
     checkbox or radio.

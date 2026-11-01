@@ -3,9 +3,10 @@ import { m } from '#lib/paraglide/messages.js';
 import { tokenOf, viaToken } from './via-token.ts';
 
 // DESIGN.md, Names of people: the token a person decided through stands after their name, the
-// same way everywhere; every file that reads `via_token` names it through `viaToken`.
+// same way everywhere; every file that has it (`via_token` from the API, or a confirmation or an
+// actor of the log, which carry it) and names a person names it through `viaToken`.
 const sources = import.meta.glob<string>(
-	['/src/**/*.svelte', '/src/lib/**/*.ts', '!/src/**/*.test.ts'],
+	['/src/**/*.svelte', '/src/**/*.ts', '!/src/**/*.test.ts'],
 	{
 		query: '?raw',
 		import: 'default',
@@ -13,6 +14,10 @@ const sources = import.meta.glob<string>(
 	}
 );
 const OWN = new Set(['/src/lib/via-token.ts']);
+/** What hands a reader the token: the API's field, and the log's readers that carry it. */
+const CARRIERS = /via_token|\b(?:tokenOf|confirmationOf|actorOf)\(/;
+/** What names a person. */
+const NAMES = /\b(?:person|userLabel)\(|inbox_by_you/;
 
 describe('via token', () => {
 	it('reads the name of the token from an entry', () => {
@@ -31,9 +36,19 @@ describe('via token', () => {
 	it('is named through viaToken wherever it is read', () => {
 		const readers = Object.entries(sources).filter(
 			([path, source]) =>
-				!OWN.has(path) && !path.endsWith('/api/schema.ts') && source.includes('via_token')
+				!OWN.has(path) &&
+				!path.endsWith('/api/schema.ts') &&
+				CARRIERS.test(source) &&
+				NAMES.test(source)
 		);
-		expect(readers.map(([path]) => path)).not.toEqual([]);
+		expect(readers.map(([path]) => path)).toEqual(
+			expect.arrayContaining([
+				'/src/lib/components/InboxRow.svelte',
+				'/src/lib/components/document/StepEntries.svelte',
+				'/src/lib/run-summary.ts',
+				'/src/lib/step-summary.ts'
+			])
+		);
 		for (const [path, source] of readers) {
 			expect(source, path).toContain('viaToken(');
 		}

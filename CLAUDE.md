@@ -12,7 +12,7 @@ only way in.
 | `web/` | Web UI: SvelteKit single-page app below `/ui`, client generated from `web/openapi.json` (see `web/README.md`); design system in `web/DESIGN.md` (binding) |
 | `migration/` | Paperless-ngx migration client: separate uv project `lekto_migration` (`plan`, `check`, `prepare`, `run`; see `migration/README.md`) |
 | `deploy/` | Runtime image files (s6-overlay services, `image/rootfs`), `test-image.sh`, `README.md` (operation, backup) |
-| `examples/` | `model-calls/`: an example consumer of model calls through a webhook (Python, standard library only, Ollama) and a Compose extension to try it |
+| `examples/` | `model-calls/`: an example consumer of model calls through a webhook (Python, standard library only, Ollama) and a Compose extension to try it; `documents/`: 321 synthetic documents of one household in every quality stage, `manifest.json` with what Lekto should find, their generator (`generate.py`, see its `README.md`) |
 | `docker/` | Compose examples with the published images (`ghcr.io/tb1337/lekto:latest`): SQLite, Postgres, extensions (workers, S3, Ollama, Caddy, Traefik, nginx), migration; settings in `.env` (`.env.example`) |
 | `.devcontainer/` | Devcontainer: Compose services (Postgres, Garage, Meilisearch), the fixed credentials for tests and CI (in `compose.yml`), the development instance (`README.md`, `dev.local.env.example`, `dev-setup.sh`) |
 | `.vscode/tasks.json` | VS Code tasks that run the development instance from the devcontainer (start, stop, migrate, UI, reindex, render-pages, read-facts, relate, migration) |
